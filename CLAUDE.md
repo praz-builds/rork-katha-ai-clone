@@ -1,12 +1,25 @@
-# CLAUDE.md
+# CLAUDE.md — Katha AI
 
 ## Product Context
 
-AI story generator mobile app. Users create personalized stories on demand with cover art and optional audio narration. Includes a curated free library for discovery and retention. Credits are the monetization currency.
+**Katha AI — Create Stories.** AI-powered mobile-first story platform. Users read curated + community stories for free. Creating stories costs credits. Includes cover art and audio narration per story.
 
-**This is a separate product from Story For My Kid (storyformykid.com).** Different brand, different app, broader audience (not kids-only). The website continues independently.
+**This is a separate product from Story For My Kid (storyformykid.com).** Different brand, different app, broader audience (adults 20-40, casual readers + aspiring writers). The website continues independently.
 
 Competitive reference: Okudu AI (~$30K/mo revenue, 84K downloads, launched Dec 2024).
+
+## Key Product Decisions
+
+These are locked in via `references/strategic-decisions.md` (the authoritative doc — overrides the Blueprint where they conflict):
+
+- **Single currency: Credits.** No coins, no gems, no dual wallets. Backend tracks provenance via `credit_ledger.reason`.
+- **Every story starts as a short story.** AI decides length (500-1500 words). No length picker. Stories become Series when author adds chapters.
+- **Author-only continuation.** Only the original author can write new chapters. Readers follow stories/authors for notifications.
+- **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
+- **3-credit welcome bonus** (generates → continue → continue arc).
+- **Creator earnings:** readers' reads earn the author credits (front-loaded curve, full anti-gaming pipeline).
+- **UI: English + Hindi. Generation: 15 languages.**
+- Kids mode is off by default, PIN-gated in parental controls.
 
 ## Architecture
 
@@ -31,62 +44,99 @@ Competitive reference: Okudu AI (~$30K/mo revenue, 84K downloads, launched Dec 2
 
 ### Key Patterns from Story For My Kid (reusable knowledge)
 
-These patterns were battle-tested in the storyformykid.com project:
-
 - **LLM fallback chain:** Sonnet 4.6 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund credit on total failure.
 - **Never use `claude --print` CLI for generation** — adds 70-100s overhead. Use Anthropic SDK directly.
 - **edge-tts narration:** Voice en-US-JennyNeural, Rate -15%. Output is MPEG 2 Layer III at 48kbps CBR. Duration formula: `file_size_bytes * 8 / 48000` seconds.
 - **Image generation:** "Pixar-inspired" is a HARD BLOCK in OpenAI moderation. Use "3D CGI animated film style". Build retry logic (up to 3 attempts) with simplified scene language on moderation rejection.
-- **Supabase webhook patterns:** Use async verification. CF Workers need `constructEventAsync()` — Edge Functions may differ but verify.
 - **Never include "AI", "generated", "artificial intelligence"** in public-facing image metadata.
 
 ## Database
 
-Schema is in `supabase/migrations/`. Key tables:
+Schema is in `supabase/migrations/` (3 migrations). Key tables:
 
+**Core (migration 00001):**
 - `profiles` — user identity, linked to Supabase Auth
 - `credit_ledger` — append-only ledger (every credit change is a row)
 - `stories` — generated + curated stories
-- `chapters` — story content (supports multi-chapter)
+- `chapters` — story content (supports multi-chapter, draft/published state)
 - `characters` — per-story character definitions
 - `comments` — user feedback per story/chapter
 - `streaks` — reading streak tracking
 - `ad_rewards` — daily ad credit claims (1 per 24hr)
 - `referrals` — referral tracking
 
+**Social + Creator Economy (migration 00003):**
+- `story_reads` — read tracking with anti-gaming fields (device_id, ip_hash, duration, counts_for_earnings)
+- `story_followers` — follow a story for chapter notifications
+- `user_followers` — follow an author for new story notifications
+- `bookmarks` — saved stories
+- `story_likes` — engagement signal for feed ranking
+
 **Credit ledger pattern:** Never update rows — only insert. Balance = last row's `balance_after`. Atomic deduction via `INSERT ... WHERE balance_after >= 0`.
+
+**Credit reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`
 
 ## Edge Functions
 
 All in `supabase/functions/`. Each is a Deno/TypeScript handler:
 
+### Implemented (scaffolded)
 | Function | Method | Purpose |
 |----------|--------|---------|
 | `generate-story` | POST | Orchestrator: auth -> credit check -> deduct -> LLM -> image -> audio -> return |
-| `continue-story` | POST | Generate next chapter for existing story |
-| `deduct-credit` | POST | Atomic credit deduction (pre-generation) |
-| `grant-credit` | POST | Server-side ad reward verification (AdMob SSV) |
-| `library` | GET | Paginated curated story feed for Discover |
-| `feedback` | POST | Comments/ratings + feedback credit reward |
+| `continue-story` | POST | Generate next chapter (author-only) |
+| `deduct-credit` | POST | Atomic credit deduction |
+| `grant-credit` | POST | AdMob SSV reward verification + 24hr cooldown |
+| `library` | GET | Paginated curated story feed with genre filter + search |
+| `feedback` | POST | Comments + one-time feedback credit reward |
 | `adapty-webhook` | POST | Subscription/purchase event handler |
+
+### TODO (from strategic-decisions.md §13)
+| Function | Purpose |
+|----------|---------|
+| `record-read` | Anti-gaming pipeline (self-read guard, min read time, account age throttle, velocity detection, dedup) |
+| `publish-chapter` | Mark chapter published, fire follower notifications |
+| `follow-story` / `unfollow-story` | Story follow toggles |
+| `follow-user` / `unfollow-user` | Author follow toggles |
+| `bookmark` / `unbookmark` | Bookmark toggles |
+| `like` / `unlike` | Like toggles |
+| `feed/for-you` | Personalized feed |
+| `feed/trending`, `feed/rising`, `feed/new` | Feed variants |
+| `search` | Full-text search (pg_trgm + tsvector) |
+| `author/:username` | Public author profile |
+| `story/:id/analytics` | Author-only per-story analytics |
 
 Shared utilities in `supabase/functions/_shared/`.
 
 ## Monetization
 
 ### Credits
-- 1 credit = 1 generation (story or chapter, includes cover image)
+- 1 credit = 1 generation (story or chapter, includes cover image + audio)
 - Credit packs: $2.99/3, $7.99/10, $14.99/25
 - Monthly sub: $6.99/mo (20 credits + ad-free + premium voices)
 - Yearly sub: $49.99/yr (25 credits/mo + ad-free + premium voices)
 - Subscription credits carry over up to 2x monthly amount
+- Welcome bonus: 3 credits
 
 ### Free Credit Methods
 - Watch ad (1 credit, 1 per 24hr)
 - Reading streak (1 credit every 3 consecutive days)
-- Leave feedback (1 credit per story, one-time)
+- Leave feedback (1 credit per story, cap 1/day)
 - Referral (3 credits per unique referral who generates)
-- Social post (1 credit per verified post)
+- Social post (1 credit per verified post, max 3/month)
+- Reader earnings on published stories (front-loaded curve, see strategic-decisions.md §4.1)
+
+### Creator Earnings Curve
+| Reads | Credits earned |
+|-------|---------------|
+| 10 | 10 (1 per read) |
+| 50 | 18 (1 per 5 after 10) |
+| 100 | 28 (1 per 5) |
+| 500 | 68 (1 per 10 after 100) |
+| 1,000 | 118 |
+| 10,000 | 478 (1 per 25 after 1000) |
+
+Anti-gaming: self-read guard, min read time, account age throttle, velocity anomaly detection, session diversity cap, per-story daily cap (10 credits), dedup (1 crediting read per user/story/day). Full spec in strategic-decisions.md §6.
 
 ## Build & Deploy
 
@@ -112,11 +162,17 @@ supabase secrets set OPENAI_API_KEY=xxx
 1. **Phase 1 (Read-Only):** Schema + seed library + GET /library endpoint
 2. **Phase 2 (Generation):** POST /generate-story + credit ledger + POST /continue-story
 3. **Phase 3 (Monetization):** Adapty webhook + AdMob SSV + grant/deduct credit
-4. **Phase 4 (Engagement):** Streaks + feedback rewards + referrals
+4. **Phase 4 (Engagement):** Streaks + feedback rewards + referrals + creator earnings + follows
 5. **Phase 5 (Growth):** Premium voices, offline, community, multi-language
+
+## Build Log
+
+**Every session that modifies code, schema, or infrastructure MUST append an entry to `build-log.md`.** This is the chronological record of what changed and when. Read it at the start of each session to understand current state.
 
 ## Reference Material
 
-- Full product blueprint: `references/story-generator-app.md`
-- Story generation prompt: `prompts/story-generator.md`
-- Seed library data: `seed-data/`
+- **Strategic decisions (authoritative):** `references/strategic-decisions.md` — overrides Blueprint where they conflict
+- **Product blueprint:** `references/story-generator-app.md` — original architecture spec
+- **Story generation prompt:** `prompts/story-generator.md`
+- **Seed library data:** `seed-data/`
+- **Build log:** `build-log.md` — chronological change record
