@@ -300,119 +300,153 @@ struct StoryCard: View {
     var onTap: (() -> Void)? = nil
     var onAuthorTap: (() -> Void)? = nil
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
-            StoryCoverView(story: story, height: 200)
-                .onTapGesture { onTap?() }
-                .contentShape(RoundedRectangle(cornerRadius: KathaTheme.Radius.l))
+    private var firstLine: String {
+        story.chapters.first?.paragraphs.first ?? story.synopsis
+    }
 
-            if let author = SeedData.author(id: story.authorId) {
-                HStack(spacing: KathaTheme.Spacing.s) {
+    var body: some View {
+        HStack(alignment: .top, spacing: KathaTheme.Spacing.smMd) {
+            StoryCoverView(story: story, height: 108)
+                .frame(width: 72, height: 108)
+                .clipShape(RoundedRectangle(cornerRadius: KathaTheme.Radius.s))
+
+            VStack(alignment: .leading, spacing: KathaTheme.Spacing.xs) {
+                HStack(alignment: .top, spacing: KathaTheme.Spacing.xs) {
+                    Text(story.title)
+                        .font(KathaFont.Title2)
+                        .foregroundStyle(KathaTheme.textPrimary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                    Spacer(minLength: KathaTheme.Spacing.xs)
+                    if let onBookmark {
+                        Button {
+                            Haptics.light()
+                            onBookmark()
+                        } label: {
+                            Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
+                                .font(KathaFont.BodyStrong)
+                                .foregroundStyle(isBookmarked ? KathaTheme.accent : KathaTheme.textTertiary)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                if let author = SeedData.author(id: story.authorId) {
                     Button {
                         Haptics.light()
                         onAuthorTap?()
                     } label: {
-                        HStack(spacing: KathaTheme.Spacing.s) {
-                            GeneratedAvatar(username: author.username, displayName: author.displayName, size: 32)
-                            VStack(alignment: .leading, spacing: 1) {
-                                HStack(spacing: 3) {
-                                    Text(author.displayName)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(KathaTheme.textPrimary)
-                                    if author.isVerified {
-                                        Image(systemName: "checkmark.seal.fill")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(KathaTheme.accent)
-                                    }
-                                }
-                                Text("\(formatCount(author.followers)) followers")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(KathaTheme.textSecondary)
+                        HStack(spacing: KathaTheme.Spacing.xs) {
+                            GeneratedAvatar(username: author.username, displayName: author.displayName, size: 16)
+                            Text(author.displayName)
+                                .font(KathaFont.Caption)
+                                .foregroundStyle(KathaTheme.textSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            if author.isVerified {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(KathaFont.Meta)
+                                    .foregroundStyle(KathaTheme.accent)
                             }
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled(onAuthorTap == nil)
-
-                    Spacer()
-                    Text(timeAgo(story.publishedOffset))
-                        .font(.system(size: 11))
-                        .foregroundStyle(KathaTheme.textTertiary)
+                    .padding(.top, KathaTheme.Spacing.xs)
                 }
+
+                Text(firstLine)
+                    .font(KathaFont.Body)
+                    .foregroundStyle(KathaTheme.textSecondary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .padding(.top, KathaTheme.Spacing.s)
+
+                EngagementRow(
+                    likes: story.likes,
+                    bookmarks: story.bookmarks,
+                    views: story.views,
+                    languageCode: story.languageCode,
+                    isLiked: isLiked,
+                    isBookmarked: isBookmarked,
+                    commentCount: nil,
+                    onLike: onLike,
+                    onBookmark: onBookmark,
+                    onComment: nil
+                )
+                .padding(.top, KathaTheme.Spacing.s)
             }
-
-            Text(story.synopsis)
-                .font(.system(size: 14))
-                .foregroundStyle(KathaTheme.textSecondary)
-                .lineLimit(2)
-                .onTapGesture { onTap?() }
-
-            HStack {
-                Label("\(story.readingTimeMinutes) min read", systemImage: "clock")
-                    .font(.system(size: 11))
-                    .foregroundStyle(KathaTheme.textTertiary)
-                Spacer()
-            }
-
-            EngagementRow(
-                likes: story.likes,
-                bookmarks: story.bookmarks,
-                views: story.views,
-                isLiked: isLiked,
-                isBookmarked: isBookmarked,
-                commentCount: nil,
-                onLike: onLike,
-                onBookmark: onBookmark,
-                onComment: nil
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(KathaTheme.Spacing.l)
-        .background(
-            RoundedRectangle(cornerRadius: KathaTheme.Radius.l)
-                .fill(KathaTheme.surface)
-        )
+        .padding(KathaTheme.Spacing.md)
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.l).fill(KathaTheme.surface))
         .kathaCardShadow()
+        .contentShape(RoundedRectangle(cornerRadius: KathaTheme.Radius.l))
+        .onTapGesture { onTap?() }
     }
 }
 
-// MARK: - Compact Story Card (for grids)
+// MARK: - Compact Story Card (vertical variant for horizontal scrolls)
 
 struct CompactStoryCard: View {
     let story: Story
     var onTap: (() -> Void)? = nil
     var onAuthorTap: (() -> Void)? = nil
+    var progress: Double? = nil
+    var badge: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.s) {
-            StoryCoverView(story: story, height: 130, titleSize: 14)
-                .onTapGesture { onTap?() }
+            ZStack(alignment: .bottom) {
+                StoryCoverView(story: story, height: 180, titleSize: 14)
+                    .frame(width: 140, height: 180)
+                if let progress {
+                    GeometryReader { proxy in
+                        Rectangle()
+                            .fill(KathaTheme.accent)
+                            .frame(width: proxy.size.width * min(1, max(0, progress)), height: 2)
+                    }
+                    .frame(height: 2)
+                    .padding(.horizontal, 0)
+                }
+                if let badge {
+                    Text(badge)
+                        .font(KathaFont.Meta)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, KathaTheme.Spacing.s)
+                        .frame(height: 22)
+                        .background(Capsule().fill(KathaTheme.error))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(KathaTheme.Spacing.s)
+                }
+            }
+            .frame(width: 140, height: 180)
+            .clipShape(RoundedRectangle(cornerRadius: KathaTheme.Radius.s))
+            .onTapGesture { onTap?() }
 
             Text(story.title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(KathaFont.Title2)
                 .foregroundStyle(KathaTheme.textPrimary)
                 .lineLimit(2)
+                .frame(width: 140, alignment: .leading)
 
             if let author = SeedData.author(id: story.authorId) {
                 Text(author.displayName)
-                    .font(.system(size: 12))
+                    .font(KathaFont.Caption)
                     .foregroundStyle(KathaTheme.textSecondary)
+                    .lineLimit(1)
+                    .frame(width: 140, alignment: .leading)
                     .onTapGesture {
-                        if let onAuthorTap {
-                            Haptics.light()
-                            onAuthorTap()
-                        } else {
-                            onTap?()
-                        }
+                        Haptics.light()
+                        onAuthorTap?()
                     }
             }
-
-            HStack(spacing: KathaTheme.Spacing.s) {
-                Label(formatCount(story.likes), systemImage: "heart")
-                Label(formatCount(story.bookmarks), systemImage: "bookmark")
-            }
-            .font(.system(size: 11))
-            .foregroundStyle(KathaTheme.textTertiary)
         }
+        .frame(width: 140, alignment: .leading)
+        .contentShape(Rectangle())
         .onTapGesture { onTap?() }
     }
 }
@@ -471,6 +505,7 @@ struct EngagementRow: View {
     let likes: Int
     let bookmarks: Int
     let views: Int
+    var languageCode: String = "EN"
     var isLiked: Bool = false
     var isBookmarked: Bool = false
     var commentCount: Int? = nil
@@ -479,50 +514,77 @@ struct EngagementRow: View {
     var onComment: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: KathaTheme.Spacing.l) {
-            if let onLike {
-                Button(action: { Haptics.light(); onLike() }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                        Text(formatCount(likes + (isLiked ? 1 : 0)))
-                    }
-                    .font(.system(size: 13, weight: isLiked ? .semibold : .regular))
-                    .foregroundStyle(isLiked ? KathaTheme.accent : KathaTheme.textSecondary)
-                }
-            }
-
-            if let onBookmark {
-                Button(action: { Haptics.light(); onBookmark() }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
-                        Text(formatCount(bookmarks + (isBookmarked ? 1 : 0)))
-                    }
-                    .font(.system(size: 13, weight: isBookmarked ? .semibold : .regular))
-                    .foregroundStyle(isBookmarked ? KathaTheme.accent : KathaTheme.textSecondary)
-                }
-            }
-
-            if let commentCount, let onComment {
-                Button(action: { Haptics.light(); onComment() }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bubble.left")
-                        Text(formatCount(commentCount))
-                    }
-                    .font(.system(size: 13))
-                    .foregroundStyle(KathaTheme.textSecondary)
-                }
-            } else if let commentCount {
-                Label(formatCount(commentCount), systemImage: "bubble.left")
-                    .font(.system(size: 13))
-                    .foregroundStyle(KathaTheme.textTertiary)
-            }
-
-            Label(formatCount(views), systemImage: "eye")
-                .font(.system(size: 13))
+        HStack(spacing: KathaTheme.Spacing.smMd) {
+            readMetric
+            likeMetric
+            commentMetric
+            Spacer(minLength: KathaTheme.Spacing.s)
+            Text(languageCode.uppercased())
+                .font(KathaFont.Meta)
                 .foregroundStyle(KathaTheme.textTertiary)
-
-            Spacer()
+                .padding(.horizontal, KathaTheme.Spacing.s)
+                .frame(height: 18)
+                .overlay(Capsule().stroke(KathaTheme.border, lineWidth: 1))
+                .clipShape(Capsule())
         }
+    }
+
+    private var readMetric: some View {
+        HStack(spacing: KathaTheme.Spacing.xs) {
+            Image(systemName: "eye")
+            Text(formatCount(views))
+        }
+        .font(KathaFont.Meta)
+        .foregroundStyle(KathaTheme.textSecondary)
+    }
+
+    @ViewBuilder
+    private var likeMetric: some View {
+        if let onLike {
+            Button {
+                Haptics.light()
+                onLike()
+            } label: {
+                likeLabel
+            }
+            .buttonStyle(.plain)
+        } else {
+            likeLabel
+        }
+    }
+
+    private var likeLabel: some View {
+        HStack(spacing: KathaTheme.Spacing.xs) {
+            Image(systemName: isLiked ? "heart.fill" : "heart")
+            Text(formatCount(likes + (isLiked ? 1 : 0)))
+        }
+        .font(isLiked ? KathaFont.BodyStrong : KathaFont.Meta)
+        .foregroundStyle(isLiked ? KathaTheme.heart : KathaTheme.textSecondary)
+    }
+
+    @ViewBuilder
+    private var commentMetric: some View {
+        let count = commentCount ?? 0
+        if let onComment {
+            Button {
+                Haptics.light()
+                onComment()
+            } label: {
+                commentLabel(count: count)
+            }
+            .buttonStyle(.plain)
+        } else {
+            commentLabel(count: count)
+        }
+    }
+
+    private func commentLabel(count: Int) -> some View {
+        HStack(spacing: KathaTheme.Spacing.xs) {
+            Image(systemName: "message.circle")
+            Text(formatCount(count))
+        }
+        .font(KathaFont.Meta)
+        .foregroundStyle(KathaTheme.textSecondary)
     }
 }
 

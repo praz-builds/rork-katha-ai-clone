@@ -233,6 +233,7 @@ struct Story: Identifiable, Hashable {
     var followerCount: Int = 0
     var plannedChapterCount: Int? = nil
     var contentRating: ContentRating? = nil
+    var languageCode: String = "EN"
 
     var effectiveContentRating: ContentRating {
         if let contentRating { return contentRating }
@@ -513,7 +514,8 @@ struct GeneratedStory: Identifiable, Hashable {
             tags: themes, publishedOffset: 0, isFeatured: false,
             followerCount: followerCount,
             plannedChapterCount: plannedChapterCount,
-            contentRating: genre == .kids ? .kids : (genre == .horror || genre == .erotica ? .mature : .teen)
+            contentRating: genre == .kids ? .kids : (genre == .horror || genre == .erotica ? .mature : .teen),
+            languageCode: language.code
         )
     }
 

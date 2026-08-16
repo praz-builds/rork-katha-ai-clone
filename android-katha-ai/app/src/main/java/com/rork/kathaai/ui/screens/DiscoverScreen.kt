@@ -56,9 +56,11 @@ import com.rork.kathaai.ui.components.EmptyState
 import com.rork.kathaai.ui.components.FilterChip
 import com.rork.kathaai.ui.components.GenreChip
 import com.rork.kathaai.ui.components.SafeBottomSpacer
+import com.rork.kathaai.ui.components.StoryCard
 import com.rork.kathaai.ui.components.StoryCover
 import com.rork.kathaai.ui.components.formatCount
 import com.rork.kathaai.ui.theme.KathaTheme
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 
@@ -193,8 +195,38 @@ fun DiscoverScreen(
                     )
                 }
             } else {
-                items(results, key = { it.id }) { story ->
-                    DiscoverStoryCard(story, state, viewModel, onOpenStory, onOpenAuthor)
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+                        results.forEach { story ->
+                            Box {
+                                StoryCard(
+                                    story = story,
+                                    isLiked = story.id in state.likedStoryIds,
+                                    isBookmarked = story.id in state.bookmarkedStoryIds,
+                                    onLike = { viewModel.toggleLike(story.id) },
+                                    onBookmark = { viewModel.toggleBookmark(story.id) },
+                                    onTap = { onOpenStory(story.id) },
+                                    onAuthorTap = { onOpenAuthor(story.authorId) }
+                                )
+                                Column(
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(KathaTheme.Spacing.s),
+                                    verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)
+                                ) {
+                                    if (state.isRisingStory(story)) {
+                                        Text("🔥 Rising", style = KathaTypography.Meta, color = Color.White, modifier = Modifier.clip(RoundedCornerShape(KathaTheme.Radius.xl)).background(KathaTheme.error).padding(horizontal = KathaTheme.Spacing.s, vertical = KathaTheme.Spacing.xs))
+                                    }
+                                    if (state.isNewStory(story)) {
+                                        Text("NEW", style = KathaTypography.Meta, color = Color.White, modifier = Modifier.clip(RoundedCornerShape(KathaTheme.Radius.xl)).background(KathaTheme.success).padding(horizontal = KathaTheme.Spacing.s, vertical = KathaTheme.Spacing.xs))
+                                    }
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)) {
+                                story.tags.take(3).forEach { tag ->
+                                    Text(tag, style = KathaTypography.Meta, color = KathaTheme.accent, modifier = Modifier.clip(RoundedCornerShape(KathaTheme.Radius.xl)).background(KathaTheme.accentSoft).clickable { viewModel.applyThemeFilter(tag) }.padding(horizontal = KathaTheme.Spacing.s, vertical = KathaTheme.Spacing.xs))
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

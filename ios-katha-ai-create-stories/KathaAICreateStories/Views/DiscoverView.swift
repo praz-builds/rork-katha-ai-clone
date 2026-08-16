@@ -120,15 +120,38 @@ struct DiscoverView: View {
                         message: "Try a different search term or genre filter."
                     )
                 } else {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: KathaTheme.Spacing.m),
-                            GridItem(.flexible(), spacing: KathaTheme.Spacing.m)
-                        ],
-                        spacing: KathaTheme.Spacing.l
-                    ) {
+                    VStack(spacing: KathaTheme.Spacing.m) {
                         ForEach(filteredStories) { story in
-                            DiscoverStoryCard(story: story)
+                            VStack(alignment: .leading, spacing: KathaTheme.Spacing.s) {
+                                ZStack(alignment: .topTrailing) {
+                                    StoryCard(
+                                        story: story,
+                                        isLiked: appState.isLiked(story.id),
+                                        isBookmarked: appState.isBookmarked(story.id),
+                                        onLike: { appState.toggleLike(storyId: story.id) },
+                                        onBookmark: { appState.toggleBookmark(storyId: story.id) },
+                                        onTap: { appState.openReader(story: story) },
+                                        onAuthorTap: { appState.openAuthorProfile(story.authorId) }
+                                    )
+                                    VStack(spacing: KathaTheme.Spacing.xs) {
+                                        if appState.isRisingStory(story) { RisingBadge() }
+                                        if appState.isNewStory(story) { NewBadge() }
+                                    }
+                                    .padding(KathaTheme.Spacing.s)
+                                }
+                                HStack(spacing: KathaTheme.Spacing.s) {
+                                    ForEach(story.tags.prefix(3), id: \.self) { tag in
+                                        Button { appState.applyThemeFilter(tag) } label: {
+                                            Text(tag)
+                                                .font(KathaFont.Meta)
+                                                .foregroundStyle(KathaTheme.accent)
+                                                .padding(.horizontal, KathaTheme.Spacing.s)
+                                                .padding(.vertical, KathaTheme.Spacing.xs)
+                                                .background(Capsule().fill(KathaTheme.accentSoft))
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

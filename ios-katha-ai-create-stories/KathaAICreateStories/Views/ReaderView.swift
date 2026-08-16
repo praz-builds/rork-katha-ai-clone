@@ -5,12 +5,27 @@
 
 import SwiftUI
 
+private struct ReaderScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct ReaderContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct ReaderView: View {
     @Environment(AppState.self) private var appState
     let story: Story
 
     @State private var scrollOffset: CGFloat = 0
+    @State private var contentHeight: CGFloat = 1
     @State private var showNavButtons: Bool = true
+    @State private var progressVisible: Bool = false
+    @State private var progressHideToken = UUID()
+    @State private var heartScale: CGFloat = 1
+    @State private var burstActive = false
 
     private var currentChapter: Chapter? {
         guard story.chapters.indices.contains(appState.currentChapterIndex) else {
@@ -58,61 +73,103 @@ struct ReaderView: View {
     }
 
     private var readerContent: some View {
-        ZStack(alignment: .top) {
-            ScrollView {
-                VStack(spacing: KathaTheme.Spacing.l) {
-                    // Draft banner
-                    if isDraftChapter && isCurrentUserAuthor {
-                        DraftReaderBanner()
-                            .padding(.top, 50)
-                    }
-
-                    StoryCoverView(story: story, height: 280, titleSize: 24)
-                        .padding(.top, isDraftChapter ? 0 : 50)
-
-                    metadataSection
-
-                    authorSection
-
-                    if appState.isAuthenticated {
-                        chapterContent
-                        if !isDraftChapter {
-                            commentsSection
+        GeometryReader { viewport in
+            ZStack(alignment: .top) {
+                ScrollView {
+                    VStack(spacing: KathaTheme.Spacing.l) {
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: ReaderScrollOffsetKey.self, value: proxy.frame(in: .named("readerScroll")).minY)
                         }
-                        endOfChapterSection
-                    } else {
-                        partialContent
-                    }
+                        .frame(height: 0)
 
-                    SafeBottomSpacer(height: 80)
+                        if isDraftChapter && isCurrentUserAuthor {
+                            DraftReaderBanner().padding(.top, KathaTheme.Spacing.xxl48)
+                        }
+
+                        StoryCoverView(story: story, height: 280, titleSize: 24)
+                            .padding(.top, isDraftChapter ? 0 : KathaTheme.Spacing.xxl48)
+                        metadataSection
+                        authorSection
+
+                        if appState.isAuthenticated {
+                            chapterContent
+                            if !isDraftChapter { commentsSection }
+                            endOfChapterSection
+                        } else {
+                            partialContent
+                        }
+
+                        SafeBottomSpacer(height: 80)
+                    }
+                    .padding(.horizontal, KathaTheme.Spacing.l)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: ReaderContentHeightKey.self, value: proxy.size.height)
+                    })
                 }
-                .padding(.horizontal, KathaTheme.Spacing.l)
-            }
-            .background(readerBg)
-            .scrollIndicators(.hidden)
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 0) {
-                    if !isDraftChapter {
-                        AudioMiniBar(story: story)
-                    }
-                    if isDraftChapter && isCurrentUserAuthor {
-                        // Hide engagement bar in draft state
-                    } else {
-                        engagementBar
+                .coordinateSpace(name: "readerScroll")
+                .background(readerBg)
+                .scrollIndicators(.hidden)
+                .safeAreaInset(edge: .bottom) {
+                    VStack(spacing: 0) {
+                        if !isDraftChapter { AudioMiniBar(story: story) }
+                        if !(isDraftChapter && isCurrentUserAuthor) { engagementBar }
                     }
                 }
-            }
 
-            topBar
+                topBar
+                    .opacity(showNavButtons ? 1 : 0)
+                    .offset(y: showNavButtons ? 0 : -80)
+                    .allowsHitTesting(showNavButtons)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.8), value: showNavButtons)
 
-            // Chapter nav buttons (series only)
-            if story.isSeries && appState.isAuthenticated {
-                chapterNavOverlay
+                progressBar
+
+                if story.isSeries && appState.isAuthenticated {
+                    chapterNavOverlay
+                        .opacity(showNavButtons ? 1 : 0)
+                        .allowsHitTesting(showNavButtons)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: showNavButtons)
+                }
             }
+            .onPreferenceChange(ReaderScrollOffsetKey.self) { value in
+                let current = max(0, -value)
+                let delta = current - scrollOffset
+                scrollOffset = current
+                let maxScroll = max(contentHeight - viewport.size.height, 1)
+                if current <= KathaTheme.Spacing.s || !appState.isAuthenticated {
+                    showNavButtons = true
+                } else if abs(delta) >= KathaTheme.Spacing.s {
+                    showNavButtons = delta < 0
+                }
+                progressVisible = true
+                let token = UUID()
+                progressHideToken = token
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    if progressHideToken == token {
+                        withAnimation(.easeOut(duration: 0.3)) { progressVisible = false }
+                    }
+                }
+                _ = min(1, max(0, current / maxScroll))
+            }
+            .onPreferenceChange(ReaderContentHeightKey.self) { contentHeight = max(1, $0) }
         }
-        .onAppear {
-            appState.beginReaderStreakActivity()
+        .onAppear { appState.beginReaderStreakActivity() }
+    }
+
+    private var progressBar: some View {
+        GeometryReader { proxy in
+            let maxScroll = max(contentHeight - proxy.size.height, 1)
+            let progress = min(1, max(0, scrollOffset / maxScroll))
+            ZStack(alignment: .leading) {
+                Rectangle().fill(KathaTheme.borderStrong.opacity(0.4)).frame(height: 2)
+                Rectangle().fill(appState.readerSepia ? KathaTheme.sepiaAccent : KathaTheme.accent).frame(width: proxy.size.width * progress, height: 2)
+            }
+            .opacity(progressVisible ? 1 : 0)
+            .animation(.easeOut(duration: 0.1), value: progressVisible)
         }
+        .frame(height: 2)
+        .padding(.top, KathaTheme.Spacing.xxl48)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Top Bar
@@ -360,12 +417,20 @@ struct ReaderView: View {
                         .font(KathaFont.ReaderChapterTitle)
                         .foregroundStyle(readerText)
 
-                    ForEach(chapter.paragraphs, id: \.self) { para in
-                        Text(para)
-                            .font(KathaFont.readerBody(size: 18))
-                            .foregroundStyle(readerText)
-                            .lineSpacing(8)
-                            .fixedSize(horizontal: false, vertical: true)
+                    let firstProseIndex = chapter.paragraphs.firstIndex { paragraph in
+                        let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+                        return !trimmed.isEmpty && trimmed != "· · ·"
+                    }
+                    ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { index, para in
+                        if index == firstProseIndex {
+                            ReaderDropCapParagraph(text: para, bodySize: 18, textColor: readerText, accent: appState.readerSepia ? KathaTheme.sepiaAccent : KathaTheme.accent)
+                        } else {
+                            Text(para)
+                                .font(KathaFont.readerBody(size: 18))
+                                .foregroundStyle(readerText)
+                                .lineSpacing(8)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
@@ -401,16 +466,37 @@ struct ReaderView: View {
                     .font(KathaFont.ReaderChapterTitle)
                     .foregroundStyle(readerText)
 
-                ForEach(firstChapter.paragraphs.prefix(authWallIndex), id: \.self) { para in
-                    Text(para)
-                        .font(KathaFont.readerBody(size: 18))
-                        .foregroundStyle(readerText)
-                        .lineSpacing(8)
-                        .fixedSize(horizontal: false, vertical: true)
+                let visibleParagraphs = Array(firstChapter.paragraphs.prefix(authWallIndex))
+                ForEach(Array(visibleParagraphs.enumerated()), id: \.offset) { index, para in
+                    if index == visibleParagraphs.firstIndex(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0 != "· · ·" }) {
+                        ReaderDropCapParagraph(text: para, bodySize: 18, textColor: readerText, accent: appState.readerSepia ? KathaTheme.sepiaAccent : KathaTheme.accent)
+                    } else {
+                        Text(para)
+                            .font(KathaFont.readerBody(size: 18))
+                            .foregroundStyle(readerText)
+                            .lineSpacing(8)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
 
             authWall
+                .overlay(alignment: .bottom) {
+                    if let firstChapter = story.chapters.first {
+                        let hiddenParagraphs = Array(firstChapter.paragraphs.dropFirst(authWallIndex))
+                        VStack(alignment: .leading, spacing: KathaTheme.Spacing.xl) {
+                            ForEach(Array(hiddenParagraphs.enumerated()), id: \.offset) { index, paragraph in
+                                Text(paragraph)
+                                    .font(KathaFont.readerBody(size: 18))
+                                    .foregroundStyle(readerText)
+                                    .lineSpacing(8)
+                                    .blur(radius: min(60, CGFloat(index + 1) * 8))
+                                    .overlay(readerBg.opacity(0.12))
+                            }
+                        }
+                        .padding(.top, KathaTheme.Spacing.l)
+                    }
+                }
         }
     }
 
@@ -522,15 +608,33 @@ struct ReaderView: View {
                     appState.closeReader()
                     appState.openStoryAnalytics(story: story)
                 } else {
+                    let wasLiked = appState.isLiked(story.id)
                     appState.toggleLike(storyId: story.id)
+                    if appState.isAuthenticated {
+                        if !wasLiked {
+                            Haptics.medium()
+                            burstActive = true
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) { heartScale = 1.15 }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) { heartScale = 1 }
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { burstActive = false }
+                        } else {
+                            Haptics.light()
+                        }
+                    }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: appState.isLiked(story.id) ? "heart.fill" : "heart")
-                    Text(formatCount(appState.storyLikeCount(storyId: story.id, baseCount: story.likes)))
+                ZStack {
+                    HStack(spacing: KathaTheme.Spacing.xs) {
+                        Image(systemName: appState.isLiked(story.id) ? "heart.fill" : "heart")
+                        Text(formatCount(appState.storyLikeCount(storyId: story.id, baseCount: story.likes)))
+                    }
+                    .font(KathaFont.Body)
+                    .foregroundStyle(appState.isLiked(story.id) ? KathaTheme.heart : KathaTheme.textSecondary)
+                    .scaleEffect(heartScale)
+                    if burstActive { ReaderLikeParticleBurst() }
                 }
-                .font(KathaFont.Body)
-                .foregroundStyle(appState.isLiked(story.id) ? KathaTheme.accent : KathaTheme.textSecondary)
             }
 
             if !appState.kidsMode || appState.kidsCommentsEnabled {
@@ -579,5 +683,71 @@ struct ReaderView: View {
         .padding(.horizontal, KathaTheme.Spacing.l)
         .padding(.vertical, KathaTheme.Spacing.m)
         .background(readerSurface)
+    }
+}
+
+private struct ReaderDropCapParagraph: View {
+    let text: String
+    let bodySize: CGFloat
+    let textColor: Color
+    let accent: Color
+
+    private var split: (prefix: String, letter: String, remainder: String) {
+        let characters = Array(text)
+        guard let index = characters.firstIndex(where: { $0.isLetter }) else {
+            return ("", "", text)
+        }
+        return (
+            String(characters[..<index]),
+            String(characters[index]),
+            String(characters.dropFirst(index + 1))
+        )
+    }
+
+    var body: some View {
+        let parts = split
+        HStack(alignment: .top, spacing: 0) {
+            if !parts.prefix.isEmpty {
+                Text(parts.prefix)
+                    .font(KathaFont.readerBody(size: bodySize))
+                    .foregroundStyle(textColor)
+            }
+            Text(parts.letter)
+                .font(KathaFont.literata(size: bodySize * 3, weight: .bold))
+                .foregroundStyle(accent)
+                .frame(width: bodySize * 1.15, height: bodySize * 3.05, alignment: .topLeading)
+                .padding(.trailing, KathaTheme.Spacing.xs)
+                .padding(.bottom, KathaTheme.Spacing.xs)
+            Text(parts.remainder)
+                .font(KathaFont.readerBody(size: bodySize))
+                .foregroundStyle(textColor)
+                .lineSpacing(8)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct ReaderLikeParticleBurst: View {
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<6, id: \.self) { index in
+                let angle = Double(index) * Double.pi / 3
+                Circle()
+                    .fill(KathaTheme.heart)
+                    .frame(width: 6, height: 6)
+                    .offset(
+                        x: CGFloat(cos(angle)) * 26 * phase,
+                        y: CGFloat(sin(angle)) * 26 * phase
+                    )
+                    .scaleEffect(1 - phase * 0.4)
+                    .opacity(Double(1 - phase))
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.2)) { phase = 1 }
+        }
+        .allowsHitTesting(false)
     }
 }

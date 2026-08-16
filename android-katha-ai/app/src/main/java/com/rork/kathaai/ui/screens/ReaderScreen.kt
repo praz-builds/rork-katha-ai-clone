@@ -1,5 +1,9 @@
 package com.rork.kathaai.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,13 +13,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,9 +52,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -75,6 +87,10 @@ import com.rork.kathaai.viewmodel.openAudioPlayer
 import com.rork.kathaai.viewmodel.downloadStory
 import com.rork.kathaai.viewmodel.removeOfflineStory
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun ReaderScreen(
@@ -112,6 +128,40 @@ fun ReaderScreen(
     val currentChapterIndex = state.currentChapterIndex.coerceIn(0, maxOf(0, story.chapters.size - 1))
     val currentChapter = story.chapters.getOrNull(currentChapterIndex) ?: story.chapters.firstOrNull()
     val isDraftChapter = currentChapter?.isPublished == false
+    val scrollState = rememberLazyListState()
+    var navVisible by remember { mutableStateOf(true) }
+    var progressVisible by remember { mutableStateOf(false) }
+    var likeBurst by remember { mutableStateOf(false) }
+    var heartPulse by remember { mutableStateOf(false) }
+    val progress = remember(scrollState.firstVisibleItemIndex, scrollState.firstVisibleItemScrollOffset, currentChapter?.paragraphs?.size) {
+        val totalItems = 12 + (currentChapter?.paragraphs?.size ?: 1)
+        ((scrollState.firstVisibleItemIndex + scrollState.firstVisibleItemScrollOffset / 1000f) / maxOf(1, totalItems - 1)).coerceIn(0f, 1f)
+    }
+
+    LaunchedEffect(scrollState) {
+        var previousPosition = 0
+        snapshotFlow { scrollState.firstVisibleItemIndex * 1000 + scrollState.firstVisibleItemScrollOffset }.collect { position ->
+            val delta = position - previousPosition
+            previousPosition = position
+            navVisible = if (!state.isAuthenticated || position <= 8) true else if (abs(delta) >= 8) delta < 0 else navVisible
+            progressVisible = true
+            delay(1_000)
+            progressVisible = false
+        }
+    }
+
+    LaunchedEffect(likeBurst) {
+        if (likeBurst) {
+            delay(240)
+            likeBurst = false
+            heartPulse = false
+        }
+    }
+    val heartScale by animateFloatAsState(
+        targetValue = if (heartPulse) 1.15f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 500f),
+        label = "readerHeartScale"
+    )
 
     LaunchedEffect(story.id, state.isAuthenticated) {
         if (state.isAuthenticated) {
@@ -132,6 +182,7 @@ fun ReaderScreen(
             .background(bg)
     ) {
         LazyColumn(
+            state = scrollState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = KathaTheme.Spacing.l,
@@ -266,13 +317,21 @@ fun ReaderScreen(
                             modifier = Modifier.padding(top = KathaTheme.Spacing.m)
                         )
                     }
-                    items(chapter.paragraphs) { para ->
-                        Text(
-                            para,
-                            style = KathaTypography.readerBody(18),
-                            color = textColor,
-                            lineHeight = 28.sp
-                        )
+                    val firstProseIndex = chapter.paragraphs.indexOfFirst { paragraph ->
+                        val trimmed = paragraph.trim()
+                        trimmed.isNotEmpty() && trimmed != "· · ·"
+                    }
+                    itemsIndexed(chapter.paragraphs) { index, para ->
+                        if (index == firstProseIndex) {
+                            ReaderDropCapParagraph(para, textColor, if (sepia) KathaTheme.sepiaAccent else KathaTheme.accent)
+                        } else {
+                            Text(
+                                para,
+                                style = KathaTypography.readerBody(18),
+                                color = textColor,
+                                lineHeight = 28.sp
+                            )
+                        }
                     }
                 }
 
@@ -358,8 +417,8 @@ fun ReaderScreen(
             } else {
                 // Unauthenticated readers get roughly the first 40% of chapter one
                 val firstChapter = story.chapters.firstOrNull()
+                val cutoff = firstChapter?.let { maxOf(1, (it.paragraphs.size * 0.4).toInt()) } ?: 0
                 if (firstChapter != null) {
-                    val cutoff = maxOf(1, (firstChapter.paragraphs.size * 0.4).toInt())
                     item {
                         Text(
                             firstChapter.title,
@@ -368,13 +427,22 @@ fun ReaderScreen(
                             modifier = Modifier.padding(top = KathaTheme.Spacing.m)
                         )
                     }
-                    items(firstChapter.paragraphs.take(cutoff)) { para ->
-                        Text(
-                            para,
-                            style = KathaTypography.readerBody(18),
-                            color = textColor,
-                            lineHeight = 28.sp
-                        )
+                    val visibleParagraphs = firstChapter.paragraphs.take(cutoff)
+                    val firstProseIndex = visibleParagraphs.indexOfFirst { paragraph ->
+                        val trimmed = paragraph.trim()
+                        trimmed.isNotEmpty() && trimmed != "· · ·"
+                    }
+                    itemsIndexed(visibleParagraphs) { index, para ->
+                        if (index == firstProseIndex) {
+                            ReaderDropCapParagraph(para, textColor, if (sepia) KathaTheme.sepiaAccent else KathaTheme.accent)
+                        } else {
+                            Text(
+                                para,
+                                style = KathaTypography.readerBody(18),
+                                color = textColor,
+                                lineHeight = 28.sp
+                            )
+                        }
                     }
                 }
 
@@ -388,6 +456,20 @@ fun ReaderScreen(
                                     Brush.verticalGradient(listOf(Color.Transparent, bg))
                                 )
                         )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xl)
+                        ) {
+                            firstChapter?.paragraphs?.drop(cutoff).orEmpty().forEachIndexed { index, paragraph ->
+                                Text(
+                                    paragraph,
+                                    style = KathaTypography.readerBody(18),
+                                    color = textColor,
+                                    lineHeight = 28.sp,
+                                    modifier = Modifier.blur((index + 1).coerceAtMost(20).times(3).dp)
+                                )
+                            }
+                        }
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -425,12 +507,38 @@ fun ReaderScreen(
             item { SafeBottomSpacer(80.dp) }
         }
 
+        // Reader progress remains independent from the auto-hidden navigation.
+        val progressAlpha by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (progressVisible) 1f else 0f,
+            animationSpec = tween(300),
+            label = "readerProgressAlpha"
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(top = KathaTheme.Spacing.xxl48)
+                .height(2.dp)
+                .alpha(progressAlpha)
+                .background(KathaTheme.borderStrong.copy(alpha = 0.4f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .background(if (sepia) KathaTheme.sepiaAccent else KathaTheme.accent)
+            )
+        }
+
         // Floating top controls
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .padding(KathaTheme.Spacing.l),
+                .padding(KathaTheme.Spacing.l)
+                .alpha(if (navVisible) 1f else 0f)
+                .offset(y = if (navVisible) 0.dp else (-80).dp)
+                .animateContentSize(animationSpec = tween(250)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
         ) {
@@ -495,6 +603,7 @@ fun ReaderScreen(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .padding(start = 4.dp)
+                        .alpha(if (navVisible) 1f else 0f)
                 ) {
                     ChapterNavButton(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous") {
                         onNavigateChapter(currentChapterIndex - 1)
@@ -513,6 +622,7 @@ fun ReaderScreen(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 4.dp)
+                        .alpha(if (navVisible) 1f else 0f)
                 ) {
                     ChapterNavButton(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next") {
                         onNavigateChapter(currentChapterIndex + 1)
@@ -540,29 +650,39 @@ fun ReaderScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.l)
                 ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                Box(
                     modifier = Modifier.clickable {
                         if (isCurrentUserAuthor) {
                             /* analytics toast */
                         } else {
+                            val wasLiked = isLiked
                             onLike()
+                            if (state.isAuthenticated && !wasLiked) {
+                                heartPulse = true
+                                likeBurst = true
+                            }
                         }
                     }
                 ) {
-                    Icon(
-                        if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        "Like",
-                        tint = if (isLiked) KathaTheme.accent else textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        formatCount(state.storyLikeCount(story.id, story.likes)),
-                        color = if (isLiked) KathaTheme.accent else textSecondary,
-                        fontSize = KathaTypography.Body.fontSize,
-                        fontWeight = if (isLiked) FontWeight.SemiBold else FontWeight.Normal
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.scale(heartScale)
+                    ) {
+                        Icon(
+                            if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            "Like",
+                            tint = if (isLiked) KathaTheme.heart else textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            formatCount(state.storyLikeCount(story.id, story.likes)),
+                            color = if (isLiked) KathaTheme.heart else textSecondary,
+                            fontSize = KathaTypography.Body.fontSize,
+                            fontWeight = if (isLiked) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                    if (likeBurst) ReaderLikeParticleBurst()
                 }
                 // Comment button
                 if (!state.kidsMode || state.kidsCommentsEnabled) {
@@ -626,6 +746,59 @@ fun ReaderScreen(
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun ReaderDropCapParagraph(text: String, textColor: Color, accent: Color) {
+    val letterIndex = text.indexOfFirst { it.isLetter() }
+    if (letterIndex < 0) {
+        Text(text, style = KathaTypography.readerBody(18), color = textColor, lineHeight = 28.sp)
+        return
+    }
+    val prefix = text.take(letterIndex)
+    val letter = text.substring(letterIndex, letterIndex + 1)
+    val remainder = text.drop(letterIndex + 1)
+    Row(verticalAlignment = Alignment.Top) {
+        if (prefix.isNotEmpty()) {
+            Text(prefix, style = KathaTypography.readerBody(18), color = textColor, lineHeight = 28.sp)
+        }
+        Text(
+            letter,
+            style = KathaTypography.readerBody(54),
+            color = accent,
+            lineHeight = 54.sp,
+            modifier = Modifier
+                .height(84.dp)
+                .padding(end = KathaTheme.Spacing.xs)
+        )
+        Text(remainder, style = KathaTypography.readerBody(18), color = textColor, lineHeight = 28.sp)
+    }
+}
+
+@Composable
+private fun ReaderLikeParticleBurst() {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        progress.animateTo(1f, animationSpec = tween(200))
+    }
+    Box(Modifier.fillMaxSize()) {
+        repeat(6) { index ->
+            val angle = index * Math.PI / 3.0
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(6.dp)
+                    .offset(
+                        x = (cos(angle) * 26.0 * progress.value).dp,
+                        y = (sin(angle) * 26.0 * progress.value).dp
+                    )
+                    .scale(1f - progress.value * 0.4f)
+                    .alpha(1f - progress.value)
+                    .clip(CircleShape)
+                    .background(KathaTheme.heart)
+            )
         }
     }
 }

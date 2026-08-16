@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.RemoveRedEye
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +64,7 @@ import com.rork.kathaai.model.Story
 import com.rork.kathaai.ui.theme.AvatarPalettes
 import com.rork.kathaai.ui.theme.KathaTheme
 import com.rork.kathaai.ui.theme.KathaTypography
+import com.rork.kathaai.ui.theme.kathaShadow
 
 // MARK: - Formatting helpers
 
@@ -301,98 +304,96 @@ fun StoryCover(
 @Composable
 fun StoryCard(
     story: Story,
-    isLiked: Boolean,
-    isBookmarked: Boolean,
-    onLike: () -> Unit,
-    onBookmark: () -> Unit,
+    isLiked: Boolean = false,
+    isBookmarked: Boolean = false,
+    onLike: () -> Unit = {},
+    onBookmark: () -> Unit = {},
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
-    onAuthorTap: (() -> Unit)? = null
+    onAuthorTap: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
     val haptics = LocalHapticFeedback.current
-    Column(
+    val shape = RoundedCornerShape(KathaTheme.Radius.l)
+    val firstLine = story.chapters.firstOrNull()?.paragraphs?.firstOrNull() ?: story.synopsis
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(KathaTheme.Radius.l))
+            .fillMaxWidth()
+            .clip(shape)
             .background(KathaTheme.surface)
-            .padding(KathaTheme.Spacing.l),
-        verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
+            .kathaShadow(KathaTheme.shadowSoft, shape)
+            .combinedClickable(onClick = onTap, onLongClick = onLongClick)
+            .padding(KathaTheme.Spacing.md)
+            .heightIn(min = 132.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.smMd)
     ) {
-        StoryCover(story, Modifier.clickable { onTap() })
-
-        SeedData.author(story.authorId)?.let { author ->
-            val authorTapModifier = if (onAuthorTap != null) {
-                Modifier.clickable {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onAuthorTap()
-                }
-            } else Modifier
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                GeneratedAvatar(author.username, author.displayName, 32.dp, authorTapModifier)
-                Column(Modifier.weight(1f).then(authorTapModifier)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(
-                            author.displayName,
-                            color = KathaTheme.textPrimary,
-                            fontSize = KathaTypography.Body.fontSize,
-                            fontWeight = KathaTypography.BodyStrong.fontWeight
-                        )
-                        if (author.isVerified) {
-                            Icon(
-                                Icons.Outlined.Verified, null,
-                                tint = KathaTheme.accent,
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        "${formatCount(author.followers)} followers",
-                        color = KathaTheme.textSecondary,
-                        fontSize = KathaTypography.Meta.fontSize
-                    )
-                }
+        StoryCover(story, modifier = Modifier.size(width = 72.dp, height = 108.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)
+        ) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)) {
                 Text(
-                    timeAgo(story.publishedOffset),
-                    color = KathaTheme.textTertiary,
-                    fontSize = KathaTypography.Meta.fontSize
+                    story.title,
+                    style = KathaTypography.Title2,
+                    color = KathaTheme.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                    "Save",
+                    tint = if (isBookmarked) KathaTheme.accent else KathaTheme.textTertiary,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable { onBookmark() }
+                        .padding(KathaTheme.Spacing.xs)
                 )
             }
-        }
-
-        Text(
-            text = story.synopsis,
-            color = KathaTheme.textSecondary,
-            fontSize = KathaTypography.Body.fontSize,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.clickable { onTap() }
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(
-                Icons.Outlined.Schedule, null,
-                tint = KathaTheme.textTertiary,
-                modifier = Modifier.size(12.dp)
-            )
+            SeedData.author(story.authorId)?.let { author ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = onAuthorTap != null) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onAuthorTap?.invoke()
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)
+                ) {
+                    GeneratedAvatar(author.username, author.displayName, 16.dp)
+                    Text(
+                        author.displayName,
+                        style = KathaTypography.Caption,
+                        color = KathaTheme.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (author.isVerified) {
+                        Icon(Icons.Outlined.Verified, null, tint = KathaTheme.accent, modifier = Modifier.size(10.dp))
+                    }
+                }
+            }
             Text(
-                "${story.readingTimeMinutes} min read",
-                color = KathaTheme.textTertiary,
-                fontSize = KathaTypography.Meta.fontSize
+                firstLine,
+                style = KathaTypography.Body,
+                color = KathaTheme.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = KathaTheme.Spacing.s)
             )
-            Spacer(Modifier.weight(1f))
+            EngagementRow(
+                story = story,
+                isLiked = isLiked,
+                isBookmarked = isBookmarked,
+                onLike = onLike,
+                onBookmark = onBookmark,
+                modifier = Modifier.padding(top = KathaTheme.Spacing.s)
+            )
         }
-
-        EngagementRow(story, isLiked, isBookmarked, onLike, onBookmark)
     }
 }
 
@@ -401,38 +402,62 @@ fun CompactStoryCard(
     story: Story,
     modifier: Modifier = Modifier,
     onAuthorTap: (() -> Unit)? = null,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    progress: Float? = null,
+    badge: String? = null
 ) {
     val haptics = LocalHapticFeedback.current
     Column(
-        modifier = modifier.clickable { onTap() },
+        modifier = modifier
+            .width(140.dp)
+            .clickable { onTap() },
         verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
     ) {
-        StoryCover(story, height = 130.dp, titleSize = 14)
+        Box {
+            StoryCover(story, modifier = Modifier.size(width = 140.dp, height = 180.dp), titleSize = 14)
+            progress?.let { value ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(value.coerceIn(0f, 1f))
+                        .height(2.dp)
+                        .background(KathaTheme.accent)
+                )
+            }
+            badge?.let { label ->
+                Text(
+                    label,
+                    style = KathaTypography.Meta,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(KathaTheme.Spacing.s)
+                        .clip(RoundedCornerShape(KathaTheme.Radius.xl))
+                        .background(KathaTheme.error)
+                        .padding(horizontal = KathaTheme.Spacing.s)
+                        .height(22.dp)
+                )
+            }
+        }
         Text(
             story.title,
+            style = KathaTypography.Title2,
             color = KathaTheme.textPrimary,
-            fontSize = KathaTypography.Body.fontSize,
-            fontWeight = KathaTypography.BodyStrong.fontWeight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
         SeedData.author(story.authorId)?.let { author ->
             Text(
                 author.displayName,
+                style = KathaTypography.Caption,
                 color = KathaTheme.textSecondary,
-                fontSize = KathaTypography.Meta.fontSize,
-                modifier = if (onAuthorTap != null) {
-                    Modifier.clickable {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onAuthorTap()
-                    }
-                } else Modifier
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable(enabled = onAuthorTap != null) {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onAuthorTap?.invoke()
+                }
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)) {
-            IconCount(Icons.Outlined.FavoriteBorder, formatCount(story.likes))
-            IconCount(Icons.Outlined.BookmarkBorder, formatCount(story.bookmarks))
         }
     }
 }
@@ -457,17 +482,20 @@ fun EngagementRow(
     isBookmarked: Boolean,
     onLike: () -> Unit,
     onBookmark: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    commentCount: Int = 0,
+    onComment: (() -> Unit)? = null
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.l)
+        horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.smMd)
     ) {
+        Metric(icon = Icons.Outlined.RemoveRedEye, value = formatCount(story.views), tint = KathaTheme.textSecondary)
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs),
             modifier = Modifier.clickable {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 onLike()
@@ -476,50 +504,48 @@ fun EngagementRow(
             Icon(
                 if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                 contentDescription = "Like",
-                tint = if (isLiked) KathaTheme.accent else KathaTheme.textSecondary,
-                modifier = Modifier.size(16.dp)
+                tint = if (isLiked) KathaTheme.heart else KathaTheme.textSecondary,
+                modifier = Modifier.size(14.dp)
             )
             Text(
                 formatCount(story.likes + if (isLiked) 1 else 0),
-                color = if (isLiked) KathaTheme.accent else KathaTheme.textSecondary,
-                fontSize = KathaTypography.Caption.fontSize,
-                fontWeight = if (isLiked) FontWeight.SemiBold else FontWeight.Normal
+                style = if (isLiked) KathaTypography.BodyStrong else KathaTypography.Meta,
+                color = if (isLiked) KathaTheme.heart else KathaTheme.textSecondary
             )
         }
-
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.clickable {
+            horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs),
+            modifier = Modifier.clickable(enabled = onComment != null) {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                onBookmark()
+                onComment?.invoke()
             }
         ) {
-            Icon(
-                if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                contentDescription = "Save",
-                tint = if (isBookmarked) KathaTheme.accent else KathaTheme.textSecondary,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(
-                formatCount(story.bookmarks + if (isBookmarked) 1 else 0),
-                color = if (isBookmarked) KathaTheme.accent else KathaTheme.textSecondary,
-                fontSize = KathaTypography.Caption.fontSize,
-                fontWeight = if (isBookmarked) FontWeight.SemiBold else FontWeight.Normal
-            )
+            Icon(Icons.Outlined.ChatBubbleOutline, "Comments", tint = KathaTheme.textSecondary, modifier = Modifier.size(14.dp))
+            Text(formatCount(commentCount), style = KathaTypography.Meta, color = KathaTheme.textSecondary)
         }
+        Spacer(Modifier.weight(1f))
+        Text(
+            story.languageCode.uppercase(),
+            style = KathaTypography.Meta,
+            color = KathaTheme.textTertiary,
+            modifier = Modifier
+                .clip(RoundedCornerShape(KathaTheme.Radius.xl))
+                .border(1.dp, KathaTheme.border, RoundedCornerShape(KathaTheme.Radius.xl))
+                .padding(horizontal = KathaTheme.Spacing.s)
+                .height(18.dp)
+        )
+    }
+}
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Icon(
-                Icons.Outlined.RemoveRedEye, null,
-                tint = KathaTheme.textTertiary,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(formatCount(story.views), color = KathaTheme.textTertiary, fontSize = KathaTypography.Caption.fontSize)
-        }
+@Composable
+private fun Metric(icon: ImageVector, value: String, tint: Color) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+        Text(value, style = KathaTypography.Meta, color = tint)
     }
 }
 

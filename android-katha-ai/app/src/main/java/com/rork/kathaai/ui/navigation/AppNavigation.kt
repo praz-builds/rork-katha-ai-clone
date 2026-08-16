@@ -604,6 +604,7 @@ private fun MainScreen(
         when (selectedTab) {
             0 -> HomeScreen(
                 state = state,
+                viewModel = viewModel,
                 onOpenStory = openStory,
                 onLike = { viewModel.toggleLike(it) },
                 onBookmark = { viewModel.toggleBookmark(it) },
@@ -617,7 +618,8 @@ private fun MainScreen(
                 onOpenOwnProfile = { viewModel.openOwnProfile() },
                 onFollowAuthor = { viewModel.toggleFollowAuthor(it) },
                 onSeeMoreWriters = { viewModel.showToast("More writers coming \u2728") },
-                onOpenCredits = { viewModel.openCreditsScreen() }
+                onOpenCredits = { viewModel.openCreditsScreen() },
+                onSignIn = presentAuth
             )
             1 -> DiscoverScreen(
                 state = state,
@@ -632,6 +634,7 @@ private fun MainScreen(
             )
             3 -> LibraryScreen(
                 state = state,
+                viewModel = viewModel,
                 onOpenStory = openStory,
                 onSignIn = presentAuth
             )

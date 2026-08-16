@@ -139,7 +139,8 @@ data class Story(
     val isFeatured: Boolean,
     val followerCount: Int = 0,
     val plannedChapterCount: Int? = null,
-    val contentRating: ContentRating? = null
+    val contentRating: ContentRating? = null,
+    val languageCode: String = "EN"
 ) {
     val effectiveContentRating: ContentRating
         get() = contentRating ?: when {
@@ -345,7 +346,8 @@ data class GeneratedStory(
             Genre.KIDS -> ContentRating.KIDS
             Genre.HORROR, Genre.EROTICA -> ContentRating.MATURE
             else -> ContentRating.TEEN
-        }
+        },
+        languageCode = language.code
     )
 
     val chapterCount: Int get() = 1 + chapters.size
