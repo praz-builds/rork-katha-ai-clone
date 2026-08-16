@@ -729,7 +729,8 @@ The dog got better. The boy came back to thank the old woman, but the house was 
         characters: List<WizardCharacter>,
         language: StoryLanguage,
         authorId: String,
-        plannedChapterCount: Int?
+        plannedChapterCount: Int?,
+        readingLevel: com.rork.kathaai.model.ReadingLevel = com.rork.kathaai.model.ReadingLevel.STANDARD
     ): GeneratedStory {
         val delayMs = Random.nextLong(10_000, 14_000)
         delay(delayMs)
@@ -764,7 +765,8 @@ The dog got better. The boy came back to thank the old woman, but the house was 
             body = template.body,
             wordCount = wordCount,
             readingTime = maxOf(1, wordCount / 200),
-            plannedChapterCount = plannedChapterCount
+            plannedChapterCount = plannedChapterCount,
+            readingLevel = readingLevel
         )
     }
 

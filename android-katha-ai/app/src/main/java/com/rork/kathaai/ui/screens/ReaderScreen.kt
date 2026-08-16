@@ -113,6 +113,11 @@ fun ReaderScreen(
         if (state.isAuthenticated) onRead()
     }
 
+    if (state.kidsMode && story.effectiveContentRating == com.rork.kathaai.model.ContentRating.MATURE) {
+        RestrictedStoryPlaceholder(viewModel = viewModel, modifier = modifier)
+        return
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -538,21 +543,23 @@ fun ReaderScreen(
                     )
                 }
                 // Comment button
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.clickable { onOpenComments(story.id) }
-                ) {
-                    Icon(
-                        Icons.Outlined.ChatBubble, "Comments",
-                        tint = textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        formatCount(state.commentCount(story.id)),
-                        color = textSecondary,
-                        fontSize = 14.sp
-                    )
+                if (!state.kidsMode || state.kidsCommentsEnabled) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.clickable { onOpenComments(story.id) }
+                    ) {
+                        Icon(
+                            Icons.Outlined.ChatBubble, "Comments",
+                            tint = textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            formatCount(state.commentCount(story.id)),
+                            color = textSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -571,16 +578,18 @@ fun ReaderScreen(
                         fontSize = 14.sp
                     )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.clickable { onShare() }
-                ) {
-                    Icon(
-                        Icons.Outlined.Share, "Share",
-                        tint = textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
+                if (!state.kidsMode || state.kidsShareEnabled) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.clickable { onShare() }
+                    ) {
+                        Icon(
+                            Icons.Outlined.Share, "Share",
+                            tint = textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

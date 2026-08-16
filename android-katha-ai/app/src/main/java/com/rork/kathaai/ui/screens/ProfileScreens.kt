@@ -717,6 +717,9 @@ fun AuthorProfileScreen(
                                         viewModel.showToast("Sharing coming in the next update \u2728")
                                     }
                                 }
+                                if (state.kidsMode) {
+                                    KidsModeIndicator(state = state, viewModel = viewModel, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = KathaTheme.Spacing.m))
+                                }
                             } else if (author != null) {
                                 FollowButton(
                                     isFollowing = author.id in state.followedAuthorIds,

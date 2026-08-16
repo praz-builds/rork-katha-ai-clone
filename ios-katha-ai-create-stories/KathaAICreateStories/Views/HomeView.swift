@@ -135,7 +135,7 @@ struct HomeView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: KathaTheme.Spacing.m) {
-                    ForEach(SeedData.featuredStories) { story in
+                    ForEach(SeedData.featuredStories.filter { appState.isStoryVisibleInKidsMode($0) }) { story in
                         StoryCard(
                             story: story,
                             isLiked: appState.isLiked(story.id),
@@ -157,7 +157,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             SectionHeader(title: "Trending", subtitle: "Most loved this week")
             VStack(spacing: KathaTheme.Spacing.m) {
-                ForEach(SeedData.trendingStories.prefix(5)) { story in
+                ForEach(SeedData.trendingStories.filter { appState.isStoryVisibleInKidsMode($0) }.prefix(5)) { story in
                     StoryCard(
                         story: story,
                         isLiked: appState.isLiked(story.id),
@@ -182,7 +182,7 @@ struct HomeView: View {
                 ],
                 spacing: KathaTheme.Spacing.l
             ) {
-                ForEach(SeedData.newStories.prefix(6)) { story in
+                ForEach(SeedData.newStories.filter { appState.isStoryVisibleInKidsMode($0) }.prefix(6)) { story in
                     CompactStoryCard(
                         story: story,
                         onTap: { appState.openReader(story: story) },
@@ -205,7 +205,7 @@ struct HomeView: View {
             SectionHeader(title: "Browse by Genre")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: KathaTheme.Spacing.s) {
-                    ForEach(Genre.allCases) { genre in
+                    ForEach(Genre.allCases.filter { !(appState.kidsMode && $0 == .erotica) }) { genre in
                         GenreChip(genre: genre, isSelected: false)
                     }
                 }

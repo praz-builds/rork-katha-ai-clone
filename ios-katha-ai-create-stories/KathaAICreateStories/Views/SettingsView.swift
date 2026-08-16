@@ -22,6 +22,8 @@ struct SettingsView: View {
                     profileSection
                     rewardsSection
                     preferencesSection
+                    readingSection
+                    appSection
                     if !appState.blockedUserIds.isEmpty {
                         blockedUsersSection
                     }
@@ -31,6 +33,8 @@ struct SettingsView: View {
                 } else {
                     signInSection
                     preferencesSection
+                    readingSection
+                    appSection
                     aboutSection
                 }
 
@@ -126,6 +130,9 @@ struct SettingsView: View {
                 Spacer()
             }
             .padding(.top, KathaTheme.Spacing.s)
+
+            KidsModeIndicator()
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(KathaTheme.Spacing.l)
         .background(
@@ -186,6 +193,79 @@ struct SettingsView: View {
                 RoundedRectangle(cornerRadius: KathaTheme.Radius.l)
                     .fill(KathaTheme.surface)
             )
+        }
+    }
+
+    private var readingSection: some View {
+        VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
+            Text("Reading")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(KathaTheme.textSecondary)
+            VStack(spacing: 0) {
+                Button { appState.openReadingLevelSheet() } label: {
+                    HStack {
+                        Image(systemName: "text.book.closed").foregroundStyle(KathaTheme.textSecondary).frame(width: 24)
+                        Text("Reading level").font(.system(size: 15)).foregroundStyle(KathaTheme.textPrimary)
+                        Spacer()
+                        Text(appState.defaultReadingLevel.title).font(.system(size: 14)).foregroundStyle(KathaTheme.textSecondary)
+                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(KathaTheme.textTertiary)
+                    }
+                    .padding(.vertical, KathaTheme.Spacing.m)
+                }
+                .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                settingRow(icon: "book", title: "Sepia reader", value: appState.readerSepia ? "On" : "Off")
+                    .contentShape(Rectangle())
+                    .onTapGesture { appState.toggleReaderSepia() }
+            }
+            .padding(.horizontal, KathaTheme.Spacing.l)
+            .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.l).fill(KathaTheme.surface))
+        }
+    }
+
+    private var appSection: some View {
+        VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
+            Text("App")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(KathaTheme.textSecondary)
+            VStack(spacing: 0) {
+                Button { appState.openUILanguageSheet() } label: {
+                    HStack {
+                        Image(systemName: "globe").foregroundStyle(KathaTheme.textSecondary).frame(width: 24)
+                        Text("Language").font(.system(size: 15)).foregroundStyle(KathaTheme.textPrimary)
+                        Spacer()
+                        Text("English").font(.system(size: 14)).foregroundStyle(KathaTheme.textSecondary)
+                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(KathaTheme.textTertiary)
+                    }
+                    .padding(.vertical, KathaTheme.Spacing.m)
+                }
+                .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                Button { appState.openParentalControls() } label: {
+                    HStack {
+                        Image(systemName: "checkmark.shield").foregroundStyle(appState.kidsMode ? KathaTheme.accent : KathaTheme.textSecondary).frame(width: 24)
+                        Text("Parental controls").font(.system(size: 15)).foregroundStyle(KathaTheme.textPrimary)
+                        Spacer()
+                        if appState.kidsMode {
+                            Text("On").font(.system(size: 11, weight: .semibold)).foregroundStyle(KathaTheme.accent).padding(.horizontal, 8).frame(height: 22).background(Capsule().fill(KathaTheme.accentSoft))
+                        } else {
+                            Text("Off").font(.system(size: 14)).foregroundStyle(KathaTheme.textSecondary)
+                        }
+                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(KathaTheme.textTertiary)
+                    }
+                    .padding(.vertical, KathaTheme.Spacing.m)
+                }
+                .buttonStyle(.plain)
+                if appState.ageVerified {
+                    Divider().background(KathaTheme.border)
+                    Button { appState.resetAgeVerification() } label: {
+                        settingRow(icon: "shield.lefthalf.filled", title: "Reset age verification", value: nil)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, KathaTheme.Spacing.l)
+            .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.l).fill(KathaTheme.surface))
         }
     }
 

@@ -182,7 +182,7 @@ fun HomeScreen(
                             contentPadding = PaddingValues(horizontal = KathaTheme.Spacing.l),
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                         ) {
-                            items(SeedData.featured, key = { it.id }) { story ->
+                            items(SeedData.featured.filter { state.isStoryVisibleInKidsMode(it) }, key = { it.id }) { story ->
                                 Box(Modifier.width(320.dp)) {
                                     StoryCard(
                                         story = story,
@@ -206,7 +206,7 @@ fun HomeScreen(
                         subtitle = "Most loved this week"
                     )
                 }
-                items(SeedData.trending.take(5), key = { it.id }) { story ->
+                items(SeedData.trending.filter { state.isStoryVisibleInKidsMode(it) }.take(5), key = { it.id }) { story ->
                     Box(Modifier.padding(horizontal = KathaTheme.Spacing.l)) {
                         StoryCard(
                             story = story,
@@ -239,7 +239,7 @@ fun HomeScreen(
                         subtitle = "Fresh from our authors"
                     )
                 }
-                items(SeedData.newest.take(6).chunked(2)) { pair ->
+                items(SeedData.newest.filter { state.isStoryVisibleInKidsMode(it) }.take(6).chunked(2)) { pair ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -268,7 +268,7 @@ fun HomeScreen(
                             contentPadding = PaddingValues(horizontal = KathaTheme.Spacing.l),
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
                         ) {
-                            items(Genre.entries.toList()) { genre ->
+                            items(Genre.entries.filter { !(state.kidsMode && it == Genre.EROTICA) }) { genre ->
                                 GenreChip(genre = genre, isSelected = false) {}
                             }
                         }

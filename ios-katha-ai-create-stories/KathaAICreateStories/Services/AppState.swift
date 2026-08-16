@@ -104,6 +104,29 @@ final class AppState {
 
     // Settings
     var readerSepia = false
+    var uiLanguage: AppUILanguage = .english
+    var defaultReadingLevel: ReadingLevel = .standard
+    var kidsMode = false
+    var kidsModePin: String?
+    var pinCooldownUntil: Date?
+    var kidsReadingLevelCap: ReadingLevel = .standard
+    var kidsCommentsEnabled = false
+    var kidsShareEnabled = false
+    var kidsSearchSuggestionsEnabled = true
+    var ageVerified = false
+    var notifiedForHindi = false
+
+    // Content safety overlays
+    var showUILanguageSheet = false
+    var showReadingLevelSheet = false
+    var readingLevelSheetForWizard = false
+    var readingLevelSheetForCap = false
+    var showParentalControls = false
+    var showPINSetup = false
+    var pinSetupMode: PinSetupMode = .enableKidsMode
+    var showPINEntry = false
+    var pinEntryContext: PinEntryContext = .disableKidsMode
+    var showAgeVerification = false
 
     // Onboarding selection
     var onboardingSelection: Int? = nil
@@ -114,6 +137,7 @@ final class AppState {
     var wizardTopic: String = ""
     var wizardCharacters: [WizardCharacter] = []
     var wizardLanguage: StoryLanguage = .en
+    var wizardReadingLevel: ReadingLevel = .standard
     var wizardPlanAsSeries: Bool = false
     var wizardSeriesChapterCount: Int = 3
     var isGenerating: Bool = false
@@ -339,6 +363,18 @@ final class AppState {
         bookmarkedStoryIds = Set(defaults.stringArray(forKey: "katha.bookmarkedStories") ?? [])
         followedStoryIds = Set(defaults.stringArray(forKey: "katha.followedStories") ?? [])
         readerSepia = defaults.bool(forKey: "katha.readerSepia")
+        uiLanguage = AppUILanguage(rawValue: defaults.string(forKey: "katha.uiLanguage") ?? "english") ?? .english
+        defaultReadingLevel = ReadingLevel(rawValue: defaults.string(forKey: "katha.defaultReadingLevel") ?? "standard") ?? .standard
+        wizardReadingLevel = defaultReadingLevel
+        kidsMode = defaults.bool(forKey: "katha.kidsMode")
+        kidsModePin = defaults.string(forKey: "katha.kidsModePin")
+        pinCooldownUntil = defaults.object(forKey: "katha.pinCooldownUntil") as? Date
+        kidsReadingLevelCap = ReadingLevel(rawValue: defaults.string(forKey: "katha.kidsReadingLevelCap") ?? "standard") ?? .standard
+        kidsCommentsEnabled = defaults.object(forKey: "katha.kidsCommentsEnabled") as? Bool ?? false
+        kidsShareEnabled = defaults.object(forKey: "katha.kidsShareEnabled") as? Bool ?? false
+        kidsSearchSuggestionsEnabled = defaults.object(forKey: "katha.kidsSearchSuggestionsEnabled") as? Bool ?? true
+        ageVerified = defaults.bool(forKey: "katha.ageVerified")
+        notifiedForHindi = defaults.bool(forKey: "katha.notifiedForHindi")
         audioReadyStoryIds = Set(defaults.stringArray(forKey: "katha.audioReady") ?? [])
 
         // Credit ledger
@@ -363,6 +399,20 @@ final class AppState {
            let decoded = try? JSONDecoder().decode([StoryComment].self, from: data) {
             userComments = decoded
         }
+    }
+
+    private func persistSafetyState() {
+        defaults.set(uiLanguage.rawValue, forKey: "katha.uiLanguage")
+        defaults.set(defaultReadingLevel.rawValue, forKey: "katha.defaultReadingLevel")
+        defaults.set(kidsMode, forKey: "katha.kidsMode")
+        if let kidsModePin { defaults.set(kidsModePin, forKey: "katha.kidsModePin") } else { defaults.removeObject(forKey: "katha.kidsModePin") }
+        if let pinCooldownUntil { defaults.set(pinCooldownUntil, forKey: "katha.pinCooldownUntil") } else { defaults.removeObject(forKey: "katha.pinCooldownUntil") }
+        defaults.set(kidsReadingLevelCap.rawValue, forKey: "katha.kidsReadingLevelCap")
+        defaults.set(kidsCommentsEnabled, forKey: "katha.kidsCommentsEnabled")
+        defaults.set(kidsShareEnabled, forKey: "katha.kidsShareEnabled")
+        defaults.set(kidsSearchSuggestionsEnabled, forKey: "katha.kidsSearchSuggestionsEnabled")
+        defaults.set(ageVerified, forKey: "katha.ageVerified")
+        defaults.set(notifiedForHindi, forKey: "katha.notifiedForHindi")
     }
 
     private func persistSocialState() {
@@ -958,6 +1008,130 @@ final class AppState {
         defaults.set(readerSepia, forKey: "katha.readerSepia")
     }
 
+    func openUILanguageSheet() { showUILanguageSheet = true }
+
+    func notifyHindiAvailability() {
+        notifiedForHindi = true
+        persistSafetyState()
+        showToast("We'll let you know ✨")
+    }
+
+    func openReadingLevelSheet(forWizard: Bool = false, forCap: Bool = false) {
+        readingLevelSheetForWizard = forWizard
+        readingLevelSheetForCap = forCap
+        showReadingLevelSheet = true
+    }
+
+    func setKidsCommentsEnabled(_ enabled: Bool) {
+        kidsCommentsEnabled = enabled
+        persistSafetyState()
+    }
+
+    func setKidsShareEnabled(_ enabled: Bool) {
+        kidsShareEnabled = enabled
+        persistSafetyState()
+    }
+
+    func setKidsSearchSuggestionsEnabled(_ enabled: Bool) {
+        kidsSearchSuggestionsEnabled = enabled
+        persistSafetyState()
+    }
+
+    func selectReadingLevel(_ level: ReadingLevel) {
+        if readingLevelSheetForWizard {
+            wizardReadingLevel = level
+        } else if readingLevelSheetForCap {
+            kidsReadingLevelCap = level == .advanced ? .standard : level
+            persistSafetyState()
+        } else {
+            defaultReadingLevel = level
+            persistSafetyState()
+        }
+    }
+
+    func openParentalControls() { showParentalControls = true }
+
+    func beginKidsModeEnable() {
+        pinSetupMode = .enableKidsMode
+        showPINSetup = true
+    }
+
+    func completeKidsModeEnable(pin: String) {
+        kidsModePin = pin
+        kidsMode = true
+        ageVerified = false
+        persistSafetyState()
+        showPINSetup = false
+        showParentalControls = true
+        Haptics.success()
+        showToast("Kids mode enabled ✨")
+    }
+
+    func beginPinChange() {
+        pinSetupMode = .changePin
+        pinEntryContext = .changePin
+        showPINEntry = true
+    }
+
+    func beginKidsModeDisable() {
+        pinEntryContext = .disableKidsMode
+        showPINEntry = true
+    }
+
+    func verifyPin(_ pin: String) -> Bool {
+        guard let kidsModePin, !kidsModePin.isEmpty else { return false }
+        return pin == kidsModePin
+    }
+
+    func completePinChange(pin: String) {
+        kidsModePin = pin
+        showPINSetup = false
+        showPINEntry = false
+        pinCooldownUntil = nil
+        persistSafetyState()
+        showToast("PIN updated")
+    }
+
+    func completePinEntry() {
+        showPINEntry = false
+        pinCooldownUntil = nil
+        persistSafetyState()
+        if pinEntryContext == .disableKidsMode {
+            kidsMode = false
+            persistSafetyState()
+            showToast("Kids mode turned off")
+        } else if pinEntryContext == .changePin {
+            showPINSetup = true
+        }
+    }
+
+    func recordPinFailure() {
+        pinCooldownUntil = Date().addingTimeInterval(5 * 60)
+        persistSafetyState()
+    }
+
+    var isPinCooldownActive: Bool {
+        guard let pinCooldownUntil else { return false }
+        return pinCooldownUntil > Date()
+    }
+
+    func confirmAgeVerification() {
+        ageVerified = true
+        persistSafetyState()
+        showAgeVerification = false
+        Haptics.light()
+    }
+
+    func resetAgeVerification() {
+        ageVerified = false
+        persistSafetyState()
+        showToast("Age verification reset")
+    }
+
+    func isStoryVisibleInKidsMode(_ story: Story) -> Bool {
+        !kidsMode || story.effectiveContentRating != .mature
+    }
+
     // MARK: - Wizard
 
     func resetWizard() {
@@ -966,6 +1140,7 @@ final class AppState {
         wizardTopic = ""
         wizardCharacters = []
         wizardLanguage = .en
+        wizardReadingLevel = defaultReadingLevel
         wizardPlanAsSeries = false
         wizardSeriesChapterCount = 3
         isGenerating = false
@@ -988,6 +1163,14 @@ final class AppState {
     }
 
     func setWizardGenre(_ genre: Genre) {
+        if genre == .erotica && !ageVerified {
+            showAgeVerification = true
+            return
+        }
+        if kidsMode && genre == .erotica {
+            showToast("Erotica is unavailable in Kids Mode")
+            return
+        }
         wizardGenre = genre
         wizardStep = .topic
     }
@@ -1034,7 +1217,8 @@ final class AppState {
                 characters: wizardCharacters,
                 language: wizardLanguage,
                 authorId: user.username,
-                plannedChapterCount: wizardPlanAsSeries ? wizardSeriesChapterCount : nil
+                plannedChapterCount: wizardPlanAsSeries ? wizardSeriesChapterCount : nil,
+                readingLevel: wizardReadingLevel
             )
             lastGeneratedStory = story
             publishedStories.insert(story, at: 0)
@@ -1538,7 +1722,7 @@ final class AppState {
     // MARK: - Discover Feed Ranking
 
     func discoverFeedStories() -> [Story] {
-        var stories = SeedData.stories
+        var stories = SeedData.stories.filter { isStoryVisibleInKidsMode($0) }
         // Filter by genre
         if let genre = discoverGenreFilter {
             stories = stories.filter { $0.genre == genre }

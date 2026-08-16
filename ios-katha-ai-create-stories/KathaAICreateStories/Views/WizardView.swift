@@ -256,7 +256,11 @@ struct GenreStep: View {
                 columns: [GridItem(.flexible()), GridItem(.flexible())],
                 spacing: KathaTheme.Spacing.m
             ) {
-                ForEach(Genre.allCases.filter { $0 != .folklore || $0 == .folklore }) { genre in
+                ForEach(Genre.allCases.filter { genre in
+                    if appState.kidsMode && genre == .erotica { return false }
+                    if appState.kidsMode && appState.kidsReadingLevelCap == .simple && genre == .horror { return false }
+                    return true
+                }) { genre in
                     GenreGridCard(
                         genre: genre,
                         isSelected: appState.wizardGenre == genre
@@ -445,6 +449,19 @@ struct TopicStep: View {
                 RoundedRectangle(cornerRadius: KathaTheme.Radius.m)
                     .fill(KathaTheme.surface)
             )
+
+            Button {
+                appState.openReadingLevelSheet(forWizard: true)
+            } label: {
+                HStack {
+                    Text("Reading level").font(.system(size: 15, weight: .semibold)).foregroundStyle(KathaTheme.textPrimary)
+                    Spacer()
+                    Text("\(appState.wizardReadingLevel.title) ▾").font(.system(size: 14, weight: .medium)).foregroundStyle(KathaTheme.accent)
+                }
+                .padding(KathaTheme.Spacing.m)
+                .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.surface))
+            }
+            .buttonStyle(.plain)
         }
     }
 

@@ -48,7 +48,16 @@ struct ReaderView: View {
         appState.readerSepia ? KathaTheme.sepiaSurface : KathaTheme.surface
     }
 
+    @ViewBuilder
     var body: some View {
+        if appState.kidsMode && story.effectiveContentRating == .mature {
+            RestrictedStoryPlaceholder()
+        } else {
+            readerContent
+        }
+    }
+
+    private var readerContent: some View {
         ZStack(alignment: .top) {
             ScrollView {
                 VStack(spacing: KathaTheme.Spacing.l) {
@@ -498,17 +507,19 @@ struct ReaderView: View {
                 .foregroundStyle(appState.isLiked(story.id) ? KathaTheme.accent : KathaTheme.textSecondary)
             }
 
-            Button {
-                if !isDraftChapter {
-                    appState.openCommentsSheet(storyId: story.id, chapterId: currentChapter?.id)
+            if !appState.kidsMode || appState.kidsCommentsEnabled {
+                Button {
+                    if !isDraftChapter {
+                        appState.openCommentsSheet(storyId: story.id, chapterId: currentChapter?.id)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.left")
+                        Text(formatCount(appState.commentCount(storyId: story.id)))
+                    }
+                    .font(.system(size: 14))
+                    .foregroundStyle(KathaTheme.textSecondary)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "bubble.left")
-                    Text(formatCount(appState.commentCount(storyId: story.id)))
-                }
-                .font(.system(size: 14))
-                .foregroundStyle(KathaTheme.textSecondary)
             }
 
             Button {
@@ -528,13 +539,15 @@ struct ReaderView: View {
 
             Spacer()
 
-            Button {
-                Haptics.light()
-                appState.shareStory(story: story, chapterId: currentChapter?.id)
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 14))
-                    .foregroundStyle(KathaTheme.textSecondary)
+            if !appState.kidsMode || appState.kidsShareEnabled {
+                Button {
+                    Haptics.light()
+                    appState.shareStory(story: story, chapterId: currentChapter?.id)
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 14))
+                        .foregroundStyle(KathaTheme.textSecondary)
+                }
             }
         }
         .padding(.horizontal, KathaTheme.Spacing.l)

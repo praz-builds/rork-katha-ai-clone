@@ -39,10 +39,10 @@ fun LibraryScreen(
     var tabIndex by remember { mutableIntStateOf(0) }
 
     val stories = when (tabIndex) {
-        0 -> SeedData.stories.filter { it.id in state.bookmarkedStoryIds }
-        1 -> SeedData.stories.filter { it.id in state.likedStoryIds }
+        0 -> SeedData.stories.filter { it.id in state.bookmarkedStoryIds && state.isStoryVisibleInKidsMode(it) }
+        1 -> SeedData.stories.filter { it.id in state.likedStoryIds && state.isStoryVisibleInKidsMode(it) }
         2 -> state.publishedStories.map { it.asStory() }
-        else -> SeedData.stories.filter { it.id in state.readStoryIds }
+        else -> SeedData.stories.filter { it.id in state.readStoryIds && state.isStoryVisibleInKidsMode(it) }
     }
 
     val emptyMessage = when (tabIndex) {

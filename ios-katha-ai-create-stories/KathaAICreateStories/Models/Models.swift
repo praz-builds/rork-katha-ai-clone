@@ -29,6 +29,7 @@ enum Genre: String, CaseIterable, Identifiable, Hashable {
     case spirituality
     case motivational
     case kids
+    case erotica
 
     var id: String { rawValue }
 
@@ -55,6 +56,7 @@ enum Genre: String, CaseIterable, Identifiable, Hashable {
         case .spirituality: "Spirituality"
         case .motivational: "Motivational"
         case .kids: "Kids"
+        case .erotica: "Erotica"
         }
     }
 
@@ -81,6 +83,7 @@ enum Genre: String, CaseIterable, Identifiable, Hashable {
         case .spirituality: [Color(hex: 0x6B8E6B), Color(hex: 0x4A6B4A), Color(hex: 0x2A4A2A)]
         case .motivational: [Color(hex: 0xE8B83D), Color(hex: 0xC8982A), Color(hex: 0x8B6B1A)]
         case .kids:         [Color(hex: 0xFFB347), Color(hex: 0xFF8C42), Color(hex: 0xCC6A2D)]
+        case .erotica:      [Color(hex: 0x8B3A58), Color(hex: 0x5A1D38), Color(hex: 0x2A0D1D)]
         }
     }
 
@@ -107,6 +110,7 @@ enum Genre: String, CaseIterable, Identifiable, Hashable {
         case .spirituality: "sun.max"
         case .motivational: "sparkles"
         case .kids:         "figure.child"
+        case .erotica:      "lock.shield"
         }
     }
 }
@@ -183,6 +187,62 @@ struct Chapter: Identifiable, Hashable {
     }
 }
 
+// MARK: - Content Safety
+
+enum ContentRating: String, CaseIterable, Codable, Hashable {
+    case kids
+    case teen
+    case mature
+}
+
+enum ReadingLevel: String, CaseIterable, Codable, Hashable, Identifiable {
+    case simple
+    case standard
+    case advanced
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .simple: "Simple"
+        case .standard: "Standard"
+        case .advanced: "Advanced"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .simple: "Short sentences, common words. Great for younger readers or English learners."
+        case .standard: "Balanced vocabulary and sentence structure. Suits most readers."
+        case .advanced: "Rich vocabulary, complex sentences. For confident readers who want depth."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .simple: "book"
+        case .standard: "book.closed"
+        case .advanced: "books.vertical"
+        }
+    }
+}
+
+enum AppUILanguage: String, Codable, CaseIterable {
+    case english
+    case hindi
+}
+
+enum PinSetupMode: String {
+    case enableKidsMode
+    case changePin
+}
+
+enum PinEntryContext: String {
+    case disableKidsMode
+    case changePin
+    case allowedContent
+}
+
 // MARK: - Story
 
 struct Story: Identifiable, Hashable {
@@ -200,6 +260,15 @@ struct Story: Identifiable, Hashable {
     let isFeatured: Bool
     var followerCount: Int = 0
     var plannedChapterCount: Int? = nil
+    var contentRating: ContentRating? = nil
+
+    var effectiveContentRating: ContentRating {
+        if let contentRating { return contentRating }
+        if genre == .kids { return .kids }
+        if genre == .horror || genre == .erotica { return .mature }
+        if tags.contains(where: { ["violence", "substance", "sexual"].contains($0.lowercased()) }) { return .mature }
+        return .teen
+    }
 
     var readingTimeMinutes: Int {
         let totalWords = chapters.reduce(0) { $0 + $1.wordCount }
@@ -437,6 +506,7 @@ struct GeneratedStory: Identifiable, Hashable {
     let plannedChapterCount: Int?
     let isPublished: Bool
     let createdAt: Date
+    var readingLevel: ReadingLevel = .standard
     var followerCount: Int = 0
     var chapters: [GeneratedChapter] = []
 
@@ -470,7 +540,8 @@ struct GeneratedStory: Identifiable, Hashable {
             likes: 0, bookmarks: 0, views: 0,
             tags: themes, publishedOffset: 0, isFeatured: false,
             followerCount: followerCount,
-            plannedChapterCount: plannedChapterCount
+            plannedChapterCount: plannedChapterCount,
+            contentRating: genre == .kids ? .kids : (genre == .horror || genre == .erotica ? .mature : .teen)
         )
     }
 

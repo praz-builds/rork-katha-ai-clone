@@ -85,6 +85,12 @@ import com.rork.kathaai.ui.screens.AdRewardToastView
 import com.rork.kathaai.ui.screens.StoryAnalyticsScreen
 import com.rork.kathaai.ui.screens.AuthorDashboardScreen
 import com.rork.kathaai.ui.screens.CelebrationBanner
+import com.rork.kathaai.ui.screens.AppLanguageSelectionSheet
+import com.rork.kathaai.ui.screens.ReadingLevelSheet
+import com.rork.kathaai.ui.screens.ParentalControlsScreen
+import com.rork.kathaai.ui.screens.PinSetupScreen
+import com.rork.kathaai.ui.screens.PinEntrySheet
+import com.rork.kathaai.ui.screens.AgeVerificationSheet
 import com.rork.kathaai.ui.screens.ReaderEarningToast
 import com.rork.kathaai.ui.screens.DevToolsSheet
 import com.rork.kathaai.data.AnalyticsService
@@ -476,6 +482,25 @@ fun AppNavigation() {
             }
         }
 
+        if (state.showUiLanguageSheet) {
+            AppLanguageSelectionSheet(state = state, viewModel = viewModel)
+        }
+        if (state.showReadingLevelSheet) {
+            ReadingLevelSheet(state = state, viewModel = viewModel)
+        }
+        if (state.showParentalControls) {
+            ParentalControlsScreen(state = state, viewModel = viewModel)
+        }
+        if (state.showPinSetup) {
+            PinSetupScreen(state = state, viewModel = viewModel)
+        }
+        if (state.showPinEntry) {
+            PinEntrySheet(state = state, viewModel = viewModel)
+        }
+        if (state.showAgeVerification) {
+            AgeVerificationSheet(state = state, viewModel = viewModel)
+        }
+
         // Dev tools sheet
         DevToolsSheet(
             isPresented = state.showDevTools,
@@ -602,7 +627,10 @@ private fun MainScreen(
                 onOpenPaywall = { viewModel.openSubscriptionPaywall() },
                 onOpenSubscriptionManagement = { viewModel.openSubscriptionManagement() },
                 onOpenDashboard = { viewModel.openDashboard() },
-                onDevTap = { viewModel.registerDevTap() }
+                onDevTap = { viewModel.registerDevTap() },
+                onOpenLanguage = { viewModel.showUiLanguageSheet() },
+                onOpenReadingLevel = { viewModel.showReadingLevelSheet() },
+                onOpenParentalControls = { viewModel.openParentalControls() }
             )
         }
 

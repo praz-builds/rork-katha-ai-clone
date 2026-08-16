@@ -147,7 +147,7 @@ fun DiscoverScreen(
                     item {
                         FilterChip("All", selectedGenre == null) { selectedGenre = null }
                     }
-                    items(Genre.entries.toList()) { genre ->
+                    items(Genre.entries.filter { !(state.kidsMode && it == Genre.EROTICA) }) { genre ->
                         GenreChip(genre, selectedGenre == genre) {
                             selectedGenre = if (selectedGenre == genre) null else genre
                         }

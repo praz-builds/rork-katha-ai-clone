@@ -9,7 +9,9 @@ import com.rork.kathaai.data.MockGeneration
 import com.rork.kathaai.data.AnalyticsService
 import com.rork.kathaai.data.SeedData
 import com.rork.kathaai.data.UsernameGenerator
+import com.rork.kathaai.model.AppUiLanguage
 import com.rork.kathaai.model.AuthSheetContext
+import com.rork.kathaai.model.ContentRating
 import com.rork.kathaai.model.ContinueWizardStep
 import com.rork.kathaai.model.Genre
 import com.rork.kathaai.model.GeneratedChapter
@@ -30,6 +32,9 @@ import com.rork.kathaai.model.CreditReason
 import com.rork.kathaai.model.CreditPack
 import com.rork.kathaai.model.SubscriptionPlan
 import com.rork.kathaai.model.PremiumFeature
+import com.rork.kathaai.model.ReadingLevel
+import com.rork.kathaai.model.PinSetupMode
+import com.rork.kathaai.model.PinEntryContext
 import com.rork.kathaai.model.AdWatchState
 import com.rork.kathaai.model.AdConfig
 import com.rork.kathaai.model.PaymentConfig
@@ -59,6 +64,27 @@ data class KathaUiState(
     val bookmarkedStoryIds: Set<String> = emptySet(),
     val readStoryIds: Set<String> = emptySet(),
     val readerSepia: Boolean = false,
+    val appLanguage: AppUiLanguage = AppUiLanguage.ENGLISH,
+    val defaultReadingLevel: ReadingLevel = ReadingLevel.STANDARD,
+    val wizardReadingLevel: ReadingLevel = ReadingLevel.STANDARD,
+    val kidsMode: Boolean = false,
+    val kidsModePin: String? = null,
+    val pinCooldownUntil: Long? = null,
+    val kidsReadingLevelCap: ReadingLevel = ReadingLevel.STANDARD,
+    val kidsCommentsEnabled: Boolean = false,
+    val kidsShareEnabled: Boolean = false,
+    val kidsSearchSuggestionsEnabled: Boolean = true,
+    val ageVerified: Boolean = false,
+    val showUiLanguageSheet: Boolean = false,
+    val showReadingLevelSheet: Boolean = false,
+    val readingLevelSheetForWizard: Boolean = false,
+    val readingLevelSheetForCap: Boolean = false,
+    val showParentalControls: Boolean = false,
+    val showPinSetup: Boolean = false,
+    val pinSetupMode: PinSetupMode = PinSetupMode.ENABLE_KIDS_MODE,
+    val showPinEntry: Boolean = false,
+    val pinEntryContext: PinEntryContext = PinEntryContext.DISABLE_KIDS_MODE,
+    val showAgeVerification: Boolean = false,
     val toastMessage: String? = null,
     val toastIsWelcome: Boolean = false,
     val onboardingCompleted: Boolean = false,
@@ -197,6 +223,10 @@ data class KathaUiState(
     val showDevTools: Boolean = false,
     val devTapCount: Int = 0
 ) {
+    val isPinCooldownActive: Boolean
+        get() = (pinCooldownUntil ?: 0L) > System.currentTimeMillis()
+
+    fun isStoryVisibleInKidsMode(story: Story): Boolean = !kidsMode || story.effectiveContentRating != ContentRating.MATURE
     val isAuthenticated: Boolean get() = currentUser != null
 
     val hasUnreadNewChapters: Boolean
@@ -256,7 +286,7 @@ data class KathaUiState(
     fun isNewStory(story: Story): Boolean = story.publishedOffset <= 3
 
     fun discoverFeedStories(): List<Story> {
-        var stories = SeedData.stories.filter { !isBlocked(it.authorId) }
+        var stories = SeedData.stories.filter { !isBlocked(it.authorId) && isStoryVisibleInKidsMode(it) }
         discoverGenreFilter?.let { genre -> stories = stories.filter { it.genre == genre } }
         discoverThemeFilter?.let { theme -> stories = stories.filter { it.tags.contains(theme) } }
         return when (discoverFeedChip) {
@@ -330,6 +360,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 readStoryIds = prefs.getStringSet(KEY_READ, emptySet()).orEmpty(),
                 followedStoryIds = prefs.getStringSet(KEY_FOLLOWED_STORIES, emptySet()).orEmpty(),
                 readerSepia = prefs.getBoolean(KEY_SEPIA, false),
+                appLanguage = runCatching { com.rork.kathaai.model.AppUiLanguage.valueOf(prefs.getString(KEY_APP_LANGUAGE, "ENGLISH") ?: "ENGLISH") }.getOrDefault(com.rork.kathaai.model.AppUiLanguage.ENGLISH),
+                defaultReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
+                wizardReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
+                kidsMode = prefs.getBoolean(KEY_KIDS_MODE, false),
+                kidsModePin = prefs.getString(KEY_KIDS_PIN, null),
+                pinCooldownUntil = prefs.getLong(KEY_PIN_COOLDOWN, 0L).takeIf { it > 0L },
+                kidsReadingLevelCap = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_KIDS_CAP, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
+                kidsCommentsEnabled = prefs.getBoolean(KEY_KIDS_COMMENTS, false),
+                kidsShareEnabled = prefs.getBoolean(KEY_KIDS_SHARE, false),
+                kidsSearchSuggestionsEnabled = prefs.getBoolean(KEY_KIDS_SEARCH, true),
+                ageVerified = prefs.getBoolean(KEY_AGE_VERIFIED, false),
                 onboardingCompleted = prefs.getBoolean(KEY_ONBOARDED, false),
                 lastUsernameChange = prefs.getLong(KEY_LAST_USERNAME_CHANGE, 0L).takeIf { ts -> ts > 0L },
                 likedCommentIds = prefs.getStringSet(KEY_LIKED_COMMENTS, emptySet()).orEmpty(),
@@ -345,6 +386,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 creditLedger = loadCreditLedger()
             )
         }
+    }
+
+    private fun persistSafety() {
+        val state = _uiState.value
+        prefs.edit().apply {
+            putString(KEY_APP_LANGUAGE, state.appLanguage.name)
+            putString(KEY_READING_LEVEL, state.defaultReadingLevel.name)
+            putBoolean(KEY_KIDS_MODE, state.kidsMode)
+            if (state.kidsModePin == null) remove(KEY_KIDS_PIN) else putString(KEY_KIDS_PIN, state.kidsModePin)
+            if (state.pinCooldownUntil == null) remove(KEY_PIN_COOLDOWN) else putLong(KEY_PIN_COOLDOWN, state.pinCooldownUntil)
+            putString(KEY_KIDS_CAP, state.kidsReadingLevelCap.name)
+            putBoolean(KEY_KIDS_COMMENTS, state.kidsCommentsEnabled)
+            putBoolean(KEY_KIDS_SHARE, state.kidsShareEnabled)
+            putBoolean(KEY_KIDS_SEARCH, state.kidsSearchSuggestionsEnabled)
+            putBoolean(KEY_AGE_VERIFIED, state.ageVerified)
+        }.apply()
     }
 
     private fun persistSocial() {
@@ -872,6 +929,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 wizardTopic = "",
                 wizardCharacters = emptyList(),
                 wizardLanguage = StoryLanguage.ENGLISH,
+                wizardReadingLevel = it.defaultReadingLevel,
                 wizardPlanAsSeries = false,
                 wizardSeriesChapterCount = 3,
                 isGenerating = false,
@@ -897,6 +955,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setWizardGenre(genre: Genre) {
+        val state = _uiState.value
+        if (genre == Genre.EROTICA && !state.ageVerified) {
+            _uiState.update { it.copy(showAgeVerification = true) }
+            return
+        }
+        if (state.kidsMode && genre == Genre.EROTICA) {
+            showToast("Erotica is unavailable in Kids Mode")
+            return
+        }
         _uiState.update { it.copy(wizardGenre = genre, wizardStep = WizardStep.TOPIC) }
     }
 
@@ -949,6 +1016,63 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(wizardLanguage = language) }
     }
 
+    fun updateWizardReadingLevel(level: ReadingLevel) {
+        _uiState.update { it.copy(wizardReadingLevel = level) }
+    }
+
+    fun showUiLanguageSheet() { _uiState.update { it.copy(showUiLanguageSheet = true) } }
+    fun dismissUiLanguageSheet() { _uiState.update { it.copy(showUiLanguageSheet = false) } }
+
+    fun showReadingLevelSheet(forWizard: Boolean = false, forCap: Boolean = false) {
+        _uiState.update { it.copy(showReadingLevelSheet = true, readingLevelSheetForWizard = forWizard, readingLevelSheetForCap = forCap) }
+    }
+
+    fun dismissReadingLevelSheet() { _uiState.update { it.copy(showReadingLevelSheet = false) } }
+
+    fun selectReadingLevel(level: ReadingLevel) {
+        _uiState.update {
+            when {
+                it.readingLevelSheetForWizard -> it.copy(wizardReadingLevel = level)
+                it.readingLevelSheetForCap -> it.copy(kidsReadingLevelCap = if (level == ReadingLevel.ADVANCED) ReadingLevel.STANDARD else level)
+                else -> it.copy(defaultReadingLevel = level, wizardReadingLevel = level)
+            }
+        }
+        persistSafety()
+    }
+
+    fun openParentalControls() { _uiState.update { it.copy(showParentalControls = true) } }
+    fun closeParentalControls() { _uiState.update { it.copy(showParentalControls = false) } }
+    fun beginKidsModeEnable() { _uiState.update { it.copy(showPinSetup = true, pinSetupMode = PinSetupMode.ENABLE_KIDS_MODE) } }
+    fun beginKidsModeDisable() { _uiState.update { it.copy(showPinEntry = true, pinEntryContext = PinEntryContext.DISABLE_KIDS_MODE) } }
+    fun beginPinChange() { _uiState.update { it.copy(showPinEntry = true, pinEntryContext = PinEntryContext.CHANGE_PIN) } }
+    fun setKidsCommentsEnabled(value: Boolean) { _uiState.update { it.copy(kidsCommentsEnabled = value) }; persistSafety() }
+    fun setKidsShareEnabled(value: Boolean) { _uiState.update { it.copy(kidsShareEnabled = value) }; persistSafety() }
+    fun setKidsSearchSuggestionsEnabled(value: Boolean) { _uiState.update { it.copy(kidsSearchSuggestionsEnabled = value) }; persistSafety() }
+    fun completeKidsModeEnable(pin: String) {
+        _uiState.update { it.copy(kidsModePin = pin, kidsMode = true, ageVerified = false, showPinSetup = false, showParentalControls = true) }
+        persistSafety(); showToast("Kids mode enabled ✨")
+    }
+    fun completePinChange(pin: String) {
+        _uiState.update { it.copy(kidsModePin = pin, showPinSetup = false, showPinEntry = false) }
+        persistSafety(); showToast("PIN updated")
+    }
+    fun verifyPin(pin: String): Boolean = _uiState.value.kidsModePin == pin
+    fun completePinEntry() {
+        val context = _uiState.value.pinEntryContext
+        _uiState.update { it.copy(showPinEntry = false, pinCooldownUntil = null, kidsMode = if (context == PinEntryContext.DISABLE_KIDS_MODE) false else it.kidsMode) }
+        persistSafety()
+        if (context == PinEntryContext.DISABLE_KIDS_MODE) showToast("Kids mode turned off")
+        if (context == PinEntryContext.CHANGE_PIN) _uiState.update { it.copy(showPinSetup = true, pinSetupMode = PinSetupMode.CHANGE_PIN) }
+    }
+    fun dismissPinEntry() { _uiState.update { it.copy(showPinEntry = false) } }
+    fun cancelPinSetup() { _uiState.update { it.copy(showPinSetup = false) } }
+    fun dismissAgeVerification() { _uiState.update { it.copy(showAgeVerification = false) } }
+    fun recordPinFailure() { _uiState.update { it.copy(pinCooldownUntil = System.currentTimeMillis() + 5 * 60 * 1000L) }; persistSafety() }
+    fun confirmAgeVerification() { _uiState.update { it.copy(ageVerified = true, showAgeVerification = false) }; persistSafety() }
+    fun resetAgeVerification() { _uiState.update { it.copy(ageVerified = false) }; persistSafety(); showToast("Age verification reset") }
+    fun showAgeVerification() { _uiState.update { it.copy(showAgeVerification = true) } }
+    fun notifyHindiAvailability() { showToast("We'll let you know ✨") }
+
     fun showLanguageSheet() {
         _uiState.update { it.copy(showLanguageSheet = true) }
     }
@@ -990,7 +1114,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     characters = state.wizardCharacters,
                     language = state.wizardLanguage,
                     authorId = user.username,
-                    plannedChapterCount = if (state.wizardPlanAsSeries) state.wizardSeriesChapterCount else null
+                    plannedChapterCount = if (state.wizardPlanAsSeries) state.wizardSeriesChapterCount else null,
+                    readingLevel = state.wizardReadingLevel
                 )
                 val updated = user.copy(credits = maxOf(0, user.credits - 1))
                 persistSession(updated)
@@ -1594,6 +1719,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
+        const val KEY_APP_LANGUAGE = "appLanguage"
+        const val KEY_READING_LEVEL = "defaultReadingLevel"
+        const val KEY_KIDS_MODE = "kidsMode"
+        const val KEY_KIDS_PIN = "kidsModePin"
+        const val KEY_PIN_COOLDOWN = "pinCooldownUntil"
+        const val KEY_KIDS_CAP = "kidsReadingLevelCap"
+        const val KEY_KIDS_COMMENTS = "kidsCommentsEnabled"
+        const val KEY_KIDS_SHARE = "kidsShareEnabled"
+        const val KEY_KIDS_SEARCH = "kidsSearchSuggestionsEnabled"
+        const val KEY_AGE_VERIFIED = "ageVerified"
         const val KEY_SESSION = "session"
         const val KEY_FOLLOWED_AUTHORS = "followedAuthors"
         const val KEY_LIKED = "likedStories"

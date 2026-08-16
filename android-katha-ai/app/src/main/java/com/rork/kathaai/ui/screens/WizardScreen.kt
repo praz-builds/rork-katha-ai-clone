@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import com.rork.kathaai.data.StoryStarters
 import com.rork.kathaai.model.Genre
 import com.rork.kathaai.model.GeneratedStory
+import com.rork.kathaai.model.ReadingLevel
 import com.rork.kathaai.model.StoryLanguage
 import com.rork.kathaai.model.WizardCharacter
 import com.rork.kathaai.model.WizardStep
@@ -136,16 +137,20 @@ fun WizardScreen(
                     when (state.wizardStep) {
                         WizardStep.GENRE -> GenreStep(
                             selectedGenre = state.wizardGenre,
+                            kidsMode = state.kidsMode,
+                            readingLevelCap = state.kidsReadingLevelCap,
                             onSelect = { viewModel.setWizardGenre(it) }
                         )
 
                         WizardStep.TOPIC -> TopicStep(
                             topic = state.wizardTopic,
                             language = state.wizardLanguage,
+                            readingLevel = state.wizardReadingLevel,
                             planAsSeries = state.wizardPlanAsSeries,
                             chapterCount = state.wizardSeriesChapterCount,
                             onTopicChange = { viewModel.updateWizardTopic(it) },
                             onShowLanguageSheet = { viewModel.showLanguageSheet() },
+                            onShowReadingLevelSheet = { viewModel.showReadingLevelSheet(forWizard = true) },
                             onShowGetIdeasSheet = { viewModel.showGetIdeasSheet() },
                             onPlanAsSeriesChange = { viewModel.updateWizardPlanAsSeries(it) },
                             onChapterCountChange = { viewModel.updateWizardSeriesChapterCount(it) }
@@ -344,6 +349,8 @@ private fun WizardHeader(
 @Composable
 private fun GenreStep(
     selectedGenre: Genre?,
+    kidsMode: Boolean,
+    readingLevelCap: ReadingLevel,
     onSelect: (Genre) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -369,7 +376,7 @@ private fun GenreStep(
             verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m),
             modifier = Modifier.height(1200.dp)
         ) {
-            items(Genre.entries, key = { it.name }) { genre ->
+            items(Genre.entries.filter { !(kidsMode && it == Genre.EROTICA) && !(kidsMode && readingLevelCap == ReadingLevel.SIMPLE && it == Genre.HORROR) }, key = { it.name }) { genre ->
                 GenreGridCard(
                     genre = genre,
                     isSelected = selectedGenre == genre,
@@ -444,10 +451,12 @@ private fun GenreGridCard(
 private fun TopicStep(
     topic: String,
     language: StoryLanguage,
+    readingLevel: ReadingLevel,
     planAsSeries: Boolean,
     chapterCount: Int,
     onTopicChange: (String) -> Unit,
     onShowLanguageSheet: () -> Unit,
+    onShowReadingLevelSheet: () -> Unit,
     onShowGetIdeasSheet: () -> Unit,
     onPlanAsSeriesChange: (Boolean) -> Unit,
     onChapterCountChange: (Int) -> Unit,
@@ -613,6 +622,11 @@ private fun TopicStep(
                     }
                 }
             }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KathaTheme.Radius.m)).background(KathaTheme.surface).clickable { onShowReadingLevelSheet() }.padding(KathaTheme.Spacing.m), verticalAlignment = Alignment.CenterVertically) {
+            Text("Reading level", color = KathaTheme.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("${readingLevel.title} ▾", color = KathaTheme.accent, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
     }
 }

@@ -21,11 +21,13 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.NoAccounts
 import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material.icons.outlined.WorkspacePremium
+import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -70,7 +72,10 @@ fun SettingsScreen(
     onOpenPaywall: () -> Unit = {},
     onOpenSubscriptionManagement: () -> Unit = {},
     onOpenDashboard: () -> Unit = {},
-    onDevTap: () -> Unit = {}
+    onDevTap: () -> Unit = {},
+    onOpenLanguage: () -> Unit = {},
+    onOpenReadingLevel: () -> Unit = {},
+    onOpenParentalControls: () -> Unit = {}
 ) {
     var showSignOutDialog by remember { mutableStateOf(false) }
     var showDeleteStep1 by remember { mutableStateOf(false) }
@@ -186,6 +191,22 @@ fun SettingsScreen(
                             )
                         )
                     }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+                    SettingsSectionLabel("Reading")
+                    SettingsRow(title = "Reading level", value = state.defaultReadingLevel.title, icon = Icons.Outlined.MenuBook, onClick = onOpenReadingLevel)
+                    SettingsRow(title = "Sepia reader", value = if (state.readerSepia) "On" else "Off", icon = Icons.Outlined.MenuBook, onClick = onToggleSepia)
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+                    SettingsSectionLabel("App")
+                    SettingsRow(title = "Language", value = "English", icon = Icons.Outlined.Language, onClick = onOpenLanguage)
+                    SettingsRow(title = "Parental controls", value = if (state.kidsMode) "On" else "Off", icon = Icons.Outlined.Security, onClick = onOpenParentalControls)
                 }
             }
 
@@ -406,6 +427,16 @@ private fun StatItem(value: Int, label: String, accent: Boolean = false) {
             fontWeight = FontWeight.Bold
         )
         Text(label, color = KathaTheme.textSecondary, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun SettingsRow(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KathaTheme.Radius.l)).background(KathaTheme.surface).clickable(onClick = onClick).padding(horizontal = KathaTheme.Spacing.l, vertical = KathaTheme.Spacing.m), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+        Icon(icon, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
+        Text(title, color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Text(value, color = if (value == "On") KathaTheme.accent else KathaTheme.textSecondary, fontSize = 14.sp)
+        Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
     }
 }
 

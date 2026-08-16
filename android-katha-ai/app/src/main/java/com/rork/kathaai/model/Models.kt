@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.Fireplace
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Park
@@ -57,8 +58,22 @@ enum class Genre(
     MYTHOLOGY("Mythology", listOf(Color(0xFFB85A2D), Color(0xFF8B3A1A), Color(0xFF5A1D0D)), Icons.Outlined.Fireplace),
     SPIRITUALITY("Spirituality", listOf(Color(0xFF6B8E6B), Color(0xFF4A6B4A), Color(0xFF2A4A2A)), Icons.Outlined.Spa),
     MOTIVATIONAL("Motivational", listOf(Color(0xFFE8B83D), Color(0xFFC8982A), Color(0xFF8B6B1A)), Icons.Outlined.Lightbulb),
-    KIDS("Kids", listOf(Color(0xFFFFB347), Color(0xFFFF8C42), Color(0xFFCC6A2D)), Icons.Outlined.ChildCare)
+    KIDS("Kids", listOf(Color(0xFFFFB347), Color(0xFFFF8C42), Color(0xFFCC6A2D)), Icons.Outlined.ChildCare),
+    EROTICA("Erotica", listOf(Color(0xFF8B3A58), Color(0xFF5A1D38), Color(0xFF2A0D1D)), Icons.Outlined.Lock)
 }
+
+enum class ContentRating { KIDS, TEEN, MATURE }
+
+enum class ReadingLevel(val title: String, val subtitle: String) {
+    SIMPLE("Simple", "Short sentences, common words. Great for younger readers or English learners."),
+    STANDARD("Standard", "Balanced vocabulary and sentence structure. Suits most readers."),
+    ADVANCED("Advanced", "Rich vocabulary, complex sentences. For confident readers who want depth.")
+}
+
+enum class AppUiLanguage { ENGLISH, HINDI }
+
+enum class PinSetupMode { ENABLE_KIDS_MODE, CHANGE_PIN }
+enum class PinEntryContext { DISABLE_KIDS_MODE, CHANGE_PIN, ALLOWED_CONTENT }
 
 data class Author(
     val id: String,
@@ -122,8 +137,16 @@ data class Story(
     val publishedOffset: Int,
     val isFeatured: Boolean,
     val followerCount: Int = 0,
-    val plannedChapterCount: Int? = null
+    val plannedChapterCount: Int? = null,
+    val contentRating: ContentRating? = null
 ) {
+    val effectiveContentRating: ContentRating
+        get() = contentRating ?: when {
+            genre == Genre.KIDS -> ContentRating.KIDS
+            genre == Genre.HORROR || genre == Genre.EROTICA -> ContentRating.MATURE
+            tags.any { it.lowercase() in setOf("violence", "substance", "sexual") } -> ContentRating.MATURE
+            else -> ContentRating.TEEN
+        }
     val readingTimeMinutes: Int
         get() = maxOf(1, chapters.sumOf { it.wordCount } / 200)
 
@@ -279,7 +302,8 @@ data class GeneratedStory(
     val isPublished: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
     var followerCount: Int = 0,
-    val chapters: MutableList<GeneratedChapter> = mutableListOf()
+    val chapters: MutableList<GeneratedChapter> = mutableListOf(),
+    val readingLevel: ReadingLevel = ReadingLevel.STANDARD
 ) {
     val synopsis: String get() = firstLine.take(120)
 
@@ -315,7 +339,12 @@ data class GeneratedStory(
         publishedOffset = 0,
         isFeatured = false,
         followerCount = followerCount,
-        plannedChapterCount = plannedChapterCount
+        plannedChapterCount = plannedChapterCount,
+        contentRating = when (genre) {
+            Genre.KIDS -> ContentRating.KIDS
+            Genre.HORROR, Genre.EROTICA -> ContentRating.MATURE
+            else -> ContentRating.TEEN
+        }
     )
 
     val chapterCount: Int get() = 1 + chapters.size

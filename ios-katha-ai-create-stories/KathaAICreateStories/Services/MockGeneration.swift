@@ -390,7 +390,8 @@ The dog got better. The boy came back to thank the old woman, but the house was 
         characters: [WizardCharacter],
         language: StoryLanguage,
         authorId: String,
-        plannedChapterCount: Int?
+        plannedChapterCount: Int?,
+        readingLevel: ReadingLevel = .standard
     ) async throws -> GeneratedStory {
         // Simulate variable delay 10-14s
         let delay = Double.random(in: 10...14)
@@ -430,7 +431,8 @@ The dog got better. The boy came back to thank the old woman, but the house was 
             readingTime: max(1, wordCount / 200),
             plannedChapterCount: plannedChapterCount,
             isPublished: true,
-            createdAt: Date()
+            createdAt: Date(),
+            readingLevel: readingLevel
         )
     }
 }

@@ -70,12 +70,12 @@ struct LibraryView: View {
     }
 
     private var savedTab: some View {
-        let bookmarked = SeedData.stories.filter { appState.isBookmarked($0.id) }
+        let bookmarked = SeedData.stories.filter { appState.isBookmarked($0.id) && appState.isStoryVisibleInKidsMode($0) }
         return storyGrid(bookmarked, emptyMessage: "Stories you bookmark will appear here.")
     }
 
     private var likedTab: some View {
-        let liked = SeedData.stories.filter { appState.isLiked($0.id) }
+        let liked = SeedData.stories.filter { appState.isLiked($0.id) && appState.isStoryVisibleInKidsMode($0) }
         return storyGrid(liked, emptyMessage: "Stories you like will appear here.")
     }
 
@@ -86,7 +86,7 @@ struct LibraryView: View {
 
     private var historyTab: some View {
         let progressIds = appState.readingProgress.keys
-        let history = SeedData.stories.filter { progressIds.contains($0.id) }
+        let history = SeedData.stories.filter { progressIds.contains($0.id) && appState.isStoryVisibleInKidsMode($0) }
         return storyGrid(history, emptyMessage: "Stories you've read will appear here.")
     }
 
