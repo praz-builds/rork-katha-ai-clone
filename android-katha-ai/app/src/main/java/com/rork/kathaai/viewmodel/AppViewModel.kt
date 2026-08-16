@@ -194,6 +194,32 @@ data class KathaUiState(
     val audioReadyStoryIds: Set<String> = emptySet(),
     val audioPreparingStoryId: String? = null,
     val audioErrorStoryId: String? = null,
+    // Prompt 12 retention state
+    val streak: com.rork.kathaai.model.StreakState = com.rork.kathaai.model.StreakState(),
+    val notificationPreferences: com.rork.kathaai.model.NotificationPreferences = com.rork.kathaai.model.NotificationPreferences(),
+    val notificationPermissionGranted: Boolean = false,
+    val showStreakScreen: Boolean = false,
+    val showNotificationsScreen: Boolean = false,
+    val showInviteFriendsScreen: Boolean = false,
+    val showStorageScreen: Boolean = false,
+    val showPrePermissionModal: Boolean = false,
+    val showStreakResetModal: Boolean = false,
+    val referralCode: String = "",
+    val referredByCode: String? = null,
+    val referralRecords: List<com.rork.kathaai.model.ReferralRecord> = emptyList(),
+    val offlineStoryRecords: List<com.rork.kathaai.model.OfflineStoryRecord> = emptyList(),
+    val downloadProgress: Float? = null,
+    val downloadStoryTitle: String = "",
+    val audioPlayerStoryId: String? = null,
+    val showAudioPlayer: Boolean = false,
+    val audioIsPlaying: Boolean = false,
+    val audioProgress: Float = 0f,
+    val audioSpeed: Float = 1f,
+    val audioSleepTimerEnd: Long? = null,
+    val storyGenerationCount: Int = 0,
+    val activeDayCount: Int = 0,
+    val ratePromptLastShown: Long? = null,
+    val showRatePrompt: Boolean = false,
     // Credit ledger (Prompt 8+9)
     val creditLedger: List<CreditLedgerEntry> = emptyList(),
     val isPremium: Boolean = false,
@@ -236,8 +262,7 @@ data class KathaUiState(
     val unreadNewChapterNotifications: List<NewChapterNotification>
         get() = newChapterNotifications.filter { it.storyId !in dismissedBannerStoryIds }
 
-    /** Mock streak for the current user (real streaks arrive in a later update). */
-    val currentStreak: Int get() = if (isAuthenticated) 5 else 0
+    val currentStreak: Int get() = streak.current
 
     /** If the username was changed within the last 30 days, epoch millis it unlocks; null otherwise. */
     val usernameChangeUnlockDate: Long?
@@ -379,6 +404,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 blockedUserIds = prefs.getStringSet(KEY_BLOCKED_USERS, emptySet()).orEmpty(),
                 likedChapterIds = prefs.getStringSet(KEY_LIKED_CHAPTERS, emptySet()).orEmpty(),
                 audioReadyStoryIds = prefs.getStringSet(KEY_AUDIO_READY, emptySet()).orEmpty(),
+                streak = loadJson(KEY_STREAK, com.rork.kathaai.model.StreakState()),
+                notificationPreferences = loadJson(KEY_NOTIFICATION_PREFS, com.rork.kathaai.model.NotificationPreferences()),
+                notificationPermissionGranted = prefs.getBoolean(KEY_NOTIFICATION_PERMISSION, false),
+                referralCode = prefs.getString(KEY_REFERRAL_CODE, "").orEmpty(),
+                referredByCode = prefs.getString(KEY_REFERRED_BY, null),
+                referralRecords = loadJson(KEY_REFERRALS, emptyList<com.rork.kathaai.model.ReferralRecord>()),
+                offlineStoryRecords = loadJson(KEY_OFFLINE_STORIES, emptyList<com.rork.kathaai.model.OfflineStoryRecord>()),
+                storyGenerationCount = prefs.getInt(KEY_GENERATION_COUNT, 0),
+                activeDayCount = prefs.getInt(KEY_ACTIVE_DAYS, 0),
+                ratePromptLastShown = prefs.getLong(KEY_RATE_PROMPT, 0L).takeIf { it > 0L },
                 isPremium = prefs.getBoolean(KEY_IS_PREMIUM, false),
                 subscriptionType = prefs.getString(KEY_SUB_TYPE, null),
                 subscriptionExpiresAt = prefs.getLong(KEY_SUB_EXPIRES, 0L).takeIf { it > 0L },
@@ -387,6 +422,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
     }
+
+    private inline fun <reified T> loadJson(key: String, fallback: T): T = prefs.getString(key, null)?.let { raw -> runCatching { json.decodeFromString<T>(raw) }.getOrNull() } ?: fallback
+
+    private fun persistPrompt12() {
+        val state = _uiState.value
+        prefs.edit().apply {
+            putString(KEY_STREAK, json.encodeToString(state.streak))
+            putString(KEY_NOTIFICATION_PREFS, json.encodeToString(state.notificationPreferences))
+            putBoolean(KEY_NOTIFICATION_PERMISSION, state.notificationPermissionGranted)
+            putString(KEY_REFERRAL_CODE, state.referralCode)
+            if (state.referredByCode == null) remove(KEY_REFERRED_BY) else putString(KEY_REFERRED_BY, state.referredByCode)
+            putString(KEY_REFERRALS, json.encodeToString(state.referralRecords))
+            putString(KEY_OFFLINE_STORIES, json.encodeToString(state.offlineStoryRecords))
+            putInt(KEY_GENERATION_COUNT, state.storyGenerationCount)
+            putInt(KEY_ACTIVE_DAYS, state.activeDayCount)
+            if (state.ratePromptLastShown == null) remove(KEY_RATE_PROMPT) else putLong(KEY_RATE_PROMPT, state.ratePromptLastShown)
+        }.apply()
+    }
+
+    internal fun updatePrompt12State(next: KathaUiState) { _uiState.value = next }
+    internal fun persistPrompt12StateInternal() { persistPrompt12() }
 
     private fun persistSafety() {
         val state = _uiState.value
@@ -1127,6 +1183,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 addCredits(-1, CreditReason.GENERATION, story.id)
+                if (uiState.value.referredByCode != null && uiState.value.creditLedger.none { it.reason == CreditReason.REFERRAL_BONUS.key }) {
+                    addCredits(1, CreditReason.REFERRAL_BONUS, uiState.value.referredByCode)
+                    updatePrompt12State(uiState.value.copy(referredByCode = null))
+                    showToast("Referral bonus added ✨")
+                }
+                _uiState.update { it.copy(storyGenerationCount = it.storyGenerationCount + 1) }
+                recordStreakActivity("Generated a story")
+                maybeRequestRating()
+                viewModelScope.launch {
+                    delay(5_000)
+                    if (!uiState.value.notificationPermissionGranted) updatePrompt12State(uiState.value.copy(showPrePermissionModal = true))
+                }
             } catch (e: GenerationException) {
                 _uiState.update {
                     it.copy(generationError = "Something went wrong while crafting your story. Please try again.")
@@ -1347,6 +1415,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        recordStreakActivity("Published a chapter")
         if (followerCount > 0) {
             showToast("Chapter published ✨ $followerCount followers notified")
         } else {
@@ -1470,6 +1539,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 commentedTodayKeys = if (isFirstToday) it.commentedTodayKeys + dayKey else it.commentedTodayKeys
             )
         }
+        recordStreakActivity("Left a comment")
         if (isFirstToday) {
             addCredits(1, CreditReason.FEEDBACK, storyId)
             showToast("+1 credit for joining the conversation!")
@@ -1749,6 +1819,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_SUB_EXPIRES = "subscriptionExpiresAt"
         const val KEY_LAST_AD_CREDIT = "lastAdCredit"
         const val KEY_CREDIT_LEDGER = "creditLedger"
+        const val KEY_STREAK = "streak"
+        const val KEY_NOTIFICATION_PREFS = "notificationPreferences"
+        const val KEY_NOTIFICATION_PERMISSION = "notificationPermission"
+        const val KEY_REFERRAL_CODE = "referralCode"
+        const val KEY_REFERRED_BY = "referredBy"
+        const val KEY_REFERRALS = "referrals"
+        const val KEY_OFFLINE_STORIES = "offlineStories"
+        const val KEY_GENERATION_COUNT = "storyGenerationCount"
+        const val KEY_ACTIVE_DAYS = "activeDayCount"
+        const val KEY_RATE_PROMPT = "ratePromptLastShown"
     }
 
     // MARK: - Credit Ledger (Prompt 8+9)

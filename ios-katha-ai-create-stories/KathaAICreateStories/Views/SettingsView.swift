@@ -256,6 +256,14 @@ struct SettingsView: View {
                     .padding(.vertical, KathaTheme.Spacing.m)
                 }
                 .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                Button { appState.openNotificationsScreen() } label: {
+                    settingRow(icon: "bell", title: "Notifications", value: "Manage")
+                }.buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                Button { appState.openStorageScreen() } label: {
+                    settingRow(icon: "internaldrive", title: "Storage", value: appState.offlineStoryRecords.isEmpty ? "Empty" : "\(appState.offlineStoryRecords.count) saved")
+                }.buttonStyle(.plain)
                 if appState.ageVerified {
                     Divider().background(KathaTheme.border)
                     Button { appState.resetAgeVerification() } label: {
@@ -276,6 +284,20 @@ struct SettingsView: View {
                 .foregroundStyle(KathaTheme.textSecondary)
 
             VStack(spacing: 0) {
+                Button {
+                    Haptics.light()
+                    appState.openStreakScreen()
+                } label: {
+                    settingRow(icon: "flame", title: "Your journey", value: "\(appState.currentStreak) day streak")
+                }.buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                Button {
+                    Haptics.light()
+                    appState.openInviteFriendsScreen()
+                } label: {
+                    settingRow(icon: "gift", title: "Invite friends", value: nil)
+                }.buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
                 // Dashboard row (above Credits)
                 Button {
                     Haptics.light()

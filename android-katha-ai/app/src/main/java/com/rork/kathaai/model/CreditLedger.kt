@@ -5,6 +5,8 @@ import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.CardGiftcard
+import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Fireplace
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -31,6 +33,7 @@ enum class CreditReason(val key: String, val label: String, val icon: ImageVecto
     STREAK("streak", "3-day streak reward", Icons.Outlined.Fireplace, "accent"),
     FEEDBACK("feedback", "Comment reward", Icons.AutoMirrored.Outlined.Message, "accent"),
     REFERRAL("referral", "Friend joined via your invite", Icons.Outlined.PersonAdd, "accent"),
+    REFERRAL_BONUS("referral_bonus", "Referral welcome bonus", Icons.Outlined.CardGiftcard, "accent"),
     SOCIAL("social", "Verified social post", Icons.Outlined.Share, "accent"),
     GENERATION("generation", "Generated story", Icons.Outlined.Book, "textSecondary"),
     WELCOME_BONUS("welcome_bonus", "Welcome to Katha ✨", Icons.Outlined.AutoAwesome, "accent"),

@@ -25,6 +25,7 @@ enum CreditReason: String, Codable, CaseIterable {
     case streak
     case feedback
     case referral
+    case referralBonus
     case social
     case generation
     case welcomeBonus
@@ -38,6 +39,7 @@ enum CreditReason: String, Codable, CaseIterable {
         case .streak: "3-day streak reward"
         case .feedback: "Comment reward"
         case .referral: "Friend joined via your invite"
+        case .referralBonus: "Referral welcome bonus"
         case .social: "Verified social post"
         case .generation: "Generated story"
         case .welcomeBonus: "Welcome to Katha ✨"
@@ -53,6 +55,7 @@ enum CreditReason: String, Codable, CaseIterable {
         case .streak: "flame"
         case .feedback: "message.circle"
         case .referral: "person.badge.plus"
+        case .referralBonus: "gift"
         case .social: "square.and.arrow.up"
         case .generation: "pencil.line"
         case .welcomeBonus: "sparkles"

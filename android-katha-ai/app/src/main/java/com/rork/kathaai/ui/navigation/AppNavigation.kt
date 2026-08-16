@@ -1,5 +1,6 @@
 package com.rork.kathaai.ui.navigation
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -93,10 +94,24 @@ import com.rork.kathaai.ui.screens.PinEntrySheet
 import com.rork.kathaai.ui.screens.AgeVerificationSheet
 import com.rork.kathaai.ui.screens.ReaderEarningToast
 import com.rork.kathaai.ui.screens.DevToolsSheet
+import com.rork.kathaai.ui.screens.StreakScreen
+import com.rork.kathaai.ui.screens.NotificationsScreen
+import com.rork.kathaai.ui.screens.InviteFriendsScreen
+import com.rork.kathaai.ui.screens.StorageScreen
+import com.rork.kathaai.ui.screens.AudioPlayerSheet
+import com.rork.kathaai.ui.screens.PrePermissionModal
+import com.rork.kathaai.ui.screens.StreakResetModal
+import com.rork.kathaai.ui.screens.DownloadProgressBanner
+import com.rork.kathaai.ui.screens.RateAppPrompt
 import com.rork.kathaai.data.AnalyticsService
 import com.rork.kathaai.ui.theme.KathaTheme
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
+import com.rork.kathaai.viewmodel.openStreakScreen
+import com.rork.kathaai.viewmodel.openNotificationsScreen
+import com.rork.kathaai.viewmodel.openInviteFriendsScreen
+import com.rork.kathaai.viewmodel.openStorageScreen
+import com.rork.kathaai.viewmodel.handleDeepLink
 import kotlinx.coroutines.delay
 
 private object Routes {
@@ -107,10 +122,12 @@ private object Routes {
 }
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(initialDeepLink: Uri? = null) {
     val viewModel: AppViewModel = viewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = rememberNavController()
+
+    LaunchedEffect(initialDeepLink) { initialDeepLink?.let { viewModel.handleDeepLink(it) } }
 
     var splashFinished by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -500,6 +517,19 @@ fun AppNavigation() {
         if (state.showAgeVerification) {
             AgeVerificationSheet(state = state, viewModel = viewModel)
         }
+        if (state.showStreakScreen) StreakScreen(state = state, viewModel = viewModel)
+        if (state.showNotificationsScreen) NotificationsScreen(state = state, viewModel = viewModel)
+        if (state.showInviteFriendsScreen) InviteFriendsScreen(state = state, viewModel = viewModel)
+        if (state.showStorageScreen) StorageScreen(state = state, viewModel = viewModel)
+        if (state.showPrePermissionModal) PrePermissionModal(state = state, viewModel = viewModel)
+        if (state.showStreakResetModal) StreakResetModal(state = state, viewModel = viewModel)
+        if (state.showRatePrompt) RateAppPrompt(state = state, viewModel = viewModel)
+        state.downloadProgress?.let { DownloadProgressBanner(state = state, modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp)) }
+        if (state.showAudioPlayer) {
+            val audioStoryId = state.audioPlayerStoryId
+            val audioStory = audioStoryId?.let { id -> SeedData.story(id) ?: state.publishedStories.firstOrNull { it.id == id }?.asStory() }
+            audioStory?.let { AudioPlayerSheet(state = state, viewModel = viewModel, story = it) }
+        }
 
         // Dev tools sheet
         DevToolsSheet(
@@ -630,7 +660,11 @@ private fun MainScreen(
                 onDevTap = { viewModel.registerDevTap() },
                 onOpenLanguage = { viewModel.showUiLanguageSheet() },
                 onOpenReadingLevel = { viewModel.showReadingLevelSheet() },
-                onOpenParentalControls = { viewModel.openParentalControls() }
+                onOpenParentalControls = { viewModel.openParentalControls() },
+                onOpenStreak = { viewModel.openStreakScreen() },
+                onOpenNotifications = { viewModel.openNotificationsScreen() },
+                onOpenInviteFriends = { viewModel.openInviteFriendsScreen() },
+                onOpenStorage = { viewModel.openStorageScreen() }
             )
         }
 

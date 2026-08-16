@@ -46,6 +46,7 @@ import com.rork.kathaai.ui.components.TextLink
 import com.rork.kathaai.ui.theme.KathaTheme
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
+import com.rork.kathaai.viewmodel.openAudioPlayer
 
 // MARK: - Audio Mini Bar (FIX 8)
 
@@ -60,7 +61,7 @@ fun AudioMiniBar(
 
     when (audioState) {
         AppViewModel.AudioBarState.PREPARING -> PreparingBar(story, state, viewModel, context)
-        AppViewModel.AudioBarState.READY -> ReadyBar(story)
+        AppViewModel.AudioBarState.READY -> ReadyBar(story, viewModel)
         AppViewModel.AudioBarState.ERROR -> ErrorBar(story, viewModel)
     }
 }
@@ -124,11 +125,12 @@ private fun PreparingBar(
 }
 
 @Composable
-private fun ReadyBar(story: Story) {
+private fun ReadyBar(story: Story, viewModel: AppViewModel) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(KathaTheme.surface)
+            .clickable { viewModel.openAudioPlayer(story.id) }
             .padding(horizontal = KathaTheme.Spacing.l, vertical = KathaTheme.Spacing.m),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)

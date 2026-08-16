@@ -110,6 +110,9 @@ struct ReaderView: View {
                 chapterNavOverlay
             }
         }
+        .onAppear {
+            appState.beginReaderStreakActivity()
+        }
     }
 
     // MARK: - Top Bar
@@ -154,6 +157,28 @@ struct ReaderView: View {
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(.ultraThinMaterial))
                     .foregroundStyle(appState.isBookmarked(story.id) ? KathaTheme.accent : KathaTheme.textPrimary)
+            }
+
+            Button {
+                Haptics.light()
+                if appState.downloadedStoryIds.contains(story.id) { appState.removeOfflineStory(story.id) } else { appState.downloadStory(story) }
+            } label: {
+                Image(systemName: appState.downloadedStoryIds.contains(story.id) ? "checkmark.icloud.fill" : "icloud.and.arrow.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(.ultraThinMaterial))
+                    .foregroundStyle(appState.downloadedStoryIds.contains(story.id) ? KathaTheme.success : KathaTheme.textPrimary)
+            }
+
+            Button {
+                Haptics.light()
+                appState.openAudioPlayer(story: story)
+            } label: {
+                Image(systemName: "headphones")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(.ultraThinMaterial))
+                    .foregroundStyle(KathaTheme.textPrimary)
             }
 
             Button {

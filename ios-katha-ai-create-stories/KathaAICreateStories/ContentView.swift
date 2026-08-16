@@ -278,6 +278,15 @@ struct ContentView: View {
                     .zIndex(5.6)
             }
 
+            if appState.showStreakScreen { StreakScreen().transition(.move(edge: .trailing).combined(with: .opacity)).zIndex(6) }
+            if appState.showNotificationsScreen { NotificationsScreen().transition(.move(edge: .trailing).combined(with: .opacity)).zIndex(6.1) }
+            if appState.showInviteFriendsScreen { InviteFriendsScreen().transition(.move(edge: .trailing).combined(with: .opacity)).zIndex(6.2) }
+            if appState.showStorageScreen { StorageScreen().transition(.move(edge: .trailing).combined(with: .opacity)).zIndex(6.3) }
+            if appState.showPrePermissionModal { PrePermissionModal().transition(.scale(scale: 0.94).combined(with: .opacity)).zIndex(7) }
+            if appState.showStreakResetModal { StreakResetModal().transition(.scale(scale: 0.95).combined(with: .opacity)).zIndex(7.1) }
+            if appState.downloadProgress != nil { VStack { DownloadProgressBanner(); Spacer() }.padding(.top, 48).zIndex(6.5) }
+            if appState.showAudioPlayer, let id = appState.audioPlayerStoryId, let audioStory = (appState.selectedStory?.id == id ? appState.selectedStory : SeedData.stories.first(where: { $0.id == id })) { AudioPlayerSheet(story: audioStory).zIndex(6.6) }
+
             // Toast (above everything)
             if let toast = appState.toastMessage {
                 VStack {
@@ -325,6 +334,11 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.3), value: appState.showPINSetup)
         .animation(.easeInOut(duration: 0.3), value: appState.showPINEntry)
         .animation(.easeInOut(duration: 0.3), value: appState.showAgeVerification)
+        .animation(.easeInOut(duration: 0.3), value: appState.showStreakScreen)
+        .animation(.easeInOut(duration: 0.3), value: appState.showNotificationsScreen)
+        .animation(.easeInOut(duration: 0.3), value: appState.showInviteFriendsScreen)
+        .animation(.easeInOut(duration: 0.3), value: appState.showStorageScreen)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: appState.showPrePermissionModal)
         .animation(.easeInOut(duration: 0.25), value: appState.profileStack)
         .animation(.easeInOut(duration: 0.3), value: appState.showChapterListSheet)
         .animation(.easeInOut(duration: 0.3), value: appState.toastMessage)

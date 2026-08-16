@@ -17,6 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.CardGiftcard
+import androidx.compose.material.icons.outlined.Fireplace
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
@@ -75,7 +79,11 @@ fun SettingsScreen(
     onDevTap: () -> Unit = {},
     onOpenLanguage: () -> Unit = {},
     onOpenReadingLevel: () -> Unit = {},
-    onOpenParentalControls: () -> Unit = {}
+    onOpenParentalControls: () -> Unit = {},
+    onOpenStreak: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    onOpenInviteFriends: () -> Unit = {},
+    onOpenStorage: () -> Unit = {}
 ) {
     var showSignOutDialog by remember { mutableStateOf(false) }
     var showDeleteStep1 by remember { mutableStateOf(false) }
@@ -207,6 +215,8 @@ fun SettingsScreen(
                     SettingsSectionLabel("App")
                     SettingsRow(title = "Language", value = "English", icon = Icons.Outlined.Language, onClick = onOpenLanguage)
                     SettingsRow(title = "Parental controls", value = if (state.kidsMode) "On" else "Off", icon = Icons.Outlined.Security, onClick = onOpenParentalControls)
+                    SettingsRow(title = "Notifications", value = "Manage", icon = Icons.Outlined.Notifications, onClick = onOpenNotifications)
+                    SettingsRow(title = "Storage", value = if (state.offlineStoryRecords.isEmpty()) "Empty" else "${state.offlineStoryRecords.size} saved", icon = Icons.Outlined.Storage, onClick = onOpenStorage)
                 }
             }
 
@@ -223,13 +233,27 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onOpenDashboard() }
+                                .clickable { onOpenStreak() }
                                 .padding(vertical = KathaTheme.Spacing.m),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                         ) {
                             Icon(Icons.Outlined.Insights, null, tint = KathaTheme.accent, modifier = Modifier.size(20.dp))
-                            Text("Your dashboard", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                            Text("Your journey", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                            Text("${state.currentStreak} day streak", color = KathaTheme.accent, fontSize = 12.sp)
+                            Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(12.dp))
+                        }
+                        HorizontalDivider(color = KathaTheme.border)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenInviteFriends() }
+                                .padding(vertical = KathaTheme.Spacing.m),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
+                        ) {
+                            Icon(Icons.Outlined.CardGiftcard, null, tint = KathaTheme.accent, modifier = Modifier.size(20.dp))
+                            Text("Invite friends", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
                             Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(12.dp))
                         }
                         HorizontalDivider(color = KathaTheme.border)

@@ -257,6 +257,34 @@ final class AppState {
     var audioErrorStoryId: String? = nil  // in-session
     var audioPrepTask: Task<Void, Never>? = nil
 
+    // MARK: - Prompt 12 retention state
+    var streak = StreakState.initial
+    var notificationPreferences = NotificationPreferences()
+    var notificationPermissionGranted = false
+    var showStreakScreen = false
+    var showNotificationsScreen = false
+    var showInviteFriendsScreen = false
+    var showStorageScreen = false
+    var showPrePermissionModal = false
+    var showStreakResetModal = false
+    var streakRiskBannerVisible = false
+    var referralCode = ""
+    var referredByCode: String?
+    var referralRecords: [ReferralRecord] = []
+    var offlineStoryRecords: [OfflineStoryRecord] = []
+    var downloadProgress: Double?
+    var downloadStoryTitle = ""
+    var audioPlayerStoryId: String?
+    var showAudioPlayer = false
+    var audioIsPlaying = false
+    var audioProgress: Double = 0
+    var audioSpeed: Double = 1
+    var audioSleepTimerEnd: Date?
+    var audioShowingRemaining = false
+    var storyGenerationCount = 0
+    var activeDayCount = 0
+    var ratePromptLastShown: Date?
+
     // MARK: - Credit Ledger (Prompt 8+9)
 
     // Credit ledger entries (persisted)
@@ -334,8 +362,7 @@ final class AppState {
         newChapterNotifications.filter { !dismissedBannerStoryIds.contains($0.storyId) }
     }
 
-    /// Mock streak for the current user (real streaks arrive in a later update)
-    var currentStreak: Int { isAuthenticated ? 5 : 0 }
+    var currentStreak: Int { streak.current }
 
     /// If the username was changed within the last 30 days, the date it unlocks; nil otherwise
     var usernameChangeUnlockDate: Date? {
@@ -376,6 +403,17 @@ final class AppState {
         ageVerified = defaults.bool(forKey: "katha.ageVerified")
         notifiedForHindi = defaults.bool(forKey: "katha.notifiedForHindi")
         audioReadyStoryIds = Set(defaults.stringArray(forKey: "katha.audioReady") ?? [])
+        if let data = defaults.data(forKey: "katha.streak"), let decoded = try? JSONDecoder().decode(StreakState.self, from: data) { streak = decoded }
+        if let data = defaults.data(forKey: "katha.notificationPreferences"), let decoded = try? JSONDecoder().decode(NotificationPreferences.self, from: data) { notificationPreferences = decoded }
+        if let data = defaults.data(forKey: "katha.referrals"), let decoded = try? JSONDecoder().decode([ReferralRecord].self, from: data) { referralRecords = decoded }
+        if let data = defaults.data(forKey: "katha.offlineStories"), let decoded = try? JSONDecoder().decode([OfflineStoryRecord].self, from: data) { offlineStoryRecords = decoded }
+        referredByCode = defaults.string(forKey: "katha.referredBy")
+        referralCode = defaults.string(forKey: "katha.referralCode") ?? ""
+        storyGenerationCount = defaults.integer(forKey: "katha.storyGenerationCount")
+        activeDayCount = defaults.integer(forKey: "katha.activeDayCount")
+        ratePromptLastShown = defaults.object(forKey: "katha.ratePromptLastShown") as? Date
+        notificationPermissionGranted = defaults.bool(forKey: "katha.notificationPermissionGranted")
+        if isPremium && streak.freezesAvailable == 0 { streak.freezesAvailable = 2 }
 
         // Credit ledger
         isPremium = defaults.bool(forKey: "katha.isPremium")
@@ -413,6 +451,18 @@ final class AppState {
         defaults.set(kidsSearchSuggestionsEnabled, forKey: "katha.kidsSearchSuggestionsEnabled")
         defaults.set(ageVerified, forKey: "katha.ageVerified")
         defaults.set(notifiedForHindi, forKey: "katha.notifiedForHindi")
+    }
+
+    func persistPrompt12State() {
+        if let data = try? JSONEncoder().encode(streak) { defaults.set(data, forKey: "katha.streak") }
+        if let data = try? JSONEncoder().encode(notificationPreferences) { defaults.set(data, forKey: "katha.notificationPreferences") }
+        if let data = try? JSONEncoder().encode(referralRecords) { defaults.set(data, forKey: "katha.referrals") }
+        if let data = try? JSONEncoder().encode(offlineStoryRecords) { defaults.set(data, forKey: "katha.offlineStories") }
+        defaults.set(referralCode, forKey: "katha.referralCode")
+        if let referredByCode { defaults.set(referredByCode, forKey: "katha.referredBy") } else { defaults.removeObject(forKey: "katha.referredBy") }
+        defaults.set(storyGenerationCount, forKey: "katha.storyGenerationCount")
+        defaults.set(activeDayCount, forKey: "katha.activeDayCount")
+        defaults.set(notificationPermissionGranted, forKey: "katha.notificationPermissionGranted")
     }
 
     private func persistSocialState() {
@@ -736,6 +786,7 @@ final class AppState {
         } else {
             bookmarkedStoryIds.insert(storyId)
             showToast("Saved to library")
+            recordStreakActivity(summary: "Bookmarked a story")
         }
         persistSocialState()
     }
@@ -1237,6 +1288,20 @@ final class AppState {
             currentUser = updated
             saveSession(updated)
             addCredits(-1, reason: .generation, referenceId: story.id)
+            if referredByCode != nil && !creditLedger.contains(where: { $0.reason == .referralBonus }) {
+                addCredits(1, reason: .referralBonus, referenceId: referredByCode)
+                referredByCode = nil
+                persistPrompt12State()
+                showToast("Referral bonus added ✨")
+            }
+            storyGenerationCount += 1
+            recordStreakActivity(summary: "Generated a story")
+            maybeRequestRating()
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                guard let self else { return }
+                maybeShowPrePermission()
+            }
             Haptics.success()
         } catch {
             generationError = "Something went wrong while crafting your story. Please try again."
@@ -1412,6 +1477,7 @@ final class AppState {
         pendingPublishChapterId = nil
 
         Haptics.success()
+        recordStreakActivity(summary: "Published a chapter")
 
         if followerCount > 0 {
             showToast("Chapter published ✨ \(followerCount) followers notified")
@@ -1542,6 +1608,7 @@ final class AppState {
             replyToUsername: replyTo?.username
         )
         userComments.append(comment)
+        recordStreakActivity(summary: "Left a comment")
 
         if isFirstToday {
             commentedTodayKeys.insert(dayKey)
@@ -2167,8 +2234,7 @@ final class AppState {
     // MARK: - Referral Share
 
     func shareReferralLink() {
-        let userId = currentUser?.username ?? "guest"
-        let text = "I've been writing stories on Katha AI — join me: https://katha.ai/r/\(userId)"
+        let text = "I've been writing stories on Katha AI. Join me and get an extra credit to start:\n\n\(referralLink)"
         sharePayload = SharePayload(text: text)
         Haptics.light()
     }

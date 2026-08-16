@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             AppTheme {
-                AppNavigation()
+                AppNavigation(initialDeepLink = intent?.data)
             }
         }
     }

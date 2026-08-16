@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubble
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -70,6 +71,10 @@ import com.rork.kathaai.ui.theme.serif
 import com.rork.kathaai.ui.theme.serifItalic
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
+import com.rork.kathaai.viewmodel.recordStreakActivity
+import com.rork.kathaai.viewmodel.openAudioPlayer
+import com.rork.kathaai.viewmodel.downloadStory
+import com.rork.kathaai.viewmodel.removeOfflineStory
 import kotlinx.coroutines.delay
 
 @Composable
@@ -110,7 +115,11 @@ fun ReaderScreen(
     val isDraftChapter = currentChapter?.isPublished == false
 
     LaunchedEffect(story.id, state.isAuthenticated) {
-        if (state.isAuthenticated) onRead()
+        if (state.isAuthenticated) {
+            onRead()
+            delay(30_000)
+            viewModel.recordStreakActivity("Read a story")
+        }
     }
 
     if (state.kidsMode && story.effectiveContentRating == com.rork.kathaai.model.ContentRating.MATURE) {
@@ -454,6 +463,20 @@ fun ReaderScreen(
                 surface,
                 if (isBookmarked) KathaTheme.accent else textColor,
                 onBookmark
+            )
+            CircleIconButton(
+                Icons.Outlined.MenuBook,
+                "Audio",
+                surface,
+                textColor,
+                { viewModel.openAudioPlayer(story.id) }
+            )
+            CircleIconButton(
+                Icons.Outlined.CloudOff,
+                "Offline",
+                surface,
+                if (state.offlineStoryRecords.any { it.storyId == story.id }) KathaTheme.success else textColor,
+                { if (state.offlineStoryRecords.any { it.storyId == story.id }) viewModel.removeOfflineStory(story.id) else viewModel.downloadStory(story.id) }
             )
             // Chapter list button
             CircleIconButton(

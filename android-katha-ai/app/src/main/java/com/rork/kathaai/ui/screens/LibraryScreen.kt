@@ -42,14 +42,16 @@ fun LibraryScreen(
         0 -> SeedData.stories.filter { it.id in state.bookmarkedStoryIds && state.isStoryVisibleInKidsMode(it) }
         1 -> SeedData.stories.filter { it.id in state.likedStoryIds && state.isStoryVisibleInKidsMode(it) }
         2 -> state.publishedStories.map { it.asStory() }
-        else -> SeedData.stories.filter { it.id in state.readStoryIds && state.isStoryVisibleInKidsMode(it) }
+        3 -> SeedData.stories.filter { it.id in state.readStoryIds && state.isStoryVisibleInKidsMode(it) }
+        else -> state.offlineStoryRecords.mapNotNull { record -> SeedData.story(record.storyId)?.takeIf { state.isStoryVisibleInKidsMode(it) } }
     }
 
     val emptyMessage = when (tabIndex) {
         0 -> "Stories you bookmark will appear here."
         1 -> "Stories you like will appear here."
         2 -> "Stories you generate will appear here."
-        else -> "Stories you've read will appear here."
+        3 -> "Stories you've read will appear here."
+        else -> "Tap the download icon in any story to save it for offline."
     }
 
     Box(
@@ -96,7 +98,7 @@ fun LibraryScreen(
                 }
             } else {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    SegmentedControl(listOf("Saved", "Liked", "Published", "History"), tabIndex) { tabIndex = it }
+                    SegmentedControl(listOf("Saved", "Liked", "Published", "History", "Downloads"), tabIndex) { tabIndex = it }
                 }
 
                 if (stories.isEmpty()) {

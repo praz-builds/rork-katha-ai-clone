@@ -18,6 +18,7 @@ struct KathaAICreateStoriesApp: App {
             ContentView()
                 .environment(appState)
                 .tint(KathaTheme.accent)
+                .onOpenURL { url in appState.handleDeepLink(url) }
         }
     }
 }
