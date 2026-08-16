@@ -25,7 +25,7 @@ These are locked in via `references/strategic-decisions.md` (the authoritative d
 
 ### Two Workstreams
 
-1. **Rork** (mobile app) — React Native screens, navigation, native SDKs (Adapty, AdMob, Supabase Auth)
+1. **Rork** (mobile app) — Native iOS (Swift/SwiftUI) + Android (Kotlin/Jetpack Compose), native SDKs (Adapty, AdMob, Supabase Auth via Swift/Kotlin SDKs)
 2. **VS Code / Claude Code** (backend) — Supabase Edge Functions, database schema, generation pipeline, credit ledger, webhook handlers
 
 **Rule:** If it touches money, credits, or API keys — VS Code agent. If it's a screen — Rork. If both — Rork calls an Edge Function.
@@ -39,8 +39,17 @@ These are locked in via `references/strategic-decisions.md` (the authoritative d
 - **Audio narration:** edge-tts (en-US-JennyNeural, Rate: -15%)
 - **Billing:** Adapty (subscriptions + credit packs + paywall A/B testing)
 - **Ads:** AdMob (rewarded video for free credits, server-side verification)
+- **Push notifications:** FCM (Firebase Cloud Messaging) for both iOS and Android
 - **Analytics:** PostHog
-- **Mobile app:** React Native (Expo), built via Rork
+- **Mobile app:** Native Swift (iOS) + Kotlin (Android), built via Rork
+
+### Rork App Status (as of 2026-08-17)
+
+**COMPLETE in mock mode.** All 12 prompts + fix-up prompt delivered. Both iOS and Android at full parity (40+ screens). App runs entirely on local state — no real backend calls yet.
+
+**Repo:** `praz-builds/rork-katha-ai-clone` (GitHub, private)
+
+**Fix-up prompt needed** for color tokens, seed data gaps, Home screen sections, Reader drop cap, and other deviations documented in build-log.md (2026-08-17 entry).
 
 ### Key Patterns from Story For My Kid (reusable knowledge)
 
@@ -72,6 +81,9 @@ Schema is in `supabase/migrations/` (3 migrations). Key tables:
 - `bookmarks` — saved stories
 - `story_likes` — engagement signal for feed ranking
 
+**Not yet created (needed for Phase G):**
+- `device_tokens` — FCM/APNs token storage for push notifications
+
 **Credit ledger pattern:** Never update rows — only insert. Balance = last row's `balance_after`. Atomic deduction via `INSERT ... WHERE balance_after >= 0`.
 
 **Credit reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`
@@ -81,32 +93,41 @@ Schema is in `supabase/migrations/` (3 migrations). Key tables:
 All in `supabase/functions/`. Each is a Deno/TypeScript handler:
 
 ### Implemented (scaffolded)
-| Function | Method | Purpose |
-|----------|--------|---------|
-| `generate-story` | POST | Orchestrator: auth -> credit check -> deduct -> LLM -> image -> audio -> return |
-| `continue-story` | POST | Generate next chapter (author-only) |
-| `deduct-credit` | POST | Atomic credit deduction |
-| `grant-credit` | POST | AdMob SSV reward verification + 24hr cooldown |
-| `library` | GET | Paginated curated story feed with genre filter + search |
-| `feedback` | POST | Comments + one-time feedback credit reward |
-| `adapty-webhook` | POST | Subscription/purchase event handler |
+| Function | Method | Purpose | Status |
+|----------|--------|---------|--------|
+| `generate-story` | POST | Orchestrator: auth -> credit check -> deduct -> LLM -> image -> audio -> return | 70% (LLM works, image/audio stubbed) |
+| `continue-story` | POST | Generate next chapter (author-only) | 70% (same gap) |
+| `deduct-credit` | POST | Atomic credit deduction | Done |
+| `grant-credit` | POST | AdMob SSV reward verification + 24hr cooldown | Scaffolded (no SSV verify) |
+| `library` | GET | Paginated curated story feed with genre filter + search | Done |
+| `feedback` | POST | Comments + one-time feedback credit reward | Done |
+| `adapty-webhook` | POST | Subscription/purchase event handler | Scaffolded (no HMAC verify) |
 
-### TODO (from strategic-decisions.md §13)
-| Function | Purpose |
-|----------|---------|
-| `record-read` | Anti-gaming pipeline (self-read guard, min read time, account age throttle, velocity detection, dedup) |
-| `publish-chapter` | Mark chapter published, fire follower notifications |
-| `follow-story` / `unfollow-story` | Story follow toggles |
-| `follow-user` / `unfollow-user` | Author follow toggles |
-| `bookmark` / `unbookmark` | Bookmark toggles |
-| `like` / `unlike` | Like toggles |
-| `feed/for-you` | Personalized feed |
-| `feed/trending`, `feed/rising`, `feed/new` | Feed variants |
-| `search` | Full-text search (pg_trgm + tsvector) |
-| `author/:username` | Public author profile |
-| `story/:id/analytics` | Author-only per-story analytics |
+### TODO
+| Function | Purpose | Phase |
+|----------|---------|-------|
+| `record-read` | Anti-gaming pipeline (self-read guard, min read time, account age throttle, velocity detection, dedup) | E |
+| `publish-chapter` | Mark chapter published, fire follower notifications via FCM | D |
+| `follow-story` / `unfollow-story` | Story follow toggles | D |
+| `follow-user` / `unfollow-user` | Author follow toggles | D |
+| `bookmark` / `unbookmark` | Bookmark toggles | D |
+| `like` / `unlike` | Like toggles | D |
+| `feed/for-you` | Personalized feed | F |
+| `feed/trending`, `feed/rising`, `feed/new` | Feed variants | F |
+| `search` | Full-text search (pg_trgm + tsvector) | F |
+| `author/:username` | Public author profile | F |
+| `story/:id/analytics` | Author-only per-story analytics | F |
+| `register-device` | Store FCM token for push notifications | G |
+| `send-notification` | Internal: send push via FCM | G |
+| `referral-verify` | Referral fraud checks (device fingerprint, rate limit) | H |
 
 Shared utilities in `supabase/functions/_shared/`.
+
+### Known Bugs (fix in Phase A)
+- `generate-story/index.ts:137` — `balance: newBalance - 1` double-deducts in response
+- `credits.ts` — read-then-write race condition (needs Postgres FOR UPDATE)
+- `generate-story` — hardcoded system prompt (should load `prompts/story-generator.md`)
+- `llm.ts` — Haiku model ID outdated (`claude-haiku-4-5-20241022` → `claude-haiku-4-5-20251001`)
 
 ## Monetization
 
@@ -155,15 +176,22 @@ supabase db push
 # Set secrets
 supabase secrets set ANTHROPIC_API_KEY=xxx
 supabase secrets set OPENAI_API_KEY=xxx
+supabase secrets set ADAPTY_WEBHOOK_SECRET=xxx
+supabase secrets set FIREBASE_SERVICE_ACCOUNT_KEY=xxx
 ```
 
-## Build Order
+## Build Phases (Roadmap)
 
-1. **Phase 1 (Read-Only):** Schema + seed library + GET /library endpoint
-2. **Phase 2 (Generation):** POST /generate-story + credit ledger + POST /continue-story
-3. **Phase 3 (Monetization):** Adapty webhook + AdMob SSV + grant/deduct credit
-4. **Phase 4 (Engagement):** Streaks + feedback rewards + referrals + creator earnings + follows
-5. **Phase 5 (Growth):** Premium voices, offline, community, multi-language
+See `ROADMAP.md` for the full phased execution plan.
+
+1. **Phase A (Foundation):** Supabase project + fix critical bugs + deploy existing functions
+2. **Phase B (Generation):** Wire DALL-E 3 cover images + edge-tts audio narration
+3. **Phase C (Monetization):** Adapty webhook HMAC + AdMob SSV verification
+4. **Phase D (Social):** Follow/bookmark/like toggles + publish-chapter with FCM
+5. **Phase E (Anti-Gaming):** record-read endpoint + creator earnings curve + pending credits
+6. **Phase F (Discovery):** Feed endpoints + search + author profile + analytics
+7. **Phase G (Push Notifications):** register-device + FCM integration + notification triggers + crons
+8. **Phase H (Seed & Polish):** Seed library content + referral verification + cron jobs
 
 ## Build Log
 
@@ -176,3 +204,4 @@ supabase secrets set OPENAI_API_KEY=xxx
 - **Story generation prompt:** `prompts/story-generator.md`
 - **Seed library data:** `seed-data/`
 - **Build log:** `build-log.md` — chronological change record
+- **Backend roadmap:** `ROADMAP.md` — phased execution plan with checklists

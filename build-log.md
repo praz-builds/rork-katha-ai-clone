@@ -40,13 +40,42 @@
 - Genre is single-select; themes are LLM-generated free-form tags
 - UI: English + Hindi. Generation: 15 languages
 
+---
+
+## 2026-08-17 — Rork app review + backend roadmap
+
+**Session:** Full codebase review of Rork-built app (both iOS + Android) against all 12 prompts + fix-up prompt
+
+### Changes
+- **ROADMAP.md** — created phased backend execution plan (A through H)
+- **CLAUDE.md** — updated architecture section (Rork is native Swift+Kotlin, not React Native), updated build phases, added Rork app status, added new edge functions to TODO list
+- **MEMORY.md** — updated with Rork review findings, fix-up list, backend phases
+- **build-log.md** — this entry
+
+### Rork App Status
+- **Repo:** `praz-builds/rork-katha-ai-clone` (GitHub, private)
+- **Original repo** `praz-builds/rork-katha-ai` confirmed safe to delete (clone is strict superset with 16 additional files)
+- **iOS:** 40+ screens in Swift/SwiftUI, Literata font bundled, all features in mock mode
+- **Android:** Full parity — 40+ screens in Kotlin/Jetpack Compose, same feature set
+- **All 12 prompts delivered:** Foundation, Auth, Create Wizard, Series/Continuation, Profiles, Engagement, Search/Bookmarks, Credits/Ads, Fix-up, Analytics, Parental/Language, Streaks/Notifications/Referrals/Offline/Audio
+
+### Review Findings (critical gaps for fix-up prompt)
+- Color tokens: nearly every hex deviates from spec (Rork generated own palette)
+- Only 12 of 30 seed stories exist; no language field on Story model
+- Home screen missing 6 of 8 sections (Continue Reading, For You, Writers You Follow, Rising, Katha's Picks, Welcome-back)
+- Reader missing drop cap, progress bar, nav auto-hide
+- StoryCard layout is vertical instead of spec's horizontal
+- Library has 5 tabs instead of 4
+- Author follower counts all wrong
+- See MEMORY.md for full list
+
+### Known Backend Bugs Confirmed
+- `generate-story/index.ts:137` — double-deduct in response body
+- `credits.ts` — race condition (read-then-write, not atomic)
+- `llm.ts` — Haiku model ID outdated (Oct 2024 → should be Oct 2025)
+- `generate-story` — hardcoded system prompt instead of loading from file
+
 ### TODO next session
-- [ ] Create Supabase project, set project ID in config.toml
-- [ ] Create GitHub repo and push
-- [ ] Build `record-read` edge function (anti-gaming pipeline from strategic-decisions.md §6)
-- [ ] Build follow/unfollow, bookmark, like edge functions
-- [ ] Build feed endpoints (for-you, trending, rising, new)
-- [ ] Build search endpoint (pg_trgm + tsvector)
-- [ ] Wire up cover image generation in generate-story
-- [ ] Wire up edge-tts audio narration in generate-story
-- [ ] Seed library content
+- [ ] Phase A: Create Supabase project, fix critical bugs, deploy existing functions
+- [ ] Phase B: Wire DALL-E 3 + edge-tts into generation pipeline
+- [ ] User: Get API keys (Anthropic, OpenAI), create Supabase project
