@@ -9,7 +9,6 @@ import com.rork.kathaai.data.MockGeneration
 import com.rork.kathaai.data.AnalyticsService
 import com.rork.kathaai.data.SeedData
 import com.rork.kathaai.data.UsernameGenerator
-import com.rork.kathaai.model.AppUiLanguage
 import com.rork.kathaai.model.AuthSheetContext
 import com.rork.kathaai.model.ContentRating
 import com.rork.kathaai.model.ContinueWizardStep
@@ -64,7 +63,6 @@ data class KathaUiState(
     val bookmarkedStoryIds: Set<String> = emptySet(),
     val readStoryIds: Set<String> = emptySet(),
     val readerSepia: Boolean = false,
-    val appLanguage: AppUiLanguage = AppUiLanguage.ENGLISH,
     val defaultReadingLevel: ReadingLevel = ReadingLevel.STANDARD,
     val wizardReadingLevel: ReadingLevel = ReadingLevel.STANDARD,
     val kidsMode: Boolean = false,
@@ -75,7 +73,6 @@ data class KathaUiState(
     val kidsShareEnabled: Boolean = false,
     val kidsSearchSuggestionsEnabled: Boolean = true,
     val ageVerified: Boolean = false,
-    val showUiLanguageSheet: Boolean = false,
     val showReadingLevelSheet: Boolean = false,
     val readingLevelSheetForWizard: Boolean = false,
     val readingLevelSheetForCap: Boolean = false,
@@ -385,7 +382,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 readStoryIds = prefs.getStringSet(KEY_READ, emptySet()).orEmpty(),
                 followedStoryIds = prefs.getStringSet(KEY_FOLLOWED_STORIES, emptySet()).orEmpty(),
                 readerSepia = prefs.getBoolean(KEY_SEPIA, false),
-                appLanguage = runCatching { com.rork.kathaai.model.AppUiLanguage.valueOf(prefs.getString(KEY_APP_LANGUAGE, "ENGLISH") ?: "ENGLISH") }.getOrDefault(com.rork.kathaai.model.AppUiLanguage.ENGLISH),
                 defaultReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
                 wizardReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
                 kidsMode = prefs.getBoolean(KEY_KIDS_MODE, false),
@@ -447,7 +443,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun persistSafety() {
         val state = _uiState.value
         prefs.edit().apply {
-            putString(KEY_APP_LANGUAGE, state.appLanguage.name)
             putString(KEY_READING_LEVEL, state.defaultReadingLevel.name)
             putBoolean(KEY_KIDS_MODE, state.kidsMode)
             if (state.kidsModePin == null) remove(KEY_KIDS_PIN) else putString(KEY_KIDS_PIN, state.kidsModePin)
@@ -1076,9 +1071,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(wizardReadingLevel = level) }
     }
 
-    fun showUiLanguageSheet() { _uiState.update { it.copy(showUiLanguageSheet = true) } }
-    fun dismissUiLanguageSheet() { _uiState.update { it.copy(showUiLanguageSheet = false) } }
-
     fun showReadingLevelSheet(forWizard: Boolean = false, forCap: Boolean = false) {
         _uiState.update { it.copy(showReadingLevelSheet = true, readingLevelSheetForWizard = forWizard, readingLevelSheetForCap = forCap) }
     }
@@ -1127,8 +1119,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun confirmAgeVerification() { _uiState.update { it.copy(ageVerified = true, showAgeVerification = false) }; persistSafety() }
     fun resetAgeVerification() { _uiState.update { it.copy(ageVerified = false) }; persistSafety(); showToast("Age verification reset") }
     fun showAgeVerification() { _uiState.update { it.copy(showAgeVerification = true) } }
-    fun notifyHindiAvailability() { showToast("We'll let you know ✨") }
-
     fun showLanguageSheet() {
         _uiState.update { it.copy(showLanguageSheet = true) }
     }
@@ -1789,7 +1779,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
-        const val KEY_APP_LANGUAGE = "appLanguage"
         const val KEY_READING_LEVEL = "defaultReadingLevel"
         const val KEY_KIDS_MODE = "kidsMode"
         const val KEY_KIDS_PIN = "kidsModePin"

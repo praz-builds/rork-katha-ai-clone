@@ -66,7 +66,7 @@ import com.rork.kathaai.ui.components.PrimaryCTA
 import com.rork.kathaai.ui.components.SafeBottomSpacer
 import com.rork.kathaai.ui.components.SecondaryCTA
 import com.rork.kathaai.ui.theme.KathaTheme
-import com.rork.kathaai.ui.theme.serifItalic
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.KathaUiState
 import kotlinx.coroutines.delay
 
@@ -156,13 +156,13 @@ private fun ContinueWizardHeader(state: KathaUiState) {
                 Text(
                     "Continue story",
                     color = KathaTheme.textPrimary,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = KathaTypography.Title1.fontSize,
+                    fontWeight = KathaTypography.Title1.fontWeight
                 )
                 Text(
                     "Step ${state.continueWizardStep.number} of ${ContinueWizardStep.entries.size}",
                     color = KathaTheme.textSecondary,
-                    fontSize = 13.sp
+                    fontSize = KathaTypography.Caption.fontSize
                 )
             }
             // Locked language chip
@@ -179,8 +179,8 @@ private fun ContinueWizardHeader(state: KathaUiState) {
                 Text(
                     state.continueWizardLanguage.code,
                     color = KathaTheme.textTertiary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = KathaTypography.Caption.fontSize,
+                    fontWeight = KathaTypography.BodyStrong.fontWeight
                 )
             }
         }
@@ -218,13 +218,13 @@ private fun ChapterDirectionStep(
         Text(
             "What happens next?",
             color = KathaTheme.textPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = KathaTypography.Title2.fontSize,
+            fontWeight = KathaTypography.Title1.fontWeight
         )
         Text(
             "A hint, a theme, a scene — or leave it open.",
             color = KathaTheme.textSecondary,
-            fontSize = 14.sp
+            fontSize = KathaTypography.Body.fontSize
         )
 
         // Recap card
@@ -238,8 +238,8 @@ private fun ChapterDirectionStep(
             Text(
                 "Chapter direction (optional)",
                 color = KathaTheme.textSecondary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
+                fontSize = KathaTypography.Caption.fontSize,
+                fontWeight = KathaTypography.BodyStrong.fontWeight
             )
             Box(
                 modifier = Modifier
@@ -254,7 +254,7 @@ private fun ChapterDirectionStep(
                     Text(
                         DirectionPlaceholders.random(),
                         color = KathaTheme.textTertiary,
-                        fontSize = 15.sp
+                        fontSize = KathaTypography.Body.fontSize
                     )
                 }
                 TextField(
@@ -283,7 +283,7 @@ private fun ChapterDirectionStep(
             Text(
                 "${state.continueWizardDirection.length} / 500",
                 color = KathaTheme.textTertiary,
-                fontSize = 12.sp
+                fontSize = KathaTypography.Meta.fontSize
             )
             Row(
                 modifier = Modifier.clickable { onShowGetIdeas() },
@@ -291,7 +291,7 @@ private fun ChapterDirectionStep(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Outlined.Lightbulb, null, tint = KathaTheme.accent, modifier = Modifier.size(16.dp))
-                Text("Get ideas", color = KathaTheme.accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text("Get ideas", color = KathaTheme.accent, fontSize = KathaTypography.Caption.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
             }
         }
     }
@@ -317,12 +317,12 @@ private fun RecapCard(storyId: String, chapterNumber: Int) {
         Text(
             "PREVIOUSLY",
             color = KathaTheme.textTertiary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold
+            fontSize = KathaTypography.Meta.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight
         )
         Text(
             recap,
-            style = serifItalic(15),
+            style = KathaTypography.Recap,
             color = KathaTheme.textSecondary
         )
     }
@@ -337,13 +337,13 @@ private fun ChapterReviewStep(
         Text(
             "Ready to spin Chapter ${state.continueWizardChapterNumber}?",
             color = KathaTheme.textPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = KathaTypography.Title2.fontSize,
+            fontWeight = KathaTypography.Title1.fontWeight
         )
         Text(
             "We'll keep the voice, characters, and world consistent.",
             color = KathaTheme.textSecondary,
-            fontSize = 14.sp
+            fontSize = KathaTypography.Body.fontSize
         )
 
         // Summary card
@@ -360,14 +360,14 @@ private fun ChapterReviewStep(
                 Text(
                     "CHAPTER ${state.continueWizardChapterNumber} OF ${state.continueWizardStoryTitle.uppercase()}",
                     color = KathaTheme.textTertiary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = KathaTypography.Meta.fontSize,
+                    fontWeight = KathaTypography.BodyStrong.fontWeight
                 )
                 Text(
                     state.continueWizardStoryTitle,
                     color = KathaTheme.accent,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = KathaTypography.Body.fontSize,
+                    fontWeight = KathaTypography.BodyStrong.fontWeight
                 )
             }
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(KathaTheme.border))
@@ -376,12 +376,12 @@ private fun ChapterReviewStep(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Genre", color = KathaTheme.textSecondary, fontSize = 14.sp)
+                Text("Genre", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
                 Text(
                     state.continueWizardGenre?.displayName ?: "—",
                     color = KathaTheme.textPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = KathaTypography.Body.fontSize,
+                    fontWeight = KathaTypography.BodyStrong.fontWeight
                 )
             }
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(KathaTheme.border))
@@ -390,14 +390,14 @@ private fun ChapterReviewStep(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Language", color = KathaTheme.textSecondary, fontSize = 14.sp)
+                Text("Language", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Lock, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(10.dp))
                     Text(
                         state.continueWizardLanguage.displayName,
                         color = KathaTheme.textPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontSize = KathaTypography.Body.fontSize,
+                        fontWeight = KathaTypography.BodyStrong.fontWeight
                     )
                 }
             }
@@ -408,19 +408,19 @@ private fun ChapterReviewStep(
                 verticalAlignment = Alignment.Top
             ) {
                 Column {
-                    Text("Direction", color = KathaTheme.textSecondary, fontSize = 14.sp)
+                    Text("Direction", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
                     if (state.continueWizardDirection.isEmpty()) {
                         Text(
                             "Surprise me — let the AI decide",
                             color = KathaTheme.textSecondary,
-                            fontSize = 14.sp,
+                            fontSize = KathaTypography.Body.fontSize,
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                         )
                     } else {
                         Text(
                             state.continueWizardDirection,
                             color = KathaTheme.textPrimary,
-                            fontSize = 14.sp,
+                            fontSize = KathaTypography.Body.fontSize,
                             maxLines = 3
                         )
                     }
@@ -428,8 +428,8 @@ private fun ChapterReviewStep(
                 Text(
                     "Change",
                     color = KathaTheme.accent,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = KathaTypography.Body.fontSize,
+                    fontWeight = KathaTypography.BodyStrong.fontWeight,
                     modifier = Modifier.clickable { onMoveStep(ContinueWizardStep.DIRECTION) }
                 )
             }
@@ -449,7 +449,7 @@ private fun ChapterReviewStep(
                 Text(
                     "Chapter ${state.continueWizardChapterNumber} of $planned planned. ${maxOf(0, remaining)} more after this one.",
                     color = KathaTheme.textSecondary,
-                    fontSize = 14.sp,
+                    fontSize = KathaTypography.Body.fontSize,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -467,7 +467,7 @@ private fun ChapterReviewStep(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Outlined.ErrorOutline, null, tint = KathaTheme.error)
-                Text(error, color = KathaTheme.error, fontSize = 14.sp)
+                Text(error, color = KathaTheme.error, fontSize = KathaTypography.Body.fontSize)
             }
         }
     }
@@ -496,7 +496,7 @@ private fun ContinueWizardBottomBar(
             Text(
                 "You have ${state.currentUser?.credits ?: 0} credits",
                 color = KathaTheme.textSecondary,
-                fontSize = 12.sp,
+                fontSize = KathaTypography.Meta.fontSize,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
             )
@@ -510,8 +510,8 @@ private fun ContinueWizardBottomBar(
         Text(
             if (state.continueWizardStep == ContinueWizardStep.DIRECTION) "Cancel" else "Back",
             color = KathaTheme.textSecondary,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = KathaTypography.Body.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight,
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
@@ -549,8 +549,8 @@ fun ChapterGetIdeasSheet(
             .padding(KathaTheme.Spacing.l),
         verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.l)
     ) {
-        Text("Chapter starters", color = KathaTheme.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("Tap any to use it as your direction.", color = KathaTheme.textSecondary, fontSize = 14.sp)
+        Text("Chapter starters", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
+        Text("Tap any to use it as your direction.", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
         starters.forEach { starter ->
             Box(
                 modifier = Modifier
@@ -561,7 +561,7 @@ fun ChapterGetIdeasSheet(
                     .clickable { onPick(starter) }
                     .padding(KathaTheme.Spacing.m)
             ) {
-                Text(starter, color = KathaTheme.textPrimary, fontSize = 15.sp)
+                Text(starter, color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize)
             }
         }
     }
@@ -586,11 +586,11 @@ fun DiscardChapterModal(onDiscard: () -> Unit, onKeep: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(Icons.Outlined.Delete, null, tint = KathaTheme.error, modifier = Modifier.size(40.dp))
-            Text("Discard this chapter draft?", color = KathaTheme.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("Discard this chapter draft?", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
             Text(
                 "You'll lose what you've typed and return to the story.",
                 color = KathaTheme.textSecondary,
-                fontSize = 14.sp,
+                fontSize = KathaTypography.Body.fontSize,
                 textAlign = TextAlign.Center
             )
             DestructiveCTA(title = "Discard draft", onClick = onDiscard)
@@ -640,22 +640,22 @@ fun PublishConfirmationModal(
             Text(
                 "Publish Chapter ${state.continueWizardChapterNumber}?",
                 color = KathaTheme.textPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = KathaTypography.Title2.fontSize,
+                fontWeight = KathaTypography.Title1.fontWeight
             )
 
             if (state.continueWizardFollowerCount > 0) {
                 Text(
                     "${state.continueWizardFollowerCount} followers will be notified this chapter is live.",
                     color = KathaTheme.textSecondary,
-                    fontSize = 14.sp,
+                    fontSize = KathaTypography.Body.fontSize,
                     textAlign = TextAlign.Center
                 )
             } else {
                 Text(
                     "This chapter will be visible to everyone on Katha.",
                     color = KathaTheme.textSecondary,
-                    fontSize = 14.sp,
+                    fontSize = KathaTypography.Body.fontSize,
                     textAlign = TextAlign.Center
                 )
             }
@@ -663,7 +663,7 @@ fun PublishConfirmationModal(
             Text(
                 "Published chapters can't be edited in the current version.",
                 color = KathaTheme.textTertiary,
-                fontSize = 12.sp,
+                fontSize = KathaTypography.Meta.fontSize,
                 textAlign = TextAlign.Center
             )
 
@@ -714,11 +714,11 @@ fun DeleteDraftModal(
                 )
             }
 
-            Text("Delete this draft?", color = KathaTheme.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("Delete this draft?", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
             Text(
                 "This can't be undone. Your credit was already spent.",
                 color = KathaTheme.textSecondary,
-                fontSize = 14.sp,
+                fontSize = KathaTypography.Body.fontSize,
                 textAlign = TextAlign.Center
             )
 
@@ -817,19 +817,19 @@ fun ChapterGenerationScreen(
             }
 
             if (state.lastGeneratedChapter != null) {
-                Text("Chapter ${state.continueWizardChapterNumber} is ready!", color = KathaTheme.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Chapter ${state.continueWizardChapterNumber} is ready!", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
                 PrimaryCTA(title = "Preview chapter", onClick = onPreview)
                 SecondaryCTA(title = "Publish now", onClick = onPublishNow)
                 Text(
                     "Save as draft",
                     color = KathaTheme.textSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = KathaTypography.Body.fontSize,
+                    fontWeight = KathaTypography.BodyStrong.fontWeight,
                     modifier = Modifier.clickable { onSaveDraft() }
                 )
             } else {
-                Text(statuses.getOrElse(statusIndex) { statuses.last() }, color = KathaTheme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("This usually takes 10–14 seconds", color = KathaTheme.textSecondary, fontSize = 14.sp)
+                Text(statuses.getOrElse(statusIndex) { statuses.last() }, color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
+                Text("This usually takes 10–14 seconds", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
             }
         }
     }
@@ -866,8 +866,8 @@ fun NewChapterBanner(
             if (count == 1) "Chapter ${first.chapterNumber} of '${first.storyTitle}' is here"
             else "$count new chapters from stories you follow",
             color = KathaTheme.textPrimary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = KathaTypography.Body.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight,
             modifier = Modifier.weight(1f),
             maxLines = 2
         )
@@ -905,7 +905,7 @@ fun NewChaptersHomeSection(
             .padding(horizontal = KathaTheme.Spacing.l),
         verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
     ) {
-        Text("New chapters ✨", color = KathaTheme.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text("New chapters ✨", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
 
         LazyRow(
             contentPadding = PaddingValues(horizontal = KathaTheme.Spacing.l),
@@ -957,14 +957,14 @@ private fun NewChapterCard(
                     .background(KathaTheme.accent)
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text("NEW", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("NEW", color = Color.White, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
             }
             // Title
             Text(
                 notification.storyTitle,
                 color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = KathaTypography.Meta.fontSize,
+                fontWeight = KathaTypography.BodyStrong.fontWeight,
                 maxLines = 2,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -974,8 +974,8 @@ private fun NewChapterCard(
         Text(
             "Chapter ${notification.chapterNumber} just dropped",
             color = KathaTheme.accent,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = KathaTypography.Meta.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight,
             maxLines = 1
         )
     }
@@ -1017,8 +1017,8 @@ fun SeriesProgressBadge(
             Text(
                 badgeText,
                 color = if (useAccent) KathaTheme.accent else KathaTheme.textTertiary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = KathaTypography.Meta.fontSize,
+                fontWeight = KathaTypography.BodyStrong.fontWeight
             )
         }
     }

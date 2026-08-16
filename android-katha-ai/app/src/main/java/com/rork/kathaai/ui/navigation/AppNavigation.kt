@@ -86,7 +86,6 @@ import com.rork.kathaai.ui.screens.AdRewardToastView
 import com.rork.kathaai.ui.screens.StoryAnalyticsScreen
 import com.rork.kathaai.ui.screens.AuthorDashboardScreen
 import com.rork.kathaai.ui.screens.CelebrationBanner
-import com.rork.kathaai.ui.screens.AppLanguageSelectionSheet
 import com.rork.kathaai.ui.screens.ReadingLevelSheet
 import com.rork.kathaai.ui.screens.ParentalControlsScreen
 import com.rork.kathaai.ui.screens.PinSetupScreen
@@ -499,9 +498,6 @@ fun AppNavigation(initialDeepLink: Uri? = null) {
             }
         }
 
-        if (state.showUiLanguageSheet) {
-            AppLanguageSelectionSheet(state = state, viewModel = viewModel)
-        }
         if (state.showReadingLevelSheet) {
             ReadingLevelSheet(state = state, viewModel = viewModel)
         }
@@ -658,7 +654,6 @@ private fun MainScreen(
                 onOpenSubscriptionManagement = { viewModel.openSubscriptionManagement() },
                 onOpenDashboard = { viewModel.openDashboard() },
                 onDevTap = { viewModel.registerDevTap() },
-                onOpenLanguage = { viewModel.showUiLanguageSheet() },
                 onOpenReadingLevel = { viewModel.showReadingLevelSheet() },
                 onOpenParentalControls = { viewModel.openParentalControls() },
                 onOpenStreak = { viewModel.openStreakScreen() },

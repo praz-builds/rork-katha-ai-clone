@@ -45,7 +45,7 @@ import com.rork.kathaai.ui.components.SectionHeader
 import com.rork.kathaai.ui.components.StoryCard
 import com.rork.kathaai.ui.components.StoryCardSkeleton
 import com.rork.kathaai.ui.theme.KathaTheme
-import com.rork.kathaai.ui.theme.serif
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 import kotlinx.coroutines.delay
@@ -93,7 +93,7 @@ fun HomeScreen(
                 ) {
                     Text(
                         text = "Katha",
-                        style = serif(28, FontWeight.Bold),
+                        style = KathaTypography.Wordmark,
                         color = KathaTheme.textPrimary
                     )
                     Spacer(Modifier.weight(1f))
@@ -114,7 +114,7 @@ fun HomeScreen(
                                 if (state.isPremium) {
                                     Icon(Icons.Outlined.WorkspacePremium, null, tint = KathaTheme.premium, modifier = Modifier.size(10.dp))
                                 }
-                                Text("${user.credits}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = KathaTheme.textPrimary)
+                                Text("${user.credits}", style = KathaTypography.BodyStrong, color = KathaTheme.textPrimary)
                             }
                             GeneratedAvatar(
                                 user.username, user.displayName, 36.dp,

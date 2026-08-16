@@ -43,7 +43,7 @@ import com.rork.kathaai.ui.components.PrimaryCTA
 import com.rork.kathaai.ui.components.SafeBottomSpacer
 import com.rork.kathaai.ui.components.TextLink
 import com.rork.kathaai.ui.theme.KathaTheme
-import com.rork.kathaai.ui.theme.serif
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 
@@ -93,10 +93,10 @@ fun SubscriptionPaywall(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Katha", style = serif(24, FontWeight.Bold), color = KathaTheme.accent)
-                Text("PREMIUM", style = serif(32, FontWeight.Bold), color = KathaTheme.premium)
-                Text("Unlock unlimited storytelling.", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = KathaTheme.textPrimary, textAlign = TextAlign.Center)
-                Text("For readers, writers, and everyone in between.", fontSize = 15.sp, color = KathaTheme.textSecondary, textAlign = TextAlign.Center)
+                Text("Katha", style = KathaTypography.Wordmark, color = KathaTheme.accent)
+                Text("PREMIUM", style = KathaTypography.PremiumWordmark, color = KathaTheme.premium)
+                Text("Unlock unlimited storytelling.", fontSize = KathaTypography.Title1.fontSize, fontWeight = KathaTypography.Title1.fontWeight, color = KathaTheme.textPrimary, textAlign = TextAlign.Center)
+                Text("For readers, writers, and everyone in between.", fontSize = KathaTypography.Body.fontSize, color = KathaTheme.textSecondary, textAlign = TextAlign.Center)
             }
 
             // Features
@@ -113,8 +113,8 @@ fun SubscriptionPaywall(
                             Icon(Icons.Outlined.Check, null, tint = Color.White, modifier = Modifier.size(12.dp))
                         }
                         Column {
-                            Text(feature.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = KathaTheme.textPrimary)
-                            Text(feature.subtitle, fontSize = 12.sp, color = KathaTheme.textSecondary)
+                            Text(feature.title, fontSize = KathaTypography.Body.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight, color = KathaTheme.textPrimary)
+                            Text(feature.subtitle, fontSize = KathaTypography.Meta.fontSize, color = KathaTheme.textSecondary)
                         }
                     }
                 }
@@ -153,18 +153,18 @@ fun SubscriptionPaywall(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Cancel anytime in Settings. Renews automatically unless cancelled 24 hours before period end. Payment charged to your Google account.", fontSize = 11.sp, color = KathaTheme.textTertiary, textAlign = TextAlign.Center)
+                Text("Cancel anytime in Settings. Renews automatically unless cancelled 24 hours before period end. Payment charged to your Google account.", fontSize = KathaTypography.Meta.fontSize, color = KathaTheme.textTertiary, textAlign = TextAlign.Center)
                 if (state.isRestoringPurchases) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(12.dp), color = KathaTheme.accent, strokeWidth = 1.5.dp)
-                        Text("Restoring…", fontSize = 13.sp, color = KathaTheme.accent)
+                        Text("Restoring…", fontSize = KathaTypography.Caption.fontSize, color = KathaTheme.accent)
                     }
                 } else {
                     TextLink(title = "Restore purchases") { viewModel.restorePurchases() }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                     TextLink(title = "Terms") { viewModel.showToast("Terms: katha.ai/terms") }
-                    Text(" · ", fontSize = 13.sp, color = KathaTheme.textTertiary)
+                    Text(" · ", fontSize = KathaTypography.Caption.fontSize, color = KathaTheme.textTertiary)
                     TextLink(title = "Privacy") { viewModel.showToast("Privacy: katha.ai/privacy") }
                 }
             }
@@ -195,9 +195,9 @@ private fun PlanTile(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(plan.displayName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isFeatured && isSelected) KathaTheme.premium else KathaTheme.textSecondary)
-            Text(plan.price, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = KathaTheme.textPrimary)
-            Text(plan.perMonth, fontSize = 11.sp, color = KathaTheme.textTertiary)
+            Text(plan.displayName, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.Title1.fontWeight, color = if (isFeatured && isSelected) KathaTheme.premium else KathaTheme.textSecondary)
+            Text(plan.price, fontSize = KathaTypography.Title1.fontSize, fontWeight = KathaTypography.Title1.fontWeight, color = KathaTheme.textPrimary)
+            Text(plan.perMonth, fontSize = KathaTypography.Meta.fontSize, color = KathaTheme.textTertiary)
         }
         if (isFeatured) {
             Box(
@@ -208,7 +208,7 @@ private fun PlanTile(
                     .background(KathaTheme.premium)
                     .padding(horizontal = 6.dp, vertical = 3.dp)
             ) {
-                Text("SAVE 40%", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("SAVE 40%", fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.Title1.fontWeight, color = Color.White)
             }
         }
         if (isSelected) {

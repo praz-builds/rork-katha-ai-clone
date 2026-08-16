@@ -25,7 +25,7 @@ struct MockAdScreen: View {
                 HStack {
                     Spacer()
                     Text("AD")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(KathaFont.Meta)
                         .foregroundStyle(Color.white.opacity(0.6))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -42,7 +42,7 @@ struct MockAdScreen: View {
                     RoundedRectangle(cornerRadius: KathaTheme.Radius.l)
                         .fill(
                             LinearGradient(
-                                colors: [Color(hex: 0x4A78C2), Color(hex: 0xA05DE8)],
+                                colors: [KathaTheme.info, KathaTheme.premium],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -51,19 +51,19 @@ struct MockAdScreen: View {
 
                     VStack(spacing: KathaTheme.Spacing.s) {
                         Text("This is a simulated ad")
-                            .font(.system(size: 24, weight: .bold))
+                            .font(KathaFont.Title1)
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
 
                         Text("Watch to earn 1 credit")
-                            .font(.system(size: 15))
+                            .font(KathaFont.Body)
                             .foregroundStyle(.white.opacity(0.8))
                     }
                     .padding(KathaTheme.Spacing.l)
                 }
 
                 Text("PROMOTED BY KATHA")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(.white.opacity(0.5))
                     .tracking(1)
                     .padding(.top, KathaTheme.Spacing.m)
@@ -92,12 +92,12 @@ struct MockAdScreen: View {
 
                             if canSkip {
                                 Image(systemName: "play.fill")
-                                    .font(.system(size: 20))
+                                    .font(KathaFont.Title2)
                                     .foregroundStyle(.white)
                                     .scaleEffect(skipBounce ? 1.05 : 1.0)
                             } else {
                                 Text("\(countdown)")
-                                    .font(.system(size: 18, weight: .bold))
+                                    .font(KathaFont.Title2)
                                     .foregroundStyle(.white)
                             }
                         }
@@ -106,7 +106,7 @@ struct MockAdScreen: View {
                     .disabled(!canSkip)
 
                     Text(canSkip ? "Skip Ad ▸" : "You can close this ad in \(countdown)s")
-                        .font(.system(size: 13, weight: canSkip ? .semibold : .regular))
+                        .font(KathaFont.Caption)
                         .foregroundStyle(.white.opacity(0.8))
                 }
                 .padding(.bottom, KathaTheme.Spacing.huge)
@@ -160,15 +160,15 @@ struct AdRewardToastView: View {
     var body: some View {
         HStack(spacing: KathaTheme.Spacing.m) {
             Image(systemName: "sparkles")
-                .font(.system(size: 22))
+                .font(KathaFont.Title1)
                 .foregroundStyle(KathaTheme.accent)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("+1 credit earned ✨")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(KathaFont.BodyStrong)
                     .foregroundStyle(KathaTheme.textPrimary)
                 Text("Balance: \(appState.credits)")
-                    .font(.system(size: 11))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(KathaTheme.textSecondary)
             }
 

@@ -61,30 +61,7 @@ enum Genre: String, CaseIterable, Identifiable, Hashable {
     }
 
     var coverColors: [Color] {
-        switch self {
-        case .fiction:      [Color(hex: 0xE89F3D), Color(hex: 0xC8842A), Color(hex: 0x8B5A2A)]
-        case .mystery:      [Color(hex: 0x2C3E50), Color(hex: 0x1A2A36), Color(hex: 0x0D1620)]
-        case .romance:      [Color(hex: 0xC45B7B), Color(hex: 0x8B2D4B), Color(hex: 0x5A1D33)]
-        case .scifi:        [Color(hex: 0x4A3A8E), Color(hex: 0x2D1A5A), Color(hex: 0x1A0D3A)]
-        case .fantasy:      [Color(hex: 0x5B8A5B), Color(hex: 0x3A6B3A), Color(hex: 0x1A4A2A)]
-        case .horror:       [Color(hex: 0x5A1D1D), Color(hex: 0x3A0D0D), Color(hex: 0x1A0505)]
-        case .poetry:       [Color(hex: 0x8E7A9E), Color(hex: 0x6B5B8E), Color(hex: 0x4A3A6B)]
-        case .literary:     [Color(hex: 0x5A4A3A), Color(hex: 0x3A2D1D), Color(hex: 0x1A1205)]
-        case .adventure:    [Color(hex: 0xE87B4A), Color(hex: 0xC04A2D), Color(hex: 0x8B2A1A)]
-        case .folklore:     [Color(hex: 0xB8A03D), Color(hex: 0x8E7A2A), Color(hex: 0x5A4D1A)]
-        case .thriller:     [Color(hex: 0x3A3A3A), Color(hex: 0x1A1A1A), Color(hex: 0x0D0D0D)]
-        case .sliceOfLife:  [Color(hex: 0xD4A574), Color(hex: 0xA67B52), Color(hex: 0x6B4F35)]
-        case .historical:   [Color(hex: 0x8B7355), Color(hex: 0x6B5235), Color(hex: 0x3A2D1A)]
-        case .contemporary: [Color(hex: 0x4A9A9A), Color(hex: 0x2D6B6B), Color(hex: 0x1A4A4A)]
-        case .lgbtq:        [Color(hex: 0xE84A7B), Color(hex: 0xC42D5B), Color(hex: 0x8B1D3D)]
-        case .comedy:       [Color(hex: 0xF0C04A), Color(hex: 0xD4A02D), Color(hex: 0x8B7020)]
-        case .drama:        [Color(hex: 0x6B4A6B), Color(hex: 0x4A2D4A), Color(hex: 0x2A1A2A)]
-        case .mythology:    [Color(hex: 0xB85A2D), Color(hex: 0x8B3A1A), Color(hex: 0x5A1D0D)]
-        case .spirituality: [Color(hex: 0x6B8E6B), Color(hex: 0x4A6B4A), Color(hex: 0x2A4A2A)]
-        case .motivational: [Color(hex: 0xE8B83D), Color(hex: 0xC8982A), Color(hex: 0x8B6B1A)]
-        case .kids:         [Color(hex: 0xFFB347), Color(hex: 0xFF8C42), Color(hex: 0xCC6A2D)]
-        case .erotica:      [Color(hex: 0x8B3A58), Color(hex: 0x5A1D38), Color(hex: 0x2A0D1D)]
-        }
+        KathaTheme.coverColors(for: self)
     }
 
     var icon: String {
@@ -225,11 +202,6 @@ enum ReadingLevel: String, CaseIterable, Codable, Hashable, Identifiable {
         case .advanced: "books.vertical"
         }
     }
-}
-
-enum AppUILanguage: String, Codable, CaseIterable {
-    case english
-    case hindi
 }
 
 enum PinSetupMode: String {

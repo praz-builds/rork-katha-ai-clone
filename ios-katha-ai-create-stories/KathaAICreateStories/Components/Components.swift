@@ -240,7 +240,7 @@ struct GeneratedAvatar: View {
                     )
                 )
             Text(initial)
-                .font(KathaFont.serifBold(size * 0.42))
+                .font(KathaFont.avatarInitial(size: size * 0.42))
                 .foregroundStyle(.white)
         }
         .frame(width: size, height: size)
@@ -278,7 +278,7 @@ struct StoryCoverView: View {
         }
         .overlay(alignment: .bottomLeading) {
             Text(story.title)
-                .font(KathaFont.serifBold(titleSize))
+                .font(KathaFont.Title2)
                 .foregroundStyle(.white)
                 .padding(14)
                 .lineLimit(3)

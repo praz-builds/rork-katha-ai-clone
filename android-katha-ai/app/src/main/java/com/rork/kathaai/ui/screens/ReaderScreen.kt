@@ -67,8 +67,7 @@ import com.rork.kathaai.ui.components.StoryCover
 import com.rork.kathaai.ui.components.formatCount
 import com.rork.kathaai.ui.components.timeAgo
 import com.rork.kathaai.ui.theme.KathaTheme
-import com.rork.kathaai.ui.theme.serif
-import com.rork.kathaai.ui.theme.serifItalic
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 import com.rork.kathaai.viewmodel.recordStreakActivity
@@ -158,8 +157,8 @@ fun ReaderScreen(
                         Text(
                             "This chapter is a draft. Not visible to readers.",
                             color = KathaTheme.textPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontSize = KathaTypography.Body.fontSize,
+                            fontWeight = KathaTypography.BodyStrong.fontWeight
                         )
                     }
                 }
@@ -170,7 +169,7 @@ fun ReaderScreen(
             // Metadata with series progress badge
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)) {
-                    Text(story.title, style = serif(26, FontWeight.Bold), color = textColor)
+                    Text(story.title, style = KathaTypography.ReaderStoryTitle, color = textColor)
                     Text(
                         if (story.isSeries) {
                             "${story.genre.displayName}  ·  Chapter ${currentChapterIndex + 1} of ${story.chapters.size}  ·  ${timeAgo(story.publishedOffset)}"
@@ -178,9 +177,9 @@ fun ReaderScreen(
                             "${story.genre.displayName}  ·  ${story.readingTimeMinutes} min read  ·  ${timeAgo(story.publishedOffset)}"
                         },
                         color = textSecondary,
-                        fontSize = 13.sp
+                        style = KathaTypography.Meta
                     )
-                    Text(story.synopsis, style = serifItalic(15), color = textSecondary)
+                    Text(story.synopsis, style = KathaTypography.Body, color = textSecondary)
 
                     if (story.isSeries) {
                         SeriesProgressBadge(story = story, isAuthor = isCurrentUserAuthor)
@@ -206,10 +205,10 @@ fun ReaderScreen(
                             Text(
                                 user.displayName.ifEmpty { user.username },
                                 color = textColor,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontSize = KathaTypography.Body.fontSize,
+                                fontWeight = KathaTypography.BodyStrong.fontWeight
                             )
-                            Text("@${user.username} · You", color = textSecondary, fontSize = 12.sp)
+                            Text("@${user.username} · You", color = textSecondary, fontSize = KathaTypography.Meta.fontSize)
                         }
                     }
                 }
@@ -237,13 +236,13 @@ fun ReaderScreen(
                                     Text(
                                         author.displayName,
                                         color = textColor,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontSize = KathaTypography.Body.fontSize,
+                                        fontWeight = KathaTypography.BodyStrong.fontWeight
                                     )
                                     Text(
                                         "@${author.username}",
                                         color = textSecondary,
-                                        fontSize = 12.sp
+                                        fontSize = KathaTypography.Meta.fontSize
                                     )
                                 }
                             }
@@ -262,7 +261,7 @@ fun ReaderScreen(
                     item {
                         Text(
                             chapter.title,
-                            style = serif(22, FontWeight.Bold),
+                            style = KathaTypography.ReaderChapterTitle,
                             color = textColor,
                             modifier = Modifier.padding(top = KathaTheme.Spacing.m)
                         )
@@ -270,7 +269,7 @@ fun ReaderScreen(
                     items(chapter.paragraphs) { para ->
                         Text(
                             para,
-                            style = serif(17),
+                            style = KathaTypography.readerBody(18),
                             color = textColor,
                             lineHeight = 28.sp
                         )
@@ -306,7 +305,7 @@ fun ReaderScreen(
                                 Text(
                                     "No comments yet. Be the first to share your thoughts.",
                                     color = textSecondary,
-                                    fontSize = 14.sp
+                                    fontSize = KathaTypography.Body.fontSize
                                 )
                             } else {
                                 val comments = state.commentsFor(story.id)
@@ -331,15 +330,15 @@ fun ReaderScreen(
                                                 Text(
                                                     comment.displayName,
                                                     color = textColor,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.SemiBold
+                                                    style = KathaTypography.Meta,
+                                                    fontWeight = KathaTypography.BodyStrong.fontWeight
                                                 )
                                                 if (comment.isVerified) {
                                                     Icon(Icons.Outlined.Verified, null, tint = KathaTheme.accent, modifier = Modifier.size(9.dp))
                                                 }
-                                                Text(comment.timeLabel, color = KathaTheme.textTertiary, fontSize = 11.sp)
+                                                Text(comment.timeLabel, color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize)
                                             }
-                                            Text(comment.text, color = textColor, fontSize = 13.sp, maxLines = 2)
+                                            Text(comment.text, color = textColor, style = KathaTypography.Meta, maxLines = 2)
                                         }
                                     }
                                 }
@@ -347,8 +346,8 @@ fun ReaderScreen(
                                     Text(
                                         "View all $commentCount comments",
                                         color = KathaTheme.accent,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        style = KathaTypography.Meta,
+                                        fontWeight = KathaTypography.BodyStrong.fontWeight,
                                         modifier = Modifier.clickable { onOpenComments(story.id) }
                                     )
                                 }
@@ -364,7 +363,7 @@ fun ReaderScreen(
                     item {
                         Text(
                             firstChapter.title,
-                            style = serif(22, FontWeight.Bold),
+                            style = KathaTypography.ReaderChapterTitle,
                             color = textColor,
                             modifier = Modifier.padding(top = KathaTheme.Spacing.m)
                         )
@@ -372,7 +371,7 @@ fun ReaderScreen(
                     items(firstChapter.paragraphs.take(cutoff)) { para ->
                         Text(
                             para,
-                            style = serif(17),
+                            style = KathaTypography.readerBody(18),
                             color = textColor,
                             lineHeight = 28.sp
                         )
@@ -404,13 +403,13 @@ fun ReaderScreen(
                             Text(
                                 "Keep reading",
                                 color = KathaTheme.textPrimary,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontSize = KathaTypography.Title2.fontSize,
+                                fontWeight = KathaTypography.BodyStrong.fontWeight
                             )
                             Text(
                                 "Sign in to continue this story and save your progress.",
                                 color = KathaTheme.textSecondary,
-                                fontSize = 14.sp,
+                                fontSize = KathaTypography.Body.fontSize,
                                 textAlign = TextAlign.Center
                             )
                             PrimaryCTA(
@@ -446,7 +445,7 @@ fun ReaderScreen(
                         .background(KathaTheme.accent)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("DRAFT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("DRAFT", color = Color.White, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
                 }
             }
 
@@ -561,7 +560,7 @@ fun ReaderScreen(
                     Text(
                         formatCount(state.storyLikeCount(story.id, story.likes)),
                         color = if (isLiked) KathaTheme.accent else textSecondary,
-                        fontSize = 14.sp,
+                        fontSize = KathaTypography.Body.fontSize,
                         fontWeight = if (isLiked) FontWeight.SemiBold else FontWeight.Normal
                     )
                 }
@@ -580,7 +579,7 @@ fun ReaderScreen(
                         Text(
                             formatCount(state.commentCount(story.id)),
                             color = textSecondary,
-                            fontSize = 14.sp
+                            fontSize = KathaTypography.Body.fontSize
                         )
                     }
                 }
@@ -598,7 +597,7 @@ fun ReaderScreen(
                     Text(
                         formatCount(story.bookmarks + if (isBookmarked) 1 else 0),
                         color = if (isBookmarked) KathaTheme.accent else textSecondary,
-                        fontSize = 14.sp
+                        fontSize = KathaTypography.Body.fontSize
                     )
                 }
                 if (!state.kidsMode || state.kidsShareEnabled) {
@@ -623,7 +622,7 @@ fun ReaderScreen(
                         tint = KathaTheme.textTertiary,
                         modifier = Modifier.size(18.dp)
                     )
-                    Text(formatCount(story.views), color = KathaTheme.textTertiary, fontSize = 14.sp)
+                    Text(formatCount(story.views), color = KathaTheme.textTertiary, fontSize = KathaTypography.Body.fontSize)
                 }
             }
         }
@@ -690,21 +689,21 @@ private fun AuthorEndOfChapter(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(Icons.Outlined.FavoriteBorder, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(16.dp))
-                Text(formatCount(story.likes), color = KathaTheme.textSecondary, fontSize = 13.sp)
+                Text(formatCount(story.likes), color = KathaTheme.textSecondary, style = KathaTypography.Meta)
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(Icons.Outlined.BookmarkBorder, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(16.dp))
-                Text(formatCount(story.bookmarks), color = KathaTheme.textSecondary, fontSize = 13.sp)
+                Text(formatCount(story.bookmarks), color = KathaTheme.textSecondary, style = KathaTypography.Meta)
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(Icons.Outlined.RemoveRedEye, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
-                Text(formatCount(story.views), color = KathaTheme.textTertiary, fontSize = 13.sp)
+                Text(formatCount(story.views), color = KathaTheme.textTertiary, style = KathaTypography.Meta)
             }
             Spacer(Modifier.weight(1f))
         }
@@ -727,7 +726,7 @@ private fun AuthorEndOfChapter(
                 Text(
                     annotatedString,
                     color = KathaTheme.textPrimary,
-                    fontSize = 14.sp
+                    fontSize = KathaTypography.Body.fontSize
                 )
             }
         }
@@ -754,15 +753,15 @@ private fun DraftEndOfChapter(
         Text(
             "Preview complete.",
             color = KathaTheme.textPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = KathaTypography.Title2.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
         )
         Text(
             "Publish when you're ready — followers will be notified.",
             color = KathaTheme.textSecondary,
-            fontSize = 14.sp,
+            fontSize = KathaTypography.Body.fontSize,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
@@ -776,8 +775,8 @@ private fun DraftEndOfChapter(
         Text(
             "Continue writing without publishing yet",
             color = KathaTheme.accent,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = KathaTypography.Body.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight,
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onContinue() },
@@ -831,8 +830,8 @@ private fun ReaderEndOfChapter(
             Text(
                 followLabel,
                 color = if (isFollowing) KathaTheme.accent else KathaTheme.textPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = KathaTypography.Body.fontSize,
+                fontWeight = KathaTypography.BodyStrong.fontWeight
             )
         }
 

@@ -25,7 +25,6 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.NoAccounts
@@ -59,6 +58,7 @@ import com.rork.kathaai.ui.components.SafeBottomSpacer
 import com.rork.kathaai.ui.components.TextLink
 import com.rork.kathaai.ui.components.formatCount
 import com.rork.kathaai.ui.theme.KathaTheme
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.KathaUiState
 
 @Composable
@@ -77,7 +77,6 @@ fun SettingsScreen(
     onOpenSubscriptionManagement: () -> Unit = {},
     onOpenDashboard: () -> Unit = {},
     onDevTap: () -> Unit = {},
-    onOpenLanguage: () -> Unit = {},
     onOpenReadingLevel: () -> Unit = {},
     onOpenParentalControls: () -> Unit = {},
     onOpenStreak: () -> Unit = {},
@@ -103,8 +102,8 @@ fun SettingsScreen(
                 Text(
                     "Settings",
                     color = KathaTheme.textPrimary,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = KathaTypography.Title1.fontSize,
+                    fontWeight = KathaTypography.Title1.fontWeight
                 )
             }
 
@@ -132,19 +131,19 @@ fun SettingsScreen(
                                 Text(
                                     user?.displayName.orEmpty(),
                                     color = KathaTheme.textPrimary,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontSize = KathaTypography.Title2.fontSize,
+                                    fontWeight = KathaTypography.BodyStrong.fontWeight
                                 )
                                 Text(
                                     "@${user?.username.orEmpty()}",
                                     color = KathaTheme.textSecondary,
-                                    fontSize = 14.sp
+                                    fontSize = KathaTypography.Body.fontSize
                                 )
                             }
                         }
 
                         if (!user?.bio.isNullOrEmpty()) {
-                            Text(user.bio, color = KathaTheme.textSecondary, fontSize = 14.sp)
+                            Text(user.bio, color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xxl)) {
@@ -188,7 +187,7 @@ fun SettingsScreen(
                             tint = KathaTheme.textSecondary,
                             modifier = Modifier.size(20.dp)
                         )
-                        Text("Sepia reader", color = KathaTheme.textPrimary, fontSize = 15.sp)
+                        Text("Sepia reader", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize)
                         Spacer(Modifier.weight(1f))
                         Switch(
                             checked = state.readerSepia,
@@ -213,7 +212,6 @@ fun SettingsScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
                     SettingsSectionLabel("App")
-                    SettingsRow(title = "Language", value = "English", icon = Icons.Outlined.Language, onClick = onOpenLanguage)
                     SettingsRow(title = "Parental controls", value = if (state.kidsMode) "On" else "Off", icon = Icons.Outlined.Security, onClick = onOpenParentalControls)
                     SettingsRow(title = "Notifications", value = "Manage", icon = Icons.Outlined.Notifications, onClick = onOpenNotifications)
                     SettingsRow(title = "Storage", value = if (state.offlineStoryRecords.isEmpty()) "Empty" else "${state.offlineStoryRecords.size} saved", icon = Icons.Outlined.Storage, onClick = onOpenStorage)
@@ -239,8 +237,8 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                         ) {
                             Icon(Icons.Outlined.Insights, null, tint = KathaTheme.accent, modifier = Modifier.size(20.dp))
-                            Text("Your journey", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                            Text("${state.currentStreak} day streak", color = KathaTheme.accent, fontSize = 12.sp)
+                            Text("Your journey", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, modifier = Modifier.weight(1f))
+                            Text("${state.currentStreak} day streak", color = KathaTheme.accent, fontSize = KathaTypography.Meta.fontSize)
                             Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(12.dp))
                         }
                         HorizontalDivider(color = KathaTheme.border)
@@ -253,7 +251,7 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                         ) {
                             Icon(Icons.Outlined.CardGiftcard, null, tint = KathaTheme.accent, modifier = Modifier.size(20.dp))
-                            Text("Invite friends", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                            Text("Invite friends", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, modifier = Modifier.weight(1f))
                             Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(12.dp))
                         }
                         HorizontalDivider(color = KathaTheme.border)
@@ -266,8 +264,8 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                         ) {
                             Icon(Icons.Outlined.CreditCard, null, tint = KathaTheme.accent, modifier = Modifier.size(20.dp))
-                            Text("Credits", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                            Text("${state.currentUser?.credits ?: 0}", color = KathaTheme.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Credits", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, modifier = Modifier.weight(1f))
+                            Text("${state.currentUser?.credits ?: 0}", color = KathaTheme.accent, fontSize = KathaTypography.Body.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
                             Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(12.dp))
                         }
                         HorizontalDivider(color = KathaTheme.border)
@@ -280,8 +278,8 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                         ) {
                             Icon(Icons.Outlined.WorkspacePremium, null, tint = if (state.isPremium) KathaTheme.premium else KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
-                            Text("Katha Premium", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                            Text(if (state.isPremium) "Active" else "Upgrade", color = if (state.isPremium) KathaTheme.premium else KathaTheme.textTertiary, fontSize = 14.sp)
+                            Text("Katha Premium", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, modifier = Modifier.weight(1f))
+                            Text(if (state.isPremium) "Active" else "Upgrade", color = if (state.isPremium) KathaTheme.premium else KathaTheme.textTertiary, fontSize = KathaTypography.Body.fontSize)
                             Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(12.dp))
                         }
                     }
@@ -306,7 +304,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                     ) {
                         Icon(Icons.Outlined.Email, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
-                        Text("Share feedback", color = KathaTheme.textPrimary, fontSize = 15.sp)
+                        Text("Share feedback", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize)
                         Spacer(Modifier.weight(1f))
                         Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
                     }
@@ -332,8 +330,8 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                         ) {
                             Icon(Icons.Outlined.Info, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
-                            Text("Version", color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                            Text("1.0.0", color = KathaTheme.textTertiary, fontSize = 14.sp)
+                            Text("Version", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, modifier = Modifier.weight(1f))
+                            Text("1.0.0", color = KathaTheme.textTertiary, fontSize = KathaTypography.Body.fontSize)
                         }
                         HorizontalDivider(color = KathaTheme.border)
                         AboutRow("Terms of Service", null)
@@ -359,9 +357,9 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)
                             ) {
                                 Icon(Icons.Outlined.PersonOff, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
-                                Text("Blocked users", color = KathaTheme.textPrimary, fontSize = 15.sp)
+                                Text("Blocked users", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize)
                                 Spacer(Modifier.weight(1f))
-                                Text("${state.blockedUserIds.size}", color = KathaTheme.textTertiary, fontSize = 14.sp)
+                                Text("${state.blockedUserIds.size}", color = KathaTheme.textTertiary, fontSize = KathaTypography.Body.fontSize)
                                 Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
                             }
                         }
@@ -447,10 +445,10 @@ private fun StatItem(value: Int, label: String, accent: Boolean = false) {
             formatCount(value),
             // Own-profile follower counts are the one place the amber accent shows up in stats.
             color = if (accent) KathaTheme.accent else KathaTheme.textPrimary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = KathaTypography.Title2.fontSize,
+            fontWeight = KathaTypography.Title1.fontWeight
         )
-        Text(label, color = KathaTheme.textSecondary, fontSize = 12.sp)
+        Text(label, color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize)
     }
 }
 
@@ -458,15 +456,15 @@ private fun StatItem(value: Int, label: String, accent: Boolean = false) {
 private fun SettingsRow(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KathaTheme.Radius.l)).background(KathaTheme.surface).clickable(onClick = onClick).padding(horizontal = KathaTheme.Spacing.l, vertical = KathaTheme.Spacing.m), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
         Icon(icon, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
-        Text(title, color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-        Text(value, color = if (value == "On") KathaTheme.accent else KathaTheme.textSecondary, fontSize = 14.sp)
+        Text(title, color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, modifier = Modifier.weight(1f))
+        Text(value, color = if (value == "On") KathaTheme.accent else KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
         Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
     }
 }
 
 @Composable
 private fun SettingsSectionLabel(text: String) {
-    Text(text, color = KathaTheme.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    Text(text, color = KathaTheme.textSecondary, fontSize = KathaTypography.BodyStrong.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
 }
 
 @Composable
@@ -483,8 +481,8 @@ private fun AboutRow(title: String, value: String?) {
             tint = KathaTheme.textSecondary,
             modifier = Modifier.size(20.dp)
         )
-        Text(title, color = KathaTheme.textPrimary, fontSize = 15.sp)
+        Text(title, color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize)
         Spacer(Modifier.weight(1f))
-        value?.let { Text(it, color = KathaTheme.textTertiary, fontSize = 14.sp) }
+        value?.let { Text(it, color = KathaTheme.textTertiary, fontSize = KathaTypography.Body.fontSize) }
     }
 }

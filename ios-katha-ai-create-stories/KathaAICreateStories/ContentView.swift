@@ -238,13 +238,6 @@ struct ContentView: View {
                     .onDisappear { appState.clearSharePayload() }
             }
 
-            // Language selection sheet
-            if appState.showUILanguageSheet {
-                AppLanguageSelectionSheet()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(5.1)
-            }
-
             // Reading level sheet
             if appState.showReadingLevelSheet {
                 ReadingLevelSheet()
@@ -328,7 +321,6 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.3), value: appState.showDashboard)
         .animation(.easeInOut(duration: 0.3), value: appState.showReaderEarningToast)
         .animation(.easeInOut(duration: 0.3), value: appState.showDevTools)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.showUILanguageSheet)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.showReadingLevelSheet)
         .animation(.easeInOut(duration: 0.3), value: appState.showParentalControls)
         .animation(.easeInOut(duration: 0.3), value: appState.showPINSetup)

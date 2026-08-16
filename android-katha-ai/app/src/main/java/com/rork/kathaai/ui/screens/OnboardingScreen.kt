@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.rork.kathaai.ui.components.PrimaryCTA
 import com.rork.kathaai.ui.components.SafeBottomSpacer
 import com.rork.kathaai.ui.theme.KathaTheme
-import com.rork.kathaai.ui.theme.serif
+import com.rork.kathaai.ui.theme.KathaTypography
 
 private data class OnboardingOption(
     val icon: ImageVector,
@@ -88,17 +88,16 @@ fun OnboardingScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
                 ) {
-                    Text("Katha", style = serif(32, FontWeight.Bold), color = KathaTheme.textPrimary)
+                    Text("Katha", style = KathaTypography.Wordmark, color = KathaTheme.textPrimary)
                     Text(
                         "What brings you here?",
                         color = KathaTheme.textPrimary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
+                        style = KathaTypography.Title1
                     )
                     Text(
                         "Pick one — you can always change your mind.",
                         color = KathaTheme.textSecondary,
-                        fontSize = 14.sp,
+                        style = KathaTypography.Body,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -142,10 +141,9 @@ fun OnboardingScreen(
                         Text(
                             option.title,
                             color = KathaTheme.textPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
+                            style = KathaTypography.BodyStrong
                         )
-                        Text(option.description, color = KathaTheme.textSecondary, fontSize = 13.sp)
+                        Text(option.description, color = KathaTheme.textSecondary, style = KathaTypography.Caption)
                     }
                     Icon(
                         if (isSelected) Icons.Filled.CheckCircle else Icons.Outlined.Circle,

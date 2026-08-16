@@ -61,7 +61,7 @@ import com.rork.kathaai.model.Genre
 import com.rork.kathaai.model.Story
 import com.rork.kathaai.ui.theme.AvatarPalettes
 import com.rork.kathaai.ui.theme.KathaTheme
-import com.rork.kathaai.ui.theme.serif
+import com.rork.kathaai.ui.theme.KathaTypography
 
 // MARK: - Formatting helpers
 
@@ -141,7 +141,7 @@ fun PrimaryCTA(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(title, color = Color.White, fontSize = KathaTypography.Body.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
                 icon?.let { Icon(it, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
             }
         }
@@ -170,7 +170,7 @@ fun SecondaryCTA(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             icon?.let { Icon(it, null, tint = KathaTheme.textPrimary, modifier = Modifier.size(18.dp)) }
-            Text(title, color = KathaTheme.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(title, color = KathaTheme.textPrimary, fontSize = KathaTypography.BodyStrong.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
         }
     }
 }
@@ -202,7 +202,7 @@ fun DestructiveCTA(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 icon?.let { Icon(it, null, tint = error, modifier = Modifier.size(18.dp)) }
-                Text(title, color = error, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(title, color = error, fontSize = KathaTypography.BodyStrong.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
             }
         }
     }
@@ -213,8 +213,8 @@ fun TextLink(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) 
     Text(
         text = title,
         color = KathaTheme.accent,
-        fontSize = 14.sp,
-        fontWeight = FontWeight.Medium,
+        fontSize = KathaTypography.Body.fontSize,
+        fontWeight = KathaTypography.BodyStrong.fontWeight,
         modifier = modifier.clickable { onClick() }
     )
 }
@@ -242,7 +242,7 @@ fun GeneratedAvatar(
         Text(
             text = initial,
             color = Color.White,
-            style = serif((size.value * 0.42f).toInt(), FontWeight.Bold)
+            style = KathaTypography.AvatarInitial.copy(fontSize = (size.value * 0.42f).sp)
         )
     }
 }
@@ -285,7 +285,7 @@ fun StoryCover(
         )
         Text(
             text = story.title,
-            style = serif(titleSize, FontWeight.Bold),
+            style = KathaTypography.Title2,
             color = Color.White,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
@@ -340,8 +340,8 @@ fun StoryCard(
                         Text(
                             author.displayName,
                             color = KathaTheme.textPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontSize = KathaTypography.Body.fontSize,
+                            fontWeight = KathaTypography.BodyStrong.fontWeight
                         )
                         if (author.isVerified) {
                             Icon(
@@ -354,13 +354,13 @@ fun StoryCard(
                     Text(
                         "${formatCount(author.followers)} followers",
                         color = KathaTheme.textSecondary,
-                        fontSize = 11.sp
+                        fontSize = KathaTypography.Meta.fontSize
                     )
                 }
                 Text(
                     timeAgo(story.publishedOffset),
                     color = KathaTheme.textTertiary,
-                    fontSize = 11.sp
+                    fontSize = KathaTypography.Meta.fontSize
                 )
             }
         }
@@ -368,7 +368,7 @@ fun StoryCard(
         Text(
             text = story.synopsis,
             color = KathaTheme.textSecondary,
-            fontSize = 14.sp,
+            fontSize = KathaTypography.Body.fontSize,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.clickable { onTap() }
@@ -387,7 +387,7 @@ fun StoryCard(
             Text(
                 "${story.readingTimeMinutes} min read",
                 color = KathaTheme.textTertiary,
-                fontSize = 11.sp
+                fontSize = KathaTypography.Meta.fontSize
             )
             Spacer(Modifier.weight(1f))
         }
@@ -412,8 +412,8 @@ fun CompactStoryCard(
         Text(
             story.title,
             color = KathaTheme.textPrimary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = KathaTypography.Body.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -421,7 +421,7 @@ fun CompactStoryCard(
             Text(
                 author.displayName,
                 color = KathaTheme.textSecondary,
-                fontSize = 12.sp,
+                fontSize = KathaTypography.Meta.fontSize,
                 modifier = if (onAuthorTap != null) {
                     Modifier.clickable {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -444,7 +444,7 @@ private fun IconCount(icon: ImageVector, value: String) {
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Icon(icon, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(12.dp))
-        Text(value, color = KathaTheme.textTertiary, fontSize = 11.sp)
+        Text(value, color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize)
     }
 }
 
@@ -482,7 +482,7 @@ fun EngagementRow(
             Text(
                 formatCount(story.likes + if (isLiked) 1 else 0),
                 color = if (isLiked) KathaTheme.accent else KathaTheme.textSecondary,
-                fontSize = 13.sp,
+                fontSize = KathaTypography.Caption.fontSize,
                 fontWeight = if (isLiked) FontWeight.SemiBold else FontWeight.Normal
             )
         }
@@ -504,7 +504,7 @@ fun EngagementRow(
             Text(
                 formatCount(story.bookmarks + if (isBookmarked) 1 else 0),
                 color = if (isBookmarked) KathaTheme.accent else KathaTheme.textSecondary,
-                fontSize = 13.sp,
+                fontSize = KathaTypography.Caption.fontSize,
                 fontWeight = if (isBookmarked) FontWeight.SemiBold else FontWeight.Normal
             )
         }
@@ -518,7 +518,7 @@ fun EngagementRow(
                 tint = KathaTheme.textTertiary,
                 modifier = Modifier.size(16.dp)
             )
-            Text(formatCount(story.views), color = KathaTheme.textTertiary, fontSize = 13.sp)
+            Text(formatCount(story.views), color = KathaTheme.textTertiary, fontSize = KathaTypography.Caption.fontSize)
         }
     }
 }
@@ -546,8 +546,8 @@ fun AuthorRow(
                 Text(
                     author.displayName,
                     color = KathaTheme.textPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = KathaTypography.Body.fontSize,
+                    fontWeight = KathaTypography.BodyStrong.fontWeight
                 )
                 if (author.isVerified) {
                     Icon(
@@ -557,13 +557,13 @@ fun AuthorRow(
                     )
                 }
             }
-            Text("@${author.username}", color = KathaTheme.textSecondary, fontSize = 12.sp)
+            Text("@${author.username}", color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize)
         }
         Text(
             text = if (isFollowing) "Following" else "Follow",
             color = if (isFollowing) KathaTheme.textSecondary else Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = KathaTypography.Caption.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight,
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(if (isFollowing) KathaTheme.border else KathaTheme.accent)
@@ -599,8 +599,8 @@ fun GenreChip(
         Text(
             genre.displayName,
             color = if (isSelected) Color.White else KathaTheme.textSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium
+            fontSize = KathaTypography.Caption.fontSize,
+            fontWeight = KathaTypography.BodyStrong.fontWeight
         )
     }
 }
@@ -615,8 +615,8 @@ fun FilterChip(
     Text(
         text = title,
         color = if (isSelected) Color.White else KathaTheme.textSecondary,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
+        fontSize = KathaTypography.Caption.fontSize,
+        fontWeight = KathaTypography.BodyStrong.fontWeight,
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(if (isSelected) KathaTheme.accent else KathaTheme.surface)
@@ -634,9 +634,9 @@ fun SectionHeader(
     subtitle: String? = null
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(title, color = KathaTheme.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
         subtitle?.let {
-            Text(it, color = KathaTheme.textSecondary, fontSize = 13.sp)
+            Text(it, color = KathaTheme.textSecondary, fontSize = KathaTypography.Caption.fontSize)
         }
     }
 }
@@ -670,7 +670,7 @@ fun SegmentedControl(
                 Text(
                     label,
                     color = if (selected) KathaTheme.textPrimary else KathaTheme.textSecondary,
-                    fontSize = 14.sp,
+                    fontSize = KathaTypography.Body.fontSize,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
                 )
             }
@@ -697,11 +697,11 @@ fun EmptyState(
         verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.l)
     ) {
         Icon(icon, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(44.dp))
-        Text(title, color = KathaTheme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Text(title, color = KathaTheme.textPrimary, fontSize = KathaTypography.Title2.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
         Text(
             message,
             color = KathaTheme.textSecondary,
-            fontSize = 14.sp,
+            fontSize = KathaTypography.Body.fontSize,
             textAlign = TextAlign.Center
         )
         if (ctaTitle != null && onCta != null) {
@@ -778,7 +778,7 @@ fun KathaToast(message: String, isWelcome: Boolean, modifier: Modifier = Modifie
                 modifier = Modifier.size(16.dp)
             )
         }
-        Text(message, color = KathaTheme.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Text(message, color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
     }
 }
 

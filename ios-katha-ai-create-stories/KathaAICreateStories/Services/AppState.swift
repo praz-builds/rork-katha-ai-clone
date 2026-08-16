@@ -104,7 +104,6 @@ final class AppState {
 
     // Settings
     var readerSepia = false
-    var uiLanguage: AppUILanguage = .english
     var defaultReadingLevel: ReadingLevel = .standard
     var kidsMode = false
     var kidsModePin: String?
@@ -114,10 +113,8 @@ final class AppState {
     var kidsShareEnabled = false
     var kidsSearchSuggestionsEnabled = true
     var ageVerified = false
-    var notifiedForHindi = false
 
     // Content safety overlays
-    var showUILanguageSheet = false
     var showReadingLevelSheet = false
     var readingLevelSheetForWizard = false
     var readingLevelSheetForCap = false
@@ -390,7 +387,6 @@ final class AppState {
         bookmarkedStoryIds = Set(defaults.stringArray(forKey: "katha.bookmarkedStories") ?? [])
         followedStoryIds = Set(defaults.stringArray(forKey: "katha.followedStories") ?? [])
         readerSepia = defaults.bool(forKey: "katha.readerSepia")
-        uiLanguage = AppUILanguage(rawValue: defaults.string(forKey: "katha.uiLanguage") ?? "english") ?? .english
         defaultReadingLevel = ReadingLevel(rawValue: defaults.string(forKey: "katha.defaultReadingLevel") ?? "standard") ?? .standard
         wizardReadingLevel = defaultReadingLevel
         kidsMode = defaults.bool(forKey: "katha.kidsMode")
@@ -401,7 +397,6 @@ final class AppState {
         kidsShareEnabled = defaults.object(forKey: "katha.kidsShareEnabled") as? Bool ?? false
         kidsSearchSuggestionsEnabled = defaults.object(forKey: "katha.kidsSearchSuggestionsEnabled") as? Bool ?? true
         ageVerified = defaults.bool(forKey: "katha.ageVerified")
-        notifiedForHindi = defaults.bool(forKey: "katha.notifiedForHindi")
         audioReadyStoryIds = Set(defaults.stringArray(forKey: "katha.audioReady") ?? [])
         if let data = defaults.data(forKey: "katha.streak"), let decoded = try? JSONDecoder().decode(StreakState.self, from: data) { streak = decoded }
         if let data = defaults.data(forKey: "katha.notificationPreferences"), let decoded = try? JSONDecoder().decode(NotificationPreferences.self, from: data) { notificationPreferences = decoded }
@@ -440,7 +435,6 @@ final class AppState {
     }
 
     private func persistSafetyState() {
-        defaults.set(uiLanguage.rawValue, forKey: "katha.uiLanguage")
         defaults.set(defaultReadingLevel.rawValue, forKey: "katha.defaultReadingLevel")
         defaults.set(kidsMode, forKey: "katha.kidsMode")
         if let kidsModePin { defaults.set(kidsModePin, forKey: "katha.kidsModePin") } else { defaults.removeObject(forKey: "katha.kidsModePin") }
@@ -450,7 +444,6 @@ final class AppState {
         defaults.set(kidsShareEnabled, forKey: "katha.kidsShareEnabled")
         defaults.set(kidsSearchSuggestionsEnabled, forKey: "katha.kidsSearchSuggestionsEnabled")
         defaults.set(ageVerified, forKey: "katha.ageVerified")
-        defaults.set(notifiedForHindi, forKey: "katha.notifiedForHindi")
     }
 
     func persistPrompt12State() {
@@ -1057,14 +1050,6 @@ final class AppState {
     func toggleReaderSepia() {
         readerSepia.toggle()
         defaults.set(readerSepia, forKey: "katha.readerSepia")
-    }
-
-    func openUILanguageSheet() { showUILanguageSheet = true }
-
-    func notifyHindiAvailability() {
-        notifiedForHindi = true
-        persistSafetyState()
-        showToast("We'll let you know ✨")
     }
 
     func openReadingLevelSheet(forWizard: Bool = false, forCap: Bool = false) {

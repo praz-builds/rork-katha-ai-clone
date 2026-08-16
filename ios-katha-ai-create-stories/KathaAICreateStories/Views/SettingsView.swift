@@ -79,7 +79,7 @@ struct SettingsView: View {
     private var header: some View {
         HStack {
             Text("Settings")
-                .font(.system(size: 28, weight: .bold))
+                .font(KathaFont.Title1)
                 .foregroundStyle(KathaTheme.textPrimary)
             Spacer()
         }
@@ -96,10 +96,10 @@ struct SettingsView: View {
                 )
                 VStack(alignment: .leading, spacing: 2) {
                     Text(appState.currentUser?.displayName ?? "")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(KathaFont.Title2)
                         .foregroundStyle(KathaTheme.textPrimary)
                     Text("@\(appState.currentUser?.username ?? "")")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                 }
                 Spacer()
@@ -107,7 +107,7 @@ struct SettingsView: View {
 
             if let bio = appState.currentUser?.bio, !bio.isEmpty {
                 Text(bio)
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -145,10 +145,10 @@ struct SettingsView: View {
     private func statItem(value: Int, label: String) -> some View {
         VStack(spacing: 2) {
             Text(formatCount(value))
-                .font(.system(size: 18, weight: .bold))
+                .font(KathaFont.Title2)
                 .foregroundStyle(KathaTheme.textPrimary)
             Text(label)
-                .font(.system(size: 12))
+                .font(KathaFont.Meta)
                 .foregroundStyle(KathaTheme.textSecondary)
         }
     }
@@ -168,7 +168,7 @@ struct SettingsView: View {
     private var preferencesSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             Text("Preferences")
-                .font(.system(size: 16, weight: .semibold))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
 
             VStack(spacing: 0) {
@@ -176,7 +176,7 @@ struct SettingsView: View {
                     Image(systemName: "book")
                         .foregroundStyle(KathaTheme.textSecondary)
                     Text("Sepia reader")
-                        .font(.system(size: 15))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textPrimary)
                     Spacer()
                     Toggle("", isOn: Binding(
@@ -199,16 +199,16 @@ struct SettingsView: View {
     private var readingSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             Text("Reading")
-                .font(.system(size: 16, weight: .semibold))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
             VStack(spacing: 0) {
                 Button { appState.openReadingLevelSheet() } label: {
                     HStack {
                         Image(systemName: "text.book.closed").foregroundStyle(KathaTheme.textSecondary).frame(width: 24)
-                        Text("Reading level").font(.system(size: 15)).foregroundStyle(KathaTheme.textPrimary)
+                        Text("Reading level").font(KathaFont.Body).foregroundStyle(KathaTheme.textPrimary)
                         Spacer()
-                        Text(appState.defaultReadingLevel.title).font(.system(size: 14)).foregroundStyle(KathaTheme.textSecondary)
-                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(KathaTheme.textTertiary)
+                        Text(appState.defaultReadingLevel.title).font(KathaFont.Body).foregroundStyle(KathaTheme.textSecondary)
+                        Image(systemName: "chevron.right").font(KathaFont.Meta).foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)
                 }
@@ -226,32 +226,20 @@ struct SettingsView: View {
     private var appSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             Text("App")
-                .font(.system(size: 16, weight: .semibold))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
             VStack(spacing: 0) {
-                Button { appState.openUILanguageSheet() } label: {
-                    HStack {
-                        Image(systemName: "globe").foregroundStyle(KathaTheme.textSecondary).frame(width: 24)
-                        Text("Language").font(.system(size: 15)).foregroundStyle(KathaTheme.textPrimary)
-                        Spacer()
-                        Text("English").font(.system(size: 14)).foregroundStyle(KathaTheme.textSecondary)
-                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(KathaTheme.textTertiary)
-                    }
-                    .padding(.vertical, KathaTheme.Spacing.m)
-                }
-                .buttonStyle(.plain)
-                Divider().background(KathaTheme.border)
                 Button { appState.openParentalControls() } label: {
                     HStack {
                         Image(systemName: "checkmark.shield").foregroundStyle(appState.kidsMode ? KathaTheme.accent : KathaTheme.textSecondary).frame(width: 24)
-                        Text("Parental controls").font(.system(size: 15)).foregroundStyle(KathaTheme.textPrimary)
+                        Text("Parental controls").font(KathaFont.Body).foregroundStyle(KathaTheme.textPrimary)
                         Spacer()
                         if appState.kidsMode {
-                            Text("On").font(.system(size: 11, weight: .semibold)).foregroundStyle(KathaTheme.accent).padding(.horizontal, 8).frame(height: 22).background(Capsule().fill(KathaTheme.accentSoft))
+                            Text("On").font(KathaFont.Meta).foregroundStyle(KathaTheme.accent).padding(.horizontal, 8).frame(height: 22).background(Capsule().fill(KathaTheme.accentSoft))
                         } else {
-                            Text("Off").font(.system(size: 14)).foregroundStyle(KathaTheme.textSecondary)
+                            Text("Off").font(KathaFont.Body).foregroundStyle(KathaTheme.textSecondary)
                         }
-                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(KathaTheme.textTertiary)
+                        Image(systemName: "chevron.right").font(KathaFont.Meta).foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)
                 }
@@ -280,7 +268,7 @@ struct SettingsView: View {
     private var rewardsSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             Text("Rewards")
-                .font(.system(size: 16, weight: .semibold))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
 
             VStack(spacing: 0) {
@@ -308,11 +296,11 @@ struct SettingsView: View {
                             .foregroundStyle(KathaTheme.accent)
                             .frame(width: 24)
                         Text("Your dashboard")
-                            .font(.system(size: 15))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textPrimary)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)
@@ -331,14 +319,14 @@ struct SettingsView: View {
                             .foregroundStyle(KathaTheme.accent)
                             .frame(width: 24)
                         Text("Credits")
-                            .font(.system(size: 15))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textPrimary)
                         Spacer()
                         Text("\(appState.credits)")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(KathaFont.BodyStrong)
                             .foregroundStyle(KathaTheme.accent)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)
@@ -361,14 +349,14 @@ struct SettingsView: View {
                             .foregroundStyle(appState.isPremium ? KathaTheme.premium : KathaTheme.textSecondary)
                             .frame(width: 24)
                         Text("Katha Premium")
-                            .font(.system(size: 15))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textPrimary)
                         Spacer()
                         Text(appState.isPremium ? "Active" : "Upgrade")
-                            .font(.system(size: 14))
+                            .font(KathaFont.Body)
                             .foregroundStyle(appState.isPremium ? KathaTheme.premium : KathaTheme.textTertiary)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)
@@ -386,7 +374,7 @@ struct SettingsView: View {
     private var supportSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             Text("Support")
-                .font(.system(size: 16, weight: .semibold))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
 
             VStack(spacing: 0) {
@@ -403,11 +391,11 @@ struct SettingsView: View {
                             .foregroundStyle(KathaTheme.textSecondary)
                             .frame(width: 24)
                         Text("Share feedback")
-                            .font(.system(size: 15))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textPrimary)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)
@@ -425,7 +413,7 @@ struct SettingsView: View {
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             Text("About")
-                .font(.system(size: 16, weight: .semibold))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
 
             VStack(spacing: 0) {
@@ -452,16 +440,16 @@ struct SettingsView: View {
                 .foregroundStyle(KathaTheme.textSecondary)
                 .frame(width: 24)
             Text(title)
-                .font(.system(size: 15))
+                .font(KathaFont.Body)
                 .foregroundStyle(KathaTheme.textPrimary)
             Spacer()
             if let value {
                 Text(value)
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textTertiary)
             } else {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(KathaTheme.textTertiary)
             }
         }
@@ -482,7 +470,7 @@ struct SettingsView: View {
     private var blockedUsersSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             Text("Moderation")
-                .font(.system(size: 16, weight: .semibold))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
 
             VStack(spacing: 0) {
@@ -495,14 +483,14 @@ struct SettingsView: View {
                             .foregroundStyle(KathaTheme.textSecondary)
                             .frame(width: 24)
                         Text("Blocked users")
-                            .font(.system(size: 15))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textPrimary)
                         Spacer()
                         Text("\(appState.blockedUserIds.count)")
-                            .font(.system(size: 14))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textTertiary)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)

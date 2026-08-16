@@ -51,7 +51,7 @@ struct SubscriptionPaywall: View {
                 appState.closeSubscriptionPaywall()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(KathaFont.BodyStrong)
                     .foregroundStyle(KathaTheme.textPrimary)
                     .frame(width: 36, height: 36)
                     .background(
@@ -69,21 +69,21 @@ struct SubscriptionPaywall: View {
     private var heroSection: some View {
         VStack(spacing: KathaTheme.Spacing.s) {
             Text("Katha")
-                .font(KathaFont.serifBold(24))
+                .font(KathaFont.Wordmark)
                 .foregroundStyle(KathaTheme.accent)
 
             Text("PREMIUM")
-                .font(KathaFont.serifBold(32))
+                .font(KathaFont.PremiumWordmark)
                 .foregroundStyle(KathaTheme.premium)
                 .tracking(2)
 
             Text("Unlock unlimited storytelling.")
-                .font(.system(size: 28, weight: .bold))
+                .font(KathaFont.Title1)
                 .foregroundStyle(KathaTheme.textPrimary)
                 .multilineTextAlignment(.center)
 
             Text("For readers, writers, and everyone in between.")
-                .font(.system(size: 15))
+                .font(KathaFont.Body)
                 .foregroundStyle(KathaTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -102,16 +102,16 @@ struct SubscriptionPaywall: View {
                             .fill(KathaTheme.accent)
                             .frame(width: 24, height: 24)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(.white)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(feature.title)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(KathaFont.BodyStrong)
                             .foregroundStyle(KathaTheme.textPrimary)
                         Text(feature.subtitle)
-                            .font(.system(size: 12))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.textSecondary)
                     }
                     Spacer()
@@ -180,7 +180,7 @@ struct SubscriptionPaywall: View {
     private var finePrint: some View {
         VStack(spacing: KathaTheme.Spacing.m) {
             Text("Cancel anytime in Settings. Renews automatically unless cancelled 24 hours before period end. Payment charged to your Apple ID or Google account.")
-                .font(.system(size: 11))
+                .font(KathaFont.Meta)
                 .foregroundStyle(KathaTheme.textTertiary)
                 .multilineTextAlignment(.center)
 
@@ -190,7 +190,7 @@ struct SubscriptionPaywall: View {
                         .tint(KathaTheme.accent)
                         .scaleEffect(0.7)
                     Text("Restoring…")
-                        .font(.system(size: 13))
+                        .font(KathaFont.Caption)
                         .foregroundStyle(KathaTheme.accent)
                 }
             } else {
@@ -202,7 +202,7 @@ struct SubscriptionPaywall: View {
             HStack(spacing: 0) {
                 TextLink(title: "Terms") { appState.showToast("Terms: katha.ai/terms") }
                 Text(" · ")
-                    .font(.system(size: 13))
+                    .font(KathaFont.Caption)
                     .foregroundStyle(KathaTheme.textTertiary)
                 TextLink(title: "Privacy") { appState.showToast("Privacy: katha.ai/privacy") }
             }
@@ -224,16 +224,16 @@ struct PlanTile: View {
         Button(action: onTap) {
             VStack(spacing: KathaTheme.Spacing.xs) {
                 Text(plan.displayName)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(isFeatured && isSelected ? KathaTheme.premium : KathaTheme.textSecondary)
                     .tracking(1)
 
                 Text(plan.price)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(KathaFont.Title1)
                     .foregroundStyle(KathaTheme.textPrimary)
 
                 Text(plan.perMonth)
-                    .font(.system(size: 11))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(KathaTheme.textTertiary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -248,7 +248,7 @@ struct PlanTile: View {
             .overlay(alignment: .topTrailing) {
                 if isFeatured {
                     Text("SAVE 40%")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(KathaFont.Meta)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -263,7 +263,7 @@ struct PlanTile: View {
                             .fill(isFeatured ? KathaTheme.premium : KathaTheme.accent)
                             .frame(width: 20, height: 20)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(.white)
                     }
                     .padding(8)

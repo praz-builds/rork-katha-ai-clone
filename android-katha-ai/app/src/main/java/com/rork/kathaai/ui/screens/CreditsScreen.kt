@@ -65,6 +65,7 @@ import com.rork.kathaai.ui.components.PrimaryCTA
 import com.rork.kathaai.ui.components.SecondaryCTA
 import com.rork.kathaai.ui.components.TextLink
 import com.rork.kathaai.ui.theme.KathaTheme
+import com.rork.kathaai.ui.theme.kathaShadow
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 import kotlinx.coroutines.delay
@@ -143,7 +144,7 @@ private fun BalanceCard(state: KathaUiState, viewModel: AppViewModel, onOpenMana
             .padding(horizontal = KathaTheme.Spacing.l, vertical = KathaTheme.Spacing.xxxl)
             .clip(RoundedCornerShape(KathaTheme.Radius.xl))
             .background(KathaTheme.surface)
-            .shadow(8.dp, RoundedCornerShape(KathaTheme.Radius.xl))
+            .kathaShadow(KathaTheme.shadowStrong, RoundedCornerShape(KathaTheme.Radius.xl))
             .padding(vertical = KathaTheme.Spacing.xxxl),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

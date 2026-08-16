@@ -124,7 +124,7 @@ struct ReaderView: View {
                 appState.closeReader()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(KathaFont.BodyStrong)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(.ultraThinMaterial))
                     .foregroundStyle(KathaTheme.textPrimary)
@@ -142,7 +142,7 @@ struct ReaderView: View {
                 appState.toggleReaderSepia()
             } label: {
                 Image(systemName: appState.readerSepia ? "book.fill" : "book")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(KathaFont.BodyStrong)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(.ultraThinMaterial))
                     .foregroundStyle(appState.readerSepia ? KathaTheme.accent : KathaTheme.textPrimary)
@@ -153,7 +153,7 @@ struct ReaderView: View {
                 appState.toggleBookmark(storyId: story.id)
             } label: {
                 Image(systemName: appState.isBookmarked(story.id) ? "bookmark.fill" : "bookmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(KathaFont.BodyStrong)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(.ultraThinMaterial))
                     .foregroundStyle(appState.isBookmarked(story.id) ? KathaTheme.accent : KathaTheme.textPrimary)
@@ -164,7 +164,7 @@ struct ReaderView: View {
                 if appState.downloadedStoryIds.contains(story.id) { appState.removeOfflineStory(story.id) } else { appState.downloadStory(story) }
             } label: {
                 Image(systemName: appState.downloadedStoryIds.contains(story.id) ? "checkmark.icloud.fill" : "icloud.and.arrow.down")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(KathaFont.BodyStrong)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(.ultraThinMaterial))
                     .foregroundStyle(appState.downloadedStoryIds.contains(story.id) ? KathaTheme.success : KathaTheme.textPrimary)
@@ -175,7 +175,7 @@ struct ReaderView: View {
                 appState.openAudioPlayer(story: story)
             } label: {
                 Image(systemName: "headphones")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(KathaFont.BodyStrong)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(.ultraThinMaterial))
                     .foregroundStyle(KathaTheme.textPrimary)
@@ -186,7 +186,7 @@ struct ReaderView: View {
                 appState.showChapterList()
             } label: {
                 Image(systemName: "list.bullet")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(KathaFont.BodyStrong)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(.ultraThinMaterial))
                     .foregroundStyle(KathaTheme.textPrimary)
@@ -240,7 +240,7 @@ struct ReaderView: View {
     private var metadataSection: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.s) {
             Text(story.title)
-                .font(KathaFont.serifBold(24))
+                .font(KathaFont.ReaderStoryTitle)
                 .foregroundStyle(readerText)
 
             HStack(spacing: KathaTheme.Spacing.s) {
@@ -248,17 +248,18 @@ struct ReaderView: View {
                 Text("\u{2022}")
                 if let chapter = currentChapter, story.isSeries {
                     Text("Chapter \(appState.currentChapterIndex + 1) of \(story.chapters.count)")
+                        .font(KathaFont.ReaderChapterNumber)
                 } else {
                     Text("\(story.readingTimeMinutes) min read")
                 }
                 Text("\u{2022}")
                 Text(timeAgo(story.publishedOffset))
             }
-            .font(.system(size: 13))
+            .font(KathaFont.Caption)
             .foregroundStyle(readerTextSecondary)
 
             Text(story.synopsis)
-                .font(KathaFont.serifItalic(15))
+                .font(KathaFont.Body)
                 .foregroundStyle(readerTextSecondary)
                 .lineSpacing(4)
 
@@ -289,16 +290,16 @@ struct ReaderView: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 HStack(spacing: 3) {
                                     Text(author.displayName)
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .font(KathaFont.BodyStrong)
                                         .foregroundStyle(KathaTheme.textPrimary)
                                     if author.isVerified {
                                         Image(systemName: "checkmark.seal.fill")
-                                            .font(.system(size: 11))
+                                            .font(KathaFont.Meta)
                                             .foregroundStyle(KathaTheme.accent)
                                     }
                                 }
                                 Text("@\(author.username)")
-                                    .font(.system(size: 12))
+                                    .font(KathaFont.Meta)
                                     .foregroundStyle(KathaTheme.textSecondary)
                             }
                         }
@@ -332,10 +333,10 @@ struct ReaderView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(user.displayName.isEmpty ? user.username : user.displayName)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(KathaFont.BodyStrong)
                         .foregroundStyle(readerText)
                     Text("@\(user.username) • You")
-                        .font(.system(size: 12))
+                        .font(KathaFont.Meta)
                         .foregroundStyle(readerTextSecondary)
                 }
             }
@@ -356,12 +357,12 @@ struct ReaderView: View {
             if let chapter = currentChapter {
                 VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
                     Text(chapter.title)
-                        .font(KathaFont.serifBold(22))
+                        .font(KathaFont.ReaderChapterTitle)
                         .foregroundStyle(readerText)
 
                     ForEach(chapter.paragraphs, id: \.self) { para in
                         Text(para)
-                            .font(KathaFont.serif(17))
+                            .font(KathaFont.readerBody(size: 18))
                             .foregroundStyle(readerText)
                             .lineSpacing(8)
                             .fixedSize(horizontal: false, vertical: true)
@@ -397,12 +398,12 @@ struct ReaderView: View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
             if let firstChapter = story.chapters.first {
                 Text(firstChapter.title)
-                    .font(KathaFont.serifBold(22))
+                    .font(KathaFont.ReaderChapterTitle)
                     .foregroundStyle(readerText)
 
                 ForEach(firstChapter.paragraphs.prefix(authWallIndex), id: \.self) { para in
                     Text(para)
-                        .font(KathaFont.serif(17))
+                        .font(KathaFont.readerBody(size: 18))
                         .foregroundStyle(readerText)
                         .lineSpacing(8)
                         .fixedSize(horizontal: false, vertical: true)
@@ -426,15 +427,15 @@ struct ReaderView: View {
 
             VStack(spacing: KathaTheme.Spacing.m) {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 32))
+                    .font(KathaFont.Display)
                     .foregroundStyle(KathaTheme.textTertiary)
 
                 Text("Keep reading")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(KathaFont.Title2)
                     .foregroundStyle(KathaTheme.textPrimary)
 
                 Text("Sign in to continue this story and save your progress.")
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
                     .multilineTextAlignment(.center)
 
@@ -457,7 +458,7 @@ struct ReaderView: View {
 
             if count == 0 {
                 Text("No comments yet. Be the first to share your thoughts.")
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
                     .padding(KathaTheme.Spacing.l)
             } else {
@@ -472,7 +473,7 @@ struct ReaderView: View {
                         appState.openCommentsSheet(storyId: story.id)
                     } label: {
                         Text("View all \(count) comments")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.accent)
                     }
                 }
@@ -486,19 +487,19 @@ struct ReaderView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(comment.displayName)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(KathaFont.Meta)
                         .foregroundStyle(readerText)
                     if comment.isVerified {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 9))
+                            .font(KathaFont.Meta)
                             .foregroundStyle(KathaTheme.accent)
                     }
                     Text(comment.timeLabel)
-                        .font(.system(size: 11))
+                        .font(KathaFont.Meta)
                         .foregroundStyle(KathaTheme.textTertiary)
                 }
                 Text(comment.text)
-                    .font(.system(size: 13))
+                    .font(KathaFont.Caption)
                     .foregroundStyle(readerText)
                     .lineLimit(2)
             }
@@ -528,7 +529,7 @@ struct ReaderView: View {
                     Image(systemName: appState.isLiked(story.id) ? "heart.fill" : "heart")
                     Text(formatCount(appState.storyLikeCount(storyId: story.id, baseCount: story.likes)))
                 }
-                .font(.system(size: 14, weight: appState.isLiked(story.id) ? .semibold : .regular))
+                .font(KathaFont.Body)
                 .foregroundStyle(appState.isLiked(story.id) ? KathaTheme.accent : KathaTheme.textSecondary)
             }
 
@@ -542,7 +543,7 @@ struct ReaderView: View {
                         Image(systemName: "bubble.left")
                         Text(formatCount(appState.commentCount(storyId: story.id)))
                     }
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
                 }
             }
@@ -554,12 +555,12 @@ struct ReaderView: View {
                     Image(systemName: appState.isBookmarked(story.id) ? "bookmark.fill" : "bookmark")
                     Text(formatCount(story.bookmarks + (appState.isBookmarked(story.id) ? 1 : 0)))
                 }
-                .font(.system(size: 14, weight: appState.isBookmarked(story.id) ? .semibold : .regular))
+                .font(KathaFont.Body)
                 .foregroundStyle(appState.isBookmarked(story.id) ? KathaTheme.accent : KathaTheme.textSecondary)
             }
 
             Label(formatCount(story.views), systemImage: "eye")
-                .font(.system(size: 14))
+                .font(KathaFont.Body)
                 .foregroundStyle(KathaTheme.textTertiary)
 
             Spacer()
@@ -570,7 +571,7 @@ struct ReaderView: View {
                     appState.shareStory(story: story, chapterId: currentChapter?.id)
                 } label: {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                 }
             }

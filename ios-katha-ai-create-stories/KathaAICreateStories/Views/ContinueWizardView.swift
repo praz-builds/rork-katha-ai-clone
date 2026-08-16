@@ -60,7 +60,7 @@ struct ContinueWizardView: View {
                     .disabled(appState.credits <= 0 || appState.isGeneratingChapter)
 
                     Text("You have \(appState.credits) credit\(appState.credits == 1 ? "" : "s")")
-                        .font(.system(size: 12))
+                        .font(KathaFont.Meta)
                         .foregroundStyle(KathaTheme.textSecondary)
                 } else {
                     PrimaryCTA(
@@ -85,7 +85,7 @@ struct ContinueWizardView: View {
                         appState.moveContinueWizardToStep(.direction)
                     }
                 }
-                .font(.system(size: 15, weight: .medium))
+                .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
             }
             .padding(KathaTheme.Spacing.l)
@@ -109,10 +109,10 @@ struct ContinueWizardHeader: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Continue story")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(KathaFont.Title1)
                         .foregroundStyle(KathaTheme.textPrimary)
                     Text("Step \(appState.continueWizardStep.number) of \(ContinueWizardStep.allCases.count)")
-                        .font(.system(size: 13))
+                        .font(KathaFont.Caption)
                         .foregroundStyle(KathaTheme.textSecondary)
                 }
                 Spacer()
@@ -120,9 +120,9 @@ struct ContinueWizardHeader: View {
                 // Locked language chip
                 HStack(spacing: 4) {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 11))
+                        .font(KathaFont.Meta)
                     Text(appState.continueWizardLanguage.code)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(KathaFont.Meta)
                 }
                 .foregroundStyle(KathaTheme.textTertiary)
                 .padding(.horizontal, 12)
@@ -158,11 +158,11 @@ struct ChapterDirectionStep: View {
         @Bindable var appState = appState
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.l) {
             Text("What happens next?")
-                .font(.system(size: 20, weight: .bold))
+                .font(KathaFont.Title2)
                 .foregroundStyle(KathaTheme.textPrimary)
 
             Text("A hint, a theme, a scene — or leave it open.")
-                .font(.system(size: 14))
+                .font(KathaFont.Body)
                 .foregroundStyle(KathaTheme.textSecondary)
 
             // Recap card
@@ -174,19 +174,19 @@ struct ChapterDirectionStep: View {
             // Direction input
             VStack(alignment: .leading, spacing: KathaTheme.Spacing.s) {
                 Text("Chapter direction (optional)")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(KathaTheme.textSecondary)
 
                 ZStack(alignment: .topLeading) {
                     if appState.continueWizardDirection.isEmpty {
                         Text(placeholder)
-                            .font(.system(size: 15))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textTertiary)
                             .padding(KathaTheme.Spacing.m)
                             .allowsHitTesting(false)
                     }
                     TextEditor(text: $appState.continueWizardDirection)
-                        .font(.system(size: 15))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textPrimary)
                         .frame(minHeight: 120)
                         .padding(KathaTheme.Spacing.m)
@@ -207,7 +207,7 @@ struct ChapterDirectionStep: View {
 
             HStack {
                 Text("\(appState.continueWizardDirection.count) / 500")
-                    .font(.system(size: 12))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(KathaTheme.textTertiary)
                 Spacer()
                 Button {
@@ -218,7 +218,7 @@ struct ChapterDirectionStep: View {
                         Image(systemName: "lightbulb")
                         Text("Get ideas")
                     }
-                    .font(.system(size: 13, weight: .medium))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(KathaTheme.accent)
                 }
             }
@@ -241,12 +241,12 @@ struct RecapCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.s) {
             Text("PREVIOUSLY")
-                .font(.system(size: 11, weight: .semibold))
+                .font(KathaFont.Meta)
                 .foregroundStyle(KathaTheme.textTertiary)
                 .tracking(0.5)
 
             Text(recapText)
-                .font(KathaFont.serifItalic(15))
+                .font(KathaFont.Recap)
                 .foregroundStyle(KathaTheme.textSecondary)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
@@ -284,11 +284,11 @@ struct ChapterReviewStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.l) {
             Text("Ready to spin Chapter \(appState.continueWizardChapterNumber)?")
-                .font(.system(size: 20, weight: .bold))
+                .font(KathaFont.Title2)
                 .foregroundStyle(KathaTheme.textPrimary)
 
             Text("We'll keep the voice, characters, and world consistent.")
-                .font(.system(size: 14))
+                .font(KathaFont.Body)
                 .foregroundStyle(KathaTheme.textSecondary)
 
             // Summary card
@@ -296,11 +296,11 @@ struct ChapterReviewStep: View {
                 // Chapter label
                 VStack(alignment: .leading, spacing: KathaTheme.Spacing.xs) {
                     Text("CHAPTER \(appState.continueWizardChapterNumber) OF \(appState.continueWizardStoryTitle)")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(KathaFont.Meta)
                         .tracking(0.5)
                         .foregroundStyle(KathaTheme.textTertiary)
                     Text(appState.continueWizardStoryTitle)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(KathaFont.BodyStrong)
                         .foregroundStyle(KathaTheme.accent)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -310,11 +310,11 @@ struct ChapterReviewStep: View {
                 // Genre
                 HStack {
                     Text("Genre")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                     Spacer()
                     Text(appState.continueWizardGenre?.displayName ?? "—")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(KathaFont.BodyStrong)
                         .foregroundStyle(KathaTheme.textPrimary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -326,14 +326,14 @@ struct ChapterReviewStep: View {
                 // Language
                 HStack {
                     Text("Language")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                     Spacer()
                     HStack(spacing: 4) {
                         Image(systemName: "lock.fill")
-                            .font(.system(size: 10))
+                            .font(KathaFont.Meta)
                         Text(appState.continueWizardLanguage.displayName)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(KathaFont.BodyStrong)
                     }
                     .foregroundStyle(KathaTheme.textPrimary)
                 }
@@ -344,16 +344,16 @@ struct ChapterReviewStep: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Direction")
-                            .font(.system(size: 14))
+                            .font(KathaFont.Body)
                             .foregroundStyle(KathaTheme.textSecondary)
                         if appState.continueWizardDirection.isEmpty {
                             Text("Surprise me — let the AI decide")
-                                .font(.system(size: 14))
+                                .font(KathaFont.Body)
                                 .italic()
                                 .foregroundStyle(KathaTheme.textSecondary)
                         } else {
                             Text(appState.continueWizardDirection)
-                                .font(.system(size: 14))
+                                .font(KathaFont.Body)
                                 .foregroundStyle(KathaTheme.textPrimary)
                                 .lineLimit(3)
                         }
@@ -363,7 +363,7 @@ struct ChapterReviewStep: View {
                         Haptics.light()
                         appState.moveContinueWizardToStep(.direction)
                     }
-                    .font(.system(size: 14, weight: .medium))
+                    .font(KathaFont.BodyStrong)
                     .foregroundStyle(KathaTheme.accent)
                 }
             }
@@ -382,7 +382,7 @@ struct ChapterReviewStep: View {
                 let remaining = planned - appState.continueWizardChapterNumber
                 VStack(spacing: 2) {
                     Text("Chapter \(appState.continueWizardChapterNumber) of \(planned) planned. \(max(0, remaining)) more after this one.")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                         .multilineTextAlignment(.center)
                 }
@@ -403,7 +403,7 @@ struct ChapterReviewStep: View {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(KathaTheme.error)
                     Text(error)
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.error)
                 }
                 .padding(KathaTheme.Spacing.m)
@@ -427,11 +427,11 @@ struct GetIdeasChapterSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: KathaTheme.Spacing.l) {
                     Text("Chapter starters")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(KathaFont.Title2)
                         .foregroundStyle(KathaTheme.textPrimary)
 
                     Text("Tap any to use it as your direction.")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
 
                     let genre = appState.continueWizardGenre ?? .fiction
@@ -448,7 +448,7 @@ struct GetIdeasChapterSheet: View {
                             appState.showChapterGetIdeasSheet = false
                         } label: {
                             Text(starter)
-                                .font(.system(size: 15))
+                                .font(KathaFont.Body)
                                 .foregroundStyle(KathaTheme.textPrimary)
                                 .multilineTextAlignment(.leading)
                                 .padding(KathaTheme.Spacing.m)
@@ -494,15 +494,15 @@ struct DiscardChapterModal: View {
 
             VStack(spacing: KathaTheme.Spacing.l) {
                 Image(systemName: "trash")
-                    .font(.system(size: 40))
+                    .font(KathaFont.Display)
                     .foregroundStyle(KathaTheme.error)
 
                 Text("Discard this chapter draft?")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(KathaFont.Title2)
                     .foregroundStyle(KathaTheme.textPrimary)
 
                 Text("You'll lose what you've typed and return to the story.")
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
                     .multilineTextAlignment(.center)
 
@@ -547,28 +547,28 @@ struct PublishConfirmationModal: View {
                         .fill(KathaTheme.accentSoft)
                         .frame(width: 72, height: 72)
                     Image(systemName: "paperplane.fill")
-                        .font(.system(size: 28))
+                        .font(KathaFont.Title1)
                         .foregroundStyle(KathaTheme.accent)
                 }
 
                 Text("Publish Chapter \(appState.continueWizardChapterNumber)?")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(KathaFont.Title2)
                     .foregroundStyle(KathaTheme.textPrimary)
 
                 if appState.continueWizardFollowerCount > 0 {
                     Text("**\(appState.continueWizardFollowerCount)** followers will be notified this chapter is live.")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                         .multilineTextAlignment(.center)
                 } else {
                     Text("This chapter will be visible to everyone on Katha.")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                         .multilineTextAlignment(.center)
                 }
 
                 Text("Published chapters can't be edited in the current version.")
-                    .font(.system(size: 12))
+                    .font(KathaFont.Meta)
                     .foregroundStyle(KathaTheme.textTertiary)
                     .multilineTextAlignment(.center)
 
@@ -615,16 +615,16 @@ struct DeleteDraftModal: View {
                         .fill(KathaTheme.error.opacity(0.12))
                         .frame(width: 72, height: 72)
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 28))
+                        .font(KathaFont.Title1)
                         .foregroundStyle(KathaTheme.error)
                 }
 
                 Text("Delete this draft?")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(KathaFont.Title2)
                     .foregroundStyle(KathaTheme.textPrimary)
 
                 Text("This can't be undone. Your credit was already spent.")
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
                     .multilineTextAlignment(.center)
 
@@ -666,15 +666,15 @@ struct UnfollowStoryModal: View {
 
             VStack(spacing: KathaTheme.Spacing.l) {
                 Image(systemName: "bell.slash")
-                    .font(.system(size: 36))
+                    .font(KathaFont.Display)
                     .foregroundStyle(KathaTheme.textTertiary)
 
                 Text("Stop following?")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(KathaFont.Title2)
                     .foregroundStyle(KathaTheme.textPrimary)
 
                 Text("Stop following \"\(appState.pendingUnfollowStoryTitle)\"? You won't be notified of new chapters.")
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
                     .multilineTextAlignment(.center)
 
@@ -736,17 +736,17 @@ struct ChapterGenerationScreen: View {
                         .animation(.easeInOut(duration: 1), value: progress)
 
                     Image(systemName: "sparkles")
-                        .font(.system(size: 44))
+                        .font(KathaFont.Title1)
                         .foregroundStyle(KathaTheme.accent)
                 }
 
                 Text(statuses[statusIndex])
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(KathaFont.Title2)
                     .foregroundStyle(KathaTheme.textPrimary)
                     .animation(.easeInOut, value: statusIndex)
 
                 Text("This usually takes 10–14 seconds")
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
 
                 Spacer()
@@ -754,7 +754,7 @@ struct ChapterGenerationScreen: View {
                 if appState.lastGeneratedChapter != nil {
                     VStack(spacing: KathaTheme.Spacing.m) {
                         Text("Chapter \(appState.continueWizardChapterNumber) is ready!")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(KathaFont.Title2)
                             .foregroundStyle(KathaTheme.textPrimary)
 
                         PrimaryCTA(title: "Preview chapter", icon: "book.open") {
@@ -773,7 +773,7 @@ struct ChapterGenerationScreen: View {
                             Haptics.light()
                             appState.resetContinueWizard()
                         }
-                        .font(.system(size: 14, weight: .medium))
+                        .font(KathaFont.BodyStrong)
                         .foregroundStyle(KathaTheme.textSecondary)
                     }
                     .padding(.bottom, KathaTheme.Spacing.xl)

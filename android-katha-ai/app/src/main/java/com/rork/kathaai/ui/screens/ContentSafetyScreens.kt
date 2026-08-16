@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MenuBook
@@ -68,6 +67,7 @@ import com.rork.kathaai.ui.components.PrimaryCTA
 import com.rork.kathaai.ui.components.SafeBottomSpacer
 import com.rork.kathaai.ui.components.SecondaryCTA
 import com.rork.kathaai.ui.theme.KathaTheme
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 import kotlinx.coroutines.delay
@@ -77,40 +77,6 @@ private fun SafetyHeader(title: String, onClose: () -> Unit, modifier: Modifier 
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, color = KathaTheme.textPrimary, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, contentDescription = "Close", tint = KathaTheme.textSecondary) }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AppLanguageSelectionSheet(state: KathaUiState, viewModel: AppViewModel) {
-    var showComingSoon by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = { viewModel.dismissUiLanguageSheet() }, containerColor = KathaTheme.surface) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = KathaTheme.Spacing.xl).padding(bottom = KathaTheme.Spacing.xl)) {
-            SafetyHeader("App language", viewModel::dismissUiLanguageSheet)
-            Text("The language for menus, buttons, and screens across Katha. Story language is set separately.", color = KathaTheme.textSecondary, fontSize = 14.sp, modifier = Modifier.padding(bottom = KathaTheme.Spacing.m))
-            LanguageRow("🇺🇸", "English", "English", state.appLanguage.name == "ENGLISH") { viewModel.dismissUiLanguageSheet() }
-            HorizontalDivider(color = KathaTheme.border)
-            LanguageRow("🇮🇳", "Hindi", "हिन्दी", false) { showComingSoon = true }
-        }
-    }
-    if (showComingSoon) {
-        AlertDialog(
-            onDismissRequest = { showComingSoon = false },
-            icon = { Icon(Icons.Outlined.Language, null, tint = KathaTheme.accent, modifier = Modifier.size(40.dp)) },
-            title = { Text("Hindi UI is coming in the next update", textAlign = TextAlign.Center) },
-            text = { Text("For now, Katha is available in English. Story generation supports Hindi in 15 other languages.", textAlign = TextAlign.Center) },
-            confirmButton = { TextButton(onClick = { viewModel.notifyHindiAvailability(); showComingSoon = false }) { Text("Notify me when it's ready", color = KathaTheme.accent) } },
-            dismissButton = { TextButton(onClick = { showComingSoon = false }) { Text("Continue in English") } }
-        )
-    }
-}
-
-@Composable
-private fun LanguageRow(flag: String, title: String, native: String, selected: Boolean, onClick: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = KathaTheme.Spacing.m), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
-        Text(flag, fontSize = 24.sp)
-        Column(modifier = Modifier.weight(1f)) { Text(title, color = KathaTheme.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold); Text(native, color = KathaTheme.textSecondary, fontSize = 13.sp) }
-        Box(modifier = Modifier.size(18.dp).clip(CircleShape).background(if (selected) KathaTheme.accent else Color.Transparent).border(1.dp, if (selected) KathaTheme.accent else KathaTheme.borderStrong, CircleShape), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Outlined.Check, null, tint = Color.White, modifier = Modifier.size(12.dp)) }
     }
 }
 

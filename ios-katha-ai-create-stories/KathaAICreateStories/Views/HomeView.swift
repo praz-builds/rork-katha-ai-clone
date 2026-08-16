@@ -41,7 +41,7 @@ struct HomeView: View {
     private var header: some View {
         HStack {
             Text("Katha")
-                .font(KathaFont.serifBold(28))
+                .font(KathaFont.Wordmark)
                 .foregroundStyle(KathaTheme.textPrimary)
             Spacer()
             if appState.isAuthenticated {
@@ -53,14 +53,14 @@ struct HomeView: View {
                         HStack(spacing: 4) {
                             if appState.isPremium {
                                 Image(systemName: "crown")
-                                    .font(.system(size: 10))
+                                    .font(KathaFont.Meta)
                                     .foregroundStyle(KathaTheme.premium)
                             }
                             Image(systemName: "credits")
-                                .font(.system(size: 12))
+                                .font(KathaFont.Meta)
                                 .foregroundStyle(KathaTheme.accent)
                             Text("\(appState.credits)")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(KathaFont.BodyStrong)
                                 .foregroundStyle(KathaTheme.textPrimary)
                         }
                         .padding(.horizontal, 12)

@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rork.kathaai.ui.theme.KathaTheme
-import com.rork.kathaai.ui.theme.serif
+import com.rork.kathaai.ui.theme.KathaTypography
 
 @Composable
 fun SplashScreen(modifier: Modifier = Modifier) {
@@ -72,7 +72,7 @@ fun SplashScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.size(44.dp)
                 )
             }
-            Text("Katha", style = serif(40, FontWeight.Bold), color = KathaTheme.textPrimary)
+            Text("Katha", style = KathaTypography.Wordmark, color = KathaTheme.textPrimary)
             Text(
                 "Stories crafted by AI, shaped by you",
                 color = KathaTheme.textSecondary,

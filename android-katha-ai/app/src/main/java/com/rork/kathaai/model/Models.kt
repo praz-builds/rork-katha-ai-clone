@@ -32,34 +32,37 @@ import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.serialization.Serializable
+import com.rork.kathaai.ui.theme.KathaTheme
 
 enum class Genre(
     val displayName: String,
-    val coverColors: List<Color>,
     val icon: ImageVector
 ) {
-    FICTION("Fiction", listOf(Color(0xFFE89F3D), Color(0xFFC8842A), Color(0xFF8B5A2A)), Icons.Outlined.MenuBook),
-    MYSTERY("Mystery", listOf(Color(0xFF2C3E50), Color(0xFF1A2A36), Color(0xFF0D1620)), Icons.Outlined.Search),
-    ROMANCE("Romance", listOf(Color(0xFFC45B7B), Color(0xFF8B2D4B), Color(0xFF5A1D33)), Icons.Outlined.FavoriteBorder),
-    SCIFI("Sci-Fi", listOf(Color(0xFF4A3A8E), Color(0xFF2D1A5A), Color(0xFF1A0D3A)), Icons.Outlined.Rocket),
-    FANTASY("Fantasy", listOf(Color(0xFF5B8A5B), Color(0xFF3A6B3A), Color(0xFF1A4A2A)), Icons.Outlined.AutoAwesome),
-    HORROR("Horror", listOf(Color(0xFF5A1D1D), Color(0xFF3A0D0D), Color(0xFF1A0505)), Icons.Outlined.DarkMode),
-    POETRY("Poetry", listOf(Color(0xFF8E7A9E), Color(0xFF6B5B8E), Color(0xFF4A3A6B)), Icons.Outlined.FormatQuote),
-    LITERARY("Literary", listOf(Color(0xFF5A4A3A), Color(0xFF3A2D1D), Color(0xFF1A1205)), Icons.AutoMirrored.Outlined.MenuBook),
-    ADVENTURE("Adventure", listOf(Color(0xFFE87B4A), Color(0xFFC04A2D), Color(0xFF8B2A1A)), Icons.Outlined.Terrain),
-    FOLKLORE("Folklore", listOf(Color(0xFFB8A03D), Color(0xFF8E7A2A), Color(0xFF5A4D1A)), Icons.Outlined.Park),
-    THRILLER("Thriller", listOf(Color(0xFF3A3A3A), Color(0xFF1A1A1A), Color(0xFF0D0D0D)), Icons.Outlined.Bolt),
-    SLICE_OF_LIFE("Slice of Life", listOf(Color(0xFFD4A574), Color(0xFFA67B52), Color(0xFF6B4F35)), Icons.Outlined.Coffee),
-    HISTORICAL("Historical", listOf(Color(0xFF8B7355), Color(0xFF6B5235), Color(0xFF3A2D1A)), Icons.Outlined.HistoryEdu),
-    CONTEMPORARY("Contemporary", listOf(Color(0xFF4A9A9A), Color(0xFF2D6B6B), Color(0xFF1A4A4A)), Icons.Outlined.Map),
-    LGBTQ("LGBTQ+", listOf(Color(0xFFE84A7B), Color(0xFFC42D5B), Color(0xFF8B1D3D)), Icons.Outlined.Transgender),
-    COMEDY("Comedy", listOf(Color(0xFFF0C04A), Color(0xFFD4A02D), Color(0xFF8B7020)), Icons.Outlined.SentimentSatisfied),
-    DRAMA("Drama", listOf(Color(0xFF6B4A6B), Color(0xFF4A2D4A), Color(0xFF2A1A2A)), Icons.Outlined.TheaterComedy),
-    MYTHOLOGY("Mythology", listOf(Color(0xFFB85A2D), Color(0xFF8B3A1A), Color(0xFF5A1D0D)), Icons.Outlined.Fireplace),
-    SPIRITUALITY("Spirituality", listOf(Color(0xFF6B8E6B), Color(0xFF4A6B4A), Color(0xFF2A4A2A)), Icons.Outlined.Spa),
-    MOTIVATIONAL("Motivational", listOf(Color(0xFFE8B83D), Color(0xFFC8982A), Color(0xFF8B6B1A)), Icons.Outlined.Lightbulb),
-    KIDS("Kids", listOf(Color(0xFFFFB347), Color(0xFFFF8C42), Color(0xFFCC6A2D)), Icons.Outlined.ChildCare),
-    EROTICA("Erotica", listOf(Color(0xFF8B3A58), Color(0xFF5A1D38), Color(0xFF2A0D1D)), Icons.Outlined.Lock)
+    FICTION("Fiction", Icons.Outlined.MenuBook),
+    MYSTERY("Mystery", Icons.Outlined.Search),
+    ROMANCE("Romance", Icons.Outlined.FavoriteBorder),
+    SCIFI("Sci-Fi", Icons.Outlined.Rocket),
+    FANTASY("Fantasy", Icons.Outlined.AutoAwesome),
+    HORROR("Horror", Icons.Outlined.DarkMode),
+    POETRY("Poetry", Icons.Outlined.FormatQuote),
+    LITERARY("Literary", Icons.AutoMirrored.Outlined.MenuBook),
+    ADVENTURE("Adventure", Icons.Outlined.Terrain),
+    FOLKLORE("Folklore", Icons.Outlined.Park),
+    THRILLER("Thriller", Icons.Outlined.Bolt),
+    SLICE_OF_LIFE("Slice of Life", Icons.Outlined.Coffee),
+    HISTORICAL("Historical", Icons.Outlined.HistoryEdu),
+    CONTEMPORARY("Contemporary", Icons.Outlined.Map),
+    LGBTQ("LGBTQ+", Icons.Outlined.Transgender),
+    COMEDY("Comedy", Icons.Outlined.SentimentSatisfied),
+    DRAMA("Drama", Icons.Outlined.TheaterComedy),
+    MYTHOLOGY("Mythology", Icons.Outlined.Fireplace),
+    SPIRITUALITY("Spirituality", Icons.Outlined.Spa),
+    MOTIVATIONAL("Motivational", Icons.Outlined.Lightbulb),
+    KIDS("Kids", Icons.Outlined.ChildCare),
+    EROTICA("Erotica", Icons.Outlined.Lock);
+
+    val coverColors: List<Color>
+        get() = KathaTheme.coverColors(this)
 }
 
 enum class ContentRating { KIDS, TEEN, MATURE }
@@ -69,8 +72,6 @@ enum class ReadingLevel(val title: String, val subtitle: String) {
     STANDARD("Standard", "Balanced vocabulary and sentence structure. Suits most readers."),
     ADVANCED("Advanced", "Rich vocabulary, complex sentences. For confident readers who want depth.")
 }
-
-enum class AppUiLanguage { ENGLISH, HINDI }
 
 enum class PinSetupMode { ENABLE_KIDS_MODE, CHANGE_PIN }
 enum class PinEntryContext { DISABLE_KIDS_MODE, CHANGE_PIN, ALLOWED_CONTENT }

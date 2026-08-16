@@ -23,17 +23,17 @@ struct SplashView: View {
                         .frame(width: 100, height: 100)
 
                     Image(systemName: "book.pages")
-                        .font(.system(size: 44))
+                        .font(KathaFont.Title1)
                         .foregroundStyle(KathaTheme.accent)
                 }
                 .scaleEffect(iconScale)
 
                 Text("Katha")
-                    .font(KathaFont.serifBold(40))
+                    .font(KathaFont.Wordmark)
                     .foregroundStyle(KathaTheme.textPrimary)
 
                 Text("Stories crafted by AI, shaped by you")
-                    .font(.system(size: 14))
+                    .font(KathaFont.Body)
                     .foregroundStyle(KathaTheme.textSecondary)
             }
             .opacity(opacity)
@@ -69,13 +69,13 @@ struct OnboardingView: View {
                 // Wordmark
                 VStack(spacing: KathaTheme.Spacing.s) {
                     Text("Katha")
-                        .font(KathaFont.serifBold(32))
+                        .font(KathaFont.Wordmark)
                         .foregroundStyle(KathaTheme.textPrimary)
                     Text("What brings you here?")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(KathaFont.Title1)
                         .foregroundStyle(KathaTheme.textPrimary)
                     Text("Pick one — you can always change your mind.")
-                        .font(.system(size: 14))
+                        .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
                 }
                 .padding(.top, KathaTheme.Spacing.xxxl)
@@ -96,23 +96,23 @@ struct OnboardingView: View {
                                         .fill(selection == index ? KathaTheme.accent.opacity(0.15) : KathaTheme.surface)
                                         .frame(width: 48, height: 48)
                                     Image(systemName: opt.icon)
-                                        .font(.system(size: 20))
+                                        .font(KathaFont.Title2)
                                         .foregroundStyle(selection == index ? KathaTheme.accent : KathaTheme.textSecondary)
                                 }
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(opt.title)
-                                        .font(.system(size: 16, weight: .semibold))
+                                        .font(KathaFont.BodyStrong)
                                         .foregroundStyle(KathaTheme.textPrimary)
                                     Text(opt.desc)
-                                        .font(.system(size: 13))
+                                        .font(KathaFont.Caption)
                                         .foregroundStyle(KathaTheme.textSecondary)
                                 }
 
                                 Spacer()
 
                                     Image(systemName: selection == index ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 22))
+                                        .font(KathaFont.Title1)
                                         .foregroundStyle(selection == index ? KathaTheme.accent : KathaTheme.textTertiary)
                             }
                             .padding(KathaTheme.Spacing.l)

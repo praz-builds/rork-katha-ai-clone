@@ -83,6 +83,7 @@ import com.rork.kathaai.ui.components.SecondaryCTA
 import com.rork.kathaai.ui.components.StoryCover
 import com.rork.kathaai.ui.components.TextLink
 import com.rork.kathaai.ui.theme.KathaTheme
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 import com.rork.kathaai.viewmodel.closeAudioPlayer
@@ -110,7 +111,7 @@ import com.rork.kathaai.viewmodel.advanceAudio
 fun Prompt12NavBar(title: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp).navigationBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.ChevronLeft, "Back", tint = KathaTheme.textPrimary, modifier = Modifier.size(44.dp).clickable(onClick = onBack).padding(10.dp))
-        Text(title, color = KathaTheme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = KathaTheme.textPrimary, fontSize = KathaTypography.Title1.fontSize, fontWeight = KathaTypography.Title1.fontWeight)
     }
 }
 
@@ -118,10 +119,10 @@ fun Prompt12NavBar(title: String, onBack: () -> Unit, modifier: Modifier = Modif
 fun StreakHeroCard(state: KathaUiState, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(KathaTheme.surface).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.size(100.dp).clip(CircleShape).background(KathaTheme.accentSoft), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Fireplace, "Streak", tint = KathaTheme.accent, modifier = Modifier.size(64.dp)) }
-        Text("${state.streak.current}", color = KathaTheme.textPrimary, fontSize = 52.sp, fontWeight = FontWeight.SemiBold)
-        Text("DAY STREAK", color = KathaTheme.textTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-        Text(if (state.streak.current == 0) "Start a small reading habit today" else "Keep it going — ${state.streak.nextCreditIn} more days until your next credit", color = KathaTheme.textSecondary, fontSize = 15.sp, textAlign = TextAlign.Center)
-        if (state.streak.freezesAvailable > 0) Text("❄️ ${state.streak.freezesAvailable} FREEZES THIS MONTH", color = KathaTheme.accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(KathaTheme.accentSoft).padding(horizontal = 10.dp, vertical = 7.dp))
+        Text("${state.streak.current}", color = KathaTheme.textPrimary, fontSize = KathaTypography.Display.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
+        Text("DAY STREAK", color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
+        Text(if (state.streak.current == 0) "Start a small reading habit today" else "Keep it going — ${state.streak.nextCreditIn} more days until your next credit", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize, textAlign = TextAlign.Center)
+        if (state.streak.freezesAvailable > 0) Text("❄️ ${state.streak.freezesAvailable} FREEZES THIS MONTH", color = KathaTheme.accent, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(KathaTheme.accentSoft).padding(horizontal = 10.dp, vertical = 7.dp))
     }
 }
 
@@ -131,19 +132,19 @@ fun StreakCalendar(state: KathaUiState, modifier: Modifier = Modifier) {
     var selected by remember { mutableStateOf<StreakDay?>(null) }
     val days = remember(state.streak.history) { (29 downTo 0).map { offset -> val date = today - offset * 86_400_000L; state.streak.history.firstOrNull { startOfDay(it.date) == date } ?: StreakDay(date, false, false, "No activity logged") } }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("LAST 30 DAYS", color = KathaTheme.textTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text("LAST 30 DAYS", color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(KathaTheme.surface).border(1.dp, KathaTheme.border, RoundedCornerShape(16.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth()) { listOf("S", "M", "T", "W", "T", "F", "S").forEach { Text(it, color = KathaTheme.textTertiary, fontSize = 10.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center) } }
+            Row(Modifier.fillMaxWidth()) { listOf("S", "M", "T", "W", "T", "F", "S").forEach { Text(it, color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, modifier = Modifier.weight(1f), textAlign = TextAlign.Center) } }
             LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.height(190.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp), userScrollEnabled = false) {
                 items(days) { day ->
-                    Box(Modifier.size(32.dp).clip(CircleShape).background(if (day.active) KathaTheme.accent else if (day.freezeUsed) Color(0xFF7BA3E8) else KathaTheme.canvas).clickable { selected = day }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(32.dp).clip(CircleShape).background(if (day.active) KathaTheme.accent else if (day.freezeUsed) KathaTheme.info else KathaTheme.canvas).clickable { selected = day }, contentAlignment = Alignment.Center) {
                         if (day.active) Icon(Icons.Outlined.Fireplace, null, tint = Color.White, modifier = Modifier.size(12.dp))
                         if (day.freezeUsed) Icon(Icons.Outlined.AcUnit, null, tint = Color.White, modifier = Modifier.size(12.dp))
                     }
                 }
             }
         }
-        selected?.let { Text("${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(it.date)} · ${it.summary}", color = KathaTheme.textSecondary, fontSize = 12.sp) }
+        selected?.let { Text("${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(it.date)} · ${it.summary}", color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize) }
     }
 }
 
@@ -154,19 +155,19 @@ fun StreakScreen(state: KathaUiState, viewModel: AppViewModel, modifier: Modifie
         item { StreakHeroCard(state) }
         item { StreakCalendar(state) }
         item {
-            Text("MILESTONES", color = KathaTheme.textTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text("MILESTONES", color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
             val milestones = listOf(3 to "First 3-day streak", 7 to "One week straight", 14 to "Two weeks strong", 30 to "Month of stories", 100 to "100-day streak legend")
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(KathaTheme.surface).padding(horizontal = 16.dp)) {
                 milestones.forEachIndexed { index, item ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Icon(if (state.streak.longest >= item.first) Icons.Outlined.CheckCircle else Icons.Outlined.Fireplace, null, tint = if (state.streak.longest >= item.first) KathaTheme.success else KathaTheme.borderStrong, modifier = Modifier.size(20.dp))
-                        Column(Modifier.weight(1f)) { Text(item.second, color = KathaTheme.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text("${item.first} days", color = KathaTheme.textSecondary, fontSize = 12.sp) }
+                        Column(Modifier.weight(1f)) { Text(item.second, color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight); Text("${item.first} days", color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize) }
                     }
                     if (index < milestones.lastIndex) Divider(color = KathaTheme.border)
                 }
             }
         }
-        item { Text(if (state.streak.current > 0 && state.streak.current == state.streak.longest) "Your longest streak — keep going ✨" else "Your longest streak: ${state.streak.longest} days", color = KathaTheme.textTertiary, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
+        item { Text(if (state.streak.current > 0 && state.streak.current == state.streak.longest) "Your longest streak — keep going ✨" else "Your longest streak: ${state.streak.longest} days", color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
         item { SafeBottomSpacer() }
     }
 }
@@ -192,7 +193,7 @@ fun NotificationsScreen(state: KathaUiState, viewModel: AppViewModel, modifier: 
 @Composable
 private fun NotificationSection(title: String, state: KathaUiState, viewModel: AppViewModel, rows: List<Pair<String, String>>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, color = KathaTheme.textTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(title, color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(KathaTheme.surface).padding(horizontal = 16.dp)) {
             rows.forEachIndexed { index, row ->
                 val checked = when (row.second) { "chapters" -> state.notificationPreferences.storyNewChapters; "stories" -> state.notificationPreferences.storyNewStories; "comments" -> state.notificationPreferences.storyComments; "likes" -> state.notificationPreferences.storyLikes; "streak" -> state.notificationPreferences.streakReminders; "milestones" -> state.notificationPreferences.milestoneCelebrations; "credits" -> state.notificationPreferences.creditsEarned; "digest" -> state.notificationPreferences.weeklyDigest; else -> state.notificationPreferences.newWriters }
@@ -204,19 +205,19 @@ private fun NotificationSection(title: String, state: KathaUiState, viewModel: A
 }
 
 @Composable
-private fun NotificationToggle(title: String, checked: Boolean, onChanged: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) { Text(title, color = KathaTheme.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f)); Switch(checked, onCheckedChange = onChanged) } }
+private fun NotificationToggle(title: String, checked: Boolean, onChanged: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) { Text(title, color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize, modifier = Modifier.weight(1f)); Switch(checked, onCheckedChange = onChanged) } }
 
 @Composable
 fun InviteFriendsScreen(state: KathaUiState, viewModel: AppViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     LazyColumn(modifier.fillMaxSize().background(KathaTheme.canvas), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         item { Prompt12NavBar("Invite friends", { viewModel.closeInviteFriendsScreen() }) }
-        item { Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Outlined.CardGiftcard, null, tint = KathaTheme.accent, modifier = Modifier.size(96.dp)); Text("Give friends a taste of Katha", color = KathaTheme.textPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center); Text("You get 3 credits when they generate their first story. They get 1 extra credit on top of the welcome bonus.", color = KathaTheme.textSecondary, fontSize = 15.sp, textAlign = TextAlign.Center) } }
-        item { Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(KathaTheme.surface).border(1.dp, KathaTheme.border, RoundedCornerShape(14.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Text(viewModel.referralLink(), color = KathaTheme.textPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f), maxLines = 1); TextButton({ viewModel.copyReferralLink(context) }) { Text("Copy", color = KathaTheme.accent) } } }
+        item { Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Outlined.CardGiftcard, null, tint = KathaTheme.accent, modifier = Modifier.size(96.dp)); Text("Give friends a taste of Katha", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title1.fontSize, fontWeight = KathaTypography.Title1.fontWeight, textAlign = TextAlign.Center); Text("You get 3 credits when they generate their first story. They get 1 extra credit on top of the welcome bonus.", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize, textAlign = TextAlign.Center) } }
+        item { Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(KathaTheme.surface).border(1.dp, KathaTheme.border, RoundedCornerShape(14.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Text(viewModel.referralLink(), color = KathaTheme.textPrimary, fontSize = KathaTypography.Caption.fontSize, modifier = Modifier.weight(1f), maxLines = 1); TextButton({ viewModel.copyReferralLink(context) }) { Text("Copy", color = KathaTheme.accent) } } }
         item { PrimaryCTA("Share your link", onClick = { viewModel.shareReferralLink() }) }
-        item { Text("YOUR REFERRALS", color = KathaTheme.textTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+        item { Text("YOUR REFERRALS", color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight) }
         if (state.referralRecords.isEmpty()) item { EmptyState(Icons.Outlined.Group, "No referrals yet", "Share your link to get started.") }
-        else items(state.referralRecords) { referral -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { GeneratedAvatar(referral.username, referral.displayName, 40.dp); Column(Modifier.weight(1f)) { Text(referral.displayName, color = KathaTheme.textPrimary, fontWeight = FontWeight.SemiBold); Text(if (referral.credited) "Generated their first story · +3 credits earned" else "Joined", color = KathaTheme.textSecondary, fontSize = 12.sp) }; Icon(if (referral.credited) Icons.Outlined.CheckCircle else Icons.Outlined.HourglassEmpty, null, tint = if (referral.credited) KathaTheme.success else KathaTheme.textTertiary) } }
+        else items(state.referralRecords) { referral -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { GeneratedAvatar(referral.username, referral.displayName, 40.dp); Column(Modifier.weight(1f)) { Text(referral.displayName, color = KathaTheme.textPrimary, fontWeight = KathaTypography.BodyStrong.fontWeight); Text(if (referral.credited) "Generated their first story · +3 credits earned" else "Joined", color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize) }; Icon(if (referral.credited) Icons.Outlined.CheckCircle else Icons.Outlined.HourglassEmpty, null, tint = if (referral.credited) KathaTheme.success else KathaTheme.textTertiary) } }
         item { SafeBottomSpacer() }
     }
 }
@@ -228,11 +229,11 @@ fun StorageScreen(state: KathaUiState, viewModel: AppViewModel, modifier: Modifi
         if (state.offlineStoryRecords.isEmpty()) item { EmptyState(Icons.Outlined.CloudOff, "No stories downloaded yet", "Tap the download icon in any story to save it for offline.") }
         else {
             val total = state.offlineStoryRecords.sumOf { it.sizeMb }
-            item { Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(KathaTheme.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("${"%.1f".format(total)} MB", color = KathaTheme.textPrimary, fontSize = 30.sp, fontWeight = FontWeight.Bold); LinearProgressIndicator(progress = { (total / 100).toFloat().coerceIn(0f, 1f) }, color = KathaTheme.accent, modifier = Modifier.fillMaxWidth()); Text("Audio: ${"%.1f".format(total)} MB", color = KathaTheme.textSecondary, fontSize = 13.sp); Text("Images: 0 MB", color = KathaTheme.textSecondary, fontSize = 13.sp) } }
-            item { Text("DOWNLOADED STORIES", color = KathaTheme.textTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
-            items(state.offlineStoryRecords) { record -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.CheckCircle, null, tint = KathaTheme.success); Text(record.title, color = KathaTheme.textPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 10.dp)); Text("${"%.1f".format(record.sizeMb)} MB", color = KathaTheme.textSecondary, fontSize = 12.sp); Icon(Icons.Outlined.Delete, "Remove", tint = KathaTheme.error, modifier = Modifier.padding(start = 12.dp).clickable { viewModel.removeOfflineStory(record.storyId) }) } }
+            item { Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(KathaTheme.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("${"%.1f".format(total)} MB", color = KathaTheme.textPrimary, fontSize = KathaTypography.Display.fontSize, fontWeight = KathaTypography.Title1.fontWeight); LinearProgressIndicator(progress = { (total / 100).toFloat().coerceIn(0f, 1f) }, color = KathaTheme.accent, modifier = Modifier.fillMaxWidth()); Text("Audio: ${"%.1f".format(total)} MB", color = KathaTheme.textSecondary, fontSize = KathaTypography.Caption.fontSize); Text("Images: 0 MB", color = KathaTheme.textSecondary, fontSize = KathaTypography.Caption.fontSize) } }
+            item { Text("DOWNLOADED STORIES", color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight) }
+            items(state.offlineStoryRecords) { record -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.CheckCircle, null, tint = KathaTheme.success); Text(record.title, color = KathaTheme.textPrimary, fontWeight = KathaTypography.BodyStrong.fontWeight, modifier = Modifier.weight(1f).padding(start = 10.dp)); Text("${"%.1f".format(record.sizeMb)} MB", color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize); Icon(Icons.Outlined.Delete, "Remove", tint = KathaTheme.error, modifier = Modifier.padding(start = 12.dp).clickable { viewModel.removeOfflineStory(record.storyId) }) } }
             item { DestructiveCTA("Clear all downloads", icon = Icons.Outlined.Delete) { viewModel.clearOfflineStories() } }
-            item { Text("Your bookmarks and history are preserved.", color = KathaTheme.textTertiary, fontSize = 11.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
+            item { Text("Your bookmarks and history are preserved.", color = KathaTheme.textTertiary, fontSize = KathaTypography.Meta.fontSize, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
         }
         item { SafeBottomSpacer() }
     }
@@ -247,10 +248,10 @@ fun AudioPlayerSheet(state: KathaUiState, viewModel: AppViewModel, story: Story,
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(KathaTheme.surface).padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(4.dp)).background(KathaTheme.textTertiary.copy(alpha = 0.5f)))
             StoryCover(story, height = 220.dp, titleSize = 20)
-            Text(story.title, color = KathaTheme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text("Chapter ${state.currentChapterIndex + 1} · ${story.chapters.getOrNull(state.currentChapterIndex)?.title ?: "Story"}", color = KathaTheme.textSecondary, fontSize = 14.sp)
+            Text(story.title, color = KathaTheme.textPrimary, fontSize = KathaTypography.Title1.fontSize, fontWeight = KathaTypography.Title1.fontWeight, maxLines = 1)
+            Text("Chapter ${state.currentChapterIndex + 1} · ${story.chapters.getOrNull(state.currentChapterIndex)?.title ?: "Story"}", color = KathaTheme.textSecondary, fontSize = KathaTypography.Body.fontSize)
             Slider(state.audioProgress, onValueChange = viewModel::seekAudio, colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = KathaTheme.accent, activeTrackColor = KathaTheme.accent))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(audioTime(state.audioProgress), color = KathaTheme.textSecondary, fontSize = 11.sp); Text(audioTime(1f), color = KathaTheme.textSecondary, fontSize = 11.sp) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(audioTime(state.audioProgress), color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize); Text(audioTime(1f), color = KathaTheme.textSecondary, fontSize = KathaTypography.Meta.fontSize) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PlayerButton(Icons.Outlined.SkipPrevious, state.currentChapterIndex > 0) { viewModel.navigateToPreviousChapter() }; PlayerButton(Icons.Outlined.FastRewind, true) { viewModel.skipAudio(-15) }; Icon(if (state.audioIsPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(64.dp).clip(CircleShape).background(KathaTheme.accent).clickable { viewModel.toggleAudioPlayback() }.padding(20.dp)); PlayerButton(Icons.Outlined.FastForward, true) { viewModel.skipAudio(30) }; PlayerButton(Icons.Outlined.SkipNext, state.currentChapterIndex < story.chapters.lastIndex) { viewModel.navigateToNextChapter() }
             }
@@ -271,14 +272,14 @@ private fun startOfDay(timestamp: Long): Long { val c = Calendar.getInstance().a
 @Composable
 fun PrePermissionModal(state: KathaUiState, viewModel: AppViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) { Column(Modifier.padding(24.dp).clip(RoundedCornerShape(24.dp)).background(KathaTheme.surface).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { Icon(Icons.Outlined.Notifications, null, tint = KathaTheme.accent, modifier = Modifier.size(48.dp)); Text("Stay in the loop", color = KathaTheme.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text("Get notified when writers you follow publish, when your streak needs saving, and when your stories hit milestones.", color = KathaTheme.textSecondary, textAlign = TextAlign.Center); PrimaryCTA("Enable notifications", onClick = { viewModel.requestNotificationPermission(context) }); TextLink("Not now") { viewModel.dismissPrePermission() } } }
+    Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) { Column(Modifier.padding(24.dp).clip(RoundedCornerShape(24.dp)).background(KathaTheme.surface).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { Icon(Icons.Outlined.Notifications, null, tint = KathaTheme.accent, modifier = Modifier.size(48.dp)); Text("Stay in the loop", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title1.fontSize, fontWeight = KathaTypography.Title1.fontWeight); Text("Get notified when writers you follow publish, when your streak needs saving, and when your stories hit milestones.", color = KathaTheme.textSecondary, textAlign = TextAlign.Center); PrimaryCTA("Enable notifications", onClick = { viewModel.requestNotificationPermission(context) }); TextLink("Not now") { viewModel.dismissPrePermission() } } }
 }
 
 @Composable
-fun StreakResetModal(state: KathaUiState, viewModel: AppViewModel, modifier: Modifier = Modifier) { Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) { Column(Modifier.padding(24.dp).clip(RoundedCornerShape(24.dp)).background(KathaTheme.surface).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { Icon(Icons.Outlined.Fireplace, null, tint = KathaTheme.accent, modifier = Modifier.size(48.dp)); Text("Your streak reset", color = KathaTheme.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text("Every writer starts fresh. Ready for a new one?", color = KathaTheme.textSecondary, textAlign = TextAlign.Center); PrimaryCTA("Start a new streak", onClick = { viewModel.updatePrompt12State(state.copy(showStreakResetModal = false, requestedTab = 0)) }); TextLink("Maybe later") { viewModel.updatePrompt12State(state.copy(showStreakResetModal = false)) } } } }
+fun StreakResetModal(state: KathaUiState, viewModel: AppViewModel, modifier: Modifier = Modifier) { Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) { Column(Modifier.padding(24.dp).clip(RoundedCornerShape(24.dp)).background(KathaTheme.surface).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { Icon(Icons.Outlined.Fireplace, null, tint = KathaTheme.accent, modifier = Modifier.size(48.dp)); Text("Your streak reset", color = KathaTheme.textPrimary, fontSize = KathaTypography.Title1.fontSize, fontWeight = KathaTypography.Title1.fontWeight); Text("Every writer starts fresh. Ready for a new one?", color = KathaTheme.textSecondary, textAlign = TextAlign.Center); PrimaryCTA("Start a new streak", onClick = { viewModel.updatePrompt12State(state.copy(showStreakResetModal = false, requestedTab = 0)) }); TextLink("Maybe later") { viewModel.updatePrompt12State(state.copy(showStreakResetModal = false)) } } } }
 
 @Composable
-fun DownloadProgressBanner(state: KathaUiState, modifier: Modifier = Modifier) { state.downloadProgress?.let { progress -> Column(modifier.fillMaxWidth().background(KathaTheme.surface).padding(12.dp)) { Text("Downloading ${state.downloadStoryTitle}…", color = KathaTheme.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); LinearProgressIndicator(progress = { progress }, color = KathaTheme.accent, modifier = Modifier.fillMaxWidth()) } } }
+fun DownloadProgressBanner(state: KathaUiState, modifier: Modifier = Modifier) { state.downloadProgress?.let { progress -> Column(modifier.fillMaxWidth().background(KathaTheme.surface).padding(12.dp)) { Text("Downloading ${state.downloadStoryTitle}…", color = KathaTheme.textPrimary, fontSize = KathaTypography.Caption.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight); LinearProgressIndicator(progress = { progress }, color = KathaTheme.accent, modifier = Modifier.fillMaxWidth()) } } }
 
 @Composable
 fun RateAppPrompt(state: KathaUiState, viewModel: AppViewModel) {
