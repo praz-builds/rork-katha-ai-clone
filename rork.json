@@ -1,0 +1,15 @@
+{
+  "$schema": "https://rork.com/schema/rork.json",
+  "apps": [
+    {
+      "name": "Katha AI — Create Stories",
+      "path": "ios-katha-ai-create-stories",
+      "framework": "swift"
+    },
+    {
+      "name": "Katha AI",
+      "path": "android-katha-ai",
+      "framework": "kotlin"
+    }
+  ]
+}
