@@ -8,16 +8,13 @@ import SwiftUI
 // MARK: - Genre
 
 enum Genre: String, CaseIterable, Identifiable, Hashable {
-    case fiction
     case mystery
     case romance
     case scifi
     case fantasy
     case horror
     case poetry
-    case literary
     case adventure
-    case folklore
     case thriller
     case sliceOfLife
     case historical
@@ -35,16 +32,16 @@ enum Genre: String, CaseIterable, Identifiable, Hashable {
 
     var displayName: String {
         switch self {
-        case .fiction: "Fiction"
+        case .contemporary: "Contemporary"
         case .mystery: "Mystery"
         case .romance: "Romance"
         case .scifi: "Sci-Fi"
         case .fantasy: "Fantasy"
         case .horror: "Horror"
         case .poetry: "Poetry"
-        case .literary: "Literary"
+        case .drama: "Drama"
         case .adventure: "Adventure"
-        case .folklore: "Folklore"
+        case .mythology: "Mythology"
         case .thriller: "Thriller"
         case .sliceOfLife: "Slice of Life"
         case .historical: "Historical"
@@ -66,16 +63,16 @@ enum Genre: String, CaseIterable, Identifiable, Hashable {
 
     var icon: String {
         switch self {
-        case .fiction:      "book"
+        case .contemporary: "map"
         case .mystery:      "magnifyingglass"
         case .romance:      "heart"
         case .scifi:        "rocket"
         case .fantasy:      "wand.and.stars"
         case .horror:       "moon.haze"
         case .poetry:       "text.quote"
-        case .literary:     "text.book.closed"
+        case .drama:        "theatermasks"
         case .adventure:    "mountain.2"
-        case .folklore:     "tree"
+        case .mythology:    "flame"
         case .thriller:     "bolt"
         case .sliceOfLife:  "cup.and.saucer"
         case .historical:   "building.columns"
@@ -204,6 +201,15 @@ enum ReadingLevel: String, CaseIterable, Codable, Hashable, Identifiable {
     }
 }
 
+enum AppThemeMode: String, CaseIterable, Identifiable {
+    case auto, light, dark
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var colorScheme: ColorScheme? {
+        switch self { case .auto: nil; case .light: .light; case .dark: .dark }
+    }
+}
+
 enum PinSetupMode: String {
     case enableKidsMode
     case changePin
@@ -234,6 +240,9 @@ struct Story: Identifiable, Hashable {
     var plannedChapterCount: Int? = nil
     var contentRating: ContentRating? = nil
     var languageCode: String = "EN"
+    /// ISO 639-1 language code used by filters and language chips.
+    var language: String = "en"
+    var commentCount: Int = 0
 
     var effectiveContentRating: ContentRating {
         if let contentRating { return contentRating }
@@ -515,7 +524,8 @@ struct GeneratedStory: Identifiable, Hashable {
             followerCount: followerCount,
             plannedChapterCount: plannedChapterCount,
             contentRating: genre == .kids ? .kids : (genre == .horror || genre == .erotica ? .mature : .teen),
-            languageCode: language.code
+            languageCode: language.code,
+            language: language.code.lowercased()
         )
     }
 

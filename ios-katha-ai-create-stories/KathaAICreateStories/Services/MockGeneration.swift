@@ -135,21 +135,21 @@ enum StoryStarters {
             "A lost stuffed animal sends postcards from its journey home.",
             "A child who is afraid of the dark befriends the shadow under her bed."
         ],
-        .literary: [
+        .drama: [
             "A grandmother's cookbook reveals a final recipe with strange instructions.",
             "A man catalogues every lie he has ever told in a single notebook.",
             "A woman discovers her life is being narrated by a voice only she hears.",
             "An archivist finds love letters between two people who never met.",
             "A translator realizes the novel she's translating is about her own childhood."
         ],
-        .fiction: [
+        .contemporary: [
             "A lighthouse keeper receives a letter from the future warning of a storm.",
             "A mapmaker is asked to chart a place that doesn't exist — yet.",
             "A clockmaker's daughter discovers she can stop time with a thought.",
             "A woman finds a letter in her garden addressed to her, in her own handwriting, dated tomorrow.",
             "A museum guard notices one exhibit changes slightly every night."
         ],
-        .folklore: [
+        .mythology: [
             "An old woman folds paper cranes for forty years. When a boy wishes on one, the magic isn't where he thinks.",
             "A village leaves shoes on their roofs to keep the river spirits kind.",
             "A baker's bread refuses to rise whenever a lie is told in the house.",
@@ -159,7 +159,7 @@ enum StoryStarters {
     ]
 
     static func random(for genre: Genre) -> String {
-        let pool = starters[genre] ?? starters[.fiction]!
+        let pool = starters[genre] ?? starters[.contemporary]!
         return pool.randomElement() ?? pool[0]
     }
 
@@ -182,7 +182,7 @@ enum MockGeneration {
     static let templates: [MockStoryTemplate] = [
         MockStoryTemplate(
             title: "The Mapmaker's Last Commission",
-            genre: .fiction,
+            genre: .contemporary,
             themes: ["maps", "discovery", "time"],
             firstLine: "The old mapmaker had not drawn a new line in thirty years.",
             body: 
@@ -200,7 +200,7 @@ He worked through the night. The stranger did not leave. At dawn, the mapmaker l
         ),
         MockStoryTemplate(
             title: "The Letter from Tomorrow",
-            genre: .fiction,
+            genre: .contemporary,
             themes: ["time", "garden", "warning"],
             firstLine: "She found the letter in the garden, pressed flat under a stone.",
             body: 
@@ -324,7 +324,7 @@ He replaced the bulb. The new one lit, turned, swept the sea. And in the beam's 
         ),
         MockStoryTemplate(
             title: "Letters to the Sea",
-            genre: .literary,
+            genre: .drama,
             themes: ["grief", "ocean", "letters"],
             firstLine: "Every morning, Amma walked to the pier with a letter folded in her sari.",
             body: 
@@ -364,7 +364,7 @@ They ate dinner by the fire. They talked until the rain stopped. When the path w
         ),
         MockStoryTemplate(
             title: "The Paper Crane",
-            genre: .folklore,
+            genre: .mythology,
             themes: ["folk-tale", "kindness", "tradition"],
             firstLine: "In the village of Fukushima, there lived an old woman who folded paper cranes.",
             body: 
@@ -469,7 +469,7 @@ enum ChapterStarters {
             "The experiment succeeds, but the results don't match the theory…",
             "First contact happens in the most mundane possible way…"
         ],
-        .fiction: [
+        .contemporary: [
             "The stranger returns, and this time they bring news…",
             "A discovery in the attic rewrites the family history…",
             "The town's secret surfaces in the most public possible way…",
@@ -493,13 +493,13 @@ enum ChapterStarters {
             "The guide reveals a personal stake in the journey…",
             "The way forward is blocked. The way back is gone…"
         ],
-        .literary: [
+        .drama: [
             "The letter is read by the wrong person first…",
             "A quiet morning reveals something that was always there…",
             "The past walks in, wearing a different face…",
             "A choice made years ago comes home to stay…"
         ],
-        .folklore: [
+        .mythology: [
             "The old tale was wrong. The true version is darker…",
             "A spirit appears that no one in the village remembers…",
             "The ritual has a step that was deliberately forgotten…",
@@ -598,7 +598,7 @@ enum ChapterStarters {
             "The mission parameters change without warning…",
             "The line between observer and subject dissolves…"
         ],
-        .fiction: [
+        .contemporary: [
             "The consequences of the first decision arrive…",
             "A relationship is tested by something neither can control…",
             "The world shifts around them, and they must decide who to be…",
@@ -622,13 +622,13 @@ enum ChapterStarters {
             "The prize is real, but the cost is steeper than promised…",
             "A detour becomes the most important part of the journey…"
         ],
-        .literary: [
+        .drama: [
             "The weight of what was unsaid becomes unbearable…",
             "A moment of grace arrives in the midst of crisis…",
             "The character does the thing they swore they wouldn't…",
             "Time skips, and the gap tells its own story…"
         ],
-        .folklore: [
+        .mythology: [
             "The old story isn't finished — it was only paused…",
             "A new teller reshapes the tale, and the tale reshapes them…",
             "The boundary between myth and memory thins…",
@@ -727,7 +727,7 @@ enum ChapterStarters {
             "The last boundary is crossed, and there's no going back…",
             "The future and present collide in a single moment…"
         ],
-        .fiction: [
+        .contemporary: [
             "The ending that was always coming arrives…",
             "A final reckoning with who they've become…",
             "The story comes full circle — but the circle is different now…",
@@ -751,13 +751,13 @@ enum ChapterStarters {
             "The journey's end is not what was promised — it's something better…",
             "The return home is the truest test…"
         ],
-        .literary: [
+        .drama: [
             "The last page writes itself…",
             "A reckoning with grace, or the absence of it…",
             "The story ends, and the silence is the point…",
             "What was planted in the first chapter blooms here…"
         ],
-        .folklore: [
+        .mythology: [
             "The tale completes its final turn…",
             "The old debt is paid, or the old promise is kept…",
             "The last teller passes the story on…",
@@ -845,11 +845,11 @@ enum ChapterStarters {
 
         let pool: [String]
         if position < 0.4 {
-            pool = earlyStarters[genre] ?? earlyStarters[.fiction]!
+            pool = earlyStarters[genre] ?? earlyStarters[.contemporary]!
         } else if position < 0.8 {
-            pool = midStarters[genre] ?? midStarters[.fiction]!
+            pool = midStarters[genre] ?? midStarters[.contemporary]!
         } else {
-            pool = lateStarters[genre] ?? lateStarters[.fiction]!
+            pool = lateStarters[genre] ?? lateStarters[.contemporary]!
         }
         return Array(pool.shuffled().prefix(5))
     }
@@ -863,12 +863,12 @@ enum ChapterTitlePool {
         .mystery: ["The Second Body", "The Missing Page", "A Confession Rewritten", "The Unmarked Door", "Closing Argument", "The Last Witness"],
         .romance: ["The Letter Unsent", "Two Trains", "The Unfinished Sentence", "Rain in November", "The Other Side of Quiet", "A Table for Two"],
         .scifi: ["The Second Signal", "Drift", "The Human Variable", "Protocol Zero", "The Last Transmission", "Mirror Matter"],
-        .fiction: ["The Return", "Unwritten", "The Long Way Home", "What Remained", "The Other Map", "Crossing"],
+        .contemporary: ["The Return", "Unwritten", "The Long Way Home", "What Remained", "The Other Map", "Crossing"],
         .horror: ["The Thirteenth Mark", "Below", "The Room That Wasn't There", "House of Teeth", "The Final Count", "Unmaker"],
         .thriller: ["The Mole", "Countdown", "Blind Spot", "The Switch", "Zero Hour", "Compromised"],
         .adventure: ["The Narrows", "The Old Way", "Storm Season", "The Far Shore", "The Detour", "High Ground"],
-        .literary: ["The Empty Room", "What the Garden Knew", "The Last Kitchen", "Departure", "The Returned", "Still Life"],
-        .folklore: ["The Old Story", "What the Wind Carried", "The Unfinished Crane", "The Second Wish", "Root and Branch", "The Hollow Tree"],
+        .drama: ["The Empty Room", "What the Garden Knew", "The Last Kitchen", "Departure", "The Returned", "Still Life"],
+        .mythology: ["The Old Story", "What the Wind Carried", "The Unfinished Crane", "The Second Wish", "Root and Branch", "The Hollow Tree"],
         .sliceOfLife: ["Tuesday", "The Regulars", "A Small Kindness", "The Morning Route", "Neighbors", "The Last Note"],
         .historical: ["The Coded Page", "The Front Line", "The Archive", "Wartime", "The Unsent Dispatch", "After the Armistice"],
         .contemporary: ["The Notification", "Offline", "The Feed", "The Last Post", "Connection", "Refresh"],
@@ -883,7 +883,7 @@ enum ChapterTitlePool {
     ]
 
     static func randomTitle(for genre: Genre) -> String {
-        let pool = titles[genre] ?? titles[.fiction]!
+        let pool = titles[genre] ?? titles[.contemporary]!
         return pool.randomElement() ?? pool[0]
     }
 }
@@ -1010,7 +1010,7 @@ Liang looked at her crew. They looked at her. The air scrubbers hummed. The sola
 """
  
         ],
-        .fiction: [
+        .contemporary: [
 """
 The stranger returned on a Sunday, which was the day the village did its laundry and its thinking in equal measure. He looked the same — same coat, same hat, same way of standing as if he expected the ground to move. The difference was in his hands. They were empty.
 
@@ -1092,7 +1092,7 @@ Jared stepped forward. Then Kai. Then Sara. Then, simultaneously, they all stepp
 """
  
         ],
-        .literary: [
+        .drama: [
 """
 The empty room was not empty. It was full of what had been there — the chair, the lamp, the smell of coffee, the sound of a voice that had stopped. Amma stood in the doorway and felt the weight of absence, which was heavier than any presence, because presence takes up space and absence takes up everything.
 
@@ -1118,7 +1118,7 @@ She looked at the roses. They were not turned toward the sea anymore. They were 
 """
  
         ],
-        .folklore: [
+        .mythology: [
 """
 The old story was wrong, and the woman who knew it was wrong was eight years old. She had heard the tale a hundred times — the crane, the wish, the folding. But the tale always ended with the folding. It never said what happened to the paper.
 
@@ -1365,7 +1365,7 @@ But the mole had a pattern. Every time, the mole acted within twelve hours. It w
     ]
 
     static func randomBody(for genre: Genre) -> String {
-        let pool = bodies[genre] ?? bodies[.fiction]!
+        let pool = bodies[genre] ?? bodies[.contemporary]!
         return pool.randomElement() ?? pool[0]
     }
 }

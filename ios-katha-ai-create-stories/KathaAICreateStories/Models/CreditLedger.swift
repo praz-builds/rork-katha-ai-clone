@@ -30,6 +30,7 @@ enum CreditReason: String, Codable, CaseIterable {
     case generation
     case welcomeBonus
     case readerEarning
+    case refund
 
     var label: String {
         switch self {
@@ -44,6 +45,7 @@ enum CreditReason: String, Codable, CaseIterable {
         case .generation: "Generated story"
         case .welcomeBonus: "Welcome to Katha ✨"
         case .readerEarning: "Reading reward"
+        case .refund: "Generation refunded"
         }
     }
 
@@ -60,6 +62,7 @@ enum CreditReason: String, Codable, CaseIterable {
         case .generation: "pencil.line"
         case .welcomeBonus: "sparkles"
         case .readerEarning: "book"
+        case .refund: "arrow.uturn.backward"
         }
     }
 }

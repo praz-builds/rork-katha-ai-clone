@@ -2,6 +2,7 @@ package com.rork.kathaai.data
 
 import com.rork.kathaai.model.Author
 import com.rork.kathaai.model.Chapter
+import com.rork.kathaai.model.ContentRating
 import com.rork.kathaai.model.Genre
 import com.rork.kathaai.model.ProfileUserItem
 import com.rork.kathaai.model.Story
@@ -10,16 +11,16 @@ import com.rork.kathaai.model.StoryComment
 object SeedData {
 
     val authors: List<Author> = listOf(
-        Author("kathaai", "kathaai", "Katha AI", "The house account. Curated tales spun with care. Follow us for the best of Katha, weekly.", 12400, 30, true, 0),
-        Author("aarav", "aarav", "Aarav Menon", "Writing stories about the small moments that shape a life. Based in Mumbai.", 3200, 4, false, 4),
-        Author("zoeok", "zoeok", "Zoe Okonkwo", "Afrofuturism, thrillers, and everything in between. Lagos \u2192 London \u2192 wherever the story goes.", 5100, 5, true, 200),
-        Author("priyanair", "priyanair", "Priya Nair", "Mythology-tinted fantasy from Kerala. New chapter every Sunday morning.", 2800, 3, false, 120),
-        Author("mayak", "mayak", "Maya Kapoor", "Contemporary romance and second-chance stories. Weekend baker, weekday storyteller.", 6700, 6, true, 89),
-        Author("rentakahashi", "rentakahashi", "Ren Takahashi", "Slow-burn sci-fi. Occasional horror. Tokyo native, night-shift writer.", 4400, 5, false, 45),
-        Author("diegoa", "diegoa", "Diego Alvarez", "Buenos Aires. Magical realism, mostly in Spanish. Coffee-fueled at 3 AM.", 3900, 4, false, 22),
-        Author("rahuls", "rahuls", "Rahul Sharma", "Motivational shorts. Grand ambitions, small steps. Write your own tomorrow.", 2600, 3, false, 30),
-        Author("elenar", "elenar", "Elena Ross", "Historical fiction with a mystery twist. Living in Florence, dreaming in the 1600s.", 5200, 4, true, 78),
-        Author("kainak", "kainak", "Kai Nakamura", "Poetry, mostly. Sometimes prose. Always short. Sometimes very short.", 3100, 3, false, 50)
+        Author("kathaai", "kathaai", "Katha AI", "The house account. Curated tales spun with care. Follow us for the best of Katha, weekly.", 48200, 30, true, 0),
+        Author("aarav", "aarav", "Aarav Menon", "Writing stories about the small moments that shape a life. Based in Mumbai.", 12, 4, false, 4),
+        Author("zoeok", "zoeok", "Zoe Okonkwo", "Afrofuturism, thrillers, and everything in between. Lagos \u2192 London \u2192 wherever the story goes.", 15000, 5, false, 200),
+        Author("priyanair", "priyanair", "Priya Nair", "Mythology-tinted fantasy from Kerala. New chapter every Sunday morning.", 8900, 3, false, 120),
+        Author("mayak", "mayak", "Maya Kapoor", "Contemporary romance and second-chance stories. Weekend baker, weekday storyteller.", 3400, 6, false, 89),
+        Author("rentakahashi", "rentakahashi", "Ren Takahashi", "Slow-burn sci-fi. Occasional horror. Tokyo native, night-shift writer.", 1200, 5, false, 45),
+        Author("diegoa", "diegoa", "Diego Alvarez", "Buenos Aires. Magical realism, mostly in Spanish. Coffee-fueled at 3 AM.", 620, 4, false, 22),
+        Author("rahuls", "rahuls", "Rahul Sharma", "Motivational shorts. Grand ambitions, small steps. Write your own tomorrow.", 340, 3, false, 30),
+        Author("elenar", "elenar", "Elena Rossii", "Historical fiction with a mystery twist. Living in Florence, dreaming in the 1600s.", 5200, 4, false, 78),
+        Author("kainak", "kainak", "Kai Nakamura", "Poetry, mostly. Sometimes prose. Always short. Sometimes very short.", 890, 3, false, 50)
     )
 
     /** Follow graph: authorId -> author ids that author follows (3-6 named authors each). */
@@ -88,9 +89,9 @@ object SeedData {
     fun storiesByAuthor(authorId: String): List<Story> =
         stories.filter { it.authorId == authorId }.sortedBy { it.publishedOffset }
 
-    val stories: List<Story> = listOf(
+    private val baseStories: List<Story> = listOf(
         Story(
-            id = "story-1", title = "The Last Lighthouse Keeper", authorId = "aarav", genre = Genre.FICTION,
+            id = "story-1", title = "The Last Lighthouse Keeper", authorId = "aarav", genre = Genre.ADVENTURE,
             synopsis = "A lighthouse keeper receives a letter from the future warning of a storm that hasn't happened yet.",
             chapters = listOf(
                 Chapter("s1c1", "The Letter", listOf(
@@ -126,7 +127,7 @@ object SeedData {
             tags = listOf("travel", "noir", "atmospheric"), publishedOffset = 5, isFeatured = true
         ),
         Story(
-            id = "story-3", title = "Letters to the Sea", authorId = "priyanair", genre = Genre.LITERARY,
+            id = "story-3", title = "Letters to the Sea", authorId = "priyanair", genre = Genre.DRAMA,
             synopsis = "For eleven years, a mother writes letters to the ocean. One day, the ocean writes back.",
             chapters = listOf(
                 Chapter("s3c1", "The First Letter", listOf(
@@ -140,7 +141,7 @@ object SeedData {
                     "It ended: 'I am well. I am not alone. The sea says you should stop waiting, but I know you won't, and I love you for it.' Amma folded the letter into her sari and began walking home. Tomorrow, she would write back."
                 ))
             ),
-            likes = 1430, bookmarks = 510, views = 9200,
+            likes = 160, bookmarks = 80, views = 1300,
             tags = listOf("grief", "ocean", "letters"), publishedOffset = 8, isFeatured = false
         ),
         Story(
@@ -176,7 +177,7 @@ object SeedData {
                     "The banner didn't make them invincible. It made them honest. They saw what the king was, and what the kingdom had become, and they could not fight for it anymore. Pema smiled, packed her loom, and walked home. The moon, she knew, always tells the truth."
                 ))
             ),
-            likes = 3120, bookmarks = 1240, views = 22100,
+            likes = 2800, bookmarks = 1100, views = 22100,
             tags = listOf("folk-tale", "magic", "moonlight"), publishedOffset = 3, isFeatured = true
         ),
         Story(
@@ -194,7 +195,7 @@ object SeedData {
                     "Behind him, the cellar door closed. He spun around, ran to it, tried the handle. Locked. The whispers started again, louder now, and this time he could hear the words. 'Three hundred and thirteen,' they said. 'Three hundred and thirteen.'"
                 ))
             ),
-            likes = 1750, bookmarks = 680, views = 13800,
+            likes = 120, bookmarks = 60, views = 950,
             tags = listOf("supernatural", "suspense", "dark"), publishedOffset = 4, isFeatured = false
         ),
         Story(
@@ -212,7 +213,7 @@ object SeedData {
                     "An old woman walked to the water's edge. 'You found us,' she said. 'Not many do.' She looked at Jared's raft, at his maps, at his GPS. 'You can stay,' she said. 'But you should know — the river only flows one way. You came in. You cannot go back the way you came.'"
                 ))
             ),
-            likes = 1290, bookmarks = 430, views = 7800,
+            likes = 15, bookmarks = 5, views = 120,
             tags = listOf("travel", "discovery", "himalaya"), publishedOffset = 7, isFeatured = false
         ),
         Story(
@@ -230,11 +231,11 @@ object SeedData {
                     "My father used to say: the light we see is old. Everything in the sky is a ghost. I think he was trying to tell me something about time, or about loss, or about the way we look backward without meaning to. I think he was right about that."
                 ))
             ),
-            likes = 2240, bookmarks = 910, views = 16400,
+            likes = 80, bookmarks = 40, views = 700,
             tags = listOf("stars", "memory", "elegy"), publishedOffset = 6, isFeatured = true
         ),
         Story(
-            id = "story-9", title = "The Forgotten Recipe", authorId = "kainak", genre = Genre.LITERARY,
+            id = "story-9", title = "The Forgotten Recipe", authorId = "kainak", genre = Genre.DRAMA,
             synopsis = "A grandmother's cookbook reveals a final recipe with strange instructions: say the name of someone you've lost.",
             chapters = listOf(
                 Chapter("s9c1", "The Cookbook", listOf(
@@ -248,7 +249,7 @@ object SeedData {
                     "When the bowl was empty, I called my mother. 'I found the recipe,' I said. There was a long pause. 'The soup?' she said. 'Obachan made it for me when my father died. She said it doesn't bring people back. It just helps you remember them clearly.' I looked at the empty bowl. She was right."
                 ))
             ),
-            likes = 1670, bookmarks = 620, views = 10900,
+            likes = 12, bookmarks = 4, views = 95,
             tags = listOf("family", "food", "memory"), publishedOffset = 9, isFeatured = false
         ),
         Story(
@@ -284,11 +285,11 @@ object SeedData {
                     "They ate dinner by the fire. They talked until the rain stopped. When the path was passable again, neither of them mentioned leaving. The ferry came on Friday. They didn't take it. They took the next one, two weeks later, together."
                 ))
             ),
-            likes = 2010, bookmarks = 780, views = 14200,
+            likes = 170, bookmarks = 90, views = 1500,
             tags = listOf("quiet", "island", "connection"), publishedOffset = 3, isFeatured = false
         ),
         Story(
-            id = "story-12", title = "The Paper Crane", authorId = "zoeok", genre = Genre.FOLKLORE,
+            id = "story-12", title = "The Paper Crane", authorId = "zoeok", genre = Genre.MYTHOLOGY,
             synopsis = "An old woman folds paper cranes for forty years. When a boy wishes on one, the magic isn't where he thinks.",
             chapters = listOf(
                 Chapter("s12c1", "The Village", listOf(
@@ -302,10 +303,82 @@ object SeedData {
                     "The dog got better. The boy came back to thank the old woman, but the house was empty. The cranes were gone. All that was left was a single piece of paper, unfolded, with a handwritten note: 'The magic was never in the crane. It was in the folding. Thank you for folding.' The boy kept the paper. He learned to fold cranes. He taught others. The village never forgot."
                 ))
             ),
-            likes = 2580, bookmarks = 990, views = 18500,
+            likes = 18, bookmarks = 6, views = 140,
             tags = listOf("folk-tale", "kindness", "tradition"), publishedOffset = 5, isFeatured = true
         )
     )
+
+    private val expandedStories: List<Story> = listOf(
+        expandedStory("story-13", "The Bakery at Platform Nine", "mayak", Genre.ROMANCE, "en", "Two commuters keep missing the same train and finding each other at the bakery beside the platform.", listOf(
+            "Every morning at 7:12, Mira bought one cardamom bun from the bakery beside Platform Nine. Every morning at 7:14, the train left without her. She told people the delay was deliberate, a small rebellion against the tyranny of timetables, but the truth was simpler: the baker's daughter had learned her order and saved the warmest bun for last.",
+            "The man with the blue umbrella appeared on a rainy Tuesday. He stood beside the display case, reading the menu as if it were a difficult poem. When Mira reached for the last bun, his hand reached too. They laughed, apologized, and split it with a paper knife. The train arrived. Neither of them moved.",
+            "By winter, the bakery knew them as a pair. They traded stories in the ten minutes before work, learning the shape of each other's silences. On the morning Mira finally boarded Platform Nine, the man with the blue umbrella was waiting inside the carriage, holding two buns and a ticket for the long way home."
+        ), 1200, 140, 18, listOf("second-chance", "daily-life", "slow-burn"), 4),
+        expandedStory("story-14", "The Orchard of Names", "priyanair", Genre.FANTASY, "en", "A child discovers an orchard where every fruit carries the name of someone the village has forgotten.", listOf(
+            "At the edge of the village stood an orchard no one entered. Its trees grew behind a wall of white stone, and its apples ripened in every season at once. Nila found the gate open on the day her grandmother forgot her name. She stepped through carrying a lantern, a red scarf, and the stubborn hope that memory could be harvested.",
+            "Each fruit bore a name beneath its skin. Some belonged to dead kings, some to babies who had never drawn breath, and some to neighbors who still sat at the tea stall every evening. Nila picked one marked Devika. The orchard answered with a bell from somewhere underground, and the village dogs began to howl.",
+            "She learned the orchard was not keeping the forgotten safe; it was waiting for someone brave enough to return them. Nila carried the names home one by one. Her grandmother remembered her own name last, and then whispered Nila's as if she had been holding it all along."
+        ), 950, 110, 15, listOf("memory", "found-family", "magic"), 6),
+        expandedStory("story-15", "The House That Counted", "zoeok", Genre.MYSTERY, "en", "A caretaker realizes the old house has been counting visitors, but one number has no owner.", listOf(
+            "The house had twelve windows, eleven rooms, and a brass counter beside the front door. Elias polished it every morning because the owner believed dust encouraged ghosts. The counter displayed 4,812. The number rose whenever someone entered and never fell when they left.",
+            "On Thursday, a woman arrived carrying a red suitcase and asked for Room Twelve. Elias told her there was no Room Twelve. She smiled as though he had confirmed something, then walked upstairs while the counter clicked once, twice, three times. By dusk it read 4,816.",
+            "Elias searched the blueprints beneath the kitchen floor and found a room drawn in ink that had faded almost to gray. Its door opened behind the mirror in the hallway. Inside were hundreds of shoes, all paired neatly, and a notebook listing every visitor except the person who had built the house."
+        ), 700, 80, 11, listOf("hidden-rooms", "quiet-dread", "unreliable-narrator"), 7),
+        expandedStory("story-16", "Signal Orchard", "rentakahashi", Genre.SCIFI, "en", "A radio engineer finds a pattern in the static between trees and discovers the forest is listening.", listOf(
+            "The orchard was planted around the radio telescope because fruit trees made the grounds look less like a warning. Hana worked the night shift, when the dishes turned toward the cold dark and the only sound was the soft click of machinery. On the first night of spring, the static changed whenever the wind moved through the branches.",
+            "She recorded the pattern and played it back beneath the trees. The leaves answered. Not with sound, but with a synchronized shimmer that crossed the orchard from west to east. Hana tested the effect with music, numbers, and her own voice. The trees responded only to questions.",
+            "Her final question was whether anyone was there. The telescope moved by itself. Across the sky, a line of stars blinked in the same rhythm as the leaves. Hana understood then that the orchard was not receiving a signal. It was the signal, patiently growing roots while the universe waited for her to notice."
+        ), 1800, 190, 24, listOf("first-contact", "nature", "listening"), 2),
+        expandedStory("story-17", "The Quiet Witness", "zoeok", Genre.THRILLER, "en", "A court stenographer hears one sentence that was never spoken and risks everything to prove it.", listOf(
+            "The stenographer's room overlooked the courtroom through a narrow pane of glass. Lena had transcribed six years of confessions, denials, and the careful grammar of people who believed truth could be negotiated. She trusted the machines more than the witnesses. Machines did not tremble when they lied.",
+            "During the Vale hearing, the recording captured a sentence no one remembered hearing: You have three days. Lena replayed it until the waveform blurred. The judge denied it. The lawyers called it interference. That evening, an envelope appeared on her desk containing a photograph of the courtroom taken from above.",
+            "In the photograph, every person faced the witness stand except Lena. She was looking directly at the camera. The next morning the sentence appeared again, this time at the end of a recording made two years earlier. Lena copied every file to a hidden drive and began counting backward from three."
+        ), 1300, 150, 20, listOf("conspiracy", "countdown", "truth"), 3),
+        expandedStory("story-18", "Tuesday at the Laundromat", "aarav", Genre.SLICE_OF_LIFE, "en", "A broken washing machine turns a neighborhood errand into an unexpected evening of care.", listOf(
+            "The washing machine on the left had been broken since Tuesday, though it was Tuesday again before anyone admitted it. Sam arrived with two bags of uniforms and found the laundromat full of people waiting for the same three working machines. The television showed a cooking competition with the sound turned off.",
+            "Someone offered him a chair. Someone else offered detergent. A little girl drew a blue house on the fogged glass while her father folded towels with the concentration of a surgeon. Sam learned the names of the people beside him because the machines took exactly thirty-seven minutes to finish.",
+            "When the power went out, nobody complained. They opened the doors, carried damp clothes into the evening, and stood beneath the streetlight sorting socks by color. Sam went home with clean uniforms, three new phone numbers, and the strange feeling that the neighborhood had been waiting for a small inconvenience to introduce itself."
+        ), 650, 60, 7, listOf("community", "small-joys", "belonging"), 9),
+        expandedStory("story-19", "The Cartographer's Daughter", "elenar", Genre.HISTORICAL, "en", "In 17th-century Florence, a mapmaker's daughter finds a coastline her father was ordered to erase.", listOf(
+            "Isabella learned geography from the backs of letters because her father would not let her touch his maps. He said the world was a man's profession, then spent every night drawing coastlines by candlelight. One evening she found a strip of blue paper hidden beneath his desk, marked with a shore that did not exist on any official chart.",
+            "The next day soldiers came for the mapmaker. The duke wanted the coastline erased, not because it was false, but because ships had begun returning with stories of a city beyond it. Isabella hid the blue paper inside her bodice and followed the soldiers to the archive.",
+            "She discovered her father had been mapping a community of women who sheltered escaped servants and taught them to read. The erased coast was not a place; it was a promise. Isabella finished the map, signed it with her own name, and placed it where the duke's men would be forced to see it."
+        ), 140, 20, 3, listOf("hidden-history", "courage", "maps"), 12),
+        expandedStory("story-20", "Borrowed Weather", "mayak", Genre.CONTEMPORARY, "en", "A weather app begins sending forecasts for the emotions its users are trying to hide.", listOf(
+            "The app promised ordinary weather in beautiful colors. Rain meant carry an umbrella; sun meant leave early. Then it sent Noor a forecast that said: heavy regret after 6 PM, clearing by morning. She deleted it, reinstalled it, and received the same message with a chance of apology.",
+            "Soon everyone in the office had a forecast. The manager's week contained scattered thunderstorms. The intern's skies were bright but unfamiliar. Noor stopped checking the temperature and began calling the people named in the small print beneath each warning.",
+            "On Friday, the app forecast a storm over the entire city. Noor walked outside and found clear skies. Across the street, strangers were hugging in the sunlight, having finally said what their phones had predicted. She opened the app one last time. It asked for her location. She chose nowhere."
+        ), 120, 18, 2, listOf("digital-life", "honesty", "connection"), 13),
+        expandedStory("story-21", "Constellations in the Kitchen", "kainak", Genre.LGBTQ, "en", "Two women renovate a kitchen and uncover a constellation scratched beneath generations of paint.", listOf(
+            "The first thing Jo and Lila did in the new apartment was remove the yellow cabinets. Beneath them, on the plaster, someone had drawn stars in charcoal. The pattern was not any constellation they knew. Jo photographed it before Lila painted the wall white.",
+            "They argued about the color for three days, then laughed because the argument was really about whether the apartment belonged to them yet. At night they cooked noodles on a camping stove and traced the hidden stars from memory. Each mark seemed to move when they looked away.",
+            "When the kitchen was finished, they left one corner unpainted. The constellation had become a map of their first year together: the broken kettle, the missed train, the letter from Lila's mother. Under the final star they wrote their names, not as an answer, but as proof they had arrived."
+        ), 90, 12, 1, listOf("queer-joy", "home", "chosen-family"), 14),
+        expandedStory("story-22", "A Very Serious Goose", "rahuls", Genre.COMEDY, "en", "A village council must negotiate with a goose that has decided the park belongs to it.", listOf(
+            "The goose arrived on a Monday and immediately took the mayor's chair. Nobody knew where it came from, but it possessed the confidence of an elected official and the appetite of a small storm. When the mayor attempted to move it, the goose honked once. The council postponed the meeting.",
+            "By Wednesday, the goose had a name, a schedule, and three formal complaints. Children left it crackers. Adults crossed the road. The mayor hired a consultant who advised treating the animal as a stakeholder. The goose accepted the proposal by eating the consultant's report.",
+            "On Friday, the council voted unanimously to recognize the goose as guardian of the park. It celebrated by chasing a bicycle into the fountain. The mayor called it a success. The goose took the chair again, and for the first time in years every council member arrived early."
+        ), 75, 10, 2, listOf("absurdity", "community", "found-family"), 15),
+        expandedStory("story-23", "दीये की लौ", "priyanair", Genre.SPIRITUALITY, "hi", "एक छोटी लौ एक थके हुए यात्री को अपने भीतर का रास्ता दिखाती है।", listOf("गाँव के बाहर एक पुराना मंदिर था जहाँ हर शाम एक दीया जलता था। उसकी देखभाल करने वाली अम्मा कहती थीं कि लौ रास्ता नहीं दिखाती, वह बस इतना उजाला करती है कि अगला कदम दिखाई दे। एक रात नील बहुत थका हुआ वहाँ पहुँचा और बोला कि उसे अपनी दिशा खो गई है।", "अम्मा ने उसे दीया नहीं दिया। उन्होंने उसके पास बैठकर पूछा कि आखिरी बार वह कब बिना डर के चला था। नील ने देर तक चुप रहकर अपने पिता की आवाज़, सूखे खेत और शहर की भीड़ के बारे में बताया। लौ हवा में काँपी, मगर बुझी नहीं।", "सुबह नील ने देखा कि मंदिर से उसके घर तक मिट्टी पर छोटे-छोटे पैरों के निशान थे। वे किसी चमत्कार के नहीं, उसके अपने थे। उसने समझा कि रास्ता रात में नहीं बना था; वह हर बार बनता है जब कोई व्यक्ति अँधेरे में एक कदम रखता है।"), 80, 9, 1, listOf("inner-peace", "faith", "homecoming"), 16),
+        expandedStory("story-24", "पहली सीढ़ी", "rahuls", Genre.MOTIVATIONAL, "hi", "एक असफल धावक सीखता है कि छोटी शुरुआत भी आगे बढ़ने की शुरुआत होती है।", listOf("राघव ने दौड़ने की शुरुआत बड़े सपने से की थी। पहले दिन उसने पाँच किलोमीटर का लक्ष्य रखा और चार सौ मीटर बाद घर लौट आया। जूते कोने में पड़े रहे। हर सुबह वह उन्हें देखता और अपने आप से कहता कि कल से सब बदल जाएगा। कल हमेशा बहुत दूर था।", "एक बूढ़े चौकीदार ने उसे सीढ़ियों पर बैठे देखा और कहा, ‘आज बस पहली सीढ़ी चढ़ो।’ राघव ने हँसकर पूछा कि उससे क्या होगा। चौकीदार ने कहा कि दूसरी सीढ़ी को पहली की चिंता नहीं होती; वह बस अपने ऊपर टिके पैर को संभालती है।", "राघव ने अगले दिन एक सीढ़ी चढ़ी, फिर दो, फिर पाँच। महीनों बाद वह दौड़ने लगा, मगर उसने अपनी पहली सीढ़ी नहीं छोड़ी। उसने उसे कागज़ पर बनाया और मेज़ के पास रख दिया, ताकि जीत के दिनों में भी उसे याद रहे कि प्रगति अक्सर बहुत छोटी आवाज़ में दरवाज़ा खटखटाती है।"), 110, 14, 2, listOf("small-steps", "discipline", "resilience"), 17),
+        expandedStory("story-25", "चाँद का डिब्बा", "kathaai", Genre.KIDS, "hi", "एक बच्ची चाँद की रोशनी को डिब्बे में भरकर अपने बीमार पेड़ को बचाना चाहती है।", listOf("मीरा को लगता था कि चाँद की रोशनी दूध जैसी होती है। वह हर रात खिड़की के पास एक खाली डिब्बा रखती और सुबह उसे खोलकर देखती। डिब्बा खाली होता, मगर मीरा फिर भी मुस्कुराती क्योंकि चाँद ने उसे भरोसा दिया था कि वह कोशिश देख रहा है।", "एक दिन स्कूल से लौटकर उसने देखा कि आँगन का नींबू का पेड़ झुक गया है। दादी ने कहा कि पेड़ को पानी, धूप और धैर्य चाहिए। मीरा ने अपना डिब्बा पेड़ के पास रख दिया और उसमें अपनी सबसे अच्छी बातें भरने लगी—एक गीत, दो हँसी और एक छोटा सा धन्यवाद।", "कुछ दिनों बाद नई पत्तियाँ निकलीं। दादी ने कहा कि जादू पानी और देखभाल में था। मीरा ने डिब्बे को चाँद की ओर उठाया। उसे पता था कि दादी सही हैं, फिर भी उसने ढक्कन बंद कर दिया, ताकि थोड़ी सी रोशनी अगली मुश्किल रात के लिए बची रहे।"), 60, 8, 1, listOf("wonder", "kindness", "nature"), 18),
+        expandedStory("story-26", "नदी की रानी", "mayak", Genre.FANTASY, "hi", "एक नाविक की बेटी नदी से अपने गाँव की भूली हुई कहानी सुनती है।", listOf("जब सावन की पहली बारिश आई, कावेरी की नदी अपने किनारों से बाहर आ गई। गाँव के लोग नावें बाँधने लगे, लेकिन छोटी अनया पानी के बीच एक नीली रोशनी देखती रही। उसकी माँ ने कहा कि वह नदी की रानी का दीपक है और उसे छूना मना है।", "रात में नदी ने उसका नाम पुकारा। अनया चुपचाप घाट तक गई और पानी में उतरे बिना अपना कान लहरों के पास ले आई। नदी ने उसे उन लोगों की बातें सुनाईं जिन्होंने गाँव बसाया था, उन खेतों की जिन्हें बाढ़ ने निगल लिया, और उस वचन की जिसे हर पीढ़ी भूलती गई।", "सुबह अनया ने बुज़ुर्गों को सारी कहानी सुनाई। उन्होंने पुराने गीत पहचाने और पहली बार नदी के लिए उत्सव रखा। नीली रोशनी दूर चली गई। अनया समझ गई कि रानी हर उस आवाज़ में थी जिसे गाँव ने बचाकर रखा।"), 160, 21, 3, listOf("river", "ancestry", "courage"), 19),
+        expandedStory("story-27", "पीपल का देवता", "zoeok", Genre.MYTHOLOGY, "hi", "एक गाँव का पीपल का पेड़ अपने नीचे बैठने वालों की सच्ची इच्छा सुनता है।", listOf("गाँव के बीच पीपल का पेड़ था, इतना पुराना कि उसकी जड़ों ने पत्थर की चौकी को गले लगा लिया था। लोग उसे देवता कहते, पर पेड़ कभी बोलता नहीं था। बच्चे उसकी छाँव में खेलते, किसान दोपहर में सोते और यात्री चुपचाप पानी पीकर आगे बढ़ जाते।", "एक वर्ष बारिश नहीं हुई। मंदिर में घंटियाँ बजीं, कुएँ सूखे, और लोग आसमान को देखते रहे। तभी छोटी गौरी पेड़ के नीचे बैठी और बोली कि उसे बारिश नहीं, पड़ोसी गाँव के साथ बाँटा हुआ कुआँ चाहिए। उसकी इच्छा सुनकर लोग पहले हँसे, फिर शर्मिंदा हुए।", "दोनों गाँवों ने मिलकर पुरानी नहर खोदी। पानी लौट आया, मगर किसी ने नहीं कहा कि पेड़ ने चमत्कार किया। गौरी ने उसकी छाल पर हाथ रखा। हवा चली और पत्तियाँ बज उठीं—जैसे पूरा गाँव एक साथ धन्यवाद कह रहा हो।"), 130, 16, 2, listOf("community", "shared-future", "tradition"), 20),
+        expandedStory("story-28", "La casa de los domingos", "diegoa", Genre.DRAMA, "es", "Una familia se reúne cada domingo en una casa que guarda las voces de quienes ya no están.", listOf("Cada domingo, Clara abría la casa de su abuela aunque llevaba tres años vacía. Primero llegaban las sillas, luego el olor del café y finalmente los primos, cada uno con una excusa distinta para no hablar de la venta. La casa crujía cuando alguien decía la palabra despedida.", "Una tarde encontraron una caja de casetes detrás del armario. En cada cinta había una receta, una canción o una discusión familiar grabada por accidente. Escucharon la voz de la abuela riéndose de todos ellos y, por un momento, nadie quiso ser el primero en llorar.", "Decidieron vender la casa, pero no ese día. Antes de irse pintaron la puerta de azul y copiaron las cintas. El domingo siguiente se reunieron en el piso nuevo de Clara. No era la misma casa, pero las voces habían aprendido a viajar."), 90, 10, 1, listOf("family", "grief", "homecoming"), 21),
+        expandedStory("story-29", "La ventana del sótano", "diegoa", Genre.HORROR, "es", "Un hombre descubre una ventana en el sótano que muestra una habitación de su propia casa.", listOf("La ventana apareció después de la tormenta. Estaba en el sótano, pequeña y cubierta de barro, aunque la pared no daba al exterior. Tomás limpió el vidrio y vio su cocina al otro lado. La mesa estaba puesta para dos personas. En su cocina real, la mesa estaba vacía.", "Durante la noche, la otra cocina cambió. Una taza se rompió, una silla se movió y una mujer cruzó la imagen sin rostro. Tomás llamó a su hermana, pero cuando ella llegó la ventana solo reflejaba la pared. Antes de irse, ella le preguntó por qué había dos tazas en la mesa.", "A la mañana siguiente, Tomás bajó al sótano con un martillo. La ventana mostraba ahora el sótano, y él mismo estaba de pie detrás del vidrio. Cerró los ojos. Cuando volvió a abrirlos, escuchó un golpe suave desde el otro lado."), 70, 8, 0, listOf("haunted-house", "isolation", "storm"), 22),
+        expandedStory("story-30", "風の地図", "kainak", Genre.ADVENTURE, "ja", "風の音だけを頼りに、少年が祖父の失われた山道を探す。", listOf("祖父の机の引き出しから、白い紙が一枚見つかった。地図のように見えたが、道も山も描かれていない。紙を窓辺に置くと、風が吹くたびに薄い線が現れた。少年の蓮は、それが祖父の歩いた道だとすぐに分かった。", "夏の朝、蓮は小さな水筒と赤い布を持って山へ入った。風は右から吹くときだけ、遠くの鐘の音を運んだ。彼は音を追い、苔の下に隠れた石段や、木の枝に結ばれた古い糸を見つけた。", "頂上には誰もいなかった。ただ、風が紙の地図を空へ持ち上げ、祖父の字を浮かび上がらせた。『帰る道は、見つけるものではなく、誰かに伝えるものだ。』蓮は赤い布を枝に結び、次の旅人のために道を残した。"), 150, 22, 4, listOf("mountain", "legacy", "journey"), 23)
+    )
+
+    private fun expandedStory(id: String, title: String, authorId: String, genre: Genre, language: String, synopsis: String, paragraphs: List<String>, reads: Int, likes: Int, comments: Int, tags: List<String>, offset: Int): Story = Story(
+        id = id, title = title, authorId = authorId, genre = genre, synopsis = synopsis,
+        chapters = listOf(Chapter("$id-c1", "Chapter 1", paragraphs)), likes = likes, bookmarks = maxOf(1, likes / 2), views = reads,
+        tags = tags, publishedOffset = offset, isFeatured = false, contentRating = if (genre == Genre.KIDS) ContentRating.KIDS else if (genre == Genre.HORROR) ContentRating.MATURE else ContentRating.TEEN,
+        languageCode = language.uppercase(), language = language, commentCount = comments
+    )
+
+    private fun singleChapter(story: Story): Story = if (story.id in setOf("story-1", "story-2", "story-4", "story-5")) story else story.copy(chapters = story.chapters.take(1), plannedChapterCount = null)
+
+    val stories: List<Story> = baseStories.map(::singleChapter) + expandedStories
 
     val seedComments: List<StoryComment> = listOf(
         StoryComment("sc1", "story-1", "mayak", "mayak", "Maya Kapoor", "The atmosphere in this is incredible. I could smell the salt.", 24, 5, true),
@@ -316,17 +389,17 @@ object SeedData {
         StoryComment("sc6", "story-1", "ghost-5", "tashastories", "Tasha Ivanova", "The storm sequence gave me chills. Literal chills.", 5, 2, false),
         StoryComment("sc7", "story-1", "kainak", "kainak", "Kai Nakamura", "Agreed. Reminds me of Annie Proulx's economy.", 4, 18, false, "rentakahashi"),
         StoryComment("sc8", "story-1", "aarav", "aarav", "Aarav Menon", "Thank you! The lighthouse was the first thing I wrote.", 9, 1, false, "noorwrites"),
-        StoryComment("sc9", "story-1", "elenar", "elenar", "Elena Ross", "'Quiet, patient dread' is the perfect description.", 6, 6, true, "priyanair"),
+        StoryComment("sc9", "story-1", "elenar", "elenar", "Elena Rossi", "'Quiet, patient dread' is the perfect description.", 6, 6, true, "priyanair"),
         StoryComment("sc10", "story-2", "priyanair", "priyanair", "Priya Nair", "The door in the medina wall — I've been looking for it ever since.", 31, 3, false),
         StoryComment("sc11", "story-2", "rentakahashi", "rentakahashi", "Ren Takahashi", "Zoe writes mystery like no one else. Every detail matters.", 18, 8, false),
         StoryComment("sc12", "story-2", "mayak", "mayak", "Maya Kapoor", "The spice merchant was my favorite character. I wanted more of him.", 22, 10, true),
         StoryComment("sc13", "story-2", "ghost-3", "amara.reads", "Amara Diallo", "I couldn't sleep after reading this. In the best way.", 9, 4, false),
-        StoryComment("sc14", "story-2", "elenar", "elenar", "Elena Ross", "The sense of place is extraordinary. Marrakech came alive.", 14, 16, true),
+        StoryComment("sc14", "story-2", "elenar", "elenar", "Elena Rossi", "The sense of place is extraordinary. Marrakech came alive.", 14, 16, true),
         StoryComment("sc15", "story-2", "kainak", "kainak", "Kai Nakamura", "Maya is such a compelling protagonist. I need a sequel.", 11, 22, false),
         StoryComment("sc16", "story-2", "zoeok", "zoeok", "Zoe Okonkwo", "Thank you! The merchant was inspired by a real person I met.", 15, 7, true, "mayak"),
         StoryComment("sc17", "story-2", "aarav", "aarav", "Aarav Menon", "Zoe's world-building is unmatched.", 5, 12, false, "elenar"),
         StoryComment("sc18", "story-2", "ghost-10", "dev_reads", "Dev Patel", "Same! I went to Marrakech just to look for it.", 3, 1, false, "priyanair"),
-        StoryComment("sc19", "story-5", "elenar", "elenar", "Elena Ross", "The banner that makes soldiers honest — what a concept. I'm in awe.", 35, 4, true),
+        StoryComment("sc19", "story-5", "elenar", "elenar", "Elena Rossi", "The banner that makes soldiers honest — what a concept. I'm in awe.", 35, 4, true),
         StoryComment("sc20", "story-5", "rahuls", "rahuls", "Rahul Sharma", "Fantasy with a moral spine. This is why I read.", 19, 6, false),
         StoryComment("sc21", "story-5", "aarav", "aarav", "Aarav Menon", "Pema is my new favorite character in all of fiction.", 27, 9, false),
         StoryComment("sc22", "story-5", "zoeok", "zoeok", "Zoe Okonkwo", "The moonlight weaving imagery was pure magic. Literally.", 21, 14, true),
@@ -341,13 +414,13 @@ object SeedData {
         StoryComment("sc31", "story-8", "ghost-20", "sanaa_reads", "Sanaa Khan", "I read this on a rooftop at 2am. Perfect setting.", 8, 3, false),
         StoryComment("sc32", "story-8", "kainak", "kainak", "Kai Nakamura", "Short, devastating, perfect. Elena is a national treasure.", 16, 12, false),
         StoryComment("sc33", "story-8", "priyanair", "priyanair", "Priya Nair", "Betelgeuse is dimmer now broke something in me and I'm grateful.", 12, 18, false),
-        StoryComment("sc34", "story-8", "elenar", "elenar", "Elena Ross", "That's the kindest thing anyone has said about my work.", 10, 4, true, "mayak"),
+        StoryComment("sc34", "story-8", "elenar", "elenar", "Elena Rossi", "That's the kindest thing anyone has said about my work.", 10, 4, true, "mayak"),
         StoryComment("sc35", "story-8", "aarav", "aarav", "Aarav Menon", "'Quietly' is doing so much work in that sentence.", 6, 6, false, "rentakahashi"),
         StoryComment("sc36", "story-8", "zoeok", "zoeok", "Zoe Okonkwo", "This is the only correct way to read this poem.", 4, 1, true, "sanaa_reads"),
         StoryComment("sc37", "story-10", "rentakahashi", "rentakahashi", "Ren Takahashi", "A warning from the future that says 'don't build the machine' — chilling.", 38, 3, false),
         StoryComment("sc38", "story-10", "mayak", "mayak", "Maya Kapoor", "Priya deleting her notes at the end. What a moment.", 25, 7, true),
         StoryComment("sc39", "story-10", "kainak", "kainak", "Kai Nakamura", "Best hard sci-fi I've read this year. Maybe longer.", 19, 10, false),
-        StoryComment("sc40", "story-10", "elenar", "elenar", "Elena Ross", "The restraint of the ending is masterful. She just deleted them.", 16, 14, true),
+        StoryComment("sc40", "story-10", "elenar", "elenar", "Elena Rossi", "The restraint of the ending is masterful. She just deleted them.", 16, 14, true),
         StoryComment("sc41", "story-10", "ghost-25", "felixfables", "Felix Wagner", "I had to put my phone down and stare at the wall. In a good way.", 7, 4, false),
         StoryComment("sc42", "story-10", "aarav", "aarav", "Aarav Menon", "The fact that she built the machine that could receive the warning...", 14, 20, false),
         StoryComment("sc43", "story-10", "priyanair", "priyanair", "Priya Nair", "Exactly. The non-action was the action.", 8, 10, false, "elenar"),

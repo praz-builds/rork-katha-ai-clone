@@ -1,6 +1,7 @@
 package com.rork.kathaai.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -35,12 +36,12 @@ fun SplashScreen(modifier: Modifier = Modifier) {
     var visible by remember { mutableStateOf(false) }
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(600),
+        animationSpec = tween(300),
         label = "splashAlpha"
     )
     val scale by animateFloatAsState(
-        targetValue = if (visible) 1f else 0.8f,
-        animationSpec = tween(800),
+        targetValue = if (visible) 1f else 0.92f,
+        animationSpec = spring(stiffness = 180f, dampingRatio = 0.78f),
         label = "splashScale"
     )
 

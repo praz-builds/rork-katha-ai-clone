@@ -2,6 +2,7 @@ package com.rork.kathaai.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.Verified
@@ -58,6 +61,7 @@ import com.rork.kathaai.ui.components.GenreChip
 import com.rork.kathaai.ui.components.SafeBottomSpacer
 import com.rork.kathaai.ui.components.StoryCard
 import com.rork.kathaai.ui.components.StoryCover
+import com.rork.kathaai.ui.components.ThemeFilterBar
 import com.rork.kathaai.ui.components.formatCount
 import com.rork.kathaai.ui.theme.KathaTheme
 import com.rork.kathaai.ui.theme.KathaTypography
@@ -149,7 +153,7 @@ fun DiscoverScreen(
                     item {
                         FilterChip("All", selectedGenre == null) { selectedGenre = null }
                     }
-                    items(Genre.entries.filter { !(state.kidsMode && it == Genre.EROTICA) }) { genre ->
+                    items(Genre.entries.filter { it != Genre.EROTICA || (state.ageVerified && !state.kidsMode) }) { genre ->
                         GenreChip(genre, selectedGenre == genre) {
                             selectedGenre = if (selectedGenre == genre) null else genre
                         }
@@ -166,22 +170,21 @@ fun DiscoverScreen(
                 }
             }
 
-            // Theme filter bar
             state.discoverThemeFilter?.let { theme ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
+                    ThemeFilterBar(themeName = theme, onClear = { viewModel.clearThemeFilter() })
+                }
+            }
+
+            if (query.trim().equals("erotica", ignoreCase = true) && !state.ageVerified) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(KathaTheme.Radius.m))
-                            .background(KathaTheme.accentSoft.copy(alpha = 0.3f))
-                            .padding(horizontal = KathaTheme.Spacing.l, vertical = KathaTheme.Spacing.s),
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KathaTheme.Radius.m)).background(KathaTheme.surface).border(1.dp, KathaTheme.border, RoundedCornerShape(KathaTheme.Radius.m)).clickable { viewModel.showAgeVerification() }.padding(horizontal = KathaTheme.Spacing.mdLg).heightIn(min = 44.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
                     ) {
-                        Icon(Icons.Outlined.Tag, null, tint = KathaTheme.accent, modifier = Modifier.size(12.dp))
-                        Text("Theme: $theme", color = KathaTheme.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.weight(1f))
-                        Icon(Icons.Outlined.Close, "Clear", tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp).clickable { viewModel.clearThemeFilter() })
+                        Icon(Icons.Outlined.Security, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(18.dp))
+                        Text("18+ content is age-gated. Tap to verify age →", style = KathaTypography.Body, color = KathaTheme.textSecondary)
                     }
                 }
             }

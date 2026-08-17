@@ -334,6 +334,7 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.25), value: appState.profileStack)
         .animation(.easeInOut(duration: 0.3), value: appState.showChapterListSheet)
         .animation(.easeInOut(duration: 0.3), value: appState.toastMessage)
+        .preferredColorScheme(appState.appThemeMode.colorScheme)
     }
 }
 

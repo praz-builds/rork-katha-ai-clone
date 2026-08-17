@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.ModeEdit
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.AlertDialog
@@ -90,6 +91,7 @@ import com.rork.kathaai.ui.components.PrimaryCTA
 import com.rork.kathaai.ui.components.SafeBottomSpacer
 import com.rork.kathaai.ui.components.SecondaryCTA
 import com.rork.kathaai.ui.theme.KathaTheme
+import com.rork.kathaai.ui.theme.KathaTypography
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
 import kotlinx.coroutines.delay
@@ -111,6 +113,8 @@ fun WizardScreen(
 ) {
     val haptics = LocalHapticFeedback.current
     var showDiscardDialog by remember { mutableStateOf(false) }
+    var showCharacterSheet by remember { mutableStateOf(false) }
+    var editingCharacter by remember { mutableStateOf<WizardCharacter?>(null) }
     val hasInput = state.wizardTopic.isNotBlank() || state.wizardCharacters.isNotEmpty() || state.wizardGenre != null
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -158,9 +162,9 @@ fun WizardScreen(
 
                         WizardStep.CHARACTERS -> CharactersStep(
                             characters = state.wizardCharacters,
-                            onAdd = { viewModel.addWizardCharacter() },
-                            onRemove = { viewModel.removeWizardCharacter(it) },
-                            onUpdate = { viewModel.updateWizardCharacter(it) }
+                            onAdd = { editingCharacter = null; showCharacterSheet = true },
+                            onEdit = { editingCharacter = it; showCharacterSheet = true },
+                            onRemove = { viewModel.removeWizardCharacter(it) }
                         )
 
                         WizardStep.REVIEW -> ReviewStep(
@@ -237,13 +241,26 @@ fun WizardScreen(
 
         if (state.showGetIdeasSheet) {
             GetIdeasSheet(
-                genre = state.wizardGenre ?: Genre.FICTION,
+                genre = state.wizardGenre ?: Genre.CONTEMPORARY,
                 onSelect = {
                     viewModel.updateWizardTopic(it)
                     viewModel.dismissGetIdeasSheet()
                 },
                 onDismiss = { viewModel.dismissGetIdeasSheet() }
             )
+        }
+
+        if (showCharacterSheet) {
+            ModalBottomSheet(onDismissRequest = { showCharacterSheet = false }, containerColor = KathaTheme.surface) {
+                CharacterEditSheet(
+                    character = editingCharacter,
+                    onDismiss = { showCharacterSheet = false },
+                    onSave = { saved ->
+                        if (editingCharacter == null) viewModel.addWizardCharacter(saved) else viewModel.updateWizardCharacter(saved)
+                        showCharacterSheet = false
+                    }
+                )
+            }
         }
 
         if (showDiscardDialog) {
@@ -695,8 +712,8 @@ private fun CounterButton(
 private fun CharactersStep(
     characters: List<WizardCharacter>,
     onAdd: () -> Unit,
+    onEdit: (WizardCharacter) -> Unit,
     onRemove: (String) -> Unit,
-    onUpdate: (WizardCharacter) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -720,7 +737,7 @@ private fun CharactersStep(
         characters.forEach { character ->
             CharacterCard(
                 character = character,
-                onUpdate = { onUpdate(it) },
+                onEdit = { onEdit(character) },
                 onDelete = { onRemove(character.id) }
             )
         }
@@ -736,7 +753,7 @@ private fun CharactersStep(
 @Composable
 private fun CharacterCard(
     character: WizardCharacter,
-    onUpdate: (WizardCharacter) -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -770,25 +787,14 @@ private fun CharacterCard(
             }
         }
 
-        KathaTextField(
-            title = "Name",
-            value = character.name,
-            placeholder = "e.g. Elena",
-            onValueChange = { onUpdate(character.copy(name = it)) }
-        )
-        KathaTextField(
-            title = "Role",
-            value = character.role,
-            placeholder = "e.g. Protagonist",
-            onValueChange = { onUpdate(character.copy(role = it)) }
-        )
-        KathaTextField(
-            title = "Description",
-            value = character.description,
-            placeholder = "Brief personality or backstory...",
-            minLines = 3,
-            onValueChange = { onUpdate(character.copy(description = it)) }
-        )
+        Row(modifier = Modifier.fillMaxWidth().clickable { onEdit() }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text(character.name.ifBlank { "Unnamed character" }, color = KathaTheme.textPrimary, style = KathaTypography.BodyStrong)
+                Text(character.role.ifBlank { "Hero" }, color = KathaTheme.textSecondary, style = KathaTypography.Caption)
+                if (character.description.isNotBlank()) Text(character.description, color = KathaTheme.textTertiary, style = KathaTypography.Caption, maxLines = 2)
+            }
+            Icon(Icons.Outlined.ModeEdit, "Edit", tint = KathaTheme.accent, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
@@ -1059,7 +1065,7 @@ private fun GetIdeasSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val starters = StoryStarters.starters[genre] ?: StoryStarters.starters[Genre.FICTION]!!
+    val starters = StoryStarters.starters[genre] ?: StoryStarters.starters[Genre.CONTEMPORARY]!!
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1388,4 +1394,32 @@ private fun previousStep(step: WizardStep): WizardStep = when (step) {
     WizardStep.TOPIC -> WizardStep.GENRE
     WizardStep.CHARACTERS -> WizardStep.TOPIC
     WizardStep.REVIEW -> WizardStep.CHARACTERS
+}
+
+@Composable
+private fun CharacterEditSheet(
+    character: WizardCharacter?,
+    onDismiss: () -> Unit,
+    onSave: (WizardCharacter) -> Unit
+) {
+    var name by remember(character?.id) { mutableStateOf(character?.name.orEmpty()) }
+    var role by remember(character?.id) { mutableStateOf(character?.role?.ifBlank { "Hero" } ?: "Hero") }
+    var description by remember(character?.id) { mutableStateOf(character?.description.orEmpty()) }
+    val roles = listOf("Hero", "Friend", "Villain", "Mentor", "Sidekick", "Love Interest", "Other")
+    Column(Modifier.fillMaxWidth().padding(horizontal = KathaTheme.Spacing.mdLg, vertical = KathaTheme.Spacing.l), verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+        Text(if (character == null) "Add character" else "Edit character", style = KathaTypography.Title2, color = KathaTheme.textPrimary)
+        Text("NAME", style = KathaTypography.Meta, color = KathaTheme.textSecondary)
+        OutlinedTextField(value = name, onValueChange = { name = it.take(30) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text("ROLE", style = KathaTypography.Meta, color = KathaTheme.textSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)) {
+            roles.forEach { item ->
+                Text(item, style = KathaTypography.Caption, color = if (role == item) Color.White else KathaTheme.textSecondary, modifier = Modifier.clip(RoundedCornerShape(KathaTheme.Radius.xl)).background(if (role == item) KathaTheme.accent else KathaTheme.surface).clickable { role = item }.padding(horizontal = KathaTheme.Spacing.m, vertical = KathaTheme.Spacing.s))
+            }
+        }
+        Text("DESCRIPTION (OPTIONAL)", style = KathaTypography.Meta, color = KathaTheme.textSecondary)
+        OutlinedTextField(value = description, onValueChange = { description = it.take(200) }, minLines = 3, modifier = Modifier.fillMaxWidth())
+        Text("${description.length} / 200", style = KathaTypography.Meta, color = KathaTheme.textTertiary, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.End)
+        PrimaryCTA(if (character == null) "Save character" else "Update character", enabled = name.trim().isNotEmpty()) { onSave(WizardCharacter(character?.id ?: java.util.UUID.randomUUID().toString(), name.trim(), role, description)); onDismiss() }
+        SafeBottomSpacer(8.dp)
+    }
 }

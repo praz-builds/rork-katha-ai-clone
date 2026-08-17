@@ -130,7 +130,7 @@ fun AppNavigation(initialDeepLink: Uri? = null) {
 
     var splashFinished by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        delay(1500)
+        delay(800)
         splashFinished = true
     }
 
@@ -156,7 +156,7 @@ fun AppNavigation(initialDeepLink: Uri? = null) {
             composable(Routes.SPLASH) { SplashScreen() }
 
             composable(Routes.ONBOARDING) {
-                OnboardingScreen(onContinue = { viewModel.completeOnboarding() })
+                OnboardingScreen(onContinue = { purpose -> viewModel.completeOnboarding(purpose) })
             }
 
             composable(Routes.MAIN) {
@@ -662,7 +662,11 @@ private fun MainScreen(
                 onOpenStreak = { viewModel.openStreakScreen() },
                 onOpenNotifications = { viewModel.openNotificationsScreen() },
                 onOpenInviteFriends = { viewModel.openInviteFriendsScreen() },
-                onOpenStorage = { viewModel.openStorageScreen() }
+                onOpenStorage = { viewModel.openStorageScreen() },
+                onOpenFontSize = { viewModel.showToast("Font size options coming soon") },
+                onOpenTheme = { viewModel.showToast("Theme options coming soon") },
+                onRate = { viewModel.showToast("Thanks for supporting Katha") },
+                onFaq = { viewModel.showToast("FAQ coming in the next update ✨") }
             )
         }
 

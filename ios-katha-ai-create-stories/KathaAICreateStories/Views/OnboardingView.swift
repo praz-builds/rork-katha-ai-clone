@@ -10,7 +10,7 @@ import SwiftUI
 struct SplashView: View {
     @Environment(AppState.self) private var appState
     @State private var opacity: Double = 0
-    @State private var iconScale: Double = 0.8
+    @State private var iconScale: Double = 0.92
 
     var body: some View {
         ZStack {
@@ -40,12 +40,8 @@ struct SplashView: View {
         }
         .onAppear {
             appState.startSplash()
-            withAnimation(.easeIn(duration: 0.6)) {
-                opacity = 1
-            }
-            withAnimation(.easeOut(duration: 0.8).delay(0.2)) {
-                iconScale = 1
-            }
+            withAnimation(.easeInOut(duration: 0.3)) { opacity = 1 }
+            withAnimation(.interpolatingSpring(stiffness: 180, damping: 14).delay(0.05)) { iconScale = 1 }
         }
     }
 }
@@ -56,11 +52,12 @@ struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @State private var selection: Int? = nil
 
-    private let options: [(icon: String, title: String, desc: String)] = [
-        ("book", "Read stories", "Curated tales from AI and human authors"),
-        ("pencil.line", "Write my own", "Create stories with AI assistance"),
-        ("safari", "Discover new voices", "Explore genres and follow authors"),
-        ("sparkles", "All of the above", "Read, write, and discover — everything Katha offers")
+    private let options: [(icon: String, title: String, desc: String, value: String)] = [
+        ("book.open", "I want to get lost in stories", "Curated tales from AI and human authors", "reader"),
+        ("pencil", "I want to write my own", "Create stories with AI assistance", "writer"),
+        ("sparkles", "A bit of both", "Read, write, and discover — everything Katha offers", "both"),
+        ("character.book.closed", "Learn languages through stories", "Read across Katha's supported languages", "language"),
+        ("safari", "Just exploring for now", "Take a look around at your own pace", "exploring")
     ]
 
     var body: some View {
@@ -141,7 +138,7 @@ struct OnboardingView: View {
             if selection != nil {
                 PrimaryCTA(title: "Get started", icon: "arrow.right") {
                     Haptics.success()
-                    appState.completeOnboarding()
+                    if let selection { appState.completeOnboarding(purpose: options[selection].value) }
                 }
                 .padding(KathaTheme.Spacing.l)
                 .background(KathaTheme.surface)

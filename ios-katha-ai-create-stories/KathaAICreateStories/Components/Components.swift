@@ -5,6 +5,94 @@
 
 import SwiftUI
 
+// MARK: - Reusable typography and scrolling components
+
+enum TypographyVariant {
+    case display, title1, title2, body, bodyStrong, caption, meta
+
+    var font: Font {
+        switch self {
+        case .display: KathaFont.Display
+        case .title1: KathaFont.Title1
+        case .title2: KathaFont.Title2
+        case .body: KathaFont.Body
+        case .bodyStrong: KathaFont.BodyStrong
+        case .caption: KathaFont.Caption
+        case .meta: KathaFont.Meta
+        }
+    }
+}
+
+struct ThemedText: View {
+    let text: String
+    let variant: TypographyVariant
+    var color: Color = KathaTheme.textPrimary
+
+    var body: some View {
+        Text(text)
+            .font(variant.font)
+            .foregroundStyle(color)
+    }
+}
+
+struct ChipRow<Item: Identifiable, ChipContent: View>: View {
+    let chips: [Item]
+    var selectedIndex: Int? = nil
+    var horizontalPadding: CGFloat = KathaTheme.Spacing.mdLg
+    var chipSpacing: CGFloat = KathaTheme.Spacing.s
+    let onSelect: ((Int) -> Void)?
+    @ViewBuilder let renderChip: (Item, Bool) -> ChipContent
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: chipSpacing) {
+                    ForEach(Array(chips.enumerated()), id: \.element.id) { index, chip in
+                        renderChip(chip, selectedIndex == index)
+                            .id(chip.id)
+                            .onTapGesture { onSelect?(index) }
+                    }
+                }
+                .padding(.horizontal, horizontalPadding)
+            }
+            .onChange(of: selectedIndex) { _, newIndex in
+                if let newIndex, chips.indices.contains(newIndex) {
+                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(chips[newIndex].id, anchor: .center) }
+                }
+            }
+        }
+    }
+}
+
+struct ThemeFilterBar: View {
+    let themeName: String
+    let onClear: () -> Void
+
+    var body: some View {
+        HStack(spacing: KathaTheme.Spacing.s) {
+            Image(systemName: "sparkles")
+                .font(KathaFont.BodyStrong)
+                .foregroundStyle(KathaTheme.accent)
+            Text("Filtered by theme: \\(themeName)")
+                .font(KathaFont.BodyStrong)
+                .foregroundStyle(KathaTheme.textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: KathaTheme.Spacing.s)
+            Button(action: onClear) {
+                Image(systemName: "xmark")
+                    .font(KathaFont.BodyStrong)
+                    .foregroundStyle(KathaTheme.textPrimary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: 44)
+        .padding(.horizontal, KathaTheme.Spacing.mdLg)
+        .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.accentSoft))
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
 // MARK: - Helpers
 
 func formatCount(_ n: Int) -> String {
@@ -182,17 +270,13 @@ struct DestructiveCTA: View {
                     Text(title)
                 }
             }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(KathaTheme.error)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .padding(.vertical, 14)
+            .font(KathaFont.BodyStrong)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .padding(.horizontal, KathaTheme.Spacing.mdLg)
             .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(KathaTheme.error.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(KathaTheme.error.opacity(0.2), lineWidth: 1)
-                    )
+                RoundedRectangle(cornerRadius: KathaTheme.Radius.mdLg)
+                    .fill(KathaTheme.error)
             )
         }
         .buttonStyle(PressScaleStyle())
@@ -219,6 +303,7 @@ struct GeneratedAvatar: View {
     let username: String
     var displayName: String = ""
     var size: CGFloat = 44
+    var photoUri: String? = nil
 
     private var palette: AvatarPalette {
         AvatarPalette.paletteFor(username: username)
@@ -242,8 +327,22 @@ struct GeneratedAvatar: View {
             Text(initial)
                 .font(KathaFont.avatarInitial(size: size * 0.42))
                 .foregroundStyle(.white)
+            if let photoUri, let url = avatarURL(from: photoUri) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    }
+                }
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+            }
         }
         .frame(width: size, height: size)
+    }
+
+    private func avatarURL(from value: String) -> URL? {
+        if let url = URL(string: value), url.scheme != nil { return url }
+        return URL(fileURLWithPath: value)
     }
 }
 
@@ -368,7 +467,7 @@ struct StoryCard: View {
                     likes: story.likes,
                     bookmarks: story.bookmarks,
                     views: story.views,
-                    languageCode: story.languageCode,
+                    languageCode: story.language,
                     isLiked: isLiked,
                     isBookmarked: isBookmarked,
                     commentCount: nil,

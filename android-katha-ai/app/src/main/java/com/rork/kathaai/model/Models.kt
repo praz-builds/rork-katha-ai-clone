@@ -38,16 +38,13 @@ enum class Genre(
     val displayName: String,
     val icon: ImageVector
 ) {
-    FICTION("Fiction", Icons.Outlined.MenuBook),
     MYSTERY("Mystery", Icons.Outlined.Search),
     ROMANCE("Romance", Icons.Outlined.FavoriteBorder),
     SCIFI("Sci-Fi", Icons.Outlined.Rocket),
     FANTASY("Fantasy", Icons.Outlined.AutoAwesome),
     HORROR("Horror", Icons.Outlined.DarkMode),
     POETRY("Poetry", Icons.Outlined.FormatQuote),
-    LITERARY("Literary", Icons.AutoMirrored.Outlined.MenuBook),
     ADVENTURE("Adventure", Icons.Outlined.Terrain),
-    FOLKLORE("Folklore", Icons.Outlined.Park),
     THRILLER("Thriller", Icons.Outlined.Bolt),
     SLICE_OF_LIFE("Slice of Life", Icons.Outlined.Coffee),
     HISTORICAL("Historical", Icons.Outlined.HistoryEdu),
@@ -140,7 +137,10 @@ data class Story(
     val followerCount: Int = 0,
     val plannedChapterCount: Int? = null,
     val contentRating: ContentRating? = null,
-    val languageCode: String = "EN"
+    val languageCode: String = "EN",
+    /** ISO 639-1 language code used by filters and language chips. */
+    val language: String = "en",
+    val commentCount: Int = 0
 ) {
     val effectiveContentRating: ContentRating
         get() = contentRating ?: when {
@@ -347,7 +347,8 @@ data class GeneratedStory(
             Genre.HORROR, Genre.EROTICA -> ContentRating.MATURE
             else -> ContentRating.TEEN
         },
-        languageCode = language.code
+        languageCode = language.code,
+        language = language.code.lowercase()
     )
 
     val chapterCount: Int get() = 1 + chapters.size

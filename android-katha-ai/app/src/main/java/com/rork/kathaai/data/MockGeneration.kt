@@ -139,21 +139,21 @@ object StoryStarters {
             "A lost stuffed animal sends postcards from its journey home.",
             "A child who is afraid of the dark befriends the shadow under her bed."
         ),
-        Genre.LITERARY to listOf(
+        Genre.DRAMA to listOf(
             "A grandmother's cookbook reveals a final recipe with strange instructions.",
             "A man catalogues every lie he has ever told in a single notebook.",
             "A woman discovers her life is being narrated by a voice only she hears.",
             "An archivist finds love letters between two people who never met.",
             "A translator realizes the novel she's translating is about her own childhood."
         ),
-        Genre.FICTION to listOf(
+        Genre.CONTEMPORARY to listOf(
             "A lighthouse keeper receives a letter from the future warning of a storm.",
             "A mapmaker is asked to chart a place that doesn't exist — yet.",
             "A clockmaker's daughter discovers she can stop time with a thought.",
             "A woman finds a letter in her garden addressed to her, in her own handwriting, dated tomorrow.",
             "A museum guard notices one exhibit changes slightly every night."
         ),
-        Genre.FOLKLORE to listOf(
+        Genre.MYTHOLOGY to listOf(
             "An old woman folds paper cranes for forty years. When a boy wishes on one, the magic isn't where he thinks.",
             "A village leaves shoes on their roofs to keep the river spirits kind.",
             "A baker's bread refuses to rise whenever a lie is told in the house.",
@@ -163,7 +163,7 @@ object StoryStarters {
     )
 
     fun randomFor(genre: Genre): String {
-        val pool = starters[genre] ?: starters[Genre.FICTION]!!
+        val pool = starters[genre] ?: starters[Genre.CONTEMPORARY]!!
         return pool.random()
     }
 }
@@ -196,7 +196,7 @@ object ChapterStarters {
             "The experiment succeeds, but the results don't match the theory…",
             "First contact happens in the most mundane possible way…"
         ),
-        Genre.FICTION to listOf(
+        Genre.CONTEMPORARY to listOf(
             "The stranger returns, and this time they bring news…",
             "A discovery in the attic rewrites the family history…",
             "The town's secret surfaces in the most public possible way…",
@@ -220,13 +220,13 @@ object ChapterStarters {
             "The guide reveals a personal stake in the journey…",
             "The way forward is blocked. The way back is gone…"
         ),
-        Genre.LITERARY to listOf(
+        Genre.DRAMA to listOf(
             "The letter is read by the wrong person first…",
             "A quiet morning reveals something that was always there…",
             "The past walks in, wearing a different face…",
             "A choice made years ago comes home to stay…"
         ),
-        Genre.FOLKLORE to listOf(
+        Genre.MYTHOLOGY to listOf(
             "The old tale was wrong. The true version is darker…",
             "A spirit appears that no one in the village remembers…",
             "The ritual has a step that was deliberately forgotten…",
@@ -259,7 +259,7 @@ object ChapterStarters {
             "The mission parameters change without warning…",
             "The line between observer and subject dissolves…"
         ),
-        Genre.FICTION to listOf(
+        Genre.CONTEMPORARY to listOf(
             "The consequences of the first decision arrive…",
             "A relationship is tested by something neither can control…",
             "The world shifts around them, and they must decide who to be…",
@@ -283,13 +283,13 @@ object ChapterStarters {
             "The prize is real, but the cost is steeper than promised…",
             "A detour becomes the most important part of the journey…"
         ),
-        Genre.LITERARY to listOf(
+        Genre.DRAMA to listOf(
             "The weight of what was unsaid becomes unbearable…",
             "A moment of grace arrives in the midst of crisis…",
             "The character does the thing they swore they wouldn't…",
             "Time skips, and the gap tells its own story…"
         ),
-        Genre.FOLKLORE to listOf(
+        Genre.MYTHOLOGY to listOf(
             "The old story isn't finished — it was only paused…",
             "A new teller reshapes the tale, and the tale reshapes them…",
             "The boundary between myth and memory thins…",
@@ -322,7 +322,7 @@ object ChapterStarters {
             "The last boundary is crossed, and there's no going back…",
             "The future and present collide in a single moment…"
         ),
-        Genre.FICTION to listOf(
+        Genre.CONTEMPORARY to listOf(
             "The ending that was always coming arrives…",
             "A final reckoning with who they've become…",
             "The story comes full circle — but the circle is different now…",
@@ -346,13 +346,13 @@ object ChapterStarters {
             "The journey's end is not what was promised — it's something better…",
             "The return home is the truest test…"
         ),
-        Genre.LITERARY to listOf(
+        Genre.DRAMA to listOf(
             "The last page writes itself…",
             "A reckoning with grace, or the absence of it…",
             "The story ends, and the silence is the point…",
             "What was planted in the first chapter blooms here…"
         ),
-        Genre.FOLKLORE to listOf(
+        Genre.MYTHOLOGY to listOf(
             "The tale completes its final turn…",
             "The old debt is paid, or the old promise is kept…",
             "The last teller passes the story on…",
@@ -375,9 +375,9 @@ object ChapterStarters {
         }
 
         val pool: List<String> = when {
-            position < 0.4 -> earlyStarters[genre] ?: earlyStarters[Genre.FICTION]!!
-            position < 0.8 -> midStarters[genre] ?: midStarters[Genre.FICTION]!!
-            else -> lateStarters[genre] ?: lateStarters[Genre.FICTION]!!
+            position < 0.4 -> earlyStarters[genre] ?: earlyStarters[Genre.CONTEMPORARY]!!
+            position < 0.8 -> midStarters[genre] ?: midStarters[Genre.CONTEMPORARY]!!
+            else -> lateStarters[genre] ?: lateStarters[Genre.CONTEMPORARY]!!
         }
         return pool.shuffled().take(5)
     }
@@ -391,12 +391,12 @@ object ChapterTitlePool {
         Genre.MYSTERY to listOf("The Second Body", "The Missing Page", "A Confession Rewritten", "The Unmarked Door", "Closing Argument", "The Last Witness"),
         Genre.ROMANCE to listOf("The Letter Unsent", "Two Trains", "The Unfinished Sentence", "Rain in November", "The Other Side of Quiet", "A Table for Two"),
         Genre.SCIFI to listOf("The Second Signal", "Drift", "The Human Variable", "Protocol Zero", "The Last Transmission", "Mirror Matter"),
-        Genre.FICTION to listOf("The Return", "Unwritten", "The Long Way Home", "What Remained", "The Other Map", "Crossing"),
+        Genre.CONTEMPORARY to listOf("The Return", "Unwritten", "The Long Way Home", "What Remained", "The Other Map", "Crossing"),
         Genre.HORROR to listOf("The Thirteenth Mark", "Below", "The Room That Wasn't There", "House of Teeth", "The Final Count", "Unmaker"),
         Genre.THRILLER to listOf("The Mole", "Countdown", "Blind Spot", "The Switch", "Zero Hour", "Compromised"),
         Genre.ADVENTURE to listOf("The Narrows", "The Old Way", "Storm Season", "The Far Shore", "The Detour", "High Ground"),
-        Genre.LITERARY to listOf("The Empty Room", "What the Garden Knew", "The Last Kitchen", "Departure", "The Returned", "Still Life"),
-        Genre.FOLKLORE to listOf("The Old Story", "What the Wind Carried", "The Unfinished Crane", "The Second Wish", "Root and Branch", "The Hollow Tree"),
+        Genre.DRAMA to listOf("The Empty Room", "What the Garden Knew", "The Last Kitchen", "Departure", "The Returned", "Still Life"),
+        Genre.MYTHOLOGY to listOf("The Old Story", "What the Wind Carried", "The Unfinished Crane", "The Second Wish", "Root and Branch", "The Hollow Tree"),
         Genre.SLICE_OF_LIFE to listOf("Tuesday", "The Regulars", "A Small Kindness", "The Morning Route", "Neighbors", "The Last Note"),
         Genre.HISTORICAL to listOf("The Coded Page", "The Front Line", "The Archive", "Wartime", "The Unsent Dispatch", "After the Armistice"),
         Genre.CONTEMPORARY to listOf("The Notification", "Offline", "The Feed", "The Last Post", "Connection", "Refresh"),
@@ -411,7 +411,7 @@ object ChapterTitlePool {
     )
 
     fun randomTitle(genre: Genre): String {
-        val pool = titles[genre] ?: titles[Genre.FICTION]!!
+        val pool = titles[genre] ?: titles[Genre.CONTEMPORARY]!!
         return pool.random()
     }
 }
@@ -440,7 +440,7 @@ object ChapterBodyPool {
             "The quantum field generator had been running for seventy-two hours without incident, which Yuki found more alarming than if it had malfunctioned. In her experience, systems that ran perfectly were either about to fail or had already failed in a way she hadn't detected yet.\n\nShe ran the diagnostics. Everything came back green. She ran them again. Green. She ran them a third time, this time with the secondary array, and the results changed: one sensor, the one closest to the probability rose, was reporting a temperature of 37 degrees. Body temperature. The sensor was in a vacuum-sealed chamber.\n\nShe opened the chamber. The rose was gone. In its place was a seed — dark, smooth, warm to the touch. She held it and felt a pulse. Not hers. The seed's. She set it down and backed away. The seed began to germinate. In the vacuum. In the dark. In the silence. It grew the way a heart grows: slowly, deliberately, and with a rhythm that suggested it knew exactly what it was becoming.",
             "The Mars colony received its first visitor on Sol 412. The visitor did not arrive by ship. It arrived by radio — a transmission in clear, unaccented English, broadcast on the colony's internal frequency, from a location three kilometers north of the habitat.\n\n\"Good morning,\" the transmission said. \"I hope I'm not too early.\"\n\nMission Commander Liang stared at the radio. There were no installations north of the habitat. There were no people north of the habitat. The nearest human settlement was 54.6 million kilometers away. She picked up the handset. \"Who is this?\" she said. \"This is the first colonist,\" the voice said. \"I arrived before you. I've been waiting. I wasn't sure you'd come.\"\n\nLiang looked at her crew. They looked at her. The air scrubbers hummed. The solar panels ticked in the wind. \"How long have you been waiting?\" Liang asked. The voice paused. \"By your calendar? Four hundred years. By mine? I'm not sure. Time moves differently when you're alone.\""
         ),
-        Genre.FICTION to listOf(
+        Genre.CONTEMPORARY to listOf(
             "The stranger returned on a Sunday, which was the day the village did its laundry and its thinking in equal measure. He looked the same — same coat, same hat, same way of standing as if he expected the ground to move. The difference was in his hands. They were empty.\n\nThe mapmaker saw him first. He set down his coffee and watched the stranger cross the square. \"You're back,\" he said. \"I'm back,\" the stranger said. \"I brought what you asked for.\" \"I didn't ask for anything.\" \"You did. You just didn't say it out loud.\"\n\nThe stranger opened his coat. Inside, where the pockets should have been, was a map. Not drawn — grown. The lines were roots, the borders were moss, the cities were small flowers. The mapmaker took it. It was warm. It pulsed. \"Where does this lead?\" he asked. \"To the place you were always trying to find,\" the stranger said. \"The one that doesn't exist yet.\"",
             "The discovery in the attic was not the one they expected. They had gone up looking for Christmas decorations and found, instead, a box labeled in their grandmother's hand: \"For after I'm gone. Don't open until you're ready.\"\n\nThey were not ready. They opened it anyway. Inside were letters — hundreds of them, written over fifty years, addressed to people they had never heard of. Each letter was sealed. Each envelope had a name and an address. Each address was in a city they had never visited.\n\nThey sat on the attic floor and read the first one. It was addressed to a woman in Lisbon, dated 1972. \"Dear Maria,\" it began. \"I have never told you what happened. I have never told anyone. But I think you should know, even now, even this late, that the life I lived was not the one I chose. It was the one that chose me. And I think, if you remember, you'll understand why.\"",
             "The town's secret surfaced at the worst possible moment — during the Founder's Day parade, when everyone was on Main Street, when the mayor was at the podium, when the band had just finished playing the national anthem and the silence was the kind that makes people nervous.\n\nIt surfaced as a letter, pinned to the bulletin board outside the post office, written in a hand that half the town recognized. \"The founder didn't found this town,\" it said. \"He stole it. The deed is in the courthouse, filed under a different name. The real founder is buried in the cemetery, under a stone that says 'Unknown.' His name was James. He built the church. He dug the well. He planted the elm trees. He was killed for the land. The man on the statue is the man who killed him.\"\n\nThe mayor read the letter. The town read the letter. The band stood with their instruments at their sides. The elm trees, the ones James had planted, rustled in the wind. The mayor looked at the statue. The statue looked back. The silence grew until it was the loudest thing anyone had ever heard."
@@ -455,12 +455,12 @@ object ChapterBodyPool {
             "The storm drove them off course, which was the storm's way of being helpful. The map said the pass was to the east. The storm said: not today. The storm said: try the north.\n\nThe north was not on the map. The north was a blank space, a white silence, a place where the cartographer's pen had run out of ink or nerve. They went north anyway, because the alternative was to sit in the storm and wait, and waiting was not something any of them were good at.\n\nOn the second day, the storm cleared. They stood on a ridge and looked down into a valley that shouldn't have existed. It was green — impossibly green, summer-green in the middle of winter. A river ran through it, and on the riverbank, a camp. Not abandoned. Recently used. There were footprints in the mud, still wet. Someone had been here. Someone had left in a hurry.",
             "The final challenge was not a mountain or a river or a storm. It was a choice. The valley lay before them — the destination, the end of the journey, the place every map and every story had been pointing toward. But between them and the valley was a bridge, and on the bridge stood a figure, and the figure was holding something.\n\n\"You can cross,\" the figure said. \"But only one of you. The bridge won't hold more. Choose.\"\n\nThey looked at each other. They had walked for weeks, shared food and cold and silence and stories. They had become, without meaning to, a team. And now the team had to be broken. One would cross. The others would wait.\n\nJared stepped forward. Then Kai. Then Sara. Then, simultaneously, they all stepped back. \"We all go or none of us go,\" Sara said. The figure on the bridge smiled. \"That,\" it said, \"was the right answer.\" The bridge widened. It had been wide enough all along."
         ),
-        Genre.LITERARY to listOf(
+        Genre.DRAMA to listOf(
             "The empty room was not empty. It was full of what had been there — the chair, the lamp, the smell of coffee, the sound of a voice that had stopped. Amma stood in the doorway and felt the weight of absence, which was heavier than any presence, because presence takes up space and absence takes up everything.\n\nShe crossed the threshold. The floor creaked where it had always creaked, under the window, where the light came in at the angle it had always come in. She sat in the chair that was not there. She held the cup that was not there. She said the name that was not there.\n\nThe room did not answer. Rooms don't. But something in the walls, in the grain of the wood, in the years of habitation that had seeped into the plaster, something held her. Not a ghost. Not a memory. A habitation. The room had been lived in, and the living had left its mark, and the mark was not gone. It was just quiet. She sat in the quiet and let it hold her. It was enough.",
             "The letter was read by the wrong person first. This was not a tragedy. This was how letters worked — they traveled, they arrived, they were opened by whoever was nearest. In this case, the nearest person was the postman, who read the first line by accident and the rest on purpose.\n\nThe first line was: \"I have loved you since the summer of the storm.\" The postman knew the address. He had been delivering there for twelve years. He knew the woman who lived there, and he knew the man who had written the letter, because he had delivered the man's letters before.\n\nThe postman sealed the envelope. He put it in the mailbox. He walked away. He did not tell anyone what he had read. But the next day, when he delivered the mail, he saw the woman sitting on her porch, the letter in her hands, her face different — not happier, not sadder, but open, the way a door is open, the way a life is open when it has been given something it didn't know it was waiting for.",
             "The garden knew. It had always known. The roses turned toward the sea when the letter came. The jasmine bloomed early when the ship sank. The wisteria climbed the wrong wall the week her son left. The garden was not psychic. The garden was patient. It had been growing for forty years, and it had learned to read the seasons of a human life the way a farmer reads the sky.\n\nShe stood in the garden now, in the rain, and the rain fell on her face and on the roses and on the jasmine and on the wisteria, and everything was wet and everything was alive and everything was telling her the same thing: the time for waiting is over. Not because the waiting is done. Because the thing you are waiting for is already here.\n\nShe looked at the roses. They were not turned toward the sea anymore. They were turned toward her. She knelt in the mud. She put her face close to the petals. They were warm. They were warm in the rain. She closed her eyes. She breathed. The garden breathed with her."
         ),
-        Genre.FOLKLORE to listOf(
+        Genre.MYTHOLOGY to listOf(
             "The old story was wrong, and the woman who knew it was wrong was eight years old. She had heard the tale a hundred times — the crane, the wish, the folding. But the tale always ended with the folding. It never said what happened to the paper.\n\nShe asked her grandmother. Her grandmother went quiet. \"The paper,\" she said, \"goes back into the world. It becomes a leaf, a feather, a snowflake. It finds the person who wished and it watches over them. The crane is not the magic. The crane is the key. The paper is the magic.\"\n\n\"What happens to the paper after?\" the girl asked. Her grandmother looked at her hands. They were old. They were thin. They were the hands that had folded a thousand cranes. \"It becomes a person,\" she said. \"The paper becomes a person. The person lives and grows and folds their own cranes. And when they are done, they become paper again. It is a circle. It has always been a circle. The story forgot to tell you because the story was written by someone who was afraid of circles.\"",
             "The village chose which version to believe, and the choosing was the hardest thing they had ever done. There were two stories. In the first, the river spirit was kind — it had saved the village from flood, brought fish in the lean years, kept the water sweet. In the second, the river spirit was hungry — it had taken a child every generation, demanded silence, punished those who spoke of the taking.\n\nBoth stories were true. Both had witnesses. Both had evidence — the abundant fish on one hand, the small unmarked graves on the other. The village stood at the riverbank and argued. The river listened. The river did not correct them.\n\nFinally, the oldest woman in the village spoke. \"We are asking the wrong question,\" she said. \"The question is not which story is true. The question is: which story do we need to tell?\""
         ),
@@ -515,7 +515,7 @@ object ChapterBodyPool {
     )
 
     fun randomBody(genre: Genre): String {
-        val pool = bodies[genre] ?: bodies[Genre.FICTION]!!
+        val pool = bodies[genre] ?: bodies[Genre.CONTEMPORARY]!!
         return pool.random()
     }
 }
@@ -551,7 +551,7 @@ object MockGeneration {
     private val templates: List<MockTemplate> = listOf(
         MockTemplate(
             title = "The Mapmaker's Last Commission",
-            genre = Genre.FICTION,
+            genre = Genre.CONTEMPORARY,
             themes = listOf("maps", "discovery", "time"),
             firstLine = "The old mapmaker had not drawn a new line in thirty years.",
             body = """The old mapmaker had not drawn a new line in thirty years. Every road, every river, every mountain was already charted, labeled, filed. The world, he believed, was complete. Then a stranger walked into his shop and asked for a map of a place that didn't exist.
@@ -566,7 +566,7 @@ He worked through the night. The stranger did not leave. At dawn, the mapmaker l
         ),
         MockTemplate(
             title = "The Letter from Tomorrow",
-            genre = Genre.FICTION,
+            genre = Genre.CONTEMPORARY,
             themes = listOf("time", "garden", "warning"),
             firstLine = "She found the letter in the garden, pressed flat under a stone.",
             body = """She found the letter in the garden, pressed flat under a stone. It was addressed to her, in her own handwriting, dated tomorrow. "Don't go to the harbor," it said. "Trust the gardener. The roses know."
@@ -672,7 +672,7 @@ He replaced the bulb. The new one lit, turned, swept the sea. And in the beam's 
         ),
         MockTemplate(
             title = "Letters to the Sea",
-            genre = Genre.LITERARY,
+            genre = Genre.DRAMA,
             themes = listOf("grief", "ocean", "letters"),
             firstLine = "Every morning, Amma walked to the pier with a letter folded in her sari.",
             body = """Every morning, Amma walked to the pier with a letter folded in her sari. She had been doing this for eleven years, since the day her son's ship failed to return. The letters were always the same: his name, a question, a promise to keep waiting.
@@ -706,7 +706,7 @@ They ate dinner by the fire. They talked until the rain stopped. When the path w
         ),
         MockTemplate(
             title = "The Paper Crane",
-            genre = Genre.FOLKLORE,
+            genre = Genre.MYTHOLOGY,
             themes = listOf("folk-tale", "kindness", "tradition"),
             firstLine = "In the village of Fukushima, there lived an old woman who folded paper cranes.",
             body = """In the village of Fukushima, there lived an old woman who folded paper cranes. She had been folding them for forty years, since her daughter was born. Her daughter was gone now, but the folding continued.

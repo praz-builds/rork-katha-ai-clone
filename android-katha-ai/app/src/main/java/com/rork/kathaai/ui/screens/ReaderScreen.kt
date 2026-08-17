@@ -223,9 +223,9 @@ fun ReaderScreen(
                     Text(story.title, style = KathaTypography.ReaderStoryTitle, color = textColor)
                     Text(
                         if (story.isSeries) {
-                            "${story.genre.displayName}  ·  Chapter ${currentChapterIndex + 1} of ${story.chapters.size}  ·  ${timeAgo(story.publishedOffset)}"
+                            "${story.genre.displayName}  ·  ${story.language.uppercase()}  ·  Chapter ${currentChapterIndex + 1} of ${story.chapters.size}  ·  ${timeAgo(story.publishedOffset)}"
                         } else {
-                            "${story.genre.displayName}  ·  ${story.readingTimeMinutes} min read  ·  ${timeAgo(story.publishedOffset)}"
+                            "${story.genre.displayName}  ·  ${story.language.uppercase()}  ·  ${story.readingTimeMinutes} min read  ·  ${timeAgo(story.publishedOffset)}"
                         },
                         color = textSecondary,
                         style = KathaTypography.Meta

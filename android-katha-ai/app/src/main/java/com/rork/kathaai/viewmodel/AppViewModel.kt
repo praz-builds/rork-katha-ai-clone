@@ -85,6 +85,7 @@ data class KathaUiState(
     val toastMessage: String? = null,
     val toastIsWelcome: Boolean = false,
     val onboardingCompleted: Boolean = false,
+    val onboardingPurpose: String? = null,
     val reopenStoryId: String? = null,
     val reopenStoryChapterIndex: Int = 0,
     // Wizard state (in-session only)
@@ -249,7 +250,11 @@ data class KathaUiState(
     val isPinCooldownActive: Boolean
         get() = (pinCooldownUntil ?: 0L) > System.currentTimeMillis()
 
-    fun isStoryVisibleInKidsMode(story: Story): Boolean = !kidsMode || story.effectiveContentRating != ContentRating.MATURE
+    fun isStoryVisibleInKidsMode(story: Story): Boolean {
+        if (kidsMode && story.effectiveContentRating == ContentRating.MATURE) return false
+        if (!ageVerified && story.genre == Genre.EROTICA) return false
+        return true
+    }
     val isAuthenticated: Boolean get() = currentUser != null
 
     val hasUnreadNewChapters: Boolean
@@ -280,7 +285,11 @@ data class KathaUiState(
 
     fun isBlocked(authorId: String): Boolean = authorId in blockedUserIds
 
-    fun commentCount(storyId: String): Int = commentsFor(storyId).size
+    fun commentCount(storyId: String): Int {
+        val seededCount = commentsFor(storyId).size
+        val metadataCount = SeedData.stories.firstOrNull { it.id == storyId }?.commentCount ?: 0
+        return maxOf(seededCount, metadataCount)
+    }
 
     fun commentsFor(storyId: String): List<StoryComment> {
         val seed = SeedData.seedComments(storyId)
@@ -379,7 +388,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 followedAuthorIds = prefs.getStringSet(KEY_FOLLOWED_AUTHORS, emptySet()).orEmpty(),
                 likedStoryIds = prefs.getStringSet(KEY_LIKED, emptySet()).orEmpty(),
                 bookmarkedStoryIds = prefs.getStringSet(KEY_BOOKMARKED, emptySet()).orEmpty(),
-                readStoryIds = prefs.getStringSet(KEY_READ, emptySet()).orEmpty(),
+                readStoryIds = prefs.getStringSet(KEY_READ, emptySet()).orEmpty().ifEmpty { setOf("story-5", "story-4") },
                 followedStoryIds = prefs.getStringSet(KEY_FOLLOWED_STORIES, emptySet()).orEmpty(),
                 readerSepia = prefs.getBoolean(KEY_SEPIA, false),
                 defaultReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
@@ -393,6 +402,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 kidsSearchSuggestionsEnabled = prefs.getBoolean(KEY_KIDS_SEARCH, true),
                 ageVerified = prefs.getBoolean(KEY_AGE_VERIFIED, false),
                 onboardingCompleted = prefs.getBoolean(KEY_ONBOARDED, false),
+                onboardingPurpose = prefs.getString(KEY_ONBOARDING_PURPOSE, null),
                 lastUsernameChange = prefs.getLong(KEY_LAST_USERNAME_CHANGE, 0L).takeIf { ts -> ts > 0L },
                 likedCommentIds = prefs.getStringSet(KEY_LIKED_COMMENTS, emptySet()).orEmpty(),
                 deletedCommentIds = prefs.getStringSet(KEY_DELETED_COMMENTS, emptySet()).orEmpty(),
@@ -486,9 +496,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // MARK: - Onboarding
 
-    fun completeOnboarding() {
-        prefs.edit().putBoolean(KEY_ONBOARDED, true).apply()
-        _uiState.update { it.copy(onboardingCompleted = true) }
+    fun completeOnboarding(purpose: String) {
+        prefs.edit().putBoolean(KEY_ONBOARDED, true).putString(KEY_ONBOARDING_PURPOSE, purpose).apply()
+        _uiState.update { it.copy(onboardingCompleted = true, onboardingPurpose = purpose) }
     }
 
     // MARK: - Auth (mock mode: simulated 800ms round trip)
@@ -1018,16 +1028,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(wizardGenre = genre, wizardStep = WizardStep.TOPIC) }
     }
 
-    fun addWizardCharacter() {
+    fun addWizardCharacter(character: WizardCharacter? = null) {
         _uiState.update { state ->
             val index = state.wizardCharacters.size + 1
             state.copy(
-                wizardCharacters = state.wizardCharacters + WizardCharacter(
+                wizardCharacters = state.wizardCharacters + (character ?: WizardCharacter(
                     id = UUID.randomUUID().toString(),
                     name = "",
                     role = if (index == 1) "Protagonist" else "Supporting",
                     description = ""
-                )
+                ))
             )
         }
     }
@@ -1186,8 +1196,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     if (!uiState.value.notificationPermissionGranted) updatePrompt12State(uiState.value.copy(showPrePermissionModal = true))
                 }
             } catch (e: GenerationException) {
+                addCredits(1, CreditReason.REFUND, "generation-failed-${System.currentTimeMillis()}")
                 _uiState.update {
-                    it.copy(generationError = "Something went wrong while crafting your story. Please try again.")
+                    it.copy(generationError = "Something went wrong while crafting your story. Your credit was refunded. Please try again.")
                 }
             }
             _uiState.update { it.copy(isGenerating = false) }
@@ -1796,6 +1807,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_FOLLOWED_STORIES = "followedStories"
         const val KEY_SEPIA = "readerSepia"
         const val KEY_ONBOARDED = "onboardingCompleted"
+        const val KEY_ONBOARDING_PURPOSE = "onboarding_purpose"
         const val KEY_LAST_USERNAME_CHANGE = "lastUsernameChange"
         const val KEY_LIKED_COMMENTS = "likedComments"
         const val KEY_DELETED_COMMENTS = "deletedComments"

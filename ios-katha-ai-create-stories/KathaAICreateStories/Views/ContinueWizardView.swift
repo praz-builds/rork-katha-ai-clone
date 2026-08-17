@@ -434,7 +434,7 @@ struct GetIdeasChapterSheet: View {
                         .font(KathaFont.Body)
                         .foregroundStyle(KathaTheme.textSecondary)
 
-                    let genre = appState.continueWizardGenre ?? .fiction
+                    let genre = appState.continueWizardGenre ?? .contemporary
                     let starters = ChapterStarters.starters(
                         for: genre,
                         chapterNumber: appState.continueWizardChapterNumber,

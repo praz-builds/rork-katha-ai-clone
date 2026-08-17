@@ -108,11 +108,11 @@ struct HomeView: View {
                 }
             } else {
                 Button("Sign in") { appState.presentAuthSheet(readerWall: false) }
-                    .font(KathaFont.Caption)
-                    .foregroundStyle(KathaTheme.accent)
-                    .padding(.horizontal, KathaTheme.Spacing.m)
-                    .padding(.vertical, KathaTheme.Spacing.s)
-                    .background(Capsule().fill(KathaTheme.accentSoft))
+                    .font(KathaFont.BodyStrong)
+                    .foregroundStyle(KathaTheme.textPrimary)
+                    .padding(.horizontal, KathaTheme.Spacing.mdLg)
+                    .frame(height: 32)
+                    .background(Capsule().fill(KathaTheme.surface).overlay(Capsule().stroke(KathaTheme.border, lineWidth: 1)))
             }
         }
     }

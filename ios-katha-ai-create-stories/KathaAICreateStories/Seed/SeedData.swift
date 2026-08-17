@@ -11,34 +11,34 @@ enum SeedData {
     static let authors: [Author] = [
         Author(id: "kathaai", username: "kathaai", displayName: "Katha AI",
                bio: "The house account. Curated tales spun with care. Follow us for the best of Katha, weekly.",
-               followers: 12400, storyCount: 30, isVerified: true, avatarPaletteIndex: 0, followingCount: 0),
+               followers: 48200, storyCount: 30, isVerified: true, avatarPaletteIndex: 0, followingCount: 0),
         Author(id: "aarav", username: "aarav", displayName: "Aarav Menon",
                bio: "Writing stories about the small moments that shape a life. Based in Mumbai.",
-               followers: 3200, storyCount: 4, isVerified: false, avatarPaletteIndex: 0, followingCount: 4),
+               followers: 12, storyCount: 4, isVerified: false, avatarPaletteIndex: 0, followingCount: 4),
         Author(id: "zoeok", username: "zoeok", displayName: "Zoe Okonkwo",
                bio: "Afrofuturism, thrillers, and everything in between. Lagos \u{2192} London \u{2192} wherever the story goes.",
-               followers: 5100, storyCount: 5, isVerified: true, avatarPaletteIndex: 1, followingCount: 200),
+               followers: 15000, storyCount: 5, isVerified: false, avatarPaletteIndex: 1, followingCount: 200),
         Author(id: "priyanair", username: "priyanair", displayName: "Priya Nair",
                bio: "Mythology-tinted fantasy from Kerala. New chapter every Sunday morning.",
-               followers: 2800, storyCount: 3, isVerified: false, avatarPaletteIndex: 2, followingCount: 120),
+               followers: 8900, storyCount: 3, isVerified: false, avatarPaletteIndex: 2, followingCount: 120),
         Author(id: "mayak", username: "mayak", displayName: "Maya Kapoor",
                bio: "Contemporary romance and second-chance stories. Weekend baker, weekday storyteller.",
-               followers: 6700, storyCount: 6, isVerified: true, avatarPaletteIndex: 4, followingCount: 89),
+               followers: 3400, storyCount: 6, isVerified: false, avatarPaletteIndex: 4, followingCount: 89),
         Author(id: "rentakahashi", username: "rentakahashi", displayName: "Ren Takahashi",
                bio: "Slow-burn sci-fi. Occasional horror. Tokyo native, night-shift writer.",
-               followers: 4400, storyCount: 5, isVerified: false, avatarPaletteIndex: 2, followingCount: 45),
+               followers: 1200, storyCount: 5, isVerified: false, avatarPaletteIndex: 2, followingCount: 45),
         Author(id: "diegoa", username: "diegoa", displayName: "Diego Alvarez",
                bio: "Buenos Aires. Magical realism, mostly in Spanish. Coffee-fueled at 3 AM.",
-               followers: 3900, storyCount: 4, isVerified: false, avatarPaletteIndex: 5, followingCount: 22),
+               followers: 620, storyCount: 4, isVerified: false, avatarPaletteIndex: 5, followingCount: 22),
         Author(id: "rahuls", username: "rahuls", displayName: "Rahul Sharma",
                bio: "Motivational shorts. Grand ambitions, small steps. Write your own tomorrow.",
-               followers: 2600, storyCount: 3, isVerified: false, avatarPaletteIndex: 3, followingCount: 30),
-        Author(id: "elenar", username: "elenar", displayName: "Elena Ross",
+               followers: 340, storyCount: 3, isVerified: false, avatarPaletteIndex: 3, followingCount: 30),
+        Author(id: "elenar", username: "elenar", displayName: "Elena Rossi",
                bio: "Historical fiction with a mystery twist. Living in Florence, dreaming in the 1600s.",
-               followers: 5200, storyCount: 4, isVerified: true, avatarPaletteIndex: 4, followingCount: 78),
+               followers: 5200, storyCount: 4, isVerified: false, avatarPaletteIndex: 4, followingCount: 78),
         Author(id: "kainak", username: "kainak", displayName: "Kai Nakamura",
                bio: "Poetry, mostly. Sometimes prose. Always short. Sometimes very short.",
-               followers: 3100, storyCount: 3, isVerified: false, avatarPaletteIndex: 1, followingCount: 50)
+               followers: 890, storyCount: 3, isVerified: false, avatarPaletteIndex: 1, followingCount: 50)
     ]
 
     // MARK: - Follow Graph (who follows whom among seed authors)
@@ -111,9 +111,9 @@ enum SeedData {
 
     // MARK: - Stories (12 with real prose)
 
-    static let stories: [Story] = [
+    private static let baseStories: [Story] = [
         Story(id: "story-1", title: "The Last Lighthouse Keeper", authorId: "aarav",
-              genre: .fiction,
+              genre: .adventure,
               synopsis: "A lighthouse keeper receives a letter from the future warning of a storm that hasn't happened yet.",
               chapters: [
                   Chapter(id: "s1c1", title: "The Letter", paragraphs: [
@@ -149,7 +149,7 @@ enum SeedData {
               tags: ["travel", "noir", "atmospheric"], publishedOffset: 5, isFeatured: true),
 
         Story(id: "story-3", title: "Letters to the Sea", authorId: "priyanair",
-              genre: .literary,
+              genre: .drama,
               synopsis: "For eleven years, a mother writes letters to the ocean. One day, the ocean writes back.",
               chapters: [
                   Chapter(id: "s3c1", title: "The First Letter", paragraphs: [
@@ -163,7 +163,7 @@ enum SeedData {
                       "It ended: 'I am well. I am not alone. The sea says you should stop waiting, but I know you won't, and I love you for it.' Amma folded the letter into her sari and began walking home. Tomorrow, she would write back."
                   ])
               ],
-              likes: 1430, bookmarks: 510, views: 9200,
+              likes: 160, bookmarks: 80, views: 1300,
               tags: ["grief", "ocean", "letters"], publishedOffset: 8, isFeatured: false),
 
         Story(id: "story-4", title: "The Quantum Garden", authorId: "rentakahashi",
@@ -199,7 +199,7 @@ enum SeedData {
                       "The banner didn't make them invincible. It made them honest. They saw what the king was, and what the kingdom had become, and they could not fight for it anymore. Pema smiled, packed her loom, and walked home. The moon, she knew, always tells the truth."
                   ])
               ],
-              likes: 3120, bookmarks: 1240, views: 22100,
+              likes: 2800, bookmarks: 1100, views: 22100,
               tags: ["folk-tale", "magic", "moonlight"], publishedOffset: 3, isFeatured: true),
 
         Story(id: "story-6", title: "Whispers in the Old House", authorId: "diegoa",
@@ -217,7 +217,7 @@ enum SeedData {
                       "Behind him, the cellar door closed. He spun around, ran to it, tried the handle. Locked. The whispers started again, louder now, and this time he could hear the words. 'Three hundred and thirteen,' they said. 'Three hundred and thirteen.'"
                   ])
               ],
-              likes: 1750, bookmarks: 680, views: 13800,
+              likes: 120, bookmarks: 60, views: 950,
               tags: ["supernatural", "suspense", "dark"], publishedOffset: 4, isFeatured: false),
 
         Story(id: "story-7", title: "River Bound", authorId: "rahuls",
@@ -235,7 +235,7 @@ enum SeedData {
                       "An old woman walked to the water's edge. 'You found us,' she said. 'Not many do.' She looked at Jared's raft, at his maps, at his GPS. 'You can stay,' she said. 'But you should know — the river only flows one way. You came in. You cannot go back the way you came.'"
                   ])
               ],
-              likes: 1290, bookmarks: 430, views: 7800,
+              likes: 15, bookmarks: 5, views: 120,
               tags: ["travel", "discovery", "himalaya"], publishedOffset: 7, isFeatured: false),
 
         Story(id: "story-8", title: "Stargazer", authorId: "elenar",
@@ -253,11 +253,11 @@ enum SeedData {
                       "My father used to say: the light we see is old. Everything in the sky is a ghost. I think he was trying to tell me something about time, or about loss, or about the way we look backward without meaning to. I think he was right about that."
                   ])
               ],
-              likes: 2240, bookmarks: 910, views: 16400,
+              likes: 80, bookmarks: 40, views: 700,
               tags: ["stars", "memory", "elegy"], publishedOffset: 6, isFeatured: true),
 
         Story(id: "story-9", title: "The Forgotten Recipe", authorId: "kainak",
-              genre: .literary,
+              genre: .drama,
               synopsis: "A grandmother's cookbook reveals a final recipe with strange instructions: say the name of someone you've lost.",
               chapters: [
                   Chapter(id: "s9c1", title: "The Cookbook", paragraphs: [
@@ -271,7 +271,7 @@ enum SeedData {
                       "When the bowl was empty, I called my mother. 'I found the recipe,' I said. There was a long pause. 'The soup?' she said. 'Obachan made it for me when my father died. She said it doesn't bring people back. It just helps you remember them clearly.' I looked at the empty bowl. She was right."
                   ])
               ],
-              likes: 1670, bookmarks: 620, views: 10900,
+              likes: 12, bookmarks: 4, views: 95,
               tags: ["family", "food", "memory"], publishedOffset: 9, isFeatured: false),
 
         Story(id: "story-10", title: "Echoes of Tomorrow", authorId: "mayak",
@@ -307,11 +307,11 @@ enum SeedData {
                       "They ate dinner by the fire. They talked until the rain stopped. When the path was passable again, neither of them mentioned leaving. The ferry came on Friday. They didn't take it. They took the next one, two weeks later, together."
                   ])
               ],
-              likes: 2010, bookmarks: 780, views: 14200,
+              likes: 170, bookmarks: 90, views: 1500,
               tags: ["quiet", "island", "connection"], publishedOffset: 3, isFeatured: false),
 
         Story(id: "story-12", title: "The Paper Crane", authorId: "zoeok",
-              genre: .folklore,
+              genre: .mythology,
               synopsis: "An old woman folds paper cranes for forty years. When a boy wishes on one, the magic isn't where he thinks.",
               chapters: [
                   Chapter(id: "s12c1", title: "The Village", paragraphs: [
@@ -325,9 +325,116 @@ enum SeedData {
                       "The dog got better. The boy came back to thank the old woman, but the house was empty. The cranes were gone. All that was left was a single piece of paper, unfolded, with a handwritten note: 'The magic was never in the crane. It was in the folding. Thank you for folding.' The boy kept the paper. He learned to fold cranes. He taught others. The village never forgot."
                   ])
               ],
-              likes: 2580, bookmarks: 990, views: 18500,
+              likes: 18, bookmarks: 6, views: 140,
               tags: ["folk-tale", "kindness", "tradition"], publishedOffset: 5, isFeatured: true)
     ]
+
+    /// The remaining seed stories broaden language, genre, and engagement coverage.
+    private static let expandedStories: [Story] = [
+        expandedStory(id: "story-13", title: "The Bakery at Platform Nine", authorId: "mayak", genre: .romance, language: "en", synopsis: "Two commuters keep missing the same train and finding each other at the bakery beside the platform.", paragraphs: [
+            "Every morning at 7:12, Mira bought one cardamom bun from the bakery beside Platform Nine. Every morning at 7:14, the train left without her. She told people the delay was deliberate, a small rebellion against the tyranny of timetables, but the truth was simpler: the baker's daughter had learned her order and saved the warmest bun for last.",
+            "The man with the blue umbrella appeared on a rainy Tuesday. He stood beside the display case, reading the menu as if it were a difficult poem. When Mira reached for the last bun, his hand reached too. They laughed, apologized, and split it with a paper knife. The train arrived. Neither of them moved.",
+            "By winter, the bakery knew them as a pair. They traded stories in the ten minutes before work, learning the shape of each other's silences. On the morning Mira finally boarded Platform Nine, the man with the blue umbrella was waiting inside the carriage, holding two buns and a ticket for the long way home."
+        ], reads: 1200, likes: 140, comments: 18, tags: ["second-chance", "daily-life", "slow-burn"], offset: 4),
+        expandedStory(id: "story-14", title: "The Orchard of Names", authorId: "priyanair", genre: .fantasy, language: "en", synopsis: "A child discovers an orchard where every fruit carries the name of someone the village has forgotten.", paragraphs: [
+            "At the edge of the village stood an orchard no one entered. Its trees grew behind a wall of white stone, and its apples ripened in every season at once. Nila found the gate open on the day her grandmother forgot her name. She stepped through carrying a lantern, a red scarf, and the stubborn hope that memory could be harvested.",
+            "Each fruit bore a name beneath its skin. Some belonged to dead kings, some to babies who had never drawn breath, and some to neighbors who still sat at the tea stall every evening. Nila picked one marked Devika. The orchard answered with a bell from somewhere underground, and the village dogs began to howl.",
+            "She learned the orchard was not keeping the forgotten safe; it was waiting for someone brave enough to return them. Nila carried the names home one by one. Her grandmother remembered her own name last, and then whispered Nila's as if she had been holding it all along."
+        ], reads: 950, likes: 110, comments: 15, tags: ["memory", "found-family", "magic"], offset: 6),
+        expandedStory(id: "story-15", title: "The House That Counted", authorId: "zoeok", genre: .mystery, language: "en", synopsis: "A caretaker realizes the old house has been counting visitors, but one number has no owner.", paragraphs: [
+            "The house had twelve windows, eleven rooms, and a brass counter beside the front door. Elias polished it every morning because the owner believed dust encouraged ghosts. The counter displayed 4,812. The number rose whenever someone entered and never fell when they left.",
+            "On Thursday, a woman arrived carrying a red suitcase and asked for Room Twelve. Elias told her there was no Room Twelve. She smiled as though he had confirmed something, then walked upstairs while the counter clicked once, twice, three times. By dusk it read 4,816.",
+            "Elias searched the blueprints beneath the kitchen floor and found a room drawn in ink that had faded almost to gray. Its door opened behind the mirror in the hallway. Inside were hundreds of shoes, all paired neatly, and a notebook listing every visitor except the person who had built the house."
+        ], reads: 700, likes: 80, comments: 11, tags: ["hidden-rooms", "quiet-dread", "unreliable-narrator"], offset: 7),
+        expandedStory(id: "story-16", title: "Signal Orchard", authorId: "rentakahashi", genre: .scifi, language: "en", synopsis: "A radio engineer finds a pattern in the static between trees and discovers the forest is listening.", paragraphs: [
+            "The orchard was planted around the radio telescope because fruit trees made the grounds look less like a warning. Hana worked the night shift, when the dishes turned toward the cold dark and the only sound was the soft click of machinery. On the first night of spring, the static changed whenever the wind moved through the branches.",
+            "She recorded the pattern and played it back beneath the trees. The leaves answered. Not with sound, but with a synchronized shimmer that crossed the orchard from west to east. Hana tested the effect with music, numbers, and her own voice. The trees responded only to questions.",
+            "Her final question was whether anyone was there. The telescope moved by itself. Across the sky, a line of stars blinked in the same rhythm as the leaves. Hana understood then that the orchard was not receiving a signal. It was the signal, patiently growing roots while the universe waited for her to notice."
+        ], reads: 1800, likes: 190, comments: 24, tags: ["first-contact", "nature", "listening"], offset: 2),
+        expandedStory(id: "story-17", title: "The Quiet Witness", authorId: "zoeok", genre: .thriller, language: "en", synopsis: "A court stenographer hears one sentence that was never spoken and risks everything to prove it.", paragraphs: [
+            "The stenographer's room overlooked the courtroom through a narrow pane of glass. Lena had transcribed six years of confessions, denials, and the careful grammar of people who believed truth could be negotiated. She trusted the machines more than the witnesses. Machines did not tremble when they lied.",
+            "During the Vale hearing, the recording captured a sentence no one remembered hearing: You have three days. Lena replayed it until the waveform blurred. The judge denied it. The lawyers called it interference. That evening, an envelope appeared on her desk containing a photograph of the courtroom taken from above.",
+            "In the photograph, every person faced the witness stand except Lena. She was looking directly at the camera. The next morning the sentence appeared again, this time at the end of a recording made two years earlier. Lena copied every file to a hidden drive and began counting backward from three."
+        ], reads: 1300, likes: 150, comments: 20, tags: ["conspiracy", "countdown", "truth"], offset: 3),
+        expandedStory(id: "story-18", title: "Tuesday at the Laundromat", authorId: "aarav", genre: .sliceOfLife, language: "en", synopsis: "A broken washing machine turns a neighborhood errand into an unexpected evening of care.", paragraphs: [
+            "The washing machine on the left had been broken since Tuesday, though it was Tuesday again before anyone admitted it. Sam arrived with two bags of uniforms and found the laundromat full of people waiting for the same three working machines. The television showed a cooking competition with the sound turned off.",
+            "Someone offered him a chair. Someone else offered detergent. A little girl drew a blue house on the fogged glass while her father folded towels with the concentration of a surgeon. Sam learned the names of the people beside him because the machines took exactly thirty-seven minutes to finish.",
+            "When the power went out, nobody complained. They opened the doors, carried damp clothes into the evening, and stood beneath the streetlight sorting socks by color. Sam went home with clean uniforms, three new phone numbers, and the strange feeling that the neighborhood had been waiting for a small inconvenience to introduce itself."
+        ], reads: 650, likes: 60, comments: 7, tags: ["community", "small-joys", "belonging"], offset: 9),
+        expandedStory(id: "story-19", title: "The Cartographer's Daughter", authorId: "elenar", genre: .historical, language: "en", synopsis: "In 17th-century Florence, a mapmaker's daughter finds a coastline her father was ordered to erase.", paragraphs: [
+            "Isabella learned geography from the backs of letters because her father would not let her touch his maps. He said the world was a man's profession, then spent every night drawing coastlines by candlelight. One evening she found a strip of blue paper hidden beneath his desk, marked with a shore that did not exist on any official chart.",
+            "The next day soldiers came for the mapmaker. The duke wanted the coastline erased, not because it was false, but because ships had begun returning with stories of a city beyond it. Isabella hid the blue paper inside her bodice and followed the soldiers to the archive.",
+            "She discovered her father had been mapping a community of women who sheltered escaped servants and taught them to read. The erased coast was not a place; it was a promise. Isabella finished the map, signed it with her own name, and placed it where the duke's men would be forced to see it."
+        ], reads: 140, likes: 20, comments: 3, tags: ["hidden-history", "courage", "maps"], offset: 12),
+        expandedStory(id: "story-20", title: "Borrowed Weather", authorId: "mayak", genre: .contemporary, language: "en", synopsis: "A weather app begins sending forecasts for the emotions its users are trying to hide.", paragraphs: [
+            "The app promised ordinary weather in beautiful colors. Rain meant carry an umbrella; sun meant leave early. Then it sent Noor a forecast that said: heavy regret after 6 PM, clearing by morning. She deleted it, reinstalled it, and received the same message with a chance of apology.",
+            "Soon everyone in the office had a forecast. The manager's week contained scattered thunderstorms. The intern's skies were bright but unfamiliar. Noor stopped checking the temperature and began calling the people named in the small print beneath each warning.",
+            "On Friday, the app forecast a storm over the entire city. Noor walked outside and found clear skies. Across the street, strangers were hugging in the sunlight, having finally said what their phones had predicted. She opened the app one last time. It asked for her location. She chose nowhere."
+        ], reads: 120, likes: 18, comments: 2, tags: ["digital-life", "honesty", "connection"], offset: 13),
+        expandedStory(id: "story-21", title: "Constellations in the Kitchen", authorId: "kainak", genre: .lgbtq, language: "en", synopsis: "Two women renovate a kitchen and uncover a constellation scratched beneath generations of paint.", paragraphs: [
+            "The first thing Jo and Lila did in the new apartment was remove the yellow cabinets. Beneath them, on the plaster, someone had drawn stars in charcoal. The pattern was not any constellation they knew. Jo photographed it before Lila painted the wall white.",
+            "They argued about the color for three days, then laughed because the argument was really about whether the apartment belonged to them yet. At night they cooked noodles on a camping stove and traced the hidden stars from memory. Each mark seemed to move when they looked away.",
+            "When the kitchen was finished, they left one corner unpainted. The constellation had become a map of their first year together: the broken kettle, the missed train, the letter from Lila's mother. Under the final star they wrote their names, not as an answer, but as proof they had arrived."
+        ], reads: 90, likes: 12, comments: 1, tags: ["queer-joy", "home", "chosen-family"], offset: 14),
+        expandedStory(id: "story-22", title: "A Very Serious Goose", authorId: "rahuls", genre: .comedy, language: "en", synopsis: "A village council must negotiate with a goose that has decided the park belongs to it.", paragraphs: [
+            "The goose arrived on a Monday and immediately took the mayor's chair. Nobody knew where it came from, but it possessed the confidence of an elected official and the appetite of a small storm. When the mayor attempted to move it, the goose honked once. The council postponed the meeting.",
+            "By Wednesday, the goose had a name, a schedule, and three formal complaints. Children left it crackers. Adults crossed the road. The mayor hired a consultant who advised treating the animal as a stakeholder. The goose accepted the proposal by eating the consultant's report.",
+            "On Friday, the council voted unanimously to recognize the goose as guardian of the park. It celebrated by chasing a bicycle into the fountain. The mayor called it a success. The goose took the chair again, and for the first time in years every council member arrived early."
+        ], reads: 75, likes: 10, comments: 2, tags: ["absurdity", "community", "found-family"], offset: 15),
+        expandedStory(id: "story-23", title: "दीये की लौ", authorId: "priyanair", genre: .spirituality, language: "hi", synopsis: "एक छोटी लौ एक थके हुए यात्री को अपने भीतर का रास्ता दिखाती है।", paragraphs: [
+            "गाँव के बाहर एक पुराना मंदिर था जहाँ हर शाम एक दीया जलता था। उसकी देखभाल करने वाली अम्मा कहती थीं कि लौ रास्ता नहीं दिखाती, वह बस इतना उजाला करती है कि अगला कदम दिखाई दे। एक रात नील बहुत थका हुआ वहाँ पहुँचा और बोला कि उसे अपनी दिशा खो गई है।",
+            "अम्मा ने उसे दीया नहीं दिया। उन्होंने उसके पास बैठकर पूछा कि आखिरी बार वह कब बिना डर के चला था। नील ने देर तक चुप रहकर अपने पिता की आवाज़, सूखे खेत और शहर की भीड़ के बारे में बताया। लौ हवा में काँपी, मगर बुझी नहीं।",
+            "सुबह नील ने देखा कि मंदिर से उसके घर तक मिट्टी पर छोटे-छोटे पैरों के निशान थे। वे किसी चमत्कार के नहीं, उसके अपने थे। उसने समझा कि रास्ता रात में नहीं बना था; वह हर बार बनता है जब कोई व्यक्ति अँधेरे में एक कदम रखता है।"
+        ], reads: 80, likes: 9, comments: 1, tags: ["inner-peace", "faith", "homecoming"], offset: 16),
+        expandedStory(id: "story-24", title: "पहली सीढ़ी", authorId: "rahuls", genre: .motivational, language: "hi", synopsis: "एक असफल धावक सीखता है कि छोटी शुरुआत भी आगे बढ़ने की शुरुआत होती है।", paragraphs: [
+            "राघव ने दौड़ने की शुरुआत बड़े सपने से की थी। पहले दिन उसने पाँच किलोमीटर का लक्ष्य रखा और चार सौ मीटर बाद घर लौट आया। जूते कोने में पड़े रहे। हर सुबह वह उन्हें देखता और अपने आप से कहता कि कल से सब बदल जाएगा। कल हमेशा बहुत दूर था।",
+            "एक बूढ़े चौकीदार ने उसे सीढ़ियों पर बैठे देखा और कहा, ‘आज बस पहली सीढ़ी चढ़ो।’ राघव ने हँसकर पूछा कि उससे क्या होगा। चौकीदार ने कहा कि दूसरी सीढ़ी को पहली की चिंता नहीं होती; वह बस अपने ऊपर टिके पैर को संभालती है।",
+            "राघव ने अगले दिन एक सीढ़ी चढ़ी, फिर दो, फिर पाँच। महीनों बाद वह दौड़ने लगा, मगर उसने अपनी पहली सीढ़ी नहीं छोड़ी। उसने उसे कागज़ पर बनाया और मेज़ के पास रख दिया, ताकि जीत के दिनों में भी उसे याद रहे कि प्रगति अक्सर बहुत छोटी आवाज़ में दरवाज़ा खटखटाती है।"
+        ], reads: 110, likes: 14, comments: 2, tags: ["small-steps", "discipline", "resilience"], offset: 17),
+        expandedStory(id: "story-25", title: "चाँद का डिब्बा", authorId: "kathaai", genre: .kids, language: "hi", synopsis: "एक बच्ची चाँद की रोशनी को डिब्बे में भरकर अपने बीमार पेड़ को बचाना चाहती है।", paragraphs: [
+            "मीरा को लगता था कि चाँद की रोशनी दूध जैसी होती है। वह हर रात खिड़की के पास एक खाली डिब्बा रखती और सुबह उसे खोलकर देखती। डिब्बा खाली होता, मगर मीरा फिर भी मुस्कुराती क्योंकि चाँद ने उसे भरोसा दिया था कि वह कोशिश देख रहा है।",
+            "एक दिन स्कूल से लौटकर उसने देखा कि आँगन का नींबू का पेड़ झुक गया है। दादी ने कहा कि पेड़ को पानी, धूप और धैर्य चाहिए। मीरा ने अपना डिब्बा पेड़ के पास रख दिया और उसमें अपनी सबसे अच्छी बातें भरने लगी—एक गीत, दो हँसी और एक छोटा सा धन्यवाद।",
+            "कुछ दिनों बाद नई पत्तियाँ निकलीं। दादी ने कहा कि जादू पानी और देखभाल में था। मीरा ने डिब्बे को चाँद की ओर उठाया। उसे पता था कि दादी सही हैं, फिर भी उसने ढक्कन बंद कर दिया, ताकि थोड़ी सी रोशनी अगली मुश्किल रात के लिए बची रहे।"
+        ], reads: 60, likes: 8, comments: 1, tags: ["wonder", "kindness", "nature"], offset: 18),
+        expandedStory(id: "story-26", title: "नदी की रानी", authorId: "mayak", genre: .fantasy, language: "hi", synopsis: "एक नाविक की बेटी नदी से अपने गाँव की भूली हुई कहानी सुनती है।", paragraphs: [
+            "जब सावन की पहली बारिश आई, कावेरी की नदी अपने किनारों से बाहर आ गई। गाँव के लोग नावें बाँधने लगे, लेकिन छोटी अनया पानी के बीच एक नीली रोशनी देखती रही। उसकी माँ ने कहा कि वह नदी की रानी का दीपक है और उसे छूना मना है। अनया ने पूछा कि रानी कौन है; किसी के पास उत्तर नहीं था।",
+            "रात में नदी ने उसका नाम पुकारा। अनया चुपचाप घाट तक गई और पानी में उतरे बिना अपना कान लहरों के पास ले आई। नदी ने उसे उन लोगों की बातें सुनाईं जिन्होंने गाँव बसाया था, उन खेतों की जिन्हें बाढ़ ने निगल लिया, और उस वचन की जिसे हर पीढ़ी भूलती गई।",
+            "सुबह अनया ने बुज़ुर्गों को सारी कहानी सुनाई। उन्होंने पुराने गीत पहचाने और पहली बार नदी के लिए उत्सव रखा। नीली रोशनी दूर चली गई। अनया समझ गई कि रानी कहीं बाहर नहीं थी; वह हर आवाज़ में थी जिसे गाँव ने बचाकर रखा।"
+        ], reads: 160, likes: 21, comments: 3, tags: ["river", "ancestry", "courage"], offset: 19),
+        expandedStory(id: "story-27", title: "पीपल का देवता", authorId: "zoeok", genre: .mythology, language: "hi", synopsis: "एक गाँव का पीपल का पेड़ अपने नीचे बैठने वालों की सच्ची इच्छा सुनता है।", paragraphs: [
+            "गाँव के बीच पीपल का पेड़ था, इतना पुराना कि उसकी जड़ों ने पत्थर की चौकी को गले लगा लिया था। लोग उसे देवता कहते, पर पेड़ कभी बोलता नहीं था। बच्चे उसकी छाँव में खेलते, किसान दोपहर में सोते और यात्री चुपचाप पानी पीकर आगे बढ़ जाते।",
+            "एक वर्ष बारिश नहीं हुई। मंदिर में घंटियाँ बजीं, कुएँ सूखे, और लोग आसमान को देखते रहे। तभी छोटी गौरी पेड़ के नीचे बैठी और बोली कि उसे बारिश नहीं, पड़ोसी गाँव के साथ बाँटा हुआ कुआँ चाहिए। उसकी इच्छा सुनकर लोग पहले हँसे, फिर शर्मिंदा हुए।",
+            "दोनों गाँवों ने मिलकर पुरानी नहर खोदी। पानी लौट आया, मगर किसी ने नहीं कहा कि पेड़ ने चमत्कार किया। गौरी ने उसकी छाल पर हाथ रखा। हवा चली और पत्तियाँ बज उठीं—जैसे कोई देवता नहीं, पूरा गाँव एक साथ धन्यवाद कह रहा हो।"
+        ], reads: 130, likes: 16, comments: 2, tags: ["community", "shared-future", "tradition"], offset: 20),
+        expandedStory(id: "story-28", title: "La casa de los domingos", authorId: "diegoa", genre: .drama, language: "es", synopsis: "Una familia se reúne cada domingo en una casa que guarda las voces de quienes ya no están.", paragraphs: [
+            "Cada domingo, Clara abría la casa de su abuela aunque llevaba tres años vacía. Primero llegaban las sillas, luego el olor del café y finalmente los primos, cada uno con una excusa distinta para no hablar de la venta. La casa crujía cuando alguien decía la palabra despedida.",
+            "Una tarde encontraron una caja de casetes detrás del armario. En cada cinta había una receta, una canción o una discusión familiar grabada por accidente. Escucharon la voz de la abuela riéndose de todos ellos y, por un momento, nadie quiso ser el primero en llorar.",
+            "Decidieron vender la casa, pero no ese día. Antes de irse pintaron la puerta de azul y copiaron las cintas. El domingo siguiente se reunieron en el piso nuevo de Clara. No era la misma casa, pero las voces habían aprendido a viajar."
+        ], reads: 90, likes: 10, comments: 1, tags: ["family", "grief", "homecoming"], offset: 21),
+        expandedStory(id: "story-29", title: "La ventana del sótano", authorId: "diegoa", genre: .horror, language: "es", synopsis: "Un hombre descubre una ventana en el sótano que muestra una habitación de su propia casa.", paragraphs: [
+            "La ventana apareció después de la tormenta. Estaba en el sótano, pequeña y cubierta de barro, aunque la pared no daba al exterior. Tomás limpió el vidrio y vio su cocina al otro lado. La mesa estaba puesta para dos personas. En su cocina real, la mesa estaba vacía.",
+            "Durante la noche, la otra cocina cambió. Una taza se rompió, una silla se movió y una mujer cruzó la imagen sin rostro. Tomás llamó a su hermana, pero cuando ella llegó la ventana solo reflejaba la pared. Antes de irse, ella le preguntó por qué había dos tazas en la mesa.",
+            "A la mañana siguiente, Tomás bajó al sótano con un martillo. La ventana mostraba ahora el sótano, y él mismo estaba de pie detrás del vidrio. Cerró los ojos. Cuando volvió a abrirlos, escuchó un golpe suave desde el otro lado."
+        ], reads: 70, likes: 8, comments: 0, tags: ["haunted-house", "isolation", "storm"], offset: 22),
+        expandedStory(id: "story-30", title: "風の地図", authorId: "kainak", genre: .adventure, language: "ja", synopsis: "風の音だけを頼りに、少年が祖父の失われた山道を探す。", paragraphs: [
+            "祖父の机の引き出しから、白い紙が一枚見つかった。地図のように見えたが、道も山も描かれていない。紙を窓辺に置くと、風が吹くたびに薄い線が現れた。少年の蓮は、それが祖父の歩いた道だとすぐに分かった。",
+            "夏の朝、蓮は小さな水筒と赤い布を持って山へ入った。風は右から吹くときだけ、遠くの鐘の音を運んだ。彼は音を追い、苔の下に隠れた石段や、木の枝に結ばれた古い糸を見つけた。",
+            "頂上には誰もいなかった。ただ、風が紙の地図を空へ持ち上げ、祖父の字を浮かび上がらせた。『帰る道は、見つけるものではなく、誰かに伝えるものだ。』蓮は赤い布を枝に結び、次の旅人のために道を残した。"
+        ], reads: 150, likes: 22, comments: 4, tags: ["mountain", "legacy", "journey"], offset: 23)
+    ]
+
+    private static func expandedStory(id: String, title: String, authorId: String, genre: Genre, language: String, synopsis: String, paragraphs: [String], reads: Int, likes: Int, comments: Int, tags: [String], offset: Int) -> Story {
+        Story(id: id, title: title, authorId: authorId, genre: genre, synopsis: synopsis, chapters: [Chapter(id: "\(id)-c1", title: "Chapter 1", paragraphs: paragraphs)], likes: likes, bookmarks: max(1, likes / 2), views: reads, tags: tags, publishedOffset: offset, isFeatured: false, contentRating: genre == .kids ? .kids : (genre == .horror ? .mature : .teen), languageCode: language.uppercased(), language: language, commentCount: comments)
+    }
+
+    private static func singleChapter(_ story: Story) -> Story {
+        guard ["story-1", "story-2", "story-4", "story-5"].contains(story.id) else {
+            return Story(id: story.id, title: story.title, authorId: story.authorId, genre: story.genre, synopsis: story.synopsis, chapters: Array(story.chapters.prefix(1)), likes: story.likes, bookmarks: story.bookmarks, views: story.views, tags: story.tags, publishedOffset: story.publishedOffset, isFeatured: story.isFeatured, followerCount: story.followerCount, plannedChapterCount: nil, contentRating: story.contentRating, languageCode: story.languageCode, language: story.language, commentCount: story.commentCount)
+        }
+        return story
+    }
+
+    static let stories: [Story] = baseStories.map(singleChapter) + expandedStories
 
     // MARK: - Seed Comments (~30 top-level + 15 replies across 5 stories)
 
@@ -341,21 +448,21 @@ enum SeedData {
         StoryComment(id: "sc6", storyId: "story-1", authorId: "ghost-5", username: "tashastories", displayName: "Tasha Ivanova", text: "The storm sequence gave me chills. Literal chills.", likes: 5, postedOffsetHours: 2, isVerified: false),
         StoryComment(id: "sc7", storyId: "story-1", authorId: "kainak", username: "kainak", displayName: "Kai Nakamura", text: "Agreed. Reminds me of Annie Proulx's economy.", likes: 4, postedOffsetHours: 18, isVerified: false, replyToUsername: "rentakahashi"),
         StoryComment(id: "sc8", storyId: "story-1", authorId: "aarav", username: "aarav", displayName: "Aarav Menon", text: "Thank you! The lighthouse was the first thing I wrote.", likes: 9, postedOffsetHours: 1, isVerified: false, replyToUsername: "noorwrites"),
-        StoryComment(id: "sc9", storyId: "story-1", authorId: "elenar", username: "elenar", displayName: "Elena Ross", text: "'Quiet, patient dread' is the perfect description.", likes: 6, postedOffsetHours: 6, isVerified: true, replyToUsername: "priyanair"),
+        StoryComment(id: "sc9", storyId: "story-1", authorId: "elenar", username: "elenar", displayName: "Elena Rossi", text: "'Quiet, patient dread' is the perfect description.", likes: 6, postedOffsetHours: 6, isVerified: true, replyToUsername: "priyanair"),
 
         // Story 2 — Midnight in Marrakech
         StoryComment(id: "sc10", storyId: "story-2", authorId: "priyanair", username: "priyanair", displayName: "Priya Nair", text: "The door in the medina wall — I've been looking for it ever since.", likes: 31, postedOffsetHours: 3, isVerified: false),
         StoryComment(id: "sc11", storyId: "story-2", authorId: "rentakahashi", username: "rentakahashi", displayName: "Ren Takahashi", text: "Zoe writes mystery like no one else. Every detail matters.", likes: 18, postedOffsetHours: 8, isVerified: false),
         StoryComment(id: "sc12", storyId: "story-2", authorId: "mayak", username: "mayak", displayName: "Maya Kapoor", text: "The spice merchant was my favorite character. I wanted more of him.", likes: 22, postedOffsetHours: 10, isVerified: true),
         StoryComment(id: "sc13", storyId: "story-2", authorId: "ghost-3", username: "amara.reads", displayName: "Amara Diallo", text: "I couldn't sleep after reading this. In the best way.", likes: 9, postedOffsetHours: 4, isVerified: false),
-        StoryComment(id: "sc14", storyId: "story-2", authorId: "elenar", username: "elenar", displayName: "Elena Ross", text: "The sense of place is extraordinary. Marrakech came alive.", likes: 14, postedOffsetHours: 16, isVerified: true),
+        StoryComment(id: "sc14", storyId: "story-2", authorId: "elenar", username: "elenar", displayName: "Elena Rossi", text: "The sense of place is extraordinary. Marrakech came alive.", likes: 14, postedOffsetHours: 16, isVerified: true),
         StoryComment(id: "sc15", storyId: "story-2", authorId: "kainak", username: "kainak", displayName: "Kai Nakamura", text: "Maya is such a compelling protagonist. I need a sequel.", likes: 11, postedOffsetHours: 22, isVerified: false),
         StoryComment(id: "sc16", storyId: "story-2", authorId: "zoeok", username: "zoeok", displayName: "Zoe Okonkwo", text: "Thank you! The merchant was inspired by a real person I met.", likes: 15, postedOffsetHours: 7, isVerified: true, replyToUsername: "mayak"),
         StoryComment(id: "sc17", storyId: "story-2", authorId: "aarav", username: "aarav", displayName: "Aarav Menon", text: "Zoe's world-building is unmatched.", likes: 5, postedOffsetHours: 12, isVerified: false, replyToUsername: "elenar"),
         StoryComment(id: "sc18", storyId: "story-2", authorId: "ghost-10", username: "dev_reads", displayName: "Dev Patel", text: "Same! I went to Marrakech just to look for it.", likes: 3, postedOffsetHours: 1, isVerified: false, replyToUsername: "priyanair"),
 
         // Story 5 — The Weaver's Daughter
-        StoryComment(id: "sc19", storyId: "story-5", authorId: "elenar", username: "elenar", displayName: "Elena Ross", text: "The banner that makes soldiers honest — what a concept. I'm in awe.", likes: 35, postedOffsetHours: 4, isVerified: true),
+        StoryComment(id: "sc19", storyId: "story-5", authorId: "elenar", username: "elenar", displayName: "Elena Rossi", text: "The banner that makes soldiers honest — what a concept. I'm in awe.", likes: 35, postedOffsetHours: 4, isVerified: true),
         StoryComment(id: "sc20", storyId: "story-5", authorId: "rahuls", username: "rahuls", displayName: "Rahul Sharma", text: "Fantasy with a moral spine. This is why I read.", likes: 19, postedOffsetHours: 6, isVerified: false),
         StoryComment(id: "sc21", storyId: "story-5", authorId: "aarav", username: "aarav", displayName: "Aarav Menon", text: "Pema is my new favorite character in all of fiction.", likes: 27, postedOffsetHours: 9, isVerified: false),
         StoryComment(id: "sc22", storyId: "story-5", authorId: "zoeok", username: "zoeok", displayName: "Zoe Okonkwo", text: "The moonlight weaving imagery was pure magic. Literally.", likes: 21, postedOffsetHours: 14, isVerified: true),
@@ -372,7 +479,7 @@ enum SeedData {
         StoryComment(id: "sc31", storyId: "story-8", authorId: "ghost-20", username: "sanaa_reads", displayName: "Sanaa Khan", text: "I read this on a rooftop at 2am. Perfect setting.", likes: 8, postedOffsetHours: 3, isVerified: false),
         StoryComment(id: "sc32", storyId: "story-8", authorId: "kainak", username: "kainak", displayName: "Kai Nakamura", text: "Short, devastating, perfect. Elena is a national treasure.", likes: 16, postedOffsetHours: 12, isVerified: false),
         StoryComment(id: "sc33", storyId: "story-8", authorId: "priyanair", username: "priyanair", displayName: "Priya Nair", text: "Betelgeuse is dimmer now broke something in me and I'm grateful.", likes: 12, postedOffsetHours: 18, isVerified: false),
-        StoryComment(id: "sc34", storyId: "story-8", authorId: "elenar", username: "elenar", displayName: "Elena Ross", text: "That's the kindest thing anyone has said about my work.", likes: 10, postedOffsetHours: 4, isVerified: true, replyToUsername: "mayak"),
+        StoryComment(id: "sc34", storyId: "story-8", authorId: "elenar", username: "elenar", displayName: "Elena Rossi", text: "That's the kindest thing anyone has said about my work.", likes: 10, postedOffsetHours: 4, isVerified: true, replyToUsername: "mayak"),
         StoryComment(id: "sc35", storyId: "story-8", authorId: "aarav", username: "aarav", displayName: "Aarav Menon", text: "'Quietly' is doing so much work in that sentence.", likes: 6, postedOffsetHours: 6, isVerified: false, replyToUsername: "rentakahashi"),
         StoryComment(id: "sc36", storyId: "story-8", authorId: "zoeok", username: "zoeok", displayName: "Zoe Okonkwo", text: "This is the only correct way to read this poem.", likes: 4, postedOffsetHours: 1, isVerified: true, replyToUsername: "sanaa_reads"),
 
@@ -380,7 +487,7 @@ enum SeedData {
         StoryComment(id: "sc37", storyId: "story-10", authorId: "rentakahashi", username: "rentakahashi", displayName: "Ren Takahashi", text: "A warning from the future that says 'don't build the machine' — chilling.", likes: 38, postedOffsetHours: 3, isVerified: false),
         StoryComment(id: "sc38", storyId: "story-10", authorId: "mayak", username: "mayak", displayName: "Maya Kapoor", text: "Priya deleting her notes at the end. What a moment.", likes: 25, postedOffsetHours: 7, isVerified: true),
         StoryComment(id: "sc39", storyId: "story-10", authorId: "kainak", username: "kainak", displayName: "Kai Nakamura", text: "Best hard sci-fi I've read this year. Maybe longer.", likes: 19, postedOffsetHours: 10, isVerified: false),
-        StoryComment(id: "sc40", storyId: "story-10", authorId: "elenar", username: "elenar", displayName: "Elena Ross", text: "The restraint of the ending is masterful. She just deleted them.", likes: 16, postedOffsetHours: 14, isVerified: true),
+        StoryComment(id: "sc40", storyId: "story-10", authorId: "elenar", username: "elenar", displayName: "Elena Rossi", text: "The restraint of the ending is masterful. She just deleted them.", likes: 16, postedOffsetHours: 14, isVerified: true),
         StoryComment(id: "sc41", storyId: "story-10", authorId: "ghost-25", username: "felixfables", displayName: "Felix Wagner", text: "I had to put my phone down and stare at the wall. In a good way.", likes: 7, postedOffsetHours: 4, isVerified: false),
         StoryComment(id: "sc42", storyId: "story-10", authorId: "aarav", username: "aarav", displayName: "Aarav Menon", text: "The fact that she built the machine that could receive the warning...", likes: 14, postedOffsetHours: 20, isVerified: false),
         StoryComment(id: "sc43", storyId: "story-10", authorId: "priyanair", username: "priyanair", displayName: "Priya Nair", text: "Exactly. The non-action was the action.", likes: 8, postedOffsetHours: 10, isVerified: false, replyToUsername: "elenar"),

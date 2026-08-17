@@ -2,6 +2,7 @@ package com.rork.kathaai.ui.screens
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -143,7 +144,7 @@ fun HomeScreen(
                             }
                         }
                     } else {
-                        TextLink("Sign in", modifier = Modifier) { onSignIn() }
+                        Text("Sign in", style = KathaTypography.BodyStrong, color = KathaTheme.textPrimary, modifier = Modifier.clip(RoundedCornerShape(KathaTheme.Radius.xl)).background(KathaTheme.surface).border(1.dp, KathaTheme.border, RoundedCornerShape(KathaTheme.Radius.xl)).clickable { onSignIn() }.padding(horizontal = KathaTheme.Spacing.mdLg, vertical = KathaTheme.Spacing.s))
                     }
                 }
             }

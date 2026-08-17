@@ -70,30 +70,9 @@ struct DiscoverView: View {
                     }
                 }
 
-                // Theme filter bar (visible when a theme is active)
                 if let theme = appState.discoverThemeFilter {
-                    HStack(spacing: KathaTheme.Spacing.s) {
-                        Image(systemName: "tag")
-                            .font(.system(size: 12))
-                            .foregroundStyle(KathaTheme.accent)
-                        Text("Theme: \(theme)")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(KathaTheme.textPrimary)
-                        Spacer()
-                        Button {
-                            appState.clearThemeFilter()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(KathaTheme.textTertiary)
-                        }
-                    }
-                    .padding(.horizontal, KathaTheme.Spacing.l)
-                    .padding(.vertical, KathaTheme.Spacing.s)
-                    .background(
-                        RoundedRectangle(cornerRadius: KathaTheme.Radius.m)
-                            .fill(KathaTheme.accentSoft.opacity(0.3))
-                    )
+                    ThemeFilterBar(themeName: theme) { appState.clearThemeFilter() }
+                        .animation(.easeInOut(duration: 0.2), value: theme)
                 }
 
                 // Genre chips
@@ -102,7 +81,9 @@ struct DiscoverView: View {
                         FilterChip(title: "All", isSelected: selectedGenre == nil) {
                             withAnimation { selectedGenre = nil }
                         }
-                        ForEach(Genre.allCases) { genre in
+                        ForEach(Genre.allCases.filter { genre in
+                            genre != .erotica || (appState.ageVerified && !appState.kidsMode)
+                        }) { genre in
                             GenreChip(genre: genre, isSelected: selectedGenre == genre) {
                                 withAnimation {
                                     selectedGenre = selectedGenre == genre ? nil : genre
@@ -110,6 +91,24 @@ struct DiscoverView: View {
                             }
                         }
                     }
+                }
+
+                if searchText.localizedCaseInsensitiveContains("erotica") && !appState.ageVerified {
+                    Button {
+                        appState.showAgeVerification = true
+                    } label: {
+                        HStack(spacing: KathaTheme.Spacing.s) {
+                            Image(systemName: "shield.lefthalf.filled").foregroundStyle(KathaTheme.textSecondary)
+                            Text("18+ content is age-gated. Tap to verify age →")
+                                .font(KathaFont.Body)
+                                .foregroundStyle(KathaTheme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, KathaTheme.Spacing.mdLg)
+                        .frame(minHeight: 44)
+                        .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.surface).overlay(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).stroke(KathaTheme.border)))
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 // Results

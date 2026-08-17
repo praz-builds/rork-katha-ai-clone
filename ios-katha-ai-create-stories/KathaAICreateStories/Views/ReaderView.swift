@@ -302,6 +302,12 @@ struct ReaderView: View {
 
             HStack(spacing: KathaTheme.Spacing.s) {
                 Text(story.genre.displayName)
+                Text(story.language.uppercased())
+                    .font(KathaFont.Meta)
+                    .padding(.horizontal, KathaTheme.Spacing.s)
+                    .frame(height: 20)
+                    .overlay(Capsule().stroke(readerTextSecondary.opacity(0.45), lineWidth: 1))
+                    .clipShape(Capsule())
                 Text("\u{2022}")
                 if let chapter = currentChapter, story.isSeries {
                     Text("Chapter \(appState.currentChapterIndex + 1) of \(story.chapters.count)")
@@ -423,10 +429,10 @@ struct ReaderView: View {
                     }
                     ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { index, para in
                         if index == firstProseIndex {
-                            ReaderDropCapParagraph(text: para, bodySize: 18, textColor: readerText, accent: appState.readerSepia ? KathaTheme.sepiaAccent : KathaTheme.accent)
+                            ReaderDropCapParagraph(text: para, bodySize: CGFloat(appState.readerFontSize), textColor: readerText, accent: appState.readerSepia ? KathaTheme.sepiaAccent : KathaTheme.accent)
                         } else {
                             Text(para)
-                                .font(KathaFont.readerBody(size: 18))
+                                .font(KathaFont.readerBody(size: CGFloat(appState.readerFontSize)))
                                 .foregroundStyle(readerText)
                                 .lineSpacing(8)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -469,10 +475,10 @@ struct ReaderView: View {
                 let visibleParagraphs = Array(firstChapter.paragraphs.prefix(authWallIndex))
                 ForEach(Array(visibleParagraphs.enumerated()), id: \.offset) { index, para in
                     if index == visibleParagraphs.firstIndex(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0 != "· · ·" }) {
-                        ReaderDropCapParagraph(text: para, bodySize: 18, textColor: readerText, accent: appState.readerSepia ? KathaTheme.sepiaAccent : KathaTheme.accent)
+                        ReaderDropCapParagraph(text: para, bodySize: CGFloat(appState.readerFontSize), textColor: readerText, accent: appState.readerSepia ? KathaTheme.sepiaAccent : KathaTheme.accent)
                     } else {
                         Text(para)
-                            .font(KathaFont.readerBody(size: 18))
+                            .font(KathaFont.readerBody(size: CGFloat(appState.readerFontSize)))
                             .foregroundStyle(readerText)
                             .lineSpacing(8)
                             .fixedSize(horizontal: false, vertical: true)
@@ -487,7 +493,7 @@ struct ReaderView: View {
                         VStack(alignment: .leading, spacing: KathaTheme.Spacing.xl) {
                             ForEach(Array(hiddenParagraphs.enumerated()), id: \.offset) { index, paragraph in
                                 Text(paragraph)
-                                    .font(KathaFont.readerBody(size: 18))
+                                    .font(KathaFont.readerBody(size: CGFloat(appState.readerFontSize)))
                                     .foregroundStyle(readerText)
                                     .lineSpacing(8)
                                     .blur(radius: min(60, CGFloat(index + 1) * 8))

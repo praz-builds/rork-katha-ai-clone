@@ -5,6 +5,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +25,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,12 +38,17 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.RemoveRedEye
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -190,22 +201,21 @@ fun DestructiveCTA(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(error.copy(alpha = 0.08f))
-            .border(1.dp, error.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(KathaTheme.Radius.mdLg))
+            .background(error)
             .then(if (!isLoading) Modifier.pressable(onClick) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         if (isLoading) {
-            CircularProgressIndicator(color = error, modifier = Modifier.size(22.dp))
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp))
         } else {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                icon?.let { Icon(it, null, tint = error, modifier = Modifier.size(18.dp)) }
-                Text(title, color = error, fontSize = KathaTypography.BodyStrong.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
+                icon?.let { Icon(it, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
+                Text(title, color = Color.White, fontSize = KathaTypography.BodyStrong.fontSize, fontWeight = KathaTypography.BodyStrong.fontWeight)
             }
         }
     }
@@ -229,11 +239,13 @@ fun GeneratedAvatar(
     username: String,
     displayName: String = "",
     size: Dp = 44.dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    photoUri: String? = null
 ) {
     val palette = remember(username) { AvatarPalettes.forUsername(username) }
     val source = displayName.ifEmpty { username }
     val initial = source.take(1).uppercase()
+    var showFallback by remember(photoUri) { mutableStateOf(photoUri.isNullOrBlank()) }
 
     Box(
         modifier = modifier
@@ -247,6 +259,14 @@ fun GeneratedAvatar(
             color = Color.White,
             style = KathaTypography.AvatarInitial.copy(fontSize = (size.value * 0.42f).sp)
         )
+        if (!showFallback && !photoUri.isNullOrBlank()) {
+            val bitmap = remember(photoUri) { runCatching { BitmapFactory.decodeFile(photoUri) }.getOrNull() }
+            if (bitmap != null) {
+                Image(bitmap = bitmap.asImageBitmap(), contentDescription = "$source profile photo", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(CircleShape))
+            } else {
+                showFallback = true
+            }
+        }
     }
 }
 
@@ -526,7 +546,7 @@ fun EngagementRow(
         }
         Spacer(Modifier.weight(1f))
         Text(
-            story.languageCode.uppercase(),
+            story.language.uppercase(),
             style = KathaTypography.Meta,
             color = KathaTheme.textTertiary,
             modifier = Modifier
@@ -817,4 +837,58 @@ fun SafeBottomSpacer(height: Dp = 120.dp) {
 @Composable
 fun ScreenBackground(content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize().background(KathaTheme.canvas)) { content() }
+}
+
+/** Token-backed text wrapper for new surfaces. */
+enum class TypographyVariant { Display, Title1, Title2, Body, BodyStrong, Caption, Meta }
+
+@Composable
+fun ThemedText(text: String, variant: TypographyVariant, color: Color = KathaTheme.textPrimary, modifier: Modifier = Modifier) {
+    val style = when (variant) {
+        TypographyVariant.Display -> KathaTypography.Display
+        TypographyVariant.Title1 -> KathaTypography.Title1
+        TypographyVariant.Title2 -> KathaTypography.Title2
+        TypographyVariant.Body -> KathaTypography.Body
+        TypographyVariant.BodyStrong -> KathaTypography.BodyStrong
+        TypographyVariant.Caption -> KathaTypography.Caption
+        TypographyVariant.Meta -> KathaTypography.Meta
+    }
+    Text(text = text, style = style, color = color, modifier = modifier)
+}
+
+@Composable
+fun <T> ChipRow(
+    chips: List<T>,
+    selectedIndex: Int? = null,
+    horizontalPadding: Dp = KathaTheme.Spacing.mdLg,
+    chipSpacing: Dp = KathaTheme.Spacing.s,
+    onSelect: ((Int) -> Unit)? = null,
+    renderChip: @Composable (T, Boolean) -> Unit
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(selectedIndex) {
+        selectedIndex?.let { if (it in chips.indices) listState.animateScrollToItem(it) }
+    }
+    LazyRow(
+        state = listState,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = horizontalPadding),
+        horizontalArrangement = Arrangement.spacedBy(chipSpacing)
+    ) {
+        itemsIndexed(chips) { index, chip ->
+            Box(Modifier.clickable { onSelect?.invoke(index) }) { renderChip(chip, selectedIndex == index) }
+        }
+    }
+}
+
+@Composable
+fun ThemeFilterBar(themeName: String, onClear: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(KathaTheme.Radius.m)).background(KathaTheme.accentSoft).padding(horizontal = KathaTheme.Spacing.mdLg),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+    ) {
+        Icon(Icons.Outlined.AutoAwesome, null, tint = KathaTheme.accent, modifier = Modifier.size(16.dp))
+        Text("Filtered by theme: $themeName", style = KathaTypography.BodyStrong, color = KathaTheme.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Icon(Icons.Outlined.Close, "Clear theme filter", tint = KathaTheme.textPrimary, modifier = Modifier.size(18.dp).clickable { onClear() })
+    }
 }

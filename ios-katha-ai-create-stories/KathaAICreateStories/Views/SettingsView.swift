@@ -12,6 +12,9 @@ struct SettingsView: View {
     @State private var showDeleteConfirm1 = false
     @State private var showDeleteConfirm2 = false
     @State private var showMailComposer = false
+    @State private var showFontSizeSheet = false
+    @State private var selectedFontSize: Double = 18
+    @State private var showThemeSheet = false
 
     var body: some View {
         ScrollView {
@@ -67,6 +70,27 @@ struct SettingsView: View {
             }
         } message: {
             Text("All your saved stories, reading history, and credits will be lost. Type 'Delete' to confirm.")
+        }
+        .sheet(isPresented: $showThemeSheet) {
+            VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
+                Text("App theme").font(KathaFont.Title2).foregroundStyle(KathaTheme.textPrimary)
+                ForEach(AppThemeMode.allCases) { mode in
+                    Button { appState.setAppThemeMode(mode); showThemeSheet = false } label: {
+                        settingRow(icon: mode == .dark ? "moon" : "sun.max", title: mode.title, value: appState.appThemeMode == mode ? "Selected" : nil)
+                    }.buttonStyle(.plain)
+                }
+            }.padding(KathaTheme.Spacing.xl).presentationDetents([.height(260)])
+        }
+        .sheet(isPresented: $showFontSizeSheet) {
+            VStack(spacing: KathaTheme.Spacing.l) {
+                Text("Font size").font(KathaFont.Title2).foregroundStyle(KathaTheme.textPrimary)
+                Text("The quick brown fox jumps over the lazy dog.").font(KathaFont.readerBody(size: selectedFontSize)).foregroundStyle(KathaTheme.textPrimary)
+                Slider(value: $selectedFontSize, in: 15...22, step: 1).tint(KathaTheme.accent).onChange(of: selectedFontSize) { _, value in appState.setReaderFontSize(Int(value)) }
+                Text("15   17   18   20   22").font(KathaFont.Meta).foregroundStyle(KathaTheme.textSecondary)
+                SafeBottomSpacer(height: KathaTheme.Spacing.s)
+            }
+            .padding(KathaTheme.Spacing.xl)
+            .presentationDetents([.height(240)])
         }
         .sheet(isPresented: $showMailComposer) {
             FeedbackMailComposer(
@@ -202,6 +226,16 @@ struct SettingsView: View {
                 .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
             VStack(spacing: 0) {
+                Button { showFontSizeSheet = true } label: {
+                    settingRow(icon: "textformat.size", title: "Font size", value: "\(Int(selectedFontSize))")
+                }
+                .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                Button { appState.showToast("Premium voices coming in the next update ✨") } label: {
+                    settingRow(icon: "speaker.wave.2", title: "Audiobook voice", value: "Default")
+                }
+                .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
                 Button { appState.openReadingLevelSheet() } label: {
                     HStack {
                         Image(systemName: "text.book.closed").foregroundStyle(KathaTheme.textSecondary).frame(width: 24)
@@ -229,6 +263,11 @@ struct SettingsView: View {
                 .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textSecondary)
             VStack(spacing: 0) {
+                Button { showThemeSheet = true } label: {
+                    settingRow(icon: "sun.max", title: "App theme", value: "Auto")
+                }
+                .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
                 Button { appState.openParentalControls() } label: {
                     HStack {
                         Image(systemName: "checkmark.shield").foregroundStyle(appState.kidsMode ? KathaTheme.accent : KathaTheme.textSecondary).frame(width: 24)
@@ -399,6 +438,16 @@ struct SettingsView: View {
                             .foregroundStyle(KathaTheme.textTertiary)
                     }
                     .padding(.vertical, KathaTheme.Spacing.m)
+                }
+                .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                Button { appState.showToast("Rate Katha opens the App Store review page") } label: {
+                    settingRow(icon: "star", title: "Rate Katha", value: nil)
+                }
+                .buttonStyle(.plain)
+                Divider().background(KathaTheme.border)
+                Button { appState.showToast("FAQ coming in the next update ✨") } label: {
+                    settingRow(icon: "questionmark.circle", title: "FAQ", value: nil)
                 }
                 .buttonStyle(.plain)
             }

@@ -104,6 +104,8 @@ final class AppState {
 
     // Settings
     var readerSepia = false
+    var readerFontSize: Int = 18
+    var appThemeMode: AppThemeMode = .auto
     var defaultReadingLevel: ReadingLevel = .standard
     var kidsMode = false
     var kidsModePin: String?
@@ -376,6 +378,10 @@ final class AppState {
 
     init() {
         loadPersistedState()
+        if readingProgress.isEmpty {
+            readingProgress["story-5"] = ReadingProgress(storyId: "story-5", chapterIndex: 0, scrollProgress: 0.40, lastReadOffset: 0)
+            readingProgress["story-4"] = ReadingProgress(storyId: "story-4", chapterIndex: 0, scrollProgress: 0.15, lastReadOffset: 0)
+        }
     }
 
     // MARK: - Persistence
@@ -387,6 +393,8 @@ final class AppState {
         bookmarkedStoryIds = Set(defaults.stringArray(forKey: "katha.bookmarkedStories") ?? [])
         followedStoryIds = Set(defaults.stringArray(forKey: "katha.followedStories") ?? [])
         readerSepia = defaults.bool(forKey: "katha.readerSepia")
+        readerFontSize = defaults.object(forKey: "katha.readerFontSize") as? Int ?? 18
+        appThemeMode = AppThemeMode(rawValue: defaults.string(forKey: "katha.appThemeMode") ?? "auto") ?? .auto
         defaultReadingLevel = ReadingLevel(rawValue: defaults.string(forKey: "katha.defaultReadingLevel") ?? "standard") ?? .standard
         wizardReadingLevel = defaultReadingLevel
         kidsMode = defaults.bool(forKey: "katha.kidsMode")
@@ -518,17 +526,18 @@ final class AppState {
 
     func startSplash() {
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .milliseconds(800))
             guard let self else { return }
-            withAnimation(.easeInOut(duration: 0.5)) {
+            withAnimation(.easeInOut(duration: 0.3)) {
                 appPhase = hasCompletedOnboarding ? .main : .onboarding
             }
         }
     }
 
-    func completeOnboarding() {
+    func completeOnboarding(purpose: String? = nil) {
+        if let purpose { defaults.set(purpose, forKey: "onboarding_purpose") }
         defaults.set(true, forKey: "katha.onboarding.completed")
-        withAnimation(.easeInOut(duration: 0.4)) {
+        withAnimation(.easeInOut(duration: 0.3)) {
             appPhase = .main
         }
     }
@@ -1047,6 +1056,16 @@ final class AppState {
 
     // MARK: - Settings
 
+    func setAppThemeMode(_ mode: AppThemeMode) {
+        appThemeMode = mode
+        defaults.set(mode.rawValue, forKey: "katha.appThemeMode")
+    }
+
+    func setReaderFontSize(_ size: Int) {
+        readerFontSize = [15, 17, 18, 20, 22].min(by: { abs($0 - size) < abs($1 - size) }) ?? 18
+        defaults.set(readerFontSize, forKey: "katha.readerFontSize")
+    }
+
     func toggleReaderSepia() {
         readerSepia.toggle()
         defaults.set(readerSepia, forKey: "katha.readerSepia")
@@ -1289,7 +1308,9 @@ final class AppState {
             }
             Haptics.success()
         } catch {
-            generationError = "Something went wrong while crafting your story. Please try again."
+            let failedStoryId = UUID().uuidString
+            addCredits(1, reason: .refund, referenceId: failedStoryId)
+            generationError = "Something went wrong while crafting your story. Your credit was refunded. Please try again."
         }
 
         isGenerating = false

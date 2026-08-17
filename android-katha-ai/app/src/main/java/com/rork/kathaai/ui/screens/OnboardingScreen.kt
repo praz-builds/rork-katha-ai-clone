@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.ModeEdit
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,20 +49,22 @@ import com.rork.kathaai.ui.theme.KathaTypography
 private data class OnboardingOption(
     val icon: ImageVector,
     val title: String,
-    val description: String
+    val description: String,
+    val value: String
 )
 
 private val onboardingOptions = listOf(
-    OnboardingOption(Icons.Outlined.MenuBook, "Read stories", "Curated tales from AI and human authors"),
-    OnboardingOption(Icons.Outlined.ModeEdit, "Write my own", "Create stories with AI assistance"),
-    OnboardingOption(Icons.Outlined.Explore, "Discover new voices", "Explore genres and follow authors"),
-    OnboardingOption(Icons.Outlined.AutoAwesome, "All of the above", "Read, write, and discover — everything Katha offers")
+    OnboardingOption(Icons.Outlined.MenuBook, "I want to get lost in stories", "Curated tales from AI and human authors", "reader"),
+    OnboardingOption(Icons.Outlined.ModeEdit, "I want to write my own", "Create stories with AI assistance", "writer"),
+    OnboardingOption(Icons.Outlined.AutoAwesome, "A bit of both", "Read, write, and discover — everything Katha offers", "both"),
+    OnboardingOption(Icons.Outlined.Translate, "Learn languages through stories", "Read across Katha's supported languages", "language"),
+    OnboardingOption(Icons.Outlined.Explore, "Just exploring for now", "Take a look around at your own pace", "exploring")
 )
 
 @Composable
 fun OnboardingScreen(
     modifier: Modifier = Modifier,
-    onContinue: () -> Unit
+    onContinue: (String) -> Unit
 ) {
     var selected by remember { mutableIntStateOf(-1) }
 
@@ -168,7 +171,7 @@ fun OnboardingScreen(
                     .background(KathaTheme.surface)
                     .padding(KathaTheme.Spacing.l)
             ) {
-                PrimaryCTA("Get started", onClick = onContinue)
+                PrimaryCTA("Get started", onClick = { onContinue(onboardingOptions[selected].value) })
             }
         }
     }

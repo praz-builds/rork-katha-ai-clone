@@ -505,73 +505,67 @@ struct TopicStep: View {
 
 struct CharactersStep: View {
     @Environment(AppState.self) private var appState
+    @State private var showCharacterSheet = false
+    @State private var editingCharacter: WizardCharacter?
 
     var body: some View {
         @Bindable var appState = appState
         VStack(alignment: .leading, spacing: KathaTheme.Spacing.l) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Who is in your story?")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(KathaTheme.textPrimary)
-                    Text("Optional. Add characters to shape the plot and voice.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(KathaTheme.textSecondary)
-                }
-                Spacer()
+            VStack(alignment: .leading, spacing: KathaTheme.Spacing.xs) {
+                Text("Who is in your story?").font(KathaFont.Title2).foregroundStyle(KathaTheme.textPrimary)
+                Text("Optional. Add characters to shape the plot and voice.").font(KathaFont.Body).foregroundStyle(KathaTheme.textSecondary)
             }
 
-            ForEach($appState.wizardCharacters) { $character in
-                CharacterCard(character: $character) {
-                    appState.removeWizardCharacter(id: character.id)
-                }
+            ForEach(appState.wizardCharacters) { character in
+                CharacterCard(character: character, onEdit: {
+                    editingCharacter = character
+                    showCharacterSheet = true
+                }, onDelete: { appState.removeWizardCharacter(id: character.id) })
             }
 
-            SecondaryCTA(
-                title: appState.wizardCharacters.isEmpty ? "Add a character" : "Add another character",
-                icon: "plus"
-            ) {
-                Haptics.light()
-                appState.addWizardCharacter()
+            SecondaryCTA(title: appState.wizardCharacters.isEmpty ? "Add a character" : "Add another character", icon: "plus") {
+                editingCharacter = nil
+                showCharacterSheet = true
+            }
+        }
+        .sheet(isPresented: $showCharacterSheet) {
+            CharacterEditSheet(character: editingCharacter) { saved in
+                if appState.wizardCharacters.contains(where: { $0.id == saved.id }) {
+                    appState.updateWizardCharacter(saved)
+                } else {
+                    appState.wizardCharacters.append(saved)
+                }
             }
         }
     }
 }
 
 struct CharacterCard: View {
-    @Binding var character: WizardCharacter
+    let character: WizardCharacter
+    let onEdit: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
-            HStack {
-                Text("Character")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(KathaTheme.textSecondary)
-                Spacer()
-                Button {
-                    Haptics.light()
-                    onDelete()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 14))
-                        .foregroundStyle(KathaTheme.error)
+        Button(action: onEdit) {
+            HStack(spacing: KathaTheme.Spacing.m) {
+                VStack(alignment: .leading, spacing: KathaTheme.Spacing.xs) {
+                    Text(character.name.isEmpty ? "Unnamed character" : character.name).font(KathaFont.BodyStrong).foregroundStyle(KathaTheme.textPrimary)
+                    Text(character.role.isEmpty ? "Hero" : character.role).font(KathaFont.Caption).foregroundStyle(KathaTheme.textSecondary)
+                    if !character.description.isEmpty {
+                        Text(character.description).font(KathaFont.Caption).foregroundStyle(KathaTheme.textTertiary).lineLimit(2)
+                    }
                 }
+                Spacer()
+                Image(systemName: "pencil").font(KathaFont.Body).foregroundStyle(KathaTheme.accent)
+                Button(action: onDelete) {
+                    Image(systemName: "trash").font(KathaFont.Body).foregroundStyle(KathaTheme.error)
+                }
+                .buttonStyle(.plain)
             }
-
-            KathaTextField(title: "Name", text: $character.name, placeholder: "e.g. Elena")
-            KathaTextField(title: "Role", text: $character.role, placeholder: "e.g. Protagonist")
-            KathaTextEditor(title: "Description", text: $character.description, placeholder: "Brief personality or backstory...")
+            .padding(KathaTheme.Spacing.m)
+            .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.surface).overlay(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).stroke(KathaTheme.border)))
         }
-        .padding(KathaTheme.Spacing.m)
-        .background(
-            RoundedRectangle(cornerRadius: KathaTheme.Radius.m)
-                .fill(KathaTheme.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: KathaTheme.Radius.m)
-                .stroke(KathaTheme.border, lineWidth: 1)
-        )
+        .buttonStyle(.plain)
     }
 }
 
@@ -736,8 +730,8 @@ struct GetIdeasSheet: View {
                         .font(.system(size: 14))
                         .foregroundStyle(KathaTheme.textSecondary)
 
-                    let genre = appState.wizardGenre ?? .fiction
-                    let starters = StoryStarters.starters[genre] ?? StoryStarters.starters[.fiction]!
+                    let genre = appState.wizardGenre ?? .contemporary
+                    let starters = StoryStarters.starters[genre] ?? StoryStarters.starters[.contemporary]!
 
                     ForEach(starters, id: \.self) { starter in
                         Button {

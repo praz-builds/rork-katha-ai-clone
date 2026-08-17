@@ -536,7 +536,7 @@ fun ChapterGetIdeasSheet(
     onDismiss: () -> Unit,
     onPick: (String) -> Unit
 ) {
-    val genre = state.continueWizardGenre ?: Genre.FICTION
+    val genre = state.continueWizardGenre ?: Genre.CONTEMPORARY
     val starters = remember(genre, state.continueWizardChapterNumber) {
         ChapterStarters.starters(genre, state.continueWizardChapterNumber, state.continueWizardPlannedChapterCount)
     }

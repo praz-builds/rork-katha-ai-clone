@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.WorkspacePremium
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.serialization.Serializable
@@ -37,7 +38,8 @@ enum class CreditReason(val key: String, val label: String, val icon: ImageVecto
     SOCIAL("social", "Verified social post", Icons.Outlined.Share, "accent"),
     GENERATION("generation", "Generated story", Icons.Outlined.Book, "textSecondary"),
     WELCOME_BONUS("welcome_bonus", "Welcome to Katha ✨", Icons.Outlined.AutoAwesome, "accent"),
-    READER_EARNING("reader_earning", "Reading reward", Icons.Outlined.Book, "accent");
+    READER_EARNING("reader_earning", "Reading reward", Icons.Outlined.Book, "accent"),
+    REFUND("refund", "Generation refunded", Icons.Outlined.Replay, "textSecondary");
 
     companion object {
         fun fromKey(key: String): CreditReason =

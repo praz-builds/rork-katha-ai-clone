@@ -82,7 +82,11 @@ fun SettingsScreen(
     onOpenStreak: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     onOpenInviteFriends: () -> Unit = {},
-    onOpenStorage: () -> Unit = {}
+    onOpenStorage: () -> Unit = {},
+    onOpenFontSize: () -> Unit = {},
+    onOpenTheme: () -> Unit = {},
+    onRate: () -> Unit = {},
+    onFaq: () -> Unit = {}
 ) {
     var showSignOutDialog by remember { mutableStateOf(false) }
     var showDeleteStep1 by remember { mutableStateOf(false) }
@@ -204,6 +208,8 @@ fun SettingsScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
                     SettingsSectionLabel("Reading")
+                    SettingsRow(title = "Font size", value = "18", icon = Icons.Outlined.MenuBook, onClick = onOpenFontSize)
+                    SettingsRow(title = "Audiobook voice", value = "Default", icon = Icons.Outlined.Notifications, onClick = { /* Premium voice placeholder */ })
                     SettingsRow(title = "Reading level", value = state.defaultReadingLevel.title, icon = Icons.Outlined.MenuBook, onClick = onOpenReadingLevel)
                     SettingsRow(title = "Sepia reader", value = if (state.readerSepia) "On" else "Off", icon = Icons.Outlined.MenuBook, onClick = onToggleSepia)
                 }
@@ -212,6 +218,7 @@ fun SettingsScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
                     SettingsSectionLabel("App")
+                    SettingsRow(title = "App theme", value = "Auto", icon = Icons.Outlined.Info, onClick = onOpenTheme)
                     SettingsRow(title = "Parental controls", value = if (state.kidsMode) "On" else "Off", icon = Icons.Outlined.Security, onClick = onOpenParentalControls)
                     SettingsRow(title = "Notifications", value = "Manage", icon = Icons.Outlined.Notifications, onClick = onOpenNotifications)
                     SettingsRow(title = "Storage", value = if (state.offlineStoryRecords.isEmpty()) "Empty" else "${state.offlineStoryRecords.size} saved", icon = Icons.Outlined.Storage, onClick = onOpenStorage)
@@ -306,6 +313,18 @@ fun SettingsScreen(
                         Icon(Icons.Outlined.Email, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
                         Text("Share feedback", color = KathaTheme.textPrimary, fontSize = KathaTypography.Body.fontSize)
                         Spacer(Modifier.weight(1f))
+                        Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
+                    }
+                    HorizontalDivider(color = KathaTheme.border)
+                    Row(modifier = Modifier.fillMaxWidth().clickable { onRate() }.padding(vertical = KathaTheme.Spacing.m), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+                        Icon(Icons.Outlined.Info, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
+                        Text("Rate Katha", color = KathaTheme.textPrimary, style = KathaTypography.Body, modifier = Modifier.weight(1f))
+                        Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
+                    }
+                    HorizontalDivider(color = KathaTheme.border)
+                    Row(modifier = Modifier.fillMaxWidth().clickable { onFaq() }.padding(vertical = KathaTheme.Spacing.m), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+                        Icon(Icons.Outlined.Info, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(20.dp))
+                        Text("FAQ", color = KathaTheme.textPrimary, style = KathaTypography.Body, modifier = Modifier.weight(1f))
                         Icon(Icons.Outlined.ChevronRight, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
                     }
                 }
