@@ -56,7 +56,7 @@ create index idx_story_reads_story on story_reads(story_id, read_at desc);
 create index idx_story_reads_user on story_reads(user_id, read_at desc);
 -- Dedup: 1 crediting read per user per story per day
 create unique index idx_story_reads_dedup
-    on story_reads(user_id, story_id, (read_at::date))
+    on story_reads(user_id, story_id, (date_trunc('day', read_at at time zone 'UTC')))
     where counts_for_earnings = true;
 
 -- Follow a story (chapter notifications)

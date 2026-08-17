@@ -22,7 +22,8 @@ export async function getBalance(
 }
 
 /**
- * Deduct credits atomically. Returns new balance or throws if insufficient.
+ * Deduct credits atomically using FOR UPDATE to prevent race conditions.
+ * Returns new balance or throws if insufficient.
  */
 export async function deductCredit(
   supabase: ReturnType<typeof createClient>,
@@ -31,27 +32,25 @@ export async function deductCredit(
   reason: string,
   referenceId?: string
 ): Promise<number> {
-  const currentBalance = await getBalance(supabase, userId);
-  if (currentBalance < amount) {
-    throw new Error("Insufficient credits");
-  }
-
-  const newBalance = currentBalance - amount;
-
-  const { error } = await supabase.from("credit_ledger").insert({
-    user_id: userId,
-    amount: -amount,
-    reason,
-    reference_id: referenceId,
-    balance_after: newBalance,
+  const { data, error } = await supabase.rpc("deduct_credit", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_reason: reason,
+    p_reference_id: referenceId ?? null,
   });
 
-  if (error) throw new Error(`Failed to deduct credit: ${error.message}`);
-  return newBalance;
+  if (error) {
+    if (error.message.includes("Insufficient credits")) {
+      throw new Error("Insufficient credits");
+    }
+    throw new Error(`Failed to deduct credit: ${error.message}`);
+  }
+  return data as number;
 }
 
 /**
- * Grant credits. Returns new balance.
+ * Grant credits atomically using FOR UPDATE to prevent race conditions.
+ * Returns new balance.
  */
 export async function grantCredit(
   supabase: ReturnType<typeof createClient>,
@@ -60,17 +59,13 @@ export async function grantCredit(
   reason: string,
   referenceId?: string
 ): Promise<number> {
-  const currentBalance = await getBalance(supabase, userId);
-  const newBalance = currentBalance + amount;
-
-  const { error } = await supabase.from("credit_ledger").insert({
-    user_id: userId,
-    amount,
-    reason,
-    reference_id: referenceId,
-    balance_after: newBalance,
+  const { data, error } = await supabase.rpc("grant_credit", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_reason: reason,
+    p_reference_id: referenceId ?? null,
   });
 
   if (error) throw new Error(`Failed to grant credit: ${error.message}`);
-  return newBalance;
+  return data as number;
 }

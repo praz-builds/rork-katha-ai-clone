@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { deductCredit, grantCredit } from "../_shared/credits.ts";
 import { generateStoryText } from "../_shared/llm.ts";
+import { STORY_SYSTEM_PROMPT } from "../_shared/prompts.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -80,8 +81,7 @@ serve(async (req) => {
     }
 
     // Generate story text
-    // TODO: Load system prompt from prompts/story-generator.md
-    const systemPrompt = "You are a creative story writer. Write engaging, well-structured stories.";
+    const systemPrompt = STORY_SYSTEM_PROMPT;
     const userPrompt = buildUserPrompt({ genre, topic, characters, lengthType });
 
     let result;
@@ -134,7 +134,7 @@ serve(async (req) => {
       JSON.stringify({
         story: { ...story, title, word_count: wordCount, status: "complete" },
         chapter: { chapter_number: 1, content, word_count: wordCount },
-        balance: newBalance - 1,
+        balance: newBalance,
         model: result.model,
       }),
       {

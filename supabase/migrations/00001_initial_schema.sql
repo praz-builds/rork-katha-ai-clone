@@ -92,8 +92,8 @@ create table ad_rewards (
     claimed_at timestamptz default now(),
     verification_token text
 );
--- Enforce 1 ad reward per user per calendar day
-create unique index idx_ad_rewards_daily on ad_rewards(user_id, (claimed_at::date));
+-- Enforce 1 ad reward per user per calendar day (use timezone-explicit cast for immutability)
+create unique index idx_ad_rewards_daily on ad_rewards(user_id, (date_trunc('day', claimed_at at time zone 'UTC')));
 
 -- Referrals
 create table referrals (

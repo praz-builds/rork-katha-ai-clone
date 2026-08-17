@@ -8,33 +8,36 @@
 
 ## Prerequisites (User Setup — before any phase)
 
-- [ ] Create Supabase project → get `SUPABASE_URL` + `SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY`
-- [ ] Get Anthropic API key → `ANTHROPIC_API_KEY`
-- [ ] Get OpenAI API key → `OPENAI_API_KEY` (for DALL-E 3 cover images)
-- [ ] Fill project ID in `supabase/config.toml`
+- [x] Create Supabase project → `iafeuxgoiknncgyjmugd` (Seoul region)
+- [ ] Get Anthropic API key → `supabase secrets set ANTHROPIC_API_KEY=xxx`
+- [ ] Get OpenAI API key → `supabase secrets set OPENAI_API_KEY=xxx`
+- [x] Fill project ID in `supabase/config.toml`
 
 ---
 
-## Phase A — Foundation
+## Phase A — Foundation ✅ COMPLETE
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
 ### Bug Fixes
-- [ ] `generate-story/index.ts:137` — change `balance: newBalance - 1` to `balance: newBalance` (double-deduct bug)
-- [ ] `_shared/credits.ts` — replace read-then-write with atomic Postgres function using `SELECT ... FOR UPDATE` or a single `INSERT ... SELECT` with balance check
-- [ ] `_shared/llm.ts` — update Haiku model ID from `claude-haiku-4-5-20241022` to `claude-haiku-4-5-20251001`
-- [ ] `generate-story/index.ts` — load system prompt from `prompts/story-generator.md` instead of hardcoded string
+- [x] `generate-story/index.ts:137` — changed `balance: newBalance - 1` to `balance: newBalance`
+- [x] `_shared/credits.ts` — replaced with atomic Postgres RPC functions (`deduct_credit`, `grant_credit`) using `FOR UPDATE` locking (migration 00004)
+- [x] `_shared/llm.ts` — updated Haiku model ID to `claude-haiku-4-5-20251001`
+- [x] `generate-story/index.ts` — system prompt loaded from `_shared/prompts.ts`
+- [x] Fixed `::date` immutability bugs in migration 00001 (`idx_ad_rewards_daily`) and 00003 (`idx_story_reads_dedup`) — replaced with `date_trunc('day', ... at time zone 'UTC')`
 - [ ] `stories.genre` — verify column is `text` (single-select), not `text[]` (array)
 
 ### Deploy
-- [ ] Run `supabase db push` to apply all 3 migrations
-- [ ] Set secrets: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
-- [ ] Deploy all 7 existing edge functions
+- [x] Supabase CLI installed (v2.114.0 via Homebrew)
+- [x] Project linked (`supabase link`)
+- [x] All 4 migrations applied (`supabase db push` — 00001 through 00004)
+- [x] All 7 edge functions deployed and ACTIVE
+- [ ] Set secrets: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (waiting on user)
 - [ ] Verify `library` endpoint returns data
 - [ ] Verify `deduct-credit` works with the fixed atomic logic
 - [ ] Verify `generate-story` produces a story via LLM (text only, no images/audio yet)
 
-### Verification
+### Verification (after API keys are set)
 - [ ] Create a test user via Supabase Auth dashboard
 - [ ] Manually call `generate-story` with curl and verify credit deduction + story insert
 - [ ] Confirm `credit_ledger` has correct `balance_after` values
@@ -217,7 +220,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] Android: add `google-services.json` to Rork app
 
 ### Database
-- [ ] Create migration `00004_device_tokens.sql`:
+- [ ] Create migration `00005_device_tokens.sql` (00004 is now atomic credit RPCs):
   ```sql
   CREATE TABLE device_tokens (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

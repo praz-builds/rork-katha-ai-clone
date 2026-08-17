@@ -79,3 +79,42 @@
 - [ ] Phase A: Create Supabase project, fix critical bugs, deploy existing functions
 - [ ] Phase B: Wire DALL-E 3 + edge-tts into generation pipeline
 - [ ] User: Get API keys (Anthropic, OpenAI), create Supabase project
+
+---
+
+## 2026-08-17 — Phase A: Supabase setup + bug fixes + deploy
+
+**Session:** Created Supabase project, fixed all 4 known bugs, deployed all edge functions
+
+### Infrastructure
+- **Supabase project created:** `iafeuxgoiknncgyjmugd` (region: ap-northeast-2 Seoul)
+- **New key format:** publishable/secret (maps to anon/service_role)
+- **Supabase CLI installed** via Homebrew (v2.114.0)
+- **Project linked** and all migrations pushed
+- **`.env.local` created** with project URL + keys (gitignored)
+- **`config.toml` updated** with project ref, OAuth providers disabled (need real client IDs)
+
+### Bug Fixes
+1. **Double-deduct fix** (`generate-story/index.ts:137`): `newBalance - 1` → `newBalance` (was subtracting again after deductCredit already returned the post-deduction balance)
+2. **Race condition fix** (`credits.ts`): replaced read-then-write pattern with atomic Postgres RPC functions (`deduct_credit`, `grant_credit`) using `FOR UPDATE` row locking
+3. **System prompt fix** (`generate-story/index.ts`): hardcoded string → imported from `_shared/prompts.ts` (mirrors `prompts/story-generator.md`)
+4. **Haiku model ID fix** (`llm.ts:45`): `claude-haiku-4-5-20241022` → `claude-haiku-4-5-20251001`
+
+### Schema Changes
+- **Migration 00004** (`00004_atomic_credit_rpcs.sql`): added `deduct_credit()` and `grant_credit()` Postgres functions with `SECURITY DEFINER` and `FOR UPDATE` locking
+- **Migration 00001 fix**: `idx_ad_rewards_daily` — `claimed_at::date` → `date_trunc('day', claimed_at at time zone 'UTC')` (immutability fix)
+- **Migration 00003 fix**: `idx_story_reads_dedup` — same `::date` → `date_trunc` fix
+
+### New Files
+- `supabase/functions/_shared/prompts.ts` — story generator system prompt as exportable constant
+- `supabase/migrations/00004_atomic_credit_rpcs.sql` — atomic credit RPC functions
+
+### Deployments
+All 7 edge functions deployed and ACTIVE:
+- `generate-story`, `continue-story`, `deduct-credit`, `grant-credit`, `library`, `feedback`, `adapty-webhook`
+
+### TODO next session
+- [ ] Set API key secrets (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) once user has them
+- [ ] Phase B: Wire DALL-E 3 cover images + edge-tts audio narration
+- [ ] Create Supabase Storage buckets (covers, audio)
+- [ ] Consider recreating project in Mumbai region for lower India latency

@@ -1,5 +1,5 @@
 [project]
-id = "" # Set after creating Supabase project
+id = "iafeuxgoiknncgyjmugd"
 
 [api]
 port = 54321
@@ -15,10 +15,10 @@ port = 54323
 site_url = "http://localhost:3000"
 
 [auth.external.google]
-enabled = true
+enabled = false
 
 [auth.external.apple]
-enabled = true
+enabled = false
 
 [storage]
 file_size_limit = "10MB"
