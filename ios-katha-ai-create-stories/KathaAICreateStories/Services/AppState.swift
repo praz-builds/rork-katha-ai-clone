@@ -146,7 +146,17 @@ final class AppState {
     var showLanguageSheet: Bool = false
     var showGetIdeasSheet: Bool = false
 
-    // User-generated stories (published)
+    // Creation workspace (private draft until explicit publish)
+    var creationPhase: CreationPhase = .composer
+    var creationRevisionPrompt = ""
+    var creationCoverProgress: Double = 0
+    var creationIsEditingText = false
+    var creationDraftSaved = false
+    var creationError: String?
+    var isRevising = false
+    var showFullScreenPrompt = false
+
+    // User-generated stories (published or private author drafts)
     var publishedStories: [GeneratedStory] = []
 
     // Continue wizard state (in-session only)
@@ -440,6 +450,24 @@ final class AppState {
            let decoded = try? JSONDecoder().decode([StoryComment].self, from: data) {
             userComments = decoded
         }
+        if let data = defaults.data(forKey: "katha.creationComposer"),
+           let decoded = try? JSONDecoder().decode(PersistedComposerState.self, from: data) {
+            wizardGenre = decoded.genre
+            wizardTopic = decoded.topic
+            wizardCharacters = decoded.characters
+            wizardLanguage = decoded.language
+            wizardReadingLevel = decoded.readingLevel
+            wizardPlanAsSeries = decoded.planAsSeries
+            wizardSeriesChapterCount = decoded.seriesChapterCount
+            wizardStep = decoded.genre == nil ? .genre : .topic
+        }
+        if let data = defaults.data(forKey: "katha.creationDraft"),
+           let decoded = try? JSONDecoder().decode(PersistedGeneratedStory.self, from: data) {
+            let draft = decoded.generatedStory
+            lastGeneratedStory = draft
+            publishedStories = [draft]
+            creationPhase = draft.isPublished ? .published : .draftReady
+        }
     }
 
     private func persistSafetyState() {
@@ -464,6 +492,27 @@ final class AppState {
         defaults.set(storyGenerationCount, forKey: "katha.storyGenerationCount")
         defaults.set(activeDayCount, forKey: "katha.activeDayCount")
         defaults.set(notificationPermissionGranted, forKey: "katha.notificationPermissionGranted")
+    }
+
+    private func persistCreationState() {
+        let composer = PersistedComposerState(
+            genre: wizardGenre,
+            topic: wizardTopic,
+            characters: wizardCharacters,
+            language: wizardLanguage,
+            readingLevel: wizardReadingLevel,
+            planAsSeries: wizardPlanAsSeries,
+            seriesChapterCount: wizardSeriesChapterCount
+        )
+        if let data = try? JSONEncoder().encode(composer) {
+            defaults.set(data, forKey: "katha.creationComposer")
+        }
+        if let draft = lastGeneratedStory,
+           let data = try? JSONEncoder().encode(PersistedGeneratedStory(story: draft)) {
+            defaults.set(data, forKey: "katha.creationDraft")
+        } else {
+            defaults.removeObject(forKey: "katha.creationDraft")
+        }
     }
 
     private func persistSocialState() {
@@ -1203,6 +1252,17 @@ final class AppState {
         showOutOfCreditsModal = false
         showLanguageSheet = false
         showGetIdeasSheet = false
+        creationPhase = .composer
+        creationRevisionPrompt = ""
+        creationCoverProgress = 0
+        creationIsEditingText = false
+        creationDraftSaved = false
+        creationError = nil
+        isRevising = false
+        showFullScreenPrompt = false
+        lastGeneratedStory = nil
+        publishedStories.removeAll { !$0.isPublished }
+        persistCreationState()
     }
 
     func startCreatingStory() {
@@ -1228,6 +1288,7 @@ final class AppState {
         }
         wizardGenre = genre
         wizardStep = .topic
+        persistCreationState()
     }
 
     func addWizardCharacter() {
@@ -1252,6 +1313,16 @@ final class AppState {
 
     func moveToStep(_ step: WizardStep) {
         wizardStep = step
+        persistCreationState()
+    }
+
+    func updateCreationTopic(_ topic: String) {
+        wizardTopic = String(topic.prefix(1600))
+        persistCreationState()
+    }
+
+    func setCreationFullScreen(_ isPresented: Bool) {
+        showFullScreenPrompt = isPresented
     }
 
     func generateStory() async {
@@ -1263,6 +1334,9 @@ final class AppState {
 
         isGenerating = true
         generationError = nil
+        creationError = nil
+        creationPhase = .generating
+        creationCoverProgress = 0
         Haptics.medium()
 
         do {
@@ -1276,7 +1350,12 @@ final class AppState {
                 readingLevel: wizardReadingLevel
             )
             lastGeneratedStory = story
+            publishedStories.removeAll { $0.id == story.id }
             publishedStories.insert(story, at: 0)
+            creationPhase = .coverGenerating
+            creationCoverProgress = 0.35
+            creationDraftSaved = true
+            persistCreationState()
 
             let updated = UserSession(
                 id: user.id,
@@ -1311,9 +1390,157 @@ final class AppState {
             let failedStoryId = UUID().uuidString
             addCredits(1, reason: .refund, referenceId: failedStoryId)
             generationError = "Something went wrong while crafting your story. Your credit was refunded. Please try again."
+            creationError = generationError
+            creationPhase = .composer
         }
 
         isGenerating = false
+        if lastGeneratedStory != nil {
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(1100))
+                guard let self, lastGeneratedStory != nil else { return }
+                creationCoverProgress = 1
+                lastGeneratedStory?.coverStatus = .ready
+                lastGeneratedStory?.contentVersion = max(1, lastGeneratedStory?.contentVersion ?? 1)
+                creationPhase = .draftReady
+                creationDraftSaved = true
+                persistCreationState()
+            }
+        }
+    }
+
+    func saveCurrentStoryEdits(title: String, body: String) {
+        guard var story = lastGeneratedStory else { return }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedBody.isEmpty else {
+            creationError = "Add a title and at least one paragraph before saving."
+            return
+        }
+        story.title = trimmedTitle
+        story.contentVersion += 1
+        story.coverStatus = .generating
+        story.body = trimmedBody
+        lastGeneratedStory = story
+        replaceAuthorStory(story)
+        creationPhase = .coverGenerating
+        creationCoverProgress = 0.35
+        creationIsEditingText = false
+        creationError = nil
+        persistCreationState()
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard let self, lastGeneratedStory?.id == story.id else { return }
+            lastGeneratedStory?.coverStatus = .ready
+            creationCoverProgress = 1
+            creationPhase = story.isPublished ? .published : .draftReady
+            if let refreshed = lastGeneratedStory {
+                replaceAuthorStory(refreshed)
+            }
+            persistCreationState()
+        }
+    }
+
+    func reviseCurrentStory(with prompt: String) async {
+        guard let current = lastGeneratedStory,
+              let user = currentUser,
+              user.credits > 0,
+              !isRevising else { return }
+        let instruction = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !instruction.isEmpty else {
+            creationError = "Tell Katha what you want to change."
+            return
+        }
+        isRevising = true
+        creationPhase = .revising
+        creationError = nil
+        do {
+            try await Task.sleep(for: .milliseconds(900))
+            guard lastGeneratedStory?.id == current.id else { return }
+            var revised = current
+            revised.body += "\n\n" + "The next beat follows the author’s direction: \(instruction)."
+            revised.contentVersion += 1
+            revised.coverStatus = .generating
+            lastGeneratedStory = revised
+            replaceAuthorStory(revised)
+            updateCreditsAfterCreation(user: user, amount: -1, reason: .generation, referenceId: revised.id + "-revision-\(revised.contentVersion)")
+            creationPhase = .coverGenerating
+            creationCoverProgress = 0.45
+            persistCreationState()
+            try await Task.sleep(for: .milliseconds(900))
+            guard lastGeneratedStory?.id == revised.id else { return }
+            lastGeneratedStory?.coverStatus = .ready
+            creationCoverProgress = 1
+            creationPhase = revised.isPublished ? .published : .draftReady
+            persistCreationState()
+            Haptics.success()
+        } catch {
+            creationError = "The revision could not be completed. Your draft is safe; try again."
+            creationPhase = .draftReady
+        }
+        isRevising = false
+    }
+
+    func publishCurrentStory() {
+        guard var story = lastGeneratedStory, creationPhase == .draftReady else { return }
+        guard story.coverStatus == .ready else {
+            creationError = "Your cover is still being prepared."
+            return
+        }
+        story.isPublished = true
+        lastGeneratedStory = story
+        replaceAuthorStory(story)
+        creationPhase = .published
+        persistCreationState()
+        Haptics.success()
+        showToast(story.isSeries ? "Chapter 1 published" : "Story published")
+    }
+
+    func endSeriesAndPublish() {
+        guard var story = lastGeneratedStory, story.isSeries, story.chapterCount >= 2 else {
+            creationError = "A series needs at least two chapters before it can end."
+            return
+        }
+        guard story.coverStatus == .ready, story.chapters.allSatisfy({ $0.coverStatus == .ready }) else {
+            creationError = "Every chapter needs a ready cover before you can end the series."
+            return
+        }
+        story.isPublished = true
+        story.isSeriesEnded = true
+        story.chapters = story.chapters.map { chapter in
+            var published = chapter
+            published.isPublished = true
+            published.publishedAt = published.publishedAt ?? Date()
+            return published
+        }
+        lastGeneratedStory = story
+        replaceAuthorStory(story)
+        creationPhase = .published
+        persistCreationState()
+        Haptics.success()
+        showToast("Series ended and published")
+    }
+
+    func startEditingCurrentStory() {
+        creationIsEditingText = true
+        creationPhase = .editing
+        creationError = nil
+    }
+
+    func replaceAuthorStory(_ story: GeneratedStory) {
+        publishedStories.removeAll { $0.id == story.id }
+        publishedStories.insert(story, at: 0)
+    }
+
+    private func updateCreditsAfterCreation(user: UserSession, amount: Int, reason: CreditReason, referenceId: String) {
+        let updated = UserSession(
+            id: user.id, email: user.email, username: user.username, displayName: user.displayName,
+            bio: user.bio, credits: max(0, user.credits + amount), followers: user.followers,
+            following: user.following, avatarPaletteIndex: user.avatarPaletteIndex
+        )
+        currentUser = updated
+        saveSession(updated)
+        addCredits(amount, reason: reason, referenceId: referenceId)
     }
 
     func openGeneratedStory(_ story: GeneratedStory) {
@@ -1405,9 +1632,14 @@ final class AppState {
             )
             lastGeneratedChapter = chapter
 
-            if let index = publishedStories.firstIndex(where: { $0.id == storyId }) {
+            if var story = lastGeneratedStory, story.id == storyId {
+                story.chapters.append(chapter)
+                lastGeneratedStory = story
+                replaceAuthorStory(story)
+            } else if let index = publishedStories.firstIndex(where: { $0.id == storyId }) {
                 publishedStories[index].chapters.append(chapter)
             }
+            persistCreationState()
 
             let updated = UserSession(
                 id: user.id, email: user.email, username: user.username,

@@ -430,7 +430,7 @@ The dog got better. The boy came back to thank the old woman, but the house was 
             wordCount: wordCount,
             readingTime: max(1, wordCount / 200),
             plannedChapterCount: plannedChapterCount,
-            isPublished: true,
+            isPublished: false,
             createdAt: Date(),
             readingLevel: readingLevel
         )

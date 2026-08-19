@@ -7,7 +7,7 @@ import SwiftUI
 
 // MARK: - Genre
 
-enum Genre: String, CaseIterable, Identifiable, Hashable {
+enum Genre: String, CaseIterable, Identifiable, Hashable, Codable {
     case mystery
     case romance
     case scifi
@@ -139,9 +139,40 @@ struct ProfileRoute: Identifiable, Hashable {
     }
 }
 
+// MARK: - Creation and cover state
+
+enum CreationPhase: String, Hashable {
+    case composer
+    case generating
+    case coverGenerating
+    case draftReady
+    case editing
+    case revising
+    case published
+}
+
+enum CoverGenerationStatus: String, Hashable, Codable {
+    case generating
+    case ready
+    case stale
+    case failed
+}
+
+struct CoverAssetMetadata: Hashable, Codable {
+    let assetId: String
+    let contentVersion: Int
+    var status: CoverGenerationStatus
+    var focalX: Double = 0.5
+    var focalY: Double = 0.42
+    var thumbnailURL: String? = nil
+    var cardURL: String? = nil
+    var readerURL: String? = nil
+}
+
 // MARK: - Chapter
 
 struct Chapter: Identifiable, Hashable {
+
     let id: String
     let title: String
     let paragraphs: [String]
@@ -151,6 +182,8 @@ struct Chapter: Identifiable, Hashable {
     var publishedAt: Date? = nil
     var createdAt: Date? = nil
     var coverColors: [Color]? = nil
+    var contentVersion: Int = 1
+    var coverAsset: CoverAssetMetadata? = nil
 
     var wordCount: Int {
         paragraphs.reduce(0) { $0 + $1.split(separator: " ").count }
@@ -364,7 +397,7 @@ struct UserSession: Identifiable, Codable {
 
 // MARK: - Story Language
 
-enum StoryLanguage: String, CaseIterable, Identifiable, Hashable {
+enum StoryLanguage: String, CaseIterable, Identifiable, Hashable, Codable {
     case en, hi, es, fr, de, pt, it, ja, ko, zh, ar, ru, id, tr, bn
 
     var id: String { rawValue }
@@ -434,7 +467,7 @@ enum StoryLanguage: String, CaseIterable, Identifiable, Hashable {
 
 // MARK: - Wizard Character
 
-struct WizardCharacter: Identifiable, Hashable {
+struct WizardCharacter: Identifiable, Hashable, Codable {
     let id: String
     var name: String
     var role: String
@@ -453,6 +486,8 @@ struct GeneratedChapter: Identifiable, Hashable {
     var isPublished: Bool
     var publishedAt: Date?
     let createdAt: Date
+    var contentVersion: Int = 1
+    var coverStatus: CoverGenerationStatus = .ready
 
     var wordCount: Int { body.split(separator: " ").count }
     var readingTimeMinutes: Int { max(1, wordCount / 200) }
@@ -468,29 +503,34 @@ struct GeneratedChapter: Identifiable, Hashable {
             isPublished: isPublished,
             publishedAt: publishedAt,
             createdAt: createdAt,
-            coverColors: coverColors
+            coverColors: coverColors,
+            contentVersion: contentVersion,
+            coverAsset: CoverAssetMetadata(assetId: "cover-\(id)-v\(contentVersion)", contentVersion: contentVersion, status: coverStatus)
         )
     }
 }
 
 struct GeneratedStory: Identifiable, Hashable {
     let id: String
-    let title: String
+    var title: String
     let authorId: String
     let genre: Genre
     let language: StoryLanguage
     let themes: [String]
     let coverColors: [Color]
     let firstLine: String
-    let body: String
-    let wordCount: Int
-    let readingTime: Int
+    var body: String
+    var wordCount: Int
+    var readingTime: Int
     let plannedChapterCount: Int?
-    let isPublished: Bool
+    var isPublished: Bool
     let createdAt: Date
     var readingLevel: ReadingLevel = .standard
     var followerCount: Int = 0
     var chapters: [GeneratedChapter] = []
+    var isSeriesEnded: Bool = false
+    var contentVersion: Int = 1
+    var coverStatus: CoverGenerationStatus = .ready
 
     var synopsis: String { String(firstLine.prefix(120)) }
 
@@ -502,9 +542,11 @@ struct GeneratedStory: Identifiable, Hashable {
                 paragraphs: body.components(separatedBy: "\n\n"),
                 storyId: id,
                 chapterNumber: 1,
-                isPublished: true,
+                isPublished: isPublished,
                 createdAt: createdAt,
-                coverColors: coverColors
+                coverColors: coverColors,
+                contentVersion: contentVersion,
+                coverAsset: CoverAssetMetadata(assetId: "cover-\(id)-v\(contentVersion)", contentVersion: contentVersion, status: coverStatus)
             )
         ]
         result.append(contentsOf: chapters.map { $0.asChapter })
@@ -531,8 +573,129 @@ struct GeneratedStory: Identifiable, Hashable {
 
     var chapterCount: Int { 1 + chapters.count }
 
+    var isSeries: Bool {
+        chapterCount > 1 || (plannedChapterCount ?? 1) > 1
+    }
+
     var publishedChapterCount: Int {
-        1 + chapters.filter { $0.isPublished }.count
+        (isPublished ? 1 : 0) + chapters.filter { $0.isPublished }.count
+    }
+}
+
+// MARK: - Local creation persistence
+
+struct PersistedGeneratedChapter: Codable {
+    let id: String
+    let storyId: String
+    let chapterNumber: Int
+    let title: String
+    let body: String
+    let isPublished: Bool
+    let publishedAt: Date?
+    let createdAt: Date
+    let contentVersion: Int
+    let coverStatus: CoverGenerationStatus
+}
+
+struct PersistedComposerState: Codable {
+    let genre: Genre?
+    let topic: String
+    let characters: [WizardCharacter]
+    let language: StoryLanguage
+    let readingLevel: ReadingLevel
+    let planAsSeries: Bool
+    let seriesChapterCount: Int
+}
+
+struct PersistedGeneratedStory: Codable {
+    let id: String
+    let title: String
+    let authorId: String
+    let genre: Genre
+    let language: StoryLanguage
+    let themes: [String]
+    let firstLine: String
+    let body: String
+    let plannedChapterCount: Int?
+    let isPublished: Bool
+    let createdAt: Date
+    let readingLevel: ReadingLevel
+    let followerCount: Int
+    let chapters: [PersistedGeneratedChapter]
+    let isSeriesEnded: Bool
+    let contentVersion: Int
+    let coverStatus: CoverGenerationStatus
+
+    init(story: GeneratedStory) {
+        id = story.id
+        title = story.title
+        authorId = story.authorId
+        genre = story.genre
+        language = story.language
+        themes = story.themes
+        firstLine = story.firstLine
+        body = story.body
+        plannedChapterCount = story.plannedChapterCount
+        isPublished = story.isPublished
+        createdAt = story.createdAt
+        readingLevel = story.readingLevel
+        followerCount = story.followerCount
+        chapters = story.chapters.map { chapter in
+            PersistedGeneratedChapter(
+                id: chapter.id,
+                storyId: chapter.storyId,
+                chapterNumber: chapter.chapterNumber,
+                title: chapter.title,
+                body: chapter.body,
+                isPublished: chapter.isPublished,
+                publishedAt: chapter.publishedAt,
+                createdAt: chapter.createdAt,
+                contentVersion: chapter.contentVersion,
+                coverStatus: chapter.coverStatus
+            )
+        }
+        isSeriesEnded = story.isSeriesEnded
+        contentVersion = story.contentVersion
+        coverStatus = story.coverStatus
+    }
+
+    var generatedStory: GeneratedStory {
+        GeneratedStory(
+            id: id,
+            title: title,
+            authorId: authorId,
+            genre: genre,
+            language: language,
+            themes: themes,
+            coverColors: genre.coverColors,
+            firstLine: firstLine,
+            body: body,
+            wordCount: body.split(separator: " ").count,
+            readingTime: max(1, body.split(separator: " ").count / 200),
+            plannedChapterCount: plannedChapterCount,
+            isPublished: isPublished,
+            createdAt: createdAt,
+            readingLevel: readingLevel,
+            followerCount: followerCount,
+            chapters: chapters.map { chapter in
+                GeneratedChapter(
+                    id: chapter.id,
+                    storyId: chapter.storyId,
+                    chapterNumber: chapter.chapterNumber,
+                    title: chapter.title,
+                    body: chapter.body,
+                    coverColors: genre.coverColors,
+                    isPublished: chapter.isPublished,
+                    publishedAt: chapter.publishedAt,
+                    createdAt: chapter.createdAt,
+                    contentVersion: chapter.contentVersion,
+                    coverStatus: chapter.coverStatus
+                )
+            },
+            isSeriesEnded: isSeriesEnded,
+            contentVersion: contentVersion,
+            coverStatus: coverStatus
+        )
     }
 }
 

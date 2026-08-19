@@ -32,6 +32,9 @@ import com.rork.kathaai.model.CreditPack
 import com.rork.kathaai.model.SubscriptionPlan
 import com.rork.kathaai.model.PremiumFeature
 import com.rork.kathaai.model.ReadingLevel
+import com.rork.kathaai.model.SavedCreationDraft
+import com.rork.kathaai.model.toGeneratedStory
+import com.rork.kathaai.model.toSavedCreationDraft
 import com.rork.kathaai.model.PinSetupMode
 import com.rork.kathaai.model.PinEntryContext
 import com.rork.kathaai.model.AdWatchState
@@ -99,6 +102,12 @@ data class KathaUiState(
     val isGenerating: Boolean = false,
     val generationError: String? = null,
     val lastGeneratedStory: GeneratedStory? = null,
+    val creationPhase: com.rork.kathaai.model.CreationPhase = com.rork.kathaai.model.CreationPhase.COMPOSER,
+    val creationCoverProgress: Float = 0f,
+    val creationRevisionPrompt: String = "",
+    val creationError: String? = null,
+    val isRevising: Boolean = false,
+    val showFullScreenPrompt: Boolean = false,
     val showOutOfCreditsModal: Boolean = false,
     val showLanguageSheet: Boolean = false,
     val showGetIdeasSheet: Boolean = false,
@@ -392,7 +401,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 followedStoryIds = prefs.getStringSet(KEY_FOLLOWED_STORIES, emptySet()).orEmpty(),
                 readerSepia = prefs.getBoolean(KEY_SEPIA, false),
                 defaultReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
-                wizardReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
+                wizardReadingLevel = runCatching { ReadingLevel.valueOf(prefs.getString("creation_reading_level", prefs.getString(KEY_READING_LEVEL, "STANDARD") ?: "STANDARD") ?: "STANDARD") }.getOrDefault(ReadingLevel.STANDARD),
+                wizardGenre = prefs.getString("creation_genre", null)?.let { raw -> runCatching { Genre.valueOf(raw) }.getOrNull() },
+                wizardTopic = prefs.getString("creation_topic", "").orEmpty(),
+                wizardLanguage = prefs.getString("creation_language", null)?.let { raw -> runCatching { StoryLanguage.valueOf(raw) }.getOrNull() } ?: StoryLanguage.ENGLISH,
+                wizardPlanAsSeries = prefs.getBoolean("creation_series", false),
+                wizardSeriesChapterCount = prefs.getInt("creation_chapter_count", 3),
                 kidsMode = prefs.getBoolean(KEY_KIDS_MODE, false),
                 kidsModePin = prefs.getString(KEY_KIDS_PIN, null),
                 pinCooldownUntil = prefs.getLong(KEY_PIN_COOLDOWN, 0L).takeIf { it > 0L },
@@ -427,6 +441,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 creditLedger = loadCreditLedger()
             )
         }
+        prefs.getString("creation_draft", null)?.let { raw ->
+            runCatching { json.decodeFromString<com.rork.kathaai.model.SavedCreationDraft>(raw).toGeneratedStory() }.getOrNull()?.let { draft ->
+                _uiState.update { state ->
+                    state.copy(
+                        lastGeneratedStory = draft,
+                        publishedStories = listOf(draft) + state.publishedStories.filter { it.id != draft.id },
+                        creationPhase = if (draft.isPublished) com.rork.kathaai.model.CreationPhase.PUBLISHED else com.rork.kathaai.model.CreationPhase.DRAFT_READY,
+                        creationCoverProgress = 1f
+                    )
+                }
+            }
+        }
+    }
+
+    private fun persistCreationDraft(story: GeneratedStory?) {
+        prefs.edit().apply {
+            if (story == null) remove("creation_draft")
+            else putString("creation_draft", json.encodeToString(story.toSavedCreationDraft()))
+        }.apply()
     }
 
     private inline fun <reified T> loadJson(key: String, fallback: T): T = prefs.getString(key, null)?.let { raw -> runCatching { json.decodeFromString<T>(raw) }.getOrNull() } ?: fallback
@@ -998,9 +1031,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 lastGeneratedStory = null,
                 showOutOfCreditsModal = false,
                 showLanguageSheet = false,
-                showGetIdeasSheet = false
+                showGetIdeasSheet = false,
+                creationPhase = com.rork.kathaai.model.CreationPhase.COMPOSER,
+                creationCoverProgress = 0f,
+                creationRevisionPrompt = "",
+                creationError = null,
+                isRevising = false,
+                showFullScreenPrompt = false,
+                publishedStories = it.publishedStories.filter { story -> story.isPublished }
             )
         }
+        persistCreationDraft(null)
     }
 
     fun startCreatingStory() {
@@ -1059,8 +1100,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateWizardTopic(topic: String) {
-        val truncated = topic.take(800)
-        _uiState.update { it.copy(wizardTopic = truncated) }
+        val truncated = topic.take(1600)
+        _uiState.update { it.copy(wizardTopic = truncated, creationError = null) }
+        persistCreationComposer()
+    }
+
+    fun setFullScreenPrompt(isPresented: Boolean) {
+        _uiState.update { it.copy(showFullScreenPrompt = isPresented) }
+    }
+
+    private fun persistCreationComposer() {
+        val state = _uiState.value
+        prefs.edit()
+            .putString("creation_genre", state.wizardGenre?.name)
+            .putString("creation_topic", state.wizardTopic)
+            .putString("creation_language", state.wizardLanguage.name)
+            .putString("creation_reading_level", state.wizardReadingLevel.name)
+            .putBoolean("creation_series", state.wizardPlanAsSeries)
+            .putInt("creation_chapter_count", state.wizardSeriesChapterCount)
+            .apply()
     }
 
     fun updateWizardPlanAsSeries(planAsSeries: Boolean) {
@@ -1161,7 +1219,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(showOutOfCreditsModal = true) }
             return
         }
-        _uiState.update { it.copy(isGenerating = true, generationError = null) }
+        _uiState.update {
+            it.copy(
+                isGenerating = true,
+                generationError = null,
+                creationError = null,
+                creationPhase = com.rork.kathaai.model.CreationPhase.GENERATING,
+                creationCoverProgress = 0f
+            )
+        }
         viewModelScope.launch {
             try {
                 val story = MockGeneration.generateStory(
@@ -1178,8 +1244,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         lastGeneratedStory = story,
-                        publishedStories = listOf(story) + it.publishedStories,
-                        currentUser = updated
+                        publishedStories = listOf(story) + it.publishedStories.filter { existing -> existing.id != story.id },
+                        currentUser = updated,
+                        creationPhase = com.rork.kathaai.model.CreationPhase.COVER_GENERATING,
+                        creationCoverProgress = 0.35f
                     )
                 }
                 addCredits(-1, CreditReason.GENERATION, story.id)
@@ -1189,6 +1257,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     showToast("Referral bonus added ✨")
                 }
                 _uiState.update { it.copy(storyGenerationCount = it.storyGenerationCount + 1) }
+                persistCreationDraft(story)
+                viewModelScope.launch {
+                    delay(1_100)
+                    val ready = uiState.value.lastGeneratedStory?.copy(
+                        coverStatus = com.rork.kathaai.model.CoverGenerationStatus.READY
+                    )
+                    if (ready != null) {
+                        _uiState.update { current ->
+                            current.copy(
+                                lastGeneratedStory = ready,
+                                publishedStories = listOf(ready) + current.publishedStories.filter { it.id != ready.id },
+                                creationPhase = com.rork.kathaai.model.CreationPhase.DRAFT_READY,
+                                creationCoverProgress = 1f
+                            )
+                        }
+                        persistCreationDraft(ready)
+                    }
+                }
                 recordStreakActivity("Generated a story")
                 maybeRequestRating()
                 viewModelScope.launch {
@@ -1198,7 +1284,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: GenerationException) {
                 addCredits(1, CreditReason.REFUND, "generation-failed-${System.currentTimeMillis()}")
                 _uiState.update {
-                    it.copy(generationError = "Something went wrong while crafting your story. Your credit was refunded. Please try again.")
+                    it.copy(
+                        generationError = "Something went wrong while crafting your story. Your credit was refunded. Please try again.",
+                        creationError = "Something went wrong while crafting your story. Your credit was refunded. Please try again.",
+                        creationPhase = com.rork.kathaai.model.CreationPhase.COMPOSER
+                    )
                 }
             }
             _uiState.update { it.copy(isGenerating = false) }
@@ -1213,6 +1303,108 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 currentChapterIndex = 0
             )
         }
+    }
+
+    fun saveCurrentStoryEdits(title: String, body: String) {
+        val current = _uiState.value.lastGeneratedStory ?: return
+        val trimmedTitle = title.trim()
+        val trimmedBody = body.trim()
+        if (trimmedTitle.isEmpty() || trimmedBody.isEmpty()) {
+            _uiState.update { it.copy(creationError = "Add a title and at least one paragraph before saving.") }
+            return
+        }
+        val updated = current.copy(
+            title = trimmedTitle,
+            body = trimmedBody,
+            wordCount = trimmedBody.split(" ").size,
+            readingTime = maxOf(1, trimmedBody.split(" ").size / 200),
+            contentVersion = current.contentVersion + 1,
+            coverStatus = com.rork.kathaai.model.CoverGenerationStatus.GENERATING
+        )
+        replaceAuthorStory(updated)
+        _uiState.update { it.copy(creationPhase = com.rork.kathaai.model.CreationPhase.COVER_GENERATING, creationCoverProgress = 0.35f, creationError = null) }
+        viewModelScope.launch {
+            delay(900)
+            val ready = uiState.value.lastGeneratedStory?.copy(coverStatus = com.rork.kathaai.model.CoverGenerationStatus.READY)
+            if (ready != null) {
+                replaceAuthorStory(ready)
+                _uiState.update { it.copy(creationPhase = if (ready.isPublished) com.rork.kathaai.model.CreationPhase.PUBLISHED else com.rork.kathaai.model.CreationPhase.DRAFT_READY, creationCoverProgress = 1f) }
+            }
+        }
+    }
+
+    fun reviseCurrentStory(prompt: String) {
+        val state = _uiState.value
+        val current = state.lastGeneratedStory ?: return
+        val user = state.currentUser ?: return
+        val instruction = prompt.trim()
+        if (instruction.isEmpty()) {
+            _uiState.update { it.copy(creationError = "Tell Katha what you want to change.") }
+            return
+        }
+        if (user.credits <= 0 || state.isRevising) {
+            if (user.credits <= 0) _uiState.update { it.copy(showOutOfCreditsModal = true) }
+            return
+        }
+        _uiState.update { it.copy(isRevising = true, creationPhase = com.rork.kathaai.model.CreationPhase.REVISING, creationError = null) }
+        viewModelScope.launch {
+            delay(900)
+            val revisedBody = current.body + "\n\nThe next beat follows the author’s direction: $instruction."
+            val revised = current.copy(
+                body = revisedBody,
+                wordCount = revisedBody.split(" ").size,
+                readingTime = maxOf(1, revisedBody.split(" ").size / 200),
+                contentVersion = current.contentVersion + 1,
+                coverStatus = com.rork.kathaai.model.CoverGenerationStatus.GENERATING
+            )
+            replaceAuthorStory(revised)
+            val updatedUser = user.copy(credits = maxOf(0, user.credits - 1))
+            persistSession(updatedUser)
+            addCredits(-1, CreditReason.GENERATION, "${current.id}-revision-${revised.contentVersion}")
+            _uiState.update { it.copy(currentUser = updatedUser, creationPhase = com.rork.kathaai.model.CreationPhase.COVER_GENERATING, creationCoverProgress = 0.45f) }
+            delay(900)
+            val ready = uiState.value.lastGeneratedStory?.copy(coverStatus = com.rork.kathaai.model.CoverGenerationStatus.READY)
+            if (ready != null) {
+                replaceAuthorStory(ready)
+                _uiState.update { it.copy(lastGeneratedStory = ready, creationPhase = if (ready.isPublished) com.rork.kathaai.model.CreationPhase.PUBLISHED else com.rork.kathaai.model.CreationPhase.DRAFT_READY, creationCoverProgress = 1f, isRevising = false) }
+            }
+        }
+    }
+
+    fun publishCurrentStory() {
+        val current = _uiState.value.lastGeneratedStory ?: return
+        if (_uiState.value.creationPhase != com.rork.kathaai.model.CreationPhase.DRAFT_READY || current.coverStatus != com.rork.kathaai.model.CoverGenerationStatus.READY) {
+            _uiState.update { it.copy(creationError = "Your cover is still being prepared.") }
+            return
+        }
+        val published = current.copy(isPublished = true)
+        replaceAuthorStory(published)
+        _uiState.update { it.copy(creationPhase = com.rork.kathaai.model.CreationPhase.PUBLISHED) }
+        showToast(if (published.isSeries) "Chapter 1 published" else "Story published")
+    }
+
+    fun endSeriesAndPublish() {
+        val current = _uiState.value.lastGeneratedStory ?: return
+        if (!current.isSeries || current.chapterCount < 2) {
+            _uiState.update { it.copy(creationError = "A series needs at least two chapters before it can end.") }
+            return
+        }
+        if (current.coverStatus != com.rork.kathaai.model.CoverGenerationStatus.READY || current.chapters.any { it.coverStatus != com.rork.kathaai.model.CoverGenerationStatus.READY }) {
+            _uiState.update { it.copy(creationError = "Every chapter needs a ready cover before you can end the series.") }
+            return
+        }
+        val endedChapters = current.chapters.map { it.copy(isPublished = true, publishedAt = it.publishedAt ?: System.currentTimeMillis()) }.toMutableList()
+        val ended = current.copy(isPublished = true, isSeriesEnded = true, chapters = endedChapters)
+        replaceAuthorStory(ended)
+        _uiState.update { it.copy(creationPhase = com.rork.kathaai.model.CreationPhase.PUBLISHED) }
+        showToast("Series ended and published")
+    }
+
+    private fun replaceAuthorStory(story: GeneratedStory) {
+        _uiState.update { state ->
+            state.copy(lastGeneratedStory = story, publishedStories = listOf(story) + state.publishedStories.filter { it.id != story.id })
+        }
+        persistCreationDraft(story)
     }
 
     fun buyCreditsMock() {
@@ -1310,17 +1502,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     parentGenre = genre,
                     plannedChapterCount = state.continueWizardPlannedChapterCount
                 )
-                // Append chapter to the parent GeneratedStory
+                // Append the chapter to the private author story and keep its draft state.
                 val updatedStories = state.publishedStories.map { gs ->
-                    if (gs.id == storyId) {
-                        gs.copy(chapters = (gs.chapters + chapter).toMutableList())
-                    } else gs
+                    if (gs.id == storyId) gs.copy(chapters = (gs.chapters + chapter).toMutableList()) else gs
+                }
+                val updatedStory = state.lastGeneratedStory?.let { story ->
+                    if (story.id == storyId) story.copy(chapters = (story.chapters + chapter).toMutableList()) else null
                 }
                 val updated = user.copy(credits = maxOf(0, user.credits - 1))
                 persistSession(updated)
                 _uiState.update {
                     it.copy(
                         lastGeneratedChapter = chapter,
+                        lastGeneratedStory = updatedStory,
                         publishedStories = updatedStories,
                         currentUser = updated
                     )

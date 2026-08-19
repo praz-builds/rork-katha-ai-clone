@@ -64,6 +64,21 @@ enum class Genre(
 
 enum class ContentRating { KIDS, TEEN, MATURE }
 
+enum class CreationPhase { COMPOSER, GENERATING, COVER_GENERATING, DRAFT_READY, EDITING, REVISING, PUBLISHED }
+
+enum class CoverGenerationStatus { GENERATING, READY, STALE, FAILED }
+
+data class CoverAssetMetadata(
+    val assetId: String,
+    val contentVersion: Int,
+    val status: CoverGenerationStatus = CoverGenerationStatus.READY,
+    val focalX: Float = 0.5f,
+    val focalY: Float = 0.42f,
+    val thumbnailUrl: String? = null,
+    val cardUrl: String? = null,
+    val readerUrl: String? = null
+)
+
 enum class ReadingLevel(val title: String, val subtitle: String) {
     SIMPLE("Simple", "Short sentences, common words. Great for younger readers or English learners."),
     STANDARD("Standard", "Balanced vocabulary and sentence structure. Suits most readers."),
@@ -115,7 +130,9 @@ data class Chapter(
     val isPublished: Boolean = true,
     val publishedAt: Long? = null,
     val createdAt: Long? = null,
-    val coverColors: List<Color>? = null
+    val coverColors: List<Color>? = null,
+    val contentVersion: Int = 1,
+    val coverAsset: CoverAssetMetadata? = null
 ) {
     val wordCount: Int get() = paragraphs.sumOf { it.split(" ").size }
     val readingTimeMinutes: Int get() = maxOf(1, wordCount / 200)
@@ -269,7 +286,10 @@ data class GeneratedChapter(
     val coverColors: List<Color>,
     var isPublished: Boolean = false,
     var publishedAt: Long? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val contentVersion: Int = 1,
+    val coverStatus: CoverGenerationStatus = CoverGenerationStatus.READY,
+    val coverAsset: CoverAssetMetadata? = null
 ) {
     val wordCount: Int get() = body.split(" ").size
     val readingTimeMinutes: Int get() = maxOf(1, wordCount / 200)
@@ -284,7 +304,9 @@ data class GeneratedChapter(
         isPublished = isPublished,
         publishedAt = publishedAt,
         createdAt = createdAt,
-        coverColors = coverColors
+        coverColors = coverColors,
+        contentVersion = contentVersion,
+        coverAsset = coverAsset ?: CoverAssetMetadata("cover-$id-v$contentVersion", contentVersion, coverStatus)
     )
 }
 
@@ -301,13 +323,17 @@ data class GeneratedStory(
     val wordCount: Int,
     val readingTime: Int,
     val plannedChapterCount: Int? = null,
-    val isPublished: Boolean = true,
+    val isPublished: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     var followerCount: Int = 0,
     val chapters: MutableList<GeneratedChapter> = mutableListOf(),
-    val readingLevel: ReadingLevel = ReadingLevel.STANDARD
+    val readingLevel: ReadingLevel = ReadingLevel.STANDARD,
+    val isSeriesEnded: Boolean = false,
+    val contentVersion: Int = 1,
+    val coverStatus: CoverGenerationStatus = CoverGenerationStatus.READY
 ) {
     val synopsis: String get() = firstLine.take(120)
+    val isSeries: Boolean get() = chapterCount > 1 || (plannedChapterCount ?: 1) > 1
 
     val allChapters: List<Chapter>
         get() {
@@ -318,9 +344,11 @@ data class GeneratedStory(
                     paragraphs = body.split("\n\n"),
                     storyId = id,
                     chapterNumber = 1,
-                    isPublished = true,
+                    isPublished = isPublished,
                     createdAt = createdAt,
-                    coverColors = coverColors
+                    coverColors = coverColors,
+                    contentVersion = contentVersion,
+                    coverAsset = CoverAssetMetadata("cover-$id-v$contentVersion", contentVersion, coverStatus)
                 )
             )
             result.addAll(chapters.map { it.asChapter() })
@@ -352,7 +380,96 @@ data class GeneratedStory(
     )
 
     val chapterCount: Int get() = 1 + chapters.size
-    val publishedChapterCount: Int get() = 1 + chapters.count { it.isPublished }
+    val publishedChapterCount: Int get() = (if (isPublished) 1 else 0) + chapters.count { it.isPublished }
+}
+
+@Serializable
+data class SavedCreationChapter(
+    val id: String,
+    val storyId: String,
+    val chapterNumber: Int,
+    val title: String,
+    val body: String,
+    val isPublished: Boolean,
+    val publishedAt: Long?,
+    val createdAt: Long,
+    val contentVersion: Int,
+    val coverStatus: String
+)
+
+@Serializable
+data class SavedCreationDraft(
+    val id: String,
+    val title: String,
+    val authorId: String,
+    val genre: String,
+    val language: String,
+    val themes: List<String>,
+    val firstLine: String,
+    val body: String,
+    val plannedChapterCount: Int?,
+    val isPublished: Boolean,
+    val createdAt: Long,
+    val readingLevel: String,
+    val followerCount: Int,
+    val chapters: List<SavedCreationChapter>,
+    val isSeriesEnded: Boolean,
+    val contentVersion: Int,
+    val coverStatus: String
+)
+
+fun GeneratedStory.toSavedCreationDraft(): SavedCreationDraft = SavedCreationDraft(
+    id = id,
+    title = title,
+    authorId = authorId,
+    genre = genre.name,
+    language = language.name,
+    themes = themes,
+    firstLine = firstLine,
+    body = body,
+    plannedChapterCount = plannedChapterCount,
+    isPublished = isPublished,
+    createdAt = createdAt,
+    readingLevel = readingLevel.name,
+    followerCount = followerCount,
+    chapters = chapters.map { chapter ->
+        SavedCreationChapter(chapter.id, chapter.storyId, chapter.chapterNumber, chapter.title, chapter.body, chapter.isPublished, chapter.publishedAt, chapter.createdAt, chapter.contentVersion, chapter.coverStatus.name)
+    },
+    isSeriesEnded = isSeriesEnded,
+    contentVersion = contentVersion,
+    coverStatus = coverStatus.name
+)
+
+fun SavedCreationDraft.toGeneratedStory(): GeneratedStory {
+    val resolvedGenre = runCatching { Genre.valueOf(genre) }.getOrDefault(Genre.CONTEMPORARY)
+    val resolvedLanguage = runCatching { StoryLanguage.valueOf(language) }.getOrDefault(StoryLanguage.ENGLISH)
+    val resolvedLevel = runCatching { ReadingLevel.valueOf(readingLevel) }.getOrDefault(ReadingLevel.STANDARD)
+    val resolvedCoverStatus = runCatching { CoverGenerationStatus.valueOf(coverStatus) }.getOrDefault(CoverGenerationStatus.READY)
+    return GeneratedStory(
+        id = id,
+        title = title,
+        authorId = authorId,
+        genre = resolvedGenre,
+        language = resolvedLanguage,
+        themes = themes,
+        coverColors = resolvedGenre.coverColors,
+        firstLine = firstLine,
+        body = body,
+        wordCount = body.split(" ").size,
+        readingTime = maxOf(1, body.split(" ").size / 200),
+        plannedChapterCount = plannedChapterCount,
+        isPublished = isPublished,
+        createdAt = createdAt,
+        followerCount = followerCount,
+        chapters = chapters.map { chapter ->
+            val chapterStatus = runCatching { CoverGenerationStatus.valueOf(chapter.coverStatus) }.getOrDefault(CoverGenerationStatus.READY)
+            GeneratedChapter(chapter.id, chapter.storyId, chapter.chapterNumber, chapter.title, chapter.body, resolvedGenre.coverColors, chapter.isPublished, chapter.publishedAt, chapter.createdAt, chapter.contentVersion, chapterStatus)
+        }.toMutableList(),
+        readingLevel = resolvedLevel,
+        isSeriesEnded = isSeriesEnded,
+        contentVersion = contentVersion,
+        coverStatus = resolvedCoverStatus
+    )
 }
 
 enum class WizardStep(val title: String, val number: Int) {
