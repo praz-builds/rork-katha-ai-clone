@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -163,6 +161,32 @@ private fun PromptFirstComposer(
             StoryIdeaEditor(state = state, viewModel = viewModel)
 
             Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+            ) {
+                if (state.creationIsEditingText) {
+                    TextButton(
+                        onClick = {
+                            keyboardController?.hide()
+                            viewModel.setCreationEditingText(false)
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Done", color = KathaTheme.accent, style = KathaTypography.BodyStrong)
+                    }
+                }
+                state.creationError?.let { Text(it, color = KathaTheme.error, style = KathaTypography.Caption) }
+                val valid = state.wizardGenre != null && state.wizardTopic.trim().length >= 8
+                PrimaryCTA(
+                    title = "Generate",
+                    icon = Icons.Outlined.AutoAwesome,
+                    isLoading = state.isGenerating,
+                    enabled = valid && !state.isGenerating
+                ) { viewModel.generateStory() }
+                Text("Your story stays private until you publish it.", color = KathaTheme.textSecondary, style = KathaTypography.Meta, modifier = Modifier.align(Alignment.CenterHorizontally))
+            }
+
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(KathaTheme.Radius.l))
@@ -208,37 +232,6 @@ private fun PromptFirstComposer(
             SafeBottomSpacer()
         }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(KathaTheme.canvas.copy(alpha = 0.96f))
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(KathaTheme.Spacing.l),
-            verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
-        ) {
-            if (state.creationIsEditingText) {
-                TextButton(
-                    onClick = {
-                        keyboardController?.hide()
-                        viewModel.setCreationEditingText(false)
-                    },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text("Done", color = KathaTheme.accent, style = KathaTypography.BodyStrong)
-                }
-            }
-            state.creationError?.let { Text(it, color = KathaTheme.error, style = KathaTypography.Caption) }
-            val valid = state.wizardGenre != null && state.wizardTopic.trim().length >= 8
-            PrimaryCTA(
-                title = "Generate privately • 1 credit",
-                icon = Icons.Outlined.AutoAwesome,
-                isLoading = state.isGenerating,
-                enabled = valid && !state.isGenerating
-            ) { viewModel.generateStory() }
-            Text("Your story stays private until you publish it.", color = KathaTheme.textSecondary, style = KathaTypography.Meta, modifier = Modifier.align(Alignment.CenterHorizontally))
-        }
     }
 
     if (showDiscard) {

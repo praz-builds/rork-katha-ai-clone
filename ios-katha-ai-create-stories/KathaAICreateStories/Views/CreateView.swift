@@ -175,6 +175,7 @@ private struct PromptFirstComposer: View {
                         }
                     }
 
+                    creationActions
                     settingsCard
                     SafeBottomSpacer(height: 132)
                 }
@@ -183,35 +184,6 @@ private struct PromptFirstComposer: View {
             }
             .scrollIndicators(.hidden)
 
-            VStack(spacing: KathaTheme.Spacing.s) {
-                if let error = appState.creationError ?? appState.generationError {
-                    Text(error)
-                        .font(KathaFont.Caption)
-                        .foregroundStyle(KathaTheme.error)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                PrimaryCTA(
-                    title: "Generate privately • 1 credit",
-                    icon: "sparkles",
-                    isLoading: appState.isGenerating
-                ) {
-                    guard appState.wizardGenre != nil else {
-                        appState.creationError = "Choose a genre first."
-                        return
-                    }
-                    guard appState.wizardTopic.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8 else {
-                        appState.creationError = "Add a little more to your story idea so Katha has a clear direction."
-                        return
-                    }
-                    Task { await appState.generateStory() }
-                }
-                .disabled(appState.isGenerating || appState.wizardGenre == nil || appState.wizardTopic.trimmingCharacters(in: .whitespacesAndNewlines).count < 8)
-                Text("Your story stays private until you publish it.")
-                    .font(KathaFont.Meta)
-                    .foregroundStyle(KathaTheme.textSecondary)
-            }
-            .padding(KathaTheme.Spacing.l)
-            .background(KathaTheme.canvas.opacity(0.96))
         }
         .scrollDismissesKeyboard(.interactively)
         .background(KathaTheme.canvas.onTapGesture { promptFocused = false })
@@ -245,6 +217,37 @@ private struct PromptFirstComposer: View {
                 appState.requestedTab = 0
             }, onKeep: { showDiscard = false })
         }
+    }
+
+    private var creationActions: some View {
+        VStack(alignment: .leading, spacing: KathaTheme.Spacing.s) {
+            if let error = appState.creationError ?? appState.generationError {
+                Text(error)
+                    .font(KathaFont.Caption)
+                    .foregroundStyle(KathaTheme.error)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            PrimaryCTA(
+                title: "Generate",
+                icon: "sparkles",
+                isLoading: appState.isGenerating
+            ) {
+                guard appState.wizardGenre != nil else {
+                    appState.creationError = "Choose a genre first."
+                    return
+                }
+                guard appState.wizardTopic.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8 else {
+                    appState.creationError = "Add a little more to your story idea so Katha has a clear direction."
+                    return
+                }
+                Task { await appState.generateStory() }
+            }
+            .disabled(appState.isGenerating || appState.wizardGenre == nil || appState.wizardTopic.trimmingCharacters(in: .whitespacesAndNewlines).count < 8)
+            Text("Your story stays private until you publish it.")
+                .font(KathaFont.Meta)
+                .foregroundStyle(KathaTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var genreStrip: some View {
