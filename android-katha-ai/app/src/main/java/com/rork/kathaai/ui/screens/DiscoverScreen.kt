@@ -248,14 +248,15 @@ private fun FeedChip(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (isSelected) KathaTheme.accent else KathaTheme.surface)
+            .background(if (isSelected) Color.Black else KathaTheme.surface)
+            .border(1.dp, if (isSelected) Color.Black else KathaTheme.borderStrong, RoundedCornerShape(50))
             .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = KathaTheme.Spacing.mdLg, vertical = KathaTheme.Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Icon(icon, null, tint = if (isSelected) Color.White else KathaTheme.textSecondary, modifier = Modifier.size(12.dp))
-        Text(title, color = if (isSelected) Color.White else KathaTheme.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Icon(icon, null, tint = if (isSelected) Color.White else KathaTheme.textPrimary, modifier = Modifier.size(12.dp))
+        Text(title, color = if (isSelected) Color.White else KathaTheme.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }
 

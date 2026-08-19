@@ -116,7 +116,7 @@ struct AudioMiniBar: View {
         .contentShape(Rectangle())
         .onTapGesture {
             Haptics.light()
-            appState.showToast("Audio preparing — usually ready in 30 seconds")
+            appState.showToast("Audio preparing — usually ready in 8–15 seconds")
         }
     }
 

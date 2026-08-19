@@ -14,15 +14,13 @@ struct MainTabView: View {
             Group {
                 switch selectedTab {
                 case 0: HomeView()
-                case 1: DiscoverView()
-                case 2: CreateView()
-                case 3: LibraryView()
-                default: SettingsView()
+                case 1: CreateView()
+                default: LibraryView()
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: selectedTab)
             .onChange(of: selectedTab) { _, newValue in
-                if newValue != 2 {
+                if newValue != 1 {
                     appState.resetWizard()
                 }
             }
@@ -49,11 +47,10 @@ struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             tabItem(icon: "house", label: "Home", index: 0)
-            tabItem(icon: "safari", label: "Discover", index: 1)
 
             Button {
                 Haptics.light()
-                withAnimation(.spring(duration: 0.3)) { selectedTab = 2 }
+                withAnimation(.spring(duration: 0.3)) { selectedTab = 1 }
             } label: {
                 ZStack {
                     Circle()
@@ -74,8 +71,7 @@ struct CustomTabBar: View {
             }
             .frame(maxWidth: .infinity)
 
-            tabItem(icon: "books.vertical", label: "Library", index: 3)
-            tabItem(icon: "gearshape", label: "Settings", index: 4)
+            tabItem(icon: "bookmark", label: "Library", index: 2)
         }
         .padding(.horizontal, 8)
         .padding(.top, 10)

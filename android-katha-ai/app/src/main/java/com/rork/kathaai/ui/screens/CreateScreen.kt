@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -140,8 +141,8 @@ private fun PromptFirstComposer(
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(if (selected) KathaTheme.accent else KathaTheme.surface)
-                            .border(1.dp, if (selected) KathaTheme.accent else KathaTheme.border, CircleShape)
+                            .background(if (selected) Color.Black else KathaTheme.surface)
+                            .border(1.dp, if (selected) Color.Black else KathaTheme.borderStrong, CircleShape)
                             .clickable { viewModel.setWizardGenre(genre) }
                             .padding(horizontal = KathaTheme.Spacing.m, vertical = KathaTheme.Spacing.s)
                     ) {
@@ -204,6 +205,7 @@ private fun PromptFirstComposer(
                 .fillMaxWidth()
                 .background(KathaTheme.canvas.copy(alpha = 0.96f))
                 .navigationBarsPadding()
+                .imePadding()
                 .padding(KathaTheme.Spacing.l),
             verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
         ) {

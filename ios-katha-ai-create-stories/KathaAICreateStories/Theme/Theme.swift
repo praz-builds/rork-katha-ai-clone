@@ -55,9 +55,9 @@ enum KathaTheme {
     static let textSecondary = Color(light: 0x6B6560, dark: 0xA69E93)
     static let textTertiary = Color(light: 0x9C9691, dark: 0x6C655D)
 
-    static let accent = Color(light: 0xE89F3D, dark: 0xE89F3D)
-    static let accentPressed = Color(light: 0xD18A2A, dark: 0xF0B25C)
-    static let accentSoft = Color(light: 0xFCEFD9, dark: 0x3D2F1F)
+    static let accent = Color(light: 0xFF500A, dark: 0xFF7A3D)
+    static let accentPressed = Color(light: 0xE04600, dark: 0xFF9A6A)
+    static let accentSoft = Color(light: 0xFFE8DC, dark: 0x3D2118)
 
     static let premium = Color(light: 0xC44536, dark: 0xD95A4B)
     static let premiumSoft = Color(light: 0xF5D9D3, dark: 0x3D211D)
@@ -221,7 +221,7 @@ struct AvatarPalette: Identifiable, Hashable {
     let colors: [Color]
 
     static let palettes: [AvatarPalette] = [
-        AvatarPalette(id: 0, colors: [Color(hex: 0xE89F3D), Color(hex: 0xD4742A)]),
+        AvatarPalette(id: 0, colors: [Color(hex: 0xFF500A), Color(hex: 0xE04600)]),
         AvatarPalette(id: 1, colors: [Color(hex: 0xC45B5B), Color(hex: 0x8B2D2D)]),
         AvatarPalette(id: 2, colors: [Color(hex: 0x4A8A99), Color(hex: 0x2D5A6B)]),
         AvatarPalette(id: 3, colors: [Color(hex: 0x5B8A5B), Color(hex: 0x3A6B3A)]),

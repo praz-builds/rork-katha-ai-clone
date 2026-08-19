@@ -210,7 +210,7 @@ extension AppState {
 
     func openAudioPlayer(story: Story) {
         guard audioState(for: story.id) == .ready else {
-            showToast("Audio preparing — usually ready in 30 seconds")
+            showToast("Audio preparing — usually ready in 8–15 seconds")
             return
         }
         audioPlayerStoryId = story.id

@@ -61,7 +61,7 @@ struct AuthorDashboardScreen: View {
                     } else if ownStories.isEmpty {
                         DashboardEmptyState {
                             appState.closeDashboard()
-                            appState.requestedTab = 2
+                            appState.requestedTab = 1
                         }
                     } else {
                         contentSection

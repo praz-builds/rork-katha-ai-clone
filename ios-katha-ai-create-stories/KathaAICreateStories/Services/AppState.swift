@@ -2117,7 +2117,7 @@ final class AppState {
         discoverThemeFilter = theme
         discoverFeedChip = 1 // Trending
         discoverGenreFilter = nil
-        requestedTab = 1
+        requestedTab = 0
         Haptics.light()
     }
 

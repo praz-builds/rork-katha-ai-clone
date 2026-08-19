@@ -22,6 +22,8 @@ struct ProfileRouteHost: View {
             EditProfileView()
         case .blockedUsers:
             BlockedUsersScreen()
+        case .settings:
+            SettingsView()
         }
     }
 }
@@ -177,8 +179,7 @@ struct AuthorProfileView: View {
             if isOwn {
                 Button {
                     Haptics.light()
-                    appState.closeAllProfiles()
-                    appState.requestedTab = 4
+                    appState.pushProfileRoute(.settings)
                 } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 17))
@@ -390,7 +391,7 @@ struct AuthorProfileView: View {
                     ctaTitle: "Write your first story ▸",
                     ctaAction: {
                         appState.closeAllProfiles()
-                        appState.requestedTab = 2
+                        appState.requestedTab = 1
                     }
                 )
             } else {
@@ -688,7 +689,7 @@ struct FollowingListView: View {
                     ctaTitle: isOwn ? "Discover writers ▸" : nil,
                     ctaAction: isOwn ? {
                         appState.closeAllProfiles()
-                        appState.requestedTab = 1
+                        appState.requestedTab = 0
                     } : nil
                 )
                 Spacer()
@@ -739,7 +740,7 @@ struct FollowingListView: View {
                     ctaTitle: isOwn ? "Explore stories ▸" : nil,
                     ctaAction: isOwn ? {
                         appState.closeAllProfiles()
-                        appState.requestedTab = 1
+                        appState.requestedTab = 0
                     } : nil
                 )
                 Spacer()

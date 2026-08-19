@@ -89,7 +89,7 @@ private fun PreparingBar(
             .clickable {
                 if (!hasTapped) {
                     hasTapped = true
-                    viewModel.showToast("Audio preparing — usually ready in 30 seconds")
+                    viewModel.showToast("Audio preparing — usually ready in 8–15 seconds")
                 }
             }
             .padding(horizontal = KathaTheme.Spacing.l, vertical = KathaTheme.Spacing.m),

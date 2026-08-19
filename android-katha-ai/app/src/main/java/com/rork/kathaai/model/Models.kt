@@ -118,6 +118,7 @@ sealed class ProfileRoute {
     data class Followers(val userId: String) : ProfileRoute()
     data class Following(val userId: String, val initialTab: Int = 0) : ProfileRoute()
     data object EditProfile : ProfileRoute()
+    data object Settings : ProfileRoute()
     data object BlockedUsers : ProfileRoute()
 }
 

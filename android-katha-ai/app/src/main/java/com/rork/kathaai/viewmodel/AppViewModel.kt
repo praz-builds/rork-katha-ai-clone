@@ -1908,7 +1908,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 discoverThemeFilter = theme,
                 discoverFeedChip = 1,
                 discoverGenreFilter = null,
-                requestedTab = 1
+                requestedTab = 0
             )
         }
     }
@@ -1919,6 +1919,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDiscoverFeedChip(chip: Int) {
         _uiState.update { it.copy(discoverFeedChip = chip) }
+    }
+
+    fun setDiscoverGenreFilter(genre: Genre?) {
+        _uiState.update { it.copy(discoverGenreFilter = genre) }
     }
 
     // MARK: - Audio (FIX 8)

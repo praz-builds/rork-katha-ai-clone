@@ -189,7 +189,7 @@ fun AppViewModel.removeOfflineStory(storyId: String) = setPrompt12State(uiState.
 fun AppViewModel.clearOfflineStories() = setPrompt12State(uiState.value.copy(offlineStoryRecords = emptyList()))
 
 fun AppViewModel.openAudioPlayer(storyId: String) {
-    if (audioState(storyId) != AppViewModel.AudioBarState.READY) { showToast("Audio preparing — usually ready in 30 seconds"); return }
+    if (audioState(storyId) != AppViewModel.AudioBarState.READY) { showToast("Audio preparing — usually ready in 8–15 seconds"); return }
     setPrompt12State(uiState.value.copy(audioPlayerStoryId = storyId, showAudioPlayer = true))
 }
 fun AppViewModel.closeAudioPlayer() = setPrompt12State(uiState.value.copy(showAudioPlayer = false))

@@ -174,11 +174,13 @@ struct DiscoverView: View {
                 Image(systemName: icon).font(.system(size: 12))
                 Text(title).font(.system(size: 13, weight: .medium))
             }
-            .foregroundStyle(appState.discoverFeedChip == index ? .white : KathaTheme.textSecondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .foregroundStyle(appState.discoverFeedChip == index ? Color.white : KathaTheme.textPrimary)
+            .padding(.horizontal, KathaTheme.Spacing.mdLg)
+            .padding(.vertical, KathaTheme.Spacing.s)
             .background(
-                Capsule().fill(appState.discoverFeedChip == index ? KathaTheme.accent : KathaTheme.surface)
+                Capsule()
+                    .fill(appState.discoverFeedChip == index ? Color.black : KathaTheme.surface)
+                    .overlay(Capsule().stroke(appState.discoverFeedChip == index ? Color.black : KathaTheme.borderStrong, lineWidth: 1))
             )
         }
     }

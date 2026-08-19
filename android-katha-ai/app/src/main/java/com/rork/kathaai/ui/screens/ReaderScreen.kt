@@ -41,7 +41,6 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.List
 import androidx.compose.material.icons.outlined.MenuBook
-import androidx.compose.material.icons.outlined.RemoveRedEye
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.Icon
@@ -452,9 +451,8 @@ fun ReaderScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .height(72.dp)
-                                .background(
-                                    Brush.verticalGradient(listOf(Color.Transparent, bg))
-                                )
+                                .background(bg.copy(alpha = 0.96f))
+                                .blur(4.dp)
                         )
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -738,7 +736,7 @@ fun ReaderScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(
-                        Icons.Outlined.RemoveRedEye, null,
+                        Icons.Outlined.MenuBook, null,
                         tint = KathaTheme.textTertiary,
                         modifier = Modifier.size(18.dp)
                     )
@@ -875,7 +873,7 @@ private fun AuthorEndOfChapter(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Outlined.RemoveRedEye, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.MenuBook, null, tint = KathaTheme.textTertiary, modifier = Modifier.size(16.dp))
                 Text(formatCount(story.views), color = KathaTheme.textTertiary, style = KathaTypography.Meta)
             }
             Spacer(Modifier.weight(1f))

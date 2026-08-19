@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -38,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rork.kathaai.data.SeedData
+import com.rork.kathaai.model.Genre
 import com.rork.kathaai.ui.components.CompactStoryCard
 import com.rork.kathaai.ui.components.GeneratedAvatar
 import com.rork.kathaai.ui.components.KathaToast
@@ -73,6 +76,7 @@ fun HomeScreen(
     val preferences = remember { context.getSharedPreferences("katha_home", Context.MODE_PRIVATE) }
     var isLoading by remember { mutableStateOf(true) }
     var welcomeDismissed by remember { mutableStateOf(false) }
+    var showSearchOverlay by remember { mutableStateOf(false) }
     val previousOpen = remember { preferences.getLong("last_open_timestamp", 0L) }
     val shouldShowWelcome = previousOpen > 0L &&
         System.currentTimeMillis() - previousOpen > 3L * 24L * 60L * 60L * 1000L &&
@@ -84,17 +88,20 @@ fun HomeScreen(
             .filter { it.authorId in state.followedAuthorIds && state.isStoryVisibleInKidsMode(it) }
             .sortedBy { it.publishedOffset }
             .take(3)
+            .filter { state.discoverGenreFilter == null || it.genre == state.discoverGenreFilter }
     }
     val risingStories = remember(state) {
         SeedData.trending
             .filter { state.isStoryVisibleInKidsMode(it) }
             .sortedBy { it.publishedOffset }
             .take(6)
+            .filter { state.discoverGenreFilter == null || it.genre == state.discoverGenreFilter }
     }
     val kathaPicks = remember(state) {
         SeedData.stories
             .filter { it.authorId == "kathaai" && state.isStoryVisibleInKidsMode(it) }
             .take(3)
+            .filter { state.discoverGenreFilter == null || it.genre == state.discoverGenreFilter }
     }
     val continueStories = remember(state) {
         SeedData.stories.filter { it.id in state.readStoryIds && state.isStoryVisibleInKidsMode(it) }
@@ -145,6 +152,48 @@ fun HomeScreen(
                         }
                     } else {
                         Text("Sign in", style = KathaTypography.BodyStrong, color = KathaTheme.textPrimary, modifier = Modifier.clip(RoundedCornerShape(KathaTheme.Radius.xl)).background(KathaTheme.surface).border(1.dp, KathaTheme.border, RoundedCornerShape(KathaTheme.Radius.xl)).clickable { onSignIn() }.padding(horizontal = KathaTheme.Spacing.mdLg, vertical = KathaTheme.Spacing.s))
+                    }
+                }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(KathaTheme.Radius.m))
+                        .background(KathaTheme.surface)
+                        .border(1.dp, KathaTheme.border, RoundedCornerShape(KathaTheme.Radius.m))
+                        .clickable { showSearchOverlay = true }
+                        .padding(horizontal = KathaTheme.Spacing.mdLg)
+                        .heightIn(min = 44.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+                ) {
+                    Icon(Icons.Outlined.Search, null, tint = KathaTheme.textSecondary, modifier = Modifier.size(18.dp))
+                    Text("Search stories, authors, genres", style = KathaTypography.Body, color = KathaTheme.textTertiary)
+                }
+            }
+
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = KathaTheme.Spacing.l),
+                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+                ) {
+                    item { com.rork.kathaai.ui.components.FilterChip("For You", state.discoverFeedChip == 0) { viewModel.setDiscoverFeedChip(0) } }
+                    item { com.rork.kathaai.ui.components.FilterChip("Trending", state.discoverFeedChip == 1) { viewModel.setDiscoverFeedChip(1) } }
+                    item { com.rork.kathaai.ui.components.FilterChip("Rising", state.discoverFeedChip == 2) { viewModel.setDiscoverFeedChip(2) } }
+                    item { com.rork.kathaai.ui.components.FilterChip("New", state.discoverFeedChip == 3) { viewModel.setDiscoverFeedChip(3) } }
+                }
+            }
+
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = KathaTheme.Spacing.l),
+                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+                ) {
+                    item { com.rork.kathaai.ui.components.FilterChip("All", state.discoverGenreFilter == null) { viewModel.setDiscoverGenreFilter(null) } }
+                    items(Genre.entries.filter { it != Genre.EROTICA || (state.ageVerified && !state.kidsMode) }) { genre ->
+                        com.rork.kathaai.ui.components.GenreChip(genre, state.discoverGenreFilter == genre) { viewModel.setDiscoverGenreFilter(if (state.discoverGenreFilter == genre) null else genre) }
                     }
                 }
             }
@@ -295,6 +344,30 @@ fun HomeScreen(
             }
 
             item { SafeBottomSpacer() }
+        }
+
+        if (showSearchOverlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(KathaTheme.canvas)
+            ) {
+                DiscoverScreen(
+                    state = state,
+                    viewModel = viewModel,
+                    onOpenStory = onOpenStory,
+                    onOpenAuthor = onOpenAuthor
+                )
+                Text(
+                    "Close",
+                    style = KathaTypography.BodyStrong,
+                    color = KathaTheme.accent,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = KathaTheme.Spacing.s, end = KathaTheme.Spacing.l)
+                        .clickable { showSearchOverlay = false }
+                )
+            }
         }
     }
 }

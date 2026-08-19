@@ -510,12 +510,10 @@ struct ReaderView: View {
 
     private var authWall: some View {
         VStack(spacing: 0) {
-            LinearGradient(
-                colors: [readerBg.opacity(0), readerBg],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 60)
+            Rectangle()
+                .fill(readerSurface.opacity(0.96))
+                .frame(height: 60)
+                .blur(radius: 4)
 
             VStack(spacing: KathaTheme.Spacing.m) {
                 Image(systemName: "lock.fill")
@@ -669,7 +667,7 @@ struct ReaderView: View {
                 .foregroundStyle(appState.isBookmarked(story.id) ? KathaTheme.accent : KathaTheme.textSecondary)
             }
 
-            Label(formatCount(story.views), systemImage: "eye")
+            Label(formatCount(story.views), systemImage: "book.pages")
                 .font(KathaFont.Body)
                 .foregroundStyle(KathaTheme.textTertiary)
 

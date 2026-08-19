@@ -23,8 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.LibraryBooks
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,7 +63,6 @@ import com.rork.kathaai.ui.screens.ChapterGenerationScreen
 import com.rork.kathaai.ui.screens.ContinueWizardScreen
 import com.rork.kathaai.ui.screens.CreateScreen
 import com.rork.kathaai.ui.screens.DeleteDraftModal
-import com.rork.kathaai.ui.screens.DiscoverScreen
 import com.rork.kathaai.ui.screens.HomeScreen
 import com.rork.kathaai.ui.screens.LibraryScreen
 import com.rork.kathaai.ui.screens.OnboardingScreen
@@ -473,7 +471,7 @@ fun AppNavigation(initialDeepLink: Uri? = null) {
                 onOpenStoryAnalytics = { s -> viewModel.openStoryAnalytics(s) },
                 onNavigateToCreate = {
                     viewModel.closeDashboard()
-                    viewModel.requestTab(2)
+                    viewModel.requestTab(1)
                 }
             )
         }
@@ -582,7 +580,7 @@ private fun MainScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(selectedTab) {
-        if (selectedTab != 2) {
+        if (selectedTab != 1) {
             viewModel.resetWizard()
         }
     }
@@ -621,52 +619,27 @@ private fun MainScreen(
                 onOpenCredits = { viewModel.openCreditsScreen() },
                 onSignIn = presentAuth
             )
-            1 -> DiscoverScreen(
-                state = state,
-                viewModel = viewModel,
-                onOpenStory = openStory,
-                onOpenAuthor = { viewModel.openAuthorProfile(it) }
-            )
-            2 -> CreateScreen(
+            1 -> CreateScreen(
                 state = state,
                 viewModel = viewModel,
                 onSignIn = presentAuth
             )
-            3 -> LibraryScreen(
+            2 -> LibraryScreen(
                 state = state,
                 viewModel = viewModel,
                 onOpenStory = openStory,
                 onSignIn = presentAuth
             )
-            else -> SettingsScreen(
+            else -> HomeScreen(
                 state = state,
-                onSignIn = presentAuth,
-                onSignOut = { viewModel.signOut() },
-                onDeleteAccount = { viewModel.deleteAccount() },
-                onToggleSepia = { viewModel.toggleReaderSepia() },
-                onViewProfile = { viewModel.openOwnProfile() },
-                onEditProfile = {
-                    viewModel.openOwnProfile()
-                    viewModel.pushProfileRoute(com.rork.kathaai.model.ProfileRoute.EditProfile)
-                },
-                onViewBlockedUsers = {
-                    viewModel.pushProfileRoute(com.rork.kathaai.model.ProfileRoute.BlockedUsers)
-                },
+                viewModel = viewModel,
+                onOpenStory = openStory,
+                onLike = { viewModel.toggleLike(it) },
+                onBookmark = { viewModel.toggleBookmark(it) },
+                onOpenAuthor = { viewModel.openAuthorProfile(it) },
+                onOpenOwnProfile = { viewModel.openOwnProfile() },
                 onOpenCredits = { viewModel.openCreditsScreen() },
-                onOpenPaywall = { viewModel.openSubscriptionPaywall() },
-                onOpenSubscriptionManagement = { viewModel.openSubscriptionManagement() },
-                onOpenDashboard = { viewModel.openDashboard() },
-                onDevTap = { viewModel.registerDevTap() },
-                onOpenReadingLevel = { viewModel.showReadingLevelSheet() },
-                onOpenParentalControls = { viewModel.openParentalControls() },
-                onOpenStreak = { viewModel.openStreakScreen() },
-                onOpenNotifications = { viewModel.openNotificationsScreen() },
-                onOpenInviteFriends = { viewModel.openInviteFriendsScreen() },
-                onOpenStorage = { viewModel.openStorageScreen() },
-                onOpenFontSize = { viewModel.showToast("Font size options coming soon") },
-                onOpenTheme = { viewModel.showToast("Theme options coming soon") },
-                onRate = { viewModel.showToast("Thanks for supporting Katha") },
-                onFaq = { viewModel.showToast("FAQ coming in the next update ✨") }
+                onSignIn = presentAuth
             )
         }
 
@@ -695,7 +668,6 @@ private fun KathaTabBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         TabItem(Icons.Outlined.Home, "Home", selectedTab == 0, Modifier.weight(1f)) { onSelect(0) }
-        TabItem(Icons.Outlined.Explore, "Discover", selectedTab == 1, Modifier.weight(1f)) { onSelect(1) }
 
         Box(
             modifier = Modifier.weight(1f),
@@ -710,7 +682,7 @@ private fun KathaTabBar(
                     .background(KathaTheme.accent)
                     .clickable {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onSelect(2)
+                        onSelect(1)
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -723,8 +695,7 @@ private fun KathaTabBar(
             }
         }
 
-        TabItem(Icons.Outlined.LibraryBooks, "Library", selectedTab == 3, Modifier.weight(1f)) { onSelect(3) }
-        TabItem(Icons.Outlined.Settings, "Settings", selectedTab == 4, Modifier.weight(1f)) { onSelect(4) }
+        TabItem(Icons.Outlined.BookmarkBorder, "Library", selectedTab == 2, Modifier.weight(1f)) { onSelect(2) }
     }
 }
 

@@ -173,7 +173,7 @@ struct LibraryView: View {
         let drafts = all.filter { !$0.isPublished || $0.chapters.contains { !$0.isPublished } }
         return VStack(alignment: .leading, spacing: KathaTheme.Spacing.l) {
             if published.isEmpty && drafts.isEmpty {
-                EmptyState(icon: "pencil.and.outline", title: "Nothing here yet", message: "Write your first story ▸", ctaTitle: "Write your first story ▸", ctaAction: { appState.requestedTab = 2 })
+                EmptyState(icon: "pencil.and.outline", title: "Nothing here yet", message: "Write your first story ▸", ctaTitle: "Write your first story ▸", ctaAction: { appState.requestedTab = 1 })
             } else {
                 if !published.isEmpty {
                     Text("PUBLISHED").font(KathaFont.Meta).foregroundStyle(KathaTheme.textTertiary)

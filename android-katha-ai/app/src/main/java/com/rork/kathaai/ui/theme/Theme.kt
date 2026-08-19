@@ -95,9 +95,9 @@ object KathaTheme {
     val textSecondary: Color @Composable get() = pick(0xFF6B6560, 0xFFA69E93)
     val textTertiary: Color @Composable get() = pick(0xFF9C9691, 0xFF6C655D)
 
-    val accent: Color @Composable get() = pick(0xFFE89F3D, 0xFFE89F3D)
-    val accentPressed: Color @Composable get() = pick(0xFFD18A2A, 0xFFF0B25C)
-    val accentSoft: Color @Composable get() = pick(0xFFFCEFD9, 0xFF3D2F1F)
+    val accent: Color @Composable get() = pick(0xFFFF500A, 0xFFFF7A3D)
+    val accentPressed: Color @Composable get() = pick(0xFFE04600, 0xFFFF9A6A)
+    val accentSoft: Color @Composable get() = pick(0xFFFFE8DC, 0xFF3D2118)
 
     val premium: Color @Composable get() = pick(0xFFC44536, 0xFFD95A4B)
     val premiumSoft: Color @Composable get() = pick(0xFFF5D9D3, 0xFF3D211D)
@@ -180,7 +180,7 @@ object KathaTheme {
 /** Deterministic avatar gradient palettes, defined centrally with the rest of the color system. */
 object AvatarPalettes {
     val all: List<List<Color>> = listOf(
-        listOf(Color(0xFFE89F3D), Color(0xFFD4742A)),
+        listOf(Color(0xFFFF500A), Color(0xFFE04600)),
         listOf(Color(0xFFC45B5B), Color(0xFF8B2D2D)),
         listOf(Color(0xFF4A8A99), Color(0xFF2D5A6B)),
         listOf(Color(0xFF5B8A5B), Color(0xFF3A6B3A)),
@@ -206,7 +206,7 @@ fun Modifier.kathaShadow(token: ShadowToken, shape: RoundedCornerShape): Modifie
     }
 
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFFE89F3D),
+    primary = Color(0xFFFF500A),
     background = Color(0xFFFAF7F2),
     surface = Color(0xFFFFFFFF),
     onBackground = Color(0xFF0F0E0C),
@@ -214,7 +214,7 @@ private val LightScheme = lightColorScheme(
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = Color(0xFFE89F3D),
+    primary = Color(0xFFFF7A3D),
     background = Color(0xFF0B0908),
     surface = Color(0xFF17130F),
     onBackground = Color(0xFFF5F1EA),

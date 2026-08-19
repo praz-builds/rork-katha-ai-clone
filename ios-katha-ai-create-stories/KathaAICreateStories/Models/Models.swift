@@ -128,6 +128,7 @@ struct ProfileRoute: Identifiable, Hashable {
         case following(String, Int)
         case editProfile
         case blockedUsers
+        case settings
     }
 
     let id: String

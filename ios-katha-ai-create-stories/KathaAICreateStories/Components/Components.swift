@@ -562,15 +562,17 @@ struct GenreChip: View {
             Haptics.light()
             action?()
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: genre.icon).font(.system(size: 12))
-                Text(genre.displayName).font(.system(size: 13, weight: .medium))
+            HStack(spacing: KathaTheme.Spacing.xs) {
+                Image(systemName: genre.icon).font(KathaFont.Meta)
+                Text(genre.displayName).font(KathaFont.Caption)
             }
-            .foregroundStyle(isSelected ? .white : KathaTheme.textSecondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .foregroundStyle(isSelected ? Color.white : KathaTheme.textPrimary)
+            .padding(.horizontal, KathaTheme.Spacing.mdLg)
+            .padding(.vertical, KathaTheme.Spacing.s)
             .background(
-                Capsule().fill(isSelected ? KathaTheme.accent : KathaTheme.surface)
+                Capsule()
+                    .fill(isSelected ? Color.black : KathaTheme.surface)
+                    .overlay(Capsule().stroke(isSelected ? Color.black : KathaTheme.borderStrong, lineWidth: 1))
             )
         }
     }
@@ -587,12 +589,14 @@ struct FilterChip: View {
             action?()
         } label: {
             Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(isSelected ? .white : KathaTheme.textSecondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
+                .font(KathaFont.Caption)
+                .foregroundStyle(isSelected ? Color.white : KathaTheme.textPrimary)
+                .padding(.horizontal, KathaTheme.Spacing.mdLg)
+                .padding(.vertical, KathaTheme.Spacing.s)
                 .background(
-                    Capsule().fill(isSelected ? KathaTheme.accent : KathaTheme.surface)
+                    Capsule()
+                        .fill(isSelected ? Color.black : KathaTheme.surface)
+                        .overlay(Capsule().stroke(isSelected ? Color.black : KathaTheme.borderStrong, lineWidth: 1))
                 )
         }
     }
@@ -630,7 +634,7 @@ struct EngagementRow: View {
 
     private var readMetric: some View {
         HStack(spacing: KathaTheme.Spacing.xs) {
-            Image(systemName: "eye")
+            Image(systemName: "book.pages")
             Text(formatCount(views))
         }
         .font(KathaFont.Meta)

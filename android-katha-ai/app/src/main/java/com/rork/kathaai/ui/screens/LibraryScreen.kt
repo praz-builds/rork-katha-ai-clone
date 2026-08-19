@@ -251,7 +251,7 @@ private fun MyStoriesContent(state: KathaUiState, viewModel: AppViewModel) {
     val published = all.filter { it.isPublished && it.chapters.none { chapter -> !chapter.isPublished } }
     val drafts = all.filter { !it.isPublished || it.chapters.any { chapter -> !chapter.isPublished } }
     if (published.isEmpty() && drafts.isEmpty()) {
-        EmptyState(icon = Icons.Outlined.Inbox, title = "Nothing here yet", message = "Write your first story ▸", ctaTitle = "Write your first story ▸", onCta = { viewModel.requestTab(2) })
+        EmptyState(icon = Icons.Outlined.Inbox, title = "Nothing here yet", message = "Write your first story ▸", ctaTitle = "Write your first story ▸", onCta = { viewModel.requestTab(1) })
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
             if (published.isNotEmpty()) {

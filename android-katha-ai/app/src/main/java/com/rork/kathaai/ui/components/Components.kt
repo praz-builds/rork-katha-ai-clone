@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.RemoveRedEye
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -512,7 +513,7 @@ fun EngagementRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.smMd)
     ) {
-        Metric(icon = Icons.Outlined.RemoveRedEye, value = formatCount(story.views), tint = KathaTheme.textSecondary)
+        Metric(icon = Icons.Outlined.MenuBook, value = formatCount(story.views), tint = KathaTheme.textSecondary)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs),
@@ -631,20 +632,21 @@ fun GenreChip(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(if (isSelected) KathaTheme.accent else KathaTheme.surface)
+            .background(if (isSelected) Color.Black else KathaTheme.surface)
+            .border(1.dp, if (isSelected) Color.Black else KathaTheme.borderStrong, RoundedCornerShape(50))
             .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = KathaTheme.Spacing.mdLg, vertical = KathaTheme.Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Icon(
             genre.icon, null,
-            tint = if (isSelected) Color.White else KathaTheme.textSecondary,
+            tint = if (isSelected) Color.White else KathaTheme.textPrimary,
             modifier = Modifier.size(14.dp)
         )
         Text(
             genre.displayName,
-            color = if (isSelected) Color.White else KathaTheme.textSecondary,
+            color = if (isSelected) Color.White else KathaTheme.textPrimary,
             fontSize = KathaTypography.Caption.fontSize,
             fontWeight = KathaTypography.BodyStrong.fontWeight
         )
@@ -665,9 +667,10 @@ fun FilterChip(
         fontWeight = KathaTypography.BodyStrong.fontWeight,
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(if (isSelected) KathaTheme.accent else KathaTheme.surface)
+            .background(if (isSelected) Color.Black else KathaTheme.surface)
+            .border(1.dp, if (isSelected) Color.Black else KathaTheme.borderStrong, RoundedCornerShape(50))
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = KathaTheme.Spacing.mdLg, vertical = KathaTheme.Spacing.s)
     )
 }
 

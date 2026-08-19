@@ -85,6 +85,10 @@ import com.rork.kathaai.ui.components.formatCount
 import com.rork.kathaai.ui.theme.KathaTheme
 import com.rork.kathaai.viewmodel.AppViewModel
 import com.rork.kathaai.viewmodel.KathaUiState
+import com.rork.kathaai.viewmodel.openStreakScreen
+import com.rork.kathaai.viewmodel.openNotificationsScreen
+import com.rork.kathaai.viewmodel.openInviteFriendsScreen
+import com.rork.kathaai.viewmodel.openStorageScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -539,6 +543,31 @@ fun ProfileRouteHost(
         is ProfileRoute.Followers -> FollowersListScreen(route.userId, state, viewModel)
         is ProfileRoute.Following -> FollowingListScreen(route.userId, route.initialTab, state, viewModel, onOpenStory)
         is ProfileRoute.EditProfile -> EditProfileScreen(state, viewModel)
+        is ProfileRoute.Settings -> SettingsScreen(
+            state = state,
+            onSignIn = { viewModel.presentAuthSheet(readerWall = false) },
+            onSignOut = { viewModel.signOut() },
+            onDeleteAccount = { viewModel.deleteAccount() },
+            onToggleSepia = { viewModel.toggleReaderSepia() },
+            onViewProfile = { viewModel.openOwnProfile() },
+            onEditProfile = { viewModel.pushProfileRoute(ProfileRoute.EditProfile) },
+            onViewBlockedUsers = { viewModel.pushProfileRoute(ProfileRoute.BlockedUsers) },
+            onOpenCredits = { viewModel.openCreditsScreen() },
+            onOpenPaywall = { viewModel.openSubscriptionPaywall() },
+            onOpenSubscriptionManagement = { viewModel.openSubscriptionManagement() },
+            onOpenDashboard = { viewModel.openDashboard() },
+            onDevTap = { viewModel.registerDevTap() },
+            onOpenReadingLevel = { viewModel.showReadingLevelSheet() },
+            onOpenParentalControls = { viewModel.openParentalControls() },
+            onOpenStreak = { viewModel.openStreakScreen() },
+            onOpenNotifications = { viewModel.openNotificationsScreen() },
+            onOpenInviteFriends = { viewModel.openInviteFriendsScreen() },
+            onOpenStorage = { viewModel.openStorageScreen() },
+            onOpenFontSize = { viewModel.showToast("Font size options coming soon") },
+            onOpenTheme = { viewModel.showToast("Theme options coming soon") },
+            onRate = { viewModel.showToast("Thanks for supporting Katha") },
+            onFaq = { viewModel.showToast("FAQ coming in the next update") }
+        )
         is ProfileRoute.BlockedUsers -> BlockedUsersScreen(state, viewModel) { viewModel.popProfileRoute() }
     }
 }
@@ -630,8 +659,7 @@ fun AuthorProfileScreen(
                         .clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             if (isOwn) {
-                                viewModel.closeAllProfiles()
-                                viewModel.requestTab(4)
+                                viewModel.pushProfileRoute(ProfileRoute.Settings)
                             } else {
                                 viewModel.showToast("Sharing coming in the next update \u2728")
                             }
@@ -759,7 +787,7 @@ fun AuthorProfileScreen(
                                     ctaTitle = "Write your first story \u25b8",
                                     onCta = {
                                         viewModel.closeAllProfiles()
-                                        viewModel.requestTab(2)
+                                        viewModel.requestTab(1)
                                     }
                                 )
                             }
@@ -1050,7 +1078,7 @@ fun FollowingListScreen(
                         onCta = if (isOwn) {
                             {
                                 viewModel.closeAllProfiles()
-                                viewModel.requestTab(1)
+                                viewModel.requestTab(0)
                             }
                         } else null
                     )
@@ -1089,7 +1117,7 @@ fun FollowingListScreen(
                         onCta = if (isOwn) {
                             {
                                 viewModel.closeAllProfiles()
-                                viewModel.requestTab(1)
+                                viewModel.requestTab(0)
                             }
                         } else null
                     )

@@ -5,6 +5,9 @@ struct HomeView: View {
     @AppStorage("katha.lastOpenTimestamp") private var lastOpenTimestamp: Double = 0
     @State private var isLoading = true
     @State private var welcomeDismissed = false
+    @State private var showSearchOverlay = false
+    @State private var searchText = ""
+    @State private var selectedGenre: Genre? = nil
 
     private var shouldShowWelcome: Bool {
         lastOpenTimestamp > 0 && Date().timeIntervalSince1970 - lastOpenTimestamp > 3 * 24 * 60 * 60 && !welcomeDismissed
@@ -18,7 +21,7 @@ struct HomeView: View {
     }
 
     private var forYouStories: [Story] {
-        Array(appState.discoverFeedStories().prefix(5))
+        Array(visibleStories(appState.discoverFeedStories()).prefix(5))
     }
 
     private var followedWriterStories: [Story] {
@@ -27,6 +30,7 @@ struct HomeView: View {
             .sorted { $0.publishedOffset < $1.publishedOffset }
             .prefix(3)
             .map { $0 }
+            .filter { selectedGenre == nil || $0.genre == selectedGenre }
     }
 
     private var risingStories: [Story] {
@@ -35,6 +39,7 @@ struct HomeView: View {
             .sorted { $0.publishedOffset < $1.publishedOffset }
             .prefix(6)
             .map { $0 }
+            .filter { selectedGenre == nil || $0.genre == selectedGenre }
     }
 
     private var kathaPicks: [Story] {
@@ -42,6 +47,26 @@ struct HomeView: View {
             .filter { $0.authorId == "kathaai" && appState.isStoryVisibleInKidsMode($0) }
             .prefix(3)
             .map { $0 }
+            .filter { selectedGenre == nil || $0.genre == selectedGenre }
+    }
+
+    private func visibleStories(_ stories: [Story]) -> [Story] {
+        stories.filter { story in
+            appState.isStoryVisibleInKidsMode(story) && (selectedGenre == nil || story.genre == selectedGenre)
+        }
+    }
+
+    private var searchResults: [Story] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stories = appState.discoverFeedStories()
+        guard !query.isEmpty else { return visibleStories(stories) }
+        return visibleStories(stories).filter { story in
+            story.title.localizedCaseInsensitiveContains(query) ||
+            story.synopsis.localizedCaseInsensitiveContains(query) ||
+            story.tags.contains { $0.localizedCaseInsensitiveContains(query) } ||
+            story.genre.displayName.localizedCaseInsensitiveContains(query) ||
+            (SeedData.author(id: story.authorId)?.displayName.localizedCaseInsensitiveContains(query) ?? false)
+        }
     }
 
     var body: some View {
@@ -50,6 +75,9 @@ struct HomeView: View {
                 VStack(spacing: KathaTheme.Spacing.xxxl) {
                     header
                         .padding(.top, KathaTheme.Spacing.mdLg)
+                    searchEntry
+                    rankingStrip
+                    genreStrip
 
                     if isLoading {
                         loadingContent
@@ -63,6 +91,13 @@ struct HomeView: View {
             }
             .themedBackground()
             .scrollIndicators(.hidden)
+        }
+        .overlay {
+            if showSearchOverlay {
+                searchOverlay
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .zIndex(2)
+            }
         }
         .onAppear {
             let previousOpen = lastOpenTimestamp
@@ -115,6 +150,102 @@ struct HomeView: View {
                     .background(Capsule().fill(KathaTheme.surface).overlay(Capsule().stroke(KathaTheme.border, lineWidth: 1)))
             }
         }
+    }
+
+    private var searchEntry: some View {
+        Button {
+            Haptics.light()
+            showSearchOverlay = true
+        } label: {
+            HStack(spacing: KathaTheme.Spacing.s) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(KathaTheme.textSecondary)
+                Text("Search stories, authors, genres")
+                    .font(KathaFont.Body)
+                    .foregroundStyle(KathaTheme.textTertiary)
+                Spacer()
+            }
+            .padding(.horizontal, KathaTheme.Spacing.mdLg)
+            .frame(height: 44)
+            .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.surface).overlay(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).stroke(KathaTheme.border, lineWidth: 1)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var rankingStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: KathaTheme.Spacing.s) {
+                FilterChip(title: "For You", isSelected: appState.discoverFeedChip == 0) { appState.discoverFeedChip = 0 }
+                FilterChip(title: "Trending", isSelected: appState.discoverFeedChip == 1) { appState.discoverFeedChip = 1 }
+                FilterChip(title: "Rising", isSelected: appState.discoverFeedChip == 2) { appState.discoverFeedChip = 2 }
+                FilterChip(title: "New", isSelected: appState.discoverFeedChip == 3) { appState.discoverFeedChip = 3 }
+            }
+        }
+    }
+
+    private var genreStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: KathaTheme.Spacing.s) {
+                FilterChip(title: "All", isSelected: selectedGenre == nil) { withAnimation { selectedGenre = nil } }
+                ForEach(Genre.allCases.filter { $0 != .erotica || (appState.ageVerified && !appState.kidsMode) }) { genre in
+                    GenreChip(genre: genre, isSelected: selectedGenre == genre) {
+                        withAnimation { selectedGenre = selectedGenre == genre ? nil : genre }
+                    }
+                }
+            }
+        }
+    }
+
+    private var searchOverlay: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: KathaTheme.Spacing.l) {
+                HStack(spacing: KathaTheme.Spacing.s) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(KathaTheme.textSecondary)
+                    TextField("Search stories, authors, genres", text: $searchText)
+                        .font(KathaFont.Body)
+                        .autocorrectionDisabled()
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(KathaTheme.textTertiary) }
+                    }
+                }
+                .padding(.horizontal, KathaTheme.Spacing.mdLg)
+                .frame(height: 44)
+                .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.surface).overlay(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).stroke(KathaTheme.accent, lineWidth: 1)))
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: KathaTheme.Spacing.s) {
+                        FilterChip(title: "All", isSelected: selectedGenre == nil) { selectedGenre = nil }
+                        ForEach(Genre.allCases.filter { $0 != .erotica || (appState.ageVerified && !appState.kidsMode) }) { genre in
+                            GenreChip(genre: genre, isSelected: selectedGenre == genre) { selectedGenre = selectedGenre == genre ? nil : genre }
+                        }
+                    }
+                }
+
+                if searchResults.isEmpty {
+                    EmptyState(icon: "magnifyingglass", title: "No stories found", message: "Try a different search term or genre filter.")
+                } else {
+                    ScrollView {
+                        VStack(spacing: KathaTheme.Spacing.m) {
+                            ForEach(searchResults) { story in
+                                StoryCard(story: story, isLiked: appState.isLiked(story.id), isBookmarked: appState.isBookmarked(story.id), onLike: { appState.toggleLike(storyId: story.id) }, onBookmark: { appState.toggleBookmark(storyId: story.id) }, onTap: { showSearchOverlay = false; appState.openReader(story: story) }, onAuthorTap: { appState.openAuthorProfile(story.authorId) })
+                            }
+                        }
+                    }
+                }
+                SafeBottomSpacer()
+            }
+            .padding(.horizontal, KathaTheme.Spacing.l)
+            .padding(.top, KathaTheme.Spacing.s)
+            .themedBackground()
+            .navigationTitle("Search")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") { showSearchOverlay = false }
+                }
+            }
+        }
+        .background(KathaTheme.canvas.ignoresSafeArea())
     }
 
     private var loadingContent: some View {

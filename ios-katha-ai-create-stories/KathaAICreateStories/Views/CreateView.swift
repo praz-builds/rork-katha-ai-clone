@@ -247,11 +247,11 @@ private struct PromptFirstComposer: View {
                                 Text(genre.displayName)
                             }
                             .font(KathaFont.Caption)
-                            .foregroundStyle(appState.wizardGenre == genre ? .white : KathaTheme.textPrimary)
-                            .padding(.horizontal, KathaTheme.Spacing.m)
+                            .foregroundStyle(appState.wizardGenre == genre ? Color.white : KathaTheme.textPrimary)
+                            .padding(.horizontal, KathaTheme.Spacing.mdLg)
                             .frame(minHeight: 40)
-                            .background(Capsule().fill(appState.wizardGenre == genre ? KathaTheme.accent : KathaTheme.surface))
-                            .overlay(Capsule().stroke(appState.wizardGenre == genre ? KathaTheme.accent : KathaTheme.border, lineWidth: 1))
+                            .background(Capsule().fill(appState.wizardGenre == genre ? Color.black : KathaTheme.surface))
+                            .overlay(Capsule().stroke(appState.wizardGenre == genre ? Color.black : KathaTheme.borderStrong, lineWidth: 1))
                         }
                     }
                 }
