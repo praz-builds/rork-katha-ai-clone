@@ -92,11 +92,10 @@ struct LibraryView: View {
 
     private var authenticatedContent: some View {
         VStack(spacing: KathaTheme.Spacing.l) {
-            SegmentedControl(options: ["Saved", "History", "Downloads", "My stories"], selection: $selectedTab)
+            SegmentedControl(options: ["Saved", "My Comments", "My Stories"], selection: $selectedTab)
             switch selectedTab {
             case 0: savedTab
-            case 1: historyTab
-            case 2: downloadsTab
+            case 1: myCommentsTab
             default: myStoriesTab
             }
         }
@@ -165,6 +164,58 @@ struct LibraryView: View {
                 }
             }
         }
+    }
+
+    private var myCommentsTab: some View {
+        let comments = appState.userComments.sorted { $0.postedOffsetHours < $1.postedOffsetHours }
+        return VStack(alignment: .leading, spacing: KathaTheme.Spacing.m) {
+            if comments.isEmpty {
+                EmptyState(icon: "bubble.left", title: "No comments yet", message: "Comments and replies you post will appear here.")
+            } else {
+                ForEach(comments) { comment in
+                    Button {
+                        appState.openCommentsSheet(storyId: comment.storyId)
+                    } label: {
+                        VStack(alignment: .leading, spacing: KathaTheme.Spacing.s) {
+                            HStack(spacing: KathaTheme.Spacing.s) {
+                                GeneratedAvatar(username: comment.username, displayName: comment.displayName, size: 32)
+                                VStack(alignment: .leading, spacing: KathaTheme.Spacing.xs) {
+                                    Text(storyTitle(for: comment.storyId))
+                                        .font(KathaFont.BodyStrong)
+                                        .foregroundStyle(KathaTheme.textPrimary)
+                                        .lineLimit(1)
+                                    Text(comment.timeLabel)
+                                        .font(KathaFont.Meta)
+                                        .foregroundStyle(KathaTheme.textTertiary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(KathaFont.Meta)
+                                    .foregroundStyle(KathaTheme.textTertiary)
+                            }
+                            Text(comment.text)
+                                .font(KathaFont.Body)
+                                .foregroundStyle(KathaTheme.textSecondary)
+                                .lineLimit(3)
+                            Label(formatCount(appState.commentLikeCount(comment: comment)), systemImage: appState.isCommentLiked(comment.id) ? "heart.fill" : "heart")
+                                .font(KathaFont.Meta)
+                                .foregroundStyle(appState.isCommentLiked(comment.id) ? KathaTheme.heart : KathaTheme.textTertiary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(KathaTheme.Spacing.md)
+                        .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.surface))
+                        .overlay(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).stroke(KathaTheme.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func storyTitle(for storyId: String) -> String {
+        SeedData.stories.first(where: { $0.id == storyId })?.title
+            ?? appState.publishedStories.first(where: { $0.id == storyId })?.title
+            ?? "Story"
     }
 
     private var myStoriesTab: some View {

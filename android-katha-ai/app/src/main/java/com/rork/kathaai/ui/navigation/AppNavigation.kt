@@ -643,10 +643,12 @@ private fun MainScreen(
             )
         }
 
-        KathaTabBar(
-            selectedTab = selectedTab,
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) { selectedTab = it }
+        if (!state.creationIsEditingText) {
+            KathaTabBar(
+                selectedTab = selectedTab,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) { selectedTab = it }
+        }
     }
 }
 

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.ChatBubble
 import androidx.compose.material.icons.outlined.LibraryBooks
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -112,7 +113,7 @@ fun LibraryScreen(
                     )
                 }
             } else {
-                item { SegmentedControl(listOf("Saved", "History", "Downloads", "My stories"), tabIndex) { tabIndex = it } }
+                item { SegmentedControl(listOf("Saved", "My Comments", "My Stories"), tabIndex) { tabIndex = it } }
                 when (tabIndex) {
                     0 -> {
                         item {
@@ -168,16 +169,7 @@ fun LibraryScreen(
                         }
                     }
                     1 -> {
-                        item { storyList(historyStories, "Stories you've read will appear here.", onOpenStory, viewModel) }
-                    }
-                    2 -> {
-                        if (downloadedStories.isEmpty()) {
-                            item { EmptyState(icon = Icons.Outlined.Inbox, title = "No stories downloaded yet", message = "Tap the download icon in any story to save it for offline.") }
-                        } else {
-                            items(downloadedStories, key = { it.id }) { story ->
-                                StoryCard(story = story, onTap = { onOpenStory(story.id) }, onAuthorTap = { viewModel.openAuthorProfile(story.authorId) })
-                            }
-                        }
+                        item { MyCommentsContent(state = state, viewModel = viewModel) }
                     }
                     else -> {
                         item { MyStoriesContent(state = state, viewModel = viewModel) }
@@ -240,6 +232,44 @@ private fun storyList(stories: List<Story>, emptyMessage: String, onOpenStory: (
         Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
             stories.forEach { story ->
                 StoryCard(story = story, onTap = { onOpenStory(story.id) }, onAuthorTap = { viewModel.openAuthorProfile(story.authorId) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun MyCommentsContent(state: KathaUiState, viewModel: AppViewModel) {
+    val comments = state.userComments.sortedBy { it.postedOffsetHours }
+    if (comments.isEmpty()) {
+        EmptyState(icon = Icons.Outlined.ChatBubble, title = "No comments yet", message = "Comments and replies you post will appear here.")
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.m)) {
+            comments.forEach { comment ->
+                val storyTitle = SeedData.story(comment.storyId)?.title
+                    ?: state.publishedStories.firstOrNull { it.id == comment.storyId }?.title
+                    ?: "Story"
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(KathaTheme.Radius.m))
+                        .background(KathaTheme.surface)
+                        .border(1.dp, KathaTheme.border, RoundedCornerShape(KathaTheme.Radius.m))
+                        .clickable { viewModel.openCommentsSheet(comment.storyId) }
+                        .padding(KathaTheme.Spacing.md),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+                ) {
+                    com.rork.kathaai.ui.components.GeneratedAvatar(comment.username, comment.displayName, 32.dp)
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)) {
+                        Text(storyTitle, style = KathaTypography.BodyStrong, color = KathaTheme.textPrimary, maxLines = 1)
+                        Text(comment.text, style = KathaTypography.Body, color = KathaTheme.textSecondary, maxLines = 3)
+                        Row(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s), verticalAlignment = Alignment.CenterVertically) {
+                            Text(comment.timeLabel, style = KathaTypography.Meta, color = KathaTheme.textTertiary)
+                            Text("${state.commentLikeCount(comment)} likes", style = KathaTypography.Meta, color = if (comment.id in state.likedCommentIds) KathaTheme.heart else KathaTheme.textTertiary)
+                        }
+                    }
+                    Text("›", style = KathaTypography.Title2, color = KathaTheme.textTertiary)
+                }
             }
         }
     }

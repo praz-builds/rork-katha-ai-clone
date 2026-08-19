@@ -213,6 +213,22 @@ private struct PromptFirstComposer: View {
             .padding(KathaTheme.Spacing.l)
             .background(KathaTheme.canvas.opacity(0.96))
         }
+        .scrollDismissesKeyboard(.interactively)
+        .background(KathaTheme.canvas.onTapGesture { promptFocused = false })
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { promptFocused = false }
+                    .font(KathaFont.BodyStrong)
+                    .foregroundStyle(KathaTheme.accent)
+            }
+        }
+        .onChange(of: promptFocused) { _, focused in
+            appState.creationIsEditingText = focused
+        }
+        .onDisappear {
+            appState.creationIsEditingText = false
+        }
         .sheet(isPresented: Binding(get: { appState.showFullScreenPrompt }, set: { appState.showFullScreenPrompt = $0 })) {
             FullScreenPromptEditor()
         }
@@ -237,7 +253,7 @@ private struct PromptFirstComposer: View {
                 .font(KathaFont.BodyStrong)
                 .foregroundStyle(KathaTheme.textPrimary)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: KathaTheme.Spacing.s) {
+                HStack(spacing: KathaTheme.Spacing.xs) {
                     ForEach(Genre.allCases.filter { !appState.kidsMode || $0 != .erotica }) { genre in
                         Button {
                             appState.setWizardGenre(genre)
@@ -507,7 +523,7 @@ private struct AuthorCoverPreview: View {
                     .font(KathaFont.literata(size: 25, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(3)
-                HStack(spacing: KathaTheme.Spacing.s) {
+                HStack(spacing: KathaTheme.Spacing.xs) {
                     if progress < 1 {
                         ProgressView(value: progress)
                             .tint(.white)

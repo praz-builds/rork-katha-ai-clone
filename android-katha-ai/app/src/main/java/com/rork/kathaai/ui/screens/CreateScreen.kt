@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -54,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -115,7 +118,13 @@ private fun PromptFirstComposer(
     var showReadingDialog by remember { mutableStateOf(false) }
     val hasInput = state.wizardTopic.isNotBlank() || state.wizardGenre != null
 
-    Box(modifier = modifier.fillMaxSize()) {
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    Box(modifier = modifier.fillMaxSize().pointerInput(Unit) {
+        detectTapGestures(onTap = {
+            keyboardController?.hide()
+            viewModel.setCreationEditingText(false)
+        })
+    }) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -135,7 +144,7 @@ private fun PromptFirstComposer(
             }
 
             Text("Choose a tone", color = KathaTheme.textPrimary, style = KathaTypography.BodyStrong)
-            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)) {
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)) {
                 items(Genre.entries.filter { !(state.kidsMode && it == Genre.EROTICA) }, key = { it.name }) { genre ->
                     val selected = genre == state.wizardGenre
                     Box(
@@ -209,6 +218,17 @@ private fun PromptFirstComposer(
                 .padding(KathaTheme.Spacing.l),
             verticalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
         ) {
+            if (state.creationIsEditingText) {
+                TextButton(
+                    onClick = {
+                        keyboardController?.hide()
+                        viewModel.setCreationEditingText(false)
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Done", color = KathaTheme.accent, style = KathaTypography.BodyStrong)
+                }
+            }
             state.creationError?.let { Text(it, color = KathaTheme.error, style = KathaTypography.Caption) }
             val valid = state.wizardGenre != null && state.wizardTopic.trim().length >= 8
             PrimaryCTA(
@@ -259,7 +279,9 @@ private fun StoryIdeaEditor(state: KathaUiState, viewModel: AppViewModel) {
                     focusedTextColor = KathaTheme.textPrimary,
                     unfocusedTextColor = KathaTheme.textPrimary
                 ),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { viewModel.setCreationEditingText(it.isFocused) }
             )
             IconButton(onClick = { viewModel.setFullScreenPrompt(true) }, modifier = Modifier.align(Alignment.TopEnd).padding(KathaTheme.Spacing.s)) {
                 Icon(Icons.Outlined.Expand, contentDescription = "Expand story idea editor", tint = KathaTheme.textSecondary)

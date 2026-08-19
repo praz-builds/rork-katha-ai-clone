@@ -39,7 +39,7 @@ struct ChipRow<Item: Identifiable, ChipContent: View>: View {
     let chips: [Item]
     var selectedIndex: Int? = nil
     var horizontalPadding: CGFloat = KathaTheme.Spacing.mdLg
-    var chipSpacing: CGFloat = KathaTheme.Spacing.s
+    var chipSpacing: CGFloat = KathaTheme.Spacing.xs
     let onSelect: ((Int) -> Void)?
     @ViewBuilder let renderChip: (Item, Bool) -> ChipContent
 

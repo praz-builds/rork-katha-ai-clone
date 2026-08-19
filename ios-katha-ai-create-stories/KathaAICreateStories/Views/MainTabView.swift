@@ -33,7 +33,10 @@ struct MainTabView: View {
                 }
             }
 
-            CustomTabBar(selectedTab: $selectedTab)
+            if !appState.creationIsEditingText {
+                CustomTabBar(selectedTab: $selectedTab)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
     }
 }

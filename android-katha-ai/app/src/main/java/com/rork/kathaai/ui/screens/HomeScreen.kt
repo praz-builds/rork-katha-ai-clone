@@ -177,7 +177,7 @@ fun HomeScreen(
             item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = KathaTheme.Spacing.l),
-                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)
                 ) {
                     item { com.rork.kathaai.ui.components.FilterChip("For You", state.discoverFeedChip == 0) { viewModel.setDiscoverFeedChip(0) } }
                     item { com.rork.kathaai.ui.components.FilterChip("Trending", state.discoverFeedChip == 1) { viewModel.setDiscoverFeedChip(1) } }
@@ -189,7 +189,7 @@ fun HomeScreen(
             item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = KathaTheme.Spacing.l),
-                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s)
+                    horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)
                 ) {
                     item { com.rork.kathaai.ui.components.FilterChip("All", state.discoverGenreFilter == null) { viewModel.setDiscoverGenreFilter(null) } }
                     items(Genre.entries.filter { it != Genre.EROTICA || (state.ageVerified && !state.kidsMode) }) { genre ->

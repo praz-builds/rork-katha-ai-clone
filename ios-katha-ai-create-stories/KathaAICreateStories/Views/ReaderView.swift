@@ -89,6 +89,7 @@ struct ReaderView: View {
                         StoryCoverView(story: story, height: 280, titleSize: 24)
                             .padding(.top, isDraftChapter ? 0 : KathaTheme.Spacing.xxl48)
                         metadataSection
+                        readerActionRow
                         authorSection
 
                         if appState.isAuthenticated {
@@ -604,6 +605,38 @@ struct ReaderView: View {
 
     // MARK: - Engagement Bar
 
+    private var readerActionRow: some View {
+        HStack(spacing: KathaTheme.Spacing.s) {
+            readerActionButton(icon: appState.isLiked(story.id) ? "heart.fill" : "heart", title: "Like", isActive: appState.isLiked(story.id)) {
+                appState.toggleLike(storyId: story.id)
+            }
+            readerActionButton(icon: appState.isBookmarked(story.id) ? "bookmark.fill" : "bookmark", title: "Save", isActive: appState.isBookmarked(story.id)) {
+                appState.toggleBookmark(storyId: story.id)
+            }
+            if !isDraftChapter {
+                readerActionButton(icon: "bubble.left", title: "Comment", isActive: false) {
+                    appState.openCommentsSheet(storyId: story.id, chapterId: currentChapter?.id)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    private func readerActionButton(icon: String, title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.light()
+            action()
+        } label: {
+            Label(title, systemImage: icon)
+                .font(KathaFont.Caption)
+                .foregroundStyle(isActive ? KathaTheme.accent : readerTextSecondary)
+                .padding(.horizontal, KathaTheme.Spacing.mdLg)
+                .frame(minHeight: 44)
+                .background(Capsule().fill(readerSurface).overlay(Capsule().stroke(isActive ? KathaTheme.accent : KathaTheme.border, lineWidth: 1)))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var engagementBar: some View {
         HStack(spacing: KathaTheme.Spacing.l) {
             Button {
@@ -717,9 +750,9 @@ private struct ReaderDropCapParagraph: View {
                     .foregroundStyle(textColor)
             }
             Text(parts.letter)
-                .font(KathaFont.literata(size: bodySize * 3, weight: .bold))
+                .font(KathaFont.literata(size: bodySize * 2.2, weight: .bold))
                 .foregroundStyle(accent)
-                .frame(width: bodySize * 1.15, height: bodySize * 3.05, alignment: .topLeading)
+                .frame(width: bodySize * 0.95, height: bodySize * 2.25, alignment: .topLeading)
                 .padding(.trailing, KathaTheme.Spacing.xs)
                 .padding(.bottom, KathaTheme.Spacing.xs)
             Text(parts.remainder)

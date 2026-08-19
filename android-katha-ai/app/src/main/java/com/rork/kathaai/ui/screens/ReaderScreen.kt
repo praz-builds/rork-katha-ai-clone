@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -215,6 +216,17 @@ fun ReaderScreen(
             }
 
             item { StoryCover(story, height = 260.dp, titleSize = 24) }
+
+            // Reader actions stay visible below the story metadata.
+            item {
+                ReaderActionRow(
+                    story = story,
+                    state = state,
+                    onLike = onLike,
+                    onBookmark = onBookmark,
+                    onComments = { onOpenComments(story.id) }
+                )
+            }
 
             // Metadata with series progress badge
             item {
@@ -749,6 +761,39 @@ fun ReaderScreen(
 }
 
 @Composable
+private fun ReaderActionRow(
+    story: Story,
+    state: KathaUiState,
+    onLike: () -> Unit,
+    onBookmark: () -> Unit,
+    onComments: () -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.s), verticalAlignment = Alignment.CenterVertically) {
+        ReaderActionButton(if (story.id in state.likedStoryIds) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, "Like", story.id in state.likedStoryIds, onLike)
+        ReaderActionButton(if (story.id in state.bookmarkedStoryIds) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder, "Save", story.id in state.bookmarkedStoryIds, onBookmark)
+        ReaderActionButton(Icons.Outlined.ChatBubble, "Comment", false, onComments)
+    }
+}
+
+@Composable
+private fun ReaderActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, isActive: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(KathaTheme.Radius.xl))
+            .background(KathaTheme.surface)
+            .border(1.dp, if (isActive) KathaTheme.accent else KathaTheme.border, RoundedCornerShape(KathaTheme.Radius.xl))
+            .clickable { onClick() }
+            .padding(horizontal = KathaTheme.Spacing.mdLg)
+            .heightIn(min = 44.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(KathaTheme.Spacing.xs)
+    ) {
+        Icon(icon, label, tint = if (isActive) KathaTheme.accent else KathaTheme.textSecondary, modifier = Modifier.size(18.dp))
+        Text(label, style = KathaTypography.Caption, color = if (isActive) KathaTheme.accent else KathaTheme.textSecondary)
+    }
+}
+
+@Composable
 private fun ReaderDropCapParagraph(text: String, textColor: Color, accent: Color) {
     val letterIndex = text.indexOfFirst { it.isLetter() }
     if (letterIndex < 0) {
@@ -764,11 +809,11 @@ private fun ReaderDropCapParagraph(text: String, textColor: Color, accent: Color
         }
         Text(
             letter,
-            style = KathaTypography.readerBody(54),
+            style = KathaTypography.readerBody(40),
             color = accent,
-            lineHeight = 54.sp,
+            lineHeight = 40.sp,
             modifier = Modifier
-                .height(84.dp)
+                .height(60.dp)
                 .padding(end = KathaTheme.Spacing.xs)
         )
         Text(remainder, style = KathaTypography.readerBody(18), color = textColor, lineHeight = 28.sp)

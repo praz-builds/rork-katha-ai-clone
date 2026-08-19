@@ -864,7 +864,7 @@ fun <T> ChipRow(
     chips: List<T>,
     selectedIndex: Int? = null,
     horizontalPadding: Dp = KathaTheme.Spacing.mdLg,
-    chipSpacing: Dp = KathaTheme.Spacing.s,
+    chipSpacing: Dp = KathaTheme.Spacing.xs,
     onSelect: ((Int) -> Unit)? = null,
     renderChip: @Composable (T, Boolean) -> Unit
 ) {

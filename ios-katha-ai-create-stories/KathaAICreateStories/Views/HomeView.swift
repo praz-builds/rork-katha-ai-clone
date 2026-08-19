@@ -157,7 +157,7 @@ struct HomeView: View {
             Haptics.light()
             showSearchOverlay = true
         } label: {
-            HStack(spacing: KathaTheme.Spacing.s) {
+            HStack(spacing: KathaTheme.Spacing.xs) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(KathaTheme.textSecondary)
                 Text("Search stories, authors, genres")
@@ -174,7 +174,7 @@ struct HomeView: View {
 
     private var rankingStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: KathaTheme.Spacing.s) {
+            HStack(spacing: KathaTheme.Spacing.xs) {
                 FilterChip(title: "For You", isSelected: appState.discoverFeedChip == 0) { appState.discoverFeedChip = 0 }
                 FilterChip(title: "Trending", isSelected: appState.discoverFeedChip == 1) { appState.discoverFeedChip = 1 }
                 FilterChip(title: "Rising", isSelected: appState.discoverFeedChip == 2) { appState.discoverFeedChip = 2 }
@@ -185,7 +185,7 @@ struct HomeView: View {
 
     private var genreStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: KathaTheme.Spacing.s) {
+            HStack(spacing: KathaTheme.Spacing.xs) {
                 FilterChip(title: "All", isSelected: selectedGenre == nil) { withAnimation { selectedGenre = nil } }
                 ForEach(Genre.allCases.filter { $0 != .erotica || (appState.ageVerified && !appState.kidsMode) }) { genre in
                     GenreChip(genre: genre, isSelected: selectedGenre == genre) {
@@ -199,7 +199,7 @@ struct HomeView: View {
     private var searchOverlay: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: KathaTheme.Spacing.l) {
-                HStack(spacing: KathaTheme.Spacing.s) {
+                HStack(spacing: KathaTheme.Spacing.xs) {
                     Image(systemName: "magnifyingglass").foregroundStyle(KathaTheme.textSecondary)
                     TextField("Search stories, authors, genres", text: $searchText)
                         .font(KathaFont.Body)
@@ -213,7 +213,7 @@ struct HomeView: View {
                 .background(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).fill(KathaTheme.surface).overlay(RoundedRectangle(cornerRadius: KathaTheme.Radius.m).stroke(KathaTheme.accent, lineWidth: 1)))
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: KathaTheme.Spacing.s) {
+                    HStack(spacing: KathaTheme.Spacing.xs) {
                         FilterChip(title: "All", isSelected: selectedGenre == nil) { selectedGenre = nil }
                         ForEach(Genre.allCases.filter { $0 != .erotica || (appState.ageVerified && !appState.kidsMode) }) { genre in
                             GenreChip(genre: genre, isSelected: selectedGenre == genre) { selectedGenre = selectedGenre == genre ? nil : genre }

@@ -105,6 +105,7 @@ data class KathaUiState(
     val creationPhase: com.rork.kathaai.model.CreationPhase = com.rork.kathaai.model.CreationPhase.COMPOSER,
     val creationCoverProgress: Float = 0f,
     val creationRevisionPrompt: String = "",
+    val creationIsEditingText: Boolean = false,
     val creationError: String? = null,
     val isRevising: Boolean = false,
     val showFullScreenPrompt: Boolean = false,
@@ -1107,6 +1108,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setFullScreenPrompt(isPresented: Boolean) {
         _uiState.update { it.copy(showFullScreenPrompt = isPresented) }
+    }
+
+    fun setCreationEditingText(isEditing: Boolean) {
+        _uiState.update { it.copy(creationIsEditingText = isEditing) }
     }
 
     private fun persistCreationComposer() {
