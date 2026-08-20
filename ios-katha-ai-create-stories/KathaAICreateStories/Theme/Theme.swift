@@ -157,6 +157,40 @@ enum KathaTheme {
     }
 }
 
+// MARK: - Intro onboarding tokens
+
+enum KathaIntroTheme {
+    static let orange = Color(hex: 0xFF6B1A)
+    static let orangePress = Color(hex: 0xE5560A)
+    static let orangeDeep = Color(hex: 0xB15A18)
+    static let orangeEdit = Color(hex: 0x8A3E12)
+    static let ink = Color(hex: 0x1E1A16)
+    static let inkSoft = Color(hex: 0x2A231C)
+    static let inkBody2 = Color(hex: 0x3A2E20)
+    static let muted = Color(hex: 0x6B625A)
+    static let muted2 = Color(hex: 0x8A7F73)
+    static let muted3 = Color(hex: 0xB49A82)
+    static let sheet = Color(hex: 0xFAF7F2)
+    static let card = Color.white
+    static let dotIdle = Color(hex: 0xDED5C8)
+    static let hairline = Color(hex: 0xF0E7D6)
+    static let chipPeach = Color(hex: 0xFFF1E5)
+    static let coverInk = Color(hex: 0x16110E)
+    static let phoneBackground = Color(hex: 0xFBF6EC)
+    static let shadowWarm = Color(hex: 0x7A2E0E)
+    static let bookTealStart = Color(hex: 0x2E5D57)
+    static let bookTealEnd = Color(hex: 0x1C3A36)
+    static let bookTitle = Color(hex: 0xF1F5F2)
+    static let notificationSub = Color(hex: 0xB7ADA1)
+    static let coverScrim = Color(hex: 0x181410)
+    static let heroBackground = RadialGradient(
+        gradient: Gradient(colors: [Color(hex: 0xFEFBF3), Color(hex: 0xF3EAD8)]),
+        center: UnitPoint(x: 0.5, y: 0.3),
+        startRadius: 0,
+        endRadius: 470
+    )
+}
+
 // MARK: - Typography
 
 enum KathaFont {
@@ -197,6 +231,10 @@ enum KathaFont {
 
     static func bricollage(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         bricolageAvailable ? Font.custom("Bricolage Grotesque", size: size).weight(weight) : Font.system(size: size, weight: weight)
+    }
+
+    static func bricolage(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
+        bricollage(size: size, weight: weight)
     }
 
     static func hanken(size: CGFloat, weight: Font.Weight = .regular) -> Font {

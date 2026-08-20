@@ -45,6 +45,37 @@ val BalooFamily = FontFamily(
     Font(R.font.baloo_2, FontWeight.ExtraBold)
 )
 
+/** Exact tokens for the native onboarding handoff. */
+object KathaIntroTheme {
+    val orange = Color(0xFFFF6B1A)
+    val orangePress = Color(0xFFE5560A)
+    val orangeDeep = Color(0xFFB15A18)
+    val orangeEdit = Color(0xFF8A3E12)
+    val ink = Color(0xFF1E1A16)
+    val inkSoft = Color(0xFF2A231C)
+    val inkBody2 = Color(0xFF3A2E20)
+    val muted = Color(0xFF6B625A)
+    val muted2 = Color(0xFF8A7F73)
+    val muted3 = Color(0xFFB49A82)
+    val sheet = Color(0xFFFAF7F2)
+    val card = Color.White
+    val dotIdle = Color(0xFFDED5C8)
+    val hairline = Color(0xFFF0E7D6)
+    val chipPeach = Color(0xFFFFF1E5)
+    val coverInk = Color(0xFF16110E)
+    val phoneBackground = Color(0xFFFBF6EC)
+    val heroStart = Color(0xFFFEFBF3)
+    val heroEnd = Color(0xFFF3EAD8)
+    val shadowWarm = Color(0xFF7A2E0E)
+    val bookTealStart = Color(0xFF2E5D57)
+    val bookTealEnd = Color(0xFF1C3A36)
+    val bookTitle = Color(0xFFF1F5F2)
+    val notificationSub = Color(0xFFB7ADA1)
+    val coverScrimTransparent = Color(0x00181410)
+    val coverScrimMid = Color(0x1F181410)
+    val coverScrimStrong = Color(0xD1181410)
+}
+
 /** Named typography tokens shared by every Compose screen. */
 object KathaTypography {
     val Display: TextStyle = TextStyle(fontFamily = BricolageFamily, fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold)

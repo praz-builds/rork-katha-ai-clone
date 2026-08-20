@@ -66,7 +66,7 @@ import com.rork.kathaai.ui.screens.DeleteDraftModal
 import com.rork.kathaai.ui.screens.HomeScreen
 import com.rork.kathaai.ui.screens.LibraryScreen
 import com.rork.kathaai.ui.screens.OnboardingScreen
-import com.rork.kathaai.ui.screens.IntroScreen
+import com.rork.kathaai.ui.screens.KathaOnboardingIntro
 import com.rork.kathaai.ui.screens.ProfileSetupScreen
 import com.rork.kathaai.ui.screens.PublishConfirmationModal
 import com.rork.kathaai.ui.screens.ReaderScreen
@@ -157,7 +157,7 @@ fun AppNavigation(initialDeepLink: Uri? = null) {
             composable(Routes.SPLASH) { SplashScreen() }
 
             composable(Routes.INTRO) {
-                IntroScreen(viewModel = viewModel)
+                KathaOnboardingIntro(onFinish = viewModel::completeIntro)
             }
 
             composable(Routes.ONBOARDING) {

@@ -15,8 +15,11 @@ struct ContentView: View {
                 SplashView()
                     .transition(.opacity)
             } else if appState.appPhase == .intro {
-                IntroView()
-                    .transition(.opacity)
+                KathaOnboardingView {
+                    Haptics.success()
+                    appState.completeIntro()
+                }
+                .transition(.opacity)
             } else if appState.appPhase == .onboarding {
                 OnboardingView()
                     .transition(.opacity)
