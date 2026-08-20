@@ -9,6 +9,7 @@ import SwiftUI
 
 enum AppPhase: Equatable {
     case splash
+    case intro
     case onboarding
     case main
 }
@@ -363,6 +364,10 @@ final class AppState {
         defaults.bool(forKey: "katha.onboarding.completed")
     }
 
+    var hasCompletedIntro: Bool {
+        defaults.bool(forKey: "katha.intro.completed")
+    }
+
     var hasUnreadNewChapters: Bool {
         !newChapterNotifications.isEmpty && newChapterNotifications.contains { !dismissedBannerStoryIds.contains($0.storyId) }
     }
@@ -578,8 +583,21 @@ final class AppState {
             try? await Task.sleep(for: .milliseconds(800))
             guard let self else { return }
             withAnimation(.easeInOut(duration: 0.3)) {
-                appPhase = hasCompletedOnboarding ? .main : .onboarding
+                if hasCompletedOnboarding {
+                    appPhase = .main
+                } else if hasCompletedIntro {
+                    appPhase = .onboarding
+                } else {
+                    appPhase = .intro
+                }
             }
+        }
+    }
+
+    func completeIntro() {
+        defaults.set(true, forKey: "katha.intro.completed")
+        withAnimation(.easeInOut(duration: 0.3)) {
+            appPhase = .onboarding
         }
     }
 
@@ -758,6 +776,7 @@ final class AppState {
         defaults.removeObject(forKey: "katha.blockedUsers")
         defaults.removeObject(forKey: "katha.userComments")
         defaults.set(false, forKey: "katha.onboarding.completed")
+        defaults.set(false, forKey: "katha.intro.completed")
         showAuthSheet = false
         showProfileSetup = false
         showReader = false

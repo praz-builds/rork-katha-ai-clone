@@ -55,9 +55,17 @@ enum KathaTheme {
     static let textSecondary = Color(light: 0x6B6560, dark: 0xA69E93)
     static let textTertiary = Color(light: 0x9C9691, dark: 0x6C655D)
 
-    static let accent = Color(light: 0xFF500A, dark: 0xFF7A3D)
-    static let accentPressed = Color(light: 0xE04600, dark: 0xFF9A6A)
-    static let accentSoft = Color(light: 0xFFE8DC, dark: 0x3D2118)
+    static let accent = Color(light: 0xFF6B1A, dark: 0xFF8A3D)
+    static let accentPressed = Color(light: 0xE85610, dark: 0xFFB17A)
+    static let accentSoft = Color(light: 0xFFE5D5, dark: 0x3D2118)
+
+    // Intro-only parchment tokens.
+    static let introBackground = Color(light: 0xF6ECDC, dark: 0x211A15)
+    static let introPanel = Color(light: 0xFFFDF9, dark: 0x2A211B)
+    static let introInk = Color(light: 0x2A2320, dark: 0xFFF6EC)
+    static let introMuted = Color(light: 0x6B5F52, dark: 0xC6B7A4)
+    static let introBorder = Color(light: 0xECDFCA, dark: 0x4A392D)
+    static let introInactiveDot = Color(light: 0xDED5C8, dark: 0x675346)
 
     static let premium = Color(light: 0xC44536, dark: 0xD95A4B)
     static let premiumSoft = Color(light: 0xF5D9D3, dark: 0x3D211D)
@@ -152,61 +160,64 @@ enum KathaTheme {
 // MARK: - Typography
 
 enum KathaFont {
-    static var literataAvailable = false
+    static var bricolageAvailable = false
+    static var hankenAvailable = false
+    static var balooAvailable = false
 
     static func checkAvailability() {
-        literataAvailable = UIFont(name: "Literata", size: 16) != nil
+        bricolageAvailable = UIFont(name: "Bricolage Grotesque", size: 16) != nil
+        hankenAvailable = UIFont(name: "Hanken Grotesk", size: 16) != nil
+        balooAvailable = UIFont(name: "Baloo 2", size: 16) != nil
     }
 
-    // Named system UI tokens.
-    static let Display = Font.system(size: 32, weight: .semibold)
-    static let Title1 = Font.system(size: 24, weight: .semibold)
-    static let Title2 = Font.system(size: 18, weight: .semibold)
-    static let Body = Font.system(size: 15, weight: .regular)
-    static let BodyStrong = Font.system(size: 15, weight: .medium)
-    static let Caption = Font.system(size: 13, weight: .regular)
-    static let Meta = Font.system(size: 12, weight: .medium)
+    // Shared display and interface roles.
+    static let Display = bricollage(size: 32, weight: .semibold)
+    static let Title1 = bricollage(size: 24, weight: .semibold)
+    static let Title2 = bricollage(size: 18, weight: .semibold)
+    static let Body = hanken(size: 15)
+    static let BodyStrong = hanken(size: 15, weight: .semibold)
+    static let Caption = hanken(size: 13)
+    static let Meta = hanken(size: 12, weight: .semibold)
 
-    // Named Literata tokens. Literata is intentionally scoped to reading, recap, wordmarks, and avatars.
-    static let ReaderStoryTitle = literata(size: 34, weight: .bold)
-    static let ReaderChapterTitle = literata(size: 28, weight: .semibold)
-    static let ReaderChapterNumber = literataItalic(size: 14)
-    static var ReaderBody: Font { readerBody(size: 18) }
-    static var ReaderBodyItalic: Font { literataItalic(size: 18) }
-    static var ReaderBodyBold: Font { literata(size: 18, weight: .semibold) }
-    static let Recap = literataItalic(size: 15)
-    static let Wordmark = literata(size: 40, weight: .bold)
-    static let PremiumWordmark = literata(size: 32, weight: .bold)
-    static let AvatarInitial = literata(size: 18, weight: .bold)
+    // Reader roles intentionally use the same sans-serif system for a unified product voice.
+    static let ReaderStoryTitle = bricollage(size: 34, weight: .bold)
+    static let ReaderChapterTitle = bricollage(size: 28, weight: .semibold)
+    static let ReaderChapterNumber = hanken(size: 14).italic()
+    static var ReaderBody: Font { hanken(size: 18) }
+    static var ReaderBodyItalic: Font { hanken(size: 18).italic() }
+    static var ReaderBodyBold: Font { hanken(size: 18, weight: .semibold) }
+    static let Recap = hanken(size: 15).italic()
+    static let Wordmark = baloo(size: 40, weight: .heavy)
+    static let PremiumWordmark = baloo(size: 32, weight: .heavy)
+    static let AvatarInitial = hanken(size: 18, weight: .bold)
 
     static func readerBody(size: CGFloat) -> Font {
-        literata(size: size, weight: .regular)
+        hanken(size: size)
     }
 
-    static func literata(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        if literataAvailable {
-            return Font.custom("Literata", size: size).weight(weight)
-        }
-        return Font.system(size: size, weight: weight, design: .serif)
+    static func bricollage(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        bricolageAvailable ? Font.custom("Bricolage Grotesque", size: size).weight(weight) : Font.system(size: size, weight: weight)
     }
 
-    static func literataItalic(size: CGFloat) -> Font {
-        if literataAvailable {
-            return Font.custom("Literata-Italic", size: size)
-        }
-        return Font.system(size: size, design: .serif).italic()
+    static func hanken(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        hankenAvailable ? Font.custom("Hanken Grotesk", size: size).weight(weight) : Font.system(size: size, weight: weight)
     }
 
-    static func avatarInitial(size: CGFloat) -> Font {
-        literata(size: size, weight: .bold)
+    static func baloo(size: CGFloat, weight: Font.Weight = .heavy) -> Font {
+        balooAvailable ? Font.custom("Baloo 2", size: size).weight(weight) : Font.system(size: size, weight: weight)
     }
+
+    // Compatibility aliases for legacy reader call sites; they now resolve to Hanken Grotesk.
+    static func literata(size: CGFloat, weight: Font.Weight = .regular) -> Font { hanken(size: size, weight: weight) }
+    static func literataItalic(size: CGFloat) -> Font { hanken(size: size).italic() }
+    static func avatarInitial(size: CGFloat) -> Font { hanken(size: size, weight: .bold) }
 }
 
 // MARK: - Font Registration
 
 enum FontLoader {
     static func register() {
-        for name in ["Literata", "Literata-Italic"] {
+        for name in ["BricolageGrotesque", "HankenGrotesk", "Baloo2", "Literata", "Literata-Italic"] {
             guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else { continue }
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
         }
@@ -221,7 +232,7 @@ struct AvatarPalette: Identifiable, Hashable {
     let colors: [Color]
 
     static let palettes: [AvatarPalette] = [
-        AvatarPalette(id: 0, colors: [Color(hex: 0xFF500A), Color(hex: 0xE04600)]),
+        AvatarPalette(id: 0, colors: [Color(hex: 0xFF6B1A), Color(hex: 0xE85610)]),
         AvatarPalette(id: 1, colors: [Color(hex: 0xC45B5B), Color(hex: 0x8B2D2D)]),
         AvatarPalette(id: 2, colors: [Color(hex: 0x4A8A99), Color(hex: 0x2D5A6B)]),
         AvatarPalette(id: 3, colors: [Color(hex: 0x5B8A5B), Color(hex: 0x3A6B3A)]),

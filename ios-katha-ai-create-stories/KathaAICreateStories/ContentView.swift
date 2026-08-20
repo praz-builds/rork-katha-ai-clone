@@ -14,6 +14,9 @@ struct ContentView: View {
             if appState.appPhase == .splash {
                 SplashView()
                     .transition(.opacity)
+            } else if appState.appPhase == .intro {
+                IntroView()
+                    .transition(.opacity)
             } else if appState.appPhase == .onboarding {
                 OnboardingView()
                     .transition(.opacity)

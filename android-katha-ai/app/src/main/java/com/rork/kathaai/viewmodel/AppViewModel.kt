@@ -88,6 +88,7 @@ data class KathaUiState(
     val toastMessage: String? = null,
     val toastIsWelcome: Boolean = false,
     val onboardingCompleted: Boolean = false,
+    val introCompleted: Boolean = false,
     val onboardingPurpose: String? = null,
     val reopenStoryId: String? = null,
     val reopenStoryChapterIndex: Int = 0,
@@ -417,6 +418,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 kidsSearchSuggestionsEnabled = prefs.getBoolean(KEY_KIDS_SEARCH, true),
                 ageVerified = prefs.getBoolean(KEY_AGE_VERIFIED, false),
                 onboardingCompleted = prefs.getBoolean(KEY_ONBOARDED, false),
+                introCompleted = prefs.getBoolean(KEY_INTRO_COMPLETED, false),
                 onboardingPurpose = prefs.getString(KEY_ONBOARDING_PURPOSE, null),
                 lastUsernameChange = prefs.getLong(KEY_LAST_USERNAME_CHANGE, 0L).takeIf { ts -> ts > 0L },
                 likedCommentIds = prefs.getStringSet(KEY_LIKED_COMMENTS, emptySet()).orEmpty(),
@@ -528,7 +530,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }.apply()
     }
 
-    // MARK: - Onboarding
+    // MARK: - Intro & onboarding
+
+    fun completeIntro() {
+        prefs.edit().putBoolean(KEY_INTRO_COMPLETED, true).apply()
+        _uiState.update { it.copy(introCompleted = true) }
+    }
 
     fun completeOnboarding(purpose: String) {
         prefs.edit().putBoolean(KEY_ONBOARDED, true).putString(KEY_ONBOARDING_PURPOSE, purpose).apply()
@@ -2010,6 +2017,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_FOLLOWED_STORIES = "followedStories"
         const val KEY_SEPIA = "readerSepia"
         const val KEY_ONBOARDED = "onboardingCompleted"
+        const val KEY_INTRO_COMPLETED = "introCompleted"
         const val KEY_ONBOARDING_PURPOSE = "onboarding_purpose"
         const val KEY_LAST_USERNAME_CHANGE = "lastUsernameChange"
         const val KEY_LIKED_COMMENTS = "likedComments"

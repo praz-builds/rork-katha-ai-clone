@@ -23,34 +23,48 @@ import androidx.compose.ui.unit.sp
 import com.rork.kathaai.R
 import com.rork.kathaai.model.Genre
 
-/** Literata is reserved for reading content, recap text, wordmarks, and avatar initials. */
-val LiterataFamily = FontFamily(
-    Font(R.font.literata, FontWeight.Normal),
-    Font(R.font.literata, FontWeight.SemiBold),
-    Font(R.font.literata, FontWeight.Bold),
-    Font(R.font.literata_italic, FontWeight.Normal, FontStyle.Italic)
+/** Bricolage Grotesque is the display family for headings and titles. */
+val BricolageFamily = FontFamily(
+    Font(R.font.bricolage_grotesque, FontWeight.Normal),
+    Font(R.font.bricolage_grotesque, FontWeight.SemiBold),
+    Font(R.font.bricolage_grotesque, FontWeight.Bold),
+    Font(R.font.bricolage_grotesque, FontWeight.ExtraBold)
+)
+
+/** Hanken Grotesk is the readable family for body copy and interface text. */
+val HankenFamily = FontFamily(
+    Font(R.font.hanken_grotesk, FontWeight.Normal),
+    Font(R.font.hanken_grotesk, FontWeight.Medium),
+    Font(R.font.hanken_grotesk, FontWeight.SemiBold),
+    Font(R.font.hanken_grotesk, FontWeight.Bold)
+)
+
+/** Baloo 2 is reserved for the KathaAI wordmark. */
+val BalooFamily = FontFamily(
+    Font(R.font.baloo_2, FontWeight.Bold),
+    Font(R.font.baloo_2, FontWeight.ExtraBold)
 )
 
 /** Named typography tokens shared by every Compose screen. */
 object KathaTypography {
-    val Display: TextStyle = TextStyle(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold)
-    val Title1: TextStyle = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold)
-    val Title2: TextStyle = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
-    val Body: TextStyle = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal)
-    val BodyStrong: TextStyle = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium)
-    val Caption: TextStyle = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal)
-    val Meta: TextStyle = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium)
+    val Display: TextStyle = TextStyle(fontFamily = BricolageFamily, fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold)
+    val Title1: TextStyle = TextStyle(fontFamily = BricolageFamily, fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold)
+    val Title2: TextStyle = TextStyle(fontFamily = BricolageFamily, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
+    val Body: TextStyle = TextStyle(fontFamily = HankenFamily, fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal)
+    val BodyStrong: TextStyle = TextStyle(fontFamily = HankenFamily, fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
+    val Caption: TextStyle = TextStyle(fontFamily = HankenFamily, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal)
+    val Meta: TextStyle = TextStyle(fontFamily = HankenFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
 
-    val ReaderStoryTitle: TextStyle = TextStyle(fontFamily = LiterataFamily, fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
-    val ReaderChapterTitle: TextStyle = TextStyle(fontFamily = LiterataFamily, fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.SemiBold)
-    val ReaderChapterNumber: TextStyle = TextStyle(fontFamily = LiterataFamily, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, fontStyle = FontStyle.Italic)
+    val ReaderStoryTitle: TextStyle = TextStyle(fontFamily = BricolageFamily, fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
+    val ReaderChapterTitle: TextStyle = TextStyle(fontFamily = BricolageFamily, fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.SemiBold)
+    val ReaderChapterNumber: TextStyle = TextStyle(fontFamily = HankenFamily, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, fontStyle = FontStyle.Italic)
     val ReaderBody: TextStyle get() = readerBody(18)
-    val ReaderBodyItalic: TextStyle get() = TextStyle(fontFamily = LiterataFamily, fontSize = 18.sp, lineHeight = 28.sp, fontStyle = FontStyle.Italic)
-    val ReaderBodyBold: TextStyle get() = TextStyle(fontFamily = LiterataFamily, fontSize = 18.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
-    val Recap: TextStyle = TextStyle(fontFamily = LiterataFamily, fontSize = 15.sp, lineHeight = 22.sp, fontStyle = FontStyle.Italic)
-    val Wordmark: TextStyle = TextStyle(fontFamily = LiterataFamily, fontSize = 40.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
-    val PremiumWordmark: TextStyle = TextStyle(fontFamily = LiterataFamily, fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold)
-    val AvatarInitial: TextStyle = TextStyle(fontFamily = LiterataFamily, fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
+    val ReaderBodyItalic: TextStyle get() = TextStyle(fontFamily = HankenFamily, fontSize = 18.sp, lineHeight = 28.sp, fontStyle = FontStyle.Italic)
+    val ReaderBodyBold: TextStyle get() = TextStyle(fontFamily = HankenFamily, fontSize = 18.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
+    val Recap: TextStyle = TextStyle(fontFamily = HankenFamily, fontSize = 15.sp, lineHeight = 22.sp, fontStyle = FontStyle.Italic)
+    val Wordmark: TextStyle = TextStyle(fontFamily = BalooFamily, fontSize = 40.sp, lineHeight = 48.sp, fontWeight = FontWeight.ExtraBold)
+    val PremiumWordmark: TextStyle = TextStyle(fontFamily = BalooFamily, fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.ExtraBold)
+    val AvatarInitial: TextStyle = TextStyle(fontFamily = HankenFamily, fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
 
     fun readerBody(size: Int): TextStyle {
         val lineHeight: Int = when (size) {
@@ -60,19 +74,19 @@ object KathaTypography {
             22 -> 32
             else -> 28
         }
-        return TextStyle(fontFamily = LiterataFamily, fontSize = size.sp, lineHeight = lineHeight.sp, fontWeight = FontWeight.Normal)
+        return TextStyle(fontFamily = HankenFamily, fontSize = size.sp, lineHeight = lineHeight.sp, fontWeight = FontWeight.Normal)
     }
 }
 
 /** Compatibility helpers retained while screens migrate to named tokens. */
 fun serif(size: Int, weight: FontWeight = FontWeight.Normal): TextStyle = TextStyle(
-    fontFamily = LiterataFamily,
+    fontFamily = HankenFamily,
     fontSize = size.sp,
     fontWeight = weight
 )
 
 fun serifItalic(size: Int): TextStyle = TextStyle(
-    fontFamily = LiterataFamily,
+    fontFamily = HankenFamily,
     fontSize = size.sp,
     fontStyle = FontStyle.Italic
 )
@@ -95,9 +109,16 @@ object KathaTheme {
     val textSecondary: Color @Composable get() = pick(0xFF6B6560, 0xFFA69E93)
     val textTertiary: Color @Composable get() = pick(0xFF9C9691, 0xFF6C655D)
 
-    val accent: Color @Composable get() = pick(0xFFFF500A, 0xFFFF7A3D)
-    val accentPressed: Color @Composable get() = pick(0xFFE04600, 0xFFFF9A6A)
-    val accentSoft: Color @Composable get() = pick(0xFFFFE8DC, 0xFF3D2118)
+    val accent: Color @Composable get() = pick(0xFFFF6B1A, 0xFFFF8A3D)
+    val accentPressed: Color @Composable get() = pick(0xFFE85610, 0xFFFFB17A)
+    val accentSoft: Color @Composable get() = pick(0xFFFFE5D5, 0xFF3D2118)
+
+    val introBackground: Color @Composable get() = pick(0xFFF6ECDC, 0xFF211A15)
+    val introPanel: Color @Composable get() = pick(0xFFFFFDF9, 0xFF2A211B)
+    val introInk: Color @Composable get() = pick(0xFF2A2320, 0xFFFFF6EC)
+    val introMuted: Color @Composable get() = pick(0xFF6B5F52, 0xFFC6B7A4)
+    val introBorder: Color @Composable get() = pick(0xFFECDFCA, 0xFF4A392D)
+    val introInactiveDot: Color @Composable get() = pick(0xFFDED5C8, 0xFF675346)
 
     val premium: Color @Composable get() = pick(0xFFC44536, 0xFFD95A4B)
     val premiumSoft: Color @Composable get() = pick(0xFFF5D9D3, 0xFF3D211D)
@@ -180,7 +201,7 @@ object KathaTheme {
 /** Deterministic avatar gradient palettes, defined centrally with the rest of the color system. */
 object AvatarPalettes {
     val all: List<List<Color>> = listOf(
-        listOf(Color(0xFFFF500A), Color(0xFFE04600)),
+        listOf(Color(0xFFFF6B1A), Color(0xFFE85610)),
         listOf(Color(0xFFC45B5B), Color(0xFF8B2D2D)),
         listOf(Color(0xFF4A8A99), Color(0xFF2D5A6B)),
         listOf(Color(0xFF5B8A5B), Color(0xFF3A6B3A)),
@@ -206,7 +227,7 @@ fun Modifier.kathaShadow(token: ShadowToken, shape: RoundedCornerShape): Modifie
     }
 
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFFFF500A),
+    primary = Color(0xFFFF6B1A),
     background = Color(0xFFFAF7F2),
     surface = Color(0xFFFFFFFF),
     onBackground = Color(0xFF0F0E0C),
@@ -214,7 +235,7 @@ private val LightScheme = lightColorScheme(
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = Color(0xFFFF7A3D),
+    primary = Color(0xFFFF8A3D),
     background = Color(0xFF0B0908),
     surface = Color(0xFF17130F),
     onBackground = Color(0xFFF5F1EA),

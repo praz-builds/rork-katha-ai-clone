@@ -66,6 +66,7 @@ import com.rork.kathaai.ui.screens.DeleteDraftModal
 import com.rork.kathaai.ui.screens.HomeScreen
 import com.rork.kathaai.ui.screens.LibraryScreen
 import com.rork.kathaai.ui.screens.OnboardingScreen
+import com.rork.kathaai.ui.screens.IntroScreen
 import com.rork.kathaai.ui.screens.ProfileSetupScreen
 import com.rork.kathaai.ui.screens.PublishConfirmationModal
 import com.rork.kathaai.ui.screens.ReaderScreen
@@ -113,6 +114,7 @@ import kotlinx.coroutines.delay
 
 private object Routes {
     const val SPLASH = "splash"
+    const val INTRO = "intro"
     const val ONBOARDING = "onboarding"
     const val MAIN = "main"
     const val READER = "reader"
@@ -134,6 +136,7 @@ fun AppNavigation(initialDeepLink: Uri? = null) {
 
     val phase = when {
         !splashFinished -> Routes.SPLASH
+        !state.onboardingCompleted && !state.introCompleted -> Routes.INTRO
         !state.onboardingCompleted -> Routes.ONBOARDING
         else -> Routes.MAIN
     }
@@ -152,6 +155,10 @@ fun AppNavigation(initialDeepLink: Uri? = null) {
             startDestination = Routes.SPLASH
         ) {
             composable(Routes.SPLASH) { SplashScreen() }
+
+            composable(Routes.INTRO) {
+                IntroScreen(viewModel = viewModel)
+            }
 
             composable(Routes.ONBOARDING) {
                 OnboardingScreen(onContinue = { purpose -> viewModel.completeOnboarding(purpose) })
