@@ -1,4 +1,6 @@
-# CLAUDE.md — Katha AI
+# CLAUDE.md — Katha AI Backend
+
+> **Current repository context (2026-08-22):** This backend now lives at `backend/` inside the canonical `praz-builds/rork-katha-ai-clone` monorepo. The approved active client is `../expo/`; the Swift and Kotlin clients are preserved references. Historical Rork-specific notes below explain prior decisions but do not override the root `../CLAUDE.md` or the current Expo product contract.
 
 ## Product Context
 
@@ -23,12 +25,13 @@ These are locked in via `references/strategic-decisions.md` (the authoritative d
 
 ## Architecture
 
-### Two Workstreams
+### Monorepo Workspaces
 
-1. **Rork** (mobile app) — Native iOS (Swift/SwiftUI) + Android (Kotlin/Jetpack Compose), native SDKs (Adapty, AdMob, Supabase Auth via Swift/Kotlin SDKs)
-2. **VS Code / Claude Code** (backend) — Supabase Edge Functions, database schema, generation pipeline, credit ledger, webhook handlers
+1. **Expo app** (`../expo/`) — approved cross-platform product client and primary UI workspace.
+2. **Backend** (`./`) — Supabase Edge Functions, database schema, generation pipeline, credit ledger, and webhook handlers.
+3. **Native references** (`../ios-katha-ai-create-stories/`, `../android-katha-ai/`) — preserved Rork implementations for platform-specific reference.
 
-**Rule:** If it touches money, credits, or API keys — VS Code agent. If it's a screen — Rork. If both — Rork calls an Edge Function.
+**Rule:** Money, credits, API keys, and trusted generation logic stay in the backend. User-facing UI stays in Expo. When a feature spans both, update the contract and both workspaces in the same pull request.
 
 ### Stack
 
