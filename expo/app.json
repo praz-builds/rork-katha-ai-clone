@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Katha AI",
+    "slug": "katha-ai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "kathaai",
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.katha.createstories"
+    },
+    "android": {
+      "package": "ai.katha.createstories",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#FF6B1A"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "supabaseUrl": "https://iafeuxgoiknncgyjmugd.supabase.co",
+      "supabaseAnonKey": ""
+    }
+  }
+}
