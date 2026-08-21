@@ -340,11 +340,11 @@ function NotifyScreen({ onAllow, onLater }) {
         <Text style={styles.permissionBody}>Katha can notify you when a fresh chapter lands or someone responds to your writing. You can change this anytime.</Text>
         <View style={styles.permissionDivider} />
         <View style={styles.permissionActions}>
-          <Pressable onPress={(event) => { event.stopPropagation(); onLater(); }} style={styles.permissionAction}>
+          <Pressable accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onLater(); }} style={styles.permissionAction}>
             <Text style={styles.permissionActionText}>Not now</Text>
           </Pressable>
           <View style={styles.permissionActionDivider} />
-          <Pressable onPress={(event) => { event.stopPropagation(); onAllow(); }} style={styles.permissionAction}>
+          <Pressable accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onAllow(); }} style={styles.permissionAction}>
             <Text style={[styles.permissionActionText, { fontFamily: FF.h8 }]}>Allow</Text>
           </Pressable>
         </View>
