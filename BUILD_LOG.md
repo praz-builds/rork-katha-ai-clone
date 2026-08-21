@@ -8,6 +8,7 @@
 - Added the reproducible project-local skill manifest in `skills-lock.json`; installed `.agents/` content remains local and ignored rather than vendoring third-party scripts.
 - Unified root `CLAUDE.md`, `CODEX.md`, and `README.md` so new tasks start with the full product context.
 - Added `.coderabbit.yaml` with automatic incremental reviews and path-specific mobile, backend-security, iOS, Android, and documentation guidance.
+- Authorized the CodeRabbit GitHub App for the canonical repository and opened the consolidation PR as the first automatic-review verification target.
 - The former standalone backend repository is retained as historical read-only source until the consolidation PR is merged and verified; all new Katha work belongs here.
 
 ### Verification
