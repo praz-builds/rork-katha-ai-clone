@@ -1,0 +1,60 @@
+# Katha AI Build Log
+
+## 2026-08-22: Approved Expo Foundation and Onboarding
+
+### Shipped
+
+- Migrated the Katha client into an Expo SDK 54 workspace compatible with Expo Go.
+- Preserved the native Rork SwiftUI and Kotlin projects as reference implementations in the GitHub monorepo.
+- Established the approved Katha AI identity through one shared `BrandWordmark` component.
+- Approved bundled typography: Baloo2 for the brand, Bricolage Grotesque for display text, Hanken Grotesk for product UI, and Literata for reading.
+- Built the fixed 390 x 844 animated Create, Publish, and Read introduction.
+- Added character typing, generate interaction, story generation, in-place rewrite, reaction chips, real avatars, a 246-like counter, and the continuous cover marquee.
+- Built the adaptive onboarding sequence: purpose, name, genres, two persona questions, profile build, notification education, paywall, account save, OTP, success, and Home callback.
+- Added independent reader, writer, and mixed-user question, build, paywall, and success messaging.
+- Approved `Build my profile` as the profile-completion CTA.
+- Rebuilt notification education around a native permission-style center alert and an auto-scrolling, draggable review rail.
+- Added a temporary tap-anywhere continuation from notification education to the paywall so product can review the complete purchase flow before native permission wiring. Background taps continue with consent unset/false.
+- Personalized the paywall by purpose, top genre, content format, and user routine/blocker.
+- Deferred email and OTP until after the paywall or one-time-offer action.
+- Consolidated imagery into `assets/covers` and `assets/avatars`; removed the duplicate `assets/images` tree.
+- Removed migration-era handoff documents, generated audit bundles, QR screenshots, and local verification artifacts from the deliverable.
+
+### Approved Product Decisions
+
+- `DESIGN.md` is the sole visual and product-flow contract.
+- The wordmark, typography, orange/ink/warm-neutral palette, spacing, radii, and CTA hierarchy are approved.
+- Purpose is the first profile question.
+- Romance remains in the middle of genre discovery; Thriller, Fantasy, and Bedtime Stories lead.
+- Reader, writer, and both are distinct personas throughout the flow.
+- There is no replay screen after onboarding.
+- Email does not block value delivery before the paywall.
+- Store prices shown in the prototype are placeholders, not production pricing.
+
+### Verification
+
+- `pnpm typecheck`: passing.
+- Expo web production export: passing.
+- Expo SDK dependency checks: passing for all checks that completed in the local runtime.
+- Mobile browser QA at 390 x 844: completed through intro, reader persona, notification education, personalized paywall, and post-paywall account screen.
+- Final visual audit: no blocking findings for rewrite, publish reactions, covers, notification education, reviews, or paywall fit.
+- Browser runtime: no application errors; React Native Web reports only legacy shadow-style deprecation warnings from existing cross-platform styles.
+
+### Integration Work Remaining
+
+1. Replace the notification `Allow` callback with `expo-notifications` permission handling. Continue to the paywall after either allow or deny.
+2. Connect paywall products, localized prices, trial eligibility, purchases, restore, and receipts through Adapty.
+3. Connect email/OTP to Supabase Auth and persist the emitted onboarding profile.
+4. Replace placeholder plan prices and legal copy with Adapty/store payload values.
+5. Wire the final success callback to the production Home experience and persisted first-run state.
+6. Add reduced-motion behavior for intro, marquees, loading, and offer animations.
+7. Validate the complete flow on physical iOS and Android devices after native integrations.
+
+### Primary Files
+
+- `App.tsx`: app shell, fonts, first-run entry, and Home handoff.
+- `src/screens/KathaOnboarding.jsx`: approved animated introduction.
+- `src/screens/KathaOnboardingFlowV2.jsx`: adaptive profile, notification, paywall, offer, account, and success flow.
+- `src/components/BrandWordmark.tsx`: only approved Katha AI wordmark.
+- `DESIGN.md`: canonical visual and product-flow specification.
+- `CLAUDE.md`: engineering operating context for future sessions.
