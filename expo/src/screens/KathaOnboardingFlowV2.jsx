@@ -39,54 +39,54 @@ const FF = {
 // ── Static data ─────────────────────────────────────────────────────────────
 const GENRES = ['Thriller','Fantasy','Bedtime Stories','Mystery','Adventure','Sci-Fi','Horror','Young Adult','Romance','Dark Romance','Historical','Literary','Fanfiction','Poetry','Mythology','Coming of Age','Contemporary','Comedy','Drama','Non-fiction','Other'];
 const PURPOSES = [
-  { k: 'read',  icon: '📖', label: 'Reading',       sub: 'Get lost in stories from around the world' },
-  { k: 'write', icon: '✍️', label: 'Writing',       sub: 'Create stories of my own with Katha' },
-  { k: 'both',  icon: '✨', label: 'A bit of both', sub: 'I love to read and to write' },
+  { k: 'read',  icon: '\uD83D\uDCD6', label: 'Reading',       sub: 'Get lost in stories from around the world' },
+  { k: 'write', icon: '\u270D\uFE0F', label: 'Writing',       sub: 'Create stories of my own with Katha' },
+  { k: 'both',  icon: '\u2728', label: 'A bit of both', sub: 'I love to read and to write' },
 ];
 const REFINE_READ = [
-  { k: 'read',   icon: '📖', label: 'Reading them myself', sub: 'Words on the page, at my own pace' },
-  { k: 'listen', icon: '🎧', label: 'Listening to audio',  sub: 'Narrated stories for commutes and nights' },
-  { k: 'mix',    icon: '🔀', label: 'A mix of both',       sub: 'Read sometimes, listen sometimes' },
+  { k: 'read',   icon: '\uD83D\uDCD6', label: 'Reading them myself', sub: 'Words on the page, at my own pace' },
+  { k: 'listen', icon: '\uD83C\uDFA7', label: 'Listening to audio',  sub: 'Narrated stories for commutes and nights' },
+  { k: 'mix',    icon: '\uD83D\uDD00', label: 'A mix of both',       sub: 'Read sometimes, listen sometimes' },
 ];
 const REFINE_WRITE = [
-  { k: 'novel',  icon: '📕', label: 'A full novel',     sub: 'A story big enough to get lost in' },
-  { k: 'short',  icon: '✒️', label: 'Short stories',    sub: 'Quick, complete, satisfying' },
-  { k: 'fan',    icon: '💫', label: 'Fan fiction',      sub: 'Worlds and characters I already love' },
-  { k: 'poetry', icon: '🕯️', label: 'Poetry and verse', sub: 'A whole feeling in a few lines' },
+  { k: 'novel',  icon: '\uD83D\uDCD5', label: 'A full novel',     sub: 'A story big enough to get lost in' },
+  { k: 'short',  icon: '\u2712\uFE0F', label: 'Short stories',    sub: 'Quick, complete, satisfying' },
+  { k: 'fan',    icon: '\uD83D\uDCAB', label: 'Fan fiction',      sub: 'Worlds and characters I already love' },
+  { k: 'poetry', icon: '\uD83D\uDD6F\uFE0F', label: 'Poetry and verse', sub: 'A whole feeling in a few lines' },
 ];
 const REFINE_BOTH = [
-  { k: 'find', icon: '📚', label: 'Find my next read', sub: 'Start with a shelf built around my taste' },
-  { k: 'create', icon: '✍️', label: 'Start a story', sub: 'Open a blank page with Katha beside me' },
-  { k: 'balance', icon: '⚖️', label: 'Balance both', sub: 'Keep reading and writing close together' },
-  { k: 'surprise', icon: '✨', label: 'Surprise me', sub: 'Show me the best place to begin' },
+  { k: 'find', icon: '\uD83D\uDCDA', label: 'Find my next read', sub: 'Start with a shelf built around my taste' },
+  { k: 'create', icon: '\u270D\uFE0F', label: 'Start a story', sub: 'Open a blank page with Katha beside me' },
+  { k: 'balance', icon: '\u2696\uFE0F', label: 'Balance both', sub: 'Keep reading and writing close together' },
+  { k: 'surprise', icon: '\u2728', label: 'Surprise me', sub: 'Show me the best place to begin' },
 ];
 const MOMENTS_READ = [
-  { k: 'sleep', icon: '🌙', label: 'Before sleep', sub: 'A calm chapter to end the day' },
-  { k: 'breaks', icon: '☕', label: 'Commutes and breaks', sub: 'Stories that fit into small pockets of time' },
-  { k: 'weekend', icon: '📚', label: 'Weekend binges', sub: 'Long sessions when I can settle in' },
-  { k: 'escape', icon: '✨', label: 'Whenever I need an escape', sub: 'A new world on demand' },
+  { k: 'sleep', icon: '\uD83C\uDF19', label: 'Before sleep', sub: 'A calm chapter to end the day' },
+  { k: 'breaks', icon: '\u2615', label: 'Commutes and breaks', sub: 'Stories that fit into small pockets of time' },
+  { k: 'weekend', icon: '\uD83D\uDCDA', label: 'Weekend binges', sub: 'Long sessions when I can settle in' },
+  { k: 'escape', icon: '\u2728', label: 'Whenever I need an escape', sub: 'A new world on demand' },
 ];
 const MOMENTS_WRITE = [
-  { k: 'draft', icon: '💡', label: 'Turn an idea into a draft', sub: 'Help me get from blank page to first version' },
-  { k: 'voice', icon: '✎', label: 'Rewrite in my voice', sub: 'Make every line sound unmistakably mine' },
-  { k: 'chapters', icon: '🗂️', label: 'Plan chapters', sub: 'Shape the arc before I lose momentum' },
-  { k: 'publish', icon: '🚀', label: 'Publish and find readers', sub: 'Share the work and grow an audience' },
+  { k: 'draft', icon: '\uD83D\uDCA1', label: 'Turn an idea into a draft', sub: 'Help me get from blank page to first version' },
+  { k: 'voice', icon: '\u270E', label: 'Rewrite in my voice', sub: 'Make every line sound unmistakably mine' },
+  { k: 'chapters', icon: '\uD83D\uDDC2\uFE0F', label: 'Plan chapters', sub: 'Shape the arc before I lose momentum' },
+  { k: 'publish', icon: '\uD83D\uDE80', label: 'Publish and find readers', sub: 'Share the work and grow an audience' },
 ];
 const MOMENTS_BOTH = [
-  { k: 'remix', icon: '🔁', label: 'Read, then remix', sub: 'Let great stories spark my own ideas' },
-  { k: 'publish', icon: '🚀', label: 'Write, then publish', sub: 'Create something and put it in front of readers' },
-  { k: 'unwind', icon: '🎧', label: 'Listen, then unwind', sub: 'Keep stories close without looking at a screen' },
-  { k: 'save', icon: '🔖', label: 'Explore, then save', sub: 'Collect ideas, worlds, and favorites' },
+  { k: 'remix', icon: '\uD83D\uDD01', label: 'Read, then remix', sub: 'Let great stories spark my own ideas' },
+  { k: 'publish', icon: '\uD83D\uDE80', label: 'Write, then publish', sub: 'Create something and put it in front of readers' },
+  { k: 'unwind', icon: '\uD83C\uDFA7', label: 'Listen, then unwind', sub: 'Keep stories close without looking at a screen' },
+  { k: 'save', icon: '\uD83D\uDD16', label: 'Explore, then save', sub: 'Collect ideas, worlds, and favorites' },
 ];
 const REVIEWS = [
-  { text: '"I fall asleep to a new story every night now."', name: 'Mira R.', img: require('../../assets/avatars/reader-black-woman.jpg') },
-  { text: '"The audio narration is unreal on my commute."', name: 'Dev S.', initials: 'DS', color: '#3B4A8C' },
-  { text: '"I published my first short story and readers actually replied."', name: 'Aanya K.', img: require('../../assets/avatars/reader-white-woman.jpg') },
-  { text: '"Every morning there is a fresh chapter waiting for me."', name: 'Leah T.', initials: 'LT', color: '#8A3B2E' },
-  { text: '"It writes with me, not for me. That is the magic."', name: 'Noah B.', img: require('../../assets/avatars/reader-brown-man.jpg') },
-  { text: '"My kids beg for one more Katha bedtime story."', name: 'Priya M.', initials: 'PM', color: '#5B7A54' },
-  { text: '"Cancelled every other app. This is the only one I open."', name: 'Sam W.', initials: 'SW', color: '#B15A18' },
-  { text: '"Went from never reading to a book a week."', name: 'Tara I.', initials: 'TI', color: '#2E5D57' },
+  { text: '\u201CI fall asleep to a new story every night now.\u201D', name: 'Mira R.', img: require('../../assets/avatars/reader-black-woman.jpg') },
+  { text: '\u201CThe audio narration is unreal on my commute.\u201D', name: 'Dev S.', initials: 'DS', color: '#3B4A8C' },
+  { text: '\u201CI published my first short story and readers actually replied.\u201D', name: 'Aanya K.', img: require('../../assets/avatars/reader-white-woman.jpg') },
+  { text: '\u201CEvery morning there is a fresh chapter waiting for me.\u201D', name: 'Leah T.', initials: 'LT', color: '#8A3B2E' },
+  { text: '\u201CIt writes with me, not for me. That is the magic.\u201D', name: 'Noah B.', img: require('../../assets/avatars/reader-brown-man.jpg') },
+  { text: '\u201CMy kids beg for one more Katha bedtime story.\u201D', name: 'Priya M.', initials: 'PM', color: '#5B7A54' },
+  { text: '\u201CCancelled every other app. This is the only one I open.\u201D', name: 'Sam W.', initials: 'SW', color: '#B15A18' },
+  { text: '\u201CWent from never reading to a book a week.\u201D', name: 'Tara I.', initials: 'TI', color: '#2E5D57' },
 ];
 const AVATARS = [
   require('../../assets/avatars/reader-black-woman.jpg'),
@@ -99,30 +99,36 @@ const PAYWALL_PRODUCTS = {
     key: 'yearly',
     productId: 'ai.katha.subscription.yearly',
     title: 'Annual',
-    badge: 'BEST VALUE',
-    localizedPrice: '$49.99',
-    priceAmount: 49.99,
+    badge: 'MOST POPULAR',
+    price: '$59/yr',
+    localizedPrice: '$59',
+    priceAmount: 59,
     currencyCode: 'USD',
-    priceDetail: '3 days free, then $0.96/week',
+    monthlyPrice: '$4.92/mo',
+    strikethroughPrice: '$259',
+    priceDetail: '3-day free trial',
     unit: 'per year',
+    trial: true,
     trialEligible: true,
     actionLead: 'Start your 3-day free trial',
     cta: 'Start my 3-day free trial',
-    billingDisclosure: 'No charge today. Then $49.99 per year unless canceled.',
+    billingDisclosure: 'Your yearly subscription automatically renews unless cancelled at least 24 hours before the end of the current term. Cancel any time in the App Store at no additional cost.',
   },
   weekly: {
     key: 'weekly',
     productId: 'ai.katha.subscription.weekly',
     title: 'Weekly',
+    price: '$4.99/wk',
     localizedPrice: '$4.99',
     priceAmount: 4.99,
     currencyCode: 'USD',
     priceDetail: 'No free trial',
     unit: 'per week',
+    trial: false,
     trialEligible: false,
     actionLead: 'Start your weekly pass',
     cta: 'Start my weekly pass',
-    billingDisclosure: 'Weekly plan has no free trial. Billed at $4.99 per week.',
+    billingDisclosure: 'No free trial. Billed at $4.99/week. Subscription auto-renews unless canceled at least 24 hours before the end of the current period.',
   },
 };
 
@@ -225,7 +231,7 @@ function TopBar({ step, onBack, canBack }) {
   return (
     <View style={styles.topBar}>
       <Pressable onPress={onBack} style={[styles.backBtn, { opacity: canBack ? 1 : 0.35 }]}>
-        <Text style={styles.backChevron}>‹</Text>
+        <Text style={styles.backChevron}>{'\u2039'}</Text>
       </Pressable>
       <View style={styles.progressTrack}>
         <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -247,7 +253,7 @@ function OptionRow({ icon, label, sub, selected, onPress }) {
       <Text style={{ fontSize: 24 }}>{icon}</Text>
       <View style={{ flex: 1 }}><Text style={styles.optLabel}>{label}</Text><Text style={styles.optSub}>{sub}</Text></View>
       <View style={[styles.radio, { borderColor: selected ? C.orange : '#DCD0BF', backgroundColor: selected ? C.orange : 'transparent' }]}>
-        {selected && <Text style={styles.radioMark}>✓</Text>}
+        {selected && <Text style={styles.radioMark}>{'\u2713'}</Text>}
       </View>
     </Pressable>
   );
@@ -288,7 +294,7 @@ function GenreScreen({ fname, genres, toggle, count, otherText, setOtherText, on
             return (
               <Pressable key={g} onPress={() => toggle(g)}
                 style={[styles.chip, { borderColor: on ? C.orange : C.line, backgroundColor: on ? C.peach : C.card }]}>
-                <Text style={{ fontSize: 12, opacity: on ? 1 : 0.28, color: on ? C.orange : C.inkBody2 }}>✓</Text>
+                <Text style={{ fontSize: 12, opacity: on ? 1 : 0.28, color: on ? C.orange : C.inkBody2 }}>{'\u2713'}</Text>
                 <Text style={{ fontFamily: FF.h6, fontSize: 14.5, color: on ? C.orangeDeep : C.inkBody2 }}>{g}</Text>
               </Pressable>
             );
@@ -327,7 +333,7 @@ function EmailScreen({ fname, email, setEmail, onContinue }) {
   return (
     <KeyboardAvoidingView style={styles.pad} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={{ flex: 1 }}>
-        <View style={styles.iconBadge}><Text style={{ fontSize: 24 }}>✉️</Text></View>
+        <View style={styles.iconBadge}><Text style={{ fontSize: 24 }}>{'\u2709\uFE0F'}</Text></View>
         <Text style={styles.h1med}>Save your profile, {fname}</Text>
         <Text style={[styles.sub, { marginBottom: 26 }]}>Add your email so your shelf, stories, and purchases stay with you on every device.</Text>
         <TextInput value={email} onChangeText={setEmail} placeholder="you@email.com" placeholderTextColor={C.muted3}
@@ -357,7 +363,7 @@ function OtpScreen({ email, code, setCode, onVerify, onResend, onEditEmail }) {
   return (
     <KeyboardAvoidingView style={styles.pad} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={{ flex: 1 }}>
-        <View style={styles.iconBadge}><Text style={{ fontSize: 24 }}>🔑</Text></View>
+        <View style={styles.iconBadge}><Text style={{ fontSize: 24 }}>{'\uD83D\uDD11'}</Text></View>
         <Text style={styles.h1med}>Check your inbox</Text>
         <Text style={[styles.sub, { marginBottom: 26 }]}>Enter the 6 digit code we sent to <Text style={{ fontFamily: FF.h7, color: C.inkBody2 }}>{email.trim() || 'your email'}</Text>.</Text>
         <Pressable onPress={() => inputRef.current?.focus()} style={styles.otpRow}>
@@ -375,7 +381,7 @@ function OtpScreen({ email, code, setCode, onVerify, onResend, onEditEmail }) {
         </Pressable>
         <Text style={styles.otpMeta}>Didn't get it?{' '}
           <Text onPress={onResend} style={{ color: C.orange, fontFamily: FF.h7 }}>Resend code</Text>
-          {'  ·  '}<Text onPress={onEditEmail} style={{ color: C.muted, fontFamily: FF.h6, textDecorationLine: 'underline' }}>Wrong email?</Text>
+          {'  \u00B7  '}<Text onPress={onEditEmail} style={{ color: C.muted, fontFamily: FF.h6, textDecorationLine: 'underline' }}>Wrong email?</Text>
         </Text>
       </View>
       <PrimaryButton label="Verify and continue" enabled={ready} onPress={onVerify} />
@@ -404,7 +410,7 @@ function NotifyScreen({ onAllow, onLater }) {
     <Pressable accessible={false} onPress={onLater} style={styles.notifyWrap}>
       <BrandWordmark size={26} style={{ alignSelf: 'center', marginBottom: 30 }} />
       <View style={styles.permissionAlert}>
-        <View style={styles.permissionIcon}><Text style={{ fontSize: 28 }}>🔔</Text></View>
+        <View style={styles.permissionIcon}><Text style={{ fontSize: 28 }}>{'\uD83D\uDD14'}</Text></View>
         <Text style={styles.permissionTitle}>Stay close to every story</Text>
         <Text style={styles.permissionBody}>Katha can notify you when a fresh chapter lands or someone responds to your writing. You can change this anytime.</Text>
         <View style={styles.permissionDivider} />
@@ -443,7 +449,7 @@ function ReviewCard({ r }) {
         )}
         <View>
           <Text style={styles.reviewName}>{r.name}</Text>
-          <Text style={styles.reviewStars}>★★★★★</Text>
+          <Text style={styles.reviewStars}>{'\u2605\u2605\u2605\u2605\u2605'}</Text>
         </View>
       </View>
       <Text style={styles.reviewText}>{r.text}</Text>
@@ -530,7 +536,7 @@ function BuildingScreen({ fname, purpose, topGenre, reduceMotion, onDone }) {
           return (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, opacity: done ? 1 : 0.4 }}>
               <View style={[styles.checkDot, { backgroundColor: done ? C.orange : '#D8CCBA' }]}>
-                {done && <Text style={{ color: '#fff', fontSize: 13 }}>✓</Text>}
+                {done && <Text style={{ color: '#fff', fontSize: 13 }}>{'\u2713'}</Text>}
               </View>
               <Text style={{ fontFamily: FF.h6, fontSize: 14.5, color: C.inkBody2 }}>{label}</Text>
             </View>
@@ -542,6 +548,22 @@ function BuildingScreen({ fname, purpose, topGenre, reduceMotion, onDone }) {
 }
 
 // ── PAYWALL ─────────────────────────────────────────────────────────────────
+const PAYWALL_TESTIMONIALS = [
+  { img: require('../../assets/avatars/reader-brown-man.jpg'), name: 'Arjun M.', quote: "I've written 12 stories in two weeks. The AI understands exactly what I want.", stars: 5 },
+  { img: require('../../assets/avatars/reader-white-woman.jpg'), name: 'Sophie L.', quote: 'The audio narration turned my bedtime stories into a whole experience for my kids.', stars: 5 },
+  { img: require('../../assets/avatars/reader-black-woman.jpg'), name: 'Amara O.', quote: 'Finally an app that lets me write AND read. The editing tools are incredible.', stars: 5 },
+];
+
+const FEATURE_TABLE = [
+  { label: 'Read unlimited stories', free: 'check', plus: 'check' },
+  { label: 'Create stories with AI', free: '10 credits', plus: 'Unlimited' },
+  { label: 'Audio narration', free: '1 credit each', plus: 'Included' },
+  { label: 'Cover image generation', free: '1 credit each', plus: 'Included' },
+  { label: 'Ad-free experience', free: 'lock', plus: 'check' },
+  { label: 'Priority generation', free: 'lock', plus: 'check' },
+  { label: 'Premium voices', free: 'lock', plus: 'check' },
+];
+
 function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setTrial, reduceMotion, onSubscribe, onClose }) {
   const [showWeekly, setShowWeekly] = useState(plan === 'weekly');
   const [confirmClose, setConfirmClose] = useState(false);
@@ -549,48 +571,15 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
   const ctaPress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (reduceMotion) {
-      enter.setValue(1);
-      return;
-    }
-    Animated.timing(enter, {
-      toValue: 1,
-      duration: 260,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
+    if (reduceMotion) { enter.setValue(1); return; }
+    Animated.timing(enter, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }).start();
   }, [enter, reduceMotion]);
 
-  const readerFeatures = [
-    `Unlimited ${topGenre} stories and 20 more genres`,
-    refine === 'listen' || refine === 'mix' ? 'Studio quality narration whenever you want it' : 'Read or listen at your own pace',
-    moment === 'sleep' ? 'Fresh chapters for your nightly wind-down' : 'Recommendations shaped around your routine',
-    'Save stories offline and pick up anywhere',
-  ];
-  const writerFeatures = [
-    moment === 'draft' ? 'Turn rough ideas into polished first drafts' : 'Co-write with Katha without limits',
-    moment === 'voice' ? 'Rewrite every line until it sounds like you' : 'Plan, draft, and revise in one writing room',
-    moment === 'publish' ? 'Publish and reach Katha readers' : 'Publish to a community ready to react',
-    'Turn any story into audio in one tap',
-  ];
-  const bothFeatures = ['Read stories you love, then create your own', 'Switch between audio, reading, and writing', 'Keep your shelf and drafts in one profile', 'Publish and discover new readers'];
-  const features = purpose === 'read' ? readerFeatures : purpose === 'write' ? writerFeatures : bothFeatures;
-  const yOn = plan === 'yearly';
-  const wOn = plan === 'weekly';
-  const selectedProduct = yOn ? PAYWALL_PRODUCTS.yearly : PAYWALL_PRODUCTS.weekly;
-  const title = purpose === 'read' ? `Your ${topGenre} shelf is ready` : purpose === 'write' ? 'Your writing room is ready' : 'Your shelf and writing room are ready';
-  const actionLead = selectedProduct.actionLead;
-  const subtitle = purpose === 'read' ? `${actionLead}, ${fname}. Stories to read or listen to, chosen around your taste and routine.` : purpose === 'write' ? `${actionLead}, ${fname}. Draft, rewrite, publish, and build a readership with Katha beside you.` : `${actionLead}, ${fname}. Move naturally between discovering stories and creating your own.`;
+  const selectedProduct = plan === 'yearly' ? PAYWALL_PRODUCTS.yearly : PAYWALL_PRODUCTS.weekly;
 
-  const selectYearly = () => {
-    setPlan('yearly');
-    setTrial(true);
-  };
-  const selectWeekly = () => {
-    setPlan('weekly');
-    setTrial(false);
-    setShowWeekly(true);
-  };
+  const selectYearly = () => { setPlan('yearly'); setTrial(true); };
+  const selectWeekly = () => { setPlan('weekly'); setTrial(false); setShowWeekly(true); };
+
   const pressIn = () => {
     if (reduceMotion) return;
     Animated.timing(ctaPress, { toValue: 1, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== 'web' }).start();
@@ -600,65 +589,167 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
     Animated.timing(ctaPress, { toValue: 0, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== 'web' }).start();
   };
 
-  const cta = selectedProduct.cta;
-  const reassure = selectedProduct.billingDisclosure;
+  const ctaScale = ctaPress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.985] });
   const headerY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
   const ctaY = enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
-  const ctaScale = ctaPress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.985] });
 
   return (
-    <View style={{ flex: 1 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Close paywall" onPress={() => setConfirmClose(true)} style={styles.closeBtn}><Text style={styles.closeX}>✕</Text></Pressable>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 10, paddingBottom: 8 }}>
-        <Animated.View style={{ alignItems: 'center', opacity: enter, transform: [{ translateY: headerY }] }}>
-          <View style={{ flexDirection: 'row', marginBottom: 9 }}>
-            {AVATARS.map((src, i) => <Image key={i} source={src} style={[styles.proofAv, { marginLeft: i === 0 ? 0 : -11 }]} />)}
-            <View style={[styles.proofMore, { marginLeft: -11 }]}><Text style={styles.proofMoreTxt}>40k+</Text></View>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* Close button - top left */}
+      <Pressable onPress={() => setConfirmClose(true)} style={pw.closeBtn}>
+        <Text style={pw.closeBtnText}>{'\u00D7'}</Text>
+      </Pressable>
+
+      {/* Scrollable content */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
+
+        {/* Section 1: Hero */}
+        <Animated.View style={[pw.heroSection, { opacity: enter, transform: [{ translateY: headerY }] }]}>
+          <BrandWordmark size={30} />
+          <View style={pw.plusPill}>
+            <Text style={pw.plusPillText}>Katha Plus</Text>
           </View>
-          <Text style={{ color: C.orange, fontSize: 14, letterSpacing: 0 }}>★★★★★</Text>
-          <Text style={styles.proofSub}>4.9 rating, loved by 40,000+ this month</Text>
-          <Text style={styles.payEyebrow}>Katha Plus</Text>
-          <Text style={styles.payTitle}>{title}</Text>
-          <Text style={styles.paySub}>{subtitle}</Text>
+          <Text style={pw.heroHeadline}>
+            {'Create stories '}
+            <Text style={{ color: C.orange, fontFamily: FF.bri8, fontWeight: '800' }}>10x faster</Text>
+          </Text>
+          <Text style={pw.heroSub}>Unlock the full power of AI storytelling</Text>
         </Animated.View>
-        <View style={styles.planStack}>
-          <PlanCard
-            product={PAYWALL_PRODUCTS.yearly}
-            selected={yOn}
-            onPress={selectYearly}
-          />
-          {showWeekly ? (
-            <PlanCard
-              product={PAYWALL_PRODUCTS.weekly}
-              selected={wOn}
-              onPress={selectWeekly}
-            />
-          ) : (
-            <Pressable onPress={() => setShowWeekly(true)} style={styles.morePlansBtn}>
-              <Text style={styles.morePlansText}>See weekly option</Text>
-            </Pressable>
-          )}
+
+        {/* Section 2: Pricing Card */}
+        <View style={pw.pricingSection}>
+          <Pressable onPress={selectYearly} style={pw.pricingCard} accessibilityLabel="Select yearly plan">
+            <View style={pw.mostPopularBadge}>
+              <Text style={pw.mostPopularText}>Most popular</Text>
+            </View>
+            <Text style={pw.trialHeading}>3-day free trial</Text>
+            <View style={pw.priceRow}>
+              <Text style={pw.priceMain}>$4.92</Text>
+              <Text style={pw.priceUnit}>/mo</Text>
+            </View>
+            <View style={pw.strikeRow}>
+              <Text style={pw.strikePrice}>{PAYWALL_PRODUCTS.yearly.strikethroughPrice}/yr</Text>
+              <Text style={pw.arrowText}>{' \u2192 '}</Text>
+              <Text style={pw.finalPrice}>{PAYWALL_PRODUCTS.yearly.localizedPrice}/yr</Text>
+            </View>
+
+            {showWeekly ? (
+              <View style={pw.weeklyOption}>
+                <View style={pw.weeklyDivider} />
+                <Pressable onPress={selectWeekly} style={[pw.weeklyRow, plan === 'weekly' && { backgroundColor: C.peach, borderColor: C.orange }]}>
+                  <View style={[styles.radio, { borderColor: plan === 'weekly' ? C.orange : '#DCD0BF', backgroundColor: plan === 'weekly' ? C.orange : 'transparent' }]}>
+                    {plan === 'weekly' && <Text style={styles.radioMark}>{'\u2713'}</Text>}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={pw.weeklyLabel}>Weekly</Text>
+                    <Text style={pw.weeklyMeta}>No free trial</Text>
+                  </View>
+                  <Text style={pw.weeklyPrice}>{PAYWALL_PRODUCTS.weekly.localizedPrice}/wk</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable onPress={() => setShowWeekly(true)} style={pw.showMoreBtn}>
+                <Text style={pw.showMoreText}>{'Show more plans \u25BE'}</Text>
+              </Pressable>
+            )}
+          </Pressable>
         </View>
-        <View style={{ gap: 10, marginTop: 14, marginBottom: 16 }}>
-          {features.map((f, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={styles.featTick}><Text style={styles.featTickTxt}>✓</Text></View>
-              <Text style={styles.featText}>{f}</Text>
+
+        {/* Section 3: Feature Comparison Table */}
+        <View style={pw.tableSection}>
+          <View style={pw.tableHeaderRow}>
+            <View style={{ flex: 1.4 }}>
+              <Text style={pw.tableTitle}>What you get</Text>
+            </View>
+            <View style={pw.tableHeaderCell}>
+              <Text style={pw.tableHeaderLabel}>Free</Text>
+            </View>
+            <View style={pw.tableHeaderCell}>
+              <View style={pw.plusBadgeSm}>
+                <Text style={pw.plusBadgeSmText}>Plus</Text>
+              </View>
+            </View>
+          </View>
+          {FEATURE_TABLE.map((row, i) => (
+            <View key={i} style={[pw.tableRow, i % 2 === 0 && { backgroundColor: '#FEFCF7' }]}>
+              <View style={{ flex: 1.4, paddingRight: 8 }}>
+                <Text style={pw.tableFeatureLabel}>{row.label}</Text>
+              </View>
+              <View style={pw.tableCellCenter}>
+                {row.free === 'check' ? (
+                  <Text style={pw.checkGreen}>{'\u2713'}</Text>
+                ) : row.free === 'lock' ? (
+                  <Text style={pw.lockMuted}>{'\uD83D\uDD12'}</Text>
+                ) : (
+                  <Text style={pw.tableCellText}>{row.free}</Text>
+                )}
+              </View>
+              <View style={pw.tableCellCenter}>
+                {row.plus === 'check' ? (
+                  <Text style={pw.checkGreen}>{'\u2713'}</Text>
+                ) : (
+                  <Text style={pw.tableCellTextPlus}>{row.plus}</Text>
+                )}
+              </View>
             </View>
           ))}
         </View>
+
+        {/* Section 4: Success Stories */}
+        <View style={pw.testimonialsSection}>
+          <Text style={pw.sectionTitle}>Loved by storytellers</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={pw.testimonialScroll}>
+            {PAYWALL_TESTIMONIALS.map((t, i) => (
+              <View key={i} style={pw.testimonialCard}>
+                <View style={pw.testimonialHeader}>
+                  <Image source={t.img} style={pw.testimonialAvatar} />
+                  <View>
+                    <Text style={pw.testimonialName}>{t.name}</Text>
+                    <Text style={pw.testimonialStars}>{'\u2605'.repeat(t.stars)}</Text>
+                  </View>
+                </View>
+                <Text style={pw.testimonialQuote}>{'\u201C'}{t.quote}{'\u201D'}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Section 5: Social Proof Stats */}
+        <View style={pw.statsSection}>
+          <View style={pw.statCard}>
+            <Text style={pw.statEmoji}>{'\uD83C\uDFC6'}</Text>
+            <Text style={pw.statValue}>4.8</Text>
+            <Text style={pw.statLabel}>average rating</Text>
+          </View>
+          <View style={pw.statCard}>
+            <Text style={pw.statEmoji}>{'\uD83C\uDFC6'}</Text>
+            <Text style={pw.statValue}>50K+</Text>
+            <Text style={pw.statLabel}>stories created</Text>
+          </View>
+        </View>
+
+        {/* Section 6: Legal */}
+        <View style={pw.legalSection}>
+          <Text style={pw.legalDisclosure}>Your yearly subscription automatically renews unless cancelled at least 24 hours before the end of the current term. Cancel any time in the App Store at no additional cost.</Text>
+          <Text style={pw.legalLinks}>{'Restore purchases  \u00B7  Terms of Use  \u00B7  Privacy Notice'}</Text>
+        </View>
       </ScrollView>
-      <Animated.View style={[styles.payFoot, { opacity: enter, transform: [{ translateY: ctaY }] }]}>
-        <Pressable onPress={onSubscribe} onPressIn={pressIn} onPressOut={pressOut}>
-          <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
-          <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.payCta}>
-            <Text style={styles.payCtaTxt}>{cta}</Text>
-          </LinearGradient>
-          </Animated.View>
-        </Pressable>
-        <Text style={styles.payReassure}>{reassure}</Text>
-        <Text style={styles.payLegal}>Restore  ·  Terms  ·  Privacy</Text>
+
+      {/* Sticky Bottom CTA */}
+      <Animated.View style={[pw.stickyFooter, { opacity: enter, transform: [{ translateY: ctaY }] }]}>
+        <LinearGradient colors={['rgba(251,246,236,0)', 'rgba(251,246,236,0.92)', C.bg]} style={pw.stickyGradient} pointerEvents="none" />
+        <View style={pw.stickyInner}>
+          <Pressable onPress={onSubscribe} onPressIn={pressIn} onPressOut={pressOut}>
+            <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
+              <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={pw.stickyCta}>
+                <Text style={pw.stickyCtaText}>Start my 3-day free trial</Text>
+              </LinearGradient>
+            </Animated.View>
+          </Pressable>
+          <Text style={pw.stickyReassure}>No payment now. Easy to cancel.</Text>
+        </View>
       </Animated.View>
+
       {confirmClose && (
         <CancelTrialSheet
           product={selectedProduct}
@@ -671,18 +762,76 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
   );
 }
 
-function PlanCard({ product, selected, onPress }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.planCard, { borderColor: selected ? C.orange : C.line, backgroundColor: selected ? C.peachSoft : C.card }]}>
-      <View style={[styles.radio, { borderColor: selected ? C.orange : '#DCD0BF', backgroundColor: selected ? C.orange : 'transparent' }]}>
-        {selected && <Text style={styles.radioMark}>✓</Text>}
-      </View>
-      <View style={{ flex: 1 }}><Text style={styles.planTitle}>{product.title}</Text><Text style={styles.planPer}>{product.priceDetail}</Text></View>
-      <View style={{ alignItems: 'flex-end' }}><Text style={styles.planPrice}>{product.localizedPrice}</Text><Text style={styles.planUnit}>{product.unit}</Text></View>
-      {product.badge && <View style={styles.planBadge}><Text style={styles.planBadgeTxt}>{product.badge}</Text></View>}
-    </Pressable>
-  );
-}
+const pw = StyleSheet.create({
+  closeBtn: { position: 'absolute', top: 6, left: 16, zIndex: 12, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderColor: '#EEE2D0', alignItems: 'center', justifyContent: 'center' },
+  closeBtnText: { color: '#9A8E7E', fontSize: 18, lineHeight: 20, marginTop: -1 },
+  heroSection: { alignItems: 'center', paddingTop: 18, paddingHorizontal: 24 },
+  plusPill: { marginTop: 16, backgroundColor: C.orange, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999 },
+  plusPillText: { fontFamily: FF.h8, fontSize: 13, color: '#fff', letterSpacing: 0.3 },
+  heroHeadline: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 30, lineHeight: 36, color: C.ink, textAlign: 'center', marginTop: 16 },
+  heroSub: { fontFamily: FF.h5, fontSize: 15, lineHeight: 22, color: C.muted, textAlign: 'center', marginTop: 8 },
+  pricingSection: { marginTop: 24, paddingHorizontal: 24 },
+  pricingCard: { backgroundColor: C.card, borderRadius: 24, borderWidth: 2, borderColor: C.orange, paddingTop: 28, paddingBottom: 18, paddingHorizontal: 22, alignItems: 'center',
+    ...Platform.select({ ios: { shadowColor: '#3D2D1B', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 6 } }, android: { elevation: 4 } }) },
+  mostPopularBadge: { position: 'absolute', top: -13, backgroundColor: '#12B5A5', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999 },
+  mostPopularText: { fontFamily: FF.h8, fontSize: 12, color: '#fff', letterSpacing: 0.2 },
+  trialHeading: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 17, color: C.ink, marginBottom: 4 },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },
+  priceMain: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 42, color: C.ink },
+  priceUnit: { fontFamily: FF.h6, fontSize: 18, color: C.muted, marginLeft: 2 },
+  strikeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  strikePrice: { fontFamily: FF.h6, fontSize: 14, color: C.muted2, textDecorationLine: 'line-through' },
+  arrowText: { fontFamily: FF.h6, fontSize: 14, color: C.muted2 },
+  finalPrice: { fontFamily: FF.h7, fontSize: 14, color: '#12B5A5' },
+  showMoreBtn: { marginTop: 14, paddingVertical: 6 },
+  showMoreText: { fontFamily: FF.h7, fontSize: 13.5, color: C.muted, textAlign: 'center' },
+  weeklyOption: { width: '100%', marginTop: 12 },
+  weeklyDivider: { height: 1, backgroundColor: C.line, marginBottom: 12 },
+  weeklyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: C.line, backgroundColor: C.bg },
+  weeklyLabel: { fontFamily: FF.h7, fontSize: 15, color: C.ink },
+  weeklyMeta: { fontFamily: FF.h4, fontSize: 12, color: C.muted2, marginTop: 1 },
+  weeklyPrice: { fontFamily: FF.h8, fontSize: 15, color: C.ink },
+  tableSection: { marginTop: 28, paddingHorizontal: 24 },
+  tableTitle: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 15, color: C.ink },
+  tableHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: C.line },
+  tableHeaderCell: { flex: 1, alignItems: 'center' },
+  tableHeaderLabel: { fontFamily: FF.h7, fontSize: 13, color: C.muted },
+  plusBadgeSm: { backgroundColor: C.orange, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
+  plusBadgeSmText: { fontFamily: FF.h8, fontSize: 12, color: '#fff' },
+  tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
+  tableFeatureLabel: { fontFamily: FF.h6, fontSize: 13, color: C.inkSoft, lineHeight: 18 },
+  tableCellCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  checkGreen: { fontSize: 16, color: '#12B5A5', fontWeight: '700' },
+  lockMuted: { fontSize: 13, opacity: 0.4 },
+  tableCellText: { fontFamily: FF.h6, fontSize: 11.5, color: C.muted2, textAlign: 'center' },
+  tableCellTextPlus: { fontFamily: FF.h7, fontSize: 11.5, color: C.orange, textAlign: 'center' },
+  testimonialsSection: { marginTop: 28, paddingLeft: 24 },
+  sectionTitle: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 20, color: C.ink, marginBottom: 14 },
+  testimonialScroll: { paddingRight: 24, gap: 12 },
+  testimonialCard: { width: 268, backgroundColor: C.card, borderRadius: 24, padding: 16, borderWidth: 1, borderColor: C.reviewBorder,
+    ...Platform.select({ ios: { shadowColor: '#3D2D1B', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 4 } }, android: { elevation: 2 } }) },
+  testimonialHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  testimonialAvatar: { width: 36, height: 36, borderRadius: 18 },
+  testimonialName: { fontFamily: FF.h8, fontSize: 13, color: C.ink },
+  testimonialStars: { color: C.orange, fontSize: 11, letterSpacing: 1, marginTop: 1 },
+  testimonialQuote: { fontFamily: FF.h4, fontWeight: '500', fontSize: 13, lineHeight: 19, color: C.inkBody2 },
+  statsSection: { flexDirection: 'row', gap: 12, marginTop: 24, paddingHorizontal: 24 },
+  statCard: { flex: 1, backgroundColor: C.card, borderRadius: 24, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: C.line,
+    ...Platform.select({ ios: { shadowColor: '#3D2D1B', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 4 } }, android: { elevation: 2 } }) },
+  statEmoji: { fontSize: 20, marginBottom: 6 },
+  statValue: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 26, color: C.ink },
+  statLabel: { fontFamily: FF.h6, fontSize: 12, color: C.muted2, marginTop: 2 },
+  legalSection: { marginTop: 24, paddingHorizontal: 24, paddingBottom: 8 },
+  legalDisclosure: { fontFamily: FF.h4, fontSize: 11, lineHeight: 16, color: C.muted3, textAlign: 'center' },
+  legalLinks: { fontFamily: FF.h4, fontSize: 11.5, color: C.muted2, textAlign: 'center', marginTop: 10, textDecorationLine: 'underline' },
+  stickyFooter: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  stickyGradient: { position: 'absolute', top: -32, left: 0, right: 0, height: 32 },
+  stickyInner: { backgroundColor: C.bg, paddingHorizontal: 24, paddingTop: 6, paddingBottom: Platform.OS === 'ios' ? 28 : 20 },
+  stickyCta: { height: 56, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+    ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.7, shadowRadius: 17, shadowOffset: { width: 0, height: 12 } }, android: { elevation: 8 } }) },
+  stickyCtaText: { fontFamily: FF.h8, fontSize: 18, color: '#fff' },
+  stickyReassure: { textAlign: 'center', marginTop: 8, fontFamily: FF.h4, fontSize: 12, color: '#9A8E7E' },
+});
 
 function CancelTrialSheet({ product, reduceMotion, onKeep, onContinue }) {
   const enter = useRef(new Animated.Value(0)).current;
@@ -760,7 +909,7 @@ function OneTimeOffer({ reduceMotion, onClaim, onClose }) {
 
   return (
     <View style={styles.oto}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Close one-time offer" onPress={onClose} style={styles.otoClose}><Text style={styles.closeX}>✕</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close one-time offer" onPress={onClose} style={styles.otoClose}><Text style={styles.closeX}>{'\u2715'}</Text></Pressable>
       <Animated.View style={{ opacity: enter, transform: [{ translateY: headerY }] }}>
         <Text style={styles.otoH1}>One-time offer</Text>
         <Text style={styles.otoBig}>Save {oneTimeOfferDiscount}% today</Text>
@@ -814,7 +963,7 @@ function SuccessScreen({ fname, purpose, reduceMotion, onStart }) {
   const sub = purpose === 'read' ? 'Your shelf is stocked and your first chapter is waiting. Welcome to Katha.' : purpose === 'write' ? 'Your writing room is ready and your first draft is waiting. Welcome to Katha.' : 'Your shelf and writing room are ready. Welcome to Katha.';
   return (
     <View style={styles.successWrap}>
-      <Animated.View style={[styles.successBadge, { transform: [{ scale }] }]}><Text style={{ color: '#fff', fontSize: 44 }}>✓</Text></Animated.View>
+      <Animated.View style={[styles.successBadge, { transform: [{ scale }] }]}><Text style={{ color: '#fff', fontSize: 44 }}>{'\u2713'}</Text></Animated.View>
       <Text style={styles.successTitle}>You're all set, {fname}</Text>
       <Text style={styles.successSub}>{sub}</Text>
       <Pressable onPress={onStart} style={styles.successBtn}><Text style={styles.successBtnTxt}>{cta}</Text></Pressable>
@@ -886,34 +1035,7 @@ const styles = StyleSheet.create({
   ringPct: { fontFamily: FF.bri8, fontSize: 26, color: C.orange },
   buildTitle: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 24, lineHeight: 29, letterSpacing: 0, color: C.ink, textAlign: 'center' },
   checkDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  closeBtn: { position: 'absolute', top: 2, right: 16, zIndex: 12, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderColor: '#EEE2D0', alignItems: 'center', justifyContent: 'center' },
   closeX: { color: '#9A8E7E', fontSize: 15 },
-  proofAv: { width: 36, height: 36, borderRadius: 18, borderWidth: 2.5, borderColor: C.bg },
-  proofMore: { width: 36, height: 36, borderRadius: 18, borderWidth: 2.5, borderColor: C.bg, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
-  proofMoreTxt: { color: '#fff', fontFamily: FF.h7, fontSize: 10.5 },
-  proofSub: { fontFamily: FF.h6, fontSize: 12.5, color: C.muted2, marginTop: 3 },
-  payEyebrow: { marginTop: 11, fontFamily: FF.h7, fontSize: 13, color: C.orange },
-  payTitle: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 25, lineHeight: 29, letterSpacing: 0, color: C.ink, textAlign: 'center', marginTop: 12 },
-  paySub: { fontFamily: FF.h4, fontSize: 14, lineHeight: 21, color: C.muted, textAlign: 'center', marginTop: 9, marginBottom: 16 },
-  featTick: { width: 24, height: 24, borderRadius: 12, backgroundColor: C.iconBg, alignItems: 'center', justifyContent: 'center' },
-  featTickTxt: { color: C.orange, fontFamily: FF.h8, fontSize: 13 },
-  featText: { flex: 1, fontFamily: FF.h6, fontSize: 14, lineHeight: 19, color: C.inkSoft },
-  planStack: { gap: 12, marginTop: 2 },
-  morePlansBtn: { height: 40, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  morePlansText: { fontFamily: FF.h7, fontSize: 13.5, color: C.muted, textDecorationLine: 'underline' },
-  planCard: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 15, paddingHorizontal: 18, borderRadius: 18, borderWidth: 2, overflow: 'visible' },
-  planTitle: { fontFamily: FF.h7, fontSize: 16, color: C.ink },
-  planPer: { fontFamily: FF.h4, fontSize: 13, color: C.muted2, marginTop: 1 },
-  planPrice: { fontFamily: FF.h8, fontSize: 16, color: C.ink },
-  planUnit: { fontFamily: FF.h4, fontSize: 12, color: C.muted2 },
-  planBadge: { position: 'absolute', top: -11, left: 18, backgroundColor: C.ink, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20 },
-  planBadgeTxt: { color: '#fff', fontFamily: FF.h8, fontSize: 10.5, letterSpacing: 0 },
-  payFoot: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20 },
-  payCta: { height: 60, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-    ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.7, shadowRadius: 17, shadowOffset: { width: 0, height: 12 } }, android: { elevation: 8 } }) },
-  payCtaTxt: { fontFamily: FF.h8, fontSize: 18, color: '#fff' },
-  payReassure: { textAlign: 'center', marginTop: 9, fontFamily: FF.h4, fontSize: 12, color: '#9A8E7E' },
-  payLegal: { textAlign: 'center', marginTop: 6, fontFamily: FF.h4, fontSize: 11.5, color: C.muted3 },
   paywallBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: C.ink },
   cancelSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 310, backgroundColor: C.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 28,
     ...Platform.select({ ios: { shadowColor: C.ink, shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: -8 } }, android: { elevation: 12 } }) },
