@@ -17,7 +17,7 @@
 - Expo production web export passed with 25 intentional assets.
 - Imported `backend/` tree matched `praz-builds/katha-ai-backend@69c84fc` exactly before scoped documentation updates.
 - Linked Supabase migrations `00001` through `00004` match the remote project.
-- Remote Supabase database lint completed with no schema errors; six deployed Edge Functions reported active.
+- Remote Supabase database lint completed with no schema errors; seven deployed Edge Functions reported active.
 - `.coderabbit.yaml` passed the official CodeRabbit v2 JSON schema.
 
 ## Canonical Paths
@@ -48,6 +48,7 @@
 - CodeRabbit's review of commit `5cc161a` requested 15 further changes. The branch now rejects cross-story feedback key reuse, persists unhandled billing refunds for reconciliation, uses stable database conflict codes, validates search filters and provider payloads, centralizes operation parsing, and preserves generation request IDs across retries.
 - Replaced calendar-day ad-reward uniqueness with an indexed rolling 24-hour contract for the future verified server transaction.
 - CodeRabbit's review of `5fcff1d` reduced the remaining set to four. Configured Expo builds now return validated server-generated stories and surface backend failures, refund backlog fallback IDs are deterministic across retries, and the FCM/device-token roadmap uses HTTP v1 service-account authentication with update-capable ownership policies.
+- CodeRabbit's review of `26774a5` reported no further code findings. Its three documentation notes were corrected: the deployed function count is seven, stale `MEMORY.md` references are removed, and the planned device-token schema now records non-null ownership/platform fields plus the complete owner RLS policy set.
 - Removed the committed mutable session handoff and moving-source skill lock; `SESSION_HANDOFF.md` remains available locally and ignored for copy-paste use.
 - PR #3 remains unmerged until CodeRabbit formally approves the latest fixes.
 

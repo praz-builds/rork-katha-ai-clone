@@ -49,7 +49,6 @@
 ### Changes
 - **ROADMAP.md** — created phased backend execution plan (A through H)
 - **CLAUDE.md** — updated architecture section (Rork is native Swift+Kotlin, not React Native), updated build phases, added Rork app status, added new edge functions to TODO list
-- **MEMORY.md** — updated with Rork review findings, fix-up list, backend phases
 - **build-log.md** — this entry
 
 ### Rork App Status
@@ -67,7 +66,7 @@
 - StoryCard layout is vertical instead of spec's horizontal
 - Library has 5 tabs instead of 4
 - Author follower counts all wrong
-- See MEMORY.md for full list
+- The full fix-up list is retained in this build-log entry and `ROADMAP.md`.
 
 ### Known Backend Bugs Confirmed
 - `generate-story/index.ts:137` — double-deduct in response body

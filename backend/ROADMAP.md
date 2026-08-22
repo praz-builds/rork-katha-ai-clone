@@ -227,14 +227,14 @@ Each is a simple POST with auth + upsert/delete + count update:
   ```sql
   CREATE TABLE device_tokens (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     token text NOT NULL,
-    platform text CHECK (platform IN ('ios', 'android')),
+    platform text NOT NULL CHECK (platform IN ('ios', 'android')),
     created_at timestamptz DEFAULT now(),
     UNIQUE(user_id, token)
   );
   ```
-- [ ] RLS: users can only insert, update, or delete their own tokens so authenticated upserts can follow the update conflict path
+- [ ] Enable RLS with authenticated owner-only `SELECT`, `INSERT`, `UPDATE`, and `DELETE` policies using `auth.uid() = user_id`; the full policy set allows authenticated upserts to read and update their conflict target without exposing another user's tokens
 
 ### Endpoints
 - [ ] `POST /register-device` — upsert `device_tokens` with FCM token + platform
