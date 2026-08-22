@@ -8,4 +8,4 @@ Use [`CLAUDE.md`](CLAUDE.md) as the canonical repository contract. This is one m
 - Use the relevant project-local skill in `.agents/skills` for Expo, React Native, native mobile, EAS, simulator, SwiftUI, Jetpack Compose, or deep-review tasks.
 - Run commands from the owning workspace (`expo/` or `backend/`).
 - Keep secrets, dependencies, generated output, and local service state out of Git.
-- Put changes on a feature branch and use a pull request against `main`; CodeRabbit is configured to review all PRs.
+- Follow the mandatory Git workflow in root `CLAUDE.md`: use `codex/*`, never commit or push directly to `main`, and merge only after the latest CodeRabbit review approves the branch.

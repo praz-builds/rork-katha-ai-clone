@@ -1,0 +1,98 @@
+export const ADAPTY_CREDIT_MAP: Readonly<Record<string, number>> = {
+  starter_pack: 3,
+  value_pack: 10,
+  power_pack: 25,
+  monthly_sub: 20,
+  yearly_sub: 25,
+};
+
+export type AdaptyEvent = {
+  customer_user_id?: string | null;
+  event_type?: string;
+  profile_event_id?: string;
+  transaction_id?: string;
+  vendor_product_id?: string;
+  product_id?: string;
+  event_properties?: {
+    transaction_id?: string;
+    vendor_product_id?: string;
+  };
+};
+
+export type AdaptyCreditOperation = {
+  userId: string;
+  credits: number;
+  reason: "subscription" | "purchase";
+  transactionId: string;
+};
+
+/** Resolve and validate a credit-bearing Adapty event. */
+export function resolveAdaptyCredit(
+  event: AdaptyEvent,
+): AdaptyCreditOperation | null {
+  if (!event.event_type) return null;
+
+  const reason = getCreditReason(event.event_type);
+  if (!reason) return null;
+
+  if (!isUuid(event.customer_user_id)) {
+    throw new Error("Missing or invalid customer_user_id");
+  }
+
+  const productId = event.event_properties?.vendor_product_id ??
+    event.vendor_product_id ??
+    event.product_id;
+  if (!productId || !Object.hasOwn(ADAPTY_CREDIT_MAP, productId)) {
+    throw new Error("Unknown product");
+  }
+
+  const transactionId = event.event_properties?.transaction_id ??
+    event.transaction_id ??
+    event.profile_event_id;
+  if (!transactionId) throw new Error("Missing transaction identifier");
+
+  return {
+    userId: event.customer_user_id,
+    credits: ADAPTY_CREDIT_MAP[productId],
+    reason,
+    transactionId,
+  };
+}
+
+/** Compare webhook secrets without returning at the first mismatched byte. */
+export function constantTimeEquals(left: string, right: string): boolean {
+  const encoder = new TextEncoder();
+  const leftBytes = encoder.encode(left);
+  const rightBytes = encoder.encode(right);
+  const length = Math.max(leftBytes.length, rightBytes.length);
+  let mismatch = leftBytes.length ^ rightBytes.length;
+
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  }
+  return mismatch === 0;
+}
+
+/** Map credit-bearing Adapty lifecycle events to ledger reasons. */
+function getCreditReason(
+  eventType: string,
+): "subscription" | "purchase" | null {
+  if (
+    eventType === "subscription_initial_purchase" ||
+    eventType === "subscription_started" ||
+    eventType === "subscription_renewed"
+  ) {
+    return "subscription";
+  }
+  if (eventType === "non_subscription_purchase") return "purchase";
+  return null;
+}
+
+/** Validate the Supabase user ID supplied as Adapty customer_user_id. */
+function isUuid(value: string | null | undefined): value is string {
+  return Boolean(
+    value &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(value),
+  );
+}

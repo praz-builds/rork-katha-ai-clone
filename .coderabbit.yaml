@@ -6,12 +6,15 @@ reviews:
   high_level_summary: true
   request_changes_workflow: true
   review_status: true
+  fail_commit_status: true
   poem: false
   in_progress_fortune: false
   auto_review:
     enabled: true
     drafts: true
     auto_incremental_review: true
+    base_branches:
+      - main
   path_filters:
     - "!**/node_modules/**"
     - "!**/dist/**"

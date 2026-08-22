@@ -10,53 +10,52 @@ serve(async (req) => {
   if (cors) return cors;
 
   try {
-    // Auth
-    const authHeader = req.headers.get("Authorization")!;
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader } } },
     );
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    // Parse request
     const { genre, topic, characters, lengthType = "short" } = await req.json();
+    const genres = Array.isArray(genre) ? genre : [genre];
+    if (
+      !genres.length ||
+      genres.some((value) => typeof value !== "string" || !value.trim())
+    ) {
+      return jsonResponse({ error: "At least one genre is required" }, 400);
+    }
+    if (
+      !Object.hasOwn(
+        { mini: true, short: true, standard: true, long: true },
+        lengthType,
+      )
+    ) {
+      return jsonResponse({ error: "Invalid lengthType" }, 400);
+    }
 
     // Use service role client for credit operations
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Deduct 1 credit
-    let newBalance: number;
-    try {
-      newBalance = await deductCredit(serviceClient, user.id, 1, "generation");
-    } catch {
-      return new Response(
-        JSON.stringify({ error: "Insufficient credits" }),
-        {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Create story record
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
       .insert({
         author_id: user.id,
         title: "Generating...",
-        genre: Array.isArray(genre) ? genre : [genre],
+        genre: genres,
         topic,
         length_type: lengthType,
         status: "generating",
@@ -64,95 +63,115 @@ serve(async (req) => {
       .select()
       .single();
 
-    if (storyError) throw storyError;
-
-    // Save characters
-    if (characters?.length) {
-      await serviceClient.from("characters").insert(
-        characters.map((c: { name: string; description?: string; background?: string; appearance?: string; isHero?: boolean }) => ({
-          story_id: story.id,
-          name: c.name,
-          description: c.description,
-          background: c.background,
-          appearance: c.appearance,
-          is_hero: c.isHero ?? false,
-        }))
-      );
+    if (storyError || !story) {
+      throw storyError ?? new Error("Story creation failed");
     }
 
-    // Generate story text
-    const systemPrompt = STORY_SYSTEM_PROMPT;
-    const userPrompt = buildUserPrompt({ genre, topic, characters, lengthType });
-
-    let result;
+    let newBalance: number;
     try {
-      result = await generateStoryText(systemPrompt, userPrompt);
-    } catch {
-      // Refund credit on generation failure
-      await grantCredit(serviceClient, user.id, 1, "refund", story.id);
-      await serviceClient
-        .from("stories")
-        .update({ status: "failed" })
-        .eq("id", story.id);
-      return new Response(
-        JSON.stringify({ error: "Story generation failed. Credit refunded." }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+      newBalance = await deductCredit(
+        serviceClient,
+        user.id,
+        1,
+        "generation",
+        story.id,
       );
+    } catch (error) {
+      await serviceClient.from("stories").delete().eq("id", story.id);
+      if (error instanceof Error && error.message === "Insufficient credits") {
+        return jsonResponse({ error: "Insufficient credits" }, 402);
+      }
+      throw error;
     }
 
-    // Parse title from generated text (expect first line as title)
-    const lines = result.text.split("\n").filter((l: string) => l.trim());
-    const title = lines[0]?.replace(/^#\s*/, "").trim() || "Untitled Story";
-    const content = lines.slice(1).join("\n").trim();
-    const wordCount = content.split(/\s+/).length;
+    try {
+      if (characters?.length) {
+        const { error: characterError } = await serviceClient
+          .from("characters")
+          .insert(
+            characters.map((
+              c: {
+                name: string;
+                description?: string;
+                background?: string;
+                appearance?: string;
+                isHero?: boolean;
+              },
+            ) => ({
+              story_id: story.id,
+              name: c.name,
+              description: c.description,
+              background: c.background,
+              appearance: c.appearance,
+              is_hero: c.isHero ?? false,
+            })),
+          );
+        if (characterError) throw characterError;
+      }
 
-    // Update story + create chapter
-    await serviceClient
-      .from("stories")
-      .update({
-        title,
-        word_count: wordCount,
-        status: "complete",
-      })
-      .eq("id", story.id);
+      const userPrompt = buildUserPrompt({
+        genre: genres,
+        topic,
+        characters,
+        lengthType,
+      });
+      const result = await generateStoryText(STORY_SYSTEM_PROMPT, userPrompt);
+      const lines = result.text.split("\n").filter((line: string) =>
+        line.trim()
+      );
+      const title = lines[0]?.replace(/^#\s*/, "").trim() || "Untitled Story";
+      const content = lines.slice(1).join("\n").trim();
+      if (!content) throw new Error("Generation returned no story content");
+      const wordCount = content.split(/\s+/).length;
 
-    await serviceClient.from("chapters").insert({
-      story_id: story.id,
-      chapter_number: 1,
-      title: "Chapter 1",
-      content,
-      word_count: wordCount,
-    });
+      const { data: chapter, error: completionError } = await serviceClient.rpc(
+        "complete_story_generation",
+        {
+          p_story_id: story.id,
+          p_author_id: user.id,
+          p_title: title,
+          p_content: content,
+          p_word_count: wordCount,
+        },
+      );
+      if (completionError || !chapter) {
+        throw completionError ?? new Error("Story persistence failed");
+      }
 
-    // TODO: Generate cover image (DALL-E / Flux)
-    // TODO: Generate audio narration (edge-tts)
-
-    return new Response(
-      JSON.stringify({
+      return jsonResponse({
         story: { ...story, title, word_count: wordCount, status: "complete" },
-        chapter: { chapter_number: 1, content, word_count: wordCount },
+        chapter,
         balance: newBalance,
         model: result.model,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("generate-story post-deduction error:", error);
+      try {
+        await grantCredit(serviceClient, user.id, 1, "refund", story.id);
+      } finally {
+        await serviceClient
+          .from("stories")
+          .update({ status: "failed" })
+          .eq("id", story.id);
       }
-    );
+      return jsonResponse(
+        { error: "Story generation failed. Credit refunded." },
+        500,
+      );
+    }
   } catch (error) {
     console.error("generate-story error:", error);
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
+
+/** Return a JSON response with the shared CORS headers. */
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 function buildUserPrompt(params: {
   genre: string[];
@@ -176,6 +195,7 @@ function buildUserPrompt(params: {
       prompt += `- ${c.name}${c.description ? `: ${c.description}` : ""}\n`;
     });
   }
-  prompt += `\nStart with the title on the first line (no # prefix), then the story text.`;
+  prompt +=
+    `\nStart with the title on the first line (no # prefix), then the story text.`;
   return prompt;
 }

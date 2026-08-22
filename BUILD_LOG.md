@@ -29,3 +29,15 @@
 - Backend roadmap: `backend/ROADMAP.md`
 - Backend history: `backend/build-log.md`
 - Repository review policy: `.coderabbit.yaml`
+
+## 2026-08-22 — CodeRabbit Security Remediation
+
+- Confirmed PR #3 was not approved: CodeRabbit failed to post its inline review and marked the backend import as critical merge risk despite a misleading green completion status.
+- Configured failed CodeRabbit runs to fail their commit status and limited automatic reviews to pull requests targeting `main`.
+- Added a mandatory `codex/*` feature-branch workflow, a local pre-push guard, and a pull request merge checklist. GitHub server-side branch protection remains unavailable for this private repository on the current plan.
+- Added migration `00005_secure_credit_operations.sql` to serialize and deduplicate credit mutations, require service-role execution, use text references, and atomically persist a generated story with its first chapter.
+- Disabled generic client-controlled credit deductions and unverified ad-reward grants.
+- Hardened Adapty webhook authentication, product validation, user mapping, and transaction idempotency.
+- Added refund handling for failed story and continuation persistence.
+- Added Deno tests for Adapty authorization and event validation, plus in-memory PostgreSQL checks for RPC permissions, idempotency, concurrency, feedback caps, and atomic story completion.
+- PR #3 remains unmerged until validation passes and a fresh CodeRabbit full review approves the fixes.

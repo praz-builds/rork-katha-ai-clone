@@ -33,4 +33,6 @@ The Supabase project id is committed in `backend/supabase/config.toml`; credenti
 
 ## Pull Request Reviews
 
-CodeRabbit configuration is versioned in [`.coderabbit.yaml`](.coderabbit.yaml). Once the CodeRabbit GitHub App is authorized for this repository, new and updated PRs are reviewed automatically.
+CodeRabbit configuration is versioned in [`.coderabbit.yaml`](.coderabbit.yaml). Pull requests targeting `main`, including incremental updates, are reviewed automatically. Direct work on `main` is prohibited; the complete merge gate is defined in [`CLAUDE.md`](CLAUDE.md).
+
+Run `scripts/setup-repo.sh` after cloning to enable the tracked pre-push guard that rejects direct local pushes to `main`.

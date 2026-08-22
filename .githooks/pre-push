@@ -1,0 +1,10 @@
+#!/bin/sh
+
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    printf '%s\n' "Direct pushes to main are blocked. Push a codex/* branch and open a PR." >&2
+    exit 1
+  fi
+done
+
+exit 0

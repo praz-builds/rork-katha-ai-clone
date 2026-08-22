@@ -25,8 +25,15 @@ This is the single canonical Katha AI repository: `praz-builds/rork-katha-ai-clo
 
 Use the project-local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes.
 
-## Pull Requests
+## Mandatory Git Workflow
 
-- All product changes go through pull requests against `main`.
-- CodeRabbit is configured by `.coderabbit.yaml` to review every PR, including drafts and incremental pushes.
-- Resolve actionable review findings and keep validation commands in the PR description.
+- Never commit or push directly to `main`.
+- Before editing, fetch `origin/main` and create a `codex/<task-slug>` branch from it.
+- Commit only task-related files to the feature branch, push it, and open a pull request targeting `main`.
+- After every code-changing push, wait for CodeRabbit's incremental review.
+- Merge only when CodeRabbit's latest review completed successfully and approved the changes, no CodeRabbit message says failed or requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
+- A green CodeRabbit commit status alone is not approval. Read the latest review body and formal review state.
+- Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
+- Exceptions require explicit user authorization and documentation in the pull request.
+
+CodeRabbit reviews `main` pull requests, including drafts and incremental pushes, and fails its status when review execution fails. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable for this private repository on its current plan, so this documented merge gate remains mandatory.

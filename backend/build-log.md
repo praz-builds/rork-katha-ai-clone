@@ -118,3 +118,24 @@ All 7 edge functions deployed and ACTIVE:
 - [ ] Phase B: Wire DALL-E 3 cover images + edge-tts audio narration
 - [ ] Create Supabase Storage buckets (covers, audio)
 - [ ] Consider recreating project in Mumbai region for lower India latency
+
+---
+
+## 2026-08-22 — CodeRabbit credit and generation hardening
+
+**Session:** Remediation of PR #3 critical merge-risk findings
+
+### Changes
+
+- Added migration `00005_secure_credit_operations.sql` with service-only RPC permissions, positive amount validation, text reference IDs, per-user serialization, and idempotency indexes.
+- Added atomic story completion so the story update and first chapter insert commit together.
+- Changed initial and continuation generation to use deterministic credit references and refund persistence failures.
+- Disabled the generic client-controlled deduction endpoint and unverified AdMob reward endpoint.
+- Changed Adapty authentication to exact `Authorization` secret verification, fail-closed configuration, `customer_user_id` mapping, explicit product allowlisting, and transaction-level idempotency.
+- Restricted feedback rewards to public stories not authored by the commenter, verified chapter ownership, and enforced the documented daily reward check.
+- Added focused Adapty unit tests and executed all five migrations against an in-memory PostgreSQL runtime, including permission, replay, concurrency, feedback, and story-completion behavior checks.
+
+### Deployment status
+
+- Code changes and migration are pending PR review. They have not been deployed to the linked Supabase project.
+- Adapty dashboard authorization and exact product IDs must match the server configuration before production webhook traffic is enabled.

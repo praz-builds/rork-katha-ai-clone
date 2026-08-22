@@ -22,3 +22,6 @@ enabled = false
 
 [storage]
 file_size_limit = "10MB"
+
+[functions.adapty-webhook]
+verify_jwt = false

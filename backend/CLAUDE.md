@@ -64,7 +64,7 @@ These are locked in via `references/strategic-decisions.md` (the authoritative d
 
 ## Database
 
-Schema is in `supabase/migrations/` (3 migrations). Key tables:
+Schema is in `supabase/migrations/` (5 migrations). Key tables:
 
 **Core (migration 00001):**
 - `profiles` — user identity, linked to Supabase Auth
@@ -87,7 +87,7 @@ Schema is in `supabase/migrations/` (3 migrations). Key tables:
 **Not yet created (needed for Phase G):**
 - `device_tokens` — FCM/APNs token storage for push notifications
 
-**Credit ledger pattern:** Never update rows — only insert. Balance = last row's `balance_after`. Atomic deduction via `INSERT ... WHERE balance_after >= 0`.
+**Credit ledger pattern:** Never update rows. Service-only RPCs serialize mutations per user, require a reference ID, and deduplicate `(user_id, reason, reference_id)` operations. Balance is the newest ledger row by `created_at`, then `id`.
 
 **Credit reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`
 
@@ -100,11 +100,11 @@ All in `supabase/functions/`. Each is a Deno/TypeScript handler:
 |----------|--------|---------|--------|
 | `generate-story` | POST | Orchestrator: auth -> credit check -> deduct -> LLM -> image -> audio -> return | 70% (LLM works, image/audio stubbed) |
 | `continue-story` | POST | Generate next chapter (author-only) | 70% (same gap) |
-| `deduct-credit` | POST | Atomic credit deduction | Done |
-| `grant-credit` | POST | AdMob SSV reward verification + 24hr cooldown | Scaffolded (no SSV verify) |
+| `deduct-credit` | POST | Legacy generic endpoint | Disabled; trusted operations deduct internally |
+| `grant-credit` | POST | AdMob SSV reward verification | Disabled until SSV is implemented |
 | `library` | GET | Paginated curated story feed with genre filter + search | Done |
 | `feedback` | POST | Comments + one-time feedback credit reward | Done |
-| `adapty-webhook` | POST | Subscription/purchase event handler | Scaffolded (no HMAC verify) |
+| `adapty-webhook` | POST | Authenticated, idempotent subscription/purchase credits | Implemented; dashboard secret and product IDs require configuration |
 
 ### TODO
 | Function | Purpose | Phase |
@@ -126,11 +126,11 @@ All in `supabase/functions/`. Each is a Deno/TypeScript handler:
 
 Shared utilities in `supabase/functions/_shared/`.
 
-### Known Bugs (fix in Phase A)
-- `generate-story/index.ts:137` — `balance: newBalance - 1` double-deducts in response
-- `credits.ts` — read-then-write race condition (needs Postgres FOR UPDATE)
-- `generate-story` — hardcoded system prompt (should load `prompts/story-generator.md`)
-- `llm.ts` — Haiku model ID outdated (`claude-haiku-4-5-20241022` → `claude-haiku-4-5-20251001`)
+### Current Security Gate
+
+- Migration `00005` and the hardened Edge Functions are pending review and deployment through PR #3.
+- AdMob rewards stay unavailable until server-side verification is implemented.
+- Do not deploy credit or generation changes outside the reviewed migration/function set.
 
 ## Monetization
 

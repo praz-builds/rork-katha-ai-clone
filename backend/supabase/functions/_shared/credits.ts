@@ -1,18 +1,73 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+type CreditDatabase = {
+  public: {
+    Tables: {
+      credit_ledger: {
+        Row: {
+          id: string;
+          user_id: string;
+          balance_after: number;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: {
+      deduct_credit: {
+        Args: {
+          p_user_id: string;
+          p_amount: number;
+          p_reason: string;
+          p_reference_id: string;
+        };
+        Returns: number;
+      };
+      grant_credit: {
+        Args: {
+          p_user_id: string;
+          p_amount: number;
+          p_reason: string;
+          p_reference_id: string;
+        };
+        Returns: number;
+      };
+    };
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
+
+export type CreditDeductionReason = "generation";
+export type CreditGrantReason =
+  | "purchase"
+  | "subscription"
+  | "ad_reward"
+  | "streak"
+  | "feedback"
+  | "referral"
+  | "social"
+  | "welcome"
+  | "refund"
+  | "reader_earning";
 
 /**
  * Get current credit balance for a user.
  * Balance = balance_after from the most recent ledger entry.
  */
 export async function getBalance(
-  supabase: ReturnType<typeof createClient>,
-  userId: string
+  supabase: SupabaseClient<CreditDatabase>,
+  userId: string,
 ): Promise<number> {
   const { data, error } = await supabase
     .from("credit_ledger")
     .select("balance_after")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(1)
     .single();
 
@@ -22,26 +77,29 @@ export async function getBalance(
 }
 
 /**
- * Deduct credits atomically using FOR UPDATE to prevent race conditions.
- * Returns new balance or throws if insufficient.
+ * Deduct credits through the service-only, serialized database operation.
+ * A reference ID is mandatory so retries cannot charge twice.
  */
 export async function deductCredit(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<CreditDatabase>,
   userId: string,
   amount: number,
-  reason: string,
-  referenceId?: string
+  reason: CreditDeductionReason,
+  referenceId: string,
 ): Promise<number> {
   const { data, error } = await supabase.rpc("deduct_credit", {
     p_user_id: userId,
     p_amount: amount,
     p_reason: reason,
-    p_reference_id: referenceId ?? null,
+    p_reference_id: referenceId,
   });
 
   if (error) {
     if (error.message.includes("Insufficient credits")) {
       throw new Error("Insufficient credits");
+    }
+    if (error.message.includes("Duplicate credit operation")) {
+      throw new Error("Duplicate credit operation");
     }
     throw new Error(`Failed to deduct credit: ${error.message}`);
   }
@@ -49,21 +107,21 @@ export async function deductCredit(
 }
 
 /**
- * Grant credits atomically using FOR UPDATE to prevent race conditions.
- * Returns new balance.
+ * Grant credits through the service-only, serialized database operation.
+ * Reusing the same reason and reference ID is an idempotent no-op.
  */
 export async function grantCredit(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<CreditDatabase>,
   userId: string,
   amount: number,
-  reason: string,
-  referenceId?: string
+  reason: CreditGrantReason,
+  referenceId: string,
 ): Promise<number> {
   const { data, error } = await supabase.rpc("grant_credit", {
     p_user_id: userId,
     p_amount: amount,
     p_reason: reason,
-    p_reference_id: referenceId ?? null,
+    p_reference_id: referenceId,
   });
 
   if (error) throw new Error(`Failed to grant credit: ${error.message}`);
