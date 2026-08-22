@@ -221,6 +221,103 @@ function providerError(payload: unknown): string {
     : "unknown provider error";
 }
 
+const EDIT_DEADLINE_MS = 60_000;
+
+/**
+ * Edit a paragraph with fallback chain:
+ * Sonnet 4.6 (30s) -> Haiku 4.5 (20s) -> gpt-4o-mini (20s)
+ *
+ * Uses shorter timeouts than story generation since edits are simpler.
+ */
+export async function editParagraph(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<GenerationResult> {
+  const failures: string[] = [];
+  const deadline = Date.now() + EDIT_DEADLINE_MS;
+
+  // Attempt 1: Sonnet 4.6 (30s)
+  try {
+    const text = await generateAnthropicText(
+      "claude-sonnet-4-6",
+      30000,
+      systemPrompt,
+      userPrompt,
+      deadline,
+      0,
+      () => {},
+    );
+    return { text, model: "claude-sonnet-4-6" };
+  } catch (e) {
+    console.error("editParagraph Sonnet 4.6 failed:", e);
+    failures.push(`claude-sonnet-4-6: ${failureMessage(e)}`);
+  }
+
+  // Attempt 2: Haiku 4.5 (20s)
+  try {
+    const text = await generateAnthropicText(
+      "claude-haiku-4-5-20251001",
+      20000,
+      systemPrompt,
+      userPrompt,
+      deadline,
+      0,
+      () => {},
+    );
+    return { text, model: "claude-haiku-4-5" };
+  } catch (e) {
+    console.error("editParagraph Haiku 4.5 failed:", e);
+    failures.push(`claude-haiku-4-5: ${failureMessage(e)}`);
+  }
+
+  // Attempt 3: gpt-4o-mini (20s)
+  if (OPENAI_API_KEY) {
+    try {
+      const text = await withAbortTimeout(
+        remainingDuration(deadline, 20000),
+        async (signal) => {
+          const res = await fetch(
+            "https://api.openai.com/v1/chat/completions",
+            {
+              method: "POST",
+              signal,
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+              },
+              body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: userPrompt },
+                ],
+                max_tokens: 2048,
+              }),
+            },
+          );
+          const payload: unknown = await res.json();
+          if (!res.ok) {
+            throw new Error(
+              `OpenAI request failed (${res.status}): ${
+                providerError(payload)
+              }`,
+            );
+          }
+          return openAIContent(payload);
+        },
+      );
+      return { text, model: "gpt-4o-mini" };
+    } catch (e) {
+      console.error("editParagraph gpt-4o-mini failed:", e);
+      failures.push(`gpt-4o-mini: ${failureMessage(e)}`);
+    }
+  } else {
+    failures.push("gpt-4o-mini: OPENAI_API_KEY is not configured");
+  }
+
+  throw new Error(`All LLM providers failed for edit. ${failures.join(" | ")}`);
+}
+
 async function withAbortTimeout<T>(
   ms: number,
   operation: (signal: AbortSignal) => Promise<T>,
