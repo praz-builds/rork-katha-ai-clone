@@ -263,12 +263,15 @@ export default function CreateStudioScreen({
 
     try {
       const generated = await generateStory(createDraft, requestId);
+      const firstChapter = generated.chapters[0];
+      if (!firstChapter) {
+        throw new Error("Story generation returned no chapter");
+      }
       onCreditUsed();
       setStory(generated);
       setStoryTitle(generated.title);
-      const firstChapter = generated.chapters[0];
       setParagraphs(
-        (firstChapter?.paragraphs ?? []).map((text) => ({
+        firstChapter.paragraphs.map((text) => ({
           text,
           isEditing: false,
           isProcessing: false,

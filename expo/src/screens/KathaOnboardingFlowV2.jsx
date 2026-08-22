@@ -730,8 +730,14 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
 
         {/* Section 6: Legal */}
         <View style={pw.legalSection}>
-          <Text style={pw.legalDisclosure}>Your yearly subscription automatically renews unless cancelled at least 24 hours before the end of the current term. Cancel any time in the App Store at no additional cost.</Text>
-          <Text style={pw.legalLinks}>{'Restore purchases  \u00B7  Terms of Use  \u00B7  Privacy Notice'}</Text>
+          <Text style={pw.legalDisclosure}>{selectedProduct.billingDisclosure}</Text>
+          <View style={pw.legalLinksRow}>
+            <Pressable onPress={() => Alert.alert('Restore', 'Restore purchases will be available when Adapty is connected.')} accessibilityRole="button"><Text style={pw.legalLink}>Restore purchases</Text></Pressable>
+            <Text style={pw.legalDot}>{'\u00B7'}</Text>
+            <Pressable onPress={() => Alert.alert('Terms', 'Terms of Use URL will be configured.')} accessibilityRole="link"><Text style={pw.legalLink}>Terms of Use</Text></Pressable>
+            <Text style={pw.legalDot}>{'\u00B7'}</Text>
+            <Pressable onPress={() => Alert.alert('Privacy', 'Privacy Notice URL will be configured.')} accessibilityRole="link"><Text style={pw.legalLink}>Privacy Notice</Text></Pressable>
+          </View>
         </View>
       </ScrollView>
 
@@ -746,7 +752,7 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
               </LinearGradient>
             </Animated.View>
           </Pressable>
-          <Text style={pw.stickyReassure}>No payment now. Easy to cancel.</Text>
+          <Text style={pw.stickyReassure}>{selectedProduct.trial ? 'No payment now. Easy to cancel.' : `Billed ${selectedProduct.price} immediately. Cancel anytime.`}</Text>
         </View>
       </Animated.View>
 
@@ -823,7 +829,9 @@ const pw = StyleSheet.create({
   statLabel: { fontFamily: FF.h6, fontSize: 12, color: C.muted2, marginTop: 2 },
   legalSection: { marginTop: 24, paddingHorizontal: 24, paddingBottom: 8 },
   legalDisclosure: { fontFamily: FF.h4, fontSize: 11, lineHeight: 16, color: C.muted3, textAlign: 'center' },
-  legalLinks: { fontFamily: FF.h4, fontSize: 11.5, color: C.muted2, textAlign: 'center', marginTop: 10, textDecorationLine: 'underline' },
+  legalLinksRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10, gap: 6, flexWrap: 'wrap' },
+  legalLink: { fontFamily: FF.h4, fontSize: 11.5, color: C.muted2, textDecorationLine: 'underline' },
+  legalDot: { fontFamily: FF.h4, fontSize: 11.5, color: C.muted2 },
   stickyFooter: { position: 'absolute', bottom: 0, left: 0, right: 0 },
   stickyGradient: { position: 'absolute', top: -32, left: 0, right: 0, height: 32 },
   stickyInner: { backgroundColor: C.bg, paddingHorizontal: 24, paddingTop: 6, paddingBottom: Platform.OS === 'ios' ? 28 : 20 },
