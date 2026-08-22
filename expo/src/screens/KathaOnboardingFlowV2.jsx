@@ -756,6 +756,7 @@ function OneTimeOffer({ reduceMotion, onClaim, onClose }) {
   const headerY = enter.interpolate({ inputRange: [0, 1], outputRange: [12, 0] });
   const cardScale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] });
   const ctaY = enter.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
+  const offerExpired = left <= 0;
 
   return (
     <View style={styles.oto}>
@@ -778,10 +779,10 @@ function OneTimeOffer({ reduceMotion, onClaim, onClose }) {
         <View style={styles.otoTimer}><View style={styles.timerDot} /><Text style={styles.otoTimerTxt}>{fmtTime(left)} left</Text></View>
       </Animated.View>
       <View style={{ flex: 1 }} />
-      <Pressable onPress={onClaim}>
-        <Animated.View style={{ opacity: enter, transform: [{ translateY: ctaY }, { scale: btnScale }] }}>
+      <Pressable disabled={offerExpired} accessibilityState={{ disabled: offerExpired }} onPress={() => { if (!offerExpired) onClaim(); }}>
+        <Animated.View style={{ opacity: offerExpired ? 0.48 : enter, transform: [{ translateY: ctaY }, { scale: btnScale }] }}>
           <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.otoBtn}>
-            <Text style={styles.otoBtnTxt}>{ONE_TIME_OFFER_PRODUCT.cta}</Text>
+            <Text style={styles.otoBtnTxt}>{offerExpired ? 'Offer expired' : ONE_TIME_OFFER_PRODUCT.cta}</Text>
           </LinearGradient>
         </Animated.View>
       </Pressable>
