@@ -21,7 +21,7 @@ export const GENRES = [
 
 export type Genre = (typeof GENRES)[number];
 
-export type TabKey = "home" | "discover" | "create" | "library" | "settings";
+export type TabKey = "home" | "create" | "library";
 
 export type Author = {
   id: string;
@@ -110,4 +110,5 @@ export type Screen =
   | { name: "reader"; storyId: string }
   | { name: "author"; authorId: string }
   | { name: "credits" }
-  | { name: "paywall" };
+  | { name: "paywall" }
+  | { name: "profile" };
