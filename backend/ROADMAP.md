@@ -90,7 +90,8 @@
 - [ ] Create Supabase Storage bucket `covers` (public read)
 - [ ] Create Supabase Storage bucket `audio` (public read)
 - [ ] Set appropriate CORS + size limits
-- [ ] Configure the `ALLOWED_ORIGINS` Supabase secret with the exact production web origin; local `http://localhost:8090` is already configured
+- [ ] Configure Supabase Storage bucket CORS for production media access
+- [ ] Configure Edge Function CORS via the `ALLOWED_ORIGINS` Supabase secret with the exact production web origin; local `http://localhost:8090` is already configured
 
 ---
 

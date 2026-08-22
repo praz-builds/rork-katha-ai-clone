@@ -55,7 +55,7 @@
 - Annual subscription events now fail closed until monthly allocation scheduling is implemented; the app cannot silently grant only one month's credits for a yearly purchase.
 - Removed the committed mutable session handoff and moving-source skill lock; `SESSION_HANDOFF.md` remains available locally and ignored for copy-paste use.
 - CodeRabbit's full review of `32021ba` requested 27 additional contract and documentation changes. The branch now adds safe public-profile grants, indexed title search, stable application SQLSTATEs, environment-allowlisted CORS, moderation-aware Anthropic retries, rejected-payment backlog persistence, paragraph-safe response parsing, bounded library pagination, and synchronized current-vs-planned product documentation.
-- PR #3 remains unmerged until CodeRabbit formally approves the latest fixes.
+- At this checkpoint, PR #3 remained unmerged pending formal CodeRabbit approval of the latest fixes.
 
 ### Follow-up validation
 
