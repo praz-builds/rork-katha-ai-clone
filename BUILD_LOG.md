@@ -47,13 +47,14 @@
 - Added retry-driven reconciliation for stale generation reservations so an Edge Function termination cannot leave a credit permanently reserved.
 - CodeRabbit's review of commit `5cc161a` requested 15 further changes. The branch now rejects cross-story feedback key reuse, persists unhandled billing refunds for reconciliation, uses stable database conflict codes, validates search filters and provider payloads, centralizes operation parsing, and preserves generation request IDs across retries.
 - Replaced calendar-day ad-reward uniqueness with an indexed rolling 24-hour contract for the future verified server transaction.
+- CodeRabbit's review of `5fcff1d` reduced the remaining set to four. Configured Expo builds now return validated server-generated stories and surface backend failures, refund backlog fallback IDs are deterministic across retries, and the FCM/device-token roadmap uses HTTP v1 service-account authentication with update-capable ownership policies.
 - Removed the committed mutable session handoff and moving-source skill lock; `SESSION_HANDOFF.md` remains available locally and ignored for copy-paste use.
 - PR #3 remains unmerged until CodeRabbit formally approves the latest fixes.
 
 ### Follow-up validation
 
 - Deno format, type checks, and lint passed for all changed Edge Functions.
-- Ten Adapty authorization, lifecycle, refund, and SKU tests passed.
+- Eleven Adapty authorization, lifecycle, deterministic refund-event, and SKU tests passed.
 - All five migrations parsed and applied to an in-memory PostgreSQL-compatible runtime.
 - Four migration behavior tests passed for generation accounting, completion/refund races, feedback idempotency, and provider transaction uniqueness.
 - Expo TypeScript compilation passed.

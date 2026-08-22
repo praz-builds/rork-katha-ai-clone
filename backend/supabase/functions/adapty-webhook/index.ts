@@ -4,6 +4,7 @@ import {
   type AdaptyEvent,
   constantTimeEquals,
   resolveAdaptyCredit,
+  resolveAdaptyEventId,
 } from "../_shared/adapty.ts";
 import { grantCredit } from "../_shared/credits.ts";
 
@@ -25,8 +26,9 @@ serve(async (req) => {
   }
 
   let event: AdaptyEvent | undefined;
+  let rawBody = "";
   try {
-    const rawBody = await req.text();
+    rawBody = await req.text();
     if (!rawBody.trim()) return jsonResponse({ ok: true });
 
     event = JSON.parse(rawBody) as AdaptyEvent;
@@ -57,7 +59,11 @@ serve(async (req) => {
       error instanceof Error &&
       error.message === "Refund event requires clawback processing"
     ) {
-      const backlogError = await persistRefundBacklog(event, error.message);
+      const backlogError = await persistRefundBacklog(
+        event,
+        rawBody,
+        error.message,
+      );
       if (backlogError) {
         console.error(
           "Adapty refund backlog persistence failed:",
@@ -84,13 +90,12 @@ serve(async (req) => {
 
 async function persistRefundBacklog(
   event: AdaptyEvent | undefined,
+  rawBody: string,
   message: string,
 ): Promise<string | null> {
   if (!event?.event_type) return "Refund event payload is unavailable";
 
-  const eventId = event.profile_event_id ??
-    event.event_properties?.transaction_id ??
-    event.transaction_id ?? crypto.randomUUID();
+  const eventId = await resolveAdaptyEventId(event, rawBody);
   const serviceClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,

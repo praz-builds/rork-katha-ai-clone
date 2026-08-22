@@ -216,7 +216,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ### User Setup
 - [ ] Create Firebase project
-- [ ] Generate FCM server key / service account JSON
+- [ ] Create a Firebase service account for FCM HTTP v1 authentication
 - [ ] Set `FIREBASE_SERVICE_ACCOUNT_KEY` as Supabase secret
 - [ ] iOS: upload APNs key to Firebase
 - [ ] Expo: configure Android `google-services.json` and iOS `GoogleService-Info.plist` through `../expo/app.json`
@@ -234,7 +234,7 @@ Each is a simple POST with auth + upsert/delete + count update:
     UNIQUE(user_id, token)
   );
   ```
-- [ ] RLS: users can only insert/delete their own tokens
+- [ ] RLS: users can only insert, update, or delete their own tokens so authenticated upserts can follow the update conflict path
 
 ### Endpoints
 - [ ] `POST /register-device` — upsert `device_tokens` with FCM token + platform

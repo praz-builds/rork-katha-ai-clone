@@ -2,7 +2,11 @@ import {
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { constantTimeEquals, resolveAdaptyCredit } from "./adapty.ts";
+import {
+  constantTimeEquals,
+  resolveAdaptyCredit,
+  resolveAdaptyEventId,
+} from "./adapty.ts";
 
 Deno.test("webhook authorization comparison requires an exact value", () => {
   assertEquals(constantTimeEquals("secret", "secret"), true);
@@ -45,6 +49,18 @@ Deno.test("refund events fail closed until clawbacks are implemented", () => {
       }),
     Error,
     "Refund event requires clawback processing",
+  );
+});
+
+Deno.test("refund backlog event IDs are deterministic", async () => {
+  const event = { event_type: "subscription_refunded" };
+  const first = await resolveAdaptyEventId(event, '{"event":"refund"}');
+  const replay = await resolveAdaptyEventId(event, '{"event":"refund"}');
+  assertEquals(first, replay);
+  assertEquals(first.startsWith("sha256:"), true);
+  assertEquals(
+    await resolveAdaptyEventId({ ...event, profile_event_id: "event-1" }, "x"),
+    "event-1",
   );
 });
 

@@ -79,6 +79,27 @@ export function constantTimeEquals(left: string, right: string): boolean {
   return mismatch === 0;
 }
 
+/** Resolve a retry-stable provider event ID, falling back to a body digest. */
+export async function resolveAdaptyEventId(
+  event: AdaptyEvent,
+  rawBody: string,
+): Promise<string> {
+  const providerId = event.profile_event_id ??
+    event.event_properties?.transaction_id ??
+    event.transaction_id;
+  if (providerId) return providerId;
+
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(rawBody),
+  );
+  return `sha256:${
+    Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+  }`;
+}
+
 /** Map credit-bearing Adapty lifecycle events to ledger reasons. */
 function getCreditReason(
   eventType: string,

@@ -1,6 +1,6 @@
 import { stories } from "@/data/seed";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import type { CreateDraft, Story } from "@/types/domain";
+import type { CreateDraft, Genre, Story } from "@/types/domain";
 
 export type LibraryResult = {
   stories: Story[];
@@ -41,11 +41,109 @@ export async function generateStory(draft: CreateDraft, requestId: string): Prom
     }
   });
 
-  if (error || !data?.story) {
-    return localGeneratedStory(draft);
-  }
+  if (error) throw new Error(await edgeFunctionErrorMessage(error, data));
+  if (!data?.story) throw new Error("Story generation returned no story");
 
-  return localGeneratedStory(draft);
+  return mapGeneratedStory(data, draft);
+}
+
+async function edgeFunctionErrorMessage(error: unknown, data: unknown) {
+  const dataError = objectError(data);
+  if (dataError) return dataError;
+
+  const context = error && typeof error === "object"
+    ? (error as { context?: { json?: () => Promise<unknown> } }).context
+    : undefined;
+  if (typeof context?.json === "function") {
+    try {
+      const responseError = objectError(await context.json());
+      if (responseError) return responseError;
+    } catch {
+      // Fall through to the SDK error message when the response is not JSON.
+    }
+  }
+  return error instanceof Error ? error.message : "Story generation failed";
+}
+
+function objectError(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const message = (value as Record<string, unknown>).error;
+  return typeof message === "string" && message.trim() ? message : null;
+}
+
+function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
+  if (!data || typeof data !== "object") {
+    throw new Error("Story generation returned an invalid response");
+  }
+  const payload = data as Record<string, unknown>;
+  const story = asRecord(payload.story);
+  const chapter = asRecord(payload.chapter);
+  const id = requiredString(story.id, "story id");
+  const chapterId = requiredString(chapter.id, "chapter id");
+  const content = requiredString(chapter.content, "chapter content");
+  const serverGenres = Array.isArray(story.genre) ? story.genre : [];
+  const genre = isGenre(serverGenres[0]) ? serverGenres[0] : draft.genre;
+  const themes = Array.isArray(story.themes)
+    ? story.themes.filter((value): value is string => typeof value === "string")
+    : [];
+
+  return {
+    id,
+    title: requiredString(story.title, "story title"),
+    authorId: requiredString(story.author_id, "story author"),
+    genre,
+    synopsis: typeof story.topic === "string" && story.topic.trim()
+      ? story.topic.trim()
+      : content.replace(/\s+/g, " ").slice(0, 180),
+    chapters: [{
+      id: chapterId,
+      storyId: id,
+      title: typeof chapter.title === "string" && chapter.title.trim()
+        ? chapter.title
+        : "Chapter one",
+      paragraphs: content.split(/\n\s*\n/).filter(Boolean),
+      chapterNumber: typeof chapter.chapter_number === "number"
+        ? chapter.chapter_number
+        : 1,
+      isPublished: chapter.is_published === true,
+      audioUrl: typeof chapter.audio_url === "string"
+        ? chapter.audio_url
+        : undefined
+    }],
+    likes: numberOrZero(story.like_count),
+    bookmarks: numberOrZero(story.bookmark_count),
+    views: numberOrZero(story.read_count),
+    tags: themes.length ? themes : ["new", "draft"],
+    publishedOffset: 0,
+    isFeatured: story.is_curated === true,
+    language: typeof story.language === "string" ? story.language : draft.language
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object") {
+    throw new Error("Story generation returned an invalid response");
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Story generation returned no ${field}`);
+  }
+  return value;
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function isGenre(value: unknown): value is Genre {
+  return typeof value === "string" && [
+    "adventure", "comedy", "contemporary", "drama", "fantasy", "historical",
+    "horror", "kids", "lgbtq", "motivational", "mystery", "mythology",
+    "poetry", "romance", "scifi", "sliceOfLife", "spirituality", "thriller"
+  ].includes(value);
 }
 
 function filterLocalStories(query?: { q?: string; genre?: string }) {

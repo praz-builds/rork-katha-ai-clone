@@ -267,6 +267,11 @@ function CreateScreen({ credits, onGenerated }: { credits: number; onGenerated: 
       const story = await generateStory(draft, requestId);
       onGenerated(story);
       setDraft(starterDraft);
+    } catch (error) {
+      Alert.alert(
+        "Could not create story",
+        error instanceof Error ? error.message : "Please try again.",
+      );
     } finally {
       setBusy(false);
     }
