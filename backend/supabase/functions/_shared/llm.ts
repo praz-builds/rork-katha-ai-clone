@@ -14,21 +14,25 @@ interface GenerationResult {
  */
 export async function generateStoryText(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
 ): Promise<GenerationResult> {
   // Attempt 1: Sonnet 4.6
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    const response = await Promise.race([
-      client.messages.create({
-        model: "claude-sonnet-4-6-20250514",
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-      timeout(60000),
-    ]);
-    const text = (response as Anthropic.Message).content
+    const response = await withAbortTimeout(
+      60000,
+      (signal) =>
+        client.messages.create(
+          {
+            model: "claude-sonnet-4-6-20250514",
+            max_tokens: 4096,
+            system: systemPrompt,
+            messages: [{ role: "user", content: userPrompt }],
+          },
+          { signal },
+        ),
+    );
+    const text = response.content
       .filter((b: Anthropic.ContentBlock) => b.type === "text")
       .map((b: Anthropic.TextBlock) => b.text)
       .join("");
@@ -40,16 +44,20 @@ export async function generateStoryText(
   // Attempt 2: Haiku 4.5
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    const response = await Promise.race([
-      client.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-      timeout(30000),
-    ]);
-    const text = (response as Anthropic.Message).content
+    const response = await withAbortTimeout(
+      30000,
+      (signal) =>
+        client.messages.create(
+          {
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 4096,
+            system: systemPrompt,
+            messages: [{ role: "user", content: userPrompt }],
+          },
+          { signal },
+        ),
+    );
+    const text = response.content
       .filter((b: Anthropic.ContentBlock) => b.type === "text")
       .map((b: Anthropic.TextBlock) => b.text)
       .join("");
@@ -61,25 +69,27 @@ export async function generateStoryText(
   // Attempt 3: gpt-4o-mini
   if (OPENAI_API_KEY) {
     try {
-      const res = await Promise.race([
-        fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            max_tokens: 4096,
+      const res = await withAbortTimeout(
+        30000,
+        (signal) =>
+          fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            signal,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${OPENAI_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: "gpt-4o-mini",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              max_tokens: 4096,
+            }),
           }),
-        }),
-        timeout(30000),
-      ]);
-      const data = await (res as Response).json();
+      );
+      const data = await res.json();
       return { text: data.choices[0].message.content, model: "gpt-4o-mini" };
     } catch (e) {
       console.error("gpt-4o-mini failed:", e);
@@ -89,8 +99,19 @@ export async function generateStoryText(
   throw new Error("All LLM providers failed");
 }
 
-function timeout(ms: number): Promise<never> {
-  return new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
+async function withAbortTimeout<T>(
+  ms: number,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`Timeout after ${ms}ms`)),
+    ms,
   );
+
+  try {
+    return await operation(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
 }

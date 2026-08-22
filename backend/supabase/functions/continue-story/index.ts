@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
-import { deductCredit, grantCredit } from "../_shared/credits.ts";
 import { generateStoryText } from "../_shared/llm.ts";
 
 serve(async (req) => {
@@ -23,15 +22,75 @@ serve(async (req) => {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const { story_id } = await req.json();
+    const { story_id, request_id } = await req.json();
     if (!story_id) {
       return jsonResponse({ error: "story_id is required" }, 400);
     }
+    const requestId = request_id ?? crypto.randomUUID();
+    if (
+      typeof requestId !== "string" ||
+      !requestId.trim() ||
+      requestId.length > 128
+    ) return jsonResponse({ error: "Invalid request_id" }, 400);
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    const { data: existingOperation, error: existingOperationError } =
+      await serviceClient
+        .from("generation_operations")
+        .select("id, story_id, status, result_chapter_id, updated_at")
+        .eq("user_id", user.id)
+        .eq("request_id", requestId)
+        .maybeSingle();
+    if (existingOperationError) throw existingOperationError;
+    if (existingOperation) {
+      if (existingOperation.story_id !== story_id) {
+        return jsonResponse(
+          { error: "request_id belongs to another story" },
+          409,
+        );
+      }
+      if (
+        existingOperation.status === "reserved" &&
+        isStaleReservation(existingOperation.updated_at)
+      ) {
+        const { data: reconciliation, error: reconciliationError } =
+          await serviceClient.rpc("refund_generation_operation", {
+            p_operation_id: existingOperation.id,
+            p_user_id: user.id,
+            p_error: "Stale continuation reservation reconciled on retry",
+          });
+        if (reconciliationError) {
+          return jsonResponse({
+            error: "Generation recovery is pending retry.",
+            operation_id: existingOperation.id,
+          }, 503);
+        }
+        existingOperation.status = reconciliation.status;
+        if (reconciliation.result_chapter_id) {
+          existingOperation.result_chapter_id =
+            reconciliation.result_chapter_id;
+        }
+      }
+      if (existingOperation.status === "completed") {
+        const { data: chapter, error: chapterError } = await serviceClient
+          .from("chapters")
+          .select("*")
+          .eq("id", existingOperation.result_chapter_id)
+          .single();
+        if (chapterError) throw chapterError;
+        return jsonResponse({ chapter, replayed: true });
+      }
+      return jsonResponse({
+        error: existingOperation.status === "refunded"
+          ? "The previous generation failed. Start a new request."
+          : "Generation is already in progress.",
+        status: existingOperation.status,
+      }, 409);
+    }
 
     // Verify story ownership
     const { data: story, error: storyError } = await serviceClient
@@ -44,42 +103,50 @@ serve(async (req) => {
       return jsonResponse({ error: "Story not found" }, 404);
     }
 
-    // Get existing chapters for context
+    // Keep prompt context bounded while deriving the next chapter from latest.
     const { data: chapters, error: chaptersError } = await serviceClient
       .from("chapters")
       .select("chapter_number, title, content")
       .eq("story_id", story_id)
-      .order("chapter_number", { ascending: true });
+      .order("chapter_number", { ascending: false })
+      .limit(4);
     if (chaptersError) throw chaptersError;
 
-    const nextChapterNum = (chapters?.at(-1)?.chapter_number ?? 0) + 1;
-    const operationReference = `${story_id}:chapter:${nextChapterNum}`;
-
-    // Deduct 1 credit
-    try {
-      await deductCredit(
-        serviceClient,
-        user.id,
-        1,
-        "generation",
-        operationReference,
+    const nextChapterNum = (chapters?.[0]?.chapter_number ?? 0) + 1;
+    const { data: operation, error: reservationError } = await serviceClient
+      .rpc(
+        "reserve_generation_operation",
+        {
+          p_user_id: user.id,
+          p_request_id: requestId,
+          p_story_id: story_id,
+          p_chapter_number: nextChapterNum,
+          p_kind: "continuation",
+        },
       );
-    } catch (error) {
-      if (
-        error instanceof Error && error.message === "Duplicate credit operation"
-      ) {
+    if (reservationError || !operation) {
+      if (reservationError?.message.includes("Insufficient credits")) {
+        return jsonResponse({ error: "Insufficient credits" }, 402);
+      }
+      if (reservationError?.message.includes("unique constraint")) {
         return jsonResponse({
           error: "This chapter generation is already in progress",
         }, 409);
       }
-      if (error instanceof Error && error.message === "Insufficient credits") {
-        return jsonResponse({ error: "Insufficient credits" }, 402);
-      }
-      throw error;
+      throw reservationError ?? new Error("Generation reservation failed");
+    }
+    if (operation.replayed) {
+      return jsonResponse({
+        error: operation.status === "completed"
+          ? "Generation already completed; retry with the same request ID."
+          : "Generation is already in progress.",
+        status: operation.status,
+      }, 409);
     }
 
     // Build continuation prompt
     const previousText = chapters
+      ?.toReversed()
       ?.map((c) => `Chapter ${c.chapter_number}: ${c.content}`)
       .join("\n\n");
 
@@ -101,17 +168,16 @@ serve(async (req) => {
       if (!content) throw new Error("Generation returned no chapter content");
       const wordCount = content.split(/\s+/).length;
 
-      const { data: chapter, error: chapterError } = await serviceClient
-        .from("chapters")
-        .insert({
-          story_id,
-          chapter_number: nextChapterNum,
-          title: chapterTitle,
-          content,
-          word_count: wordCount,
-        })
-        .select()
-        .single();
+      const { data: chapter, error: chapterError } = await serviceClient.rpc(
+        "complete_continuation_generation",
+        {
+          p_operation_id: operation.id,
+          p_user_id: user.id,
+          p_title: chapterTitle,
+          p_content: content,
+          p_word_count: wordCount,
+        },
+      );
       if (chapterError || !chapter) {
         throw chapterError ?? new Error("Chapter persistence failed");
       }
@@ -119,15 +185,28 @@ serve(async (req) => {
       return jsonResponse({ chapter, model: result.model });
     } catch (error) {
       console.error("continue-story post-deduction error:", error);
-      await grantCredit(
-        serviceClient,
-        user.id,
-        1,
-        "refund",
-        operationReference,
+      const { data: refund, error: refundError } = await serviceClient.rpc(
+        "refund_generation_operation",
+        {
+          p_operation_id: operation.id,
+          p_user_id: user.id,
+          p_error: errorMessage(error),
+        },
       );
+      if (refundError) {
+        console.error("continue-story refund pending:", refundError);
+        return jsonResponse({
+          error: "Generation failed. Refund is pending retry.",
+          operation_id: operation.id,
+        }, 503);
+      }
       return jsonResponse(
-        { error: "Generation failed. Credit refunded." },
+        {
+          error: refund?.refunded
+            ? "Generation failed. Credit refunded."
+            : "Generation completed; retry with the same request ID.",
+          operation_id: operation.id,
+        },
         500,
       );
     }
@@ -143,4 +222,13 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isStaleReservation(updatedAt: string): boolean {
+  const updatedAtMs = Date.parse(updatedAt);
+  return Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs >= 5 * 60_000;
 }

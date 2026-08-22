@@ -23,6 +23,7 @@ type CreditDatabase = {
           p_amount: number;
           p_reason: string;
           p_reference_id: string;
+          p_operation_key: string;
         };
         Returns: number;
       };
@@ -32,6 +33,7 @@ type CreditDatabase = {
           p_amount: number;
           p_reason: string;
           p_reference_id: string;
+          p_operation_key: string;
         };
         Returns: number;
       };
@@ -86,12 +88,14 @@ export async function deductCredit(
   amount: number,
   reason: CreditDeductionReason,
   referenceId: string,
+  operationKey = `${reason}:${referenceId}`,
 ): Promise<number> {
   const { data, error } = await supabase.rpc("deduct_credit", {
     p_user_id: userId,
     p_amount: amount,
     p_reason: reason,
     p_reference_id: referenceId,
+    p_operation_key: operationKey,
   });
 
   if (error) {
@@ -108,7 +112,7 @@ export async function deductCredit(
 
 /**
  * Grant credits through the service-only, serialized database operation.
- * Reusing the same reason and reference ID is an idempotent no-op.
+ * Reusing the same operation key is an idempotent no-op.
  */
 export async function grantCredit(
   supabase: SupabaseClient<CreditDatabase>,
@@ -116,12 +120,14 @@ export async function grantCredit(
   amount: number,
   reason: CreditGrantReason,
   referenceId: string,
+  operationKey = `${reason}:${referenceId}`,
 ): Promise<number> {
   const { data, error } = await supabase.rpc("grant_credit", {
     p_user_id: userId,
     p_amount: amount,
     p_reason: reason,
     p_reference_id: referenceId,
+    p_operation_key: operationKey,
   });
 
   if (error) throw new Error(`Failed to grant credit: ${error.message}`);

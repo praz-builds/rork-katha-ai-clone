@@ -47,7 +47,7 @@ Every earning method deposits into the same balance. Every spending action deduc
 
 ### Backend provenance tagging
 
-The Blueprint already specifies `credit_ledger.reason` with values `'purchase' | 'subscription' | 'ad_reward' | 'streak' | 'feedback' | 'referral' | 'social' | 'generation'`. **Add one value: `'reader_earning'`** for credits earned from reads on the user's own published stories.
+The Blueprint already specifies `credit_ledger.reason` with values `'purchase' | 'subscription' | 'ad_reward' | 'streak' | 'feedback' | 'referral' | 'social' | 'welcome' | 'generation'`. **Add one value: `'reader_earning'`** for credits earned from reads on the user's own published stories.
 
 At analytics time, slice like this:
 
@@ -57,7 +57,7 @@ SUM(amount) FROM credit_ledger WHERE reason IN ('purchase', 'subscription') AND 
 
 -- Subsidized credits (cost of acquisition/retention)
 SUM(amount) FROM credit_ledger
-  WHERE reason IN ('ad_reward','streak','feedback','referral','social','reader_earning')
+  WHERE reason IN ('ad_reward','streak','feedback','referral','social','welcome','reader_earning')
   AND amount > 0
 
 -- Spent credits (usage)
@@ -120,7 +120,7 @@ Backend addition: `stories.themes TEXT[]` (already effectively covered by `genre
 
 | # | Action | Credits granted | Cooldown / cap | `reason` tag | Purpose / loop |
 |---|---|---|---|---|---|
-| 1 | **Install welcome bonus** | **3** | Once per account | `purchase` (special sub-tag `welcome_bonus`) | Lets a new user experience the full generate → continue → continue arc that is the app's hook. Recommended over 2 because 2 only demonstrates "generate → continue once" — not enough to feel the loop. |
+| 1 | **Install welcome bonus** | **3** | Once per account | `welcome` (special sub-tag `welcome_bonus`) | Lets a new user experience the full generate → continue → continue arc that is the app's hook. Recommended over 2 because 2 only demonstrates "generate → continue once" — not enough to feel the loop. |
 | 2 | **Watch rewarded ad** | 1 | 1 per 24 hours | `ad_reward` | Daily habit. Conversion funnel — free users form a routine, hit ceiling, upgrade. |
 | 3 | **Reading streak** | 1 | Every 3 consecutive days of reading activity | `streak` | Retention. Missed days reset the streak counter (Duolingo model). |
 | 4 | **Leave a comment on a story** | 1 | 1 per unique story, cap 1/day globally | `feedback` | Community + quality signal. Cap prevents comment spam farming. |
@@ -234,10 +234,10 @@ The reader-earning surface is the highest-abuse target in the app. Every read th
 
 ### 6.2 Minimum read time (word-count-scaled)
 
-- Compute required minimum: `min_read_seconds = min(chapter.word_count / 4, 45)`.
-  - 400-word chapter → 45s minimum (capped)
-  - 1500-word chapter → 45s minimum (capped)
-  - Any chapter under 180 words → 45s minimum (special case; short pieces still need to be actually read)
+- Compute required minimum: `min_read_seconds = min(max(chapter.word_count / 4, 45), 180)`.
+  - 400-word chapter -> 100s minimum
+  - 1500-word chapter -> 180s minimum (capped)
+  - Any chapter under 180 words -> 45s minimum (floor; short pieces still need to be actually read)
 - Reader must be on the story page continuously for at least `min_read_seconds` before the read is counted for creator earnings.
 - App reports foreground time via `POST /record-read` when the reader leaves the page or the app backgrounds.
 
@@ -294,7 +294,7 @@ Discover tab structure:
 - **Rising** — high engagement velocity in last 24-48 hours (before they hit Trending — surfaces new hits early).
 - **New** — most recently published, filterable by genre.
 
-**Engagement score for ranking:** `(0.4 x likes) + (0.3 x comments) + (0.2 x shares) + (0.1 x save_rate) x time_decay`. Time decay is a standard exponential over 7 days.
+**Engagement score for ranking:** `((0.4 x likes) + (0.3 x comments) + (0.2 x shares) + (0.1 x save_rate)) x time_decay`. Time decay is a standard exponential over 7 days.
 
 **Search:** full-text against title, author username, LLM-generated themes, and genre. Supabase `pg_trgm` + `tsvector` is fine for v1. Recent searches saved locally on device. Empty search state shows trending queries.
 

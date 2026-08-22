@@ -20,7 +20,7 @@ serve(async (req) => {
     } = await supabase.auth.getUser();
     if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
 
-    const { story_id, chapter_id, content } = await req.json();
+    const { story_id, chapter_id, content, request_id } = await req.json();
     const normalizedContent = typeof content === "string" ? content.trim() : "";
     if (!story_id || !normalizedContent) {
       return jsonResponse({ error: "story_id and content are required" }, 400);
@@ -30,6 +30,12 @@ serve(async (req) => {
         error: "Feedback must be 2000 characters or fewer",
       }, 400);
     }
+    const requestId = request_id ?? crypto.randomUUID();
+    if (
+      typeof requestId !== "string" ||
+      !requestId.trim() ||
+      requestId.length > 128
+    ) return jsonResponse({ error: "Invalid request_id" }, 400);
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -37,6 +43,7 @@ serve(async (req) => {
     );
     const { data, error } = await serviceClient.rpc("create_feedback", {
       p_user_id: user.id,
+      p_request_id: requestId,
       p_story_id: story_id,
       p_chapter_id: chapter_id || null,
       p_content: normalizedContent,

@@ -47,10 +47,18 @@ serve(async (req) => {
       operation.credits,
       operation.reason,
       operation.transactionId,
+      `adapty:${operation.transactionId}`,
     );
 
     return jsonResponse({ ok: true, balance });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "Refund event requires clawback processing"
+    ) {
+      console.error("Adapty refund was not acknowledged:", error.message);
+      return jsonResponse({ error: error.message }, 503);
+    }
     if (
       error instanceof Error &&
       [

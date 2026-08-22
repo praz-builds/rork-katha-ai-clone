@@ -44,7 +44,7 @@ These are locked in via `references/strategic-decisions.md` (the authoritative d
 - **Ads:** AdMob (rewarded video for free credits, server-side verification)
 - **Push notifications:** FCM (Firebase Cloud Messaging) for both iOS and Android
 - **Analytics:** PostHog
-- **Mobile app:** Native Swift (iOS) + Kotlin (Android), built via Rork
+- **Mobile app:** Expo SDK 54 in `../expo/`; the preserved Swift and Kotlin clients are reference-only
 
 ### Rork App Status (as of 2026-08-17)
 
@@ -69,6 +69,7 @@ Schema is in `supabase/migrations/` (5 migrations). Key tables:
 **Core (migration 00001):**
 - `profiles` — user identity, linked to Supabase Auth
 - `credit_ledger` — append-only ledger (every credit change is a row)
+- `generation_operations` — durable request, debit, completion, replay, and refund state for story generation
 - `stories` — generated + curated stories
 - `chapters` — story content (supports multi-chapter, draft/published state)
 - `characters` — per-story character definitions
@@ -129,6 +130,7 @@ Shared utilities in `supabase/functions/_shared/`.
 ### Current Security Gate
 
 - Migration `00005` and the hardened Edge Functions are pending review and deployment through PR #3.
+- Generation requests use client-stable IDs and durable `reserved`, `completed`, or `refunded` operation state.
 - AdMob rewards stay unavailable until server-side verification is implemented.
 - Do not deploy credit or generation changes outside the reviewed migration/function set.
 

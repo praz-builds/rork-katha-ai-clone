@@ -1,6 +1,6 @@
 # Katha AI — Backend Roadmap
 
-> Phased execution plan for wiring the Rork app to real backend services.
+> Phased execution plan for wiring the Expo app to real backend services.
 > Each phase can be executed independently. Check off items as completed.
 > Read `build-log.md` at session start to know current state.
 
@@ -99,7 +99,7 @@
 - [ ] On subscription renewal: grant monthly credits with reason `subscription`
 
 ### AdMob SSV (User setup first)
-- [ ] User: Create AdMob account, get real ad unit IDs (replace test IDs in Rork app)
+- [ ] User: Create AdMob account and get real app IDs and rewarded-ad unit IDs for the Expo app
 - [ ] Implement SSV token verification in `grant-credit/index.ts`:
   - Fetch Google's public keys from `https://www.gstatic.com/admob/reward/verifier-keys.json`
   - Verify ECDSA signature on the SSV callback query params
@@ -108,11 +108,13 @@
 - [ ] On verified: grant 1 credit with reason `ad_reward`
 - [ ] On failure: return 403 (no credit granted)
 
-### Rork App Integration
-- [ ] User: Set `MOCK_PAYMENTS=false` in Rork app
-- [ ] User: Set `MOCK_ADS=false` in Rork app
-- [ ] User: Add real Adapty SDK key to both iOS and Android
-- [ ] User: Add real AdMob app IDs + ad unit IDs to both platforms
+### Expo App Integration
+
+- [ ] Add Expo-compatible Adapty and AdMob packages under `../expo/`
+- [ ] Configure their Expo config plugins in `../expo/app.json`, including the iOS and Android app IDs
+- [ ] Wire Adapty public SDK keys and AdMob rewarded-ad unit IDs into the Expo runtime configuration
+- [ ] Use an Expo development build to verify purchases and rewarded ads on both platforms
+- [ ] Keep generated iOS `Info.plist` and Android `AndroidManifest.xml` changes reproducible through Expo config plugins
 
 ---
 
@@ -217,10 +219,10 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] Generate FCM server key / service account JSON
 - [ ] Set `FIREBASE_SERVICE_ACCOUNT_KEY` as Supabase secret
 - [ ] iOS: upload APNs key to Firebase
-- [ ] Android: add `google-services.json` to Rork app
+- [ ] Expo: configure Android `google-services.json` and iOS `GoogleService-Info.plist` through `../expo/app.json`
 
 ### Database
-- [ ] Create migration `00005_device_tokens.sql` (00004 is now atomic credit RPCs):
+- [ ] Create migration `00006_device_tokens.sql` (`00005_secure_credit_operations.sql` reserves migration number 00005):
   ```sql
   CREATE TABLE device_tokens (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

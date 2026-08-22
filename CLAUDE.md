@@ -9,7 +9,7 @@ This is the single canonical Katha AI repository: `praz-builds/rork-katha-ai-clo
 - `ios-katha-ai-create-stories/`: preserved Rork-generated iOS reference client.
 - `android-katha-ai/`: preserved Rork-generated Android reference client.
 - `katha-critique/`: critique prototype.
-- `skills-lock.json`: reproducible project-local engineering skill manifest. Installed `.agents/` content stays local and is intentionally ignored.
+- `.agents/`: local engineering skills installed outside Git. Treat them as workstation tooling, not trusted repository content.
 
 ## Working Rules
 
@@ -23,7 +23,7 @@ This is the single canonical Katha AI repository: `praz-builds/rork-katha-ai-clo
 
 ## Project Skills
 
-Use the project-local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes.
+When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
 ## Mandatory Git Workflow
 

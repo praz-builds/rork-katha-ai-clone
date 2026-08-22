@@ -1,9 +1,9 @@
 export const ADAPTY_CREDIT_MAP: Readonly<Record<string, number>> = {
-  starter_pack: 3,
-  value_pack: 10,
-  power_pack: 25,
-  monthly_sub: 20,
-  yearly_sub: 25,
+  "ai.katha.credits.starter": 3,
+  "ai.katha.credits.value": 10,
+  "ai.katha.credits.power": 25,
+  "ai.katha.subscription.monthly": 20,
+  "ai.katha.subscription.yearly": 25,
 };
 
 export type AdaptyEvent = {
@@ -31,6 +31,12 @@ export function resolveAdaptyCredit(
   event: AdaptyEvent,
 ): AdaptyCreditOperation | null {
   if (!event.event_type) return null;
+  if (
+    event.event_type === "subscription_refunded" ||
+    event.event_type === "non_subscription_purchase_refunded"
+  ) {
+    throw new Error("Refund event requires clawback processing");
+  }
 
   const reason = getCreditReason(event.event_type);
   if (!reason) return null;
@@ -80,6 +86,7 @@ function getCreditReason(
   if (
     eventType === "subscription_initial_purchase" ||
     eventType === "subscription_started" ||
+    eventType === "trial_converted" ||
     eventType === "subscription_renewed"
   ) {
     return "subscription";

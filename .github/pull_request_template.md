@@ -1,11 +1,11 @@
-## Summary
+# Summary
 
 - Add the change summary.
 
 ## Validation
 
 - [ ] Focused tests or checks pass and commands are listed below.
-- [ ] No secrets, dependencies, generated output, or local service state are committed.
+- [ ] No secrets, dependency directories, generated output, or local service state are committed.
 - [ ] Documentation and build logs are updated where behavior or infrastructure changed.
 
 ## Review Gate

@@ -8,26 +8,42 @@ serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const page = parseInt(url.searchParams.get("page") || "1");
-    const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 50);
+    const page = parsePositiveInteger(url.searchParams.get("page"), 1);
+    const requestedLimit = parsePositiveInteger(
+      url.searchParams.get("limit"),
+      20,
+    );
+    if (page === null || requestedLimit === null) {
+      return jsonResponse(
+        { error: "page and limit must be positive integers" },
+        400,
+      );
+    }
+    const limit = Math.min(requestedLimit, 50);
+
+    const offset = (page - 1) * limit;
+    if (!Number.isSafeInteger(offset)) {
+      return jsonResponse({ error: "page is too large" }, 400);
+    }
+
     const genre = url.searchParams.get("genre");
     const search = url.searchParams.get("q");
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!
+      Deno.env.get("SUPABASE_ANON_KEY")!,
     );
 
     let query = supabase
       .from("stories")
       .select(
         "id, title, genre, topic, cover_image_url, length_type, word_count, created_at",
-        { count: "exact" }
+        { count: "exact" },
       )
       .or("is_public.eq.true,is_curated.eq.true")
       .eq("status", "complete")
       .order("created_at", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+      .range(offset, offset + limit - 1);
 
     if (genre) {
       query = query.contains("genre", [genre]);
@@ -51,7 +67,7 @@ serve(async (req) => {
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("library error:", error);
@@ -60,7 +76,26 @@ serve(async (req) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
+
+function parsePositiveInteger(
+  value: string | null,
+  fallback: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number | null {
+  if (value === null) return fallback;
+  if (!/^[1-9]\d*$/.test(value)) return null;
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed <= max ? parsed : null;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}

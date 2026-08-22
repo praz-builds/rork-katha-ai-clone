@@ -34,10 +34,10 @@ export async function generateStory(draft: CreateDraft): Promise<Story> {
 
   const { data, error } = await supabase.functions.invoke("generate-story", {
     body: {
+      request_id: createRequestId(),
       genre: draft.genre,
       topic: draft.seed,
-      characters: draft.characters,
-      lengthType: "short"
+      characters: draft.characters
     }
   });
 
@@ -102,4 +102,8 @@ function titleFromSeed(seed: string) {
     .slice(0, 5)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
+}
+
+function createRequestId() {
+  return `generation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

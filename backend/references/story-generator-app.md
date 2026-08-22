@@ -1,8 +1,8 @@
 # Story Generator App — Product & Architecture Blueprint
 
-> Baseline spec for building an AI story generator mobile app.
-> Modeled after Okudu AI ($30K/mo revenue, 84K downloads) with improvements.
-> Written as a senior architect's build plan — treat as the source of truth.
+> Historical baseline material for the original AI story generator plan.
+> The active client is the Expo app in `../../expo/`; the Swift and Kotlin clients are preserved references.
+> Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ.
 
 ---
 
@@ -385,9 +385,14 @@ create table ad_rewards (
     id uuid primary key default gen_random_uuid(),
     user_id uuid references profiles(id),
     claimed_at timestamptz default now(),
-    verification_token text,
-    unique(user_id, claimed_at::date) -- 1 per day
+    verification_token text
 );
+
+create unique index idx_ad_rewards_daily
+    on ad_rewards(
+        user_id,
+        (date_trunc('day', claimed_at at time zone 'UTC'))
+    );
 
 create table referrals (
     id uuid primary key default gen_random_uuid(),
