@@ -63,8 +63,10 @@ serve(async (req) => {
         .eq("user_id", user.id),
     ]);
 
-    if (profileResult.error) throw profileResult.error;
-    const profile = profileResult.data;
+    if (profileResult.error && profileResult.error.code !== "PGRST116") {
+      throw profileResult.error;
+    }
+    const profile = profileResult.data ?? { onboarding_purpose: null, preferred_genres: [] };
     const isNewUser = (readCountResult.count ?? 0) === 0;
 
     // Build continue_reading list (stories the user started but have unread chapters)

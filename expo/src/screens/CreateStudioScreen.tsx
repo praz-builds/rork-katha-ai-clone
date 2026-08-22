@@ -189,7 +189,7 @@ export default function CreateStudioScreen({
   useEffect(() => {
     const hasProcessing = paragraphs.some((p) => p.isProcessing);
     if (hasProcessing) {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
             toValue: 0.5,
@@ -204,8 +204,11 @@ export default function CreateStudioScreen({
             useNativeDriver: true,
           }),
         ]),
-      ).start();
+      );
+      loop.start();
+      return () => loop.stop();
     } else {
+      pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
     }
   }, [paragraphs, pulseAnim]);
@@ -236,6 +239,7 @@ export default function CreateStudioScreen({
   // -----------------------------------------------------------------------
 
   const handleGenerate = useCallback(async () => {
+    if (busy) return;
     if (!canGenerate) {
       Alert.alert(
         credits > 0 ? "Add a story seed" : "Credits needed",
@@ -262,8 +266,9 @@ export default function CreateStudioScreen({
       onCreditUsed();
       setStory(generated);
       setStoryTitle(generated.title);
+      const firstChapter = generated.chapters[0];
       setParagraphs(
-        generated.chapters[0].paragraphs.map((text) => ({
+        (firstChapter?.paragraphs ?? []).map((text) => ({
           text,
           isEditing: false,
           isProcessing: false,
@@ -771,6 +776,9 @@ export default function CreateStudioScreen({
                       selectedIndex === index ? null : index,
                     )
                   }
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedIndex === index }}
+                  accessibilityLabel={`Paragraph ${index + 1}`}
                   style={[
                     styles.paragraphWrap,
                     selectedIndex === index && styles.paragraphSelected,
@@ -1046,6 +1054,7 @@ export default function CreateStudioScreen({
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+    backgroundColor: colors.bg,
   },
 
   // Setup step
@@ -1066,7 +1075,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   h1: {
     marginTop: 3,
@@ -1299,7 +1308,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 11,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   storyInfoMeta: {
     fontFamily: fonts.ui,
@@ -1595,7 +1604,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   modalTitlePreviewValue: {
     fontFamily: fonts.display,

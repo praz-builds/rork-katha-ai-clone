@@ -596,7 +596,7 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Close button - top left */}
-      <Pressable onPress={() => setConfirmClose(true)} style={pw.closeBtn}>
+      <Pressable onPress={() => setConfirmClose(true)} accessibilityLabel="Close paywall" accessibilityRole="button" style={pw.closeBtn}>
         <Text style={pw.closeBtnText}>{'\u00D7'}</Text>
       </Pressable>
 
@@ -742,7 +742,7 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
           <Pressable onPress={onSubscribe} onPressIn={pressIn} onPressOut={pressOut}>
             <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
               <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={pw.stickyCta}>
-                <Text style={pw.stickyCtaText}>Start my 3-day free trial</Text>
+                <Text style={pw.stickyCtaText}>{selectedProduct.trial ? 'Start my 3-day free trial' : `Subscribe for ${selectedProduct.price}`}</Text>
               </LinearGradient>
             </Animated.View>
           </Pressable>
@@ -767,14 +767,14 @@ const pw = StyleSheet.create({
   closeBtnText: { color: '#9A8E7E', fontSize: 18, lineHeight: 20, marginTop: -1 },
   heroSection: { alignItems: 'center', paddingTop: 18, paddingHorizontal: 24 },
   plusPill: { marginTop: 16, backgroundColor: C.orange, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999 },
-  plusPillText: { fontFamily: FF.h8, fontSize: 13, color: '#fff', letterSpacing: 0.3 },
+  plusPillText: { fontFamily: FF.h8, fontSize: 13, color: '#fff', letterSpacing: 0 },
   heroHeadline: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 30, lineHeight: 36, color: C.ink, textAlign: 'center', marginTop: 16 },
   heroSub: { fontFamily: FF.h5, fontSize: 15, lineHeight: 22, color: C.muted, textAlign: 'center', marginTop: 8 },
   pricingSection: { marginTop: 24, paddingHorizontal: 24 },
   pricingCard: { backgroundColor: C.card, borderRadius: 24, borderWidth: 2, borderColor: C.orange, paddingTop: 28, paddingBottom: 18, paddingHorizontal: 22, alignItems: 'center',
     ...Platform.select({ ios: { shadowColor: '#3D2D1B', shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 6 } }, android: { elevation: 4 } }) },
   mostPopularBadge: { position: 'absolute', top: -13, backgroundColor: '#12B5A5', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999 },
-  mostPopularText: { fontFamily: FF.h8, fontSize: 12, color: '#fff', letterSpacing: 0.2 },
+  mostPopularText: { fontFamily: FF.h8, fontSize: 12, color: '#fff', letterSpacing: 0 },
   trialHeading: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 17, color: C.ink, marginBottom: 4 },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },
   priceMain: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 42, color: C.ink },

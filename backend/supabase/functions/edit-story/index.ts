@@ -181,7 +181,7 @@ serve(async (req) => {
     // Replace the paragraph
     paragraphs[paragraphIndex] = result.text.trim();
     const updatedContent = paragraphs.join("\n\n");
-    const wordCount = updatedContent.split(/\s+/).length;
+    const wordCount = updatedContent.split(/\s+/).filter(Boolean).length;
 
     // Update the chapter
     const { error: updateError } = await serviceClient

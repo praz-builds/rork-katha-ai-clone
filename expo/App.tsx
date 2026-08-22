@@ -103,6 +103,7 @@ export default function App() {
             onCreditUsed={() => setCredits((value) => Math.max(0, value - 1))}
             onPublished={(story) => {
               setGeneratedStories((current) => [story, ...current]);
+              setTab("home");
               setScreen({ name: "reader", storyId: story.id });
             }}
             onBack={() => goTabs("home")}
@@ -180,7 +181,7 @@ function HomeScreen({
     const q = query.trim().toLowerCase();
     return (
       (genre === "all" || story.genre === genre) &&
-      (!q || story.title.toLowerCase().includes(q) || story.synopsis.toLowerCase().includes(q) || story.tags.join(" ").includes(q) || authorFor(story.authorId).displayName.toLowerCase().includes(q))
+      (!q || story.title.toLowerCase().includes(q) || story.synopsis.toLowerCase().includes(q) || story.tags.join(" ").toLowerCase().includes(q) || authorFor(story.authorId).displayName.toLowerCase().includes(q))
     );
   });
 
