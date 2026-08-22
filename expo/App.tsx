@@ -1,6 +1,5 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
-import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,17 +19,12 @@ import {
   Bell,
   BookOpen,
   Bookmark,
-  Compass,
-  CreditCard,
+  ChevronRight,
   Home,
-  Library,
-  Lock,
   MessageCircle,
-  Moon,
   Play,
   Plus,
   Search,
-  Settings,
   Share2,
   Sparkles,
   Star,
@@ -48,8 +42,7 @@ import {
   StoryCard,
   formatNumber
 } from "@/components/KathaPrimitives";
-import { imageAssets } from "@/data/images";
-import { authorFor, authors, genres, ledger, stories, storyWordCount } from "@/data/seed";
+import { authorFor, genres, ledger, stories } from "@/data/seed";
 import {
   createGenerationRequestId,
   generateStory,
@@ -71,7 +64,7 @@ export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
   const [screen, setScreen] = useState<Screen>({ name: "intro" });
   const [tab, setTab] = useState<TabKey>("home");
-  const [credits, setCredits] = useState(3);
+  const [credits, setCredits] = useState(5);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
 
   useEffect(() => {
@@ -103,9 +96,7 @@ export default function App() {
   const renderTab = () => {
     switch (tab) {
       case "home":
-        return <HomeScreen credits={credits} stories={allStories} onStory={openStory} onCredits={() => setScreen({ name: "credits" })} onCreate={() => goTabs("create")} />;
-      case "discover":
-        return <DiscoverScreen stories={allStories} onStory={openStory} />;
+        return <HomeScreen credits={credits} generatedStories={generatedStories} stories={allStories} onStory={openStory} onCredits={() => setScreen({ name: "credits" })} onCreate={() => goTabs("create")} />;
       case "create":
         return (
           <CreateScreen
@@ -117,10 +108,8 @@ export default function App() {
             }}
           />
         );
-      case "library":
-        return <LibraryScreen stories={allStories} onStory={openStory} />;
-      case "settings":
-        return <SettingsScreen credits={credits} onCredits={() => setScreen({ name: "credits" })} onPaywall={() => setScreen({ name: "paywall" })} />;
+      case "profile":
+        return <ProfileScreen credits={credits} generatedStories={generatedStories} stories={allStories} onStory={openStory} onCredits={() => setScreen({ name: "credits" })} onPaywall={() => setScreen({ name: "paywall" })} />;
     }
   };
 
@@ -151,66 +140,24 @@ export default function App() {
 
 function HomeScreen({
   credits,
+  generatedStories,
   stories: allStories,
   onStory,
   onCredits,
   onCreate
 }: {
   credits: number;
+  generatedStories: Story[];
   stories: Story[];
   onStory: (id: string) => void;
   onCredits: () => void;
   onCreate: () => void;
 }) {
-  const featured = allStories.filter((story) => story.isFeatured);
-  return (
-    <SafeAreaView style={styles.flex}>
-      <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Good evening</Text>
-            <Text style={styles.h1}>Pick up a story</Text>
-          </View>
-          <Pressable onPress={onCredits}>
-            <CreditPill credits={credits} />
-          </Pressable>
-        </View>
-        <Pressable onPress={() => onStory(featured[0].id)} style={styles.continueCard}>
-          <View style={styles.continueCopy}>
-            <Text style={styles.continueEyebrow}>Continue reading</Text>
-            <Text style={styles.continueTitle}>{featured[0].title}</Text>
-            <Text style={styles.continueMeta}>40% read • Chapter 2 waits</Text>
-          </View>
-          <Cover story={featured[0]} size="mini" />
-        </Pressable>
-        <View style={styles.createBand}>
-          <View style={styles.createBandIcon}>
-            <Wand2 size={24} color="#FFFFFF" />
-          </View>
-          <View style={styles.createBandCopy}>
-            <Text style={styles.createBandTitle}>Turn a seed into a story</Text>
-            <Text style={styles.createBandText}>Genre, characters, language, then Katha drafts the first chapter.</Text>
-          </View>
-          <Pressable onPress={onCreate} style={styles.circleButton}>
-            <Plus size={22} color="#FFFFFF" />
-          </Pressable>
-        </View>
-        <SectionHeader title="Trending now" action="See all" />
-        <HorizontalStories stories={featured} onStory={onStory} />
-        <SectionHeader title="For you" />
-        <View style={styles.stack}>
-          {allStories.slice(2, 7).map((story) => (
-            <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function DiscoverScreen({ stories: allStories, onStory }: { stories: Story[]; onStory: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState<Genre | "all">("all");
+  const featured = allStories.filter((story) => story.isFeatured);
+  const isNewUser = generatedStories.length === 0;
+
   const filtered = allStories.filter((story) => {
     const q = query.trim().toLowerCase();
     return (
@@ -219,15 +166,19 @@ function DiscoverScreen({ stories: allStories, onStory }: { stories: Story[]; on
     );
   });
 
+  const showFiltered = query.trim().length > 0 || genre !== "all";
+
   return (
     <SafeAreaView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>Discover</Text>
-            <Text style={styles.h1}>Find your next world</Text>
+            <Text style={styles.eyebrow}>Good evening</Text>
+            <Text style={styles.h1}>Stories for you</Text>
           </View>
-          <Compass size={28} color={colors.accent} />
+          <Pressable onPress={onCredits}>
+            <CreditPill credits={credits} />
+          </Pressable>
         </View>
         <View style={styles.searchBox}>
           <Search size={18} color={colors.muted} />
@@ -239,11 +190,56 @@ function DiscoverScreen({ stories: allStories, onStory }: { stories: Story[]; on
             <Chip key={item} label={genreLabels[item]} selected={genre === item} onPress={() => setGenre(item)} />
           ))}
         </ScrollView>
-        <View style={styles.stack}>
-          {filtered.map((story) => (
-            <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
-          ))}
-        </View>
+        {showFiltered ? (
+          <View style={styles.stack}>
+            {filtered.map((story) => (
+              <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+            ))}
+          </View>
+        ) : isNewUser ? (
+          <>
+            <View style={styles.welcomeCard}>
+              <Text style={styles.welcomeTitle}>Welcome to Katha!</Text>
+              <Text style={styles.welcomeSubtitle}>You have 5 credits to start creating</Text>
+              <View style={styles.welcomeButtonWrap}>
+                <PrimaryButton onPress={() => onStory(featured[0].id)}>Read your first story</PrimaryButton>
+              </View>
+            </View>
+            <SectionHeader title="Editor's Picks" />
+            <HorizontalStories stories={featured} onStory={onStory} />
+          </>
+        ) : (
+          <>
+            <Pressable onPress={() => onStory(featured[0].id)} style={styles.continueCard}>
+              <View style={styles.continueCopy}>
+                <Text style={styles.continueEyebrow}>Continue reading</Text>
+                <Text style={styles.continueTitle}>{featured[0].title}</Text>
+                <Text style={styles.continueMeta}>40% read • Chapter 2 waits</Text>
+              </View>
+              <Cover story={featured[0]} size="mini" />
+            </Pressable>
+            <View style={styles.createBand}>
+              <View style={styles.createBandIcon}>
+                <Wand2 size={24} color="#FFFFFF" />
+              </View>
+              <View style={styles.createBandCopy}>
+                <Text style={styles.createBandTitle}>Turn a seed into a story</Text>
+                <Text style={styles.createBandText}>Genre, characters, language, then Katha drafts the first chapter.</Text>
+              </View>
+              <Pressable onPress={onCreate} style={styles.circleButton}>
+                <Plus size={22} color="#FFFFFF" />
+              </Pressable>
+            </View>
+            <SectionHeader title="Trending now" action="See all" />
+            <HorizontalStories stories={featured} onStory={onStory} />
+            <SectionHeader title="For you" />
+            <View style={styles.stack}>
+              {allStories.slice(2, 7).map((story) => (
+                <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -350,43 +346,26 @@ function CreateScreen({ credits, onGenerated }: { credits: number; onGenerated: 
   );
 }
 
-function LibraryScreen({ stories: allStories, onStory }: { stories: Story[]; onStory: (id: string) => void }) {
-  const saved = allStories.filter((story) => story.bookmarks > 100 || story.id.startsWith("generated"));
-  return (
-    <SafeAreaView style={styles.flex}>
-      <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Library</Text>
-            <Text style={styles.h1}>Saved and drafted</Text>
-          </View>
-          <Library size={28} color={colors.accent} />
-        </View>
-        <View style={styles.segmented}>
-          {["Saved", "Generated", "History", "Downloads"].map((label, index) => (
-            <View key={label} style={[styles.segment, index === 0 && styles.segmentSelected]}>
-              <Text style={[styles.segmentText, index === 0 && styles.segmentTextSelected]}>{label}</Text>
-            </View>
-          ))}
-        </View>
-        <View style={styles.stack}>
-          {saved.map((story) => (
-            <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function SettingsScreen({ credits, onCredits, onPaywall }: { credits: number; onCredits: () => void; onPaywall: () => void }) {
-  const rows = [
-    ["Profile", "Avatar, username, creator bio", User],
-    ["Katha Plus", "Subscription, voices, ad-free", Star],
-    ["Credits", `${credits} available`, CreditCard],
-    ["Reading preferences", "Theme, font size, language", BookOpen],
+function ProfileScreen({
+  credits,
+  generatedStories,
+  stories: allStories,
+  onStory,
+  onCredits,
+  onPaywall
+}: {
+  credits: number;
+  generatedStories: Story[];
+  stories: Story[];
+  onStory: (id: string) => void;
+  onCredits: () => void;
+  onPaywall: () => void;
+}) {
+  const saved = allStories.filter((story) => story.bookmarks > 100);
+  const settingsRows = [
     ["Notifications", "Chapter alerts and streak nudges", Bell],
-    ["Parental controls", "Kids mode and PIN gate", Lock],
+    ["Reading preferences", "Theme, font size, language", BookOpen],
+    ["Katha Plus", "Subscription, voices, ad-free", Star],
     ["Feedback", "Comments, rating, support", MessageCircle]
   ] as const;
   return (
@@ -394,7 +373,7 @@ function SettingsScreen({ credits, onCredits, onPaywall }: { credits: number; on
       <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>Settings</Text>
+            <Text style={styles.eyebrow}>Profile</Text>
             <Text style={styles.h1}>Your Katha</Text>
           </View>
           <Image source={require("./assets/icon.png")} style={styles.avatar} />
@@ -403,12 +382,62 @@ function SettingsScreen({ credits, onCredits, onPaywall }: { credits: number; on
           <Text style={styles.profileName}>Reader Writer</Text>
           <Text style={styles.profileMeta}>@you • 3-day streak • {credits} credits</Text>
           <View style={styles.profileActions}>
-            <PrimaryButton variant="secondary" onPress={onPaywall}>See Plus</PrimaryButton>
+            <View style={styles.profileButtonRow}>
+              <View style={styles.profileButtonHalf}>
+                <PrimaryButton variant="secondary" onPress={onPaywall}>See Plus</PrimaryButton>
+              </View>
+              <View style={styles.profileButtonHalf}>
+                <PrimaryButton variant="secondary">Edit Profile</PrimaryButton>
+              </View>
+            </View>
           </View>
         </View>
+        <SectionHeader title="My Stories" />
+        {generatedStories.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRail}>
+            {generatedStories.map((story) => (
+              <Pressable key={story.id} onPress={() => onStory(story.id)} style={styles.railItem}>
+                <Cover story={story} />
+                <Text numberOfLines={2} style={styles.railTitle}>{story.title}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={styles.emptySection}>
+            <Text style={styles.emptyText}>No stories yet. <Text style={styles.accentLink}>Create your first!</Text></Text>
+          </View>
+        )}
+        <SectionHeader title="Saved" />
+        {saved.length > 0 ? (
+          <View style={styles.stack}>
+            {saved.map((story) => (
+              <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptySection}>
+            <Text style={styles.emptyMuted}>Bookmark stories you love</Text>
+          </View>
+        )}
+        <SectionHeader title="Reading History" />
+        <View style={styles.stack}>
+          {allStories.slice(0, 5).map((story) => (
+            <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+          ))}
+        </View>
+        <Pressable onPress={onCredits} style={styles.creditsRow}>
+          <View style={styles.settingsIcon}>
+            <Sparkles size={20} color={colors.accent} />
+          </View>
+          <View style={styles.settingsText}>
+            <Text style={styles.settingsTitle}>Credits</Text>
+            <Text style={styles.settingsSubtitle}>{credits} available</Text>
+          </View>
+          <ChevronRight size={20} color={colors.tertiary} />
+        </Pressable>
         <View style={styles.settingsList}>
-          {rows.map(([title, subtitle, Icon]) => (
-            <Pressable key={title} onPress={title === "Credits" ? onCredits : undefined} style={styles.settingsRow}>
+          {settingsRows.map(([title, subtitle, Icon]) => (
+            <View key={title} style={styles.settingsRow}>
               <View style={styles.settingsIcon}>
                 <Icon size={20} color={colors.accent} />
               </View>
@@ -416,9 +445,10 @@ function SettingsScreen({ credits, onCredits, onPaywall }: { credits: number; on
                 <Text style={styles.settingsTitle}>{title}</Text>
                 <Text style={styles.settingsSubtitle}>{subtitle}</Text>
               </View>
-            </Pressable>
+            </View>
           ))}
         </View>
+        <Text style={styles.legalFooter}>Privacy Policy • Terms of Service • v0.1.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -548,11 +578,9 @@ function HorizontalStories({ stories: items, onStory }: { stories: Story[]; onSt
 function BottomTabs({ selected, onSelect }: { selected: TabKey; onSelect: (tab: TabKey) => void }) {
   const tabs: { key: TabKey; label: string; Icon: typeof Home; raised?: boolean }[] = [
     { key: "home", label: "Home", Icon: Home },
-    { key: "discover", label: "Discover", Icon: Compass },
-    { key: "create", label: "Create", Icon: Plus, raised: true },
-    { key: "library", label: "Library", Icon: Bookmark },
-    { key: "settings", label: "Settings", Icon: Settings }
-  ] as const;
+    { key: "create", label: "", Icon: Plus, raised: true },
+    { key: "profile", label: "Profile", Icon: User }
+  ];
   return (
     <View style={styles.tabBar}>
       {tabs.map(({ key, label, Icon, raised }) => {
@@ -562,7 +590,7 @@ function BottomTabs({ selected, onSelect }: { selected: TabKey; onSelect: (tab: 
             <View style={[raised ? styles.raisedTab : styles.flatTab, active && !raised && styles.flatTabActive]}>
               <Icon size={raised ? 26 : 20} color={raised ? "#FFFFFF" : active ? colors.accent : colors.tertiary} />
             </View>
-            {!raised ? <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text> : null}
+            {!raised && label ? <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text> : null}
           </Pressable>
         );
       })}
@@ -644,16 +672,23 @@ const styles = StyleSheet.create({
   genreChoice: { minWidth: 132, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
   genreChoiceSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   genreChoiceText: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
-  segmented: { marginHorizontal: spacing.xl, padding: 4, borderRadius: radius.pill, backgroundColor: colors.surface2, flexDirection: "row", gap: 4 },
-  segment: { flex: 1, minHeight: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
-  segmentSelected: { backgroundColor: colors.surface },
-  segmentText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 12, fontWeight: "800" },
-  segmentTextSelected: { color: colors.ink },
+  welcomeCard: { marginHorizontal: spacing.xl, padding: spacing.xl, borderRadius: radius.xl, backgroundColor: colors.ink },
+  welcomeTitle: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 28, lineHeight: 32 },
+  welcomeSubtitle: { marginTop: spacing.sm, fontFamily: fonts.ui, color: "rgba(255,255,255,0.7)", fontWeight: "700", fontSize: 15 },
+  welcomeButtonWrap: { marginTop: spacing.lg },
+  emptySection: { paddingHorizontal: spacing.xl, paddingVertical: spacing.lg },
+  emptyText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14 },
+  emptyMuted: { fontFamily: fonts.ui, color: colors.tertiary, fontSize: 14 },
+  accentLink: { color: colors.accent, fontWeight: "800" },
   avatar: { width: 46, height: 46, borderRadius: 14 },
   profileCard: { margin: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.ink },
   profileName: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 24 },
   profileMeta: { marginTop: spacing.xs, fontFamily: fonts.ui, color: colors.muted, fontWeight: "700" },
   profileActions: { marginTop: spacing.lg },
+  profileButtonRow: { flexDirection: "row", gap: spacing.md },
+  profileButtonHalf: { flex: 1 },
+  creditsRow: { marginHorizontal: spacing.xl, marginTop: spacing.xl, marginBottom: spacing.lg, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: spacing.md },
+  legalFooter: { marginTop: spacing.xl, marginBottom: spacing.lg, textAlign: "center", fontFamily: fonts.ui, color: colors.tertiary, fontSize: 12 },
   settingsList: { marginHorizontal: spacing.xl, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
   settingsRow: { padding: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   settingsIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
