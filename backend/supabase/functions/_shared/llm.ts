@@ -19,24 +19,12 @@ export async function generateStoryText(
   const failures: string[] = [];
   // Attempt 1: Sonnet 4.6
   try {
-    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    const response = await withAbortTimeout(
+    const text = await generateAnthropicText(
+      "claude-sonnet-4-6",
       60000,
-      (signal) =>
-        client.messages.create(
-          {
-            model: "claude-sonnet-4-6",
-            max_tokens: 4096,
-            system: systemPrompt,
-            messages: [{ role: "user", content: userPrompt }],
-          },
-          { signal },
-        ),
+      systemPrompt,
+      userPrompt,
     );
-    const text = response.content
-      .filter((b: Anthropic.ContentBlock) => b.type === "text")
-      .map((b: Anthropic.TextBlock) => b.text)
-      .join("");
     return { text, model: "claude-sonnet-4-6" };
   } catch (e) {
     console.error("Sonnet 4.6 failed:", e);
@@ -45,24 +33,12 @@ export async function generateStoryText(
 
   // Attempt 2: Haiku 4.5
   try {
-    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    const response = await withAbortTimeout(
+    const text = await generateAnthropicText(
+      "claude-haiku-4-5-20251001",
       30000,
-      (signal) =>
-        client.messages.create(
-          {
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 4096,
-            system: systemPrompt,
-            messages: [{ role: "user", content: userPrompt }],
-          },
-          { signal },
-        ),
+      systemPrompt,
+      userPrompt,
     );
-    const text = response.content
-      .filter((b: Anthropic.ContentBlock) => b.type === "text")
-      .map((b: Anthropic.TextBlock) => b.text)
-      .join("");
     return { text, model: "claude-haiku-4-5" };
   } catch (e) {
     console.error("Haiku 4.5 failed:", e);
@@ -115,6 +91,70 @@ export async function generateStoryText(
   }
 
   throw new Error(`All LLM providers failed. ${failures.join(" | ")}`);
+}
+
+async function generateAnthropicText(
+  model: string,
+  timeoutMs: number,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<string> {
+  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await withAbortTimeout(
+        timeoutMs,
+        (signal) =>
+          client.messages.create(
+            {
+              model,
+              max_tokens: 4096,
+              system: systemPrompt,
+              messages: [{
+                role: "user",
+                content: moderationSafePrompt(userPrompt, attempt),
+              }],
+            },
+            { signal },
+          ),
+      );
+      const text = response.content
+        .filter((block: Anthropic.ContentBlock) => block.type === "text")
+        .map((block: Anthropic.TextBlock) => block.text)
+        .join("");
+      if (!text.trim()) throw new Error("Anthropic returned no text content");
+      return text;
+    } catch (error) {
+      if (!isModerationRejection(error) || attempt === 2) throw error;
+      console.warn(
+        `${model} moderation retry ${attempt + 1} of 2:`,
+        failureMessage(error),
+      );
+    }
+  }
+
+  throw new Error("Anthropic moderation retries exhausted");
+}
+
+function moderationSafePrompt(userPrompt: string, attempt: number): string {
+  if (attempt === 0) return userPrompt;
+  if (attempt === 1) {
+    return `${userPrompt}\n\nDescribe tense or sensitive scenes gently and indirectly. Avoid graphic detail while preserving the requested characters, genre, and plot.`;
+  }
+  return `${userPrompt}\n\nUse calm, age-appropriate language throughout. Resolve danger off-page, omit graphic or explicit detail, and preserve only the essential characters and story arc.`;
+}
+
+function isModerationRejection(error: unknown): boolean {
+  const message = failureMessage(error).toLowerCase();
+  return [
+    "moderation",
+    "content policy",
+    "safety policy",
+    "unsafe content",
+    "content blocked",
+    "content filtering",
+  ].some((marker) => message.includes(marker));
 }
 
 function failureMessage(error: unknown): string {

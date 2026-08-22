@@ -1,5 +1,7 @@
 # Katha AI — Build Log
 
+<!-- markdownlint-disable MD013 MD024 -->
+
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
@@ -10,7 +12,8 @@
 **Session:** Initial project setup (from Story For My Kid Claude Code session)
 
 ### Changes
-- Created project at `/Users/mac16/Katha AI/`
+
+- Created the backend workspace, now located at the repository-relative `backend/` directory
 - **CLAUDE.md** — project context, architecture, build instructions for Claude Code sessions
 - **Supabase schema (migration 00001):** profiles, credit_ledger, stories, chapters, characters, comments, streaks, ad_rewards, referrals — 9 tables with indexes
 - **RLS policies (migration 00002):** row-level security for all tables
@@ -30,6 +33,7 @@
 - **Git initialized** with initial commit
 
 ### Decisions locked
+
 - App name: **Katha AI — Create Stories**
 - Single currency (Credits), no dual coins/gems
 - Author-only continuation (readers cannot extend stories)
@@ -47,11 +51,13 @@
 **Session:** Full codebase review of Rork-built app (both iOS + Android) against all 12 prompts + fix-up prompt
 
 ### Changes
+
 - **ROADMAP.md** — created phased backend execution plan (A through H)
 - **CLAUDE.md** — updated architecture section (Rork is native Swift+Kotlin, not React Native), updated build phases, added Rork app status, added new edge functions to TODO list
 - **build-log.md** — this entry
 
 ### Rork App Status
+
 - **Repo:** `praz-builds/rork-katha-ai-clone` (GitHub, private)
 - **Original repo** `praz-builds/rork-katha-ai` confirmed safe to delete (clone is strict superset with 16 additional files)
 - **iOS:** 40+ screens in Swift/SwiftUI, Literata font bundled, all features in mock mode
@@ -59,6 +65,7 @@
 - **All 12 prompts delivered:** Foundation, Auth, Create Wizard, Series/Continuation, Profiles, Engagement, Search/Bookmarks, Credits/Ads, Fix-up, Analytics, Parental/Language, Streaks/Notifications/Referrals/Offline/Audio
 
 ### Review Findings (critical gaps for fix-up prompt)
+
 - Color tokens: nearly every hex deviates from spec (Rork generated own palette)
 - Only 12 of 30 seed stories exist; no language field on Story model
 - Home screen missing 6 of 8 sections (Continue Reading, For You, Writers You Follow, Rising, Katha's Picks, Welcome-back)
@@ -69,12 +76,14 @@
 - The full fix-up list is retained in this build-log entry and `ROADMAP.md`.
 
 ### Known Backend Bugs Confirmed
+
 - `generate-story/index.ts:137` — double-deduct in response body
 - `credits.ts` — race condition (read-then-write, not atomic)
 - `llm.ts` — Haiku model ID outdated (Oct 2024 → should be Oct 2025)
 - `generate-story` — hardcoded system prompt instead of loading from file
 
 ### TODO next session
+
 - [ ] Phase A: Create Supabase project, fix critical bugs, deploy existing functions
 - [ ] Phase B: Wire DALL-E 3 + edge-tts into generation pipeline
 - [ ] User: Get API keys (Anthropic, OpenAI), create Supabase project
@@ -86,6 +95,7 @@
 **Session:** Created Supabase project, fixed all 4 known bugs, deployed all edge functions
 
 ### Infrastructure
+
 - **Supabase project created:** `iafeuxgoiknncgyjmugd` (region: ap-northeast-2 Seoul)
 - **New key format:** publishable/secret (maps to anon/service_role)
 - **Supabase CLI installed** via Homebrew (v2.114.0)
@@ -94,25 +104,31 @@
 - **`config.toml` updated** with project ref, OAuth providers disabled (need real client IDs)
 
 ### Bug Fixes
+
 1. **Double-deduct fix** (`generate-story/index.ts:137`): `newBalance - 1` → `newBalance` (was subtracting again after deductCredit already returned the post-deduction balance)
 2. **Race condition fix** (`credits.ts`): replaced read-then-write pattern with atomic Postgres RPC functions (`deduct_credit`, `grant_credit`) using `FOR UPDATE` row locking
 3. **System prompt fix** (`generate-story/index.ts`): hardcoded string → imported from `_shared/prompts.ts` (mirrors `prompts/story-generator.md`)
 4. **Haiku model ID fix** (`llm.ts:45`): `claude-haiku-4-5-20241022` → `claude-haiku-4-5-20251001`
 
 ### Schema Changes
+
 - **Migration 00004** (`00004_atomic_credit_rpcs.sql`): added `deduct_credit()` and `grant_credit()` Postgres functions with `SECURITY DEFINER` and `FOR UPDATE` locking
 - **Migration 00001 fix**: `idx_ad_rewards_daily` — `claimed_at::date` → `date_trunc('day', claimed_at at time zone 'UTC')` (immutability fix)
 - **Migration 00003 fix**: `idx_story_reads_dedup` — same `::date` → `date_trunc` fix
 
 ### New Files
+
 - `supabase/functions/_shared/prompts.ts` — story generator system prompt as exportable constant
 - `supabase/migrations/00004_atomic_credit_rpcs.sql` — atomic credit RPC functions
 
 ### Deployments
+
 All 7 edge functions deployed and ACTIVE:
+
 - `generate-story`, `continue-story`, `deduct-credit`, `grant-credit`, `library`, `feedback`, `adapty-webhook`
 
 ### TODO next session
+
 - [ ] Set API key secrets (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) once user has them
 - [ ] Phase B: Wire DALL-E 3 cover images + edge-tts audio narration
 - [ ] Create Supabase Storage buckets (covers, audio)
@@ -147,9 +163,16 @@ All 7 edge functions deployed and ACTIVE:
 - Aligned the runtime and canonical generation prompt to the locked 500-1500 word short-story contract and updated the Sonnet model identifier.
 - Added malformed-body and UUID validation, mandatory client request IDs, explicit unpublished chapter state, refund-replay semantics, owner-safe story update grants, and reader-visibility RLS coverage.
 - Annual Adapty events fail closed until monthly allocation scheduling is implemented; provider SKU coverage is checked against the complete allowlist.
+- Confirmed the current generation runtime is text-only; cover images and audio narration remain undeployed Phase B work.
+- Confirmed rewarded AdMob credits remain disabled pending direct signed SSV callbacks, server-issued user-bound claim nonces, global transaction replay protection, and atomic cooldown/grant handling.
+- Added migration `00006_public_data_hardening.sql` to restrict profile reads to display-safe columns, remove client story-status updates, and index title search with `pg_trgm`.
+- Replaced wildcard CORS with an exact `ALLOWED_ORIGINS` allowlist and added cached preflight responses.
+- Preserved generated paragraph boundaries through a shared response parser, switched continuation credit errors to stable SQLSTATE handling, and made payment-backlog retries preserve terminal rows.
 
 ### Deployment status
 
-- Code changes and migration are pending PR review. They have not been deployed to the linked Supabase project.
+- Code changes and migrations are pending PR review. They have not been deployed to the linked Supabase project.
+- Both migrations `00005` and `00006`, plus the changed Edge Functions, remain undeployed.
+- Configure the `ALLOWED_ORIGINS` Supabase secret before serving browser clients from the changed functions.
 - Adapty dashboard authorization and exact product IDs must match the server configuration before production webhook traffic is enabled.
 - Adapty refund clawbacks and monthly allocation for annual plans remain explicit production blockers; refund events currently fail closed rather than being acknowledged without accounting.

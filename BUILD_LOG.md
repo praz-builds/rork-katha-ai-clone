@@ -1,5 +1,7 @@
 # Katha AI Monorepo Build Log
 
+<!-- markdownlint-disable MD013 -->
+
 ## 2026-08-22 — Canonical Repository Consolidation
 
 - Confirmed `praz-builds/rork-katha-ai-clone` as the canonical product repository.
@@ -52,19 +54,22 @@
 - A final full review of `851c623` surfaced cross-repository contract gaps. The remediation aligns the 500-1500 word prompt, validates all JSON/UUID/request IDs, protects engagement counters from client writes, records explicit draft chapter publication state, makes refund replays observable, tests reader RLS after publication, and accumulates fractional reader earnings as integer half-credit units.
 - Annual subscription events now fail closed until monthly allocation scheduling is implemented; the app cannot silently grant only one month's credits for a yearly purchase.
 - Removed the committed mutable session handoff and moving-source skill lock; `SESSION_HANDOFF.md` remains available locally and ignored for copy-paste use.
+- CodeRabbit's full review of `32021ba` requested 27 additional contract and documentation changes. The branch now adds safe public-profile grants, indexed title search, stable application SQLSTATEs, environment-allowlisted CORS, moderation-aware Anthropic retries, rejected-payment backlog persistence, paragraph-safe response parsing, bounded library pagination, and synchronized current-vs-planned product documentation.
 - PR #3 remains unmerged until CodeRabbit formally approves the latest fixes.
 
 ### Follow-up validation
 
 - Deno format, type checks, and lint passed for all changed Edge Functions.
-- Eleven Adapty authorization, lifecycle, deterministic refund-event, SKU-coverage, and annual fail-closed tests passed.
-- All five migrations parsed and applied to an in-memory PostgreSQL-compatible runtime.
-- Four migration behavior tests passed for generation accounting, completion/refund races, feedback idempotency, and provider transaction uniqueness.
+- Thirteen Adapty authorization, lifecycle, deterministic refund-event, SKU-coverage, and annual fail-closed tests passed.
+- Four shared CORS and generated-text parsing tests passed.
+- All six migrations parsed and applied to an in-memory PostgreSQL-compatible runtime.
+- Seven migration behavior tests passed for generation accounting, completion/refund races, feedback idempotency, provider transaction uniqueness, stable SQLSTATEs, deterministic legacy replay, and public-data grants.
 - Expo TypeScript compilation passed.
 - Historical blueprint Markdown lint passed with zero issues.
 
 ### Deployment status
 
-- `backend/supabase/migrations/00005_secure_credit_operations.sql` and the modified Edge Functions remain undeployed.
+- `backend/supabase/migrations/00005_secure_credit_operations.sql`, `00006_public_data_hardening.sql`, and the modified Edge Functions remain undeployed.
 - Production enablement still requires Adapty authorization and product-ID verification.
+- Browser clients require an exact `ALLOWED_ORIGINS` Supabase secret before the changed functions are deployed.
 - AdMob rewards remain disabled until server-side verification is implemented.

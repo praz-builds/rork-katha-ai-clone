@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, handleCors } from "../_shared/cors.ts";
+import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
@@ -9,15 +9,18 @@ import {
   readJsonObject,
 } from "../_shared/operations.ts";
 import { STORY_SYSTEM_PROMPT } from "../_shared/prompts.ts";
+import { parseGeneratedStoryText } from "../_shared/story_text.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
+  const respond = (body: unknown, status = 200) =>
+    jsonResponse(req, body, status);
 
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
+      return respond({ error: "Unauthorized" }, 401);
     }
 
     const supabase = createClient(
@@ -29,13 +32,13 @@ serve(async (req) => {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
+      return respond({ error: "Unauthorized" }, 401);
     }
 
     const body = await readJsonObject(req);
-    if (!body) return jsonResponse({ error: "Invalid JSON request body" }, 400);
+    if (!body) return respond({ error: "Invalid JSON request body" }, 400);
     const input = validateGenerationRequest(body);
-    if ("error" in input) return jsonResponse({ error: input.error }, 400);
+    if ("error" in input) return respond({ error: input.error }, 400);
     const { genres, topic, characters, requestId } = input;
 
     // Use service role client for credit operations
@@ -64,7 +67,7 @@ serve(async (req) => {
             p_error: "Stale generation reservation reconciled on retry",
           });
         if (reconciliationError || !reconciliation) {
-          return jsonResponse({
+          return respond({
             error: "Generation recovery is pending retry.",
             operation_id: existingOperation.id,
           }, 503);
@@ -76,7 +79,7 @@ serve(async (req) => {
         }
       }
       if (existingOperation.status !== "completed") {
-        return jsonResponse({
+        return respond({
           error: existingOperation.status === "refunded"
             ? "The previous generation failed. Start a new request."
             : "Generation is already in progress.",
@@ -100,7 +103,7 @@ serve(async (req) => {
       if (storyResult.error || chapterResult.error) {
         throw storyResult.error ?? chapterResult.error;
       }
-      return jsonResponse({
+      return respond({
         story: storyResult.data,
         chapter: chapterResult.data,
         replayed: true,
@@ -136,15 +139,34 @@ serve(async (req) => {
         },
       );
     if (reservationError || !operation) {
-      await serviceClient.from("stories").delete().eq("id", story.id);
-      if (reservationError?.message.includes("Insufficient credits")) {
-        return jsonResponse({ error: "Insufficient credits" }, 402);
+      const { error: cleanupError } = await serviceClient
+        .from("stories")
+        .delete()
+        .eq("id", story.id);
+      if (cleanupError) {
+        console.error("generate-story orphan cleanup failed", {
+          storyId: story.id,
+          error: cleanupError,
+        });
+      }
+      if (reservationError?.code === "KTH02") {
+        return respond({ error: "Insufficient credits" }, 402);
       }
       throw reservationError ?? new Error("Generation reservation failed");
     }
     if (operation.story_id !== story.id) {
-      await serviceClient.from("stories").delete().eq("id", story.id);
-      return jsonResponse({
+      const { error: cleanupError } = await serviceClient
+        .from("stories")
+        .delete()
+        .eq("id", story.id);
+      if (cleanupError) {
+        console.error("generate-story duplicate cleanup failed", {
+          storyId: story.id,
+          existingStoryId: operation.story_id,
+          error: cleanupError,
+        });
+      }
+      return respond({
         error: "Generation request already exists",
         story_id: operation.story_id,
         status: operation.status,
@@ -182,11 +204,10 @@ serve(async (req) => {
         characters,
       });
       const result = await generateStoryText(STORY_SYSTEM_PROMPT, userPrompt);
-      const lines = result.text.split("\n").filter((line: string) =>
-        line.trim()
+      const { title, content } = parseGeneratedStoryText(
+        result.text,
+        "Untitled Story",
       );
-      const title = lines[0]?.replace(/^#\s*/, "").trim() || "Untitled Story";
-      const content = lines.slice(1).join("\n").trim();
       if (!content) throw new Error("Generation returned no story content");
       const wordCount = content.split(/\s+/).length;
 
@@ -205,7 +226,7 @@ serve(async (req) => {
         throw completionError ?? new Error("Story persistence failed");
       }
 
-      return jsonResponse({
+      return respond({
         story: { ...story, title, word_count: wordCount, status: "complete" },
         chapter,
         balance: operation.balance,
@@ -223,12 +244,12 @@ serve(async (req) => {
       );
       if (refundError) {
         console.error("generate-story refund pending:", refundError);
-        return jsonResponse({
+        return respond({
           error: "Story generation failed. Refund is pending retry.",
           operation_id: operation.id,
         }, 503);
       }
-      return jsonResponse(
+      return respond(
         {
           error: refund?.refunded
             ? "Story generation failed. Credit refunded."
@@ -241,15 +262,15 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error("generate-story error:", error);
-    return jsonResponse({ error: "Internal server error" }, 500);
+    return respond({ error: "Internal server error" }, 500);
   }
 });
 
 /** Return a JSON response with the shared CORS headers. */
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeadersFor(req), "Content-Type": "application/json" },
   });
 }
 

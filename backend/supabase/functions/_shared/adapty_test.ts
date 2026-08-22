@@ -67,6 +67,18 @@ Deno.test("valid purchase resolves customer, product, and transaction", () => {
   );
 });
 
+Deno.test("credit events accept generic UUID forms supported by Postgres", () => {
+  assertEquals(
+    resolveAdaptyCredit({
+      customer_user_id: "018f06a7-4f2e-7cc4-9231-52c6a8f59baf",
+      event_type: "non_subscription_purchase",
+      transaction_id: "transaction-v7",
+      vendor_product_id: "ai.katha.credits.starter",
+    })?.userId,
+    "018f06a7-4f2e-7cc4-9231-52c6a8f59baf",
+  );
+});
+
 Deno.test("non-credit lifecycle events are ignored", () => {
   assertEquals(
     resolveAdaptyCredit({ event_type: "subscription_cancelled" }),
@@ -123,10 +135,12 @@ Deno.test("credit events reject unknown products and invalid users", () => {
   );
 });
 
-assertEquals(
-  ADAPTY_SKU_CASES.map(([productId]) => productId).sort(),
-  Object.keys(ADAPTY_CREDIT_MAP).sort(),
-);
+Deno.test("every configured Adapty SKU has a test case", () => {
+  assertEquals(
+    ADAPTY_SKU_CASES.map(([productId]) => productId).sort(),
+    Object.keys(ADAPTY_CREDIT_MAP).sort(),
+  );
+});
 
 for (
   const [productId, credits, eventType, reason, blocked] of ADAPTY_SKU_CASES

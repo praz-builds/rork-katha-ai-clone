@@ -1,5 +1,6 @@
 import { stories } from "@/data/seed";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { GENRES } from "@/types/domain";
 import type { CreateDraft, Genre, Story } from "@/types/domain";
 
 export type LibraryResult = {
@@ -14,7 +15,9 @@ export class GenerationRequestError extends Error {
   }
 }
 
-export async function getLibrary(query?: { q?: string; genre?: string }): Promise<LibraryResult> {
+export async function getLibrary(
+  query?: { q?: string; genre?: string },
+): Promise<LibraryResult> {
   if (!isSupabaseConfigured) {
     return { stories: filterLocalStories(query), source: "mock" };
   }
@@ -23,9 +26,12 @@ export async function getLibrary(query?: { q?: string; genre?: string }): Promis
   if (query?.q) params.set("q", query.q);
   if (query?.genre) params.set("genre", query.genre);
 
-  const { data, error } = await supabase.functions.invoke(`library?${params.toString()}`, {
-    method: "GET"
-  });
+  const { data, error } = await supabase.functions.invoke(
+    `library?${params.toString()}`,
+    {
+      method: "GET",
+    },
+  );
 
   if (error || !data?.stories) {
     return { stories: filterLocalStories(query), source: "mock" };
@@ -34,7 +40,10 @@ export async function getLibrary(query?: { q?: string; genre?: string }): Promis
   return { stories: filterLocalStories(query), source: "supabase" };
 }
 
-export async function generateStory(draft: CreateDraft, requestId: string): Promise<Story> {
+export async function generateStory(
+  draft: CreateDraft,
+  requestId: string,
+): Promise<Story> {
   if (!isSupabaseConfigured) {
     return localGeneratedStory(draft);
   }
@@ -44,8 +53,8 @@ export async function generateStory(draft: CreateDraft, requestId: string): Prom
       request_id: requestId,
       genre: draft.genre,
       topic: draft.seed,
-      characters: draft.characters
-    }
+      characters: draft.characters,
+    },
   });
 
   if (error) {
@@ -74,20 +83,22 @@ async function edgeFunctionFailure(error: unknown, data: unknown) {
   }
   return {
     message: error instanceof Error ? error.message : "Story generation failed",
-    resetRequestId: false
+    resetRequestId: false,
   };
 }
 
-function objectFailure(value: unknown): { message: string; resetRequestId: boolean } | null {
+function objectFailure(
+  value: unknown,
+): { message: string; resetRequestId: boolean } | null {
   if (!value || typeof value !== "object") return null;
   const payload = value as Record<string, unknown>;
   const message = payload.error;
   if (typeof message !== "string" || !message.trim()) return null;
   return {
     message,
-    resetRequestId:
-      payload.status === "refunded" ||
-      (typeof payload.operation_id === "string" && /refunded|start a new request/i.test(message))
+    resetRequestId: payload.status === "refunded" ||
+      (typeof payload.operation_id === "string" &&
+        /refunded|start a new request/i.test(message)),
   };
 }
 
@@ -128,7 +139,7 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
       isPublished: chapter.is_published === true,
       audioUrl: typeof chapter.audio_url === "string"
         ? chapter.audio_url
-        : undefined
+        : undefined,
     }],
     likes: numberOrZero(story.like_count),
     bookmarks: numberOrZero(story.bookmark_count),
@@ -136,7 +147,9 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
     tags: themes.length ? themes : ["new", "draft"],
     publishedOffset: 0,
     isFeatured: story.is_curated === true,
-    language: typeof story.language === "string" ? story.language : draft.language
+    language: typeof story.language === "string"
+      ? story.language
+      : draft.language,
   };
 }
 
@@ -151,7 +164,7 @@ function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`Story generation returned no ${field}`);
   }
-  return value;
+  return value.trim();
 }
 
 function numberOrZero(value: unknown): number {
@@ -159,19 +172,14 @@ function numberOrZero(value: unknown): number {
 }
 
 function isGenre(value: unknown): value is Genre {
-  return typeof value === "string" && [
-    "adventure", "comedy", "contemporary", "drama", "fantasy", "historical",
-    "horror", "kids", "lgbtq", "motivational", "mystery", "mythology",
-    "poetry", "romance", "scifi", "sliceOfLife", "spirituality", "thriller"
-  ].includes(value);
+  return typeof value === "string" && GENRES.some((genre) => genre === value);
 }
 
 function filterLocalStories(query?: { q?: string; genre?: string }) {
   const normalized = query?.q?.trim().toLowerCase();
   return stories.filter((story) => {
     const matchesGenre = !query?.genre || story.genre === query.genre;
-    const matchesQuery =
-      !normalized ||
+    const matchesQuery = !normalized ||
       story.title.toLowerCase().includes(normalized) ||
       story.synopsis.toLowerCase().includes(normalized) ||
       story.tags.some((tag) => tag.toLowerCase().includes(normalized));
@@ -180,14 +188,19 @@ function filterLocalStories(query?: { q?: string; genre?: string }) {
 }
 
 function localGeneratedStory(draft: CreateDraft): Story {
-  const hero = draft.characters.find((character) => character.isHero) ?? draft.characters[0];
-  const title = draft.seed.length > 4 ? titleFromSeed(draft.seed) : `The ${hero?.name ?? "Hidden"} Story`;
+  const hero = draft.characters.find((character) => character.isHero) ??
+    draft.characters[0];
+  const title = draft.seed.length > 4
+    ? titleFromSeed(draft.seed)
+    : `The ${hero?.name ?? "Hidden"} Story`;
   return {
     id: `generated-${Date.now()}`,
     title,
     authorId: "me",
     genre: draft.genre,
-    synopsis: `A fresh ${draft.genre} story shaped from your seed: ${draft.seed || "a quiet beginning"}.`,
+    synopsis: `A fresh ${draft.genre} story shaped from your seed: ${
+      draft.seed || "a quiet beginning"
+    }.`,
     likes: 0,
     bookmarks: 0,
     views: 0,
@@ -204,12 +217,16 @@ function localGeneratedStory(draft: CreateDraft): Story {
         chapterNumber: 1,
         isPublished: false,
         paragraphs: [
-          `${hero?.name ?? "Someone"} noticed the world had changed before anyone else did. It was not a loud change. It arrived as a small detail, a misplaced sound, a door left open where no door had been the night before.`,
-          `The seed was simple: ${draft.seed || "begin again"}. But Katha turned it over like a warm stone, finding the hidden shape inside it. Soon the first choice appeared, and with it the feeling that this story had been waiting for you.`,
-          "You can keep this draft, revise it, or continue it into a series when the backend generation pipeline is fully enabled."
-        ]
-      }
-    ]
+          `${
+            hero?.name ?? "Someone"
+          } noticed the world had changed before anyone else did. It was not a loud change. It arrived as a small detail, a misplaced sound, a door left open where no door had been the night before.`,
+          `The seed was simple: ${
+            draft.seed || "begin again"
+          }. But Katha turned it over like a warm stone, finding the hidden shape inside it. Soon the first choice appeared, and with it the feeling that this story had been waiting for you.`,
+          "You can keep this draft, revise it, or continue it into a series when the backend generation pipeline is fully enabled.",
+        ],
+      },
+    ],
   };
 }
 
@@ -223,5 +240,7 @@ function titleFromSeed(seed: string) {
 }
 
 export function createGenerationRequestId() {
-  return `generation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `generation-${Date.now().toString(36)}-${
+    Math.random().toString(36).slice(2)
+  }`;
 }

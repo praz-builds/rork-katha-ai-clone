@@ -1,5 +1,7 @@
 # Katha AI Repository Context
 
+<!-- markdownlint-disable MD013 -->
+
 This is the single canonical Katha AI repository: `praz-builds/rork-katha-ai-clone`.
 
 ## Repository Map

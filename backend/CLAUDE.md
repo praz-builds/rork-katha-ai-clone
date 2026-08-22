@@ -1,5 +1,7 @@
 # CLAUDE.md — Katha AI Backend
 
+<!-- markdownlint-disable MD013 -->
+
 > **Current repository context (2026-08-22):** This backend now lives at `backend/` inside the canonical `praz-builds/rork-katha-ai-clone` monorepo. The approved active client is `../expo/`; the Swift and Kotlin clients are preserved references. Historical Rork-specific notes below explain prior decisions but do not override the root `../CLAUDE.md` or the current Expo product contract.
 
 ## Product Context
@@ -67,6 +69,7 @@ These are locked in via `references/strategic-decisions.md` (the authoritative d
 Schema is in `supabase/migrations/` (5 migrations). Key tables:
 
 **Core (migration 00001):**
+
 - `profiles` — user identity, linked to Supabase Auth
 - `credit_ledger` — append-only ledger (every credit change is a row)
 - `stories` — generated + curated stories
@@ -78,6 +81,7 @@ Schema is in `supabase/migrations/` (5 migrations). Key tables:
 - `referrals` — referral tracking
 
 **Social + Creator Economy (migration 00003):**
+
 - `story_reads` — read tracking with anti-gaming fields (device_id, ip_hash, duration, counts_for_earnings)
 - `story_followers` — follow a story for chapter notifications
 - `user_followers` — follow an author for new story notifications
@@ -85,10 +89,12 @@ Schema is in `supabase/migrations/` (5 migrations). Key tables:
 - `story_likes` — engagement signal for feed ranking
 
 **Security and operation state (migration 00005):**
+
 - `generation_operations` — durable request, debit, completion, replay, and refund state for story generation
 - `payment_event_backlog` — unacknowledged billing events requiring operational reconciliation
 
 **Not yet created (needed for Phase G):**
+
 - `device_tokens` — FCM/APNs token storage for push notifications
 
 **Credit ledger pattern:** Never update rows. Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references. Balance is the newest ledger row by `created_at`, then `id`.
@@ -100,10 +106,11 @@ Schema is in `supabase/migrations/` (5 migrations). Key tables:
 All in `supabase/functions/`. Each is a Deno/TypeScript handler:
 
 ### Implemented (scaffolded)
+
 | Function | Method | Purpose | Status |
-|----------|--------|---------|--------|
-| `generate-story` | POST | Orchestrator: auth -> credit check -> deduct -> LLM -> image -> audio -> return | 70% (LLM works, image/audio stubbed) |
-| `continue-story` | POST | Generate next chapter (author-only) | 70% (same gap) |
+| ---------- | -------- | --------- | -------- |
+| `generate-story` | POST | Text generation orchestrator: auth -> reserve credit -> LLM -> persist -> return | Text path implemented in PR #3, pending review/deployment; image/audio remain Phase B |
+| `continue-story` | POST | Generate the next text chapter (author-only) | Text path implemented in PR #3, pending review/deployment; image/audio remain Phase B |
 | `deduct-credit` | POST | Legacy generic endpoint | Disabled; trusted operations deduct internally |
 | `grant-credit` | POST | AdMob SSV reward verification | Disabled until SSV is implemented |
 | `library` | GET | Paginated curated story feed with genre filter + search | Done |
@@ -111,8 +118,9 @@ All in `supabase/functions/`. Each is a Deno/TypeScript handler:
 | `adapty-webhook` | POST | Authenticated, idempotent subscription/purchase credits | Implemented; dashboard secret and product IDs require configuration |
 
 ### TODO
+
 | Function | Purpose | Phase |
-|----------|---------|-------|
+| ---------- | --------- | ------- |
 | `record-read` | Anti-gaming pipeline (self-read guard, min read time, account age throttle, velocity detection, dedup) | E |
 | `publish-chapter` | Mark chapter published, fire follower notifications via FCM | D |
 | `follow-story` / `unfollow-story` | Story follow toggles | D |
@@ -140,15 +148,20 @@ Shared utilities in `supabase/functions/_shared/`.
 ## Monetization
 
 ### Credits
-- 1 credit = 1 generation (story or chapter, includes cover image + audio)
+
+- 1 credit = 1 text generation (story or chapter)
+- Cover image generation and audio narration remain planned for Phase B; neither is part of the current generation runtime.
 - Credit packs: $2.99/3, $7.99/10, $14.99/25
 - Monthly sub: $6.99/mo (20 credits + ad-free + premium voices)
 - Yearly sub: $49.99/yr (25 credits/mo + ad-free + premium voices)
 - Subscription credits carry over up to 2x monthly amount
 - Welcome bonus: 3 credits
 
-### Free Credit Methods
-- Watch ad (1 credit, 1 per 24hr)
+### Planned Free Credit Methods
+
+These are product-economy contracts, not a statement that every grant path is deployed. Use `ROADMAP.md` and the Current Security Gate above for implementation status.
+
+- Watch ad (planned: 1 credit per rolling 24 hours; currently disabled until verified AdMob SSV and atomic replay/cooldown enforcement are deployed)
 - Reading streak (1 credit every 3 consecutive days)
 - Leave feedback (1 credit per story, cap 1/day)
 - Referral (3 credits per unique referral who generates)
@@ -156,8 +169,9 @@ Shared utilities in `supabase/functions/_shared/`.
 - Reader earnings on published stories (front-loaded curve, see strategic-decisions.md §4.1)
 
 ### Creator Earnings Curve
+
 | Reads | Credits earned |
-|-------|---------------|
+| ------- | --------------- |
 | 10 | 10 (1 per read) |
 | 50 | 18 (1 per 5 after 10) |
 | 100 | 28 (1 per 5) |
@@ -186,7 +200,10 @@ supabase secrets set ANTHROPIC_API_KEY=xxx
 supabase secrets set OPENAI_API_KEY=xxx
 supabase secrets set ADAPTY_WEBHOOK_SECRET=xxx
 supabase secrets set FIREBASE_SERVICE_ACCOUNT_KEY=xxx
+supabase secrets set ALLOWED_ORIGINS=https://app.example.com,http://localhost:8090
 ```
+
+`ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist for browser clients. Native clients do not send an `Origin` header.
 
 ## Build Phases (Roadmap)
 

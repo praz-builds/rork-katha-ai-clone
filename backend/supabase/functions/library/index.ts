@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, handleCors } from "../_shared/cors.ts";
+import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+
+const MAX_PAGE = 500;
 
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
+  const respond = (body: unknown, status = 200) =>
+    jsonResponse(req, body, status);
 
   try {
     const url = new URL(req.url);
@@ -14,16 +18,19 @@ serve(async (req) => {
       20,
     );
     if (page === null || requestedLimit === null) {
-      return jsonResponse(
+      return respond(
         { error: "page and limit must be positive integers" },
         400,
       );
+    }
+    if (page > MAX_PAGE) {
+      return respond({ error: "page is too large" }, 400);
     }
     const limit = Math.min(requestedLimit, 50);
 
     const offset = (page - 1) * limit;
     if (!Number.isSafeInteger(offset)) {
-      return jsonResponse({ error: "page is too large" }, 400);
+      return respond({ error: "page is too large" }, 400);
     }
 
     const genre = parseFilter(
@@ -37,7 +44,7 @@ serve(async (req) => {
       /^[\p{L}\p{N}\s'!?-]+$/u,
     );
     if (genre === null || search === null) {
-      return jsonResponse({ error: "Invalid genre or search query" }, 400);
+      return respond({ error: "Invalid genre or search query" }, 400);
     }
 
     const supabase = createClient(
@@ -49,7 +56,7 @@ serve(async (req) => {
       .from("stories")
       .select(
         "id, title, genre, topic, cover_image_url, length_type, word_count, created_at",
-        { count: "exact" },
+        { count: "planned" },
       )
       .or("is_public.eq.true,is_curated.eq.true")
       .eq("status", "complete")
@@ -66,29 +73,18 @@ serve(async (req) => {
     const { data: stories, count, error } = await query;
     if (error) throw error;
 
-    return new Response(
-      JSON.stringify({
-        stories,
-        pagination: {
-          page,
-          limit,
-          total: count,
-          pages: Math.ceil((count || 0) / limit),
-        },
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return respond({
+      stories,
+      pagination: {
+        page,
+        limit,
+        total: count,
+        pages: Math.ceil((count || 0) / limit),
       },
-    );
+    });
   } catch (error) {
     console.error("library error:", error);
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return respond({ error: "Internal server error" }, 500);
   }
 });
 
@@ -119,9 +115,9 @@ function parseFilter(
   return normalized;
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeadersFor(req), "Content-Type": "application/json" },
   });
 }

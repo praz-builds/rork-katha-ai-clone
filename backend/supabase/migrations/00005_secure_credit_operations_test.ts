@@ -3,9 +3,21 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
+import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
+
+async function assertSqlState(
+  operation: () => Promise<unknown>,
+  code: string,
+  message: string,
+) {
+  const error = await assertRejects(operation, Error, message) as Error & {
+    code?: string;
+  };
+  assertEquals(error.code, code);
+}
 
 async function createDatabase() {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { pg_trgm } });
   await db.exec(`
     create schema auth;
     create role anon;
@@ -154,13 +166,13 @@ Deno.test("feedback request replay cannot duplicate a daily reward", async () =>
 
     assertEquals(first.rows[0].create_feedback.credit_granted, true);
     assertEquals(replay.rows[0].create_feedback.replayed, true);
-    await assertRejects(
+    await assertSqlState(
       () =>
         db.query(
           "select create_feedback($1, 'feedback-1', $2, null, 'Wrong replay.')",
           [readerId, otherStoryId],
         ),
-      Error,
+      "KTH05",
       "Feedback request belongs to another story",
     );
     const counts = await db.query<{ comments: number; rewards: number }>(
@@ -267,14 +279,22 @@ Deno.test("a completed operation wins a late refund race", async () => {
     await db.query("update stories set is_public = true where id = $1", [
       storyId,
     ]);
-    await db.query(
-      "update chapters set is_published = true, published_at = now() where id = $1",
-      [draftChapter.rows[0].id],
-    );
     await db.exec("grant select on stories, chapters to authenticated");
     await db.query("select set_config('request.jwt.claim.sub', $1, false)", [
       readerId,
     ]);
+    await db.exec("set role authenticated");
+    const hiddenDraft = await db.query<{ id: string }>(
+      "select id from chapters where id = $1",
+      [draftChapter.rows[0].id],
+    );
+    await db.exec("reset role");
+    assertEquals(hiddenDraft.rows, []);
+
+    await db.query(
+      "update chapters set is_published = true, published_at = now() where id = $1",
+      [draftChapter.rows[0].id],
+    );
     await db.exec("set role authenticated");
     const visible = await db.query<{ id: string }>(
       "select id from chapters where id = $1",
@@ -304,6 +324,149 @@ Deno.test("a completed operation wins a late refund race", async () => {
       [userId],
     );
     assertEquals(rewards.rows[0].count, 0);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("application errors expose stable SQLSTATE contracts", async () => {
+  const db = await createDatabase();
+  const readerId = "00000000-0000-4000-8000-000000000041";
+  const authorId = "00000000-0000-4000-8000-000000000042";
+  const storyId = "00000000-0000-4000-8000-000000000043";
+  const missingId = "00000000-0000-4000-8000-000000000044";
+
+  try {
+    await db.query("insert into auth.users(id) values ($1), ($2)", [
+      readerId,
+      authorId,
+    ]);
+    await db.query("insert into profiles(id) values ($1), ($2)", [
+      readerId,
+      authorId,
+    ]);
+
+    await assertSqlState(
+      () =>
+        db.query(
+          "select deduct_credit($1, 1, 'generation', 'story', 'generation:missing')",
+          [readerId],
+        ),
+      "KTH02",
+      "Insufficient credits",
+    );
+    await assertSqlState(
+      () =>
+        db.query(
+          "select create_feedback($1, 'missing-story', $2, null, 'Feedback')",
+          [readerId, missingId],
+        ),
+      "KTH03",
+      "Story not found",
+    );
+
+    await db.query(
+      `insert into stories(id, author_id, title, genre, is_public, status)
+       values ($1, $2, 'Published', array['mystery'], true, 'complete')`,
+      [storyId, authorId],
+    );
+    await assertSqlState(
+      () =>
+        db.query(
+          "select create_feedback($1, 'missing-chapter', $2, $3, 'Feedback')",
+          [readerId, storyId, missingId],
+        ),
+      "KTH04",
+      "Chapter not found",
+    );
+
+    await db.query(
+      `insert into stories(id, author_id, title, genre, is_public, status)
+       values ($1, null, 'Community story', array['drama'], true, 'complete')`,
+      [missingId],
+    );
+    const ownerlessFeedback = await db.query<{
+      create_feedback: Record<string, unknown>;
+    }>(
+      "select create_feedback($1, 'ownerless-story', $2, null, 'Feedback')",
+      [readerId, missingId],
+    );
+    assertEquals(
+      ownerlessFeedback.rows[0].create_feedback.credit_granted,
+      true,
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("legacy duplicate credit rows resolve deterministically", async () => {
+  const db = await createDatabase();
+  const userId = "00000000-0000-4000-8000-000000000051";
+
+  try {
+    await db.query("insert into auth.users(id) values ($1)", [userId]);
+    await db.query("insert into profiles(id) values ($1)", [userId]);
+    await db.query(
+      `insert into credit_ledger(
+         id, user_id, amount, reason, reference_id, balance_after, created_at
+       ) values
+         ('00000000-0000-4000-8000-000000000052', $1, 9, 'purchase', 'legacy', 9, '2026-01-01'),
+         ('00000000-0000-4000-8000-000000000053', $1, 10, 'purchase', 'legacy', 10, '2026-01-01')`,
+      [userId],
+    );
+
+    const result = await db.query<{ grant_credit: number }>(
+      "select grant_credit($1, 10, 'purchase', 'legacy', 'adapty:legacy')",
+      [userId],
+    );
+    assertEquals(result.rows[0].grant_credit, 10);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("public grants exclude profile purpose and story status", async () => {
+  const db = await createDatabase();
+  const userId = "00000000-0000-4000-8000-000000000061";
+
+  try {
+    const privileges = await db.query<{
+      safe_profile: boolean;
+      sensitive_profile: boolean;
+      story_status: boolean;
+    }>(
+      `select
+         has_column_privilege('authenticated', 'public.profiles', 'username', 'select') as safe_profile,
+         has_column_privilege('authenticated', 'public.profiles', 'onboarding_purpose', 'select') as sensitive_profile,
+         has_column_privilege('authenticated', 'public.stories', 'status', 'update') as story_status`,
+    );
+    assertEquals(privileges.rows[0], {
+      safe_profile: true,
+      sensitive_profile: false,
+      story_status: false,
+    });
+
+    await db.query("insert into auth.users(id) values ($1)", [userId]);
+    await db.query(
+      `insert into profiles(id, username, onboarding_purpose)
+       values ($1, 'reader', 'casual')`,
+      [userId],
+    );
+    await db.exec("set role authenticated");
+    const profile = await db.query<{ username: string }>(
+      "select username from public_profiles where id = $1",
+      [userId],
+    );
+    await db.exec("reset role");
+    assertEquals(profile.rows, [{ username: "reader" }]);
+
+    const index = await db.query<{ count: number }>(
+      `select count(*)::integer as count
+       from pg_indexes
+       where schemaname = 'public' and indexname = 'idx_stories_title_trgm'`,
+    );
+    assertEquals(index.rows[0].count, 1);
   } finally {
     await db.close();
   }

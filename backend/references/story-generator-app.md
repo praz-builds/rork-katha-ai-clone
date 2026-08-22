@@ -5,6 +5,7 @@
 > Historical baseline material for the original AI story generator plan.
 > The active client is the Expo app in `../../expo/`; the Swift and Kotlin clients are preserved references.
 > Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ.
+> Image and audio sections describe planned Phase B architecture; the current generation runtime returns text only.
 
 ---
 
@@ -182,7 +183,7 @@ Settings
 
 ### Credit System (managed by Adapty + Supabase)
 
-**1 credit = 1 generation** (story or chapter, includes cover image).
+**1 credit = 1 text generation** (story or chapter). Cover images and audio narration are planned pipeline additions, not current runtime output.
 
 Adapty handles IAP/subscription billing. Supabase holds the credit ledger (source of truth).
 
@@ -198,7 +199,7 @@ User taps "Generate"
     → Edge Function checks balance >= 1
     → Deducts 1 credit (atomic transaction)
     → Triggers generation pipeline
-    → Returns story + image + audio
+    → Returns story text
 ```
 
 ### Pricing Tiers
@@ -217,7 +218,7 @@ Subscription credits carry over up to 2x monthly amount (e.g., 20/mo sub → max
 
 | Method | Reward | Cooldown | Purpose |
 | -------- | -------- | ---------- | --------- |
-| **Watch ad** (rewarded video) | 1 credit | 1 per 24 hours | Daily engagement |
+| **Watch ad** (rewarded video, planned and disabled) | 1 credit | 1 per rolling 24 hours | Daily engagement |
 | **Reading streak** | 1 credit | Every 3 consecutive days | Retention |
 | **Leave feedback** (comment on a story) | 1 credit | 1 per story | Community + content |
 | **Referral** (friend installs + generates) | 3 credits | Per unique referral | Acquisition |
@@ -227,20 +228,23 @@ Subscription credits carry over up to 2x monthly amount (e.g., 20/mo sub → max
 
 ## 5. Rewarded Ads — Integration Plan
 
+> **Current status:** Disabled. Client callbacks cannot grant credits. Activation requires verified AdMob SSV, replay protection, and atomic cooldown/grant handling to be deployed.
+
 ### How It Works
 
 ```text
 User taps "Watch ad for 1 credit" on the Credits screen
+    → Authenticated app asks the server for a one-time claim nonce
+    → Server binds the opaque nonce to that authenticated user
     → App requests a rewarded ad from AdMob SDK
+    → App passes only the opaque nonce as AdMob custom_data
     → AdMob serves a 15-30 second full-screen video
     → User MUST watch to completion (no skip)
-    → AdMob fires onAdRewarded callback on the client
-    → Client calls Edge Function POST /grant-credit with:
-        - user_id
-        - AdMob reward verification token (SSV)
-    → Edge Function verifies with AdMob server-to-server
-    → If valid: grants 1 credit, sets 24hr cooldown
-    → If invalid/replay: rejects
+    → AdMob sends its signed SSV callback directly to the server
+    → Server verifies the signature and resolves the user from the bound nonce
+    → Server atomically records globally unique transaction_id, enforces the
+      rolling 24-hour cooldown, and grants 1 credit
+    → If signature, nonce, transaction, or cooldown is invalid: rejects
 ```
 
 ### Technical Setup
@@ -253,15 +257,17 @@ User taps "Watch ad for 1 credit" on the Credits screen
 - Create "Rewarded" ad unit (one per platform)
 - Preload ad on Credits screen mount
 - Show ad on button tap
-- On reward callback → call backend
+- Treat the local reward callback as UI feedback only; it never proves credit eligibility
+- Request the server-issued claim nonce before presenting the ad
 
 **In VS Code agent (backend side):**
 
-- Edge Function: POST /grant-credit
-- Verify AdMob Server-Side Verification (SSV) callback
-- Check 24hr cooldown per user (last_ad_credit_at timestamp)
-- Grant credit atomically
-- Return new balance
+- Dedicated public endpoint receives AdMob's signed SSV callback directly
+- Verify the callback signature with Google's published verification keys
+- Resolve the user from a one-time server-generated claim nonce in `custom_data`; never trust callback or app-supplied `user_id`
+- Persist AdMob `transaction_id` with global uniqueness to reject replay
+- Consume the nonce, enforce the rolling 24-hour cooldown, and grant the credit atomically
+- Keep `POST /grant-credit` disabled until this complete flow is deployed
 
 **CRITICAL: Never trust the client.** Always verify server-side. People WILL try to fake the reward callback.
 

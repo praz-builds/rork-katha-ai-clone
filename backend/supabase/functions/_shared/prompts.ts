@@ -27,5 +27,5 @@ Every initial story is a 500-1500 word short story. The author can extend it int
 - No violence, gore, or horror beyond age-appropriate tension.
 - No real brand names or copyrighted characters.
 - No "Pixar", "Disney", or studio references.
-- No moralizing lectures -- weave lessons into the story naturally.
+- No moralizing lectures. Weave lessons into the story naturally.
 - No meta-commentary ("In this story, we learn that...").`;

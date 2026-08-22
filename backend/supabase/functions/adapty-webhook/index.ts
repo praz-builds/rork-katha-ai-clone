@@ -59,7 +59,7 @@ serve(async (req) => {
       error instanceof Error &&
       error.message === "Refund event requires clawback processing"
     ) {
-      const backlogError = await persistRefundBacklog(
+      const backlogError = await persistPaymentEventBacklog(
         event,
         rawBody,
         error.message,
@@ -77,6 +77,17 @@ serve(async (req) => {
       error instanceof Error &&
       error.message === "Annual subscription allocation is not configured"
     ) {
+      const backlogError = await persistPaymentEventBacklog(
+        event,
+        rawBody,
+        error.message,
+      );
+      if (backlogError) {
+        console.error(
+          "Adapty annual-event persistence failed:",
+          backlogError,
+        );
+      }
       console.error("Adapty annual subscription was not acknowledged");
       return jsonResponse({ error: error.message }, 503);
     }
@@ -88,6 +99,17 @@ serve(async (req) => {
         "Missing transaction identifier",
       ].includes(error.message)
     ) {
+      const backlogError = await persistPaymentEventBacklog(
+        event,
+        rawBody,
+        error.message,
+      );
+      if (backlogError) {
+        console.error(
+          "Adapty rejected-event persistence failed:",
+          backlogError,
+        );
+      }
       return jsonResponse({ error: error.message }, 422);
     }
     console.error("adapty-webhook error:", error);
@@ -95,27 +117,30 @@ serve(async (req) => {
   }
 });
 
-async function persistRefundBacklog(
+async function persistPaymentEventBacklog(
   event: AdaptyEvent | undefined,
   rawBody: string,
   message: string,
 ): Promise<string | null> {
-  if (!event?.event_type) return "Refund event payload is unavailable";
+  if (!event?.event_type) return "Payment event payload is unavailable";
 
   const eventId = await resolveAdaptyEventId(event, rawBody);
   const serviceClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-  const { error } = await serviceClient.from("payment_event_backlog").upsert({
-    provider: "adapty",
-    event_id: eventId,
-    event_type: event.event_type,
-    payload: event,
-    status: "pending",
-    last_error: message,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "provider,event_id" });
+  const { error } = await serviceClient.from("payment_event_backlog").upsert(
+    {
+      provider: "adapty",
+      event_id: eventId,
+      event_type: event.event_type,
+      payload: event,
+      status: "pending",
+      last_error: message,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "provider,event_id", ignoreDuplicates: true },
+  );
   return error?.message ?? null;
 }
 

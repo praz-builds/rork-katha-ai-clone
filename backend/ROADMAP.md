@@ -1,5 +1,7 @@
 # Katha AI — Backend Roadmap
 
+<!-- markdownlint-disable MD013 -->
+
 > Phased execution plan for wiring the Expo app to real backend services.
 > Each phase can be executed independently. Check off items as completed.
 > Read `build-log.md` at session start to know current state.
@@ -20,6 +22,7 @@
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
 ### Bug Fixes
+
 - [x] `generate-story/index.ts:137` — changed `balance: newBalance - 1` to `balance: newBalance`
 - [x] `_shared/credits.ts` — replaced with atomic Postgres RPC functions (`deduct_credit`, `grant_credit`) using `FOR UPDATE` locking (migration 00004)
 - [x] `_shared/llm.ts` — updated Haiku model ID to `claude-haiku-4-5-20251001`
@@ -27,10 +30,12 @@
 - [x] Fixed `::date` immutability bugs in migration 00001 (`idx_ad_rewards_daily`) and 00003 (`idx_story_reads_dedup`) — replaced with `date_trunc('day', ... at time zone 'UTC')`
 
 ### Deploy
+
 - [x] Supabase CLI installed (v2.114.0 via Homebrew)
 - [x] Project linked (`supabase link`)
 - [x] All 4 migrations applied (`supabase db push` — 00001 through 00004)
 - [x] All 7 edge functions deployed and ACTIVE
+
 ### Pending Verification and Configuration
 
 - [ ] Resolve the `stories.genre` contract: the deployed baseline is `text[]`, while the locked product decision is single-select
@@ -49,6 +54,7 @@
 **Goal:** Every generated story gets a cover image + audio narration.
 
 ### Cover Image Generation (DALL-E 3)
+
 - [ ] Add `generateCoverImage(title, genre, themes, language)` function to `_shared/image.ts`
 - [ ] Prompt template: "3D CGI animated film style" (NEVER "Pixar" — hard block)
 - [ ] Retry logic: up to 3 attempts, simplify scene description on moderation rejection
@@ -57,6 +63,7 @@
 - [ ] Return public URL; store in `stories.cover_image_url`
 
 ### Audio Narration (edge-tts)
+
 - [ ] Add `generateAudioNarration(text, language)` function to `_shared/audio.ts`
 - [ ] Default voice: `en-US-JennyNeural`, Rate: `-15%`
 - [ ] Language-specific voices for Hindi, Spanish, Japanese, etc.
@@ -65,6 +72,7 @@
 - [ ] Return public URL + duration; store in `chapters.audio_url`, `chapters.audio_duration`
 
 ### Wire into generate-story + continue-story
+
 - [ ] Call `generateCoverImage()` after LLM text generation
 - [ ] Call `generateAudioNarration()` after LLM text generation
 - [ ] Both calls can run in parallel (Promise.all)
@@ -73,9 +81,11 @@
 - [ ] Return `coverImageUrl` + `audioUrl` + `audioDuration` in response
 
 ### Storage Setup
+
 - [ ] Create Supabase Storage bucket `covers` (public read)
 - [ ] Create Supabase Storage bucket `audio` (public read)
 - [ ] Set appropriate CORS + size limits
+- [ ] Configure the `ALLOWED_ORIGINS` Supabase secret with exact production and local web origins
 
 ---
 
@@ -84,6 +94,7 @@
 **Goal:** Real money flows work. Adapty webhooks grant credits, AdMob SSV verifies ad watches.
 
 ### Adapty Webhook (User setup first)
+
 - [ ] User: Create Adapty account, configure products:
   - `ai.katha.subscription.monthly` — $6.99/mo, 20 credits
   - `ai.katha.subscription.yearly` — $49.99/yr, 25 credits/mo
@@ -110,14 +121,19 @@
 - [ ] Implement refund clawbacks and backlog reconciliation
 
 ### AdMob SSV (User setup first)
+
+- [ ] Keep rewarded-ad credit grants disabled until every item in this section is complete
 - [ ] User: Create AdMob account and get real app IDs and rewarded-ad unit IDs for the Expo app
-- [ ] Implement SSV token verification in `grant-credit/index.ts`:
+- [ ] Generate a one-time claim nonce on the server and bind it to the authenticated user before showing the ad
+- [ ] Configure AdMob `custom_data` with the opaque claim nonce; never send or trust an app-supplied `user_id` or SSV token as proof
+- [ ] Add a dedicated public AdMob SSV callback endpoint that receives Google's signed callback directly:
   - Fetch Google's public keys from `https://www.gstatic.com/admob/reward/verifier-keys.json`
   - Verify ECDSA signature on the SSV callback query params
-  - Extract `user_id` and `reward_amount` from verified params
-- [ ] Enforce 24hr cooldown per user (existing logic, just needs SSV gate)
+  - Resolve the authenticated user only from the verified, server-issued claim nonce
+- [ ] Persist AdMob `transaction_id` with a global uniqueness constraint for replay protection
+- [ ] Enforce the rolling 24-hour cooldown and credit grant in one database transaction
 - [ ] On verified: grant 1 credit with reason `ad_reward`
-- [ ] On failure: return 403 (no credit granted)
+- [ ] On invalid signature, unknown/used nonce, replay, or cooldown: reject without granting credit
 
 ### Expo App Integration
 
@@ -134,6 +150,7 @@
 **Goal:** Follow, bookmark, like toggles work server-side. Publishing fires notifications.
 
 ### Toggle Endpoints (6 pairs)
+
 Each is a simple POST with auth + upsert/delete + count update:
 
 - [ ] `POST /follow-story` — insert to `story_followers`, increment `stories.follower_count`
@@ -146,6 +163,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] `POST /unlike` — delete from `story_likes`, decrement count
 
 ### Publish Chapter
+
 - [ ] `POST /publish-chapter` — update `chapters.is_published = true`, `published_at = now()`
 - [ ] Increment `stories.chapter_count` (avoid double-count)
 - [ ] Fire FCM notification to all story followers (requires Phase G; stub with TODO until then)
@@ -157,6 +175,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 **Goal:** Creator earnings are fraud-resistant. This is the most complex endpoint.
 
 ### record-read Endpoint
+
 - [ ] `POST /record-read` — receives: `storyId`, `chapterId`, `duration` (seconds), `deviceId`, `sessionId`
 - [ ] **Self-read guard:** if `userId === story.authorId`, mark `counts_for_earnings = false`
 - [ ] **Min read time:** if `duration < 30`, reject (too fast to have read)
@@ -169,6 +188,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] Increment `stories.read_count` and `stories.unique_reader_count` (if first read from this user)
 
 ### Creator Earnings Curve
+
 - [ ] Implement the front-loaded curve as a Postgres function or in the edge function:
   - Reads 1-10: 1 credit per read
   - Reads 11-50: 1 credit per 5 reads
@@ -180,6 +200,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] Grant to author's `credit_ledger` with reason `reader_earning` after pending period
 
 ### Cron: Confirm Pending Credits
+
 - [ ] Daily cron: move `pending_until < now()` credits from pending to confirmed
 - [ ] Cron: velocity anomaly check (flag accounts, claw back if needed)
 
@@ -190,6 +211,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 **Goal:** Real personalized feeds, search, author profiles, story analytics.
 
 ### Feed Endpoints
+
 - [ ] `GET /feed/for-you` — personalized:
   - Score: genre affinity (from read history) + followed author boost + theme overlap + time decay
   - Exclude: blocked users, drafts, own stories
@@ -204,6 +226,7 @@ Each is a simple POST with auth + upsert/delete + count update:
   - Last 14 days, sorted by `created_at` DESC
 
 ### Search
+
 - [ ] `GET /search?q=query` — full-text search
 - [ ] Enable `pg_trgm` and `tsvector` extensions
 - [ ] Create GIN indexes on `stories.title`, `stories.themes`, `profiles.display_name`
@@ -211,10 +234,12 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] Rank by relevance score + engagement boost
 
 ### Author Profile
+
 - [ ] `GET /author/:username` — public profile data
 - [ ] Return: profile info, published stories (paginated), follower/following counts
 
 ### Story Analytics
+
 - [ ] `GET /story/:id/analytics` — author-only
 - [ ] Return: daily reads (90-day rolling), chapter breakdown, milestones, credits earned
 - [ ] Verify `userId === story.authorId` before returning
@@ -226,6 +251,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 **Goal:** Real-time notifications via FCM for both platforms.
 
 ### User Setup
+
 - [ ] Create Firebase project
 - [ ] Create a Firebase service account for FCM HTTP v1 authentication
 - [ ] Set `FIREBASE_SERVICE_ACCOUNT_KEY` as Supabase secret
@@ -235,6 +261,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 ### Database
 
 - [ ] Create migration `00006_device_tokens.sql` (`00005_secure_credit_operations.sql` reserves migration number 00005):
+
   ```sql
   CREATE TABLE device_tokens (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -245,20 +272,25 @@ Each is a simple POST with auth + upsert/delete + count update:
     UNIQUE(user_id, token)
   );
   ```
+
 - [ ] Enable RLS with authenticated owner-only `SELECT`, `INSERT`, `UPDATE`, and `DELETE` policies using `auth.uid() = user_id`; the full policy set allows authenticated upserts to read and update their conflict target without exposing another user's tokens
 
 ### Endpoints
+
 - [ ] `POST /register-device` — upsert `device_tokens` with FCM token + platform
 - [ ] `DELETE /register-device` — remove token (on sign-out)
 
 ### FCM Integration
+
 - [ ] Add `_shared/notifications.ts` utility:
   - `sendPush(userId, title, body, data)` — looks up user's device tokens, sends via FCM
   - `sendPushToMany(userIds[], title, body, data)` — batch send
 - [ ] Use Firebase Admin SDK (Deno-compatible) or raw FCM HTTP v1 API
 
 ### Notification Triggers
+
 Wire into existing endpoints:
+
 - [ ] `publish-chapter` → notify story followers: "Chapter N is here 📖"
 - [ ] `generate-story` (on publish) → notify author followers: "[Author] published a new story ✨"
 - [ ] `feedback` (comment) → notify story author: "[User] commented on your story"
@@ -266,6 +298,7 @@ Wire into existing endpoints:
 - [ ] `record-read` (credit earned) → notify author: "+N credits from '[Story]'"
 
 ### Cron Jobs
+
 - [ ] **Streak warning** — daily at 8 PM per user's timezone: "Your N-day streak needs saving"
 - [ ] **Weekly digest** — Sunday morning: "Katha's picks for [date]"
 - [ ] **Streak freeze reset** — 1st of each month: reset `freezesAvailable = 2` for Premium users
@@ -277,6 +310,7 @@ Wire into existing endpoints:
 **Goal:** App has real curated content on launch. All loose ends tied.
 
 ### Seed Library
+
 - [ ] Write 30 curated stories across all genres (real prose, 500-1500 words each)
 - [ ] Distribution: 22 English, 5 Hindi, 2 Spanish, 1 Japanese
 - [ ] Engagement tiers: 5 viral (10k-80k reads), 10 solid (500-2k), 15 new (10-200)
@@ -286,6 +320,7 @@ Wire into existing endpoints:
 - [ ] Insert via seed script or migration
 
 ### Referral Verification
+
 - [ ] `POST /referral-verify` — validate referral claim
 - [ ] Same-device check (device fingerprint)
 - [ ] Self-referral prevention
@@ -293,11 +328,13 @@ Wire into existing endpoints:
 - [ ] On verified first-generation: grant 3 credits to referrer + 1 bonus to referred
 
 ### Remaining Cron Jobs
+
 - [ ] Velocity anomaly check (hourly) — flag accounts with suspicious read patterns
 - [ ] Pending credits → confirmed (daily) — move credits past pending_until date
 - [ ] Clawback flagged credits (on review)
 
 ### Final Integration Testing
+
 - [ ] E2E: sign up → generate story → see cover + audio → publish → follower notified
 - [ ] E2E: purchase credits via Adapty → ledger updated → generate story
 - [ ] E2E: watch ad → SSV verified → credit granted → 24hr cooldown enforced

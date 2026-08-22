@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, handleCors } from "../_shared/cors.ts";
+import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
@@ -9,14 +9,17 @@ import {
   parseUuid,
   readJsonObject,
 } from "../_shared/operations.ts";
+import { parseGeneratedStoryText } from "../_shared/story_text.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
+  const respond = (body: unknown, status = 200) =>
+    jsonResponse(req, body, status);
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return jsonResponse({ error: "Unauthorized" }, 401);
+    if (!authHeader) return respond({ error: "Unauthorized" }, 401);
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -26,16 +29,16 @@ serve(async (req) => {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
+      return respond({ error: "Unauthorized" }, 401);
     }
 
     const body = await readJsonObject(req);
-    if (!body) return jsonResponse({ error: "Invalid JSON request body" }, 400);
+    if (!body) return respond({ error: "Invalid JSON request body" }, 400);
     const story_id = parseUuid(body.story_id);
-    if (!story_id) return jsonResponse({ error: "Invalid story_id" }, 400);
+    if (!story_id) return respond({ error: "Invalid story_id" }, 400);
     const request_id = body.request_id;
     const requestId = parseRequestId(request_id);
-    if (!requestId) return jsonResponse({ error: "Invalid request_id" }, 400);
+    if (!requestId) return respond({ error: "Invalid request_id" }, 400);
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -52,7 +55,7 @@ serve(async (req) => {
     if (existingOperationError) throw existingOperationError;
     if (existingOperation) {
       if (existingOperation.story_id !== story_id) {
-        return jsonResponse(
+        return respond(
           { error: "request_id belongs to another story" },
           409,
         );
@@ -68,7 +71,7 @@ serve(async (req) => {
             p_error: "Stale continuation reservation reconciled on retry",
           });
         if (reconciliationError || !reconciliation) {
-          return jsonResponse({
+          return respond({
             error: "Generation recovery is pending retry.",
             operation_id: existingOperation.id,
           }, 503);
@@ -89,9 +92,9 @@ serve(async (req) => {
           .eq("id", existingOperation.result_chapter_id)
           .single();
         if (chapterError) throw chapterError;
-        return jsonResponse({ chapter, replayed: true });
+        return respond({ chapter, replayed: true });
       }
-      return jsonResponse({
+      return respond({
         error: existingOperation.status === "refunded"
           ? "The previous generation failed. Start a new request."
           : "Generation is already in progress.",
@@ -107,7 +110,7 @@ serve(async (req) => {
       .single();
 
     if (storyError || !story || story.author_id !== user.id) {
-      return jsonResponse({ error: "Story not found" }, 404);
+      return respond({ error: "Story not found" }, 404);
     }
 
     // Keep prompt context bounded while deriving the next chapter from latest.
@@ -119,7 +122,7 @@ serve(async (req) => {
       .limit(4);
     if (chaptersError) throw chaptersError;
     if (!chapters?.length) {
-      return jsonResponse({ error: "Story has no chapter to continue" }, 409);
+      return respond({ error: "Story has no chapter to continue" }, 409);
     }
 
     const nextChapterNum = chapters[0].chapter_number + 1;
@@ -135,18 +138,18 @@ serve(async (req) => {
         },
       );
     if (reservationError || !operation) {
-      if (reservationError?.message.includes("Insufficient credits")) {
-        return jsonResponse({ error: "Insufficient credits" }, 402);
+      if (reservationError?.code === "KTH02") {
+        return respond({ error: "Insufficient credits" }, 402);
       }
       if (reservationError?.code === "KTH01") {
-        return jsonResponse({
+        return respond({
           error: "This chapter generation is already in progress",
         }, 409);
       }
       throw reservationError ?? new Error("Generation reservation failed");
     }
     if (operation.replayed) {
-      return jsonResponse({
+      return respond({
         error: operation.status === "completed"
           ? "Generation already completed; retry with the same request ID."
           : "Generation is already in progress.",
@@ -169,12 +172,10 @@ serve(async (req) => {
 
     try {
       const result = await generateStoryText(systemPrompt, userPrompt);
-      const lines = result.text.split("\n").filter((line: string) =>
-        line.trim()
+      const { title: chapterTitle, content } = parseGeneratedStoryText(
+        result.text,
+        `Chapter ${nextChapterNum}`,
       );
-      const chapterTitle = lines[0]?.replace(/^#\s*/, "").trim() ||
-        `Chapter ${nextChapterNum}`;
-      const content = lines.slice(1).join("\n").trim();
       if (!content) throw new Error("Generation returned no chapter content");
       const wordCount = content.split(/\s+/).length;
 
@@ -192,7 +193,7 @@ serve(async (req) => {
         throw chapterError ?? new Error("Chapter persistence failed");
       }
 
-      return jsonResponse({ chapter, model: result.model });
+      return respond({ chapter, model: result.model });
     } catch (error) {
       console.error("continue-story post-deduction error:", error);
       const { data: refund, error: refundError } = await serviceClient.rpc(
@@ -205,12 +206,12 @@ serve(async (req) => {
       );
       if (refundError) {
         console.error("continue-story refund pending:", refundError);
-        return jsonResponse({
+        return respond({
           error: "Generation failed. Refund is pending retry.",
           operation_id: operation.id,
         }, 503);
       }
-      return jsonResponse(
+      return respond(
         {
           error: refund?.refunded
             ? "Generation failed. Credit refunded."
@@ -223,14 +224,14 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error("continue-story error:", error);
-    return jsonResponse({ error: "Internal server error" }, 500);
+    return respond({ error: "Internal server error" }, 500);
   }
 });
 
 /** Return a JSON response with the shared CORS headers. */
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeadersFor(req), "Content-Type": "application/json" },
   });
 }

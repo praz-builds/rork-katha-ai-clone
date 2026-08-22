@@ -210,7 +210,9 @@ begin
 
     v_current_balance := coalesce(v_current_balance, 0);
     if v_current_balance < p_amount then
-        raise exception 'Insufficient credits';
+        raise exception using
+            errcode = 'KTH02',
+            message = 'Insufficient credits';
     end if;
 
     v_new_balance := v_current_balance - p_amount;
@@ -288,6 +290,10 @@ begin
               and reference_id = p_reference_id
           )
       )
+    order by
+        (operation_key = p_operation_key) desc,
+        created_at desc,
+        id desc
     limit 1;
 
     select balance_after
@@ -376,7 +382,9 @@ begin
       and status = 'generating';
 
     if not found then
-        raise exception 'Generating story not found';
+        raise exception using
+            errcode = 'KTH03',
+            message = 'Generating story not found';
     end if;
 
     insert into public.chapters (
@@ -443,7 +451,9 @@ begin
     into v_operation
     from public.generation_operations
     where user_id = p_user_id
-      and request_id = p_request_id;
+      and request_id = p_request_id
+    order by created_at desc, id desc
+    limit 1;
 
     if found then
         select balance_after
@@ -686,7 +696,9 @@ begin
         coalesce(v_story_is_public, false)
         or coalesce(v_story_is_curated, false)
     ) then
-        raise exception 'Story not found';
+        raise exception using
+            errcode = 'KTH03',
+            message = 'Story not found';
     end if;
 
     if p_chapter_id is not null and not exists (
@@ -695,7 +707,9 @@ begin
         where id = p_chapter_id
           and story_id = p_story_id
     ) then
-        raise exception 'Chapter not found';
+        raise exception using
+            errcode = 'KTH04',
+            message = 'Chapter not found';
     end if;
 
     perform pg_catalog.pg_advisory_xact_lock(
@@ -706,11 +720,15 @@ begin
     into v_comment
     from public.comments
     where user_id = p_user_id
-      and request_id = p_request_id;
+      and request_id = p_request_id
+    order by created_at desc, id desc
+    limit 1;
 
     if found then
-        if v_comment.story_id <> p_story_id then
-            raise exception 'Feedback request belongs to another story';
+        if v_comment.story_id is distinct from p_story_id then
+            raise exception using
+                errcode = 'KTH05',
+                message = 'Feedback request belongs to another story';
         end if;
 
         select balance_after
@@ -750,7 +768,7 @@ begin
     limit 1;
     v_balance := coalesce(v_balance, 0);
 
-    if v_story_author_id <> p_user_id
+    if v_story_author_id is distinct from p_user_id
        and not exists (
            select 1
            from public.credit_ledger
