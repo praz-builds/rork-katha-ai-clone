@@ -61,15 +61,15 @@
 
 - Deno format, type checks, and lint passed for all changed Edge Functions.
 - Thirteen Adapty authorization, lifecycle, deterministic refund-event, SKU-coverage, and annual fail-closed tests passed.
-- Four shared CORS and generated-text parsing tests passed.
-- All six migrations parsed and applied to an in-memory PostgreSQL-compatible runtime.
+- Five shared CORS, UUID, and generated-text parsing tests passed.
+- All seven migrations parsed and applied to an in-memory PostgreSQL-compatible runtime.
 - Seven migration behavior tests passed for generation accounting, completion/refund races, feedback idempotency, provider transaction uniqueness, stable SQLSTATEs, deterministic legacy replay, and public-data grants.
 - Expo TypeScript compilation passed.
 - Historical blueprint Markdown lint passed with zero issues.
 
 ### Deployment status
 
-- `backend/supabase/migrations/00005_secure_credit_operations.sql`, `00006_public_data_hardening.sql`, and the modified Edge Functions remain undeployed.
+- Migrations `00005`, `00006`, and `00007` plus the modified Edge Functions remain undeployed.
 - Production enablement still requires Adapty authorization and product-ID verification.
 - Browser clients require an exact `ALLOWED_ORIGINS` Supabase secret before the changed functions are deployed.
 - AdMob rewards remain disabled until server-side verification is implemented.

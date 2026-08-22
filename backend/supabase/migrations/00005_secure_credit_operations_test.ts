@@ -39,7 +39,10 @@ async function createDatabase() {
   }
   migrations.sort();
   for (const migration of migrations) {
-    await db.exec(await Deno.readTextFile(new URL(migration, import.meta.url)));
+    const sql = await Deno.readTextFile(new URL(migration, import.meta.url));
+    // PGlite cannot model a concurrent build; parser validation covers the
+    // production syntax while behavior tests use the equivalent plain index.
+    await db.exec(sql.replace(/create index concurrently/gi, "create index"));
   }
   return db;
 }

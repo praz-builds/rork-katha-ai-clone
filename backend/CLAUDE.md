@@ -200,10 +200,10 @@ supabase secrets set ANTHROPIC_API_KEY=xxx
 supabase secrets set OPENAI_API_KEY=xxx
 supabase secrets set ADAPTY_WEBHOOK_SECRET=xxx
 supabase secrets set FIREBASE_SERVICE_ACCOUNT_KEY=xxx
-supabase secrets set ALLOWED_ORIGINS=https://app.example.com,http://localhost:8090
+supabase secrets set ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 ```
 
-`ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist for browser clients. Native clients do not send an `Origin` header.
+`ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist for browser clients. Replace the production placeholder with the confirmed Expo web origin; native clients do not send an `Origin` header.
 
 ## Build Phases (Roadmap)
 

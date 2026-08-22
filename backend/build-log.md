@@ -166,13 +166,14 @@ All 7 edge functions deployed and ACTIVE:
 - Confirmed the current generation runtime is text-only; cover images and audio narration remain undeployed Phase B work.
 - Confirmed rewarded AdMob credits remain disabled pending direct signed SSV callbacks, server-issued user-bound claim nonces, global transaction replay protection, and atomic cooldown/grant handling.
 - Added migration `00006_public_data_hardening.sql` to restrict profile reads to display-safe columns, remove client story-status updates, and index title search with `pg_trgm`.
+- Isolated the title-search index in migration `00007_story_title_search_index.sql` so current Supabase CLI runners can execute `CREATE INDEX CONCURRENTLY` outside their batched transaction.
 - Replaced wildcard CORS with an exact `ALLOWED_ORIGINS` allowlist and added cached preflight responses.
 - Preserved generated paragraph boundaries through a shared response parser, switched continuation credit errors to stable SQLSTATE handling, and made payment-backlog retries preserve terminal rows.
 
 ### Deployment status
 
 - Code changes and migrations are pending PR review. They have not been deployed to the linked Supabase project.
-- Both migrations `00005` and `00006`, plus the changed Edge Functions, remain undeployed.
+- Migrations `00005`, `00006`, and `00007` plus the changed Edge Functions remain undeployed.
 - Configure the `ALLOWED_ORIGINS` Supabase secret before serving browser clients from the changed functions.
 - Adapty dashboard authorization and exact product IDs must match the server configuration before production webhook traffic is enabled.
 - Adapty refund clawbacks and monthly allocation for annual plans remain explicit production blockers; refund events currently fail closed rather than being acknowledged without accounting.

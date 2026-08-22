@@ -18,7 +18,3 @@ revoke update (status) on public.stories from authenticated;
 
 create schema if not exists extensions;
 create extension if not exists pg_trgm with schema extensions;
-
-create index if not exists idx_stories_title_trgm
-    on public.stories
-    using gin (title extensions.gin_trgm_ops);

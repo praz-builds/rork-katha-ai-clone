@@ -1,3 +1,5 @@
+import { parseUuid } from "./uuid.ts";
+
 export const ADAPTY_CREDIT_MAP: Readonly<Record<string, number>> = {
   "ai.katha.credits.starter": 3,
   "ai.katha.credits.value": 10,
@@ -41,7 +43,8 @@ export function resolveAdaptyCredit(
   const reason = getCreditReason(event.event_type);
   if (!reason) return null;
 
-  if (!isUuid(event.customer_user_id)) {
+  const userId = parseUuid(event.customer_user_id);
+  if (!userId) {
     throw new Error("Missing or invalid customer_user_id");
   }
 
@@ -61,7 +64,7 @@ export function resolveAdaptyCredit(
   if (!transactionId) throw new Error("Missing transaction identifier");
 
   return {
-    userId: event.customer_user_id,
+    userId,
     credits: ADAPTY_CREDIT_MAP[productId],
     reason,
     transactionId,
@@ -117,13 +120,4 @@ function getCreditReason(
   }
   if (eventType === "non_subscription_purchase") return "purchase";
   return null;
-}
-
-/** Validate the Supabase user ID supplied as Adapty customer_user_id. */
-function isUuid(value: string | null | undefined): value is string {
-  return Boolean(
-    value &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-        .test(value),
-  );
 }

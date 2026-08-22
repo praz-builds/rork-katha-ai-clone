@@ -2,6 +2,7 @@ import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.1";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const GENERATION_DEADLINE_MS = 120_000;
 
 interface GenerationResult {
   text: string;
@@ -17,6 +18,11 @@ export async function generateStoryText(
   userPrompt: string,
 ): Promise<GenerationResult> {
   const failures: string[] = [];
+  const deadline = Date.now() + GENERATION_DEADLINE_MS;
+  let safetyLevel = 0;
+  const recordModerationRetry = (level: number) => {
+    safetyLevel = Math.max(safetyLevel, level);
+  };
   // Attempt 1: Sonnet 4.6
   try {
     const text = await generateAnthropicText(
@@ -24,6 +30,9 @@ export async function generateStoryText(
       60000,
       systemPrompt,
       userPrompt,
+      deadline,
+      safetyLevel,
+      recordModerationRetry,
     );
     return { text, model: "claude-sonnet-4-6" };
   } catch (e) {
@@ -38,6 +47,9 @@ export async function generateStoryText(
       30000,
       systemPrompt,
       userPrompt,
+      deadline,
+      safetyLevel,
+      recordModerationRetry,
     );
     return { text, model: "claude-haiku-4-5" };
   } catch (e) {
@@ -49,7 +61,7 @@ export async function generateStoryText(
   if (OPENAI_API_KEY) {
     try {
       const text = await withAbortTimeout(
-        30000,
+        remainingDuration(deadline, 30000),
         async (signal) => {
           const res = await fetch(
             "https://api.openai.com/v1/chat/completions",
@@ -64,7 +76,10 @@ export async function generateStoryText(
                 model: "gpt-4o-mini",
                 messages: [
                   { role: "system", content: systemPrompt },
-                  { role: "user", content: userPrompt },
+                  {
+                    role: "user",
+                    content: moderationSafePrompt(userPrompt, safetyLevel),
+                  },
                 ],
                 max_tokens: 4096,
               }),
@@ -98,13 +113,16 @@ async function generateAnthropicText(
   timeoutMs: number,
   systemPrompt: string,
   userPrompt: string,
+  deadline: number,
+  initialSafetyLevel: number,
+  onModerationRetry: (level: number) => void,
 ): Promise<string> {
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
     try {
       const response = await withAbortTimeout(
-        timeoutMs,
+        remainingDuration(deadline, timeoutMs),
         (signal) =>
           client.messages.create(
             {
@@ -119,6 +137,9 @@ async function generateAnthropicText(
             { signal },
           ),
       );
+      if (String(response.stop_reason) === "refusal") {
+        throw new Error("Anthropic moderation refusal");
+      }
       const text = response.content
         .filter((block: Anthropic.ContentBlock) => block.type === "text")
         .map((block: Anthropic.TextBlock) => block.text)
@@ -126,7 +147,9 @@ async function generateAnthropicText(
       if (!text.trim()) throw new Error("Anthropic returned no text content");
       return text;
     } catch (error) {
-      if (!isModerationRejection(error) || attempt === 2) throw error;
+      if (!isModerationRejection(error)) throw error;
+      onModerationRetry(Math.min(attempt + 1, 2));
+      if (attempt === 2) throw error;
       console.warn(
         `${model} moderation retry ${attempt + 1} of 2:`,
         failureMessage(error),
@@ -159,6 +182,12 @@ function isModerationRejection(error: unknown): boolean {
 
 function failureMessage(error: unknown): string {
   return error instanceof Error ? error.message.slice(0, 500) : String(error);
+}
+
+function remainingDuration(deadline: number, providerLimit: number): number {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("Generation deadline exceeded");
+  return Math.min(remaining, providerLimit);
 }
 
 function openAIContent(payload: unknown): string {

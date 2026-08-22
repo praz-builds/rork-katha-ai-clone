@@ -195,10 +195,10 @@ User purchases credits (Adapty)
     → App polls balance or gets push update
 
 User taps "Generate"
-    → App calls Edge Function /deduct-credit
-    → Edge Function checks balance >= 1
-    → Deducts 1 credit (atomic transaction)
-    → Triggers generation pipeline
+    → App calls Edge Function /generate-story or /continue-story
+    → Edge Function authenticates and reserves the operation
+    → Edge Function deducts 1 credit atomically
+    → Edge Function runs the generation pipeline
     → Returns story text
 ```
 
