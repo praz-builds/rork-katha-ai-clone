@@ -180,7 +180,7 @@ function HomeScreen({
     const q = query.trim().toLowerCase();
     return (
       (genre === "all" || story.genre === genre) &&
-      (!q || story.title.toLowerCase().includes(q) || story.synopsis.toLowerCase().includes(q) || story.tags.join(" ").includes(q))
+      (!q || story.title.toLowerCase().includes(q) || story.synopsis.toLowerCase().includes(q) || story.tags.join(" ").includes(q) || authorFor(story.authorId).displayName.toLowerCase().includes(q))
     );
   });
 
@@ -201,7 +201,7 @@ function HomeScreen({
             <Text style={styles.eyebrow}>{greeting}</Text>
             <Text style={styles.h1}>Stories for you</Text>
           </View>
-          <Pressable onPress={onProfile} style={styles.avatarButton}>
+          <Pressable onPress={onProfile} accessibilityLabel="Open profile" accessibilityRole="button" style={styles.avatarButton}>
             <Image source={require("./assets/icon.png")} style={styles.headerAvatar} />
             <View style={styles.creditBadge}>
               <Text style={styles.creditBadgeText}>{credits}</Text>
@@ -234,7 +234,7 @@ function HomeScreen({
             {/* Primary write CTA */}
             <View style={styles.writeCTACard}>
               <Text style={styles.writeCTATitle}>Start your first story</Text>
-              <Text style={styles.writeCTASubtitle}>Genre, characters, your idea — Katha brings it to life</Text>
+              <Text style={styles.writeCTASubtitle}>Genre, characters, your idea. Katha brings it to life</Text>
               <View style={styles.writeCTAButtonWrap}>
                 <PrimaryButton onPress={onCreate}>Create a story</PrimaryButton>
               </View>
@@ -468,19 +468,21 @@ function ProfileScreen({
 
         {/* Settings rows */}
         <View style={styles.settingsList}>
-          {settingsRows.map(([title, subtitle, Icon]) => (
-            <Pressable key={title} onPress={() => {
-              if (title === "Katha Plus") onPaywall();
-            }} style={styles.settingsRow}>
-              <View style={styles.settingsIcon}>
-                <Icon size={20} color={colors.accent} />
-              </View>
-              <View style={styles.settingsText}>
-                <Text style={styles.settingsTitle}>{title}</Text>
-                <Text style={styles.settingsSubtitle}>{subtitle}</Text>
-              </View>
-            </Pressable>
-          ))}
+          {settingsRows.map(([title, subtitle, Icon]) => {
+            const handler = title === "Katha Plus" ? onPaywall : () => Alert.alert("Coming soon", `${title} will be available soon.`);
+            return (
+              <Pressable key={title} onPress={handler} accessibilityRole="button" style={styles.settingsRow}>
+                <View style={styles.settingsIcon}>
+                  <Icon size={20} color={colors.accent} />
+                </View>
+                <View style={styles.settingsText}>
+                  <Text style={styles.settingsTitle}>{title}</Text>
+                  <Text style={styles.settingsSubtitle}>{subtitle}</Text>
+                </View>
+                <ChevronRight size={16} color={colors.tertiary} />
+              </Pressable>
+            );
+          })}
         </View>
 
         <Text style={styles.legalFooter}>Privacy Policy - Terms of Service - v0.1.0</Text>
@@ -527,11 +529,11 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           {/* ── Engagement bar (Substack-style) ── */}
           <View style={styles.engagementDivider} />
           <View style={styles.engagementRow}>
-            <Pressable onPress={comingSoon} style={styles.engagementAction}>
+            <Pressable onPress={comingSoon} accessibilityLabel={`Like, ${formatNumber(story.likes)}`} accessibilityRole="button" style={styles.engagementAction}>
               <Heart size={20} color={colors.heart} />
               <Text style={styles.engagementCount}>{formatNumber(story.likes)}</Text>
             </Pressable>
-            <Pressable onPress={comingSoon} style={styles.engagementAction}>
+            <Pressable onPress={comingSoon} accessibilityLabel="Comments, 42" accessibilityRole="button" style={styles.engagementAction}>
               <MessageCircle size={20} color={colors.muted} />
               <Text style={styles.engagementCount}>42</Text>
             </Pressable>
@@ -688,7 +690,7 @@ function BottomTabs({ selected, onSelect }: { selected: TabKey; onSelect: (tab: 
       {tabs.map(({ key, label, Icon, raised }) => {
         const active = selected === key;
         return (
-          <Pressable key={key} onPress={() => onSelect(key)} style={styles.tabItem}>
+          <Pressable key={key} onPress={() => onSelect(key)} accessibilityLabel={raised ? "Create story" : label} accessibilityRole="tab" accessibilityState={{ selected: active }} style={styles.tabItem}>
             <View style={[raised ? styles.raisedTab : styles.flatTab, active && !raised && styles.flatTabActive]}>
               <Icon size={raised ? 26 : 20} color={raised ? "#FFFFFF" : active ? colors.accent : colors.tertiary} />
             </View>
@@ -808,7 +810,7 @@ const styles = StyleSheet.create({
   /* ── Continue reading card ── */
   continueCard: { marginHorizontal: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.ink, flexDirection: "row", gap: spacing.md, alignItems: "center" },
   continueCopy: { flex: 1 },
-  continueEyebrow: { fontFamily: fonts.ui, color: colors.accent, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1 },
+  continueEyebrow: { fontFamily: fonts.ui, color: colors.accent, fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
   continueTitle: { marginTop: spacing.xs, fontFamily: fonts.display, color: "#FFFFFF", fontSize: 25, lineHeight: 28 },
   continueMeta: { marginTop: spacing.sm, fontFamily: fonts.ui, color: "rgba(255,255,255,0.7)", fontWeight: "700" },
 
