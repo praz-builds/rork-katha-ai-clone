@@ -1,5 +1,7 @@
 # Katha Design System
 
+<!-- markdownlint-disable MD013 -->
+
 This file is the definitive design contract for the Katha Expo app. It describes the implementation in `src/components/BrandWordmark.tsx`, `src/screens/KathaOnboarding.jsx`, `src/screens/KathaOnboardingFlowV2.jsx`, and `src/theme/theme.ts` as of 2026-08-22.
 
 Use this document before changing onboarding, paywall, or shared visual components. The reference viewport is **390 x 844 points**. Local screenshots and the historical handoff are supporting evidence, not permission to fork the system.
@@ -131,11 +133,11 @@ The shared theme exposes 8, 14, 18, 24, and pill. Onboarding uses additional val
 | 9 | Intro notification icon tile |
 | 12 | Intro cover cards |
 | 14 | Inputs, OTP boxes, reaction chips |
-| 15 | Icon badges and trial row |
+| 15 | Icon badges |
 | 16 | Primary buttons, intro notification, success button |
 | 17 | Paywall CTA |
 | 18 | Option rows, plan cards, review cards, one-time-offer CTA |
-| 20 | Publish card and toggle track |
+| 20 | Publish card |
 | 22 | Create card, genre chips, edit chips, one-time-offer card |
 | 24 | Large shared card radius |
 | 28 | Apple-style notification education alert |
@@ -400,10 +402,12 @@ The paywall receives and must continue to use:
 | `topGenre` | Names the shelf/audience genre |
 | `refine` | Changes format-specific benefits, especially narration |
 | `moment` | Changes routine, blocker, or outcome benefits |
-| `plan` | Weekly or yearly selection |
-| `trial` | Trial copy, yearly selection, CTA, and reassurance |
+| `plan` | Annual or weekly selection |
+| `trial` | Annual-only 3-day trial flag; weekly never has a trial |
 
-Read-first, write-first, and both users must not receive the same generic value proposition. The one-time offer may follow a paywall close, but it must not erase the collected persona. Email/OTP is an integration handoff after the offer action. Supabase should persist the final `onDone` payload. Adapty should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
+Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the 3-day free trial. Weekly is available through the additional plan option and has no free trial. The current reference pricing is annual `$49.99/year`, weekly `$4.99/week`, and one-time-offer annual `$17.99/year`; the UI must read price, renewal, trial eligibility, and offer copy from product data so production values can come from Adapty/store products before release.
+
+Closing the paywall shows a confirmation sheet before the one-time offer. The one-time offer may follow that close flow, but it must not erase the collected persona. Email/OTP is an integration handoff after the paywall or offer action. Supabase should persist the final `onDone` payload. Adapty should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
 
 ## Accessibility, Motion, and Responsiveness
 
@@ -419,7 +423,7 @@ Read-first, write-first, and both users must not receive the same generic value 
 
 ### Reduced Motion
 
-The current intro and offer animations do not yet branch on the operating-system reduced-motion preference. This is a known implementation gap, not approval to ignore accessibility.
+The intro, marquee, loading, paywall entry, offer entry, offer pulse, and success pulse paths read the operating-system reduced-motion preference. Reduced motion renders the completed prompt and final `warning` edit, publish stats at 246, static representative cover rows, and final paywall/offer states without looping or entry motion.
 
 When motion is touched:
 
@@ -450,7 +454,7 @@ After onboarding or paywall changes:
 7. Watch all 10.5 seconds of Create and all 9.6 seconds of Publish.
 8. Confirm prompt wrapping remains fixed, the button visibly presses, the rewritten word changes in place, likes reach 246, avatars use real assets, and the notification is not clipped.
 9. Confirm all three intro slides use identical hero, stage, sheet, headline, description, and action slots.
-10. Complete purpose, name, genre, all three persona branch variants, building, notification actions, paywall plans/trial, one-time offer, email, OTP, success, and Home handoff.
+10. Complete purpose, name, genre, all three persona branch variants, building, notification actions, annual paywall trial, weekly no-trial option, close confirmation, one-time offer, email, OTP, success, and Home handoff.
 11. Check keyboard-open states, narrow width, and at least one native phone build before release.
 12. Leave the 390 x 844 preview visible for product review.
 

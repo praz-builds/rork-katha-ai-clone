@@ -22,6 +22,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, Pressable, StyleSheet, useWindowDimensions, Animated, Image, Platform, Easing,
+  AccessibilityInfo,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import BrandWordmark from '../components/BrandWordmark';
@@ -93,25 +94,31 @@ const AVATARS = [
 
 const HERO_H = 522;
 const STAGE_H = 360;
-const COVER_W = 92, COVER_H = 108, COVER_GAP = 8;
+const COVER_W = 76, COVER_H = 110, COVER_GAP = 9;
 
 // ── Root ────────────────────────────────────────────────────────────────────
 export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => {} }) {
   const { width: W } = useWindowDimensions();
   const [phase, setPhase] = useState(0);
   const [p, setP] = useState(0);            // progress within phase (drives re-render)
+  const reduceMotion = useReducedMotionPreference();
   const slide = useRef(new Animated.Value(0)).current;
 
   // carousel slide (0.6s, cubic-bezier(.45,0,.2,1) ≈ Easing via bezier)
   useEffect(() => {
+    if (reduceMotion) {
+      slide.setValue(phase);
+      return;
+    }
     Animated.timing(slide, {
       toValue: phase, duration: 600, useNativeDriver: Platform.OS !== 'web',
       easing: Easing.bezier(0.45, 0, 0.2, 1),
     }).start();
-  }, [phase]);
+  }, [phase, reduceMotion, slide]);
 
   // rAF timeline clock — auto-advance 0→1→2, hold on 2
   useEffect(() => {
+    if (reduceMotion) { setP(1); return; }
     if (phase >= 2) { setP(1); return; }
     let raf, start;
     const dur = DUR[phase];
@@ -124,7 +131,7 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [phase]);
+  }, [phase, reduceMotion]);
 
   const goTo = useCallback((n) => setPhase(n), []);
   const restart = useCallback(() => { onFinish(); }, [onFinish]);
@@ -143,7 +150,7 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
         }}>
           <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><CreateScreen p={phase === 0 ? p : phase > 0 ? 1 : 0} /></View>
           <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><PublishScreen p={phase === 1 ? p : phase > 1 ? 1 : 0} /></View>
-          <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen /></View>
+          <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen reduceMotion={reduceMotion} /></View>
         </Animated.View>
 
         <View style={[styles.wordmarkWrap, { pointerEvents: 'none' }]}>
@@ -159,6 +166,25 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
       <BottomSheet phase={phase} onDot={goTo} onFinish={restart} onSignIn={onSignIn} />
     </View>
   );
+}
+
+function useReducedMotionPreference() {
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const preference = AccessibilityInfo.isReduceMotionEnabled?.();
+    preference?.then((enabled) => {
+      if (mounted) setReduceMotion(Boolean(enabled));
+    });
+    const subscription = AccessibilityInfo.addEventListener?.('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription?.remove?.();
+    };
+  }, []);
+
+  return reduceMotion;
 }
 
 // ── Bottom sheet (SPEC §4) ──────────────────────────────────────────────────
@@ -198,7 +224,7 @@ function CreateScreen({ p }) {
   const genScale = (0.9 + 0.1 * genShow) * (1 - 0.12 * Math.sin(Math.PI * win(p, 0.31, 0.37)));
   const writing = smooth(win(p, 0.37, 0.43)) * (1 - smooth(win(p, 0.56, 0.62)));
   const hi = smooth(win(p, 0.60, 0.65)) * (1 - smooth(win(p, 0.90, 0.96)));
-  const swap = smooth(win(p, 0.65, 0.69));
+  const swap = smooth(win(p, 0.65, 0.72));
   const chip = smooth(win(p, 0.67, 0.72));
   const cardIn = smooth(win(p, 0, 0.04));
   const line = (k) => { const a = 0.44 + k * 0.06; return smooth(win(p, a, a + 0.10)); };
@@ -230,16 +256,16 @@ function CreateScreen({ p }) {
 
         <View style={styles.storyBlock}>
           <Text style={[styles.storyLine, { opacity: line(0), transform: [{ translateY: (1 - line(0)) * 6 }] }]}>
-            Tara pulled the old wallpaper back and found it:
+            Tara pulled the old wallpaper back as everyone watched:
           </Text>
           <Text style={[styles.storyLine, { opacity: line(1), transform: [{ translateY: (1 - line(1)) * 6 }] }]}>
-            a door her family swore had never been there,
+            her brother, aunt, and neighbors crowding the stairs,
           </Text>
           <View style={[styles.storyLastLine, { opacity: smooth(win(p, 0.56, 0.66)) }]}>
-            <Text style={styles.storyLine}>warm to the touch, humming with a </Text>
+            <Text style={styles.storyLine}>while the hidden door pulsed like a </Text>
             <View style={[styles.wordSwap, { backgroundColor: `rgba(255,107,26,${0.20 * hi})` }]}>
-              <Text style={[styles.swapText, { opacity: 1 - swap, transform: [{ translateY: -3 * swap }] }]}>dream.</Text>
-              <Text style={[styles.swapText, styles.swapTextNew, { opacity: swap, transform: [{ translateY: 3 * (1 - swap) }] }]}>warning.</Text>
+              <Text style={[styles.swapText, { opacity: 1 - smooth(win(p, 0.65, 0.67)), transform: [{ translateY: -3 * swap }] }]}>dream.</Text>
+              <Text style={[styles.swapText, styles.swapTextNew, { opacity: smooth(win(p, 0.69, 0.72)), transform: [{ translateY: 3 * (1 - swap) }] }]}>warning.</Text>
             </View>
           </View>
         </View>
@@ -347,7 +373,7 @@ function NotificationCard() {
 }
 
 // ── Screen 2 : READ marquee (SPEC §8) ───────────────────────────────────────
-function ReadScreen() {
+function ReadScreen({ reduceMotion }) {
   const rows = [
     { reverse: false, dur: 32000, start: 0 },
     { reverse: true,  dur: 26000, start: 6 },
@@ -357,25 +383,29 @@ function ReadScreen() {
     <View style={[styles.stage, styles.stageCenter, { flexDirection: 'column' }]}>
       {rows.map((r, i) => (
         <View key={i} style={{ marginTop: i === 0 ? 0 : COVER_GAP }}>
-          <MarqueeRow {...r} />
+          <MarqueeRow {...r} reduceMotion={reduceMotion} />
         </View>
       ))}
     </View>
   );
 }
 
-function MarqueeRow({ reverse, dur, start }) {
-  const strip = Array.from({ length: 10 }, (_, i) => COVERS[(start + i) % COVERS.length]);
+function MarqueeRow({ reverse, dur, start, reduceMotion }) {
+  const strip = Array.from({ length: 14 }, (_, i) => COVERS[(start + i) % COVERS.length]);
   const unitWidth = strip.length * (COVER_W + COVER_GAP);
   const x = useRef(new Animated.Value(reverse ? 1 : 0)).current;
 
   useEffect(() => {
+    if (reduceMotion) {
+      x.setValue(0);
+      return undefined;
+    }
     const anim = Animated.loop(
       Animated.timing(x, { toValue: reverse ? 0 : 1, duration: dur, easing: Easing.linear, useNativeDriver: Platform.OS !== 'web' })
     );
     anim.start();
     return () => anim.stop();
-  }, []);
+  }, [dur, reduceMotion, reverse, x]);
 
   const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [0, -unitWidth] });
 
@@ -410,7 +440,7 @@ function CoverCard({ c, last }) {
         locations={[0, 0.46, 1]} style={StyleSheet.absoluteFill} />
       <LinearGradient colors={['rgba(0,0,0,0.16)', 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
         style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5 }} />
-      <View style={{ position: 'absolute', left: 9, right: 9, bottom: 9, top: 28, justifyContent: 'flex-end' }}>
+      <View style={{ position: 'absolute', left: 8, right: 8, bottom: 9, top: 24, justifyContent: 'flex-end' }}>
         <Text style={styles.coverTitle} numberOfLines={2}>{c.t}</Text>
         <Text style={styles.coverAuthor}>{c.a.toUpperCase()}</Text>
       </View>
@@ -450,7 +480,7 @@ const styles = StyleSheet.create({
   createCard: { width: 306, height: 346, backgroundColor: C.card, borderRadius: 22, padding: 16, paddingBottom: 14 },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   dot7: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.orange },
-  eyebrow: { fontFamily: F.hankenXbold, fontSize: 10, letterSpacing: 1.6, color: C.muted3 },
+  eyebrow: { fontFamily: F.hankenXbold, fontSize: 10, letterSpacing: 0, color: C.muted3 },
   prompt: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 13.5, lineHeight: 18.5, color: C.inkBody2 },
   pillOrange: { backgroundColor: C.orange, borderRadius: 22, paddingHorizontal: 15, paddingVertical: 9 },
   pillOrangeSm: { backgroundColor: C.orange, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 8 },
@@ -459,7 +489,7 @@ const styles = StyleSheet.create({
   storyBlock: { marginTop: 6, paddingTop: 7, borderTopWidth: 1, borderTopColor: C.hairline },
   storyLine: { fontFamily: F.hanken, fontSize: 13.2, lineHeight: 19, color: C.inkSoft, marginBottom: 1, flexShrink: 1 },
   storyLastLine: { minHeight: 38, flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap' },
-  wordSwap: { position: 'relative', width: 54, height: 20, borderRadius: 6 },
+  wordSwap: { position: 'relative', width: 58, height: 20, borderRadius: 6 },
   swapText: { position: 'absolute', left: 2, top: 0, fontFamily: F.hanken, fontSize: 13.2, lineHeight: 19, color: C.orangeEdit },
   swapTextNew: { fontFamily: F.hankenBold },
   pillPeach: { backgroundColor: C.chipPeach, borderRadius: 22, paddingHorizontal: 10, paddingVertical: 5 },
@@ -484,8 +514,8 @@ const styles = StyleSheet.create({
   notifTitle: { fontFamily: F.hankenBold, fontSize: 12.5, color: '#FAF7F2' },
   notifBody: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 11, color: '#B7ADA1', marginTop: 1 },
 
-  coverTitle: { fontFamily: F.briXbold, fontSize: 9.5, lineHeight: 10, color: '#fff' },
-  coverAuthor: { fontFamily: F.hankenXbold, fontSize: 6.2, letterSpacing: 0.37, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  coverTitle: { fontFamily: F.briXbold, fontSize: 8.8, lineHeight: 9.6, color: '#fff' },
+  coverAuthor: { fontFamily: F.hankenXbold, fontSize: 5.8, letterSpacing: 0, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
 
   fadeL: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '12%' },
   fadeR: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '12%' },
