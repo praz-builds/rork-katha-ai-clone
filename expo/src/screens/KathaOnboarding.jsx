@@ -92,8 +92,8 @@ const AVATARS = [
   require('../../assets/avatars/reader-white-woman.jpg'),
 ];
 
-const HERO_H = 522;
-const STAGE_H = 360;
+const HERO_H = 478;
+const STAGE_H = 340;
 const COVER_W = 76, COVER_H = 110, COVER_GAP = 9;
 
 // ── Root ────────────────────────────────────────────────────────────────────
@@ -460,18 +460,18 @@ function warmShadow(opacity, color = C.shadowWarm) {
 // ── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.phoneBg },
-  hero: { height: HERO_H, overflow: 'hidden' },
+  hero: { height: HERO_H, flexShrink: 0, overflow: 'hidden' },
   wordmarkWrap: { position: 'absolute', top: 54, left: 0, right: 0, alignItems: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  stage: { position: 'absolute', top: 104, left: 0, right: 0, height: STAGE_H, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  stage: { position: 'absolute', top: 88, left: 0, right: 0, height: STAGE_H, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   stageCenter: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
   // sheet
-  sheet: { height: 322, backgroundColor: C.sheet, paddingHorizontal: 28, paddingTop: 24, paddingBottom: 20 },
+  sheet: { flex: 1, backgroundColor: C.sheet, paddingHorizontal: 28, paddingTop: 22, paddingBottom: 24 },
   dots: { flexDirection: 'row', gap: 6, marginBottom: 16 },
   headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink, height: 64 },
   sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 8 },
-  actionSlot: { height: 100, justifyContent: 'flex-end' },
+  actionSlot: { flex: 1, justifyContent: 'flex-end' },
   cta: { height: 56, borderRadius: 16, backgroundColor: C.orange, alignItems: 'center', justifyContent: 'center',
     ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.5, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } }, android: { elevation: 8 } }) },
   ctaText: { fontFamily: F.hankenBold, fontSize: 17, color: '#fff' },

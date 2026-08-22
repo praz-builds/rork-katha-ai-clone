@@ -1,13 +1,10 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
-import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -22,7 +19,6 @@ import {
   Bookmark,
   ChevronLeft,
   ChevronRight,
-  CreditCard,
   Heart,
   Home,
   Lock,
@@ -39,32 +35,18 @@ import {
 import {
   Chip,
   Cover,
-  CreditPill,
-  GenreSwatch,
   PrimaryButton,
   ScreenScaffold,
   SectionHeader,
   StoryCard,
   formatNumber
 } from "@/components/KathaPrimitives";
-import { imageAssets } from "@/data/images";
-import { authorFor, authors, genres, ledger, stories, storyWordCount } from "@/data/seed";
-import {
-  createGenerationRequestId,
-  generateStory,
-  GenerationRequestError,
-} from "@/lib/api";
+import { authorFor, genres, ledger, stories } from "@/data/seed";
+import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import { colors, fonts, genreLabels, radius, spacing } from "@/theme/theme";
-import type { CreateDraft, Genre, Screen, Story, TabKey } from "@/types/domain";
-
-const starterDraft: CreateDraft = {
-  genre: "fantasy",
-  seed: "",
-  language: "English",
-  characters: [{ name: "Mira", description: "Curious, stubborn, quietly brave", isHero: true }]
-};
+import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 
 type LibrarySegment = "saved" | "history" | "myStories" | "comments";
 
@@ -116,13 +98,14 @@ export default function App() {
         );
       case "create":
         return (
-          <CreateScreen
+          <CreateStudioScreen
             credits={credits}
-            onGenerated={(story) => {
+            onCreditUsed={() => setCredits((value) => Math.max(0, value - 1))}
+            onPublished={(story) => {
               setGeneratedStories((current) => [story, ...current]);
-              setCredits((value) => Math.max(0, value - 1));
               setScreen({ name: "reader", storyId: story.id });
             }}
+            onBack={() => goTabs("home")}
           />
         );
       case "library":
@@ -502,109 +485,6 @@ function ProfileScreen({
 
         <Text style={styles.legalFooter}>Privacy Policy - Terms of Service - v0.1.0</Text>
       </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-/* ─────────────────────────────── Create Screen ─────────────────────────────── */
-
-function CreateScreen({ credits, onGenerated }: { credits: number; onGenerated: (story: Story) => void }) {
-  const [draft, setDraft] = useState<CreateDraft>(starterDraft);
-  const [busy, setBusy] = useState(false);
-  const requestIdRef = useRef<string | null>(null);
-  const canGenerate = draft.seed.trim().length > 3 && credits > 0 && !busy;
-
-  useEffect(() => {
-    requestIdRef.current = null;
-  }, [draft]);
-
-  const submit = async () => {
-    if (!canGenerate) {
-      Alert.alert(credits > 0 ? "Add a story seed" : "Credits needed", credits > 0 ? "Give Katha one clear idea to shape." : "You need 1 credit to generate.");
-      return;
-    }
-    setBusy(true);
-    const requestId = requestIdRef.current ?? createGenerationRequestId();
-    requestIdRef.current = requestId;
-    try {
-      const story = await generateStory(draft, requestId);
-      onGenerated(story);
-      setDraft(starterDraft);
-    } catch (error) {
-      if (error instanceof GenerationRequestError && error.resetRequestId) {
-        requestIdRef.current = null;
-      }
-      Alert.alert(
-        "Could not create story",
-        error instanceof Error ? error.message : "Please try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.flex}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.eyebrow}>Create</Text>
-              <Text style={styles.h1}>Shape a new story</Text>
-            </View>
-            <CreditPill credits={credits} />
-          </View>
-          <View style={styles.formCard}>
-            <Text style={styles.fieldLabel}>Genre</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRowFlush}>
-              {genres.slice(0, 12).map((item) => (
-                <Pressable key={item} onPress={() => setDraft((current) => ({ ...current, genre: item }))} style={[styles.genreChoice, draft.genre === item && styles.genreChoiceSelected]}>
-                  <GenreSwatch genre={item} />
-                  <Text style={styles.genreChoiceText}>{genreLabels[item]}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <Text style={styles.fieldLabel}>Story seed</Text>
-            <TextInput
-              multiline
-              value={draft.seed}
-              onChangeText={(seed) => setDraft((current) => ({ ...current, seed }))}
-              placeholder="A lighthouse keeper receives a letter from the future..."
-              placeholderTextColor={colors.tertiary}
-              style={styles.seedInput}
-            />
-            <Text style={styles.fieldLabel}>Main character</Text>
-            <View style={styles.twoColumn}>
-              <TextInput
-                value={draft.characters[0].name}
-                onChangeText={(name) =>
-                  setDraft((current) => ({ ...current, characters: [{ ...current.characters[0], name }] }))
-                }
-                placeholder="Name"
-                placeholderTextColor={colors.tertiary}
-                style={styles.inlineInput}
-              />
-              <TextInput
-                value={draft.language}
-                onChangeText={(language) => setDraft((current) => ({ ...current, language }))}
-                placeholder="Language"
-                placeholderTextColor={colors.tertiary}
-                style={styles.inlineInput}
-              />
-            </View>
-            <TextInput
-              value={draft.characters[0].description}
-              onChangeText={(description) =>
-                setDraft((current) => ({ ...current, characters: [{ ...current.characters[0], description }] }))
-              }
-              placeholder="Traits, desire, or secret"
-              placeholderTextColor={colors.tertiary}
-              style={styles.inlineInput}
-            />
-            <PrimaryButton onPress={submit}>{busy ? "Generating..." : "Generate for 1 credit"}</PrimaryButton>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
