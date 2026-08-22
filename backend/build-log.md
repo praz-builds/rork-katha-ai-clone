@@ -177,3 +177,9 @@ All 7 edge functions deployed and ACTIVE:
 - Configure the `ALLOWED_ORIGINS` Supabase secret before serving browser clients from the changed functions.
 - Adapty dashboard authorization and exact product IDs must match the server configuration before production webhook traffic is enabled.
 - Adapty refund clawbacks and monthly allocation for annual plans remain explicit production blockers; refund events currently fail closed rather than being acknowledged without accounting.
+
+## 2026-08-22 — Concurrent story-title search index
+
+- Added `00007_story_title_search_index.sql` with `idx_stories_title_trgm`, a concurrent GIN trigram index for leading-wildcard title search.
+- Kept the pipeline-incompatible index statement in its own migration so current Supabase CLI migration runners execute it outside the batched transaction.
+- The migration is reviewed locally but remains undeployed.

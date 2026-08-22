@@ -195,9 +195,10 @@ User purchases credits (Adapty)
     → App polls balance or gets push update
 
 User taps "Generate"
-    → App calls Edge Function /generate-story or /continue-story
-    → Edge Function authenticates and reserves the operation
-    → Edge Function deducts 1 credit atomically
+    → App calls /generate-story or /continue-story with a stable request_id
+    → Edge Function authenticates and looks up that request_id
+    → Existing request: reuses its operation without another deduction
+    → New request: reserves the operation and deducts 1 credit atomically
     → Edge Function runs the generation pipeline
     → Returns story text
 ```
