@@ -69,34 +69,77 @@ export async function generateStoryText(
   // Attempt 3: gpt-4o-mini
   if (OPENAI_API_KEY) {
     try {
-      const res = await withAbortTimeout(
+      const text = await withAbortTimeout(
         30000,
-        (signal) =>
-          fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            signal,
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
+        async (signal) => {
+          const res = await fetch(
+            "https://api.openai.com/v1/chat/completions",
+            {
+              method: "POST",
+              signal,
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+              },
+              body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: userPrompt },
+                ],
+                max_tokens: 4096,
+              }),
             },
-            body: JSON.stringify({
-              model: "gpt-4o-mini",
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt },
-              ],
-              max_tokens: 4096,
-            }),
-          }),
+          );
+          const payload: unknown = await res.json();
+          if (!res.ok) {
+            throw new Error(
+              `OpenAI request failed (${res.status}): ${
+                providerError(payload)
+              }`,
+            );
+          }
+          return openAIContent(payload);
+        },
       );
-      const data = await res.json();
-      return { text: data.choices[0].message.content, model: "gpt-4o-mini" };
+      return { text, model: "gpt-4o-mini" };
     } catch (e) {
       console.error("gpt-4o-mini failed:", e);
     }
   }
 
   throw new Error("All LLM providers failed");
+}
+
+function openAIContent(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("OpenAI returned an invalid response");
+  }
+  const choices = (payload as Record<string, unknown>).choices;
+  if (
+    !Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object"
+  ) {
+    throw new Error("OpenAI returned no choices");
+  }
+  const message = (choices[0] as Record<string, unknown>).message;
+  if (!message || typeof message !== "object") {
+    throw new Error("OpenAI returned no message");
+  }
+  const content = (message as Record<string, unknown>).content;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new Error("OpenAI returned no content");
+  }
+  return content;
+}
+
+function providerError(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "invalid error body";
+  const error = (payload as Record<string, unknown>).error;
+  if (!error || typeof error !== "object") return "unknown provider error";
+  const message = (error as Record<string, unknown>).message;
+  return typeof message === "string"
+    ? message.slice(0, 500)
+    : "unknown provider error";
 }
 
 async function withAbortTimeout<T>(

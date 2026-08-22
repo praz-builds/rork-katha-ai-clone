@@ -26,8 +26,19 @@ serve(async (req) => {
       return jsonResponse({ error: "page is too large" }, 400);
     }
 
-    const genre = url.searchParams.get("genre");
-    const search = url.searchParams.get("q");
+    const genre = parseFilter(
+      url.searchParams.get("genre"),
+      50,
+      /^[\p{L}\p{N} &-]+$/u,
+    );
+    const search = parseFilter(
+      url.searchParams.get("q"),
+      200,
+      /^[\p{L}\p{N}\s'!?-]+$/u,
+    );
+    if (genre === null || search === null) {
+      return jsonResponse({ error: "Invalid genre or search query" }, 400);
+    }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -91,6 +102,21 @@ function parsePositiveInteger(
 
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed <= max ? parsed : null;
+}
+
+function parseFilter(
+  value: string | null,
+  maxLength: number,
+  allowed: RegExp,
+): string | undefined | null {
+  if (value === null) return undefined;
+  const normalized = value.trim();
+  if (
+    !normalized || normalized.length > maxLength || !allowed.test(normalized)
+  ) {
+    return null;
+  }
+  return normalized;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

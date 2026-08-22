@@ -69,7 +69,6 @@ Schema is in `supabase/migrations/` (5 migrations). Key tables:
 **Core (migration 00001):**
 - `profiles` — user identity, linked to Supabase Auth
 - `credit_ledger` — append-only ledger (every credit change is a row)
-- `generation_operations` — durable request, debit, completion, replay, and refund state for story generation
 - `stories` — generated + curated stories
 - `chapters` — story content (supports multi-chapter, draft/published state)
 - `characters` — per-story character definitions
@@ -84,6 +83,10 @@ Schema is in `supabase/migrations/` (5 migrations). Key tables:
 - `user_followers` — follow an author for new story notifications
 - `bookmarks` — saved stories
 - `story_likes` — engagement signal for feed ranking
+
+**Security and operation state (migration 00005):**
+- `generation_operations` — durable request, debit, completion, replay, and refund state for story generation
+- `payment_event_backlog` — unacknowledged billing events requiring operational reconciliation
 
 **Not yet created (needed for Phase G):**
 - `device_tokens` — FCM/APNs token storage for push notifications

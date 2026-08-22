@@ -2,6 +2,11 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { generateStoryText } from "../_shared/llm.ts";
+import {
+  errorMessage,
+  isStaleReservation,
+  parseRequestId,
+} from "../_shared/operations.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -26,12 +31,8 @@ serve(async (req) => {
     if (!story_id) {
       return jsonResponse({ error: "story_id is required" }, 400);
     }
-    const requestId = request_id ?? crypto.randomUUID();
-    if (
-      typeof requestId !== "string" ||
-      !requestId.trim() ||
-      requestId.length > 128
-    ) return jsonResponse({ error: "Invalid request_id" }, 400);
+    const requestId = parseRequestId(request_id ?? crypto.randomUUID());
+    if (!requestId) return jsonResponse({ error: "Invalid request_id" }, 400);
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -63,7 +64,7 @@ serve(async (req) => {
             p_user_id: user.id,
             p_error: "Stale continuation reservation reconciled on retry",
           });
-        if (reconciliationError) {
+        if (reconciliationError || !reconciliation) {
           return jsonResponse({
             error: "Generation recovery is pending retry.",
             operation_id: existingOperation.id,
@@ -76,6 +77,9 @@ serve(async (req) => {
         }
       }
       if (existingOperation.status === "completed") {
+        if (!existingOperation.result_chapter_id) {
+          throw new Error("Completed operation has no chapter");
+        }
         const { data: chapter, error: chapterError } = await serviceClient
           .from("chapters")
           .select("*")
@@ -128,7 +132,7 @@ serve(async (req) => {
       if (reservationError?.message.includes("Insufficient credits")) {
         return jsonResponse({ error: "Insufficient credits" }, 402);
       }
-      if (reservationError?.message.includes("unique constraint")) {
+      if (reservationError?.code === "KTH01") {
         return jsonResponse({
           error: "This chapter generation is already in progress",
         }, 409);
@@ -222,13 +226,4 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isStaleReservation(updatedAt: string): boolean {
-  const updatedAtMs = Date.parse(updatedAt);
-  return Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs >= 5 * 60_000;
 }

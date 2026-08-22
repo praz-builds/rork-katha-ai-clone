@@ -24,11 +24,12 @@ serve(async (req) => {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
+  let event: AdaptyEvent | undefined;
   try {
     const rawBody = await req.text();
     if (!rawBody.trim()) return jsonResponse({ ok: true });
 
-    const event = JSON.parse(rawBody) as AdaptyEvent;
+    event = JSON.parse(rawBody) as AdaptyEvent;
     const operation = resolveAdaptyCredit(event);
     if (!operation) {
       console.log(
@@ -56,6 +57,13 @@ serve(async (req) => {
       error instanceof Error &&
       error.message === "Refund event requires clawback processing"
     ) {
+      const backlogError = await persistRefundBacklog(event, error.message);
+      if (backlogError) {
+        console.error(
+          "Adapty refund backlog persistence failed:",
+          backlogError,
+        );
+      }
       console.error("Adapty refund was not acknowledged:", error.message);
       return jsonResponse({ error: error.message }, 503);
     }
@@ -73,6 +81,31 @@ serve(async (req) => {
     return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
+
+async function persistRefundBacklog(
+  event: AdaptyEvent | undefined,
+  message: string,
+): Promise<string | null> {
+  if (!event?.event_type) return "Refund event payload is unavailable";
+
+  const eventId = event.profile_event_id ??
+    event.event_properties?.transaction_id ??
+    event.transaction_id ?? crypto.randomUUID();
+  const serviceClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const { error } = await serviceClient.from("payment_event_backlog").upsert({
+    provider: "adapty",
+    event_id: eventId,
+    event_type: event.event_type,
+    payload: event,
+    status: "pending",
+    last_error: message,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "provider,event_id" });
+  return error?.message ?? null;
+}
 
 /** Return a JSON webhook response. */
 function jsonResponse(body: unknown, status = 200): Response {

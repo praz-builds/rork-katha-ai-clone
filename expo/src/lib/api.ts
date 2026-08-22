@@ -27,14 +27,14 @@ export async function getLibrary(query?: { q?: string; genre?: string }): Promis
   return { stories: filterLocalStories(query), source: "supabase" };
 }
 
-export async function generateStory(draft: CreateDraft): Promise<Story> {
+export async function generateStory(draft: CreateDraft, requestId: string): Promise<Story> {
   if (!isSupabaseConfigured) {
     return localGeneratedStory(draft);
   }
 
   const { data, error } = await supabase.functions.invoke("generate-story", {
     body: {
-      request_id: createRequestId(),
+      request_id: requestId,
       genre: draft.genre,
       topic: draft.seed,
       characters: draft.characters
@@ -104,6 +104,6 @@ function titleFromSeed(seed: string) {
     .join(" ");
 }
 
-function createRequestId() {
+export function createGenerationRequestId() {
   return `generation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

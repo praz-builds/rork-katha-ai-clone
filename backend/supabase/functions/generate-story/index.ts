@@ -2,6 +2,11 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { generateStoryText } from "../_shared/llm.ts";
+import {
+  errorMessage,
+  isStaleReservation,
+  parseRequestId,
+} from "../_shared/operations.ts";
 import { STORY_SYSTEM_PROMPT } from "../_shared/prompts.ts";
 
 serve(async (req) => {
@@ -55,7 +60,7 @@ serve(async (req) => {
             p_user_id: user.id,
             p_error: "Stale generation reservation reconciled on retry",
           });
-        if (reconciliationError) {
+        if (reconciliationError || !reconciliation) {
           return jsonResponse({
             error: "Generation recovery is pending retry.",
             operation_id: existingOperation.id,
@@ -314,12 +319,8 @@ function validateGenerationRequest(
     return { error: "Only short-story generation is supported" };
   }
 
-  const requestId = body.request_id ?? crypto.randomUUID();
-  if (
-    typeof requestId !== "string" ||
-    !requestId.trim() ||
-    requestId.length > 128
-  ) return { error: "Invalid request_id" };
+  const requestId = parseRequestId(body.request_id ?? crypto.randomUUID());
+  if (!requestId) return { error: "Invalid request_id" };
 
   return {
     genres: rawGenres.map((genre) => (genre as string).trim()),
@@ -327,15 +328,6 @@ function validateGenerationRequest(
     characters: characters as CharacterInput[],
     requestId,
   };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isStaleReservation(updatedAt: string): boolean {
-  const updatedAtMs = Date.parse(updatedAt);
-  return Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs >= 5 * 60_000;
 }
 
 function buildUserPrompt(params: {

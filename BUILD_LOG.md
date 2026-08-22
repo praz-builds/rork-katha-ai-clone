@@ -45,8 +45,10 @@
 - CodeRabbit's follow-up review requested four additional changes. Expo was already documented as active, generation now enforces the locked short-story-only contract, and operation identity is separated from historical ledger references. The request to use `CREATE INDEX CONCURRENTLY` was not applied because Supabase migrations run transactionally and PostgreSQL prohibits concurrent index creation inside a transaction.
 - Added executable PGlite regression tests for exactly-once generation debits, idempotent compensation, completion/refund races, replay-safe feedback rewards, and cross-account Adapty transaction replay prevention.
 - Added retry-driven reconciliation for stale generation reservations so an Edge Function termination cannot leave a credit permanently reserved.
+- CodeRabbit's review of commit `5cc161a` requested 15 further changes. The branch now rejects cross-story feedback key reuse, persists unhandled billing refunds for reconciliation, uses stable database conflict codes, validates search filters and provider payloads, centralizes operation parsing, and preserves generation request IDs across retries.
+- Replaced calendar-day ad-reward uniqueness with an indexed rolling 24-hour contract for the future verified server transaction.
 - Removed the committed mutable session handoff and moving-source skill lock; `SESSION_HANDOFF.md` remains available locally and ignored for copy-paste use.
-- PR #3 remains unmerged until the next incremental CodeRabbit review approves the fixes.
+- PR #3 remains unmerged until CodeRabbit formally approves the latest fixes.
 
 ### Follow-up validation
 
@@ -55,3 +57,9 @@
 - All five migrations parsed and applied to an in-memory PostgreSQL-compatible runtime.
 - Four migration behavior tests passed for generation accounting, completion/refund races, feedback idempotency, and provider transaction uniqueness.
 - Expo TypeScript compilation passed.
+
+### Deployment status
+
+- `backend/supabase/migrations/00005_secure_credit_operations.sql` and the modified Edge Functions remain undeployed.
+- Production enablement still requires Adapty authorization and product-ID verification.
+- AdMob rewards remain disabled until server-side verification is implemented.

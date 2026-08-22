@@ -17,6 +17,29 @@ create unique index if not exists idx_credit_ledger_external_operation_key
     where reason in ('purchase', 'subscription')
       and operation_key is not null;
 
+-- A calendar-day unique index does not enforce the product's rolling 24-hour
+-- reward window. The future verified grant path must lock the user, check this
+-- ordered index, and insert the successful claim in one transaction.
+drop index if exists public.idx_ad_rewards_daily;
+create index if not exists idx_ad_rewards_user_claimed
+    on public.ad_rewards(user_id, claimed_at desc);
+
+create table if not exists public.payment_event_backlog (
+    id uuid primary key default gen_random_uuid(),
+    provider text not null check (provider in ('adapty')),
+    event_id text not null,
+    event_type text not null,
+    payload jsonb not null,
+    status text not null default 'pending'
+        check (status in ('pending', 'processed', 'failed')),
+    last_error text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique(provider, event_id)
+);
+
+alter table public.payment_event_backlog enable row level security;
+
 create table if not exists public.generation_operations (
     id uuid primary key default gen_random_uuid(),
     user_id uuid not null references public.profiles(id),
@@ -412,19 +435,26 @@ begin
         );
     end if;
 
-    insert into public.generation_operations (
-        user_id,
-        request_id,
-        story_id,
-        chapter_number,
-        kind
-    ) values (
-        p_user_id,
-        p_request_id,
-        p_story_id,
-        p_chapter_number,
-        p_kind
-    ) returning * into v_operation;
+    begin
+        insert into public.generation_operations (
+            user_id,
+            request_id,
+            story_id,
+            chapter_number,
+            kind
+        ) values (
+            p_user_id,
+            p_request_id,
+            p_story_id,
+            p_chapter_number,
+            p_kind
+        ) returning * into v_operation;
+    exception
+        when unique_violation then
+            raise exception using
+                errcode = 'KTH01',
+                message = 'Generation chapter already reserved';
+    end;
 
     v_balance := public.deduct_credit(
         p_user_id,
@@ -637,6 +667,10 @@ begin
       and request_id = p_request_id;
 
     if found then
+        if v_comment.story_id <> p_story_id then
+            raise exception 'Feedback request belongs to another story';
+        end if;
+
         select balance_after
         into v_balance
         from public.credit_ledger

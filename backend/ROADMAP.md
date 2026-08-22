@@ -222,6 +222,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] Expo: configure Android `google-services.json` and iOS `GoogleService-Info.plist` through `../expo/app.json`
 
 ### Database
+
 - [ ] Create migration `00006_device_tokens.sql` (`00005_secure_credit_operations.sql` reserves migration number 00005):
   ```sql
   CREATE TABLE device_tokens (

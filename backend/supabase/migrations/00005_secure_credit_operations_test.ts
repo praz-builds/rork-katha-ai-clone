@@ -4,14 +4,6 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 
-const migrations = [
-  "00001_initial_schema.sql",
-  "00002_rls_policies.sql",
-  "00003_strategic_additions.sql",
-  "00004_atomic_credit_rpcs.sql",
-  "00005_secure_credit_operations.sql",
-];
-
 async function createDatabase() {
   const db = new PGlite();
   await db.exec(`
@@ -26,6 +18,13 @@ async function createDatabase() {
       as $$ select null::text $$;
   `);
 
+  const migrations: string[] = [];
+  for await (const entry of Deno.readDir(new URL(".", import.meta.url))) {
+    if (entry.isFile && /^\d+.*\.sql$/.test(entry.name)) {
+      migrations.push(entry.name);
+    }
+  }
+  migrations.sort();
   for (const migration of migrations) {
     await db.exec(await Deno.readTextFile(new URL(migration, import.meta.url)));
   }
@@ -67,6 +66,16 @@ Deno.test("generation operations debit once and compensate failures once", async
     assertEquals(replay.rows[0].reserve_generation_operation.replayed, true);
     const operationId = first.rows[0].reserve_generation_operation.id;
 
+    await assertRejects(
+      () =>
+        db.query(
+          "select reserve_generation_operation($1, 'request-2', $2, 1, 'story')",
+          [userId, storyId],
+        ),
+      Error,
+      "Generation chapter already reserved",
+    );
+
     await db.query(
       "select refund_generation_operation($1, $2, 'provider failed')",
       [operationId, userId],
@@ -102,6 +111,7 @@ Deno.test("feedback request replay cannot duplicate a daily reward", async () =>
   const authorId = "00000000-0000-4000-8000-000000000011";
   const readerId = "00000000-0000-4000-8000-000000000012";
   const storyId = "00000000-0000-4000-8000-000000000013";
+  const otherStoryId = "00000000-0000-4000-8000-000000000014";
 
   try {
     await db.query("insert into auth.users(id) values ($1), ($2)", [
@@ -114,8 +124,10 @@ Deno.test("feedback request replay cannot duplicate a daily reward", async () =>
     ]);
     await db.query(
       `insert into stories(id, author_id, title, genre, is_public, status)
-       values ($1, $2, 'Published story', array['thriller'], true, 'complete')`,
-      [storyId, authorId],
+       values
+         ($1, $3, 'Published story', array['thriller'], true, 'complete'),
+         ($2, $3, 'Other story', array['fantasy'], true, 'complete')`,
+      [storyId, otherStoryId, authorId],
     );
 
     const first = await db.query<{ create_feedback: Record<string, unknown> }>(
@@ -129,6 +141,15 @@ Deno.test("feedback request replay cannot duplicate a daily reward", async () =>
 
     assertEquals(first.rows[0].create_feedback.credit_granted, true);
     assertEquals(replay.rows[0].create_feedback.replayed, true);
+    await assertRejects(
+      () =>
+        db.query(
+          "select create_feedback($1, 'feedback-1', $2, null, 'Wrong replay.')",
+          [readerId, otherStoryId],
+        ),
+      Error,
+      "Feedback request belongs to another story",
+    );
     const counts = await db.query<{ comments: number; rewards: number }>(
       `select
          (select count(*)::integer from comments where user_id = $1) as comments,
@@ -161,17 +182,23 @@ Deno.test("provider transaction keys cannot credit multiple accounts or reasons"
       [firstUser],
     );
 
-    await assertRejects(() =>
-      db.query(
-        "select grant_credit($1, 10, 'subscription', 'txn-1', 'adapty:txn-1')",
-        [firstUser],
-      )
+    await assertRejects(
+      () =>
+        db.query(
+          "select grant_credit($1, 10, 'subscription', 'txn-1', 'adapty:txn-1')",
+          [firstUser],
+        ),
+      Error,
+      "Idempotency key reused with different credit data",
     );
-    await assertRejects(() =>
-      db.query(
-        "select grant_credit($1, 10, 'purchase', 'txn-1', 'adapty:txn-1')",
-        [secondUser],
-      )
+    await assertRejects(
+      () =>
+        db.query(
+          "select grant_credit($1, 10, 'purchase', 'txn-1', 'adapty:txn-1')",
+          [secondUser],
+        ),
+      Error,
+      'duplicate key value violates unique constraint "idx_credit_ledger_external_operation_key"',
     );
 
     const rewards = await db.query<{ count: number }>(

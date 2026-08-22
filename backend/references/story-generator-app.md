@@ -388,11 +388,10 @@ create table ad_rewards (
     verification_token text
 );
 
-create unique index idx_ad_rewards_daily
-    on ad_rewards(
-        user_id,
-        (date_trunc('day', claimed_at at time zone 'UTC'))
-    );
+-- The verified reward transaction locks the user, rejects any successful
+-- claim within the preceding 24 hours, then inserts the claim atomically.
+create index idx_ad_rewards_user_claimed
+    on ad_rewards(user_id, claimed_at desc);
 
 create table referrals (
     id uuid primary key default gen_random_uuid(),

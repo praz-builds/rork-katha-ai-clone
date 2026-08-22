@@ -47,7 +47,7 @@ Every earning method deposits into the same balance. Every spending action deduc
 
 ### Backend provenance tagging
 
-The Blueprint already specifies `credit_ledger.reason` with values `'purchase' | 'subscription' | 'ad_reward' | 'streak' | 'feedback' | 'referral' | 'social' | 'welcome' | 'generation'`. **Add one value: `'reader_earning'`** for credits earned from reads on the user's own published stories.
+The Blueprint already specifies `credit_ledger.reason` with values `'purchase' | 'subscription' | 'ad_reward' | 'streak' | 'feedback' | 'referral' | 'social' | 'welcome' | 'generation' | 'refund'`. **Add one value: `'reader_earning'`** for credits earned from reads on the user's own published stories.
 
 At analytics time, slice like this:
 

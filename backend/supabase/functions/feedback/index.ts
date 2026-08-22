@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
+import { parseRequestId } from "../_shared/operations.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -30,12 +31,8 @@ serve(async (req) => {
         error: "Feedback must be 2000 characters or fewer",
       }, 400);
     }
-    const requestId = request_id ?? crypto.randomUUID();
-    if (
-      typeof requestId !== "string" ||
-      !requestId.trim() ||
-      requestId.length > 128
-    ) return jsonResponse({ error: "Invalid request_id" }, 400);
+    const requestId = parseRequestId(request_id ?? crypto.randomUUID());
+    if (!requestId) return jsonResponse({ error: "Invalid request_id" }, 400);
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -54,6 +51,9 @@ serve(async (req) => {
       }
       if (error.message.includes("Chapter not found")) {
         return jsonResponse({ error: "Chapter not found" }, 404);
+      }
+      if (error.message.includes("Feedback request belongs to another story")) {
+        return jsonResponse({ error: error.message }, 409);
       }
       throw error;
     }
