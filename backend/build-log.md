@@ -172,9 +172,9 @@ All 7 edge functions deployed and ACTIVE:
 
 ### Deployment status
 
-- Code changes and migrations are pending PR review. They have not been deployed to the linked Supabase project.
-- Migrations `00005`, `00006`, and `00007` plus the changed Edge Functions remain undeployed.
-- Configure the `ALLOWED_ORIGINS` Supabase secret before serving browser clients from the changed functions.
+- Code changes and migrations were reviewed and merged through PR #3, then deployed to the linked Supabase project on 2026-08-22.
+- Migrations `00005`, `00006`, and `00007` plus the changed Edge Functions are deployed.
+- `ALLOWED_ORIGINS` is configured for the exact local Expo web origin `http://localhost:8090`; add the exact production Expo web origin before serving production browser clients.
 - Adapty dashboard authorization and exact product IDs must match the server configuration before production webhook traffic is enabled.
 - Adapty refund clawbacks and monthly allocation for annual plans remain explicit production blockers; refund events currently fail closed rather than being acknowledged without accounting.
 
@@ -182,4 +182,44 @@ All 7 edge functions deployed and ACTIVE:
 
 - Added `00007_story_title_search_index.sql` with `idx_stories_title_trgm`, a concurrent GIN trigram index for leading-wildcard title search.
 - Kept the pipeline-incompatible index statement in its own migration so current Supabase CLI migration runners execute it outside the batched transaction.
-- The migration is reviewed locally but remains undeployed.
+- The migration was deployed to the linked Supabase project on 2026-08-22.
+
+## 2026-08-22 — Controlled backend release to Supabase
+
+**Session:** Deployed the reviewed PR #3 backend hardening set to the canonical Supabase project.
+
+### Infrastructure
+
+- Linked the monorepo backend checkout to Supabase project `iafeuxgoiknncgyjmugd`.
+- Applied migrations `00005_secure_credit_operations.sql`, `00006_public_data_hardening.sql`, and `00007_story_title_search_index.sql` with `supabase db push`.
+- Deployed all seven Edge Functions from the reviewed monorepo state:
+  - `generate-story`
+  - `continue-story`
+  - `deduct-credit`
+  - `grant-credit`
+  - `library`
+  - `feedback`
+  - `adapty-webhook`
+- Deployed `adapty-webhook` with JWT verification disabled so provider callbacks can reach the function after `ADAPTY_WEBHOOK_SECRET` is configured.
+- Set `ALLOWED_ORIGINS=http://localhost:8090` for local Expo web verification. Production browser traffic remains blocked until the exact production origin is known and added.
+
+### Verification
+
+- `supabase db push --dry-run` reported only `00005`, `00006`, and `00007` pending.
+- `supabase db push` applied `00005`, `00006`, and `00007` successfully.
+- `supabase migration list --linked` now reports local and remote migrations `00001` through `00007` aligned.
+- `supabase functions list --project-ref iafeuxgoiknncgyjmugd` reports all seven functions ACTIVE; `adapty-webhook` has `verify_jwt=false`.
+- `/Users/mac16/.deno/bin/deno fmt --check supabase/functions supabase/migrations/00005_secure_credit_operations_test.ts` passed.
+- `/Users/mac16/.deno/bin/deno check ...` passed for shared utilities, all function entrypoints, and the migration test.
+- `/Users/mac16/.deno/bin/deno test --allow-env --allow-net --allow-read supabase/functions/_shared/*_test.ts supabase/migrations/00005_secure_credit_operations_test.ts` passed: 25 tests.
+- `POST /functions/v1/adapty-webhook` without `ADAPTY_WEBHOOK_SECRET` returns `503` with `Webhook is not configured`, confirming fail-closed behavior.
+- `OPTIONS /functions/v1/library` from `http://localhost:8090` returns `Access-Control-Allow-Origin: http://localhost:8090`.
+- The same preflight from `https://example.com` returns no `Access-Control-Allow-Origin`.
+
+### Remaining blockers
+
+- `ANTHROPIC_API_KEY` is not configured in Supabase secrets; `OPENAI_API_KEY` is configured.
+- `ADAPTY_WEBHOOK_SECRET` is not configured, and dashboard authorization/product IDs still need verification before real Adapty traffic.
+- The exact production Expo web origin is not known; add it to `ALLOWED_ORIGINS` before production browser clients call the functions.
+- No authenticated test user/JWT was available in this session, so live `generate-story`, `continue-story`, `feedback`, and disabled credit endpoint behavior were not exercised end to end.
+- Annual subscription monthly allocation, refund clawbacks, and AdMob SSV remain production blockers.

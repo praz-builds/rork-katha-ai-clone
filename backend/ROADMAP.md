@@ -12,7 +12,7 @@
 
 - [x] Create Supabase project → `iafeuxgoiknncgyjmugd` (Seoul region)
 - [ ] Get Anthropic API key → `supabase secrets set ANTHROPIC_API_KEY=xxx`
-- [ ] Get OpenAI API key → `supabase secrets set OPENAI_API_KEY=xxx`
+- [x] Get OpenAI API key → `supabase secrets set OPENAI_API_KEY=xxx`
 - [x] Fill project ID in `supabase/config.toml`
 
 ---
@@ -35,11 +35,16 @@
 - [x] Project linked (`supabase link`)
 - [x] All 4 migrations applied (`supabase db push` — 00001 through 00004)
 - [x] All 7 edge functions deployed and ACTIVE
+- [x] Hardened migrations applied (`supabase db push` — 00005 through 00007)
+- [x] Hardened Edge Functions deployed and ACTIVE
 
 ### Pending Verification and Configuration
 
 - [ ] Resolve the `stories.genre` contract: the deployed baseline is `text[]`, while the locked product decision is single-select
-- [ ] Set secrets: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (waiting on user)
+- [ ] Set secret: `ANTHROPIC_API_KEY` (waiting on user)
+- [x] Set secret: `OPENAI_API_KEY`
+- [x] Set local browser CORS secret: `ALLOWED_ORIGINS=http://localhost:8090`
+- [ ] Add exact production Expo web origin to `ALLOWED_ORIGINS` before production browser traffic
 - [ ] Verify `library` endpoint returns data
 - [ ] Confirm disabled `deduct-credit` returns 403 and trusted generation deducts through service-only RPCs
 - [ ] Verify `generate-story` produces a story via LLM (text only, no images/audio yet)
@@ -85,7 +90,8 @@
 - [ ] Create Supabase Storage bucket `covers` (public read)
 - [ ] Create Supabase Storage bucket `audio` (public read)
 - [ ] Set appropriate CORS + size limits
-- [ ] Configure the `ALLOWED_ORIGINS` Supabase secret with exact production and local web origins
+- [ ] Configure Supabase Storage bucket CORS for production media access
+- [ ] Configure Edge Function CORS via the `ALLOWED_ORIGINS` Supabase secret with the exact production web origin; local `http://localhost:8090` is already configured
 
 ---
 

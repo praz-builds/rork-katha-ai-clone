@@ -13,7 +13,7 @@
 - Authorized the CodeRabbit GitHub App for the canonical repository and opened the consolidation PR as the first automatic-review verification target.
 - The former standalone backend repository is retained as historical read-only source until the consolidation PR is merged and verified; all new Katha work belongs here.
 
-### Verification
+### Release Verification
 
 - Expo TypeScript check passed.
 - Expo production web export passed with 25 intentional assets.
@@ -55,7 +55,7 @@
 - Annual subscription events now fail closed until monthly allocation scheduling is implemented; the app cannot silently grant only one month's credits for a yearly purchase.
 - Removed the committed mutable session handoff and moving-source skill lock; `SESSION_HANDOFF.md` remains available locally and ignored for copy-paste use.
 - CodeRabbit's full review of `32021ba` requested 27 additional contract and documentation changes. The branch now adds safe public-profile grants, indexed title search, stable application SQLSTATEs, environment-allowlisted CORS, moderation-aware Anthropic retries, rejected-payment backlog persistence, paragraph-safe response parsing, bounded library pagination, and synchronized current-vs-planned product documentation.
-- PR #3 remains unmerged until CodeRabbit formally approves the latest fixes.
+- At this checkpoint, PR #3 remained unmerged pending formal CodeRabbit approval of the latest fixes.
 
 ### Follow-up validation
 
@@ -69,7 +69,22 @@
 
 ### Deployment status
 
-- Migrations `00005`, `00006`, and `00007` plus the modified Edge Functions remain undeployed.
-- Production enablement still requires Adapty authorization and product-ID verification.
-- Browser clients require an exact `ALLOWED_ORIGINS` Supabase secret before the changed functions are deployed.
+- Migrations `00005`, `00006`, and `00007` plus the modified Edge Functions were deployed to Supabase project `iafeuxgoiknncgyjmugd` on 2026-08-22.
+- `ALLOWED_ORIGINS` is configured for local Expo web verification at `http://localhost:8090`; production browser enablement still requires the exact production Expo web origin.
+- Production enablement still requires `ANTHROPIC_API_KEY`, Adapty authorization, `ADAPTY_WEBHOOK_SECRET`, and exact product-ID verification.
 - AdMob rewards remain disabled until server-side verification is implemented.
+
+## 2026-08-22 — Backend Controlled Release
+
+- Linked the backend workspace to Supabase project `iafeuxgoiknncgyjmugd`.
+- Applied remote migrations `00005_secure_credit_operations.sql`, `00006_public_data_hardening.sql`, and `00007_story_title_search_index.sql`.
+- Deployed all seven reviewed Edge Functions from the canonical monorepo: `generate-story`, `continue-story`, `deduct-credit`, `grant-credit`, `library`, `feedback`, and `adapty-webhook`.
+- Preserved fail-closed production gates: `adapty-webhook` returns `503` until `ADAPTY_WEBHOOK_SECRET` is configured, production browser origins are not allowlisted yet, annual subscription allocation remains disabled, refund clawbacks remain blocked, and AdMob rewards remain disabled.
+
+### Verification
+
+- Supabase migration dry run showed only `00005`, `00006`, and `00007` pending before deploy.
+- Post-deploy migration list shows `00001` through `00007` aligned locally and remotely.
+- Post-deploy function list shows all seven functions ACTIVE; `adapty-webhook` has `verify_jwt=false`.
+- Deno format check, Deno type check, and all 25 Deno/PGlite tests passed.
+- CORS preflight allows `http://localhost:8090` and withholds `Access-Control-Allow-Origin` for `https://example.com`.
