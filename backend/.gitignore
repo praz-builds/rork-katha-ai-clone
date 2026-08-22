@@ -1,0 +1,13 @@
+.env
+.env.local
+.env.production
+.env.*.local
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+supabase/.temp/
+service-role-key.*
+provider-secret.*
+credentials.*

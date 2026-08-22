@@ -5,7 +5,7 @@
 - GitHub source of truth: `praz-builds/rork-katha-ai-clone`.
 - The Expo app lives in `expo/` in the monorepo. Run all Expo commands from that directory.
 - The native Rork apps remain in the sibling `ios-katha-ai-create-stories/` and `android-katha-ai/` directories. Do not mix Expo source into either native project.
-- The backend remains a separate repository: `praz-builds/katha-ai-backend`.
+- The backend lives in the sibling `backend/` directory in this monorepo. Keep shared contracts and integration changes in one pull request when they must ship together.
 
 ## Onboarding source of truth
 

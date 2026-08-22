@@ -1,7 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -50,7 +50,11 @@ import {
 } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor, authors, genres, ledger, stories, storyWordCount } from "@/data/seed";
-import { generateStory } from "@/lib/api";
+import {
+  createGenerationRequestId,
+  generateStory,
+  GenerationRequestError,
+} from "@/lib/api";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import { colors, fonts, genreLabels, radius, spacing } from "@/theme/theme";
@@ -248,7 +252,12 @@ function DiscoverScreen({ stories: allStories, onStory }: { stories: Story[]; on
 function CreateScreen({ credits, onGenerated }: { credits: number; onGenerated: (story: Story) => void }) {
   const [draft, setDraft] = useState<CreateDraft>(starterDraft);
   const [busy, setBusy] = useState(false);
+  const requestIdRef = useRef<string | null>(null);
   const canGenerate = draft.seed.trim().length > 3 && credits > 0 && !busy;
+
+  useEffect(() => {
+    requestIdRef.current = null;
+  }, [draft]);
 
   const submit = async () => {
     if (!canGenerate) {
@@ -256,10 +265,20 @@ function CreateScreen({ credits, onGenerated }: { credits: number; onGenerated: 
       return;
     }
     setBusy(true);
+    const requestId = requestIdRef.current ?? createGenerationRequestId();
+    requestIdRef.current = requestId;
     try {
-      const story = await generateStory(draft);
+      const story = await generateStory(draft, requestId);
       onGenerated(story);
       setDraft(starterDraft);
+    } catch (error) {
+      if (error instanceof GenerationRequestError && error.resetRequestId) {
+        requestIdRef.current = null;
+      }
+      Alert.alert(
+        "Could not create story",
+        error instanceof Error ? error.message : "Please try again.",
+      );
     } finally {
       setBusy(false);
     }

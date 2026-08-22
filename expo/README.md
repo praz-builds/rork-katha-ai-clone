@@ -6,7 +6,7 @@ Approved Expo implementation of Katha AI. In the GitHub monorepo this workspace 
 
 - Product repository: `praz-builds/rork-katha-ai-clone`
 - Expo workspace: `expo/`
-- Backend repository: `praz-builds/katha-ai-backend`
+- Backend workspace: [`../backend/`](../backend/)
 - Supabase project: `iafeuxgoiknncgyjmugd`
 - Canonical product and visual contract: `DESIGN.md`
 - Current shipped-state record: `BUILD_LOG.md`

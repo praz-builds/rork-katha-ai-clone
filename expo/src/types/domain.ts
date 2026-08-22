@@ -1,22 +1,25 @@
-export type Genre =
-  | "adventure"
-  | "comedy"
-  | "contemporary"
-  | "drama"
-  | "fantasy"
-  | "historical"
-  | "horror"
-  | "kids"
-  | "lgbtq"
-  | "motivational"
-  | "mystery"
-  | "mythology"
-  | "poetry"
-  | "romance"
-  | "scifi"
-  | "sliceOfLife"
-  | "spirituality"
-  | "thriller";
+export const GENRES = [
+  "adventure",
+  "comedy",
+  "contemporary",
+  "drama",
+  "fantasy",
+  "historical",
+  "horror",
+  "kids",
+  "lgbtq",
+  "motivational",
+  "mystery",
+  "mythology",
+  "poetry",
+  "romance",
+  "scifi",
+  "sliceOfLife",
+  "spirituality",
+  "thriller",
+] as const;
+
+export type Genre = (typeof GENRES)[number];
 
 export type TabKey = "home" | "discover" | "create" | "library" | "settings";
 
@@ -80,7 +83,14 @@ export type ImageName =
 export type CreditLedgerEntry = {
   id: string;
   amount: number;
-  reason: "welcome" | "generation" | "ad_reward" | "feedback" | "purchase" | "subscription" | "reader_earning";
+  reason:
+    | "welcome"
+    | "generation"
+    | "ad_reward"
+    | "feedback"
+    | "purchase"
+    | "subscription"
+    | "reader_earning";
   balanceAfter: number;
   createdAt: string;
   label: string;
