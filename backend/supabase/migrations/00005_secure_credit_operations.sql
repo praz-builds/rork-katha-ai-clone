@@ -5,14 +5,17 @@
 drop function if exists public.deduct_credit(uuid, integer, text, uuid);
 drop function if exists public.grant_credit(uuid, integer, text, uuid);
 
-create unique index if not exists idx_credit_ledger_idempotency
-    on public.credit_ledger(user_id, reason, reference_id)
-    where reference_id is not null;
+alter table public.credit_ledger
+    add column if not exists operation_key text;
 
-create unique index if not exists idx_credit_ledger_external_transaction
-    on public.credit_ledger(reason, reference_id)
+create unique index if not exists idx_credit_ledger_operation_key
+    on public.credit_ledger(user_id, operation_key)
+    where operation_key is not null;
+
+create unique index if not exists idx_credit_ledger_external_operation_key
+    on public.credit_ledger(operation_key)
     where reason in ('purchase', 'subscription')
-      and reference_id is not null;
+      and operation_key is not null;
 
 create or replace function public.deduct_credit(
     p_user_id uuid,
@@ -48,8 +51,7 @@ begin
         select 1
         from public.credit_ledger
         where user_id = p_user_id
-          and reason = p_reason
-          and reference_id = p_reference_id
+          and operation_key = p_reference_id
     ) then
         raise exception 'Duplicate credit operation';
     end if;
@@ -73,11 +75,13 @@ begin
         amount,
         reason,
         reference_id,
+        operation_key,
         balance_after
     ) values (
         p_user_id,
         -p_amount,
         p_reason,
+        p_reference_id,
         p_reference_id,
         v_new_balance
     );
@@ -125,7 +129,13 @@ begin
     from public.credit_ledger
     where user_id = p_user_id
       and reason = p_reason
-      and reference_id = p_reference_id
+      and (
+          operation_key = p_reference_id
+          or (
+              operation_key is null
+              and reference_id = p_reference_id
+          )
+      )
     limit 1;
 
     select balance_after
@@ -151,11 +161,13 @@ begin
         amount,
         reason,
         reference_id,
+        operation_key,
         balance_after
     ) values (
         p_user_id,
         p_amount,
         p_reason,
+        p_reference_id,
         p_reference_id,
         v_new_balance
     );
@@ -229,6 +241,7 @@ as $$
 declare
     v_story_author_id uuid;
     v_story_is_public boolean;
+    v_story_is_curated boolean;
     v_comment public.comments;
     v_balance integer;
     v_credit_granted boolean := false;
@@ -239,12 +252,15 @@ begin
         raise exception 'Feedback must contain between 1 and 2000 characters';
     end if;
 
-    select author_id, is_public
-    into v_story_author_id, v_story_is_public
+    select author_id, is_public, is_curated
+    into v_story_author_id, v_story_is_public, v_story_is_curated
     from public.stories
     where id = p_story_id;
 
-    if not found or not coalesce(v_story_is_public, false) then
+    if not found or not (
+        coalesce(v_story_is_public, false)
+        or coalesce(v_story_is_curated, false)
+    ) then
         raise exception 'Story not found';
     end if;
 

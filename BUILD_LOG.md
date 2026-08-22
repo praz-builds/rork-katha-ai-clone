@@ -36,6 +36,7 @@
 - Configured failed CodeRabbit runs to fail their commit status and limited automatic reviews to pull requests targeting `main`.
 - Added a mandatory `codex/*` feature-branch workflow, a local pre-push guard, and a pull request merge checklist. GitHub server-side branch protection remains unavailable for this private repository on the current plan.
 - Added migration `00005_secure_credit_operations.sql` to serialize and deduplicate credit mutations, require service-role execution, use text references, and atomically persist a generated story with its first chapter.
+- Kept historical ledger references untouched and introduced a separate operation key so legitimate older continuation rows cannot block migration deployment.
 - Disabled generic client-controlled credit deductions and unverified ad-reward grants.
 - Hardened Adapty webhook authentication, product validation, user mapping, and transaction idempotency.
 - Added refund handling for failed story and continuation persistence.

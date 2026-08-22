@@ -87,7 +87,7 @@ Schema is in `supabase/migrations/` (5 migrations). Key tables:
 **Not yet created (needed for Phase G):**
 - `device_tokens` — FCM/APNs token storage for push notifications
 
-**Credit ledger pattern:** Never update rows. Service-only RPCs serialize mutations per user, require a reference ID, and deduplicate `(user_id, reason, reference_id)` operations. Balance is the newest ledger row by `created_at`, then `id`.
+**Credit ledger pattern:** Never update rows. Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references. Balance is the newest ledger row by `created_at`, then `id`.
 
 **Credit reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`
 

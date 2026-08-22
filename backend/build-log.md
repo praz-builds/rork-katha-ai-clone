@@ -128,6 +128,7 @@ All 7 edge functions deployed and ACTIVE:
 ### Changes
 
 - Added migration `00005_secure_credit_operations.sql` with service-only RPC permissions, positive amount validation, text reference IDs, per-user serialization, and idempotency indexes.
+- Added a nullable operation key for new idempotent mutations instead of imposing uniqueness on historical reference IDs that older continuation flows reused.
 - Added atomic story completion so the story update and first chapter insert commit together.
 - Changed initial and continuation generation to use deterministic credit references and refund persistence failures.
 - Disabled the generic client-controlled deduction endpoint and unverified AdMob reward endpoint.
