@@ -22,7 +22,7 @@ const C = {
   muted: '#6B625A', muted2: '#8A7F73', muted3: '#B49A82',
   peach: '#FFF1E5', peachSoft: '#FFF6EF', line: '#E7DCC9', track: '#EAE0D0',
   disabledBg: '#EDE3D4', disabledFg: '#B7AB99', card: '#FFFFFF',
-  iconBg: '#FFEDDD', reviewBorder: '#F3EADB', otoBlue: '#2C6BFF',
+  iconBg: '#FFEDDD', reviewBorder: '#F3EADB',
 };
 const FF = {
   bri6: 'BricolageGrotesque',
@@ -111,7 +111,7 @@ export default function KathaOnboardingFlowV2({ onDone = () => {}, initialScreen
   const [refine, setRefine] = useState('');
   const [moment, setMoment] = useState('');
   const [plan, setPlan] = useState('yearly');
-  const [trial, setTrial] = useState(false);
+  const [trial, setTrial] = useState(true);
 
   const fname = name.trim() || 'there';
   const topGenre = Object.keys(genres).filter((k) => genres[k] && k !== 'Other')[0] || 'stories you love';
@@ -466,7 +466,21 @@ function BuildingScreen({ fname, purpose, topGenre, onDone }) {
 }
 
 // ── PAYWALL ─────────────────────────────────────────────────────────────────
-function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, trial, setTrial, onSubscribe, onClose }) {
+function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setTrial, onSubscribe, onClose }) {
+  const [showWeekly, setShowWeekly] = useState(plan === 'weekly');
+  const [confirmClose, setConfirmClose] = useState(false);
+  const enter = useRef(new Animated.Value(0)).current;
+  const ctaPress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [enter]);
+
   const readerFeatures = [
     `Unlimited ${topGenre} stories and 20 more genres`,
     refine === 'listen' || refine === 'mix' ? 'Studio quality narration whenever you want it' : 'Read or listen at your own pace',
@@ -481,36 +495,75 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, tria
   ];
   const bothFeatures = ['Read stories you love, then create your own', 'Switch between audio, reading, and writing', 'Keep your shelf and drafts in one profile', 'Publish and discover new readers'];
   const features = purpose === 'read' ? readerFeatures : purpose === 'write' ? writerFeatures : bothFeatures;
-  const title = purpose === 'read' ? `Your ${topGenre} shelf is ready, ${fname}` : purpose === 'write' ? `Your writing room is ready, ${fname}` : `Your shelf and writing room are ready, ${fname}`;
-  const subtitle = purpose === 'read' ? 'Stories to read or listen to, chosen around your taste and routine.' : purpose === 'write' ? 'The right tools to draft, rewrite, publish, and build a readership.' : 'Move naturally between discovering stories and creating your own.';
+  const yOn = plan === 'yearly';
+  const wOn = plan === 'weekly';
+  const title = purpose === 'read' ? `Your ${topGenre} shelf is ready` : purpose === 'write' ? 'Your writing room is ready' : 'Your shelf and writing room are ready';
+  const actionLead = yOn ? 'Start your 3-day free trial' : 'Start your weekly pass';
+  const subtitle = purpose === 'read' ? `${actionLead}, ${fname}. Stories to read or listen to, chosen around your taste and routine.` : purpose === 'write' ? `${actionLead}, ${fname}. Draft, rewrite, publish, and build a readership with Katha beside you.` : `${actionLead}, ${fname}. Move naturally between discovering stories and creating your own.`;
 
-  const toggleTrial = () => { setTrial((t) => !t); setPlan('yearly'); };
-  const selectWeekly = () => { setPlan('weekly'); setTrial(false); };
+  const selectYearly = () => {
+    setPlan('yearly');
+    setTrial(true);
+  };
+  const selectWeekly = () => {
+    setPlan('weekly');
+    setTrial(false);
+    setShowWeekly(true);
+  };
+  const pressIn = () => {
+    Animated.timing(ctaPress, { toValue: 1, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== 'web' }).start();
+  };
+  const pressOut = () => {
+    Animated.timing(ctaPress, { toValue: 0, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== 'web' }).start();
+  };
 
-  let cta;
-  if (trial) cta = 'Start my 3 day free trial';
-  else if (plan === 'weekly') cta = 'Start my weekly pass';
-  else cta = purpose === 'read' ? 'Start reading endlessly' : purpose === 'write' ? 'Start writing today' : 'Unlock my Katha profile';
+  const cta = yOn ? 'Start my 3-day free trial' : 'Start my weekly pass';
+  const reassure = yOn ? 'No charge today. Then $49.99 per year unless canceled.' : 'Weekly plan has no free trial. Billed at $4.99 per week.';
+  const headerY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
+  const ctaY = enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
+  const ctaScale = ctaPress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.985] });
 
-  const reassure = trial ? '3 days free, then $59.99 per year. Cancel anytime.' : 'Cancel anytime. Secure checkout.';
-
-  const yOn = plan === 'yearly', wOn = plan === 'weekly';
   return (
     <View style={{ flex: 1 }}>
-      <Pressable onPress={onClose} style={styles.closeBtn}><Text style={styles.closeX}>✕</Text></Pressable>
+      <Pressable onPress={() => setConfirmClose(true)} style={styles.closeBtn}><Text style={styles.closeX}>✕</Text></Pressable>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 10, paddingBottom: 8 }}>
-        {/* social proof */}
-        <View style={{ alignItems: 'center' }}>
+        <Animated.View style={{ alignItems: 'center', opacity: enter, transform: [{ translateY: headerY }] }}>
           <View style={{ flexDirection: 'row', marginBottom: 9 }}>
             {AVATARS.map((src, i) => <Image key={i} source={src} style={[styles.proofAv, { marginLeft: i === 0 ? 0 : -11 }]} />)}
             <View style={[styles.proofMore, { marginLeft: -11 }]}><Text style={styles.proofMoreTxt}>40k+</Text></View>
           </View>
           <Text style={{ color: C.orange, fontSize: 14, letterSpacing: 2 }}>★★★★★</Text>
           <Text style={styles.proofSub}>4.9 rating, loved by 40,000+ this month</Text>
+          <Text style={styles.payEyebrow}>Katha Plus</Text>
+          <Text style={styles.payTitle}>{title}</Text>
+          <Text style={styles.paySub}>{subtitle}</Text>
+        </Animated.View>
+        <View style={styles.planStack}>
+          <PlanCard
+            title="Annual"
+            per="3 days free, then $0.96/week"
+            price="$49.99"
+            unit="per year"
+            selected={yOn}
+            onPress={selectYearly}
+            badge="BEST VALUE"
+          />
+          {showWeekly ? (
+            <PlanCard
+              title="Weekly"
+              per="No free trial"
+              price="$4.99"
+              unit="per week"
+              selected={wOn}
+              onPress={selectWeekly}
+            />
+          ) : (
+            <Pressable onPress={() => setShowWeekly(true)} style={styles.morePlansBtn}>
+              <Text style={styles.morePlansText}>See weekly option</Text>
+            </Pressable>
+          )}
         </View>
-        <Text style={styles.payTitle}>{title}</Text>
-        <Text style={styles.paySub}>{subtitle}</Text>
-        <View style={{ gap: 10, marginBottom: 16 }}>
+        <View style={{ gap: 10, marginTop: 14, marginBottom: 16 }}>
           {features.map((f, i) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={styles.featTick}><Text style={styles.featTickTxt}>✓</Text></View>
@@ -518,31 +571,25 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, tria
             </View>
           ))}
         </View>
-        {/* trial toggle */}
-        <Pressable onPress={toggleTrial} style={[styles.trialRow, { borderColor: trial ? C.orange : C.line, backgroundColor: trial ? C.peachSoft : C.card }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: FF.h7, fontSize: 14.5, color: C.ink }}>Try 3 days free first</Text>
-            <Text style={{ fontFamily: FF.h4, fontSize: 12, color: C.muted2, marginTop: 1 }}>{trial ? 'No charge today. We remind you before it renews.' : 'Then it becomes the yearly plan below.'}</Text>
-          </View>
-          <View style={[styles.toggleTrack, { backgroundColor: trial ? C.orange : '#DDD3C4' }]}>
-            <View style={[styles.toggleKnob, { left: trial ? 21 : 3 }]} />
-          </View>
-        </Pressable>
-        {/* plans: weekly first, yearly second */}
-        <View style={{ gap: 12, marginTop: 12 }}>
-          <PlanCard title="Weekly" per="Billed weekly" price="$4.99" unit="per week" selected={wOn} onPress={selectWeekly} />
-          <PlanCard title="Yearly" per={trial ? '3 days free, then $1.15 / week' : '$1.15 / week'} price="$59.99" unit="per year" selected={yOn} onPress={() => setPlan('yearly')} badge={trial ? '3 DAYS FREE · SAVE 77%' : 'SAVE 77% · BEST VALUE'} />
-        </View>
       </ScrollView>
-      <View style={styles.payFoot}>
-        <Pressable onPress={onSubscribe}>
+      <Animated.View style={[styles.payFoot, { opacity: enter, transform: [{ translateY: ctaY }] }]}>
+        <Pressable onPress={onSubscribe} onPressIn={pressIn} onPressOut={pressOut}>
+          <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
           <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.payCta}>
             <Text style={styles.payCtaTxt}>{cta}</Text>
           </LinearGradient>
+          </Animated.View>
         </Pressable>
         <Text style={styles.payReassure}>{reassure}</Text>
         <Text style={styles.payLegal}>Restore  ·  Terms  ·  Privacy</Text>
-      </View>
+      </Animated.View>
+      {confirmClose && (
+        <CancelTrialSheet
+          hasTrial={yOn}
+          onKeep={() => setConfirmClose(false)}
+          onContinue={onClose}
+        />
+      )}
     </View>
   );
 }
@@ -560,23 +607,55 @@ function PlanCard({ title, per, price, unit, selected, onPress, badge }) {
   );
 }
 
+function CancelTrialSheet({ hasTrial, onKeep, onContinue }) {
+  const enter = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 280,
+      easing: Easing.bezier(0.2, 0.8, 0.2, 1),
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [enter]);
+  const backdropOpacity = enter.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] });
+  const sheetY = enter.interpolate({ inputRange: [0, 1], outputRange: [330, 0] });
+  const btnY = enter.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
+
+  const title = hasTrial ? 'Leave without your free trial?' : 'Leave without Plus?';
+  const body = hasTrial
+    ? "Annual includes 3 days free. You can still continue with Katha's free version."
+    : "Weekly has no free trial. You can switch back to annual for 3 days free, or continue with Katha's free version.";
+  const primary = hasTrial ? 'Keep free trial' : 'Stay on paywall';
+
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <Animated.View style={[styles.paywallBackdrop, { opacity: backdropOpacity }]} />
+      <Animated.View style={[styles.cancelSheet, { transform: [{ translateY: sheetY }] }]}>
+        <View style={styles.sheetHandle} />
+        <Text style={styles.cancelTitle}>{title}</Text>
+        <Text style={styles.cancelBody}>{body}</Text>
+        <Animated.View style={{ opacity: enter, transform: [{ translateY: btnY }] }}>
+          <Pressable onPress={onKeep} style={styles.cancelPrimary}>
+            <Text style={styles.cancelPrimaryText}>{primary}</Text>
+          </Pressable>
+        </Animated.View>
+        <Pressable onPress={onContinue} style={styles.cancelSecondary}>
+          <Text style={styles.cancelSecondaryText}>Continue without Plus</Text>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
 // ── ONE-TIME OFFER ──────────────────────────────────────────────────────────
 function OneTimeOffer({ onClaim, onClose }) {
   const [left, setLeft] = useState(300);
-  const float = useRef(new Animated.Value(0)).current;
-  const point = useRef(new Animated.Value(0)).current;
+  const enter = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const iv = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
-    Animated.loop(Animated.sequence([
-      Animated.timing(float, { toValue: 1, duration: 1700, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
-      Animated.timing(float, { toValue: 0, duration: 1700, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
-    ])).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(point, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
-      Animated.timing(point, { toValue: 0, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
-    ])).start();
+    Animated.timing(enter, { toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }).start();
     Animated.loop(Animated.sequence([
       Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
       Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
@@ -584,39 +663,43 @@ function OneTimeOffer({ onClaim, onClose }) {
     return () => clearInterval(iv);
   }, []);
 
-  const floatY = float.interpolate({ inputRange: [0, 1], outputRange: [0, -12] });
-  const pointY = point.interpolate({ inputRange: [0, 1], outputRange: [0, 7] });
   const btnScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
+  const headerY = enter.interpolate({ inputRange: [0, 1], outputRange: [12, 0] });
+  const cardScale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] });
+  const ctaY = enter.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
 
   return (
     <View style={styles.oto}>
       <Pressable onPress={onClose} style={styles.otoClose}><Text style={styles.closeX}>✕</Text></Pressable>
-      <Text style={styles.otoH1}>One Time Offer</Text>
-      <Text style={styles.otoBig}>70% OFF 🙏</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12 }}>
-        <Text style={{ fontSize: 15 }}>⚠️</Text>
-        <Text style={{ fontFamily: FF.h6, fontSize: 15, color: C.inkBody2 }}>You will not see this offer again</Text>
-      </View>
-      <View style={styles.otoCard}>
-        <Text style={styles.otoOnly}>Only <Text style={styles.otoPrice}>$0.35</Text><Text style={styles.otoPer}>/week</Text></Text>
-        <Text style={styles.otoFine}>*Lowest price ever. Billed yearly at <Text style={{ fontFamily: FF.h7 }}>$17.99</Text> (was $59.99)</Text>
-        <View style={styles.otoTimer}><Text style={{ fontSize: 14 }}>⏰</Text><Text style={styles.otoTimerTxt}>{fmtTime(left)}</Text></View>
-      </View>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Animated.Text style={{ fontSize: 120, transform: [{ translateY: floatY }] }}>🎁</Animated.Text>
-      </View>
-      <View style={styles.otoHands}>
-        <Animated.Text style={{ fontSize: 30, transform: [{ translateY: pointY }] }}>👇</Animated.Text>
-        <Animated.Text style={{ fontSize: 30, transform: [{ translateY: pointY }] }}>👇</Animated.Text>
-      </View>
+      <Animated.View style={{ opacity: enter, transform: [{ translateY: headerY }] }}>
+        <Text style={styles.otoH1}>One-time offer</Text>
+        <Text style={styles.otoBig}>Save 70% today</Text>
+        <Text style={styles.otoSub}>Try Katha Plus for less than the price of a bedtime book.</Text>
+      </Animated.View>
+      <Animated.View style={[styles.otoCard, { opacity: enter, transform: [{ scale: cardScale }] }]}>
+        <View style={styles.otoRibbon}><Text style={styles.otoRibbonText}>70% off</Text></View>
+        <View style={styles.bookStack} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <View style={[styles.bookLayer, styles.bookBack, { backgroundColor: '#2E5D57', transform: [{ rotate: '-7deg' }] }]} />
+          <View style={[styles.bookLayer, styles.bookMid, { backgroundColor: '#B15A18', transform: [{ rotate: '4deg' }] }]} />
+          <View style={[styles.bookLayer, styles.bookFront, { backgroundColor: C.orange }]} />
+        </View>
+        <Text style={styles.otoPlan}>Annual Plus</Text>
+        <Text style={styles.otoPriceLine}>$17.99/year</Text>
+        <Text style={styles.otoFine}>That is $1.50/month. Renews yearly unless canceled.</Text>
+        <View style={styles.otoTimer}><View style={styles.timerDot} /><Text style={styles.otoTimerTxt}>{fmtTime(left)} left</Text></View>
+      </Animated.View>
+      <View style={{ flex: 1 }} />
       <Pressable onPress={onClaim}>
-        <Animated.View style={{ transform: [{ scale: btnScale }] }}>
+        <Animated.View style={{ opacity: enter, transform: [{ translateY: ctaY }, { scale: btnScale }] }}>
           <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.otoBtn}>
-            <Text style={styles.otoBtnTxt}>Claim your one time offer</Text>
+            <Text style={styles.otoBtnTxt}>Claim one-time offer</Text>
           </LinearGradient>
         </Animated.View>
       </Pressable>
-      <Text style={styles.otoLegal}>Privacy      Terms</Text>
+      <Pressable onPress={onClose} style={styles.otoFreeBtn}>
+        <Text style={styles.otoFreeText}>Continue with free version</Text>
+      </Pressable>
+      <Text style={styles.otoLegal}>Renews yearly at $17.99 unless canceled. Terms apply.</Text>
     </View>
   );
 }
@@ -711,16 +794,16 @@ const styles = StyleSheet.create({
   proofMore: { width: 36, height: 36, borderRadius: 18, borderWidth: 2.5, borderColor: C.bg, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   proofMoreTxt: { color: '#fff', fontFamily: FF.h7, fontSize: 10.5 },
   proofSub: { fontFamily: FF.h6, fontSize: 12.5, color: C.muted2, marginTop: 3 },
+  payEyebrow: { marginTop: 11, fontFamily: FF.h7, fontSize: 13, color: C.orange },
   payTitle: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 25, lineHeight: 29, letterSpacing: 0, color: C.ink, textAlign: 'center', marginTop: 12 },
   paySub: { fontFamily: FF.h4, fontSize: 14, lineHeight: 21, color: C.muted, textAlign: 'center', marginTop: 9, marginBottom: 16 },
   featTick: { width: 24, height: 24, borderRadius: 12, backgroundColor: C.iconBg, alignItems: 'center', justifyContent: 'center' },
   featTickTxt: { color: C.orange, fontFamily: FF.h8, fontSize: 13 },
   featText: { flex: 1, fontFamily: FF.h6, fontSize: 14, lineHeight: 19, color: C.inkSoft },
-  trialRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, paddingHorizontal: 16, borderRadius: 15, borderWidth: 1.5, marginBottom: 0 },
-  toggleTrack: { width: 46, height: 28, borderRadius: 20, position: 'relative' },
-  toggleKnob: { position: 'absolute', top: 3, width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff',
-    ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 2 } }, android: { elevation: 3 } }) },
-  planCard: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, paddingHorizontal: 18, borderRadius: 18, borderWidth: 2, overflow: 'visible' },
+  planStack: { gap: 12, marginTop: 2 },
+  morePlansBtn: { height: 40, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  morePlansText: { fontFamily: FF.h7, fontSize: 13.5, color: C.muted, textDecorationLine: 'underline' },
+  planCard: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 15, paddingHorizontal: 18, borderRadius: 18, borderWidth: 2, overflow: 'visible' },
   planTitle: { fontFamily: FF.h7, fontSize: 16, color: C.ink },
   planPer: { fontFamily: FF.h4, fontSize: 13, color: C.muted2, marginTop: 1 },
   planPrice: { fontFamily: FF.h8, fontSize: 16, color: C.ink },
@@ -733,23 +816,41 @@ const styles = StyleSheet.create({
   payCtaTxt: { fontFamily: FF.h8, fontSize: 18, color: '#fff' },
   payReassure: { textAlign: 'center', marginTop: 9, fontFamily: FF.h4, fontSize: 12, color: '#9A8E7E' },
   payLegal: { textAlign: 'center', marginTop: 6, fontFamily: FF.h4, fontSize: 11.5, color: C.muted3 },
+  paywallBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: C.ink },
+  cancelSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 310, backgroundColor: C.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 28,
+    ...Platform.select({ ios: { shadowColor: C.ink, shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: -8 } }, android: { elevation: 12 } }) },
+  sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#D8CDBE', marginBottom: 24 },
+  cancelTitle: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 25, lineHeight: 29, color: C.ink, textAlign: 'center' },
+  cancelBody: { marginTop: 10, fontFamily: FF.h5, fontSize: 14.5, lineHeight: 21, color: C.muted, textAlign: 'center' },
+  cancelPrimary: { height: 56, borderRadius: 17, backgroundColor: C.orange, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
+  cancelPrimaryText: { fontFamily: FF.h8, fontSize: 17, color: '#fff' },
+  cancelSecondary: { height: 48, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  cancelSecondaryText: { fontFamily: FF.h7, fontSize: 14, color: C.muted, textDecorationLine: 'underline' },
   oto: { flex: 1, backgroundColor: '#FFFDF9', paddingHorizontal: 30, paddingTop: 24, paddingBottom: 30 },
-  otoClose: { position: 'absolute', top: 18, right: 24, zIndex: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.06)', alignItems: 'center', justifyContent: 'center' },
-  otoH1: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 38, lineHeight: 40, letterSpacing: 0, color: C.ink },
-  otoBig: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 52, lineHeight: 54, letterSpacing: 0, color: C.orange, marginTop: 2 },
-  otoCard: { marginTop: 22, backgroundColor: '#fff', borderWidth: 2.5, borderColor: C.ink, borderRadius: 22, paddingHorizontal: 22, paddingTop: 24, paddingBottom: 30, marginBottom: 16 },
-  otoOnly: { fontFamily: FF.h6, fontSize: 17, color: C.ink },
-  otoPrice: { fontFamily: FF.bri8, fontSize: 30, color: C.orange },
-  otoPer: { fontFamily: FF.bri8, fontSize: 22, color: C.orange },
-  otoFine: { fontFamily: FF.h4, fontSize: 13, color: C.muted, marginTop: 6 },
-  otoTimer: { position: 'absolute', bottom: -19, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.otoBlue, paddingVertical: 8, paddingHorizontal: 20, borderRadius: 22,
-    ...Platform.select({ ios: { shadowColor: C.otoBlue, shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 8 } }, android: { elevation: 6 } }) },
-  otoTimerTxt: { fontFamily: FF.h8, fontSize: 17, color: '#fff' },
-  otoHands: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 44, marginBottom: -6, zIndex: 2 },
+  otoClose: { position: 'absolute', top: 18, right: 24, zIndex: 10, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(30,26,22,0.06)', alignItems: 'center', justifyContent: 'center' },
+  otoH1: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 35, lineHeight: 39, letterSpacing: 0, color: C.ink },
+  otoBig: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 45, lineHeight: 49, letterSpacing: 0, color: C.orange, marginTop: 4 },
+  otoSub: { fontFamily: FF.h5, fontSize: 15, lineHeight: 22, color: C.muted, marginTop: 10, paddingRight: 30 },
+  otoCard: { marginTop: 28, backgroundColor: '#fff', borderWidth: 2, borderColor: C.ink, borderRadius: 18, paddingHorizontal: 22, paddingTop: 22, paddingBottom: 22, minHeight: 246, overflow: 'hidden' },
+  otoRibbon: { alignSelf: 'flex-start', backgroundColor: C.peach, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 16 },
+  otoRibbonText: { fontFamily: FF.h8, fontSize: 12, color: C.orangeDeep },
+  bookStack: { position: 'absolute', top: 30, right: 26, width: 58, height: 72 },
+  bookLayer: { position: 'absolute', width: 38, height: 58, borderRadius: 6, borderWidth: 2, borderColor: '#fff' },
+  bookBack: { right: 18, bottom: 8 },
+  bookMid: { right: 9, bottom: 4 },
+  bookFront: { right: 0, bottom: 0 },
+  otoPlan: { fontFamily: FF.h7, fontSize: 15, color: C.inkSoft },
+  otoPriceLine: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 34, lineHeight: 38, color: C.ink, marginTop: 8 },
+  otoFine: { fontFamily: FF.h4, fontSize: 13, lineHeight: 19, color: C.muted, marginTop: 8, paddingRight: 36 },
+  otoTimer: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.ink, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, marginTop: 18 },
+  timerDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.orange },
+  otoTimerTxt: { fontFamily: FF.h8, fontSize: 13.5, color: '#fff' },
   otoBtn: { height: 64, borderRadius: 18, borderWidth: 2.5, borderColor: C.ink, alignItems: 'center', justifyContent: 'center',
     ...Platform.select({ ios: { shadowColor: C.ink, shadowOpacity: 0.22, shadowRadius: 0, shadowOffset: { width: 0, height: 12 } }, android: { elevation: 8 } }) },
-  otoBtnTxt: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 21, letterSpacing: 0, color: '#fff' },
-  otoLegal: { textAlign: 'center', marginTop: 16, fontFamily: FF.h4, fontSize: 12.5, color: C.muted3 },
+  otoBtnTxt: { fontFamily: FF.bri8, fontWeight: '800', fontSize: 20, letterSpacing: 0, color: '#fff' },
+  otoFreeBtn: { alignItems: 'center', justifyContent: 'center', height: 44, marginTop: 10 },
+  otoFreeText: { fontFamily: FF.h7, fontSize: 14, color: C.muted, textDecorationLine: 'underline' },
+  otoLegal: { textAlign: 'center', marginTop: 8, fontFamily: FF.h4, fontSize: 11.5, lineHeight: 16, color: C.muted3 },
   successWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 },
   successBadge: { width: 88, height: 88, borderRadius: 44, backgroundColor: C.orange, alignItems: 'center', justifyContent: 'center',
     ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.7, shadowRadius: 20, shadowOffset: { width: 0, height: 14 } }, android: { elevation: 10 } }) },

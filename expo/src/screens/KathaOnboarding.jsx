@@ -93,7 +93,7 @@ const AVATARS = [
 
 const HERO_H = 522;
 const STAGE_H = 360;
-const COVER_W = 92, COVER_H = 108, COVER_GAP = 8;
+const COVER_W = 76, COVER_H = 110, COVER_GAP = 9;
 
 // ── Root ────────────────────────────────────────────────────────────────────
 export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => {} }) {
@@ -198,7 +198,7 @@ function CreateScreen({ p }) {
   const genScale = (0.9 + 0.1 * genShow) * (1 - 0.12 * Math.sin(Math.PI * win(p, 0.31, 0.37)));
   const writing = smooth(win(p, 0.37, 0.43)) * (1 - smooth(win(p, 0.56, 0.62)));
   const hi = smooth(win(p, 0.60, 0.65)) * (1 - smooth(win(p, 0.90, 0.96)));
-  const swap = smooth(win(p, 0.65, 0.69));
+  const swap = smooth(win(p, 0.65, 0.72));
   const chip = smooth(win(p, 0.67, 0.72));
   const cardIn = smooth(win(p, 0, 0.04));
   const line = (k) => { const a = 0.44 + k * 0.06; return smooth(win(p, a, a + 0.10)); };
@@ -230,16 +230,16 @@ function CreateScreen({ p }) {
 
         <View style={styles.storyBlock}>
           <Text style={[styles.storyLine, { opacity: line(0), transform: [{ translateY: (1 - line(0)) * 6 }] }]}>
-            Tara pulled the old wallpaper back and found it:
+            Tara pulled the old wallpaper back as everyone watched:
           </Text>
           <Text style={[styles.storyLine, { opacity: line(1), transform: [{ translateY: (1 - line(1)) * 6 }] }]}>
-            a door her family swore had never been there,
+            her brother, aunt, and neighbors crowding the stairs,
           </Text>
           <View style={[styles.storyLastLine, { opacity: smooth(win(p, 0.56, 0.66)) }]}>
-            <Text style={styles.storyLine}>warm to the touch, humming with a </Text>
+            <Text style={styles.storyLine}>while the hidden door pulsed like a </Text>
             <View style={[styles.wordSwap, { backgroundColor: `rgba(255,107,26,${0.20 * hi})` }]}>
-              <Text style={[styles.swapText, { opacity: 1 - swap, transform: [{ translateY: -3 * swap }] }]}>dream.</Text>
-              <Text style={[styles.swapText, styles.swapTextNew, { opacity: swap, transform: [{ translateY: 3 * (1 - swap) }] }]}>warning.</Text>
+              <Text style={[styles.swapText, { opacity: 1 - smooth(win(p, 0.65, 0.67)), transform: [{ translateY: -3 * swap }] }]}>dream.</Text>
+              <Text style={[styles.swapText, styles.swapTextNew, { opacity: smooth(win(p, 0.69, 0.72)), transform: [{ translateY: 3 * (1 - swap) }] }]}>warning.</Text>
             </View>
           </View>
         </View>
@@ -365,7 +365,7 @@ function ReadScreen() {
 }
 
 function MarqueeRow({ reverse, dur, start }) {
-  const strip = Array.from({ length: 10 }, (_, i) => COVERS[(start + i) % COVERS.length]);
+  const strip = Array.from({ length: 14 }, (_, i) => COVERS[(start + i) % COVERS.length]);
   const unitWidth = strip.length * (COVER_W + COVER_GAP);
   const x = useRef(new Animated.Value(reverse ? 1 : 0)).current;
 
@@ -410,7 +410,7 @@ function CoverCard({ c, last }) {
         locations={[0, 0.46, 1]} style={StyleSheet.absoluteFill} />
       <LinearGradient colors={['rgba(0,0,0,0.16)', 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
         style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5 }} />
-      <View style={{ position: 'absolute', left: 9, right: 9, bottom: 9, top: 28, justifyContent: 'flex-end' }}>
+      <View style={{ position: 'absolute', left: 8, right: 8, bottom: 9, top: 24, justifyContent: 'flex-end' }}>
         <Text style={styles.coverTitle} numberOfLines={2}>{c.t}</Text>
         <Text style={styles.coverAuthor}>{c.a.toUpperCase()}</Text>
       </View>
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   storyBlock: { marginTop: 6, paddingTop: 7, borderTopWidth: 1, borderTopColor: C.hairline },
   storyLine: { fontFamily: F.hanken, fontSize: 13.2, lineHeight: 19, color: C.inkSoft, marginBottom: 1, flexShrink: 1 },
   storyLastLine: { minHeight: 38, flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap' },
-  wordSwap: { position: 'relative', width: 54, height: 20, borderRadius: 6 },
+  wordSwap: { position: 'relative', width: 58, height: 20, borderRadius: 6 },
   swapText: { position: 'absolute', left: 2, top: 0, fontFamily: F.hanken, fontSize: 13.2, lineHeight: 19, color: C.orangeEdit },
   swapTextNew: { fontFamily: F.hankenBold },
   pillPeach: { backgroundColor: C.chipPeach, borderRadius: 22, paddingHorizontal: 10, paddingVertical: 5 },
@@ -484,8 +484,8 @@ const styles = StyleSheet.create({
   notifTitle: { fontFamily: F.hankenBold, fontSize: 12.5, color: '#FAF7F2' },
   notifBody: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 11, color: '#B7ADA1', marginTop: 1 },
 
-  coverTitle: { fontFamily: F.briXbold, fontSize: 9.5, lineHeight: 10, color: '#fff' },
-  coverAuthor: { fontFamily: F.hankenXbold, fontSize: 6.2, letterSpacing: 0.37, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  coverTitle: { fontFamily: F.briXbold, fontSize: 8.8, lineHeight: 9.6, color: '#fff' },
+  coverAuthor: { fontFamily: F.hankenXbold, fontSize: 5.8, letterSpacing: 0.35, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
 
   fadeL: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '12%' },
   fadeR: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '12%' },

@@ -1,5 +1,7 @@
 # Katha AI Build Log
 
+<!-- markdownlint-disable MD013 -->
+
 ## 2026-08-22: Approved Expo Foundation and Onboarding
 
 ### Shipped
@@ -31,7 +33,7 @@
 - Email does not block value delivery before the paywall.
 - Store prices shown in the prototype are placeholders, not production pricing.
 
-### Verification
+### Revision Verification
 
 - `pnpm typecheck`: passing.
 - Expo web production export: passing.
@@ -58,3 +60,23 @@
 - `src/components/BrandWordmark.tsx`: only approved Katha AI wordmark.
 - `DESIGN.md`: canonical visual and product-flow specification.
 - `CLAUDE.md`: engineering operating context for future sessions.
+
+## 2026-08-22: Intro and Paywall Motion Revisions
+
+### Changed
+
+- Rewrote the Create intro sample line so the `dream` to `warning` edit fits a scene where people are visibly observing the hidden door.
+- Revised the Read intro marquee to three long rows of slimmer, taller cover cards with longer repeated strips, improving the continuous library motion.
+- Removed the paywall trial toggle. Annual is selected by default and is the only plan with a 3-day free trial.
+- Kept weekly as a secondary plan revealed through `See weekly option`; selecting it clears the trial state and shows weekly no-trial billing copy.
+- Added a paywall close confirmation sheet before routing to the one-time offer.
+- Rebuilt the one-time offer in the Katha warm neutral/orange system, removing the loud emoji/gift/blue countdown treatment and using calmer annual-offer copy.
+- Updated `DESIGN.md` with the annual-trial and weekly-no-trial contract.
+
+### Verification
+
+- `pnpm typecheck`: passing.
+- `pnpm exec expo-doctor`: 18/18 checks passed.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-export-check`: passing with 25 assets.
+- Markdown lint passed for `expo/DESIGN.md` and `expo/BUILD_LOG.md`.
+- Browser QA at 390 x 844 verified the revised Create line, three-row Read marquee, annual default trial paywall, weekly no-trial option, close confirmation sheet, and revised one-time offer.
