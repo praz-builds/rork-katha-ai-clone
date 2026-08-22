@@ -13,9 +13,10 @@ async function createDatabase() {
     create role service_role;
     create table auth.users(id uuid primary key);
     create function auth.uid() returns uuid language sql stable
-      as $$ select null::uuid $$;
+      as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     create function auth.role() returns text language sql stable
-      as $$ select null::text $$;
+      as $$ select current_user::text $$;
+    grant usage on schema auth to anon, authenticated, service_role;
   `);
 
   const migrations: string[] = [];
@@ -76,13 +77,25 @@ Deno.test("generation operations debit once and compensate failures once", async
       "Generation chapter already reserved",
     );
 
-    await db.query(
+    const firstRefund = await db.query<{
+      refund_generation_operation: Record<string, unknown>;
+    }>(
       "select refund_generation_operation($1, $2, 'provider failed')",
       [operationId, userId],
     );
-    await db.query(
+    const refundReplay = await db.query<{
+      refund_generation_operation: Record<string, unknown>;
+    }>(
       "select refund_generation_operation($1, $2, 'provider failed')",
       [operationId, userId],
+    );
+    assertEquals(
+      firstRefund.rows[0].refund_generation_operation.refunded,
+      true,
+    );
+    assertEquals(
+      refundReplay.rows[0].refund_generation_operation.refunded,
+      false,
     );
 
     const ledger = await db.query<
@@ -214,10 +227,17 @@ Deno.test("a completed operation wins a late refund race", async () => {
   const db = await createDatabase();
   const userId = "00000000-0000-4000-8000-000000000031";
   const storyId = "00000000-0000-4000-8000-000000000032";
+  const readerId = "00000000-0000-4000-8000-000000000033";
 
   try {
-    await db.query("insert into auth.users(id) values ($1)", [userId]);
-    await db.query("insert into profiles(id) values ($1)", [userId]);
+    await db.query("insert into auth.users(id) values ($1), ($2)", [
+      userId,
+      readerId,
+    ]);
+    await db.query("insert into profiles(id) values ($1), ($2)", [
+      userId,
+      readerId,
+    ]);
     await db.query(
       "select grant_credit($1, 1, 'welcome', 'signup', 'welcome:signup')",
       [userId],
@@ -238,6 +258,30 @@ Deno.test("a completed operation wins a late refund race", async () => {
       "select complete_story_generation($1, $2, $3, 'Complete', 'The end.', 2)",
       [operationId, storyId, userId],
     );
+    const draftChapter = await db.query<{ id: string; is_published: boolean }>(
+      "select id, is_published from chapters where story_id = $1",
+      [storyId],
+    );
+    assertEquals(draftChapter.rows[0].is_published, false);
+
+    await db.query("update stories set is_public = true where id = $1", [
+      storyId,
+    ]);
+    await db.query(
+      "update chapters set is_published = true, published_at = now() where id = $1",
+      [draftChapter.rows[0].id],
+    );
+    await db.exec("grant select on stories, chapters to authenticated");
+    await db.query("select set_config('request.jwt.claim.sub', $1, false)", [
+      readerId,
+    ]);
+    await db.exec("set role authenticated");
+    const visible = await db.query<{ id: string }>(
+      "select id from chapters where id = $1",
+      [draftChapter.rows[0].id],
+    );
+    await db.exec("reset role");
+    assertEquals(visible.rows, [{ id: draftChapter.rows[0].id }]);
 
     const refund = await db.query<{
       refund_generation_operation: Record<string, unknown>;

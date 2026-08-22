@@ -6,6 +6,8 @@ import {
   errorMessage,
   isStaleReservation,
   parseRequestId,
+  parseUuid,
+  readJsonObject,
 } from "../_shared/operations.ts";
 
 serve(async (req) => {
@@ -27,11 +29,12 @@ serve(async (req) => {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const { story_id, request_id } = await req.json();
-    if (!story_id) {
-      return jsonResponse({ error: "story_id is required" }, 400);
-    }
-    const requestId = parseRequestId(request_id ?? crypto.randomUUID());
+    const body = await readJsonObject(req);
+    if (!body) return jsonResponse({ error: "Invalid JSON request body" }, 400);
+    const story_id = parseUuid(body.story_id);
+    if (!story_id) return jsonResponse({ error: "Invalid story_id" }, 400);
+    const request_id = body.request_id;
+    const requestId = parseRequestId(request_id);
     if (!requestId) return jsonResponse({ error: "Invalid request_id" }, 400);
 
     const serviceClient = createClient(
@@ -115,8 +118,11 @@ serve(async (req) => {
       .order("chapter_number", { ascending: false })
       .limit(4);
     if (chaptersError) throw chaptersError;
+    if (!chapters?.length) {
+      return jsonResponse({ error: "Story has no chapter to continue" }, 409);
+    }
 
-    const nextChapterNum = (chapters?.[0]?.chapter_number ?? 0) + 1;
+    const nextChapterNum = chapters[0].chapter_number + 1;
     const { data: operation, error: reservationError } = await serviceClient
       .rpc(
         "reserve_generation_operation",
@@ -210,6 +216,7 @@ serve(async (req) => {
             ? "Generation failed. Credit refunded."
             : "Generation completed; retry with the same request ID.",
           operation_id: operation.id,
+          status: refund?.status,
         },
         500,
       );

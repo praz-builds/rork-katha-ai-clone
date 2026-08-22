@@ -6,6 +6,7 @@ import {
   errorMessage,
   isStaleReservation,
   parseRequestId,
+  readJsonObject,
 } from "../_shared/operations.ts";
 import { STORY_SYSTEM_PROMPT } from "../_shared/prompts.ts";
 
@@ -31,7 +32,9 @@ serve(async (req) => {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const input = validateGenerationRequest(await req.json());
+    const body = await readJsonObject(req);
+    if (!body) return jsonResponse({ error: "Invalid JSON request body" }, 400);
+    const input = validateGenerationRequest(body);
     if ("error" in input) return jsonResponse({ error: input.error }, 400);
     const { genres, topic, characters, requestId } = input;
 
@@ -231,6 +234,7 @@ serve(async (req) => {
             ? "Story generation failed. Credit refunded."
             : "Story generation completed; retry with the same request ID.",
           operation_id: operation.id,
+          status: refund?.status,
         },
         500,
       );
@@ -319,7 +323,7 @@ function validateGenerationRequest(
     return { error: "Only short-story generation is supported" };
   }
 
-  const requestId = parseRequestId(body.request_id ?? crypto.randomUUID());
+  const requestId = parseRequestId(body.request_id);
   if (!requestId) return { error: "Invalid request_id" };
 
   return {

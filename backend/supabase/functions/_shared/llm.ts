@@ -16,6 +16,7 @@ export async function generateStoryText(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<GenerationResult> {
+  const failures: string[] = [];
   // Attempt 1: Sonnet 4.6
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
@@ -24,7 +25,7 @@ export async function generateStoryText(
       (signal) =>
         client.messages.create(
           {
-            model: "claude-sonnet-4-6-20250514",
+            model: "claude-sonnet-4-6",
             max_tokens: 4096,
             system: systemPrompt,
             messages: [{ role: "user", content: userPrompt }],
@@ -39,6 +40,7 @@ export async function generateStoryText(
     return { text, model: "claude-sonnet-4-6" };
   } catch (e) {
     console.error("Sonnet 4.6 failed:", e);
+    failures.push(`claude-sonnet-4-6: ${failureMessage(e)}`);
   }
 
   // Attempt 2: Haiku 4.5
@@ -64,6 +66,7 @@ export async function generateStoryText(
     return { text, model: "claude-haiku-4-5" };
   } catch (e) {
     console.error("Haiku 4.5 failed:", e);
+    failures.push(`claude-haiku-4-5: ${failureMessage(e)}`);
   }
 
   // Attempt 3: gpt-4o-mini
@@ -105,10 +108,17 @@ export async function generateStoryText(
       return { text, model: "gpt-4o-mini" };
     } catch (e) {
       console.error("gpt-4o-mini failed:", e);
+      failures.push(`gpt-4o-mini: ${failureMessage(e)}`);
     }
+  } else {
+    failures.push("gpt-4o-mini: OPENAI_API_KEY is not configured");
   }
 
-  throw new Error("All LLM providers failed");
+  throw new Error(`All LLM providers failed. ${failures.join(" | ")}`);
+}
+
+function failureMessage(error: unknown): string {
+  return error instanceof Error ? error.message.slice(0, 500) : String(error);
 }
 
 function openAIContent(payload: unknown): string {

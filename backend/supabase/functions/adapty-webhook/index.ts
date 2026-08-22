@@ -75,6 +75,13 @@ serve(async (req) => {
     }
     if (
       error instanceof Error &&
+      error.message === "Annual subscription allocation is not configured"
+    ) {
+      console.error("Adapty annual subscription was not acknowledged");
+      return jsonResponse({ error: error.message }, 503);
+    }
+    if (
+      error instanceof Error &&
       [
         "Missing or invalid customer_user_id",
         "Unknown product",

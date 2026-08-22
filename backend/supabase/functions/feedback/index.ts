@@ -1,7 +1,11 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
-import { parseRequestId } from "../_shared/operations.ts";
+import {
+  parseRequestId,
+  parseUuid,
+  readJsonObject,
+} from "../_shared/operations.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -21,17 +25,29 @@ serve(async (req) => {
     } = await supabase.auth.getUser();
     if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
 
-    const { story_id, chapter_id, content, request_id } = await req.json();
+    const body = await readJsonObject(req);
+    if (!body) return jsonResponse({ error: "Invalid JSON request body" }, 400);
+    const story_id = parseUuid(body.story_id);
+    const chapter_id = body.chapter_id === null || body.chapter_id === undefined
+      ? null
+      : parseUuid(body.chapter_id);
+    const { content, request_id } = body;
     const normalizedContent = typeof content === "string" ? content.trim() : "";
-    if (!story_id || !normalizedContent) {
-      return jsonResponse({ error: "story_id and content are required" }, 400);
+    if (!story_id) return jsonResponse({ error: "Invalid story_id" }, 400);
+    if (
+      body.chapter_id !== null && body.chapter_id !== undefined && !chapter_id
+    ) {
+      return jsonResponse({ error: "Invalid chapter_id" }, 400);
+    }
+    if (!normalizedContent) {
+      return jsonResponse({ error: "content is required" }, 400);
     }
     if (normalizedContent.length > 2000) {
       return jsonResponse({
         error: "Feedback must be 2000 characters or fewer",
       }, 400);
     }
-    const requestId = parseRequestId(request_id ?? crypto.randomUUID());
+    const requestId = parseRequestId(request_id);
     if (!requestId) return jsonResponse({ error: "Invalid request_id" }, 400);
 
     const serviceClient = createClient(
@@ -42,7 +58,7 @@ serve(async (req) => {
       p_user_id: user.id,
       p_request_id: requestId,
       p_story_id: story_id,
-      p_chapter_id: chapter_id || null,
+      p_chapter_id: chapter_id,
       p_content: normalizedContent,
     });
     if (error) {

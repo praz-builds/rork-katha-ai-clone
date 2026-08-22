@@ -7,6 +7,13 @@ export type LibraryResult = {
   source: "mock" | "supabase";
 };
 
+export class GenerationRequestError extends Error {
+  constructor(message: string, readonly resetRequestId: boolean) {
+    super(message);
+    this.name = "GenerationRequestError";
+  }
+}
+
 export async function getLibrary(query?: { q?: string; genre?: string }): Promise<LibraryResult> {
   if (!isSupabaseConfigured) {
     return { stories: filterLocalStories(query), source: "mock" };
@@ -41,34 +48,47 @@ export async function generateStory(draft: CreateDraft, requestId: string): Prom
     }
   });
 
-  if (error) throw new Error(await edgeFunctionErrorMessage(error, data));
+  if (error) {
+    const failure = await edgeFunctionFailure(error, data);
+    throw new GenerationRequestError(failure.message, failure.resetRequestId);
+  }
   if (!data?.story) throw new Error("Story generation returned no story");
 
   return mapGeneratedStory(data, draft);
 }
 
-async function edgeFunctionErrorMessage(error: unknown, data: unknown) {
-  const dataError = objectError(data);
-  if (dataError) return dataError;
+async function edgeFunctionFailure(error: unknown, data: unknown) {
+  const dataFailure = objectFailure(data);
+  if (dataFailure) return dataFailure;
 
   const context = error && typeof error === "object"
     ? (error as { context?: { json?: () => Promise<unknown> } }).context
     : undefined;
   if (typeof context?.json === "function") {
     try {
-      const responseError = objectError(await context.json());
-      if (responseError) return responseError;
+      const responseFailure = objectFailure(await context.json());
+      if (responseFailure) return responseFailure;
     } catch {
       // Fall through to the SDK error message when the response is not JSON.
     }
   }
-  return error instanceof Error ? error.message : "Story generation failed";
+  return {
+    message: error instanceof Error ? error.message : "Story generation failed",
+    resetRequestId: false
+  };
 }
 
-function objectError(value: unknown): string | null {
+function objectFailure(value: unknown): { message: string; resetRequestId: boolean } | null {
   if (!value || typeof value !== "object") return null;
-  const message = (value as Record<string, unknown>).error;
-  return typeof message === "string" && message.trim() ? message : null;
+  const payload = value as Record<string, unknown>;
+  const message = payload.error;
+  if (typeof message !== "string" || !message.trim()) return null;
+  return {
+    message,
+    resetRequestId:
+      payload.status === "refunded" ||
+      (typeof payload.operation_id === "string" && /refunded|start a new request/i.test(message))
+  };
 }
 
 function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {

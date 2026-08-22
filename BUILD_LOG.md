@@ -49,16 +49,19 @@
 - Replaced calendar-day ad-reward uniqueness with an indexed rolling 24-hour contract for the future verified server transaction.
 - CodeRabbit's review of `5fcff1d` reduced the remaining set to four. Configured Expo builds now return validated server-generated stories and surface backend failures, refund backlog fallback IDs are deterministic across retries, and the FCM/device-token roadmap uses HTTP v1 service-account authentication with update-capable ownership policies.
 - CodeRabbit's review of `26774a5` reported no further code findings. Its three documentation notes were corrected: the deployed function count is seven, stale `MEMORY.md` references are removed, and the planned device-token schema now records non-null ownership/platform fields plus the complete owner RLS policy set.
+- A final full review of `851c623` surfaced cross-repository contract gaps. The remediation aligns the 500-1500 word prompt, validates all JSON/UUID/request IDs, protects engagement counters from client writes, records explicit draft chapter publication state, makes refund replays observable, tests reader RLS after publication, and accumulates fractional reader earnings as integer half-credit units.
+- Annual subscription events now fail closed until monthly allocation scheduling is implemented; the app cannot silently grant only one month's credits for a yearly purchase.
 - Removed the committed mutable session handoff and moving-source skill lock; `SESSION_HANDOFF.md` remains available locally and ignored for copy-paste use.
 - PR #3 remains unmerged until CodeRabbit formally approves the latest fixes.
 
 ### Follow-up validation
 
 - Deno format, type checks, and lint passed for all changed Edge Functions.
-- Eleven Adapty authorization, lifecycle, deterministic refund-event, and SKU tests passed.
+- Eleven Adapty authorization, lifecycle, deterministic refund-event, SKU-coverage, and annual fail-closed tests passed.
 - All five migrations parsed and applied to an in-memory PostgreSQL-compatible runtime.
 - Four migration behavior tests passed for generation accounting, completion/refund races, feedback idempotency, and provider transaction uniqueness.
 - Expo TypeScript compilation passed.
+- Historical blueprint Markdown lint passed with zero issues.
 
 ### Deployment status
 

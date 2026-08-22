@@ -50,7 +50,11 @@ import {
 } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor, authors, genres, ledger, stories, storyWordCount } from "@/data/seed";
-import { createGenerationRequestId, generateStory } from "@/lib/api";
+import {
+  createGenerationRequestId,
+  generateStory,
+  GenerationRequestError,
+} from "@/lib/api";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import { colors, fonts, genreLabels, radius, spacing } from "@/theme/theme";
@@ -268,6 +272,9 @@ function CreateScreen({ credits, onGenerated }: { credits: number; onGenerated: 
       onGenerated(story);
       setDraft(starterDraft);
     } catch (error) {
+      if (error instanceof GenerationRequestError && error.resetRequestId) {
+        requestIdRef.current = null;
+      }
       Alert.alert(
         "Could not create story",
         error instanceof Error ? error.message : "Please try again.",

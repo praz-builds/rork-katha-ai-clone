@@ -3,10 +3,43 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  ADAPTY_CREDIT_MAP,
   constantTimeEquals,
   resolveAdaptyCredit,
   resolveAdaptyEventId,
 } from "./adapty.ts";
+
+const ADAPTY_SKU_CASES = [
+  [
+    "ai.katha.credits.starter",
+    3,
+    "non_subscription_purchase",
+    "purchase",
+    false,
+  ],
+  [
+    "ai.katha.credits.value",
+    10,
+    "non_subscription_purchase",
+    "purchase",
+    false,
+  ],
+  [
+    "ai.katha.credits.power",
+    25,
+    "non_subscription_purchase",
+    "purchase",
+    false,
+  ],
+  [
+    "ai.katha.subscription.monthly",
+    20,
+    "subscription_renewed",
+    "subscription",
+    false,
+  ],
+  ["ai.katha.subscription.yearly", 25, "trial_converted", "subscription", true],
+] as const;
 
 Deno.test("webhook authorization comparison requires an exact value", () => {
   assertEquals(constantTimeEquals("secret", "secret"), true);
@@ -90,28 +123,41 @@ Deno.test("credit events reject unknown products and invalid users", () => {
   );
 });
 
+assertEquals(
+  ADAPTY_SKU_CASES.map(([productId]) => productId).sort(),
+  Object.keys(ADAPTY_CREDIT_MAP).sort(),
+);
+
 for (
-  const [productId, credits, eventType, reason] of [
-    ["ai.katha.credits.starter", 3, "non_subscription_purchase", "purchase"],
-    ["ai.katha.credits.value", 10, "non_subscription_purchase", "purchase"],
-    ["ai.katha.credits.power", 25, "non_subscription_purchase", "purchase"],
-    [
-      "ai.katha.subscription.monthly",
-      20,
-      "subscription_renewed",
-      "subscription",
-    ],
-    ["ai.katha.subscription.yearly", 25, "trial_converted", "subscription"],
-  ] as const
+  const [productId, credits, eventType, reason, blocked] of ADAPTY_SKU_CASES
 ) {
-  Deno.test(`configured Adapty SKU ${productId} grants ${credits} credits`, () => {
-    const operation = resolveAdaptyCredit({
-      customer_user_id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
-      event_type: eventType,
-      vendor_product_id: productId,
-      transaction_id: `transaction-${credits}`,
-    });
-    assertEquals(operation?.credits, credits);
-    assertEquals(operation?.reason, reason);
-  });
+  Deno.test(
+    blocked
+      ? `configured Adapty SKU ${productId} fails closed pending allocation`
+      : `configured Adapty SKU ${productId} grants ${credits} credits`,
+    () => {
+      if (blocked) {
+        assertThrows(
+          () =>
+            resolveAdaptyCredit({
+              customer_user_id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+              event_type: eventType,
+              vendor_product_id: productId,
+              transaction_id: `transaction-${credits}`,
+            }),
+          Error,
+          "Annual subscription allocation is not configured",
+        );
+        return;
+      }
+      const operation = resolveAdaptyCredit({
+        customer_user_id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+        event_type: eventType,
+        vendor_product_id: productId,
+        transaction_id: `transaction-${credits}`,
+      });
+      assertEquals(operation?.credits, credits);
+      assertEquals(operation?.reason, reason);
+    },
+  );
 }

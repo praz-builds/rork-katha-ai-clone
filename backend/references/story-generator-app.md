@@ -1,5 +1,7 @@
 # Story Generator App — Product & Architecture Blueprint
 
+<!-- markdownlint-disable MD013 -->
+
 > Historical baseline material for the original AI story generator plan.
 > The active client is the Expo app in `../../expo/`; the Swift and Kotlin clients are preserved references.
 > Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ.
@@ -15,7 +17,7 @@ This is a **separate product** from Story For My Kid (storyformykid.com). Differ
 ### Competitive Reference: Okudu AI
 
 | Metric | Okudu |
-|--------|-------|
+| -------- | ------- |
 | Revenue | ~$30K/mo (Android alone) |
 | Downloads | 84K total, ~200/day |
 | Launched | Dec 2024 |
@@ -24,6 +26,7 @@ This is a **separate product** from Story For My Kid (storyformykid.com). Differ
 | Credit cost | 2 credits ~ $2 USD |
 
 Key Okudu patterns we're adopting:
+
 - Everything free to read. Credits only for generation.
 - 1 credit = 1 generation (short story or chapter).
 - Free credits via ads, streaks, feedback, referrals, social posts.
@@ -39,7 +42,7 @@ Key Okudu patterns we're adopting:
 
 The app is built across two environments with clear boundaries:
 
-```
+```text
 +-----------------------------------------------------------+
 |                        RORK                                |
 |  (Mobile app — UI, navigation, screens, native features)  |
@@ -91,7 +94,7 @@ The app is built across two environments with clear boundaries:
 ### Clear Rule: Who Builds What
 
 | Component | Owner | Why |
-|-----------|-------|-----|
+| ----------- | ------- | ----- |
 | Screens, navigation, UI components | **Rork** | It's a UI builder — this is what it does |
 | Supabase Auth setup (Google/Apple providers) | **Rork** | Rork has Supabase integration |
 | Adapty SDK init, paywall UI, purchase flow | **Rork** | Native SDK, must be in the app |
@@ -106,6 +109,7 @@ The app is built across two environments with clear boundaries:
 | AdMob server-side reward verification | **VS Code agent** | Security-critical — never trust client for credits |
 
 ### Rule of Thumb
+>
 > If it touches money, credits, or API keys — **VS Code agent**.
 > If it's a screen the user sees or taps — **Rork**.
 > If it's both — Rork calls an Edge Function that VS Code agent built.
@@ -116,13 +120,13 @@ The app is built across two environments with clear boundaries:
 
 ### Bottom Navigation (5 tabs)
 
-```
+```text
 Home  |  Discover  |  Create  |  Library  |  Settings
 ```
 
 ### Screen Map
 
-```
+```text
 Onboarding (first launch only)
   └── "What brings you here?" (single question, 4-5 options)
   └── "Start exploring" → Home
@@ -182,7 +186,7 @@ Settings
 
 Adapty handles IAP/subscription billing. Supabase holds the credit ledger (source of truth).
 
-```
+```text
 User purchases credits (Adapty)
     → Adapty webhook fires
     → Edge Function validates receipt
@@ -200,7 +204,7 @@ User taps "Generate"
 ### Pricing Tiers
 
 | Offering | Price | Credits | Notes |
-|----------|-------|---------|-------|
+| ---------- | ------- | --------- | ------- |
 | Starter Pack | $2.99 | 3 credits | One-time IAP, impulse buy |
 | Value Pack | $7.99 | 10 credits | One-time IAP |
 | Power Pack | $14.99 | 25 credits | One-time IAP |
@@ -212,7 +216,7 @@ Subscription credits carry over up to 2x monthly amount (e.g., 20/mo sub → max
 ### Free Credit Earning Methods
 
 | Method | Reward | Cooldown | Purpose |
-|--------|--------|----------|---------|
+| -------- | -------- | ---------- | --------- |
 | **Watch ad** (rewarded video) | 1 credit | 1 per 24 hours | Daily engagement |
 | **Reading streak** | 1 credit | Every 3 consecutive days | Retention |
 | **Leave feedback** (comment on a story) | 1 credit | 1 per story | Community + content |
@@ -225,7 +229,7 @@ Subscription credits carry over up to 2x monthly amount (e.g., 20/mo sub → max
 
 ### How It Works
 
-```
+```text
 User taps "Watch ad for 1 credit" on the Credits screen
     → App requests a rewarded ad from AdMob SDK
     → AdMob serves a 15-30 second full-screen video
@@ -242,6 +246,7 @@ User taps "Watch ad for 1 credit" on the Credits screen
 ### Technical Setup
 
 **In Rork (app side):**
+
 - Library: `react-native-google-mobile-ads`
 - Create AdMob account at admob.google.com
 - Register iOS + Android app IDs
@@ -251,6 +256,7 @@ User taps "Watch ad for 1 credit" on the Credits screen
 - On reward callback → call backend
 
 **In VS Code agent (backend side):**
+
 - Edge Function: POST /grant-credit
 - Verify AdMob Server-Side Verification (SSV) callback
 - Check 24hr cooldown per user (last_ad_credit_at timestamp)
@@ -262,7 +268,7 @@ User taps "Watch ad for 1 credit" on the Credits screen
 ### Ad Revenue Economics (Why It's Not About Ad Money)
 
 | Market | eCPM (per 1000 views) | Revenue per view |
-|--------|----------------------|------------------|
+| -------- | ---------------------- | ------------------ |
 | US/UK/AU | $10-30 | $0.01-0.03 |
 | India/SEA | $2-8 | $0.002-0.008 |
 | Global avg | $8-15 | $0.008-0.015 |
@@ -275,7 +281,7 @@ User taps "Watch ad for 1 credit" on the Credits screen
 
 Ads are NOT the profit center. They are a **conversion funnel**:
 
-```
+```text
 Free user watches ad → gets 1 credit → generates a story → loves it
     → comes back tomorrow for another ad credit → daily habit forms
         → 1 credit/day isn't enough ("I want 3 stories tonight")
@@ -286,13 +292,14 @@ Free user watches ad → gets 1 credit → generates a story → loves it
 **The real math:**
 
 | Segment | Monthly value |
-|---------|---------------|
+| --------- | --------------- |
 | Free user (ad only) | -$0.60 to -$3.30 loss (subsidized) |
 | Paying user (sub) | +$3.00 to +$8.50 profit |
 | Typical free→paid conversion | 3-8% |
 | Breakeven requires | ~$5-15 ARPU across all users |
 
 At 1000 DAU with 5% conversion:
+
 - 950 free users cost: ~$60-100/month
 - 50 paying users earn: ~$150-425/month
 - Net: **profitable at modest scale**
@@ -415,7 +422,7 @@ create index idx_comments_story on comments(story_id, created_at desc);
 
 VS Code agent builds this as a Supabase Edge Function.
 
-```
+```text
 POST /generate-story
     ├── Auth check (JWT from Supabase Auth)
     ├── Credit check (balance >= 1)
@@ -446,10 +453,11 @@ POST /generate-story
 ## 8. Build Order (Phased Rollout)
 
 ### Phase 1 — Read-Only App (Week 1-2)
+
 **Goal:** App in stores with free library. No generation yet.
 
 | Task | Owner |
-|------|-------|
+| ------ | ------- |
 | App shell, bottom nav, screen stubs | Rork |
 | Supabase project setup, schema migration | VS Code |
 | Seed library (curated stories) loaded into DB | VS Code |
@@ -464,10 +472,11 @@ POST /generate-story
 | Edge Function: GET /library (paginated feed) | VS Code |
 
 ### Phase 2 — Generation + Credits (Week 3-4)
+
 **Goal:** Users can generate stories with credits.
 
 | Task | Owner |
-|------|-------|
+| ------ | ------- |
 | Create flow (4-step wizard UI) | Rork |
 | Edge Function: POST /generate-story | VS Code |
 | Edge Function: credit deduct/check/balance | VS Code |
@@ -478,10 +487,11 @@ POST /generate-story
 | "Continue story" (generate next chapter) | VS Code |
 
 ### Phase 3 — Monetization (Week 5-6)
+
 **Goal:** Revenue flows.
 
 | Task | Owner |
-|------|-------|
+| ------ | ------- |
 | Adapty SDK integration | Rork |
 | Subscription paywall screen | Rork |
 | Credit pack purchase flow | Rork |
@@ -492,10 +502,11 @@ POST /generate-story
 | Premium badge / ad-free flag | Rork + VS Code |
 
 ### Phase 4 — Engagement Loops (Week 7-8)
+
 **Goal:** Retention and organic growth.
 
 | Task | Owner |
-|------|-------|
+| ------ | ------- |
 | Streak system (UI calendar + logic) | Rork + VS Code |
 | Push notifications (daily reminder, streak warning) | Rork |
 | Comments/feedback on stories | Rork + VS Code |
@@ -505,10 +516,11 @@ POST /generate-story
 | App Store rating prompt (after 3rd generation) | Rork |
 
 ### Phase 5 — Growth & Polish (Week 9+)
+
 **Goal:** Optimize conversion and expand.
 
 | Task | Owner |
-|------|-------|
+| ------ | ------- |
 | Onboarding A/B testing | Rork + analytics |
 | Paywall A/B testing (pricing, copy) | Adapty remote config |
 | Premium audiobook voices (Google Cloud TTS) | VS Code |
@@ -523,6 +535,7 @@ POST /generate-story
 ## 9. Key Architectural Decisions
 
 ### Why Supabase Edge Functions (not Cloudflare Workers)?
+
 - Supabase is already the DB — edge functions have direct DB access with zero latency
 - Auth JWT verification is built-in
 - Storage access is native
@@ -530,18 +543,21 @@ POST /generate-story
 - If edge function cold starts become a problem, move generation to a dedicated worker
 
 ### Why Adapty (not RevenueCat)?
+
 - Adapty has native **credit/coin system** support (promotional offers, grant credits server-side)
 - Paywall A/B testing built-in (critical for conversion optimization)
 - Webhook-first architecture plays well with Edge Functions
 - Comparable pricing to RevenueCat
 
 ### Why AdMob (not Unity Ads)?
+
 - Largest ad network = best fill rate from day 1
 - Rewarded video eCPM is competitive
 - Server-side verification (SSV) is robust
 - Can add mediation (Unity, AppLovin, Meta) later for better eCPM
 
 ### Credit Ledger Pattern
+
 - **Append-only ledger** — never update, only insert new rows
 - Every credit change is a row: amount (+1 or -1), reason, reference, balance_after
 - Balance = last row's balance_after (indexed query)
@@ -553,9 +569,11 @@ POST /generate-story
 ## 10. Metrics to Track (PostHog / Adapty)
 
 ### North Star
+
 - **Weekly active generators** (users who generated at least 1 story)
 
 ### Funnel
+
 1. Install → Onboarding complete (target: 85%+)
 2. Onboarding → First read (target: 60%+)
 3. First read → Sign-in (target: 40%+)
@@ -564,6 +582,7 @@ POST /generate-story
 6. Active free user → Paid conversion (target: 5-8%)
 
 ### Engagement
+
 - DAU/MAU ratio (target: 25%+)
 - Average stories generated per user per week
 - Reading streak length distribution
@@ -571,6 +590,7 @@ POST /generate-story
 - Credit balance at time of purchase (understand urgency trigger)
 
 ### Revenue
+
 - ARPU (all users) — target: $1-3/mo
 - ARPPU (paying users) — target: $7-12/mo
 - LTV:CAC ratio — target: 3:1+
@@ -582,7 +602,7 @@ POST /generate-story
 ## 11. What We Reuse from Story For My Kid
 
 | Asset | How It's Reused |
-|-------|----------------|
+| ------- | ---------------- |
 | Anthropic SDK integration patterns | Same LLM calling code, adapted for edge functions |
 | Story generation prompt engineering | Base prompts refined from 51 published stories |
 | edge-tts narration pipeline | Same voice, same SSML chunking logic |

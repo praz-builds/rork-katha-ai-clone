@@ -244,7 +244,7 @@ The reader-earning surface is the highest-abuse target in the app. Every read th
 ### 6.3 New account throttle
 
 - If reader account age < 24 hours: read counts for 0 credits toward creator (but still counts toward the story's "reads" display and reader's own history).
-- If reader account age 24-72 hours: read counts for 0.5 credits (accumulate fractional; round down at credit-grant time).
+- If reader account age 24-72 hours: add one integer half-credit unit to the future reader-earning accumulator. Older eligible reads add two units. The serialized `record-read` transaction grants `floor(units / 2)` whole integer credits and retains `units % 2`; fractional values are never inserted into `credit_ledger.amount` or passed to credit RPCs.
 - Kills sockpuppet farms at trivial engineering cost.
 
 ### 6.4 Read velocity anomaly detection
@@ -394,7 +394,11 @@ create table story_reads (
 );
 create index idx_story_reads_story on story_reads(story_id, read_at desc);
 create index idx_story_reads_user on story_reads(user_id, read_at desc);
-create unique index idx_story_reads_dedup on story_reads(user_id, story_id, date_trunc('day', read_at));
+-- The serialized record-read transaction rejects an earning read when an
+-- eligible row exists for this user/story in the preceding rolling 24 hours.
+create index idx_story_reads_user_story_recent
+    on story_reads(user_id, story_id, read_at desc)
+    where counts_for_earnings = true;
 
 -- Follow-a-story
 create table story_followers (

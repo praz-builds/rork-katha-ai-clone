@@ -51,6 +51,9 @@ export function resolveAdaptyCredit(
   if (!productId || !Object.hasOwn(ADAPTY_CREDIT_MAP, productId)) {
     throw new Error("Unknown product");
   }
+  if (productId === "ai.katha.subscription.yearly") {
+    throw new Error("Annual subscription allocation is not configured");
+  }
 
   const transactionId = event.event_properties?.transaction_id ??
     event.transaction_id ??

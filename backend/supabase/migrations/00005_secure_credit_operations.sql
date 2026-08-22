@@ -24,6 +24,11 @@ drop index if exists public.idx_ad_rewards_daily;
 create index if not exists idx_ad_rewards_user_claimed
     on public.ad_rewards(user_id, claimed_at desc);
 
+drop index if exists public.idx_story_reads_dedup;
+create index if not exists idx_story_reads_user_story_recent
+    on public.story_reads(user_id, story_id, read_at desc)
+    where counts_for_earnings = true;
+
 create table if not exists public.payment_event_backlog (
     id uuid primary key default gen_random_uuid(),
     provider text not null check (provider in ('adapty')),
@@ -91,6 +96,26 @@ create policy "Chapters viewable if story is accessible"
               )
         )
     );
+
+drop policy if exists "Users can update own stories" on public.stories;
+create policy "Users can update own non-curated stories"
+    on public.stories for update
+    using (auth.uid() = author_id and is_curated = false)
+    with check (auth.uid() = author_id and is_curated = false);
+
+revoke update on public.stories from anon, authenticated;
+grant update (
+    title,
+    genre,
+    topic,
+    cover_image_url,
+    length_type,
+    status,
+    language,
+    themes,
+    planned_chapter_count,
+    is_public
+) on public.stories to authenticated;
 
 drop policy if exists "Comments are viewable by authenticated users"
     on public.comments;
@@ -359,13 +384,17 @@ begin
         chapter_number,
         title,
         content,
-        word_count
+        word_count,
+        is_published,
+        published_at
     ) values (
         p_story_id,
         1,
         'Chapter 1',
         p_content,
-        p_word_count
+        p_word_count,
+        false,
+        null
     ) returning * into v_chapter;
 
     update public.generation_operations
@@ -513,13 +542,17 @@ begin
         chapter_number,
         title,
         content,
-        word_count
+        word_count,
+        is_published,
+        published_at
     ) values (
         v_operation.story_id,
         v_operation.chapter_number,
         p_title,
         p_content,
-        p_word_count
+        p_word_count,
+        false,
+        null
     ) returning * into v_chapter;
 
     update public.generation_operations
@@ -565,6 +598,15 @@ begin
     v_balance := coalesce(v_balance, 0);
 
     if v_operation.status = 'completed' then
+        return pg_catalog.jsonb_build_object(
+            'status', v_operation.status,
+            'balance', v_balance,
+            'refunded', false,
+            'result_chapter_id', v_operation.result_chapter_id
+        );
+    end if;
+
+    if v_operation.status = 'refunded' then
         return pg_catalog.jsonb_build_object(
             'status', v_operation.status,
             'balance', v_balance,

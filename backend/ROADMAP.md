@@ -15,7 +15,7 @@
 
 ---
 
-## Phase A — Foundation ✅ COMPLETE
+## Phase A — Foundation Baseline Deployed
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
@@ -25,19 +25,19 @@
 - [x] `_shared/llm.ts` — updated Haiku model ID to `claude-haiku-4-5-20251001`
 - [x] `generate-story/index.ts` — system prompt loaded from `_shared/prompts.ts`
 - [x] Fixed `::date` immutability bugs in migration 00001 (`idx_ad_rewards_daily`) and 00003 (`idx_story_reads_dedup`) — replaced with `date_trunc('day', ... at time zone 'UTC')`
-- [ ] `stories.genre` — verify column is `text` (single-select), not `text[]` (array)
 
 ### Deploy
 - [x] Supabase CLI installed (v2.114.0 via Homebrew)
 - [x] Project linked (`supabase link`)
 - [x] All 4 migrations applied (`supabase db push` — 00001 through 00004)
 - [x] All 7 edge functions deployed and ACTIVE
+### Pending Verification and Configuration
+
+- [ ] Resolve the `stories.genre` contract: the deployed baseline is `text[]`, while the locked product decision is single-select
 - [ ] Set secrets: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (waiting on user)
 - [ ] Verify `library` endpoint returns data
-- [ ] Verify `deduct-credit` works with the fixed atomic logic
+- [ ] Confirm disabled `deduct-credit` returns 403 and trusted generation deducts through service-only RPCs
 - [ ] Verify `generate-story` produces a story via LLM (text only, no images/audio yet)
-
-### Verification (after API keys are set)
 - [ ] Create a test user via Supabase Auth dashboard
 - [ ] Manually call `generate-story` with curl and verify credit deduction + story insert
 - [ ] Confirm `credit_ledger` has correct `balance_after` values
@@ -92,11 +92,22 @@
   - `ai.katha.credits.power` — $14.99, 25 credits
 - [ ] User: Set webhook URL to `{SUPABASE_URL}/functions/v1/adapty-webhook`
 - [ ] User: Get `ADAPTY_WEBHOOK_SECRET`, set as Supabase secret
-- [ ] Implement HMAC signature verification in `adapty-webhook/index.ts`
-- [ ] Handle events: `subscription_started`, `subscription_renewed`, `subscription_cancelled`, `non_subscription_purchase`
-- [ ] On subscription: update `profiles.subscription_tier` + `subscription_expires_at`
-- [ ] On purchase: grant credits via `grantCredit()` with reason `purchase`
-- [ ] On subscription renewal: grant monthly credits with reason `subscription`
+
+#### Implemented Server Handling
+
+- [x] Verify the exact configured `Authorization` value and fail closed when the secret is absent
+- [x] Allowlist fully qualified product IDs and validate `customer_user_id`
+- [x] Handle purchase, subscription start/renewal, and trial conversion credit events
+- [x] Grant purchase/subscription credits through service-only serialized RPCs
+- [x] Deduplicate provider transactions across users and event types
+- [x] Persist unhandled refund events in `payment_event_backlog` and return 503
+
+#### Production Blockers
+
+- [ ] Verify dashboard authorization and exact product IDs against production configuration
+- [ ] Sync subscription tier and expiry into profiles
+- [ ] Implement monthly allocation scheduling for the annual plan before enabling that SKU
+- [ ] Implement refund clawbacks and backlog reconciliation
 
 ### AdMob SSV (User setup first)
 - [ ] User: Create AdMob account and get real app IDs and rewarded-ad unit IDs for the Expo app
