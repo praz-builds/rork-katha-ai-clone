@@ -49,8 +49,7 @@
 3. Connect email/OTP to Supabase Auth and persist the emitted onboarding profile.
 4. Replace placeholder plan prices and legal copy with Adapty/store payload values.
 5. Wire the final success callback to the production Home experience and persisted first-run state.
-6. Add reduced-motion behavior for intro, marquees, loading, and offer animations.
-7. Validate the complete flow on physical iOS and Android devices after native integrations.
+6. Validate the complete flow on physical iOS and Android devices after native integrations.
 
 ### Primary Files
 
@@ -74,6 +73,7 @@
 - Routed paywall, weekly option, and one-time-offer pricing through product data objects so future Adapty/store values can replace the reference prices in one place.
 - Added reduced-motion paths for intro timelines, cover marquees, loading, paywall entry, offer entry, and button pulse animations.
 - Moved the paywall close confirmation into a modal and added explicit close accessibility labels for the paywall and one-time offer.
+- Corrected the one-time-offer discount claim to derive from the annual comparison product and offer product prices.
 - Updated `DESIGN.md` with the annual-trial and weekly-no-trial contract.
 
 ### Verification
@@ -82,4 +82,7 @@
 - `pnpm exec expo-doctor`: 18/18 checks passed.
 - `pnpm exec expo export --platform web --output-dir /tmp/katha-export-check`: passing with 25 assets.
 - Markdown lint passed for `expo/DESIGN.md` and `expo/BUILD_LOG.md`.
-- Browser QA at 390 x 844 verified the revised Create line, three-row Read marquee, annual default trial paywall, weekly no-trial option, close confirmation sheet, and revised one-time offer.
+- Browser QA at 390 x 844 verified the revised Create line, three-row Read marquee, annual default trial paywall, weekly no-trial option, close confirmation sheet, and revised one-time offer before the review-accessibility patch.
+- Code inspection confirmed all three persona branches still route to distinct paywall titles, subtitles, and benefits: read-first, write-first, and balanced read/write.
+- Keyboard entry remains on real `TextInput` controls for name, email, OTP, and Other genre. A fresh automated keyboard/browser pass was blocked because Playwright could not install Chromium for this desktop runtime (`mac13` unsupported).
+- Narrow-width browser QA beyond 390 x 844 and physical iOS/Android phone validation remain pending before native release.

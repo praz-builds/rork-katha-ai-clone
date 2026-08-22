@@ -101,6 +101,8 @@ const PAYWALL_PRODUCTS = {
     title: 'Annual',
     badge: 'BEST VALUE',
     localizedPrice: '$49.99',
+    priceAmount: 49.99,
+    currencyCode: 'USD',
     priceDetail: '3 days free, then $0.96/week',
     unit: 'per year',
     trialEligible: true,
@@ -113,6 +115,8 @@ const PAYWALL_PRODUCTS = {
     productId: 'ai.katha.subscription.weekly',
     title: 'Weekly',
     localizedPrice: '$4.99',
+    priceAmount: 4.99,
+    currencyCode: 'USD',
     priceDetail: 'No free trial',
     unit: 'per week',
     trialEligible: false,
@@ -123,17 +127,21 @@ const PAYWALL_PRODUCTS = {
 };
 
 const ONE_TIME_OFFER_PRODUCT = {
-  productId: 'ai.katha.subscription.yearly.offer70',
+  productId: 'ai.katha.subscription.yearly.winback',
   title: 'Annual Plus',
-  ribbon: '70% off',
-  headline: 'Save 70% today',
+  comparisonProductKey: 'yearly',
   localizedPrice: '$17.99',
+  priceAmount: 17.99,
+  currencyCode: 'USD',
   unit: 'per year',
   monthlyEquivalent: '$1.50/month',
   billingDisclosure: 'Renews yearly at $17.99 unless canceled.',
   offerEligibility: 'one_time_cancel_flow',
   cta: 'Claim one-time offer',
 };
+
+const discountPercent = (offer, comparison) => Math.max(0, Math.round((1 - (offer.priceAmount / comparison.priceAmount)) * 100));
+const oneTimeOfferDiscount = discountPercent(ONE_TIME_OFFER_PRODUCT, PAYWALL_PRODUCTS[ONE_TIME_OFFER_PRODUCT.comparisonProductKey]);
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const emailRe = /\S+@\S+\.\S+/;
@@ -754,11 +762,11 @@ function OneTimeOffer({ reduceMotion, onClaim, onClose }) {
       <Pressable accessibilityRole="button" accessibilityLabel="Close one-time offer" onPress={onClose} style={styles.otoClose}><Text style={styles.closeX}>✕</Text></Pressable>
       <Animated.View style={{ opacity: enter, transform: [{ translateY: headerY }] }}>
         <Text style={styles.otoH1}>One-time offer</Text>
-        <Text style={styles.otoBig}>{ONE_TIME_OFFER_PRODUCT.headline}</Text>
+        <Text style={styles.otoBig}>Save {oneTimeOfferDiscount}% today</Text>
         <Text style={styles.otoSub}>Try Katha Plus for less than the price of a bedtime book.</Text>
       </Animated.View>
       <Animated.View style={[styles.otoCard, { opacity: enter, transform: [{ scale: cardScale }] }]}>
-        <View style={styles.otoRibbon}><Text style={styles.otoRibbonText}>{ONE_TIME_OFFER_PRODUCT.ribbon}</Text></View>
+        <View style={styles.otoRibbon}><Text style={styles.otoRibbonText}>{oneTimeOfferDiscount}% off</Text></View>
         <View style={styles.bookStack} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <View style={[styles.bookLayer, styles.bookBack, { backgroundColor: '#2E5D57', transform: [{ rotate: '-7deg' }] }]} />
           <View style={[styles.bookLayer, styles.bookMid, { backgroundColor: '#B15A18', transform: [{ rotate: '4deg' }] }]} />
@@ -877,7 +885,7 @@ const styles = StyleSheet.create({
   ringPct: { fontFamily: FF.bri8, fontSize: 26, color: C.orange },
   buildTitle: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 24, lineHeight: 29, letterSpacing: 0, color: C.ink, textAlign: 'center' },
   checkDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  closeBtn: { position: 'absolute', top: 2, right: 22, zIndex: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderColor: '#EEE2D0', alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { position: 'absolute', top: 2, right: 16, zIndex: 12, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderColor: '#EEE2D0', alignItems: 'center', justifyContent: 'center' },
   closeX: { color: '#9A8E7E', fontSize: 15 },
   proofAv: { width: 36, height: 36, borderRadius: 18, borderWidth: 2.5, borderColor: C.bg },
   proofMore: { width: 36, height: 36, borderRadius: 18, borderWidth: 2.5, borderColor: C.bg, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },

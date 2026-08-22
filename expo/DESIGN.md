@@ -423,7 +423,7 @@ Closing the paywall shows a confirmation sheet before the one-time offer. The on
 
 ### Reduced Motion
 
-The current intro and offer animations do not yet branch on the operating-system reduced-motion preference. This is a known implementation gap, not approval to ignore accessibility.
+The intro, marquee, loading, paywall entry, offer entry, offer pulse, and success pulse paths read the operating-system reduced-motion preference. Reduced motion renders the completed prompt and final `warning` edit, publish stats at 246, static representative cover rows, and final paywall/offer states without looping or entry motion.
 
 When motion is touched:
 
