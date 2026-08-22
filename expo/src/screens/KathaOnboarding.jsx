@@ -22,6 +22,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, Pressable, StyleSheet, useWindowDimensions, Animated, Image, Platform, Easing,
+  AccessibilityInfo,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import BrandWordmark from '../components/BrandWordmark';
@@ -100,18 +101,24 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
   const { width: W } = useWindowDimensions();
   const [phase, setPhase] = useState(0);
   const [p, setP] = useState(0);            // progress within phase (drives re-render)
+  const reduceMotion = useReducedMotionPreference();
   const slide = useRef(new Animated.Value(0)).current;
 
   // carousel slide (0.6s, cubic-bezier(.45,0,.2,1) ≈ Easing via bezier)
   useEffect(() => {
+    if (reduceMotion) {
+      slide.setValue(phase);
+      return;
+    }
     Animated.timing(slide, {
       toValue: phase, duration: 600, useNativeDriver: Platform.OS !== 'web',
       easing: Easing.bezier(0.45, 0, 0.2, 1),
     }).start();
-  }, [phase]);
+  }, [phase, reduceMotion, slide]);
 
   // rAF timeline clock — auto-advance 0→1→2, hold on 2
   useEffect(() => {
+    if (reduceMotion) { setP(1); return; }
     if (phase >= 2) { setP(1); return; }
     let raf, start;
     const dur = DUR[phase];
@@ -124,7 +131,7 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [phase]);
+  }, [phase, reduceMotion]);
 
   const goTo = useCallback((n) => setPhase(n), []);
   const restart = useCallback(() => { onFinish(); }, [onFinish]);
@@ -143,7 +150,7 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
         }}>
           <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><CreateScreen p={phase === 0 ? p : phase > 0 ? 1 : 0} /></View>
           <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><PublishScreen p={phase === 1 ? p : phase > 1 ? 1 : 0} /></View>
-          <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen /></View>
+          <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen reduceMotion={reduceMotion} /></View>
         </Animated.View>
 
         <View style={[styles.wordmarkWrap, { pointerEvents: 'none' }]}>
@@ -159,6 +166,25 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
       <BottomSheet phase={phase} onDot={goTo} onFinish={restart} onSignIn={onSignIn} />
     </View>
   );
+}
+
+function useReducedMotionPreference() {
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const preference = AccessibilityInfo.isReduceMotionEnabled?.();
+    preference?.then((enabled) => {
+      if (mounted) setReduceMotion(Boolean(enabled));
+    });
+    const subscription = AccessibilityInfo.addEventListener?.('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription?.remove?.();
+    };
+  }, []);
+
+  return reduceMotion;
 }
 
 // ── Bottom sheet (SPEC §4) ──────────────────────────────────────────────────
@@ -347,7 +373,7 @@ function NotificationCard() {
 }
 
 // ── Screen 2 : READ marquee (SPEC §8) ───────────────────────────────────────
-function ReadScreen() {
+function ReadScreen({ reduceMotion }) {
   const rows = [
     { reverse: false, dur: 32000, start: 0 },
     { reverse: true,  dur: 26000, start: 6 },
@@ -357,25 +383,29 @@ function ReadScreen() {
     <View style={[styles.stage, styles.stageCenter, { flexDirection: 'column' }]}>
       {rows.map((r, i) => (
         <View key={i} style={{ marginTop: i === 0 ? 0 : COVER_GAP }}>
-          <MarqueeRow {...r} />
+          <MarqueeRow {...r} reduceMotion={reduceMotion} />
         </View>
       ))}
     </View>
   );
 }
 
-function MarqueeRow({ reverse, dur, start }) {
+function MarqueeRow({ reverse, dur, start, reduceMotion }) {
   const strip = Array.from({ length: 14 }, (_, i) => COVERS[(start + i) % COVERS.length]);
   const unitWidth = strip.length * (COVER_W + COVER_GAP);
   const x = useRef(new Animated.Value(reverse ? 1 : 0)).current;
 
   useEffect(() => {
+    if (reduceMotion) {
+      x.setValue(0);
+      return undefined;
+    }
     const anim = Animated.loop(
       Animated.timing(x, { toValue: reverse ? 0 : 1, duration: dur, easing: Easing.linear, useNativeDriver: Platform.OS !== 'web' })
     );
     anim.start();
     return () => anim.stop();
-  }, []);
+  }, [dur, reduceMotion, reverse, x]);
 
   const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [0, -unitWidth] });
 
@@ -450,7 +480,7 @@ const styles = StyleSheet.create({
   createCard: { width: 306, height: 346, backgroundColor: C.card, borderRadius: 22, padding: 16, paddingBottom: 14 },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   dot7: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.orange },
-  eyebrow: { fontFamily: F.hankenXbold, fontSize: 10, letterSpacing: 1.6, color: C.muted3 },
+  eyebrow: { fontFamily: F.hankenXbold, fontSize: 10, letterSpacing: 0, color: C.muted3 },
   prompt: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 13.5, lineHeight: 18.5, color: C.inkBody2 },
   pillOrange: { backgroundColor: C.orange, borderRadius: 22, paddingHorizontal: 15, paddingVertical: 9 },
   pillOrangeSm: { backgroundColor: C.orange, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 8 },
@@ -485,7 +515,7 @@ const styles = StyleSheet.create({
   notifBody: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 11, color: '#B7ADA1', marginTop: 1 },
 
   coverTitle: { fontFamily: F.briXbold, fontSize: 8.8, lineHeight: 9.6, color: '#fff' },
-  coverAuthor: { fontFamily: F.hankenXbold, fontSize: 5.8, letterSpacing: 0.35, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  coverAuthor: { fontFamily: F.hankenXbold, fontSize: 5.8, letterSpacing: 0, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
 
   fadeL: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '12%' },
   fadeR: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '12%' },

@@ -71,6 +71,9 @@
 - Kept weekly as a secondary plan revealed through `See weekly option`; selecting it clears the trial state and shows weekly no-trial billing copy.
 - Added a paywall close confirmation sheet before routing to the one-time offer.
 - Rebuilt the one-time offer in the Katha warm neutral/orange system, removing the loud emoji/gift/blue countdown treatment and using calmer annual-offer copy.
+- Routed paywall, weekly option, and one-time-offer pricing through product data objects so future Adapty/store values can replace the reference prices in one place.
+- Added reduced-motion paths for intro timelines, cover marquees, loading, paywall entry, offer entry, and button pulse animations.
+- Moved the paywall close confirmation into a modal and added explicit close accessibility labels for the paywall and one-time offer.
 - Updated `DESIGN.md` with the annual-trial and weekly-no-trial contract.
 
 ### Verification

@@ -405,7 +405,7 @@ The paywall receives and must continue to use:
 | `plan` | Annual or weekly selection |
 | `trial` | Annual-only 3-day trial flag; weekly never has a trial |
 
-Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the 3-day free trial. Weekly is available through the additional plan option and has no free trial. The current reference pricing is annual `$49.99/year`, weekly `$4.99/week`, and one-time-offer annual `$17.99/year`; production values must come from Adapty/store products before release.
+Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the 3-day free trial. Weekly is available through the additional plan option and has no free trial. The current reference pricing is annual `$49.99/year`, weekly `$4.99/week`, and one-time-offer annual `$17.99/year`; the UI must read price, renewal, trial eligibility, and offer copy from product data so production values can come from Adapty/store products before release.
 
 Closing the paywall shows a confirmation sheet before the one-time offer. The one-time offer may follow that close flow, but it must not erase the collected persona. Email/OTP is an integration handoff after the paywall or offer action. Supabase should persist the final `onDone` payload. Adapty should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
 

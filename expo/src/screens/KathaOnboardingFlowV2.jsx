@@ -10,7 +10,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, StatusBar,
   useWindowDimensions, Animated, Easing, Image, SafeAreaView, Platform,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, Modal, AccessibilityInfo,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import BrandWordmark from '../components/BrandWordmark';
@@ -94,6 +94,47 @@ const AVATARS = [
   require('../../assets/avatars/reader-white-woman.jpg'),
 ];
 
+const PAYWALL_PRODUCTS = {
+  yearly: {
+    key: 'yearly',
+    productId: 'ai.katha.subscription.yearly',
+    title: 'Annual',
+    badge: 'BEST VALUE',
+    localizedPrice: '$49.99',
+    priceDetail: '3 days free, then $0.96/week',
+    unit: 'per year',
+    trialEligible: true,
+    actionLead: 'Start your 3-day free trial',
+    cta: 'Start my 3-day free trial',
+    billingDisclosure: 'No charge today. Then $49.99 per year unless canceled.',
+  },
+  weekly: {
+    key: 'weekly',
+    productId: 'ai.katha.subscription.weekly',
+    title: 'Weekly',
+    localizedPrice: '$4.99',
+    priceDetail: 'No free trial',
+    unit: 'per week',
+    trialEligible: false,
+    actionLead: 'Start your weekly pass',
+    cta: 'Start my weekly pass',
+    billingDisclosure: 'Weekly plan has no free trial. Billed at $4.99 per week.',
+  },
+};
+
+const ONE_TIME_OFFER_PRODUCT = {
+  productId: 'ai.katha.subscription.yearly.offer70',
+  title: 'Annual Plus',
+  ribbon: '70% off',
+  headline: 'Save 70% today',
+  localizedPrice: '$17.99',
+  unit: 'per year',
+  monthlyEquivalent: '$1.50/month',
+  billingDisclosure: 'Renews yearly at $17.99 unless canceled.',
+  offerEligibility: 'one_time_cancel_flow',
+  cta: 'Claim one-time offer',
+};
+
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const emailRe = /\S+@\S+\.\S+/;
 
@@ -112,6 +153,7 @@ export default function KathaOnboardingFlowV2({ onDone = () => {}, initialScreen
   const [moment, setMoment] = useState('');
   const [plan, setPlan] = useState('yearly');
   const [trial, setTrial] = useState(true);
+  const reduceMotion = useReducedMotionPreference();
 
   const fname = name.trim() || 'there';
   const topGenre = Object.keys(genres).filter((k) => genres[k] && k !== 'Other')[0] || 'stories you love';
@@ -143,12 +185,31 @@ export default function KathaOnboardingFlowV2({ onDone = () => {}, initialScreen
       {screen === 'email' && !otp && <EmailScreen fname={fname} email={email} setEmail={setEmail} onContinue={() => { if (emailRe.test(email.trim())) { setOtp(true); setCode(''); } }} />}
       {screen === 'email' && otp && <OtpScreen email={email} code={code} setCode={setCode} onVerify={() => setScreen('success')} onResend={() => setCode('')} onEditEmail={() => setOtp(false)} />}
       {screen === 'notify' && <NotifyScreen onAllow={() => { setNotificationsAllowed(false); setScreen('paywall'); }} onLater={() => { setNotificationsAllowed(false); setScreen('paywall'); }} />}
-      {screen === 'building' && <BuildingScreen fname={fname} purpose={purpose} topGenre={topGenre} onDone={() => setScreen('notify')} />}
-      {screen === 'paywall' && <Paywall fname={fname} purpose={purpose} topGenre={topGenre} refine={refine} moment={moment} plan={plan} setPlan={setPlan} trial={trial} setTrial={setTrial} onSubscribe={() => { setOtp(false); setScreen('email'); }} onClose={() => setScreen('oto')} />}
-      {screen === 'oto' && <OneTimeOffer onClaim={() => { setOtp(false); setScreen('email'); }} onClose={() => { setOtp(false); setScreen('email'); }} />}
-      {screen === 'success' && <SuccessScreen fname={fname} purpose={purpose} onStart={() => onDone({ name: name.trim(), genres: Object.keys(genres).filter((key) => genres[key]), otherGenre: otherText.trim(), purpose, email: email.trim(), notificationsAllowed, refine, moment, plan, trial })} />}
+      {screen === 'building' && <BuildingScreen fname={fname} purpose={purpose} topGenre={topGenre} reduceMotion={reduceMotion} onDone={() => setScreen('notify')} />}
+      {screen === 'paywall' && <Paywall fname={fname} purpose={purpose} topGenre={topGenre} refine={refine} moment={moment} plan={plan} setPlan={setPlan} trial={trial} setTrial={setTrial} reduceMotion={reduceMotion} onSubscribe={() => { setOtp(false); setScreen('email'); }} onClose={() => setScreen('oto')} />}
+      {screen === 'oto' && <OneTimeOffer reduceMotion={reduceMotion} onClaim={() => { setOtp(false); setScreen('email'); }} onClose={() => { setOtp(false); setScreen('email'); }} />}
+      {screen === 'success' && <SuccessScreen fname={fname} purpose={purpose} reduceMotion={reduceMotion} onStart={() => onDone({ name: name.trim(), genres: Object.keys(genres).filter((key) => genres[key]), otherGenre: otherText.trim(), purpose, email: email.trim(), notificationsAllowed, refine, moment, plan, trial })} />}
     </SafeAreaView>
   );
+}
+
+function useReducedMotionPreference() {
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const preference = AccessibilityInfo.isReduceMotionEnabled?.();
+    preference?.then((enabled) => {
+      if (mounted) setReduceMotion(Boolean(enabled));
+    });
+    const subscription = AccessibilityInfo.addEventListener?.('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription?.remove?.();
+    };
+  }, []);
+
+  return reduceMotion;
 }
 
 // ── Shared ───────────────────────────────────────────────────────────────────
@@ -417,21 +478,28 @@ function MomentScreen({ fname, purpose, moment, setMoment, onNext }) {
 }
 
 // ── BUILDING ────────────────────────────────────────────────────────────────
-function BuildingScreen({ fname, purpose, topGenre, onDone }) {
+function BuildingScreen({ fname, purpose, topGenre, reduceMotion, onDone }) {
   const [pct, setPct] = useState(0);
   const [step, setStep] = useState(0);
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1000, easing: Easing.linear, useNativeDriver: Platform.OS !== 'web' })).start();
+    if (reduceMotion) {
+      setPct(100);
+      setStep(3);
+      const doneTimer = setTimeout(onDone, 450);
+      return () => clearTimeout(doneTimer);
+    }
+    const loop = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1000, easing: Easing.linear, useNativeDriver: Platform.OS !== 'web' }));
+    loop.start();
     const t0 = Date.now(), DUR = 2600;
     const iv = setInterval(() => { const p = Math.min(100, Math.round(((Date.now() - t0) / DUR) * 100)); setPct(p); if (p >= 100) clearInterval(iv); }, 40);
     const t1 = setTimeout(() => setStep(1), 700);
     const t2 = setTimeout(() => setStep(2), 1500);
     const t3 = setTimeout(() => setStep(3), 2300);
     const tf = setTimeout(onDone, 2750);
-    return () => { clearInterval(iv); [t1, t2, t3, tf].forEach(clearTimeout); };
-  }, []);
+    return () => { loop.stop(); clearInterval(iv); [t1, t2, t3, tf].forEach(clearTimeout); };
+  }, [onDone, reduceMotion, spin]);
 
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const steps = purpose === 'read'
@@ -466,20 +534,24 @@ function BuildingScreen({ fname, purpose, topGenre, onDone }) {
 }
 
 // ── PAYWALL ─────────────────────────────────────────────────────────────────
-function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setTrial, onSubscribe, onClose }) {
+function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setTrial, reduceMotion, onSubscribe, onClose }) {
   const [showWeekly, setShowWeekly] = useState(plan === 'weekly');
   const [confirmClose, setConfirmClose] = useState(false);
   const enter = useRef(new Animated.Value(0)).current;
   const ctaPress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (reduceMotion) {
+      enter.setValue(1);
+      return;
+    }
     Animated.timing(enter, {
       toValue: 1,
       duration: 260,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  }, [enter]);
+  }, [enter, reduceMotion]);
 
   const readerFeatures = [
     `Unlimited ${topGenre} stories and 20 more genres`,
@@ -497,8 +569,9 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
   const features = purpose === 'read' ? readerFeatures : purpose === 'write' ? writerFeatures : bothFeatures;
   const yOn = plan === 'yearly';
   const wOn = plan === 'weekly';
+  const selectedProduct = yOn ? PAYWALL_PRODUCTS.yearly : PAYWALL_PRODUCTS.weekly;
   const title = purpose === 'read' ? `Your ${topGenre} shelf is ready` : purpose === 'write' ? 'Your writing room is ready' : 'Your shelf and writing room are ready';
-  const actionLead = yOn ? 'Start your 3-day free trial' : 'Start your weekly pass';
+  const actionLead = selectedProduct.actionLead;
   const subtitle = purpose === 'read' ? `${actionLead}, ${fname}. Stories to read or listen to, chosen around your taste and routine.` : purpose === 'write' ? `${actionLead}, ${fname}. Draft, rewrite, publish, and build a readership with Katha beside you.` : `${actionLead}, ${fname}. Move naturally between discovering stories and creating your own.`;
 
   const selectYearly = () => {
@@ -511,28 +584,30 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
     setShowWeekly(true);
   };
   const pressIn = () => {
+    if (reduceMotion) return;
     Animated.timing(ctaPress, { toValue: 1, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== 'web' }).start();
   };
   const pressOut = () => {
+    if (reduceMotion) return;
     Animated.timing(ctaPress, { toValue: 0, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== 'web' }).start();
   };
 
-  const cta = yOn ? 'Start my 3-day free trial' : 'Start my weekly pass';
-  const reassure = yOn ? 'No charge today. Then $49.99 per year unless canceled.' : 'Weekly plan has no free trial. Billed at $4.99 per week.';
+  const cta = selectedProduct.cta;
+  const reassure = selectedProduct.billingDisclosure;
   const headerY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
   const ctaY = enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
   const ctaScale = ctaPress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.985] });
 
   return (
     <View style={{ flex: 1 }}>
-      <Pressable onPress={() => setConfirmClose(true)} style={styles.closeBtn}><Text style={styles.closeX}>✕</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close paywall" onPress={() => setConfirmClose(true)} style={styles.closeBtn}><Text style={styles.closeX}>✕</Text></Pressable>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 10, paddingBottom: 8 }}>
         <Animated.View style={{ alignItems: 'center', opacity: enter, transform: [{ translateY: headerY }] }}>
           <View style={{ flexDirection: 'row', marginBottom: 9 }}>
             {AVATARS.map((src, i) => <Image key={i} source={src} style={[styles.proofAv, { marginLeft: i === 0 ? 0 : -11 }]} />)}
             <View style={[styles.proofMore, { marginLeft: -11 }]}><Text style={styles.proofMoreTxt}>40k+</Text></View>
           </View>
-          <Text style={{ color: C.orange, fontSize: 14, letterSpacing: 2 }}>★★★★★</Text>
+          <Text style={{ color: C.orange, fontSize: 14, letterSpacing: 0 }}>★★★★★</Text>
           <Text style={styles.proofSub}>4.9 rating, loved by 40,000+ this month</Text>
           <Text style={styles.payEyebrow}>Katha Plus</Text>
           <Text style={styles.payTitle}>{title}</Text>
@@ -540,20 +615,13 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
         </Animated.View>
         <View style={styles.planStack}>
           <PlanCard
-            title="Annual"
-            per="3 days free, then $0.96/week"
-            price="$49.99"
-            unit="per year"
+            product={PAYWALL_PRODUCTS.yearly}
             selected={yOn}
             onPress={selectYearly}
-            badge="BEST VALUE"
           />
           {showWeekly ? (
             <PlanCard
-              title="Weekly"
-              per="No free trial"
-              price="$4.99"
-              unit="per week"
+              product={PAYWALL_PRODUCTS.weekly}
               selected={wOn}
               onPress={selectWeekly}
             />
@@ -585,7 +653,8 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
       </Animated.View>
       {confirmClose && (
         <CancelTrialSheet
-          hasTrial={yOn}
+          product={selectedProduct}
+          reduceMotion={reduceMotion}
           onKeep={() => setConfirmClose(false)}
           onContinue={onClose}
         />
@@ -594,74 +663,86 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
   );
 }
 
-function PlanCard({ title, per, price, unit, selected, onPress, badge }) {
+function PlanCard({ product, selected, onPress }) {
   return (
     <Pressable onPress={onPress} style={[styles.planCard, { borderColor: selected ? C.orange : C.line, backgroundColor: selected ? C.peachSoft : C.card }]}>
       <View style={[styles.radio, { borderColor: selected ? C.orange : '#DCD0BF', backgroundColor: selected ? C.orange : 'transparent' }]}>
         {selected && <Text style={styles.radioMark}>✓</Text>}
       </View>
-      <View style={{ flex: 1 }}><Text style={styles.planTitle}>{title}</Text><Text style={styles.planPer}>{per}</Text></View>
-      <View style={{ alignItems: 'flex-end' }}><Text style={styles.planPrice}>{price}</Text><Text style={styles.planUnit}>{unit}</Text></View>
-      {badge && <View style={styles.planBadge}><Text style={styles.planBadgeTxt}>{badge}</Text></View>}
+      <View style={{ flex: 1 }}><Text style={styles.planTitle}>{product.title}</Text><Text style={styles.planPer}>{product.priceDetail}</Text></View>
+      <View style={{ alignItems: 'flex-end' }}><Text style={styles.planPrice}>{product.localizedPrice}</Text><Text style={styles.planUnit}>{product.unit}</Text></View>
+      {product.badge && <View style={styles.planBadge}><Text style={styles.planBadgeTxt}>{product.badge}</Text></View>}
     </Pressable>
   );
 }
 
-function CancelTrialSheet({ hasTrial, onKeep, onContinue }) {
+function CancelTrialSheet({ product, reduceMotion, onKeep, onContinue }) {
   const enter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (reduceMotion) {
+      enter.setValue(1);
+      return;
+    }
     Animated.timing(enter, {
       toValue: 1,
       duration: 280,
       easing: Easing.bezier(0.2, 0.8, 0.2, 1),
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  }, [enter]);
+  }, [enter, reduceMotion]);
   const backdropOpacity = enter.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] });
   const sheetY = enter.interpolate({ inputRange: [0, 1], outputRange: [330, 0] });
   const btnY = enter.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
 
-  const title = hasTrial ? 'Leave without your free trial?' : 'Leave without Plus?';
-  const body = hasTrial
-    ? "Annual includes 3 days free. You can still continue with Katha's free version."
-    : "Weekly has no free trial. You can switch back to annual for 3 days free, or continue with Katha's free version.";
-  const primary = hasTrial ? 'Keep free trial' : 'Stay on paywall';
+  const title = product.trialEligible ? 'Leave without your free trial?' : 'Leave without Plus?';
+  const body = product.trialEligible
+    ? `${product.title} includes 3 days free. You can still continue with Katha's free version.`
+    : `${product.title} has no free trial. You can switch back to annual for 3 days free, or continue with Katha's free version.`;
+  const primary = product.trialEligible ? 'Keep free trial' : 'Stay on paywall';
 
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Animated.View style={[styles.paywallBackdrop, { opacity: backdropOpacity }]} />
-      <Animated.View style={[styles.cancelSheet, { transform: [{ translateY: sheetY }] }]}>
-        <View style={styles.sheetHandle} />
-        <Text style={styles.cancelTitle}>{title}</Text>
-        <Text style={styles.cancelBody}>{body}</Text>
-        <Animated.View style={{ opacity: enter, transform: [{ translateY: btnY }] }}>
-          <Pressable onPress={onKeep} style={styles.cancelPrimary}>
-            <Text style={styles.cancelPrimaryText}>{primary}</Text>
+    <Modal transparent visible animationType="none" onRequestClose={onKeep}>
+      <View style={StyleSheet.absoluteFill}>
+        <Animated.View style={[styles.paywallBackdrop, { opacity: backdropOpacity }]} />
+        <Animated.View accessibilityViewIsModal style={[styles.cancelSheet, { transform: [{ translateY: sheetY }] }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.cancelTitle}>{title}</Text>
+          <Text style={styles.cancelBody}>{body}</Text>
+          <Animated.View style={{ opacity: enter, transform: [{ translateY: btnY }] }}>
+            <Pressable accessibilityRole="button" onPress={onKeep} style={styles.cancelPrimary}>
+              <Text style={styles.cancelPrimaryText}>{primary}</Text>
+            </Pressable>
+          </Animated.View>
+          <Pressable accessibilityRole="button" onPress={onContinue} style={styles.cancelSecondary}>
+            <Text style={styles.cancelSecondaryText}>Continue without Plus</Text>
           </Pressable>
         </Animated.View>
-        <Pressable onPress={onContinue} style={styles.cancelSecondary}>
-          <Text style={styles.cancelSecondaryText}>Continue without Plus</Text>
-        </Pressable>
-      </Animated.View>
-    </View>
+      </View>
+    </Modal>
   );
 }
 
 // ── ONE-TIME OFFER ──────────────────────────────────────────────────────────
-function OneTimeOffer({ onClaim, onClose }) {
+function OneTimeOffer({ reduceMotion, onClaim, onClose }) {
   const [left, setLeft] = useState(300);
   const enter = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const iv = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
+    if (reduceMotion) {
+      enter.setValue(1);
+      pulse.setValue(0);
+      return () => clearInterval(iv);
+    }
     Animated.timing(enter, { toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'web' }).start();
-    Animated.loop(Animated.sequence([
+    const loop = Animated.loop(Animated.sequence([
       Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
       Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
-    ])).start();
-    return () => clearInterval(iv);
-  }, []);
+    ]));
+    loop.start();
+    return () => { clearInterval(iv); loop.stop(); };
+  }, [enter, pulse, reduceMotion]);
 
   const btnScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
   const headerY = enter.interpolate({ inputRange: [0, 1], outputRange: [12, 0] });
@@ -670,47 +751,55 @@ function OneTimeOffer({ onClaim, onClose }) {
 
   return (
     <View style={styles.oto}>
-      <Pressable onPress={onClose} style={styles.otoClose}><Text style={styles.closeX}>✕</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close one-time offer" onPress={onClose} style={styles.otoClose}><Text style={styles.closeX}>✕</Text></Pressable>
       <Animated.View style={{ opacity: enter, transform: [{ translateY: headerY }] }}>
         <Text style={styles.otoH1}>One-time offer</Text>
-        <Text style={styles.otoBig}>Save 70% today</Text>
+        <Text style={styles.otoBig}>{ONE_TIME_OFFER_PRODUCT.headline}</Text>
         <Text style={styles.otoSub}>Try Katha Plus for less than the price of a bedtime book.</Text>
       </Animated.View>
       <Animated.View style={[styles.otoCard, { opacity: enter, transform: [{ scale: cardScale }] }]}>
-        <View style={styles.otoRibbon}><Text style={styles.otoRibbonText}>70% off</Text></View>
+        <View style={styles.otoRibbon}><Text style={styles.otoRibbonText}>{ONE_TIME_OFFER_PRODUCT.ribbon}</Text></View>
         <View style={styles.bookStack} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <View style={[styles.bookLayer, styles.bookBack, { backgroundColor: '#2E5D57', transform: [{ rotate: '-7deg' }] }]} />
           <View style={[styles.bookLayer, styles.bookMid, { backgroundColor: '#B15A18', transform: [{ rotate: '4deg' }] }]} />
           <View style={[styles.bookLayer, styles.bookFront, { backgroundColor: C.orange }]} />
         </View>
-        <Text style={styles.otoPlan}>Annual Plus</Text>
-        <Text style={styles.otoPriceLine}>$17.99/year</Text>
-        <Text style={styles.otoFine}>That is $1.50/month. Renews yearly unless canceled.</Text>
+        <Text style={styles.otoPlan}>{ONE_TIME_OFFER_PRODUCT.title}</Text>
+        <Text style={styles.otoPriceLine}>{ONE_TIME_OFFER_PRODUCT.localizedPrice}/{ONE_TIME_OFFER_PRODUCT.unit.replace('per ', '')}</Text>
+        <Text style={styles.otoFine}>That is {ONE_TIME_OFFER_PRODUCT.monthlyEquivalent}. {ONE_TIME_OFFER_PRODUCT.billingDisclosure}</Text>
         <View style={styles.otoTimer}><View style={styles.timerDot} /><Text style={styles.otoTimerTxt}>{fmtTime(left)} left</Text></View>
       </Animated.View>
       <View style={{ flex: 1 }} />
       <Pressable onPress={onClaim}>
         <Animated.View style={{ opacity: enter, transform: [{ translateY: ctaY }, { scale: btnScale }] }}>
           <LinearGradient colors={[C.orangeHi, C.orange]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.otoBtn}>
-            <Text style={styles.otoBtnTxt}>Claim one-time offer</Text>
+            <Text style={styles.otoBtnTxt}>{ONE_TIME_OFFER_PRODUCT.cta}</Text>
           </LinearGradient>
         </Animated.View>
       </Pressable>
       <Pressable onPress={onClose} style={styles.otoFreeBtn}>
         <Text style={styles.otoFreeText}>Continue with free version</Text>
       </Pressable>
-      <Text style={styles.otoLegal}>Renews yearly at $17.99 unless canceled. Terms apply.</Text>
+      <Text style={styles.otoLegal}>{ONE_TIME_OFFER_PRODUCT.billingDisclosure} Terms apply.</Text>
     </View>
   );
 }
 
 // ── SUCCESS ─────────────────────────────────────────────────────────────────
-function SuccessScreen({ fname, purpose, onStart }) {
+function SuccessScreen({ fname, purpose, reduceMotion, onStart }) {
   const p = useRef(new Animated.Value(0)).current;
-  useEffect(() => { Animated.loop(Animated.sequence([
-    Animated.timing(p, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
-    Animated.timing(p, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
-  ])).start(); }, []);
+  useEffect(() => {
+    if (reduceMotion) {
+      p.setValue(0);
+      return undefined;
+    }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(p, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(p, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== 'web' }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [p, reduceMotion]);
   const scale = p.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
   const cta = purpose === 'read' ? 'Start reading' : purpose === 'write' ? 'Start writing' : 'Open Katha';
   const sub = purpose === 'read' ? 'Your shelf is stocked and your first chapter is waiting. Welcome to Katha.' : purpose === 'write' ? 'Your writing room is ready and your first draft is waiting. Welcome to Katha.' : 'Your shelf and writing room are ready. Welcome to Katha.';
@@ -780,7 +869,7 @@ const styles = StyleSheet.create({
   reviewAvInit: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   reviewInitText: { color: '#fff', fontFamily: FF.h8, fontSize: 11 },
   reviewName: { fontFamily: FF.h8, fontSize: 12, color: C.ink },
-  reviewStars: { color: C.orange, fontSize: 9, letterSpacing: 1 },
+  reviewStars: { color: C.orange, fontSize: 9, letterSpacing: 0 },
   reviewText: { fontFamily: FF.h4, fontWeight: '500', fontSize: 12.5, lineHeight: 17, color: C.inkBody2 },
   buildWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 34 },
   ringBase: { position: 'absolute', width: 118, height: 118, borderRadius: 59, borderWidth: 5, borderColor: '#EEE3D2' },
@@ -809,7 +898,7 @@ const styles = StyleSheet.create({
   planPrice: { fontFamily: FF.h8, fontSize: 16, color: C.ink },
   planUnit: { fontFamily: FF.h4, fontSize: 12, color: C.muted2 },
   planBadge: { position: 'absolute', top: -11, left: 18, backgroundColor: C.ink, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20 },
-  planBadgeTxt: { color: '#fff', fontFamily: FF.h8, fontSize: 10.5, letterSpacing: 0.4 },
+  planBadgeTxt: { color: '#fff', fontFamily: FF.h8, fontSize: 10.5, letterSpacing: 0 },
   payFoot: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20 },
   payCta: { height: 60, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
     ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.7, shadowRadius: 17, shadowOffset: { width: 0, height: 12 } }, android: { elevation: 8 } }) },
