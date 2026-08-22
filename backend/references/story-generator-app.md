@@ -195,13 +195,15 @@ User purchases credits (Adapty)
     → App polls balance or gets push update
 
 User taps "Generate"
-    → App calls /generate-story or /continue-story with a stable request_id
+    → App calls /generate-story with a stable request_id
     → Edge Function authenticates and looks up that request_id
     → Existing request: reuses its operation without another deduction
     → New request: reserves the operation and deducts 1 credit atomically
     → Edge Function runs the generation pipeline
     → Returns story text
 ```
+
+The current Expo client does not call `/continue-story`; that client flow is planned. When added, it must use the same authenticated, stable-`request_id`, replay-safe deduction contract.
 
 ### Pricing Tiers
 
