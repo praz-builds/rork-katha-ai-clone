@@ -1,7 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { useEffect, useMemo, useState } from "react";
-import { initSentry } from "@/lib/analytics";
+import { initSentry, initPostHog } from "@/lib/analytics";
 import { initAdapty } from "@/lib/adapty";
 import { setupAndroidChannel } from "@/lib/notifications";
 import {
@@ -72,6 +72,7 @@ export default function App() {
 
   useEffect(() => {
     initSentry();
+    initPostHog();
     initAdapty();
     setupAndroidChannel();
   }, []);

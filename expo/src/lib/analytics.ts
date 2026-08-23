@@ -11,7 +11,7 @@ export function initSentry() {
   Sentry.init({
     dsn,
     tracesSampleRate: 0.2,
-    environment: extra.eas?.projectId ? 'production' : 'development',
+    environment: (extra.APP_ENV as string) || 'development',
     enableAutoSessionTracking: true,
   });
 }
