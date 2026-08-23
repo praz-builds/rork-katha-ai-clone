@@ -218,10 +218,12 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ### Feed Endpoints
 
-- [ ] `GET /feed/for-you` — personalized:
-  - Score: genre affinity (from read history) + followed author boost + theme overlap + time decay
-  - Exclude: blocked users, drafts, own stories
-  - Paginated (cursor-based)
+- [x] `GET /feed` — personalized (deployed in PR #8):
+  - New users: curated stories by like count, backfill with public stories
+  - Returning users: scored feed (genre affinity +3, followed author +5, trending +2, recency +1, engagement +1)
+  - Includes `continue_reading` array
+  - Paginated (offset-based)
+- [ ] `GET /feed/for-you` — enhanced personalized (future iteration):
 - [ ] `GET /feed/trending` — weighted engagement:
   - Score: `0.4×likes + 0.3×comments + 0.2×shares + 0.1×(bookmarks/reads)`
   - 30-day window, 7-day half-life time decay
@@ -361,6 +363,14 @@ Not in scope for initial launch, but documented for future:
 - [ ] Social verification (verified share-to-social for credits)
 - [ ] Community features (story collections, reading lists)
 - [ ] Full offline sync (not just downloads — bidirectional)
-- [ ] PostHog analytics integration
+- [x] PostHog analytics integration (SDK installed, `src/lib/analytics.ts`)
+- [x] Sentry crash reporting (SDK installed, `src/lib/analytics.ts`)
+- [x] Firebase Analytics + Google Ads attribution (`src/lib/firebase-analytics.ts`)
+- [x] i18n infrastructure: EN/ES/PT translations (`src/i18n/`)
+- [x] EAS Build configuration (`eas.json`)
+- [x] Adapty SDK v4 (`src/lib/adapty.ts`)
+- [x] expo-notifications + push token (`src/lib/notifications.ts`)
+- [x] iOS ATT tracking transparency (`src/lib/tracking-transparency.ts`)
+- [x] OTA updates via expo-updates
 - [ ] A/B test paywall variants via Adapty
 - [ ] Moderation pipeline (flagged content review queue)

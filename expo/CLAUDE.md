@@ -49,6 +49,18 @@ After onboarding or paywall changes:
 - The Reader includes a Substack-style engagement bar, author card, and comments preview.
 - The Library has 4 segments: Saved, History, My Stories, Comments.
 
+## Production infrastructure (2026-08-23)
+
+- All SDK initialization runs in App.tsx useEffect: `initSentry()`, `initPostHog()`, `initAdapty()`, `setupAndroidChannel()`.
+- API keys are read from `Constants.expoConfig.extra` (configured in app.json, populated via env vars or EAS secrets).
+- `src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
+- `src/lib/adapty.ts`: Adapty v4. Use `getPaywallProducts()` and `purchaseProduct()`.
+- `src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.
+- `src/lib/firebase-analytics.ts`: Firebase Analytics with safe dynamic imports. Use `AppEvents.*` helpers.
+- `src/lib/tracking-transparency.ts`: iOS ATT. Call `requestTrackingPermission()` before analytics.
+- `src/i18n/`: i18next with EN/ES/PT. Not yet wired to components (follow-up task).
+- All SDKs gracefully no-op when API keys are empty.
+
 ## Session handoff
 
 - Read `BUILD_LOG.md` before starting new feature work.
