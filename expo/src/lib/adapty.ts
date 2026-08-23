@@ -19,6 +19,7 @@ class AdaptyService {
   private static _instance: AdaptyService;
   private _profile: AdaptyProfile | null = null;
   private _listeners: ProfileListener[] = [];
+  private _profileUnsub: { remove: () => void } | null = null;
   private _ready = false;
 
   static get shared(): AdaptyService {
@@ -35,8 +36,9 @@ class AdaptyService {
       await adapty.activate(ADAPTY_PUBLIC_KEY, {
         customerUserId: customerUserId ?? undefined,
         logLevel: __DEV__ ? 'verbose' : 'error',
+        __ignoreActivationOnFastRefresh: __DEV__,
       });
-      adapty.addEventListener('onLatestProfileLoad', (profile) => {
+      this._profileUnsub = adapty.addEventListener('onLatestProfileLoad', (profile) => {
         this._profile = profile;
         this._listeners.forEach((l) => l(profile));
       });
@@ -151,6 +153,13 @@ class AdaptyService {
     } catch (error) {
       console.warn('Adapty logout failed:', error);
     }
+  }
+
+  /** Remove event listener. Call on unmount if needed. */
+  dispose(): void {
+    this._profileUnsub?.remove();
+    this._profileUnsub = null;
+    this._listeners = [];
   }
 }
 
