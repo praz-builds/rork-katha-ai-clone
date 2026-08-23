@@ -52,7 +52,8 @@ After onboarding or paywall changes:
 ## Production infrastructure (2026-08-23)
 
 - All SDK initialization runs in App.tsx useEffect: `initSentry()`, `initPostHog()`, `initAdapty()`, `setupAndroidChannel()`.
-- API keys are read from `Constants.expoConfig.extra` (configured in app.json, populated via env vars or EAS secrets).
+- API keys are read from `Constants.expoConfig.extra` (configured in app.json, populated via env vars or EAS secrets). Convert to `app.config.ts` to map `EXPO_PUBLIC_*` env vars before production.
+- Firebase requires `google-services.json` in `expo/` and `@react-native-firebase/app` in app.json plugins with `android.googleServicesFile` path set.
 - `src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
 - `src/lib/adapty.ts`: Adapty v4. Use `getPaywallProducts()` and `purchaseProduct()`.
 - `src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.

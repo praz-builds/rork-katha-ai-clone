@@ -24,9 +24,9 @@
 1. `EXPO_PUBLIC_SENTRY_DSN` -- create project at sentry.io
 2. `EXPO_PUBLIC_POSTHOG_API_KEY` -- create project at posthog.com
 3. `EXPO_PUBLIC_ADAPTY_API_KEY` -- create app at adapty.io
-4. `google-services.json` -- create Firebase project
-5. Run `eas init` to configure EAS project ID
-6. Run `eas build --profile development --platform android` for first dev build
+4. `google-services.json` -- create Firebase project, place in `expo/` root, add `@react-native-firebase/app` to app.json plugins and set `android.googleServicesFile` path
+5. Run `cd expo && eas init` to configure EAS project ID
+6. Run `cd expo && eas build --profile development --platform android` for first dev build
 
 ### Verification
 
