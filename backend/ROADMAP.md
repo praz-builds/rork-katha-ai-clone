@@ -388,24 +388,25 @@ Wire `trackEvent()` calls into every screen. No dashboard setup needed yet.
 Create these in the PostHog dashboard after events are flowing.
 
 **Dashboard 1 -- Onboarding Health:**
-- Funnel: started -> purpose -> genres -> notification -> paywall -> completed
+- Funnel: `onboarding_started` -> `onboarding_purpose_selected` -> `onboarding_genres_selected` -> `onboarding_notification_allowed` -> `paywall_shown` -> `onboarding_completed`
 - Conversion per step, drop-off by purpose, time to complete
 
 **Dashboard 2 -- Creation Pipeline:**
-- Funnel: create_started -> generate -> completed -> editor_action -> publish
+- Funnel: `create_started` -> `create_generate_tapped` -> `create_generation_completed` -> `editor_action_used` -> `editor_publish_confirmed`
 - AI edit action breakdown, generation failure rate, edits per story
 
 **Dashboard 3 -- Engagement and Retention:**
-- DAU/WAU/MAU, stories read/created per user, D1/D7/D30 retention cohorts
+- DAU/WAU/MAU, `story_opened` and `editor_publish_confirmed` per user, D1/D7/D30 retention cohorts
 
 **Dashboard 4 -- Revenue:**
-- Paywall conversion by variant, trial -> paid conversion, revenue per user
+- `paywall_subscribe_tapped` conversion by variant, trial to paid conversion, revenue per user
+- Track `subscription_started` (from Adapty webhook event forwarded to PostHog) for accurate revenue
 
 ### Phase 3: Feature Flags and A/B Tests
 
 | Experiment | Flag | Variants | Goal |
 |---|---|---|---|
-| Paywall pricing strategy | `paywall-price-test` | $49, $59, $69 | subscribe rate |
+| Paywall entry timing | `paywall-entry-test` | after step 8 vs after step 14 | `paywall_subscribe_tapped` rate |
 | Welcome credits | `welcome-credits` | 3, 5, 10 | 7-day retention |
 | Home CTA copy | `home-primary-cta` | "Create a story" vs "Start writing" | create_started |
 | Onboarding length | `onboarding-steps` | full (14) vs short (8) | completion rate |
@@ -414,7 +415,9 @@ Create these in the PostHog dashboard after events are flowing.
 Remote config via JSON payloads (no Adapty overlap):
 - [ ] Welcome credit count, max characters, feature gates, home layout
 
-Price testing goes through Adapty (it owns store products). Everything else through PostHog.
+Price testing goes through Adapty (it owns store products and localized pricing). PostHog flags control app behavior and non-purchase experiments only.
+
+> All file paths below are relative to `expo/`.
 
 ### Phase 4: Surveys
 
