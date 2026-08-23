@@ -354,7 +354,94 @@ Wire into existing endpoints:
 
 ---
 
-## Post-Launch (Phase I — Growth)
+## PostHog Analytics Plan
+
+> PostHog owns understanding and experimentation. Adapty owns money and subscriptions.
+> PostHog decides the journey; Adapty decides the paywall. Both measure together.
+
+### Phase 1: Event Instrumentation
+
+Wire `trackEvent()` calls into every screen. No dashboard setup needed yet.
+
+**Onboarding funnel:**
+- [ ] `onboarding_started`, `onboarding_purpose_selected` (purpose), `onboarding_name_entered`
+- [ ] `onboarding_genres_selected` (genres, count), `onboarding_refine_answered`, `onboarding_moment_answered`
+- [ ] `onboarding_notification_shown`, `onboarding_notification_allowed` (granted)
+- [ ] `paywall_shown` (placement, plan), `paywall_plan_changed`, `paywall_subscribe_tapped` (plan, trial)
+- [ ] `paywall_dismissed`, `onboarding_completed` (purpose, subscribed)
+
+**Create studio funnel:**
+- [ ] `create_started`, `create_genre_selected`, `create_seed_entered`, `create_character_added`
+- [ ] `create_generate_tapped`, `create_generation_completed` (duration_ms, word_count), `create_generation_failed`
+- [ ] `editor_paragraph_selected`, `editor_action_used` (action), `editor_undo_tapped`
+- [ ] `editor_publish_tapped`, `editor_publish_confirmed`, `editor_draft_discarded`
+
+**Reading and engagement:**
+- [ ] `story_opened` (story_id, genre, source), `story_read_completed` (duration_seconds)
+- [ ] `story_liked`, `story_bookmarked`, `story_shared`, `audio_play_tapped`, `author_followed`
+
+**Navigation:**
+- [ ] `tab_switched` (tab), `profile_opened`, `search_performed` (query, results_count)
+
+### Phase 2: Dashboards (PostHog UI, no code)
+
+Create these in the PostHog dashboard after events are flowing.
+
+**Dashboard 1 -- Onboarding Health:**
+- Funnel: `onboarding_started` -> `onboarding_purpose_selected` -> `onboarding_genres_selected` -> `onboarding_notification_allowed` -> `paywall_shown` -> `onboarding_completed`
+- Conversion per step, drop-off by purpose, time to complete
+
+**Dashboard 2 -- Creation Pipeline:**
+- Funnel: `create_started` -> `create_generate_tapped` -> `create_generation_completed` -> `editor_action_used` -> `editor_publish_confirmed`
+- AI edit action breakdown, generation failure rate, edits per story
+
+**Dashboard 3 -- Engagement and Retention:**
+- DAU/WAU/MAU, `story_opened` and `editor_publish_confirmed` per user, D1/D7/D30 retention cohorts
+
+**Dashboard 4 -- Revenue:**
+- `paywall_subscribe_tapped` conversion by variant, trial to paid conversion, revenue per user
+- Track `subscription_started` (from Adapty webhook event forwarded to PostHog) for accurate revenue
+
+### Phase 3: Feature Flags and A/B Tests
+
+| Experiment | Flag | Variants | Goal |
+|---|---|---|---|
+| Paywall entry timing | `paywall-entry-test` | after step 8 vs after step 14 | `paywall_subscribe_tapped` rate |
+| Welcome credits | `welcome-credits` | 3, 5, 10 | 7-day retention |
+| Home CTA copy | `home-primary-cta` | "Create a story" vs "Start writing" | create_started |
+| Onboarding length | `onboarding-steps` | full (14) vs short (8) | completion rate |
+| Audio gating | `audio-free-tier` | gated vs free | premium conversion |
+
+Remote config via JSON payloads (no Adapty overlap):
+- [ ] Welcome credit count, max characters, feature gates, home layout
+
+Price testing goes through Adapty (it owns store products and localized pricing). PostHog flags control app behavior and non-purchase experiments only.
+
+> All file paths below are relative to `expo/`.
+
+### Phase 4: Surveys
+
+- [ ] Post-first-read NPS (trigger: first `story_read_completed`)
+- [ ] Post-first-create feedback (trigger: first `editor_publish_confirmed`)
+- [ ] Churn prevention survey (trigger: 7 days inactive)
+- [ ] Setup: wrap app in `PostHogSurveyProvider`
+
+### PostHog vs Adapty Boundaries
+
+| Concern | Owner |
+|---|---|
+| Onboarding analytics | PostHog only (Adapty has no visibility) |
+| Paywall layout A/B test | Adapty Flow Builder (owns receipts) |
+| Paywall strategy A/B test (when/where to show) | PostHog experiment |
+| Price testing | Adapty (only it can serve localized prices) |
+| App remote config | PostHog feature flags (JSON payloads) |
+| Subscription state | Adapty (`isPremium` is source of truth) |
+| User surveys | PostHog only |
+| Revenue dashboards | Both (Adapty for exact revenue, PostHog for revenue x behavior) |
+
+---
+
+## Post-Launch (Phase I -- Growth)
 
 Not in scope for initial launch, but documented for future:
 
@@ -362,15 +449,15 @@ Not in scope for initial launch, but documented for future:
 - [ ] Hindi UI translation (localization files exist, values empty)
 - [ ] Social verification (verified share-to-social for credits)
 - [ ] Community features (story collections, reading lists)
-- [ ] Full offline sync (not just downloads — bidirectional)
-- [x] PostHog analytics integration (SDK installed, `src/lib/analytics.ts`)
+- [ ] Full offline sync (not just downloads -- bidirectional)
+- [x] PostHog analytics integration (SDK installed, live keys wired)
 - [x] Sentry crash reporting (SDK installed, `src/lib/analytics.ts`)
 - [x] Firebase Analytics + Google Ads attribution (`src/lib/firebase-analytics.ts`)
 - [x] i18n infrastructure: EN/ES/PT translations (`src/i18n/`)
 - [x] EAS Build configuration (`eas.json`)
-- [x] Adapty SDK v4 (`src/lib/adapty.ts`)
+- [x] Adapty SDK v4 with live keys (`src/lib/adapty.ts`)
 - [x] expo-notifications + push token (`src/lib/notifications.ts`)
 - [x] iOS ATT tracking transparency (`src/lib/tracking-transparency.ts`)
 - [x] OTA updates via expo-updates
-- [ ] A/B test paywall variants via Adapty
+- [ ] A/B test paywall variants via Adapty Flow Builder
 - [ ] Moderation pipeline (flagged content review queue)
