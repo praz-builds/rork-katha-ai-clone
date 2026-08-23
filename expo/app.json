@@ -53,8 +53,6 @@
       "supabaseUrl": "https://iafeuxgoiknncgyjmugd.supabase.co",
       "supabaseAnonKey": "",
       "sentryDsn": "",
-      "posthogApiKey": "",
-      "posthogHost": "https://us.i.posthog.com",
       "eas": {
         "projectId": ""
       }
