@@ -9,7 +9,7 @@
   "tabs": {
     "home": "Inicio",
     "library": "Biblioteca",
-    "createStory": "Criar historia"
+    "createStory": "Criar hist\u00f3ria"
   },
   "home": {
     "greeting": {
@@ -18,17 +18,17 @@
       "evening": "Boa noite"
     },
     "title": "Historias para voce",
-    "searchPlaceholder": "Buscar historias, humores, autores",
+    "searchPlaceholder": "Buscar hist\u00f3rias, humores, autores",
     "allGenres": "Todos",
     "writeCTA": {
-      "title": "Comece sua primeira historia",
+      "title": "Comece sua primeira hist\u00f3ria",
       "subtitle": "Genero, personagens, sua ideia. Katha da vida a ela",
-      "button": "Criar uma historia"
+      "button": "Criar uma hist\u00f3ria"
     },
     "orPickOne": "Ou escolha uma para ler",
     "continueReading": "Continuar lendo",
-    "readProgress": "40% lido - O capitulo 2 espera",
-    "writeAnother": "Escreva outra historia",
+    "readProgress": "40% lido - O cap\u00edtulo 2 espera",
+    "writeAnother": "Escreva outra hist\u00f3ria",
     "trending": "Em alta agora",
     "seeAll": "Ver tudo",
     "forYou": "Para voce",
@@ -38,26 +38,26 @@
     "title": "Sua colecao",
     "segments": {
       "saved": "Salvos",
-      "history": "Historico",
-      "myStories": "Minhas historias",
+      "history": "Hist\u00f3rico",
+      "myStories": "Minhas hist\u00f3rias",
       "comments": "Comentarios"
     },
     "empty": {
-      "saved": "Salve as historias que voce ama",
-      "history": "As historias que voce ler vao aparecer aqui",
-      "myStories": "Nenhuma historia ainda.",
+      "saved": "Salve as hist\u00f3rias que voce ama",
+      "history": "As hist\u00f3rias que voce ler vao aparecer aqui",
+      "myStories": "Nenhuma hist\u00f3ria ainda.",
       "myStoriesAction": "Crie a sua primeira!",
-      "comments": "Seus comentarios em historias vao aparecer aqui"
+      "comments": "Seus comentarios em hist\u00f3rias vao aparecer aqui"
     }
   },
   "profile": {
     "title": "Perfil",
     "editProfile": "Editar perfil",
     "seePlus": "Ver Plus",
-    "creditsAvailable": "{{count}} disponiveis",
+    "creditsAvailable": "{{count}} dispon\u00edveis",
     "settings": {
       "notifications": "Notificacoes",
-      "notificationsDesc": "Alertas de capitulos e sequencias",
+      "notificationsDesc": "Alertas de cap\u00edtulos e sequencias",
       "readingPrefs": "Preferencias de leitura",
       "readingPrefsDesc": "Tema, tamanho da fonte, idioma",
       "kathaPlus": "Katha Plus",
@@ -78,31 +78,31 @@
     "viewAllComments": "Ver todos os comentarios"
   },
   "credits": {
-    "title": "{{count}} creditos disponiveis",
-    "heroTitle": "1 credito cria 1 historia ou capitulo",
+    "title": "{{count}} cr\u00e9ditos dispon\u00edveis",
+    "heroTitle": "1 cr\u00e9dito cria 1 hist\u00f3ria ou cap\u00edtulo",
     "heroDescription": "Compras, recompensas e assinaturas serao sincronizadas com Supabase e Adapty apos a fase de dev-client nativo.",
-    "history": "Historico"
+    "history": "Hist\u00f3rico"
   },
   "create": {
     "eyebrow": "Criar",
-    "title": "De forma a uma nova historia",
+    "title": "De forma a uma nova hist\u00f3ria",
     "genre": "Genero",
-    "storySeed": "Semente da historia",
+    "storySeed": "Semente da hist\u00f3ria",
     "seedPlaceholder": "Um faroleiro recebe uma carta do futuro...",
     "characters": "Personagens",
     "addCharacter": "+ Adicionar personagem",
     "namePlaceholder": "Nome",
-    "traitsPlaceholder": "Tracos, desejo ou segredo",
-    "hero": "Heroi",
+    "traitsPlaceholder": "Tra\u00e7os, desejo ou segredo",
+    "hero": "Her\u00f3i",
     "language": "Idioma",
-    "generate": "Gerar rascunho — 1 credito",
+    "generate": "Gerar rascunho (1 cr\u00e9dito)",
     "generating": "Gerando...",
-    "seedHint": "Escreva pelo menos 4 caracteres na semente da sua historia",
-    "creditsNeeded": "Voce precisa de creditos para gerar uma historia",
-    "addSeed": "Adicione uma semente de historia",
+    "seedHint": "Escreva pelo menos 4 caracteres na semente da sua hist\u00f3ria",
+    "creditsNeeded": "Voc\u00ea precisa de cr\u00e9ditos para gerar uma hist\u00f3ria",
+    "addSeed": "Adicione uma semente de hist\u00f3ria",
     "creditsNeededTitle": "Creditos necessarios",
     "seedRequired": "De ao Katha uma ideia clara para dar forma.",
-    "creditRequired": "Voce precisa de 1 credito para gerar."
+    "creditRequired": "Voc\u00ea precisa de 1 cr\u00e9dito para gerar."
   },
   "editor": {
     "title": "Editar rascunho",
@@ -124,16 +124,16 @@
     "deleteParagraphTitle": "Excluir paragrafo?",
     "deleteParagraphMessage": "Este paragrafo sera removido do seu rascunho.",
     "publishTitle": "Pronto para publicar?",
-    "publishMessage": "Sua historia ficara visivel para todos os leitores. Uma capa sera gerada automaticamente.",
-    "publishingTitle": "Publicando sua historia...",
+    "publishMessage": "Sua hist\u00f3ria ficara visivel para todos os leitores. Uma capa sera gerada automaticamente.",
+    "publishingTitle": "Publicando sua hist\u00f3ria...",
     "publishingSubtitle": "Gerando imagem de capa",
     "paragraphUpdated": "Paragrafo atualizado",
     "undo": "Desfazer",
     "editFailed": "Erro ao editar",
     "editFailedMessage": "Nao foi possivel aplicar a edicao. Tente novamente.",
-    "couldNotCreate": "Nao foi possivel criar a historia",
+    "couldNotCreate": "Nao foi possivel criar a hist\u00f3ria",
     "tryAgain": "Tente novamente.",
-    "noChapter": "A geracao nao retornou nenhum capitulo",
+    "noChapter": "A geracao nao retornou nenhum cap\u00edtulo",
     "customPromptPlaceholder": "ex. tornar o personagem mais velho, adicionar mais dialogo...",
     "apply": "Aplicar"
   },
@@ -143,7 +143,7 @@
     "contemporary": "Contemporaneo",
     "drama": "Drama",
     "fantasy": "Fantasia",
-    "historical": "Historico",
+    "historical": "Hist\u00f3rico",
     "horror": "Terror",
     "kids": "Infantil",
     "lgbtq": "LGBTQ+",

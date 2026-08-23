@@ -27,7 +27,7 @@
     },
     "orPickOne": "O elige una para leer",
     "continueReading": "Seguir leyendo",
-    "readProgress": "40% leido - El capitulo 2 espera",
+    "readProgress": "40% leido - El cap\u00edtulo 2 espera",
     "writeAnother": "Escribe otra historia",
     "trending": "Tendencia ahora",
     "seeAll": "Ver todo",
@@ -57,7 +57,7 @@
     "creditsAvailable": "{{count}} disponibles",
     "settings": {
       "notifications": "Notificaciones",
-      "notificationsDesc": "Alertas de capitulos y rachas",
+      "notificationsDesc": "Alertas de cap\u00edtulos y rachas",
       "readingPrefs": "Preferencias de lectura",
       "readingPrefsDesc": "Tema, tamano de letra, idioma",
       "kathaPlus": "Katha Plus",
@@ -78,8 +78,8 @@
     "viewAllComments": "Ver todos los comentarios"
   },
   "credits": {
-    "title": "{{count}} creditos disponibles",
-    "heroTitle": "1 credito crea 1 historia o capitulo",
+    "title": "{{count}} cr\u00e9ditos disponibles",
+    "heroTitle": "1 cr\u00e9dito crea 1 historia o cap\u00edtulo",
     "heroDescription": "Las compras, recompensas y suscripciones se sincronizaran con Supabase y Adapty despues de la fase de dev-client nativo.",
     "history": "Historial"
   },
@@ -93,16 +93,16 @@
     "addCharacter": "+ Agregar personaje",
     "namePlaceholder": "Nombre",
     "traitsPlaceholder": "Rasgos, deseo o secreto",
-    "hero": "Heroe",
+    "hero": "H\u00e9roe",
     "language": "Idioma",
-    "generate": "Generar borrador — 1 credito",
+    "generate": "Generar borrador (1 cr\u00e9dito)",
     "generating": "Generando...",
     "seedHint": "Escribe al menos 4 caracteres en la semilla de tu historia",
-    "creditsNeeded": "Necesitas creditos para generar una historia",
+    "creditsNeeded": "Necesitas cr\u00e9ditos para generar una historia",
     "addSeed": "Agrega una semilla de historia",
-    "creditsNeededTitle": "Se necesitan creditos",
+    "creditsNeededTitle": "Se necesitan cr\u00e9ditos",
     "seedRequired": "Dale a Katha una idea clara para dar forma.",
-    "creditRequired": "Necesitas 1 credito para generar."
+    "creditRequired": "Necesitas 1 cr\u00e9dito para generar."
   },
   "editor": {
     "title": "Editar borrador",
@@ -133,7 +133,7 @@
     "editFailedMessage": "No se pudo aplicar la edicion. Intentalo de nuevo.",
     "couldNotCreate": "No se pudo crear la historia",
     "tryAgain": "Intentalo de nuevo.",
-    "noChapter": "La generacion no devolvio ningun capitulo",
+    "noChapter": "La generacion no devolvio ningun cap\u00edtulo",
     "customPromptPlaceholder": "ej. hacer al personaje mayor, agregar mas dialogo...",
     "apply": "Aplicar"
   },
@@ -143,7 +143,7 @@
     "contemporary": "Contemporaneo",
     "drama": "Drama",
     "fantasy": "Fantasia",
-    "historical": "Historico",
+    "historical": "Hist\u00f3rico",
     "horror": "Terror",
     "kids": "Infantil",
     "lgbtq": "LGBTQ+",
