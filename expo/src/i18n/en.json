@@ -1,0 +1,167 @@
+{
+  "common": {
+    "back": "Back",
+    "comingSoon": "Coming soon",
+    "comingSoonMessage": "This feature will be available soon.",
+    "credits": "Credits",
+    "cancel": "Cancel"
+  },
+  "tabs": {
+    "home": "Home",
+    "library": "Library",
+    "createStory": "Create story"
+  },
+  "home": {
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    },
+    "title": "Stories for you",
+    "searchPlaceholder": "Search stories, moods, authors",
+    "allGenres": "All",
+    "writeCTA": {
+      "title": "Start your first story",
+      "subtitle": "Genre, characters, your idea. Katha brings it to life",
+      "button": "Create a story"
+    },
+    "orPickOne": "Or pick one to read",
+    "continueReading": "Continue reading",
+    "readProgress": "40% read - Chapter 2 waits",
+    "writeAnother": "Write another story",
+    "trending": "Trending now",
+    "seeAll": "See all",
+    "forYou": "For you",
+    "reads": "{{count}} reads"
+  },
+  "library": {
+    "title": "Your collection",
+    "segments": {
+      "saved": "Saved",
+      "history": "History",
+      "myStories": "My Stories",
+      "comments": "Comments"
+    },
+    "empty": {
+      "saved": "Bookmark stories you love",
+      "history": "Stories you read will appear here",
+      "myStories": "No stories yet.",
+      "myStoriesAction": "Create your first!",
+      "comments": "Your comments on stories will appear here"
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "editProfile": "Edit Profile",
+    "seePlus": "See Plus",
+    "creditsAvailable": "{{count}} available",
+    "settings": {
+      "notifications": "Notifications",
+      "notificationsDesc": "Chapter alerts and streak nudges",
+      "readingPrefs": "Reading preferences",
+      "readingPrefsDesc": "Theme, font size, language",
+      "kathaPlus": "Katha Plus",
+      "kathaPlusDesc": "Subscription, voices, ad-free",
+      "parentalControls": "Parental controls",
+      "parentalControlsDesc": "Kids mode and PIN gate",
+      "feedback": "Feedback",
+      "feedbackDesc": "Comments, rating, support"
+    },
+    "legal": "Privacy Policy - Terms of Service - v{{version}}"
+  },
+  "reader": {
+    "narration": "Narration",
+    "save": "Save",
+    "share": "Share",
+    "follow": "Follow",
+    "comments": "Comments ({{count}})",
+    "viewAllComments": "View all comments"
+  },
+  "credits": {
+    "title": "{{count}} credits available",
+    "heroTitle": "1 credit creates 1 story or chapter",
+    "heroDescription": "Purchases, rewards, and subscriptions will sync through Supabase and Adapty after the native dev-client phase.",
+    "history": "History"
+  },
+  "create": {
+    "eyebrow": "Create",
+    "title": "Shape a new story",
+    "genre": "Genre",
+    "storySeed": "Story seed",
+    "seedPlaceholder": "A lighthouse keeper receives a letter from the future...",
+    "characters": "Characters",
+    "addCharacter": "+ Add character",
+    "namePlaceholder": "Name",
+    "traitsPlaceholder": "Traits, desire, or secret",
+    "hero": "Hero",
+    "language": "Language",
+    "generate": "Generate Draft — 1 credit",
+    "generating": "Generating...",
+    "seedHint": "Write at least 4 characters in your story seed",
+    "creditsNeeded": "You need credits to generate a story",
+    "addSeed": "Add a story seed",
+    "creditsNeededTitle": "Credits needed",
+    "seedRequired": "Give Katha one clear idea to shape.",
+    "creditRequired": "You need 1 credit to generate."
+  },
+  "editor": {
+    "title": "Edit Draft",
+    "publish": "Publish",
+    "rewrite": "Rewrite",
+    "expand": "Expand",
+    "shorten": "Shorten",
+    "changeTone": "Change tone",
+    "edit": "Edit",
+    "delete": "Delete",
+    "custom": "Custom",
+    "addParagraph": "Add paragraph",
+    "words": "{{count}} words",
+    "readTime": "{{count}} min read",
+    "discardTitle": "Discard draft?",
+    "discardMessage": "Your draft and all edits will be lost.",
+    "keepEditing": "Keep editing",
+    "discard": "Discard",
+    "deleteParagraphTitle": "Delete paragraph?",
+    "deleteParagraphMessage": "This paragraph will be removed from your draft.",
+    "publishTitle": "Ready to publish?",
+    "publishMessage": "Your story will be visible to all readers. A cover image will be generated automatically.",
+    "publishingTitle": "Publishing your story...",
+    "publishingSubtitle": "Generating cover image",
+    "paragraphUpdated": "Paragraph updated",
+    "undo": "Undo",
+    "editFailed": "Edit failed",
+    "editFailedMessage": "Could not apply the edit. Please try again.",
+    "couldNotCreate": "Could not create story",
+    "tryAgain": "Please try again.",
+    "noChapter": "Story generation returned no chapter",
+    "customPromptPlaceholder": "e.g. make the character older, add more dialogue...",
+    "apply": "Apply"
+  },
+  "genres": {
+    "adventure": "Adventure",
+    "comedy": "Comedy",
+    "contemporary": "Contemporary",
+    "drama": "Drama",
+    "fantasy": "Fantasy",
+    "historical": "Historical",
+    "horror": "Horror",
+    "kids": "Kids",
+    "lgbtq": "LGBTQ+",
+    "motivational": "Motivational",
+    "mystery": "Mystery",
+    "mythology": "Mythology",
+    "poetry": "Poetry",
+    "romance": "Romance",
+    "scifi": "Sci-Fi",
+    "sliceOfLife": "Slice of life",
+    "spirituality": "Spirituality",
+    "thriller": "Thriller"
+  },
+  "tones": {
+    "darker": "Darker",
+    "lighter": "Lighter",
+    "morePoetic": "More poetic",
+    "moreDramatic": "More dramatic",
+    "simpler": "Simpler"
+  }
+}
