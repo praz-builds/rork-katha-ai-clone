@@ -2,6 +2,49 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-08-23: Production Infrastructure Setup
+
+### Shipped
+
+- Created EAS build configuration (development/preview/production profiles, Android submit config).
+- Installed and configured 12 production SDKs: @sentry/react-native, posthog-react-native, expo-notifications, expo-device, expo-constants, react-native-adapty, expo-localization, expo-splash-screen, expo-updates, expo-tracking-transparency, @react-native-firebase/app, @react-native-firebase/analytics.
+- All SDK versions aligned to Expo SDK 54 compatibility via `npx expo install --fix`.
+- Created `src/lib/analytics.ts`: Sentry crash reporting + PostHog product analytics with trackEvent/identifyUser/resetAnalytics. Environment from APP_ENV build config.
+- Created `src/lib/adapty.ts`: Adapty v4 SDK wrapper for paywall products, purchases, and restore.
+- Created `src/lib/notifications.ts`: expo-notifications setup with permission request, push token retrieval, and Android notification channels (default + stories).
+- Created `src/lib/firebase-analytics.ts`: Firebase Analytics wrapper with safe dynamic imports (works in Expo Go/web, activates in EAS builds). Pre-defined AppEvents for onboarding, story creation, monetization (Google Ads ROAS), engagement, and acquisition.
+- Created `src/lib/tracking-transparency.ts`: iOS App Tracking Transparency wrapper.
+- Added i18n infrastructure: i18next + react-i18next + expo-localization with device locale detection. 400+ strings extracted into en.json (English), es.json (Spanish), pt.json (Portuguese).
+- Updated app.json with plugins (Sentry, notifications, ATT, updates), OTA update config, and runtime version policy.
+- All initialization wired in App.tsx startup (Sentry, PostHog, Adapty, Android channels).
+- Created expanded .env.example with all required API key placeholders.
+
+### Configuration Needed (User Setup)
+
+1. `EXPO_PUBLIC_SENTRY_DSN` -- create project at sentry.io
+2. `EXPO_PUBLIC_POSTHOG_API_KEY` -- create project at posthog.com
+3. `EXPO_PUBLIC_ADAPTY_API_KEY` -- create app at adapty.io
+4. `google-services.json` -- create Firebase project, place in `expo/` root, add `@react-native-firebase/app` to app.json plugins and set `android.googleServicesFile` path
+5. Run `cd expo && eas init` to configure EAS project ID
+6. Run `cd expo && eas build --profile development --platform android` for first dev build
+
+### Verification
+
+- TypeScript: zero errors across all new modules.
+- All SDKs compile without API keys (graceful no-op when unconfigured).
+- PRs #10, #11, #12 merged to main after CodeRabbit review.
+
+### Primary Files Added
+
+- `eas.json`: EAS Build profiles.
+- `src/lib/analytics.ts`: Sentry + PostHog.
+- `src/lib/adapty.ts`: Adapty v4 SDK.
+- `src/lib/notifications.ts`: Push notifications.
+- `src/lib/firebase-analytics.ts`: Firebase Analytics + Google Ads events.
+- `src/lib/tracking-transparency.ts`: iOS ATT.
+- `src/i18n/index.ts`: i18n initialization.
+- `src/i18n/en.json`, `src/i18n/es.json`, `src/i18n/pt.json`: Translations.
+
 ## 2026-08-22: Approved Expo Foundation and Onboarding
 
 ### Shipped
