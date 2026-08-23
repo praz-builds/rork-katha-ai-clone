@@ -45,7 +45,7 @@ After onboarding or paywall changes:
 
 - 3-tab layout: Home | Create (+, raised) | Library. Profile is a top-right avatar overlay, not a tab.
 - `TabKey`: `"home" | "create" | "library"`. `Screen` includes `{ name: "profile" }`.
-- CreateStudioScreen is a standalone component in `src/screens/CreateStudioScreen.tsx`. It manages its own 3-step flow (setup, editor, publish) and hides the tab bar.
+- CreateStudioScreen is a standalone component in `src/screens/CreateStudioScreen.tsx`. It manages its own 3-step flow (setup, editor, publish). The tab bar remains visible; hiding it during the editor step is deferred.
 - The Reader includes a Substack-style engagement bar, author card, and comments preview.
 - The Library has 4 segments: Saved, History, My Stories, Comments.
 

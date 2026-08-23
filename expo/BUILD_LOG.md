@@ -85,11 +85,11 @@
 - Write/create is the primary CTA, not read.
 - Profile is a top-right avatar, not a bottom tab.
 - Library replaces the old Settings/Library tabs.
-- Welcome credits: 5 (was 3).
+- Welcome credits: currently 3 in code; product decision to increase to 5 or 10 is pending welcome flow implementation.
 - Paywall pricing: $59/yr with 3-day trial (placeholder until Adapty).
 - Language picker: English, Spanish, Portuguese at launch.
 - Character description clearable with X button.
-- Tab bar hidden during Create Studio editor/publish steps.
+- Tab bar remains visible during Create Studio (hiding deferred until editor step gains its own bottom toolbar).
 
 ### CodeRabbit Review Cycle
 
