@@ -4,7 +4,18 @@ import Constants from 'expo-constants';
 
 const extra = Constants.expoConfig?.extra ?? {};
 
+// ---------------------------------------------------------------------------
+// PostHog — Katha AI project (EU Cloud, org separate from Story For My Kid)
+// Public write-only key, safe for client-side use.
+// ---------------------------------------------------------------------------
+
+const POSTHOG_API_KEY = 'phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm';
+const POSTHOG_HOST = 'https://eu.i.posthog.com';
+
+// ---------------------------------------------------------------------------
 // Sentry
+// ---------------------------------------------------------------------------
+
 export function initSentry() {
   const dsn = extra.sentryDsn;
   if (!dsn) return;
@@ -16,14 +27,17 @@ export function initSentry() {
   });
 }
 
+// ---------------------------------------------------------------------------
 // PostHog
+// ---------------------------------------------------------------------------
+
 let posthog: PostHog | null = null;
 
 export function initPostHog() {
-  const apiKey = extra.posthogApiKey;
-  const host = extra.posthogHost;
-  if (!apiKey) return;
-  posthog = new PostHog(apiKey, { host });
+  if (posthog) return;
+  posthog = new PostHog(POSTHOG_API_KEY, {
+    host: POSTHOG_HOST,
+  });
 }
 
 export function trackEvent(
