@@ -1,0 +1,167 @@
+{
+  "common": {
+    "back": "Volver",
+    "comingSoon": "Muy pronto",
+    "comingSoonMessage": "Esta funcion estara disponible pronto.",
+    "credits": "Creditos",
+    "cancel": "Cancelar"
+  },
+  "tabs": {
+    "home": "Inicio",
+    "library": "Biblioteca",
+    "createStory": "Crear historia"
+  },
+  "home": {
+    "greeting": {
+      "morning": "Buenos dias",
+      "afternoon": "Buenas tardes",
+      "evening": "Buenas noches"
+    },
+    "title": "Historias para ti",
+    "searchPlaceholder": "Buscar historias, estados de animo, autores",
+    "allGenres": "Todo",
+    "writeCTA": {
+      "title": "Empieza tu primera historia",
+      "subtitle": "Genero, personajes, tu idea. Katha le da vida",
+      "button": "Crear una historia"
+    },
+    "orPickOne": "O elige una para leer",
+    "continueReading": "Seguir leyendo",
+    "readProgress": "40% leido - El cap\u00edtulo 2 espera",
+    "writeAnother": "Escribe otra historia",
+    "trending": "Tendencia ahora",
+    "seeAll": "Ver todo",
+    "forYou": "Para ti",
+    "reads": "{{count}} lecturas"
+  },
+  "library": {
+    "title": "Tu coleccion",
+    "segments": {
+      "saved": "Guardados",
+      "history": "Historial",
+      "myStories": "Mis historias",
+      "comments": "Comentarios"
+    },
+    "empty": {
+      "saved": "Guarda las historias que te gusten",
+      "history": "Las historias que leas apareceran aqui",
+      "myStories": "Aun no tienes historias.",
+      "myStoriesAction": "Crea tu primera!",
+      "comments": "Tus comentarios en historias apareceran aqui"
+    }
+  },
+  "profile": {
+    "title": "Perfil",
+    "editProfile": "Editar perfil",
+    "seePlus": "Ver Plus",
+    "creditsAvailable": "{{count}} disponibles",
+    "settings": {
+      "notifications": "Notificaciones",
+      "notificationsDesc": "Alertas de cap\u00edtulos y rachas",
+      "readingPrefs": "Preferencias de lectura",
+      "readingPrefsDesc": "Tema, tamano de letra, idioma",
+      "kathaPlus": "Katha Plus",
+      "kathaPlusDesc": "Suscripcion, voces, sin anuncios",
+      "parentalControls": "Control parental",
+      "parentalControlsDesc": "Modo ninos y PIN de acceso",
+      "feedback": "Comentarios",
+      "feedbackDesc": "Opiniones, calificacion, soporte"
+    },
+    "legal": "Politica de privacidad - Terminos de servicio - v{{version}}"
+  },
+  "reader": {
+    "narration": "Narracion",
+    "save": "Guardar",
+    "share": "Compartir",
+    "follow": "Seguir",
+    "comments": "Comentarios ({{count}})",
+    "viewAllComments": "Ver todos los comentarios"
+  },
+  "credits": {
+    "title": "{{count}} cr\u00e9ditos disponibles",
+    "heroTitle": "1 cr\u00e9dito crea 1 historia o cap\u00edtulo",
+    "heroDescription": "Las compras, recompensas y suscripciones se sincronizaran con Supabase y Adapty despues de la fase de dev-client nativo.",
+    "history": "Historial"
+  },
+  "create": {
+    "eyebrow": "Crear",
+    "title": "Dale forma a una nueva historia",
+    "genre": "Genero",
+    "storySeed": "Semilla de la historia",
+    "seedPlaceholder": "Un farero recibe una carta del futuro...",
+    "characters": "Personajes",
+    "addCharacter": "+ Agregar personaje",
+    "namePlaceholder": "Nombre",
+    "traitsPlaceholder": "Rasgos, deseo o secreto",
+    "hero": "H\u00e9roe",
+    "language": "Idioma",
+    "generate": "Generar borrador (1 cr\u00e9dito)",
+    "generating": "Generando...",
+    "seedHint": "Escribe al menos 4 caracteres en la semilla de tu historia",
+    "creditsNeeded": "Necesitas cr\u00e9ditos para generar una historia",
+    "addSeed": "Agrega una semilla de historia",
+    "creditsNeededTitle": "Se necesitan cr\u00e9ditos",
+    "seedRequired": "Dale a Katha una idea clara para dar forma.",
+    "creditRequired": "Necesitas 1 cr\u00e9dito para generar."
+  },
+  "editor": {
+    "title": "Editar borrador",
+    "publish": "Publicar",
+    "rewrite": "Reescribir",
+    "expand": "Expandir",
+    "shorten": "Acortar",
+    "changeTone": "Cambiar tono",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "custom": "Personalizado",
+    "addParagraph": "Agregar parrafo",
+    "words": "{{count}} palabras",
+    "readTime": "{{count}} min de lectura",
+    "discardTitle": "Descartar borrador?",
+    "discardMessage": "Tu borrador y todas las ediciones se perderan.",
+    "keepEditing": "Seguir editando",
+    "discard": "Descartar",
+    "deleteParagraphTitle": "Eliminar parrafo?",
+    "deleteParagraphMessage": "Este parrafo sera eliminado de tu borrador.",
+    "publishTitle": "Listo para publicar?",
+    "publishMessage": "Tu historia sera visible para todos los lectores. Se generara una portada automaticamente.",
+    "publishingTitle": "Publicando tu historia...",
+    "publishingSubtitle": "Generando imagen de portada",
+    "paragraphUpdated": "Parrafo actualizado",
+    "undo": "Deshacer",
+    "editFailed": "Error al editar",
+    "editFailedMessage": "No se pudo aplicar la edicion. Intentalo de nuevo.",
+    "couldNotCreate": "No se pudo crear la historia",
+    "tryAgain": "Intentalo de nuevo.",
+    "noChapter": "La generacion no devolvio ningun cap\u00edtulo",
+    "customPromptPlaceholder": "ej. hacer al personaje mayor, agregar mas dialogo...",
+    "apply": "Aplicar"
+  },
+  "genres": {
+    "adventure": "Aventura",
+    "comedy": "Comedia",
+    "contemporary": "Contemporaneo",
+    "drama": "Drama",
+    "fantasy": "Fantasia",
+    "historical": "Hist\u00f3rico",
+    "horror": "Terror",
+    "kids": "Infantil",
+    "lgbtq": "LGBTQ+",
+    "motivational": "Motivacional",
+    "mystery": "Misterio",
+    "mythology": "Mitologia",
+    "poetry": "Poesia",
+    "romance": "Romance",
+    "scifi": "Ciencia ficcion",
+    "sliceOfLife": "Vida cotidiana",
+    "spirituality": "Espiritualidad",
+    "thriller": "Suspenso"
+  },
+  "tones": {
+    "darker": "Mas oscuro",
+    "lighter": "Mas ligero",
+    "morePoetic": "Mas poetico",
+    "moreDramatic": "Mas dramatico",
+    "simpler": "Mas simple"
+  }
+}

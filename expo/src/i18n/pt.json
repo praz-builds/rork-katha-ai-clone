@@ -1,0 +1,167 @@
+{
+  "common": {
+    "back": "Voltar",
+    "comingSoon": "Em breve",
+    "comingSoonMessage": "Essa funcionalidade estara disponivel em breve.",
+    "credits": "Creditos",
+    "cancel": "Cancelar"
+  },
+  "tabs": {
+    "home": "Inicio",
+    "library": "Biblioteca",
+    "createStory": "Criar hist\u00f3ria"
+  },
+  "home": {
+    "greeting": {
+      "morning": "Bom dia",
+      "afternoon": "Boa tarde",
+      "evening": "Boa noite"
+    },
+    "title": "Historias para voce",
+    "searchPlaceholder": "Buscar hist\u00f3rias, humores, autores",
+    "allGenres": "Todos",
+    "writeCTA": {
+      "title": "Comece sua primeira hist\u00f3ria",
+      "subtitle": "Genero, personagens, sua ideia. Katha da vida a ela",
+      "button": "Criar uma hist\u00f3ria"
+    },
+    "orPickOne": "Ou escolha uma para ler",
+    "continueReading": "Continuar lendo",
+    "readProgress": "40% lido - O cap\u00edtulo 2 espera",
+    "writeAnother": "Escreva outra hist\u00f3ria",
+    "trending": "Em alta agora",
+    "seeAll": "Ver tudo",
+    "forYou": "Para voce",
+    "reads": "{{count}} leituras"
+  },
+  "library": {
+    "title": "Sua colecao",
+    "segments": {
+      "saved": "Salvos",
+      "history": "Hist\u00f3rico",
+      "myStories": "Minhas hist\u00f3rias",
+      "comments": "Comentarios"
+    },
+    "empty": {
+      "saved": "Salve as hist\u00f3rias que voce ama",
+      "history": "As hist\u00f3rias que voce ler vao aparecer aqui",
+      "myStories": "Nenhuma hist\u00f3ria ainda.",
+      "myStoriesAction": "Crie a sua primeira!",
+      "comments": "Seus comentarios em hist\u00f3rias vao aparecer aqui"
+    }
+  },
+  "profile": {
+    "title": "Perfil",
+    "editProfile": "Editar perfil",
+    "seePlus": "Ver Plus",
+    "creditsAvailable": "{{count}} dispon\u00edveis",
+    "settings": {
+      "notifications": "Notificacoes",
+      "notificationsDesc": "Alertas de cap\u00edtulos e sequencias",
+      "readingPrefs": "Preferencias de leitura",
+      "readingPrefsDesc": "Tema, tamanho da fonte, idioma",
+      "kathaPlus": "Katha Plus",
+      "kathaPlusDesc": "Assinatura, vozes, sem anuncios",
+      "parentalControls": "Controle dos pais",
+      "parentalControlsDesc": "Modo infantil e PIN de acesso",
+      "feedback": "Feedback",
+      "feedbackDesc": "Comentarios, avaliacao, suporte"
+    },
+    "legal": "Politica de Privacidade - Termos de Servico - v{{version}}"
+  },
+  "reader": {
+    "narration": "Narracao",
+    "save": "Salvar",
+    "share": "Compartilhar",
+    "follow": "Seguir",
+    "comments": "Comentarios ({{count}})",
+    "viewAllComments": "Ver todos os comentarios"
+  },
+  "credits": {
+    "title": "{{count}} cr\u00e9ditos dispon\u00edveis",
+    "heroTitle": "1 cr\u00e9dito cria 1 hist\u00f3ria ou cap\u00edtulo",
+    "heroDescription": "Compras, recompensas e assinaturas serao sincronizadas com Supabase e Adapty apos a fase de dev-client nativo.",
+    "history": "Hist\u00f3rico"
+  },
+  "create": {
+    "eyebrow": "Criar",
+    "title": "De forma a uma nova hist\u00f3ria",
+    "genre": "Genero",
+    "storySeed": "Semente da hist\u00f3ria",
+    "seedPlaceholder": "Um faroleiro recebe uma carta do futuro...",
+    "characters": "Personagens",
+    "addCharacter": "+ Adicionar personagem",
+    "namePlaceholder": "Nome",
+    "traitsPlaceholder": "Tra\u00e7os, desejo ou segredo",
+    "hero": "Her\u00f3i",
+    "language": "Idioma",
+    "generate": "Gerar rascunho (1 cr\u00e9dito)",
+    "generating": "Gerando...",
+    "seedHint": "Escreva pelo menos 4 caracteres na semente da sua hist\u00f3ria",
+    "creditsNeeded": "Voc\u00ea precisa de cr\u00e9ditos para gerar uma hist\u00f3ria",
+    "addSeed": "Adicione uma semente de hist\u00f3ria",
+    "creditsNeededTitle": "Creditos necessarios",
+    "seedRequired": "De ao Katha uma ideia clara para dar forma.",
+    "creditRequired": "Voc\u00ea precisa de 1 cr\u00e9dito para gerar."
+  },
+  "editor": {
+    "title": "Editar rascunho",
+    "publish": "Publicar",
+    "rewrite": "Reescrever",
+    "expand": "Expandir",
+    "shorten": "Encurtar",
+    "changeTone": "Mudar tom",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "custom": "Personalizado",
+    "addParagraph": "Adicionar paragrafo",
+    "words": "{{count}} palavras",
+    "readTime": "{{count}} min de leitura",
+    "discardTitle": "Descartar rascunho?",
+    "discardMessage": "Seu rascunho e todas as edicoes serao perdidos.",
+    "keepEditing": "Continuar editando",
+    "discard": "Descartar",
+    "deleteParagraphTitle": "Excluir paragrafo?",
+    "deleteParagraphMessage": "Este paragrafo sera removido do seu rascunho.",
+    "publishTitle": "Pronto para publicar?",
+    "publishMessage": "Sua hist\u00f3ria ficara visivel para todos os leitores. Uma capa sera gerada automaticamente.",
+    "publishingTitle": "Publicando sua hist\u00f3ria...",
+    "publishingSubtitle": "Gerando imagem de capa",
+    "paragraphUpdated": "Paragrafo atualizado",
+    "undo": "Desfazer",
+    "editFailed": "Erro ao editar",
+    "editFailedMessage": "Nao foi possivel aplicar a edicao. Tente novamente.",
+    "couldNotCreate": "Nao foi possivel criar a hist\u00f3ria",
+    "tryAgain": "Tente novamente.",
+    "noChapter": "A geracao nao retornou nenhum cap\u00edtulo",
+    "customPromptPlaceholder": "ex. tornar o personagem mais velho, adicionar mais dialogo...",
+    "apply": "Aplicar"
+  },
+  "genres": {
+    "adventure": "Aventura",
+    "comedy": "Comedia",
+    "contemporary": "Contemporaneo",
+    "drama": "Drama",
+    "fantasy": "Fantasia",
+    "historical": "Hist\u00f3rico",
+    "horror": "Terror",
+    "kids": "Infantil",
+    "lgbtq": "LGBTQ+",
+    "motivational": "Motivacional",
+    "mystery": "Misterio",
+    "mythology": "Mitologia",
+    "poetry": "Poesia",
+    "romance": "Romance",
+    "scifi": "Ficcao cientifica",
+    "sliceOfLife": "Cotidiano",
+    "spirituality": "Espiritualidade",
+    "thriller": "Suspense"
+  },
+  "tones": {
+    "darker": "Mais sombrio",
+    "lighter": "Mais leve",
+    "morePoetic": "Mais poetico",
+    "moreDramatic": "Mais dramatico",
+    "simpler": "Mais simples"
+  }
+}
