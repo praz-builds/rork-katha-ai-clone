@@ -1,13 +1,10 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
-import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -20,17 +17,15 @@ import {
   Bell,
   BookOpen,
   Bookmark,
-  Compass,
-  CreditCard,
+  ChevronLeft,
+  ChevronRight,
+  Heart,
   Home,
-  Library,
   Lock,
   MessageCircle,
-  Moon,
   Play,
   Plus,
   Search,
-  Settings,
   Share2,
   Sparkles,
   Star,
@@ -40,32 +35,20 @@ import {
 import {
   Chip,
   Cover,
-  CreditPill,
-  GenreSwatch,
   PrimaryButton,
   ScreenScaffold,
   SectionHeader,
   StoryCard,
   formatNumber
 } from "@/components/KathaPrimitives";
-import { imageAssets } from "@/data/images";
-import { authorFor, authors, genres, ledger, stories, storyWordCount } from "@/data/seed";
-import {
-  createGenerationRequestId,
-  generateStory,
-  GenerationRequestError,
-} from "@/lib/api";
+import { authorFor, genres, ledger, stories } from "@/data/seed";
+import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import { colors, fonts, genreLabels, radius, spacing } from "@/theme/theme";
-import type { CreateDraft, Genre, Screen, Story, TabKey } from "@/types/domain";
+import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 
-const starterDraft: CreateDraft = {
-  genre: "fantasy",
-  seed: "",
-  language: "English",
-  characters: [{ name: "Mira", description: "Curious, stubborn, quietly brave", isHero: true }]
-};
+type LibrarySegment = "saved" | "history" | "myStories" | "comments";
 
 export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
@@ -103,24 +86,38 @@ export default function App() {
   const renderTab = () => {
     switch (tab) {
       case "home":
-        return <HomeScreen credits={credits} stories={allStories} onStory={openStory} onCredits={() => setScreen({ name: "credits" })} onCreate={() => goTabs("create")} />;
-      case "discover":
-        return <DiscoverScreen stories={allStories} onStory={openStory} />;
+        return (
+          <HomeScreen
+            credits={credits}
+            generatedStories={generatedStories}
+            stories={allStories}
+            onStory={openStory}
+            onProfile={() => setScreen({ name: "profile" })}
+            onCreate={() => goTabs("create")}
+          />
+        );
       case "create":
         return (
-          <CreateScreen
+          <CreateStudioScreen
             credits={credits}
-            onGenerated={(story) => {
+            onCreditUsed={() => setCredits((value) => Math.max(0, value - 1))}
+            onPublished={(story) => {
               setGeneratedStories((current) => [story, ...current]);
-              setCredits((value) => Math.max(0, value - 1));
+              setTab("home");
               setScreen({ name: "reader", storyId: story.id });
             }}
+            onBack={() => goTabs("home")}
           />
         );
       case "library":
-        return <LibraryScreen stories={allStories} onStory={openStory} />;
-      case "settings":
-        return <SettingsScreen credits={credits} onCredits={() => setScreen({ name: "credits" })} onPaywall={() => setScreen({ name: "paywall" })} />;
+        return (
+          <LibraryScreen
+            generatedStories={generatedStories}
+            stories={allStories}
+            onStory={openStory}
+            onCreate={() => goTabs("create")}
+          />
+        );
     }
   };
 
@@ -139,6 +136,13 @@ export default function App() {
         <CreditsScreen credits={credits} onBack={() => goTabs(tab)} />
       ) : screen.name === "paywall" ? (
         <KathaOnboardingFlowV2 initialScreen="paywall" onDone={() => goTabs("home")} />
+      ) : screen.name === "profile" ? (
+        <ProfileScreen
+          credits={credits}
+          onBack={() => goTabs(tab)}
+          onCredits={() => setScreen({ name: "credits" })}
+          onPaywall={() => setScreen({ name: "paywall" })}
+        />
       ) : (
         <>
           {renderTab()}
@@ -149,290 +153,360 @@ export default function App() {
   );
 }
 
+/* ─────────────────────────────── Home Screen ─────────────────────────────── */
+
 function HomeScreen({
   credits,
+  generatedStories,
   stories: allStories,
   onStory,
-  onCredits,
+  onProfile,
   onCreate
 }: {
   credits: number;
+  generatedStories: Story[];
   stories: Story[];
   onStory: (id: string) => void;
-  onCredits: () => void;
+  onProfile: () => void;
   onCreate: () => void;
 }) {
-  const featured = allStories.filter((story) => story.isFeatured);
-  return (
-    <SafeAreaView style={styles.flex}>
-      <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Good evening</Text>
-            <Text style={styles.h1}>Pick up a story</Text>
-          </View>
-          <Pressable onPress={onCredits}>
-            <CreditPill credits={credits} />
-          </Pressable>
-        </View>
-        <Pressable onPress={() => onStory(featured[0].id)} style={styles.continueCard}>
-          <View style={styles.continueCopy}>
-            <Text style={styles.continueEyebrow}>Continue reading</Text>
-            <Text style={styles.continueTitle}>{featured[0].title}</Text>
-            <Text style={styles.continueMeta}>40% read • Chapter 2 waits</Text>
-          </View>
-          <Cover story={featured[0]} size="mini" />
-        </Pressable>
-        <View style={styles.createBand}>
-          <View style={styles.createBandIcon}>
-            <Wand2 size={24} color="#FFFFFF" />
-          </View>
-          <View style={styles.createBandCopy}>
-            <Text style={styles.createBandTitle}>Turn a seed into a story</Text>
-            <Text style={styles.createBandText}>Genre, characters, language, then Katha drafts the first chapter.</Text>
-          </View>
-          <Pressable onPress={onCreate} style={styles.circleButton}>
-            <Plus size={22} color="#FFFFFF" />
-          </Pressable>
-        </View>
-        <SectionHeader title="Trending now" action="See all" />
-        <HorizontalStories stories={featured} onStory={onStory} />
-        <SectionHeader title="For you" />
-        <View style={styles.stack}>
-          {allStories.slice(2, 7).map((story) => (
-            <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function DiscoverScreen({ stories: allStories, onStory }: { stories: Story[]; onStory: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState<Genre | "all">("all");
+  const featured = allStories.filter((story) => story.isFeatured);
+  const isNewUser = generatedStories.length === 0;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
   const filtered = allStories.filter((story) => {
     const q = query.trim().toLowerCase();
     return (
       (genre === "all" || story.genre === genre) &&
-      (!q || story.title.toLowerCase().includes(q) || story.synopsis.toLowerCase().includes(q) || story.tags.join(" ").includes(q))
+      (!q || story.title.toLowerCase().includes(q) || story.synopsis.toLowerCase().includes(q) || story.tags.join(" ").toLowerCase().includes(q) || authorFor(story.authorId).displayName.toLowerCase().includes(q))
     );
   });
+
+  const showFiltered = query.trim().length > 0 || genre !== "all";
+
+  // Mock onboarding genres — Adventure, Mystery, Fantasy
+  const onboardingGenres: Genre[] = ["adventure", "mystery", "fantasy"];
+  const genreRows = onboardingGenres
+    .map((g) => ({ genre: g, stories: allStories.filter((s) => s.genre === g) }))
+    .filter((row) => row.stories.length > 0);
 
   return (
     <SafeAreaView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
+        {/* Header with avatar */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>Discover</Text>
-            <Text style={styles.h1}>Find your next world</Text>
+            <Text style={styles.eyebrow}>{greeting}</Text>
+            <Text style={styles.h1}>Stories for you</Text>
           </View>
-          <Compass size={28} color={colors.accent} />
+          <Pressable onPress={onProfile} accessibilityLabel="Open profile" accessibilityRole="button" style={styles.avatarButton}>
+            <Image source={require("./assets/icon.png")} style={styles.headerAvatar} />
+            <View style={styles.creditBadge}>
+              <Text style={styles.creditBadgeText}>{credits}</Text>
+            </View>
+          </Pressable>
         </View>
+
+        {/* Search */}
         <View style={styles.searchBox}>
           <Search size={18} color={colors.muted} />
           <TextInput value={query} onChangeText={setQuery} placeholder="Search stories, moods, authors" placeholderTextColor={colors.tertiary} style={styles.searchInput} />
         </View>
+
+        {/* Genre chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           <Chip label="All" selected={genre === "all"} onPress={() => setGenre("all")} />
           {genres.slice(0, 10).map((item) => (
             <Chip key={item} label={genreLabels[item]} selected={genre === item} onPress={() => setGenre(item)} />
           ))}
         </ScrollView>
-        <View style={styles.stack}>
-          {filtered.map((story) => (
-            <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
-          ))}
-        </View>
+
+        {showFiltered ? (
+          <View style={styles.stack}>
+            {filtered.map((story) => (
+              <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+            ))}
+          </View>
+        ) : isNewUser ? (
+          <>
+            {/* Primary write CTA */}
+            <View style={styles.writeCTACard}>
+              <Text style={styles.writeCTATitle}>Start your first story</Text>
+              <Text style={styles.writeCTASubtitle}>Genre, characters, your idea. Katha brings it to life</Text>
+              <View style={styles.writeCTAButtonWrap}>
+                <PrimaryButton onPress={onCreate}>Create a story</PrimaryButton>
+              </View>
+            </View>
+
+            {/* Or pick one to read */}
+            <SectionHeader title="Or pick one to read" />
+            <HorizontalStories stories={featured} onStory={onStory} />
+
+            {/* Genre rows */}
+            {genreRows.map((row) => (
+              <View key={row.genre}>
+                <SectionHeader title={genreLabels[row.genre]} />
+                <HorizontalStories stories={row.stories} onStory={onStory} />
+              </View>
+            ))}
+          </>
+        ) : (
+          <>
+            {/* Continue reading card */}
+            <Pressable onPress={() => onStory(featured[0].id)} style={styles.continueCard}>
+              <View style={styles.continueCopy}>
+                <Text style={styles.continueEyebrow}>Continue reading</Text>
+                <Text style={styles.continueTitle}>{featured[0].title}</Text>
+                <Text style={styles.continueMeta}>40% read - Chapter 2 waits</Text>
+              </View>
+              <Cover story={featured[0]} size="mini" />
+            </Pressable>
+
+            {/* Write another CTA (smaller, accentSoft) */}
+            <Pressable onPress={onCreate} style={styles.writeAnotherBand}>
+              <View style={styles.writeAnotherIcon}>
+                <Plus size={20} color={colors.accent} />
+              </View>
+              <Text style={styles.writeAnotherText}>Write another story</Text>
+              <ChevronRight size={18} color={colors.accent} />
+            </Pressable>
+
+            {/* Trending */}
+            <SectionHeader title="Trending now" action="See all" />
+            <HorizontalStories stories={featured} onStory={onStory} />
+
+            {/* Genre rows */}
+            {genreRows.map((row) => (
+              <View key={row.genre}>
+                <SectionHeader title={genreLabels[row.genre]} />
+                <HorizontalStories stories={row.stories} onStory={onStory} />
+              </View>
+            ))}
+
+            {/* For you */}
+            <SectionHeader title="For you" />
+            <View style={styles.stack}>
+              {allStories.slice(2, 7).map((story) => (
+                <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function CreateScreen({ credits, onGenerated }: { credits: number; onGenerated: (story: Story) => void }) {
-  const [draft, setDraft] = useState<CreateDraft>(starterDraft);
-  const [busy, setBusy] = useState(false);
-  const requestIdRef = useRef<string | null>(null);
-  const canGenerate = draft.seed.trim().length > 3 && credits > 0 && !busy;
+/* ─────────────────────────────── Library Screen ─────────────────────────────── */
 
-  useEffect(() => {
-    requestIdRef.current = null;
-  }, [draft]);
+function LibraryScreen({
+  generatedStories,
+  stories: allStories,
+  onStory,
+  onCreate
+}: {
+  generatedStories: Story[];
+  stories: Story[];
+  onStory: (id: string) => void;
+  onCreate: () => void;
+}) {
+  const [segment, setSegment] = useState<LibrarySegment>("saved");
+  const saved = allStories.filter((story) => story.bookmarks > 100);
+  const history = allStories.slice(0, 5);
 
-  const submit = async () => {
-    if (!canGenerate) {
-      Alert.alert(credits > 0 ? "Add a story seed" : "Credits needed", credits > 0 ? "Give Katha one clear idea to shape." : "You need 1 credit to generate.");
-      return;
-    }
-    setBusy(true);
-    const requestId = requestIdRef.current ?? createGenerationRequestId();
-    requestIdRef.current = requestId;
-    try {
-      const story = await generateStory(draft, requestId);
-      onGenerated(story);
-      setDraft(starterDraft);
-    } catch (error) {
-      if (error instanceof GenerationRequestError && error.resetRequestId) {
-        requestIdRef.current = null;
-      }
-      Alert.alert(
-        "Could not create story",
-        error instanceof Error ? error.message : "Please try again.",
-      );
-    } finally {
-      setBusy(false);
+  const segments: { key: LibrarySegment; label: string }[] = [
+    { key: "saved", label: "Saved" },
+    { key: "history", label: "History" },
+    { key: "myStories", label: "My Stories" },
+    { key: "comments", label: "Comments" }
+  ];
+
+  const renderSegmentContent = () => {
+    switch (segment) {
+      case "saved":
+        return saved.length > 0 ? (
+          <View style={styles.stack}>
+            {saved.map((story) => (
+              <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <Bookmark size={32} color={colors.tertiary} />
+            <Text style={styles.emptyStateText}>Bookmark stories you love</Text>
+          </View>
+        );
+      case "history":
+        return history.length > 0 ? (
+          <View style={styles.stack}>
+            {history.map((story) => (
+              <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>Stories you read will appear here</Text>
+          </View>
+        );
+      case "myStories":
+        return generatedStories.length > 0 ? (
+          <View style={styles.stack}>
+            {generatedStories.map((story) => (
+              <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>
+              No stories yet.{" "}
+              <Text style={styles.accentLink} onPress={onCreate}>Create your first!</Text>
+            </Text>
+          </View>
+        );
+      case "comments":
+        return (
+          <View style={styles.emptyState}>
+            <MessageCircle size={32} color={colors.tertiary} />
+            <Text style={styles.emptyStateText}>Your comments on stories will appear here</Text>
+          </View>
+        );
     }
   };
 
-  return (
-    <SafeAreaView style={styles.flex}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.eyebrow}>Create</Text>
-              <Text style={styles.h1}>Shape a new story</Text>
-            </View>
-            <CreditPill credits={credits} />
-          </View>
-          <View style={styles.formCard}>
-            <Text style={styles.fieldLabel}>Genre</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRowFlush}>
-              {genres.slice(0, 12).map((item) => (
-                <Pressable key={item} onPress={() => setDraft((current) => ({ ...current, genre: item }))} style={[styles.genreChoice, draft.genre === item && styles.genreChoiceSelected]}>
-                  <GenreSwatch genre={item} />
-                  <Text style={styles.genreChoiceText}>{genreLabels[item]}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <Text style={styles.fieldLabel}>Story seed</Text>
-            <TextInput
-              multiline
-              value={draft.seed}
-              onChangeText={(seed) => setDraft((current) => ({ ...current, seed }))}
-              placeholder="A lighthouse keeper receives a letter from the future..."
-              placeholderTextColor={colors.tertiary}
-              style={styles.seedInput}
-            />
-            <Text style={styles.fieldLabel}>Main character</Text>
-            <View style={styles.twoColumn}>
-              <TextInput
-                value={draft.characters[0].name}
-                onChangeText={(name) =>
-                  setDraft((current) => ({ ...current, characters: [{ ...current.characters[0], name }] }))
-                }
-                placeholder="Name"
-                placeholderTextColor={colors.tertiary}
-                style={styles.inlineInput}
-              />
-              <TextInput
-                value={draft.language}
-                onChangeText={(language) => setDraft((current) => ({ ...current, language }))}
-                placeholder="Language"
-                placeholderTextColor={colors.tertiary}
-                style={styles.inlineInput}
-              />
-            </View>
-            <TextInput
-              value={draft.characters[0].description}
-              onChangeText={(description) =>
-                setDraft((current) => ({ ...current, characters: [{ ...current.characters[0], description }] }))
-              }
-              placeholder="Traits, desire, or secret"
-              placeholderTextColor={colors.tertiary}
-              style={styles.inlineInput}
-            />
-            <PrimaryButton onPress={submit}>{busy ? "Generating..." : "Generate for 1 credit"}</PrimaryButton>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
-
-function LibraryScreen({ stories: allStories, onStory }: { stories: Story[]; onStory: (id: string) => void }) {
-  const saved = allStories.filter((story) => story.bookmarks > 100 || story.id.startsWith("generated"));
   return (
     <SafeAreaView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
             <Text style={styles.eyebrow}>Library</Text>
-            <Text style={styles.h1}>Saved and drafted</Text>
+            <Text style={styles.h1}>Your collection</Text>
           </View>
-          <Library size={28} color={colors.accent} />
+          <Bookmark size={28} color={colors.accent} />
         </View>
+
+        {/* Segment selector */}
         <View style={styles.segmented}>
-          {["Saved", "Generated", "History", "Downloads"].map((label, index) => (
-            <View key={label} style={[styles.segment, index === 0 && styles.segmentSelected]}>
-              <Text style={[styles.segmentText, index === 0 && styles.segmentTextSelected]}>{label}</Text>
-            </View>
+          {segments.map(({ key, label }) => (
+            <Pressable key={key} onPress={() => setSegment(key)} style={[styles.segment, segment === key && styles.segmentSelected]}>
+              <Text style={[styles.segmentText, segment === key && styles.segmentTextSelected]}>{label}</Text>
+            </Pressable>
           ))}
         </View>
-        <View style={styles.stack}>
-          {saved.map((story) => (
-            <StoryCard key={story.id} story={story} onPress={() => onStory(story.id)} compact />
-          ))}
+
+        <View style={styles.segmentContent}>
+          {renderSegmentContent()}
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SettingsScreen({ credits, onCredits, onPaywall }: { credits: number; onCredits: () => void; onPaywall: () => void }) {
-  const rows = [
-    ["Profile", "Avatar, username, creator bio", User],
-    ["Katha Plus", "Subscription, voices, ad-free", Star],
-    ["Credits", `${credits} available`, CreditCard],
-    ["Reading preferences", "Theme, font size, language", BookOpen],
+/* ─────────────────────────────── Profile Screen (overlay) ─────────────────────────────── */
+
+function ProfileScreen({
+  credits,
+  onBack,
+  onCredits,
+  onPaywall
+}: {
+  credits: number;
+  onBack: () => void;
+  onCredits: () => void;
+  onPaywall: () => void;
+}) {
+  const settingsRows = [
     ["Notifications", "Chapter alerts and streak nudges", Bell],
+    ["Reading preferences", "Theme, font size, language", BookOpen],
+    ["Katha Plus", "Subscription, voices, ad-free", Star],
     ["Parental controls", "Kids mode and PIN gate", Lock],
     ["Feedback", "Comments, rating, support", MessageCircle]
   ] as const;
+
   return (
     <SafeAreaView style={styles.flex}>
-      <ScrollView contentContainerStyle={styles.withTabs} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Settings</Text>
-            <Text style={styles.h1}>Your Katha</Text>
-          </View>
-          <Image source={require("./assets/icon.png")} style={styles.avatar} />
+      <ScrollView contentContainerStyle={styles.pagePad} showsVerticalScrollIndicator={false}>
+        {/* Header with back button */}
+        <View style={styles.profileHeader}>
+          <Pressable onPress={onBack} style={styles.backButton}>
+            <ChevronLeft size={20} color={colors.ink} />
+            <Text style={styles.backText}>Back</Text>
+          </Pressable>
+          <Text style={styles.profileHeaderTitle}>Profile</Text>
+          <View style={styles.backButton} />
         </View>
+
+        {/* User card */}
         <View style={styles.profileCard}>
+          <Image source={require("./assets/icon.png")} style={styles.profileAvatar} />
           <Text style={styles.profileName}>Reader Writer</Text>
-          <Text style={styles.profileMeta}>@you • 3-day streak • {credits} credits</Text>
+          <Text style={styles.profileMeta}>@you - 3-day streak</Text>
           <View style={styles.profileActions}>
-            <PrimaryButton variant="secondary" onPress={onPaywall}>See Plus</PrimaryButton>
+            <View style={styles.profileButtonRow}>
+              <View style={styles.profileButtonHalf}>
+                <PrimaryButton variant="secondary" onPress={onPaywall}>See Plus</PrimaryButton>
+              </View>
+              <View style={styles.profileButtonHalf}>
+                <PrimaryButton variant="secondary" onPress={() => Alert.alert("Coming soon", "Profile editing will be available soon.")}>Edit Profile</PrimaryButton>
+              </View>
+            </View>
           </View>
         </View>
+
+        {/* Credits row */}
+        <Pressable onPress={onCredits} style={styles.creditsRow}>
+          <View style={styles.settingsIcon}>
+            <Sparkles size={20} color={colors.accent} />
+          </View>
+          <View style={styles.settingsText}>
+            <Text style={styles.settingsTitle}>Credits</Text>
+            <Text style={styles.settingsSubtitle}>{credits} available</Text>
+          </View>
+          <ChevronRight size={20} color={colors.tertiary} />
+        </Pressable>
+
+        {/* Settings rows */}
         <View style={styles.settingsList}>
-          {rows.map(([title, subtitle, Icon]) => (
-            <Pressable key={title} onPress={title === "Credits" ? onCredits : undefined} style={styles.settingsRow}>
-              <View style={styles.settingsIcon}>
-                <Icon size={20} color={colors.accent} />
-              </View>
-              <View style={styles.settingsText}>
-                <Text style={styles.settingsTitle}>{title}</Text>
-                <Text style={styles.settingsSubtitle}>{subtitle}</Text>
-              </View>
-            </Pressable>
-          ))}
+          {settingsRows.map(([title, subtitle, Icon]) => {
+            const handler = title === "Katha Plus" ? onPaywall : () => Alert.alert("Coming soon", `${title} will be available soon.`);
+            return (
+              <Pressable key={title} onPress={handler} accessibilityRole="button" style={styles.settingsRow}>
+                <View style={styles.settingsIcon}>
+                  <Icon size={20} color={colors.accent} />
+                </View>
+                <View style={styles.settingsText}>
+                  <Text style={styles.settingsTitle}>{title}</Text>
+                  <Text style={styles.settingsSubtitle}>{subtitle}</Text>
+                </View>
+                <ChevronRight size={16} color={colors.tertiary} />
+              </Pressable>
+            );
+          })}
         </View>
+
+        <Text style={styles.legalFooter}>Privacy Policy - Terms of Service - v0.1.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+/* ─────────────────────────────── Reader Screen ─────────────────────────────── */
 
 function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const author = authorFor(story.authorId);
   const chapter = story.chapters[0];
+
+  const comingSoon = () => Alert.alert("Coming soon", "This feature will be available soon.");
+
   return (
     <View style={styles.reader}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <Cover story={story} size="hero" />
         <View style={styles.readerBody}>
           <Pressable onPress={onBack} style={styles.backButton}>
+            <ChevronLeft size={18} color={colors.ink} />
             <Text style={styles.backText}>Back</Text>
           </Pressable>
           <Text style={styles.readerGenre}>{genreLabels[story.genre]}</Text>
@@ -449,20 +523,76 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           <Text style={styles.chapterTitle}>{chapter.title}</Text>
           {chapter.paragraphs.map((paragraph, index) => (
             <Text key={index} style={styles.paragraph}>
-              {index === 0 ? paragraph : paragraph}
+              {paragraph}
             </Text>
           ))}
+
+          {/* ── Engagement bar (Substack-style) ── */}
+          <View style={styles.engagementDivider} />
+          <View style={styles.engagementRow}>
+            <Pressable onPress={comingSoon} accessibilityLabel={`Like, ${formatNumber(story.likes)}`} accessibilityRole="button" style={styles.engagementAction}>
+              <Heart size={20} color={colors.heart} />
+              <Text style={styles.engagementCount}>{formatNumber(story.likes)}</Text>
+            </Pressable>
+            <Pressable onPress={comingSoon} accessibilityLabel="Comments, 42" accessibilityRole="button" style={styles.engagementAction}>
+              <MessageCircle size={20} color={colors.muted} />
+              <Text style={styles.engagementCount}>42</Text>
+            </Pressable>
+            <Pressable onPress={comingSoon} style={styles.engagementAction}>
+              <Bookmark size={20} color={colors.muted} />
+              <Text style={styles.engagementLabel}>Save</Text>
+            </Pressable>
+            <Pressable onPress={comingSoon} style={styles.engagementAction}>
+              <Share2 size={20} color={colors.muted} />
+              <Text style={styles.engagementLabel}>Share</Text>
+            </Pressable>
+          </View>
+
+          {/* ── Author card ── */}
+          <View style={styles.readerAuthorCard}>
+            <View style={styles.readerAuthorCardTop}>
+              <View style={styles.authorAvatarSmall}>
+                <Text style={styles.authorInitialSmall}>{author.displayName.charAt(0)}</Text>
+              </View>
+              <View style={styles.readerAuthorInfo}>
+                <Text style={styles.readerAuthorName}>{author.displayName}</Text>
+                <Text style={styles.readerAuthorBio} numberOfLines={2}>{author.bio}</Text>
+              </View>
+            </View>
+            <Pressable onPress={comingSoon} style={styles.followButton}>
+              <Text style={styles.followButtonText}>Follow</Text>
+            </Pressable>
+          </View>
+
+          {/* ── Comments preview ── */}
+          <View style={styles.commentsSection}>
+            <Text style={styles.commentsSectionTitle}>Comments (42)</Text>
+            <View style={styles.commentCard}>
+              <Text style={styles.commentBody}>"This story had me hooked from the first line"</Text>
+              <Text style={styles.commentAuthor}>@reader1</Text>
+            </View>
+            <View style={styles.commentCard}>
+              <Text style={styles.commentBody}>"Beautiful writing. The ending was unexpected."</Text>
+              <Text style={styles.commentAuthor}>@reader2</Text>
+            </View>
+            <Pressable onPress={comingSoon}>
+              <Text style={styles.viewAllComments}>View all comments</Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
     </View>
   );
 }
 
+/* ─────────────────────────────── Credits Screen ─────────────────────────────── */
+
 function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => void }) {
   return (
     <SafeAreaView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.pagePad}>
         <Pressable onPress={onBack} style={styles.backButton}>
+          <ChevronLeft size={18} color={colors.ink} />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
         <Text style={styles.eyebrow}>Credits</Text>
@@ -490,6 +620,8 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
   );
 }
 
+/* ─────────────────────────────── Author Screen ─────────────────────────────── */
+
 function AuthorScreen({
   authorId,
   stories: allStories,
@@ -507,6 +639,7 @@ function AuthorScreen({
     <SafeAreaView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.pagePad}>
         <Pressable onPress={onBack} style={styles.backButton}>
+          <ChevronLeft size={18} color={colors.ink} />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
         <View style={styles.authorHeader}>
@@ -531,6 +664,8 @@ function AuthorScreen({
   );
 }
 
+/* ─────────────────────────────── Shared Components ─────────────────────────────── */
+
 function HorizontalStories({ stories: items, onStory }: { stories: Story[]; onStory: (id: string) => void }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRail}>
@@ -548,27 +683,27 @@ function HorizontalStories({ stories: items, onStory }: { stories: Story[]; onSt
 function BottomTabs({ selected, onSelect }: { selected: TabKey; onSelect: (tab: TabKey) => void }) {
   const tabs: { key: TabKey; label: string; Icon: typeof Home; raised?: boolean }[] = [
     { key: "home", label: "Home", Icon: Home },
-    { key: "discover", label: "Discover", Icon: Compass },
-    { key: "create", label: "Create", Icon: Plus, raised: true },
-    { key: "library", label: "Library", Icon: Bookmark },
-    { key: "settings", label: "Settings", Icon: Settings }
-  ] as const;
+    { key: "create", label: "", Icon: Plus, raised: true },
+    { key: "library", label: "Library", Icon: Bookmark }
+  ];
   return (
     <View style={styles.tabBar}>
       {tabs.map(({ key, label, Icon, raised }) => {
         const active = selected === key;
         return (
-          <Pressable key={key} onPress={() => onSelect(key)} style={styles.tabItem}>
+          <Pressable key={key} onPress={() => onSelect(key)} accessibilityLabel={raised ? "Create story" : label} accessibilityRole="tab" accessibilityState={{ selected: active }} style={styles.tabItem}>
             <View style={[raised ? styles.raisedTab : styles.flatTab, active && !raised && styles.flatTabActive]}>
               <Icon size={raised ? 26 : 20} color={raised ? "#FFFFFF" : active ? colors.accent : colors.tertiary} />
             </View>
-            {!raised ? <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text> : null}
+            {!raised && label ? <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text> : null}
           </Pressable>
         );
       })}
     </View>
   );
 }
+
+/* ─────────────────────────────── Styles ─────────────────────────────── */
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
@@ -600,6 +735,362 @@ const styles = StyleSheet.create({
     fontSize: 31,
     lineHeight: 35
   },
+
+  /* ── Avatar in header ── */
+  avatarButton: { position: "relative" },
+  headerAvatar: { width: 40, height: 40, borderRadius: 20 },
+  creditBadge: {
+    position: "absolute",
+    top: -4,
+    right: -6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4
+  },
+  creditBadgeText: {
+    fontFamily: fonts.ui,
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900"
+  },
+
+  /* ── Write CTA (new user) ── */
+  writeCTACard: {
+    marginHorizontal: spacing.xl,
+    padding: spacing.xl,
+    borderRadius: radius.xl,
+    backgroundColor: colors.ink
+  },
+  writeCTATitle: {
+    fontFamily: fonts.display,
+    color: "#FFFFFF",
+    fontSize: 24,
+    lineHeight: 28
+  },
+  writeCTASubtitle: {
+    marginTop: spacing.sm,
+    fontFamily: fonts.ui,
+    color: "rgba(255,255,255,0.7)",
+    fontWeight: "700",
+    fontSize: 15,
+    lineHeight: 21
+  },
+  writeCTAButtonWrap: { marginTop: spacing.lg },
+
+  /* ── Write another (returning user) ── */
+  writeAnotherBand: {
+    margin: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: "#FFE0C7",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md
+  },
+  writeAnotherIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  writeAnotherText: {
+    flex: 1,
+    fontFamily: fonts.display,
+    fontSize: 17,
+    color: colors.ink
+  },
+
+  /* ── Continue reading card ── */
+  continueCard: { marginHorizontal: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.ink, flexDirection: "row", gap: spacing.md, alignItems: "center" },
+  continueCopy: { flex: 1 },
+  continueEyebrow: { fontFamily: fonts.ui, color: colors.accent, fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+  continueTitle: { marginTop: spacing.xs, fontFamily: fonts.display, color: "#FFFFFF", fontSize: 25, lineHeight: 28 },
+  continueMeta: { marginTop: spacing.sm, fontFamily: fonts.ui, color: "rgba(255,255,255,0.7)", fontWeight: "700" },
+
+  /* ── Horizontal rail ── */
+  horizontalRail: { paddingHorizontal: spacing.xl, gap: spacing.md },
+  railItem: { width: 108, gap: spacing.sm },
+  railTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 15, lineHeight: 18 },
+  railMeta: { fontFamily: fonts.ui, color: colors.muted, fontSize: 12, fontWeight: "700" },
+
+  /* ── Search & chips ── */
+  searchBox: { marginHorizontal: spacing.xl, height: 52, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
+  searchInput: { flex: 1, fontFamily: fonts.ui, color: colors.ink, fontSize: 15 },
+  chipRow: { paddingHorizontal: spacing.xl, paddingVertical: spacing.lg, gap: spacing.sm },
+  chipRowFlush: { gap: spacing.sm, paddingBottom: spacing.lg },
+
+  /* ── Stack ── */
+  stack: { gap: spacing.md },
+  accentLink: { color: colors.accent, fontWeight: "800" },
+
+  /* ── Library ── */
+  segmented: { marginHorizontal: spacing.xl, padding: 4, borderRadius: radius.pill, backgroundColor: colors.surface2, flexDirection: "row", gap: 4 },
+  segment: { flex: 1, minHeight: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  segmentSelected: { backgroundColor: colors.surface },
+  segmentText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 12, fontWeight: "800" },
+  segmentTextSelected: { color: colors.ink },
+  segmentContent: { marginTop: spacing.xl },
+  emptyState: {
+    paddingVertical: spacing.huge,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.md
+  },
+  emptyStateText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 14,
+    textAlign: "center",
+    paddingHorizontal: spacing.xl
+  },
+
+  /* ── Profile screen ── */
+  profileHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xl
+  },
+  profileHeaderTitle: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 20
+  },
+  profileAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    alignSelf: "center",
+    marginBottom: spacing.md
+  },
+  profileCard: {
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    backgroundColor: colors.ink,
+    alignItems: "center",
+    marginBottom: spacing.xl
+  },
+  profileName: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 24 },
+  profileMeta: { marginTop: spacing.xs, fontFamily: fonts.ui, color: colors.muted, fontWeight: "700" },
+  profileActions: { marginTop: spacing.lg, width: "100%" },
+  profileButtonRow: { flexDirection: "row", gap: spacing.md },
+  profileButtonHalf: { flex: 1 },
+  creditsRow: {
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md
+  },
+  legalFooter: { marginTop: spacing.xl, marginBottom: spacing.lg, textAlign: "center", fontFamily: fonts.ui, color: colors.tertiary, fontSize: 12 },
+  settingsList: { borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
+  settingsRow: { padding: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  settingsIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
+  settingsText: { flex: 1 },
+  settingsTitle: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800", fontSize: 15 },
+  settingsSubtitle: { marginTop: 2, fontFamily: fonts.ui, color: colors.muted, fontSize: 13 },
+
+  /* ── Create screen ── */
+  formCard: { margin: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
+  fieldLabel: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800", fontSize: 13 },
+  seedInput: { minHeight: 118, borderRadius: radius.md, backgroundColor: colors.surface2, padding: spacing.lg, color: colors.ink, fontFamily: fonts.ui, fontSize: 16, textAlignVertical: "top" },
+  inlineInput: { flex: 1, minHeight: 48, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: spacing.lg, color: colors.ink, fontFamily: fonts.ui },
+  twoColumn: { flexDirection: "row", gap: spacing.md },
+  genreChoice: { minWidth: 132, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  genreChoiceSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  genreChoiceText: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
+
+  /* ── Reader ── */
+  reader: { flex: 1, backgroundColor: colors.sepia },
+  readerBody: { padding: spacing.xl, paddingBottom: spacing.huge },
+  backButton: {
+    alignSelf: "flex-start",
+    minHeight: 38,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.lg
+  },
+  backText: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
+  readerGenre: { fontFamily: fonts.ui, color: colors.accent, fontSize: 12, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
+  readerTitle: { marginTop: spacing.sm, fontFamily: fonts.display, color: colors.sepiaText, fontSize: 36, lineHeight: 40 },
+  readerAuthor: { marginTop: spacing.sm, fontFamily: fonts.ui, color: colors.sepiaText, opacity: 0.72, fontWeight: "700" },
+  readerToolbar: { marginVertical: spacing.xl, flexDirection: "row", alignItems: "center", gap: spacing.lg },
+  audioPill: { height: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.accent, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  audioText: { fontFamily: fonts.ui, color: "#FFFFFF", fontWeight: "800" },
+  chapterTitle: { fontFamily: fonts.display, color: colors.sepiaText, fontSize: 25, marginBottom: spacing.lg },
+  paragraph: { fontFamily: fonts.reader, color: colors.sepiaText, fontSize: 18, lineHeight: 31, marginBottom: spacing.lg },
+
+  /* ── Reader engagement ── */
+  engagementDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.xl
+  },
+  engagementRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    marginBottom: spacing.xl
+  },
+  engagementAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md
+  },
+  engagementCount: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: "700"
+  },
+  engagementLabel: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: "700"
+  },
+
+  /* ── Reader author card ── */
+  readerAuthorCard: {
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xl,
+    gap: spacing.md
+  },
+  readerAuthorCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md
+  },
+  authorAvatarSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  authorInitialSmall: {
+    fontFamily: fonts.display,
+    color: "#FFFFFF",
+    fontSize: 22
+  },
+  readerAuthorInfo: { flex: 1 },
+  readerAuthorName: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 17
+  },
+  readerAuthorBio: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18
+  },
+  followButton: {
+    alignSelf: "flex-start",
+    minHeight: 38,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  followButtonText: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontWeight: "800",
+    fontSize: 14
+  },
+
+  /* ── Reader comments preview ── */
+  commentsSection: {
+    gap: spacing.md
+  },
+  commentsSectionTitle: {
+    fontFamily: fonts.display,
+    color: colors.sepiaText,
+    fontSize: 20
+  },
+  commentCard: {
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  commentBody: {
+    fontFamily: fonts.reader,
+    color: colors.ink,
+    fontSize: 15,
+    lineHeight: 22,
+    fontStyle: "italic"
+  },
+  commentAuthor: {
+    marginTop: spacing.sm,
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  viewAllComments: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontWeight: "800",
+    fontSize: 14
+  },
+
+  /* ── Credits screen ── */
+  creditHero: { marginTop: spacing.xl, padding: spacing.xl, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
+  creditHeroTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 24, lineHeight: 28 },
+  creditHeroText: { fontFamily: fonts.ui, color: colors.muted, lineHeight: 21 },
+  ledgerRow: { marginHorizontal: spacing.xl, marginBottom: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  ledgerAmount: { fontFamily: fonts.ui, fontSize: 18, fontWeight: "900" },
+  positive: { color: colors.success },
+  negative: { color: colors.premium },
+
+  /* ── Author screen ── */
+  authorHeader: { alignItems: "center", gap: spacing.sm, marginBottom: spacing.xl },
+  authorAvatar: { width: 86, height: 86, borderRadius: 28, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
+  authorInitial: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 42 },
+  authorBio: { paddingHorizontal: spacing.lg, textAlign: "center", fontFamily: fonts.ui, color: colors.muted, lineHeight: 21 },
+  authorStats: { flexDirection: "row", gap: spacing.lg },
+  stat: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
+
+  /* ── Tab bar ── */
+  tabBar: { position: "absolute", left: 10, right: 10, bottom: 10, minHeight: 76, borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, shadowColor: "#3D2D1B", shadowOpacity: 0.12, shadowRadius: 22, shadowOffset: { width: 0, height: 8 } },
+  tabItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2 },
+  flatTab: { width: 38, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  flatTabActive: { backgroundColor: colors.accentSoft },
+  raisedTab: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center", marginTop: -26 },
+  tabLabel: { fontFamily: fonts.ui, color: colors.tertiary, fontSize: 10, fontWeight: "800" },
+  tabLabelActive: { color: colors.accent },
+
+  /* ── Legacy / onboarding (kept for reference screens) ── */
+  avatar: { width: 46, height: 46, borderRadius: 14 },
   logoRow: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   logo: { width: 42, height: 42, borderRadius: 10 },
   wordmark: { fontFamily: fonts.brand, fontSize: 34, color: colors.ink },
@@ -616,80 +1107,10 @@ const styles = StyleSheet.create({
   intentSignIn: { minHeight: 44, alignItems: "center", justifyContent: "center", marginTop: -2 },
   intentSignInText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14.5 },
   intentSignInStrong: { color: colors.ink, fontWeight: "900" },
-  continueCard: { marginHorizontal: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.ink, flexDirection: "row", gap: spacing.md, alignItems: "center" },
-  continueCopy: { flex: 1 },
-  continueEyebrow: { fontFamily: fonts.ui, color: colors.accent, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1 },
-  continueTitle: { marginTop: spacing.xs, fontFamily: fonts.display, color: "#FFFFFF", fontSize: 25, lineHeight: 28 },
-  continueMeta: { marginTop: spacing.sm, fontFamily: fonts.ui, color: "rgba(255,255,255,0.7)", fontWeight: "700" },
+  circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
   createBand: { margin: spacing.xl, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: "#FFE0C7", flexDirection: "row", alignItems: "center", gap: spacing.md },
   createBandIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
   createBandCopy: { flex: 1 },
   createBandTitle: { fontFamily: fonts.display, fontSize: 19, color: colors.ink },
-  createBandText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, lineHeight: 18 },
-  circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
-  horizontalRail: { paddingHorizontal: spacing.xl, gap: spacing.md },
-  railItem: { width: 108, gap: spacing.sm },
-  railTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 15, lineHeight: 18 },
-  railMeta: { fontFamily: fonts.ui, color: colors.muted, fontSize: 12, fontWeight: "700" },
-  stack: { gap: spacing.md },
-  searchBox: { marginHorizontal: spacing.xl, height: 52, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
-  searchInput: { flex: 1, fontFamily: fonts.ui, color: colors.ink, fontSize: 15 },
-  chipRow: { paddingHorizontal: spacing.xl, paddingVertical: spacing.lg, gap: spacing.sm },
-  chipRowFlush: { gap: spacing.sm, paddingBottom: spacing.lg },
-  formCard: { margin: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
-  fieldLabel: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800", fontSize: 13 },
-  seedInput: { minHeight: 118, borderRadius: radius.md, backgroundColor: colors.surface2, padding: spacing.lg, color: colors.ink, fontFamily: fonts.ui, fontSize: 16, textAlignVertical: "top" },
-  inlineInput: { flex: 1, minHeight: 48, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: spacing.lg, color: colors.ink, fontFamily: fonts.ui },
-  twoColumn: { flexDirection: "row", gap: spacing.md },
-  genreChoice: { minWidth: 132, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
-  genreChoiceSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  genreChoiceText: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
-  segmented: { marginHorizontal: spacing.xl, padding: 4, borderRadius: radius.pill, backgroundColor: colors.surface2, flexDirection: "row", gap: 4 },
-  segment: { flex: 1, minHeight: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
-  segmentSelected: { backgroundColor: colors.surface },
-  segmentText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 12, fontWeight: "800" },
-  segmentTextSelected: { color: colors.ink },
-  avatar: { width: 46, height: 46, borderRadius: 14 },
-  profileCard: { margin: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.ink },
-  profileName: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 24 },
-  profileMeta: { marginTop: spacing.xs, fontFamily: fonts.ui, color: colors.muted, fontWeight: "700" },
-  profileActions: { marginTop: spacing.lg },
-  settingsList: { marginHorizontal: spacing.xl, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
-  settingsRow: { padding: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  settingsIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
-  settingsText: { flex: 1 },
-  settingsTitle: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800", fontSize: 15 },
-  settingsSubtitle: { marginTop: 2, fontFamily: fonts.ui, color: colors.muted, fontSize: 13 },
-  reader: { flex: 1, backgroundColor: colors.sepia },
-  readerBody: { padding: spacing.xl, paddingBottom: spacing.huge },
-  backButton: { alignSelf: "flex-start", minHeight: 38, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", marginBottom: spacing.lg },
-  backText: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
-  readerGenre: { fontFamily: fonts.ui, color: colors.accent, fontSize: 12, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
-  readerTitle: { marginTop: spacing.sm, fontFamily: fonts.display, color: colors.sepiaText, fontSize: 36, lineHeight: 40 },
-  readerAuthor: { marginTop: spacing.sm, fontFamily: fonts.ui, color: colors.sepiaText, opacity: 0.72, fontWeight: "700" },
-  readerToolbar: { marginVertical: spacing.xl, flexDirection: "row", alignItems: "center", gap: spacing.lg },
-  audioPill: { height: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.accent, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  audioText: { fontFamily: fonts.ui, color: "#FFFFFF", fontWeight: "800" },
-  chapterTitle: { fontFamily: fonts.display, color: colors.sepiaText, fontSize: 25, marginBottom: spacing.lg },
-  paragraph: { fontFamily: fonts.reader, color: colors.sepiaText, fontSize: 18, lineHeight: 31, marginBottom: spacing.lg },
-  creditHero: { marginTop: spacing.xl, padding: spacing.xl, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.md },
-  creditHeroTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 24, lineHeight: 28 },
-  creditHeroText: { fontFamily: fonts.ui, color: colors.muted, lineHeight: 21 },
-  ledgerRow: { marginHorizontal: spacing.xl, marginBottom: spacing.md, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  ledgerAmount: { fontFamily: fonts.ui, fontSize: 18, fontWeight: "900" },
-  positive: { color: colors.success },
-  negative: { color: colors.premium },
-  authorHeader: { alignItems: "center", gap: spacing.sm, marginBottom: spacing.xl },
-  authorAvatar: { width: 86, height: 86, borderRadius: 28, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
-  authorInitial: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 42 },
-  authorBio: { paddingHorizontal: spacing.lg, textAlign: "center", fontFamily: fonts.ui, color: colors.muted, lineHeight: 21 },
-  authorStats: { flexDirection: "row", gap: spacing.lg },
-  stat: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
-  tabBar: { position: "absolute", left: 10, right: 10, bottom: 10, minHeight: 76, borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, shadowColor: "#3D2D1B", shadowOpacity: 0.12, shadowRadius: 22, shadowOffset: { width: 0, height: 8 } },
-  tabItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2 },
-  flatTab: { width: 38, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  flatTabActive: { backgroundColor: colors.accentSoft },
-  raisedTab: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center", marginTop: -26 },
-  tabLabel: { fontFamily: fonts.ui, color: colors.tertiary, fontSize: 10, fontWeight: "800" },
-  tabLabelActive: { color: colors.accent }
+  createBandText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, lineHeight: 18 }
 });
