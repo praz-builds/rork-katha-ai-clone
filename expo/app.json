@@ -10,6 +10,30 @@
     "assetBundlePatterns": [
       "assets/**/*"
     ],
+    "plugins": [
+      "@sentry/react-native/expo",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF6B1A"
+        }
+      ],
+      "expo-tracking-transparency",
+      [
+        "expo-updates",
+        {
+          "username": "katha-ai"
+        }
+      ]
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/UPDATE_PROJECT_ID",
+      "fallbackToCacheTimeout": 10000
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.katha.createstories"
@@ -26,7 +50,14 @@
     },
     "extra": {
       "supabaseUrl": "https://iafeuxgoiknncgyjmugd.supabase.co",
-      "supabaseAnonKey": ""
+      "supabaseAnonKey": "",
+      "sentryDsn": "",
+      "posthogApiKey": "",
+      "posthogHost": "https://us.i.posthog.com",
+      "adaptyApiKey": "",
+      "eas": {
+        "projectId": ""
+      }
     }
   }
 }

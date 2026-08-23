@@ -1,6 +1,9 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { useEffect, useMemo, useState } from "react";
+import { initSentry, initPostHog } from "@/lib/analytics";
+import { initAdapty } from "@/lib/adapty";
+import { setupAndroidChannel } from "@/lib/notifications";
 import {
   ActivityIndicator,
   Alert,
@@ -65,6 +68,13 @@ export default function App() {
       Literata: require("./assets/fonts/Literata.ttf"),
       LiterataItalic: require("./assets/fonts/Literata-Italic.ttf")
     }).then(() => setFontsReady(true));
+  }, []);
+
+  useEffect(() => {
+    initSentry();
+    initPostHog();
+    initAdapty();
+    setupAndroidChannel();
   }, []);
 
   const allStories = useMemo(() => [...generatedStories, ...stories], [generatedStories]);
