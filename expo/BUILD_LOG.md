@@ -60,6 +60,70 @@
 - `DESIGN.md`: canonical visual and product-flow specification.
 - `CLAUDE.md`: engineering operating context for future sessions.
 
+## 2026-08-23: Full App Rework -- Navigation, Create Studio, Paywall CRO, Reader Engagement, Backend
+
+### Shipped
+
+- Restructured navigation from 5 tabs to 3: Home | Create (+) | Library. Profile moved to top-right avatar overlay.
+- Home screen: write-first CTA for new users, genre-based content rows (Adventure/Mystery/Fantasy), integrated search with genre filter chips, time-based greeting, continue-reading card for returning users.
+- Library tab: 4 segments (Saved/History/My Stories/Comments) with empty states and bookmark/message icons.
+- Profile screen: overlay with back navigation, centered user card, credits row with chevron, settings list (Notifications, Reading preferences, Katha Plus, Parental controls, Feedback), legal footer.
+- CreateStudioScreen (1,653 lines): 3-step create flow -- setup (genre, seed, multi-character with hero toggle, EN/ES/PT language picker) to draft editor (paragraph-level AI actions: rewrite, expand, shorten, change tone, custom prompt, edit, delete; undo toast; pulse animation on processing) to publish (confirmation modal, cover generation simulation).
+- Paywall CRO redesign: $59/yr ($4.92/mo), strikethrough $259, feature comparison table (Free vs Plus, 7 features), 3 testimonial cards with avatar photos, social proof stats (4.8 rating, 50K+ stories), sticky bottom CTA, expandable weekly plan, accessible legal links.
+- Reader engagement: Substack-style engagement bar (like/comment/save/share), author card with Follow button, comments preview section.
+- Intro spacing fix: reduced hero height 522 to 478, stage 360 to 340, grid closer to wordmark, bottom CTA section uses flex layout for proper fit.
+- Backend: 3 new Supabase Edge Functions (feed, edit-story, publish-story) and editParagraph() in shared llm.ts.
+
+### Backend Endpoints Added
+
+- `feed/index.ts`: Personalized FYP -- new users get curated stories by like count, returning users get scored feed (genre affinity +3, followed author +5, trending +2, recency +1, engagement +1). Includes continue_reading array.
+- `edit-story/index.ts`: Paragraph-level AI editing. Validates story ownership, splits chapter content, builds instruction-specific LLM prompt, replaces paragraph, updates word counts. No credit cost.
+- `publish-story/index.ts`: Marks story as public. Validates ownership, status, and published chapter existence. Idempotent.
+
+### Approved Product Decisions
+
+- Write/create is the primary CTA, not read.
+- Profile is a top-right avatar, not a bottom tab.
+- Library replaces the old Settings/Library tabs.
+- Welcome credits: currently 3 in code; product decision to increase to 5 or 10 is pending welcome flow implementation.
+- Paywall pricing: $59/yr with 3-day trial (placeholder until Adapty).
+- Language picker: English, Spanish, Portuguese at launch.
+- Character description clearable with X button.
+- Tab bar remains visible during Create Studio (hiding deferred until editor step gains its own bottom toolbar).
+
+### CodeRabbit Review Cycle
+
+- 4 review rounds, all actionable comments addressed.
+- Remaining outside-diff comments (hardcoded prices, language forwarding to API) are intentional: Adapty not integrated, api.ts not in PR scope.
+- Merged to main via squash merge after CodeRabbit commit status SUCCESS.
+
+### Verification
+
+- `pnpm typecheck`: passing (zero errors).
+- Web export: compiles (2.79 MB bundle).
+- PR #8 merged to main.
+
+### Integration Work Remaining
+
+1. Wire `expo-notifications` for native permission request (Android 13+ POST_NOTIFICATIONS).
+2. Connect Adapty for live pricing, trial eligibility, and purchases.
+3. Connect Supabase Auth (email magic link / OTP).
+4. Wire CreateStudioScreen to real edit-story and publish-story endpoints (currently mock mode).
+5. Forward selected language to generation API.
+6. Welcome flow: confetti animation + 10 credits + guided tutorial.
+7. Text selection editing (word/sentence level) for draft editor.
+
+### Primary Files
+
+- `App.tsx`: 3-tab shell, Home, Library, Profile overlay, Reader with engagement.
+- `src/screens/CreateStudioScreen.tsx`: full create studio with draft editor.
+- `src/screens/KathaOnboarding.jsx`: intro with spacing fix.
+- `src/screens/KathaOnboardingFlowV2.jsx`: paywall CRO redesign.
+- `src/types/domain.ts`: TabKey (home|create|library), Screen (+profile).
+- `backend/supabase/functions/feed/index.ts`: FYP endpoint.
+- `backend/supabase/functions/edit-story/index.ts`: paragraph AI editing.
+- `backend/supabase/functions/publish-story/index.ts`: publish endpoint.
+
 ## 2026-08-22: Intro and Paywall Motion Revisions
 
 ### Changed

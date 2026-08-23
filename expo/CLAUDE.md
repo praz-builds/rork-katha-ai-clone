@@ -41,8 +41,17 @@ After onboarding or paywall changes:
 - `KathaOnboardingFlowV2` emits the collected onboarding result through `onDone`; persist that payload when account/profile wiring is added.
 - Do not hard-code localized production pricing when Adapty integration begins. Render product and currency values from the store payload.
 
+## Navigation architecture (2026-08-23)
+
+- 3-tab layout: Home | Create (+, raised) | Library. Profile is a top-right avatar overlay, not a tab.
+- `TabKey`: `"home" | "create" | "library"`. `Screen` includes `{ name: "profile" }`.
+- CreateStudioScreen is a standalone component in `src/screens/CreateStudioScreen.tsx`. It manages its own 3-step flow (setup, editor, publish). The tab bar remains visible; hiding it during the editor step is deferred.
+- The Reader includes a Substack-style engagement bar, author card, and comments preview.
+- The Library has 4 segments: Saved, History, My Stories, Comments.
+
 ## Session handoff
 
 - Read `BUILD_LOG.md` before starting new feature work.
 - Treat the onboarding, shared wordmark, typography, CTA language, personas, notification education, and adaptive paywall as approved product decisions.
+- The 3-tab navigation, create studio, paywall CRO, and reader engagement are approved product decisions from the 2026-08-23 session.
 - Do not reopen migration or visual-source discovery unless product explicitly changes the approved system.
