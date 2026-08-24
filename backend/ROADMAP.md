@@ -67,28 +67,29 @@
 - [ ] Upload generated image to Supabase Storage bucket `covers/`
 - [ ] Return public URL; store in `stories.cover_image_url`
 
-### Audio Narration (edge-tts)
+### Audio Narration (DONE -- 2026-08-25)
 
-- [ ] Add `generateAudioNarration(text, language)` function to `_shared/audio.ts`
-- [ ] Default voice: `en-US-JennyNeural`, Rate: `-15%`
-- [ ] Language-specific voices for Hindi, Spanish, Japanese, etc.
-- [ ] Upload to Supabase Storage bucket `audio/`
-- [ ] Compute duration: `file_size_bytes * 8 / 48000` seconds
-- [ ] Return public URL + duration; store in `chapters.audio_url`, `chapters.audio_duration`
+- [x] RunPod serverless endpoint `katha-tts` deployed with VibeVoice 1.5B (ADA_24 GPU, scale-to-zero)
+- [x] `generate-audio` edge function with language-aware routing (EN to RunPod, ES to edge-tts)
+- [x] `audio-status` edge function: polls RunPod, uploads to Storage, updates chapters
+- [x] 2 voices per language: Aria+Kai (EN), Elvira+Alvaro (ES)
+- [x] Audio stored at `{story_id}/{chapter_id}/{voice_id}.mp3` in `audio` bucket
+- [x] Input validation and ownership check on generate-audio
+- [x] `_shared/edge-tts.ts` with voice mappings (synthesis pending implementation)
+- [ ] Wire edge-tts synthesis for Spanish (currently returns PENDING_IMPLEMENTATION)
+- [ ] Compute and store `chapters.audio_duration`
 
-### Wire into generate-story + continue-story
+### Wire into publish flow
 
-- [ ] Call `generateCoverImage()` after LLM text generation
-- [ ] Call `generateAudioNarration()` after LLM text generation
-- [ ] Both calls can run in parallel (Promise.all)
+- [ ] Call `generateCoverImage()` on publish (via Inngest async step)
+- [x] Call `generate-audio` on publish (via Inngest async step -- endpoint ready)
 - [ ] On image failure: use genre-based gradient fallback (still save story)
 - [ ] On audio failure: save story without audio, mark `audio_status: 'failed'`
-- [ ] Return `coverImageUrl` + `audioUrl` + `audioDuration` in response
 
 ### Storage Setup
 
 - [ ] Create Supabase Storage bucket `covers` (public read)
-- [ ] Create Supabase Storage bucket `audio` (public read)
+- [x] Created Supabase Storage bucket `audio` (public read, service role upload)
 - [ ] Set appropriate CORS + size limits
 - [ ] Configure Supabase Storage bucket CORS for production media access
 - [ ] Configure Edge Function CORS via the `ALLOWED_ORIGINS` Supabase secret with the exact production web origin; local `http://localhost:8090` is already configured

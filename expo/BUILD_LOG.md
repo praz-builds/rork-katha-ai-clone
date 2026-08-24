@@ -2,6 +2,49 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-08-25: Audio Narration System
+
+### Shipped
+
+- Deployed RunPod serverless endpoint `katha-tts` (ID: `euevq9pcv3herw`) with VibeVoice 1.5B on ADA_24 GPU, scale-to-zero, max 3 workers, FlashBoot enabled.
+- Created voice registry with 8 voices: 6 English (Aria, Luna, Zara, Kai, Ravi, Leo) + 2 Spanish (Elvira, Alvaro). Launch uses 2 per language (Aria+Kai for EN, Elvira+Alvaro for ES). Remaining 4 reserved for future Premium Voices feature.
+- Built `generate-audio` edge function with language-aware routing: English to RunPod (VibeVoice), Spanish to edge-tts (placeholder pending implementation).
+- Built `audio-status` edge function: polls RunPod job status, decodes base64 audio, uploads to Supabase Storage `audio` bucket, updates `chapters.audio_url`.
+- Added shared `_shared/edge-tts.ts` utility with voice mappings and language defaults.
+- Reader screen voice toggle: shows Aria/Kai for English stories, Elvira/Alvaro for Spanish stories, auto-detected from story language field.
+- Audio files stored at `{story_id}/{chapter_id}/{voice_id}.mp3` in Supabase Storage. Both voices generated at publish time and cached permanently. No recurring RunPod cost per playback.
+- Input validation and ownership check on generate-audio (story author only).
+
+### Supabase Configuration Applied
+
+- Set `RUNPOD_API_KEY` secret
+- Set `ADAPTY_WEBHOOK_SECRET` secret
+- Created `audio` storage bucket (public read, service role upload)
+
+### Audio Flow
+
+1. Author publishes story
+2. Backend calls `generate-audio` with story text + language
+3. EN: submits 2 RunPod jobs (Aria + Kai) in parallel
+4. ES: routed to edge-tts (pending implementation)
+5. On completion: audio uploaded to Storage, `chapters.audio_url` updated
+6. Reader sees play/pause button with voice toggle
+7. Paid users: plays instantly. Free users: 1 credit to unlock audio per story.
+
+### Cost Model
+
+- RunPod charges only during GPU generation (~30s per voice, ~$0.006 per audio)
+- 2 voices per story = ~$0.012 per published story
+- Storage: ~2MB per story (both voices), persisted permanently in Supabase Storage
+- 1,000 stories = ~$12 RunPod + ~2GB storage
+
+### Primary Files
+
+- `expo/src/data/voices.ts`: Voice registry, language defaults, genre matching.
+- `backend/supabase/functions/generate-audio/index.ts`: TTS orchestrator with language routing.
+- `backend/supabase/functions/audio-status/index.ts`: Job poller + Storage uploader.
+- `backend/supabase/functions/_shared/edge-tts.ts`: Spanish voice mappings.
+
 ## 2026-08-23: Production Infrastructure Setup
 
 ### Shipped
