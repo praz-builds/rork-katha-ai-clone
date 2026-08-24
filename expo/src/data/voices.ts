@@ -78,3 +78,10 @@ export const defaultVoiceForGenre = (genre: string): VoiceId => {
 };
 
 export const getVoice = (id: VoiceId): Voice => voices.find(v => v.id === id) ?? voices[0];
+
+/** The two default voices every story gets narrated with at publish time. */
+export const DEFAULT_FEMALE_VOICE: VoiceId = 'aria';
+export const DEFAULT_MALE_VOICE: VoiceId = 'kai';
+
+/** The two default voices as an array for iteration. */
+export const DEFAULT_VOICES: VoiceId[] = [DEFAULT_FEMALE_VOICE, DEFAULT_MALE_VOICE];

@@ -30,6 +30,7 @@ serve(async (req) => {
     const jobId = url.searchParams.get("job_id");
     const storyId = url.searchParams.get("story_id");
     const chapterId = url.searchParams.get("chapter_id");
+    const voiceId = url.searchParams.get("voice_id") ?? "aria";
 
     if (!jobId) return respond({ error: "job_id is required" }, 400);
 
@@ -38,7 +39,7 @@ serve(async (req) => {
 
     // Check RunPod job status
     const statusResponse = await fetch(`${RUNPOD_ENDPOINT}/status/${jobId}`, {
-      headers: { "Authorization": `Bearer ${runpodApiKey}` },
+      headers: { Authorization: `Bearer ${runpodApiKey}` },
     });
 
     if (!statusResponse.ok) {
@@ -48,18 +49,18 @@ serve(async (req) => {
     const statusResult = await statusResponse.json();
 
     if (statusResult.status === "COMPLETED" && statusResult.output) {
-      // Job completed — save audio to Supabase Storage
       const serviceClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       );
 
-      let audioUrl = null;
+      let audioUrl: string | null = null;
 
-      // If output contains base64 audio data
+      // Storage path includes voice ID so each voice is cached separately
+      const filePath = `${storyId}/${chapterId}/${voiceId}.mp3`;
+
       if (statusResult.output.audio_base64) {
         const audioBytes = decode(statusResult.output.audio_base64);
-        const filePath = `audio/${storyId}/${chapterId}.mp3`;
 
         const { error: uploadError } = await serviceClient.storage
           .from("audio")
@@ -73,14 +74,15 @@ serve(async (req) => {
             .from("audio")
             .getPublicUrl(filePath);
           audioUrl = urlData.publicUrl;
+        } else {
+          console.error("Storage upload error:", uploadError);
         }
       } else if (statusResult.output.audio_url) {
-        // If output contains a direct URL
         audioUrl = statusResult.output.audio_url;
       }
 
-      // Update chapter with audio URL
-      if (audioUrl && chapterId) {
+      // Update chapter with the default voice audio URL (aria = female default)
+      if (audioUrl && chapterId && voiceId === "aria") {
         await serviceClient
           .from("chapters")
           .update({ audio_url: audioUrl })
@@ -89,17 +91,28 @@ serve(async (req) => {
 
       return respond({
         status: "COMPLETED",
+        voice_id: voiceId,
         audio_url: audioUrl,
       });
     }
 
-    // Still processing
+    if (statusResult.status === "FAILED") {
+      return respond({
+        status: "FAILED",
+        voice_id: voiceId,
+        error: statusResult.error ?? "Audio generation failed",
+      });
+    }
+
     return respond({
       status: statusResult.status,
-      message: statusResult.status === "IN_QUEUE" ? "Waiting for GPU worker" :
-               statusResult.status === "IN_PROGRESS" ? "Generating audio..." :
-               statusResult.status === "FAILED" ? "Audio generation failed" :
-               statusResult.status,
+      voice_id: voiceId,
+      message:
+        statusResult.status === "IN_QUEUE"
+          ? "Waiting for GPU worker"
+          : statusResult.status === "IN_PROGRESS"
+            ? "Generating audio..."
+            : statusResult.status,
     });
   } catch (error) {
     console.error("audio-status error:", error);

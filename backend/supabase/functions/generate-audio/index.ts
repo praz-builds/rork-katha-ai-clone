@@ -4,6 +4,9 @@ import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 
 const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/euevq9pcv3herw";
 
+// The two default voices generated for every published story.
+const DEFAULT_VOICES = ["aria", "kai"] as const;
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -14,7 +17,6 @@ serve(async (req) => {
     });
 
   try {
-    // Auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return respond({ error: "Unauthorized" }, 401);
 
@@ -26,12 +28,18 @@ serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return respond({ error: "Unauthorized" }, 401);
 
-    // Parse body
     const body = await req.json();
-    const { story_id, chapter_id, voice_id, text } = body;
+    const { story_id, chapter_id, text } = body;
+    // voice_id is optional — if omitted, generates both defaults
+    const voiceIds: string[] = body.voice_id
+      ? [body.voice_id]
+      : [...DEFAULT_VOICES];
 
-    if (!story_id || !chapter_id || !text || !voice_id) {
-      return respond({ error: "story_id, chapter_id, voice_id, and text are required" }, 400);
+    if (!story_id || !chapter_id || !text) {
+      return respond(
+        { error: "story_id, chapter_id, and text are required" },
+        400,
+      );
     }
 
     if (text.length > 50000) {
@@ -43,49 +51,45 @@ serve(async (req) => {
       return respond({ error: "Audio generation is not configured" }, 503);
     }
 
-    // Submit async job to RunPod
-    const runpodResponse = await fetch(`${RUNPOD_ENDPOINT}/run`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${runpodApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        input: {
-          text,
-          voice: voice_id,
-          language: "en",
-        },
-      }),
-    });
+    // Submit one RunPod job per voice (both run in parallel on separate workers)
+    const jobs: { voice_id: string; job_id: string }[] = [];
 
-    if (!runpodResponse.ok) {
-      const err = await runpodResponse.text();
-      console.error("RunPod error:", err);
-      return respond({ error: "Audio generation failed to start" }, 502);
+    for (const voiceId of voiceIds) {
+      const runpodResponse = await fetch(`${RUNPOD_ENDPOINT}/run`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${runpodApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input: {
+            text,
+            voice: voiceId,
+            language: "en",
+          },
+        }),
+      });
+
+      if (!runpodResponse.ok) {
+        const err = await runpodResponse.text();
+        console.error(`RunPod error for voice ${voiceId}:`, err);
+        continue;
+      }
+
+      const result = await runpodResponse.json();
+      jobs.push({ voice_id: voiceId, job_id: result.id });
     }
 
-    const runpodResult = await runpodResponse.json();
-    const jobId = runpodResult.id;
-
-    // Store job reference in DB for polling
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
-    // Update chapter with pending audio status
-    await serviceClient
-      .from("chapters")
-      .update({
-        audio_url: null,
-      })
-      .eq("id", chapter_id);
+    if (jobs.length === 0) {
+      return respond({ error: "All audio generation jobs failed to start" }, 502);
+    }
 
     return respond({
-      job_id: jobId,
+      jobs,
+      story_id,
+      chapter_id,
       status: "IN_QUEUE",
-      message: "Audio generation started. Poll /audio-status for progress.",
+      message: `${jobs.length} audio generation job(s) started. Poll /audio-status for each.`,
     });
   } catch (error) {
     console.error("generate-audio error:", error);
