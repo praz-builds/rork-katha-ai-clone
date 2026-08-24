@@ -31,17 +31,10 @@ serve(async (req) => {
     if (!user) return respond({ error: "Unauthorized" }, 401);
 
     const body = await req.json();
-    const { story_id, chapter_id, text } = body;
-    const language: string = body.language ?? "en";
-
-    // Resolve the default voice pair for this language.
-    const defaultPair = DEFAULT_VOICES_BY_LANGUAGE[language] ??
-      DEFAULT_VOICES_BY_LANGUAGE["en"];
-
-    // voice_id is optional — if omitted, generates both defaults for the language.
-    const voiceIds: string[] = body.voice_id
-      ? [body.voice_id]
-      : [...defaultPair];
+    const story_id = typeof body.story_id === "string" ? body.story_id : "";
+    const chapter_id = typeof body.chapter_id === "string" ? body.chapter_id : "";
+    const text = typeof body.text === "string" ? body.text : "";
+    const language = typeof body.language === "string" ? body.language : "en";
 
     if (!story_id || !chapter_id || !text) {
       return respond(
@@ -53,6 +46,28 @@ serve(async (req) => {
     if (text.length > 50000) {
       return respond({ error: "Text too long (max 50,000 characters)" }, 400);
     }
+
+    // Verify ownership: user must be the story author
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: story, error: storyErr } = await serviceClient
+      .from("stories")
+      .select("author_id")
+      .eq("id", story_id)
+      .single();
+    if (storyErr || !story) return respond({ error: "Story not found" }, 404);
+    if (story.author_id !== user.id) {
+      return respond({ error: "Not authorized" }, 403);
+    }
+
+    // Resolve the default voice pair for this language.
+    const defaultPair = DEFAULT_VOICES_BY_LANGUAGE[language] ??
+      DEFAULT_VOICES_BY_LANGUAGE["en"];
+    const voiceIds: string[] = body.voice_id
+      ? [String(body.voice_id)]
+      : [...defaultPair];
 
     // ─── Route by language ────────────────────────────────────────────────
     if (language === "en") {

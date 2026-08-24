@@ -514,9 +514,9 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
 
   // Derive the language code from the story's language field
   const storyLang = story.language === "Spanish" ? "es" : "en";
-  const [defaultFemale, defaultMale] = getDefaultVoices(storyLang);
-  const femaleVoice = getVoice(defaultFemale);
-  const maleVoice = getVoice(defaultMale);
+  const voicePair = getDefaultVoices(storyLang);
+  const femaleVoice = getVoice(voicePair[0] ?? "aria");
+  const maleVoice = getVoice(voicePair[1] ?? "kai");
 
   const comingSoon = () => Alert.alert("Coming soon", "This feature will be available soon.");
 
