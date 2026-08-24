@@ -26,6 +26,7 @@ import {
   Home,
   Lock,
   MessageCircle,
+  Pause,
   Play,
   Plus,
   Search,
@@ -45,6 +46,7 @@ import {
   formatNumber
 } from "@/components/KathaPrimitives";
 import { authorFor, genres, ledger, stories } from "@/data/seed";
+import { getDefaultVoices, getVoice } from "@/data/voices";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
@@ -507,8 +509,21 @@ function ProfileScreen({
 function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const author = authorFor(story.authorId);
   const chapter = story.chapters[0];
+  const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Derive the language code from the story's language field
+  const storyLang = story.language === "Spanish" ? "es" : "en";
+  const [defaultFemale, defaultMale] = getDefaultVoices(storyLang);
+  const femaleVoice = getVoice(defaultFemale);
+  const maleVoice = getVoice(defaultMale);
 
   const comingSoon = () => Alert.alert("Coming soon", "This feature will be available soon.");
+
+  const handlePlayTap = () => {
+    // Mock: in production, check isPremium -> play directly, else deduct 1 credit
+    setIsPlaying((prev) => !prev);
+  };
 
   return (
     <View style={styles.reader}>
@@ -523,9 +538,27 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           <Text style={styles.readerTitle}>{story.title}</Text>
           <Text style={styles.readerAuthor}>by {author.displayName}</Text>
           <View style={styles.readerToolbar}>
-            <View style={styles.audioPill}>
-              <Play size={16} color="#FFFFFF" />
-              <Text style={styles.audioText}>Narration</Text>
+            <Pressable onPress={handlePlayTap} style={styles.audioPill}>
+              {isPlaying ? (
+                <Pause size={16} color="#FFFFFF" />
+              ) : (
+                <Play size={16} color="#FFFFFF" />
+              )}
+              <Text style={styles.audioText}>{isPlaying ? "Playing" : "Listen"}</Text>
+            </Pressable>
+            <View style={styles.voiceToggle}>
+              <Pressable
+                onPress={() => { setVoiceGender("female"); setIsPlaying(false); }}
+                style={[styles.voiceToggleBtn, voiceGender === "female" && styles.voiceToggleBtnActive]}
+              >
+                <Text style={[styles.voiceToggleText, voiceGender === "female" && styles.voiceToggleTextActive]}>{femaleVoice.name}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { setVoiceGender("male"); setIsPlaying(false); }}
+                style={[styles.voiceToggleBtn, voiceGender === "male" && styles.voiceToggleBtnActive]}
+              >
+                <Text style={[styles.voiceToggleText, voiceGender === "male" && styles.voiceToggleTextActive]}>{maleVoice.name}</Text>
+              </Pressable>
             </View>
             <Bookmark size={21} color={colors.sepiaText} />
             <Share2 size={21} color={colors.sepiaText} />
@@ -1122,5 +1155,32 @@ const styles = StyleSheet.create({
   createBandIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
   createBandCopy: { flex: 1 },
   createBandTitle: { fontFamily: fonts.display, fontSize: 19, color: colors.ink },
-  createBandText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, lineHeight: 18 }
+  createBandText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, lineHeight: 18 },
+
+  /* ── Voice toggle ── */
+  voiceToggle: {
+    flexDirection: "row",
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(74,59,42,0.15)",
+    padding: 2,
+  },
+  voiceToggleBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
+  },
+  voiceToggleBtnActive: {
+    backgroundColor: colors.surface,
+  },
+  voiceToggleText: {
+    fontFamily: fonts.ui,
+    color: colors.sepiaText,
+    fontSize: 13,
+    fontWeight: "700",
+    opacity: 0.6,
+  },
+  voiceToggleTextActive: {
+    opacity: 1,
+    fontWeight: "800",
+  },
 });
