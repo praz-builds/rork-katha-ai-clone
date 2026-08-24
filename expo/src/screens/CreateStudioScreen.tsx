@@ -27,6 +27,7 @@ import {
   Sparkles,
   Trash2,
   Type,
+  User,
   Wand2,
   X,
 } from "lucide-react-native";
@@ -42,6 +43,7 @@ import {
   GenerationRequestError,
 } from "@/lib/api";
 import { genres } from "@/data/seed";
+import { voices, getVoice, defaultVoiceForGenre, type VoiceId } from "@/data/voices";
 import {
   colors,
   fonts,
@@ -68,6 +70,7 @@ type StudioDraft = {
   seed: string;
   language: string;
   characters: DraftCharacter[];
+  voiceId: VoiceId;
 };
 
 type ParagraphState = {
@@ -111,6 +114,7 @@ const INITIAL_DRAFT: StudioDraft = {
   characters: [
     { name: "Mira", description: "Curious, stubborn, quietly brave", isHero: true },
   ],
+  voiceId: "aria",
 };
 
 // ---------------------------------------------------------------------------
@@ -545,9 +549,14 @@ export default function CreateStudioScreen({
                 {genres.slice(0, 12).map((item) => (
                   <Pressable
                     key={item}
-                    onPress={() =>
-                      setDraft((prev) => ({ ...prev, genre: item }))
-                    }
+                    onPress={() => {
+                      const newGenre = item;
+                      setDraft((prev) => ({
+                        ...prev,
+                        genre: newGenre,
+                        voiceId: defaultVoiceForGenre(newGenre),
+                      }));
+                    }}
                     style={[
                       styles.genreChoice,
                       draft.genre === item && styles.genreChoiceSelected,
@@ -658,6 +667,41 @@ export default function CreateStudioScreen({
                   </Pressable>
                 ))}
               </View>
+
+              {/* Voice selector */}
+              <Text style={styles.fieldLabel}>Narrator voice</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.genreRow}
+              >
+                {voices.map((voice) => (
+                  <Pressable
+                    key={voice.id}
+                    onPress={() =>
+                      setDraft((prev) => ({ ...prev, voiceId: voice.id }))
+                    }
+                    style={[
+                      styles.voiceCard,
+                      draft.voiceId === voice.id && styles.voiceCardSelected,
+                    ]}
+                  >
+                    <User
+                      size={18}
+                      color={
+                        draft.voiceId === voice.id
+                          ? colors.accent
+                          : colors.muted
+                      }
+                    />
+                    <Text style={styles.voiceName}>{voice.name}</Text>
+                    <Text style={styles.voiceDesc}>{voice.description}</Text>
+                    <Text style={styles.voiceBestFor} numberOfLines={2}>
+                      Best for: {voice.bestFor.slice(0, 2).join(", ")}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
 
               {/* Generate button */}
               <PrimaryButton onPress={handleGenerate}>
@@ -1215,6 +1259,35 @@ const styles = StyleSheet.create({
   languageChipTextSelected: {
     color: colors.accent,
     fontWeight: "800",
+  },
+  voiceCard: {
+    width: 160,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+  },
+  voiceCardSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  voiceName: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 16,
+  },
+  voiceDesc: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  voiceBestFor: {
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 11,
   },
   hintText: {
     fontFamily: fonts.ui,

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -26,6 +27,7 @@ import {
   Home,
   Lock,
   MessageCircle,
+  Pause,
   Play,
   Plus,
   Search,
@@ -45,6 +47,7 @@ import {
   formatNumber
 } from "@/components/KathaPrimitives";
 import { authorFor, genres, ledger, stories } from "@/data/seed";
+import { voices, type VoiceId } from "@/data/voices";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
@@ -507,8 +510,29 @@ function ProfileScreen({
 function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const author = authorFor(story.authorId);
   const chapter = story.chapters[0];
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState<VoiceId>("aria");
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const hasAudio = !!chapter.audioUrl;
 
   const comingSoon = () => Alert.alert("Coming soon", "This feature will be available soon.");
+
+  const handleAudioTap = () => {
+    if (hasAudio) {
+      setIsPlaying((prev) => !prev);
+    } else {
+      setShowVoiceModal(true);
+    }
+  };
+
+  const handleGenerate = () => {
+    setShowVoiceModal(false);
+    Alert.alert(
+      "Dev build required",
+      `Audio generation with voice "${voices.find((v) => v.id === selectedVoice)?.name ?? selectedVoice}" requires a dev build with Supabase connected.`
+    );
+  };
 
   return (
     <View style={styles.reader}>
@@ -523,10 +547,16 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           <Text style={styles.readerTitle}>{story.title}</Text>
           <Text style={styles.readerAuthor}>by {author.displayName}</Text>
           <View style={styles.readerToolbar}>
-            <View style={styles.audioPill}>
-              <Play size={16} color="#FFFFFF" />
-              <Text style={styles.audioText}>Narration</Text>
-            </View>
+            <Pressable onPress={handleAudioTap} style={styles.audioPill}>
+              {hasAudio && isPlaying ? (
+                <Pause size={16} color="#FFFFFF" />
+              ) : (
+                <Play size={16} color="#FFFFFF" />
+              )}
+              <Text style={styles.audioText}>
+                {hasAudio ? (isPlaying ? "Playing" : "Narration") : "Narration"}
+              </Text>
+            </Pressable>
             <Bookmark size={21} color={colors.sepiaText} />
             <Share2 size={21} color={colors.sepiaText} />
           </View>
@@ -591,6 +621,50 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Voice selector modal */}
+      <Modal
+        visible={showVoiceModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowVoiceModal(false)}
+      >
+        <View style={styles.voiceModalOverlay}>
+          <View style={styles.voiceModalCard}>
+            <Text style={styles.voiceModalTitle}>Choose a voice</Text>
+            <View style={styles.voiceGrid}>
+              {voices.map((voice) => (
+                <Pressable
+                  key={voice.id}
+                  onPress={() => setSelectedVoice(voice.id)}
+                  style={[
+                    styles.voiceGridCard,
+                    selectedVoice === voice.id && styles.voiceGridCardSelected,
+                  ]}
+                >
+                  <User
+                    size={20}
+                    color={selectedVoice === voice.id ? colors.accent : colors.muted}
+                  />
+                  <Text style={styles.voiceGridName}>{voice.name}</Text>
+                  <Text style={styles.voiceGridDesc}>{voice.description}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.voiceModalActions}>
+              <Pressable
+                onPress={() => setShowVoiceModal(false)}
+                style={styles.voiceModalCancel}
+              >
+                <Text style={styles.voiceModalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={handleGenerate} style={styles.voiceModalGenerate}>
+                <Text style={styles.voiceModalGenerateText}>Generate</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1122,5 +1196,89 @@ const styles = StyleSheet.create({
   createBandIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
   createBandCopy: { flex: 1 },
   createBandTitle: { fontFamily: fonts.display, fontSize: 19, color: colors.ink },
-  createBandText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, lineHeight: 18 }
+  createBandText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, lineHeight: 18 },
+
+  /* ── Voice selector modal ── */
+  voiceModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  voiceModalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.xl,
+    gap: spacing.lg,
+  },
+  voiceModalTitle: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 24,
+  },
+  voiceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+  },
+  voiceGridCard: {
+    flexBasis: "47%",
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+    alignItems: "center",
+  },
+  voiceGridCardSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  voiceGridName: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 16,
+  },
+  voiceGridDesc: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  voiceModalActions: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  voiceModalCancel: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voiceModalCancelText: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  voiceModalGenerate: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voiceModalGenerateText: {
+    fontFamily: fonts.ui,
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 14,
+  },
 });
