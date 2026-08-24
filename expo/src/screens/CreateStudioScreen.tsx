@@ -545,9 +545,12 @@ export default function CreateStudioScreen({
                 {genres.slice(0, 12).map((item) => (
                   <Pressable
                     key={item}
-                    onPress={() =>
-                      setDraft((prev) => ({ ...prev, genre: item }))
-                    }
+                    onPress={() => {
+                      setDraft((prev) => ({
+                        ...prev,
+                        genre: item,
+                      }));
+                    }}
                     style={[
                       styles.genreChoice,
                       draft.genre === item && styles.genreChoiceSelected,
