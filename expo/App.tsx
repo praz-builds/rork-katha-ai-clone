@@ -46,6 +46,7 @@ import {
   formatNumber
 } from "@/components/KathaPrimitives";
 import { authorFor, genres, ledger, stories } from "@/data/seed";
+import { getDefaultVoices, getVoice } from "@/data/voices";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
@@ -511,10 +512,16 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Derive the language code from the story's language field
+  const storyLang = story.language === "Spanish" ? "es" : "en";
+  const voicePair = getDefaultVoices(storyLang);
+  const femaleVoice = getVoice(voicePair[0] ?? "aria");
+  const maleVoice = getVoice(voicePair[1] ?? "kai");
+
   const comingSoon = () => Alert.alert("Coming soon", "This feature will be available soon.");
 
   const handlePlayTap = () => {
-    // Mock: in production, check isPremium → play directly, else deduct 1 credit
+    // Mock: in production, check isPremium -> play directly, else deduct 1 credit
     setIsPlaying((prev) => !prev);
   };
 
@@ -544,13 +551,13 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
                 onPress={() => { setVoiceGender("female"); setIsPlaying(false); }}
                 style={[styles.voiceToggleBtn, voiceGender === "female" && styles.voiceToggleBtnActive]}
               >
-                <Text style={[styles.voiceToggleText, voiceGender === "female" && styles.voiceToggleTextActive]}>Aria</Text>
+                <Text style={[styles.voiceToggleText, voiceGender === "female" && styles.voiceToggleTextActive]}>{femaleVoice.name}</Text>
               </Pressable>
               <Pressable
                 onPress={() => { setVoiceGender("male"); setIsPlaying(false); }}
                 style={[styles.voiceToggleBtn, voiceGender === "male" && styles.voiceToggleBtnActive]}
               >
-                <Text style={[styles.voiceToggleText, voiceGender === "male" && styles.voiceToggleTextActive]}>Kai</Text>
+                <Text style={[styles.voiceToggleText, voiceGender === "male" && styles.voiceToggleTextActive]}>{maleVoice.name}</Text>
               </Pressable>
             </View>
             <Bookmark size={21} color={colors.sepiaText} />
@@ -617,7 +624,6 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           </View>
         </View>
       </ScrollView>
-
     </View>
   );
 }
@@ -1151,7 +1157,7 @@ const styles = StyleSheet.create({
   createBandTitle: { fontFamily: fonts.display, fontSize: 19, color: colors.ink },
   createBandText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, lineHeight: 18 },
 
-  /* ── Voice toggle (Aria / Kai) ── */
+  /* ── Voice toggle ── */
   voiceToggle: {
     flexDirection: "row",
     borderRadius: radius.pill,

@@ -1,4 +1,4 @@
-export type VoiceId = 'aria' | 'luna' | 'zara' | 'kai' | 'ravi' | 'leo';
+export type VoiceId = 'aria' | 'luna' | 'zara' | 'kai' | 'ravi' | 'leo' | 'elvira' | 'alvaro';
 export type VoiceGender = 'female' | 'male';
 
 export type Voice = {
@@ -12,6 +12,7 @@ export type Voice = {
 };
 
 export const voices: Voice[] = [
+  // ── English voices ──────────────────────────────────────────────────────
   {
     id: 'aria',
     name: 'Aria',
@@ -66,6 +67,26 @@ export const voices: Voice[] = [
     bestFor: ['Romance', 'Contemporary', 'Motivational', 'Thriller'],
     previewText: 'He set the letter down and smiled. Some things were worth waiting for.',
   },
+
+  // ── Spanish voices ──────────────────────────────────────────────────────
+  {
+    id: 'elvira',
+    name: 'Elvira',
+    gender: 'female',
+    description: 'Clara y expresiva',
+    personality: 'Warm Spanish narrator with clear diction',
+    bestFor: ['Drama', 'Romance', 'Bedtime Stories'],
+    previewText: 'La lluvia caia suavemente sobre el viejo tejado, y en alguna parte, una tetera comenzo a silbar.',
+  },
+  {
+    id: 'alvaro',
+    name: 'Alvaro',
+    gender: 'male',
+    description: 'Profundo y sereno',
+    personality: 'Calm, measured Spanish narrator',
+    bestFor: ['Mystery', 'Adventure', 'Historical'],
+    previewText: 'La puerta no habia estado alli ayer. De eso estaba seguro.',
+  },
 ];
 
 export const defaultVoiceForGenre = (genre: string): VoiceId => {
@@ -85,3 +106,13 @@ export const DEFAULT_MALE_VOICE: VoiceId = 'kai';
 
 /** The two default voices as an array for iteration. */
 export const DEFAULT_VOICES: VoiceId[] = [DEFAULT_FEMALE_VOICE, DEFAULT_MALE_VOICE];
+
+/** Default voice pairs per language code (female, male). */
+export const DEFAULT_VOICES_BY_LANGUAGE: Record<string, VoiceId[]> = {
+  en: ['aria', 'kai'],
+  es: ['elvira', 'alvaro'],
+};
+
+/** Returns the default voice pair for a given language code. Falls back to English. */
+export const getDefaultVoices = (language: string): VoiceId[] =>
+  DEFAULT_VOICES_BY_LANGUAGE[language] ?? DEFAULT_VOICES_BY_LANGUAGE['en'];
