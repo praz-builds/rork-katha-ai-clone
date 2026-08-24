@@ -82,7 +82,7 @@
 ### Wire into publish flow
 
 - [ ] Call `generateCoverImage()` on publish (via Inngest async step)
-- [x] Call `generate-audio` on publish (via Inngest async step -- endpoint ready)
+- [ ] Call `generate-audio` on publish (via Inngest async step -- endpoint ready, Inngest not yet wired)
 - [ ] On image failure: use genre-based gradient fallback (still save story)
 - [ ] On audio failure: save story without audio, mark `audio_status: 'failed'`
 

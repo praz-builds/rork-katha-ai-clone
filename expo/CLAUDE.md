@@ -67,10 +67,11 @@ After onboarding or paywall changes:
 - RunPod endpoint `euevq9pcv3herw` runs VibeVoice 1.5B. Scale-to-zero, ADA_24 GPU.
 - 2 voices per language at launch: Aria+Kai (EN), Elvira+Alvaro (ES). 4 more EN voices reserved for Premium Voices.
 - Audio generated at publish time (both voices), cached permanently in Supabase Storage bucket `audio`.
-- Language routing: EN to RunPod, ES to edge-tts (placeholder). Determined by story's language field.
+- Language routing: EN to RunPod, ES to edge-tts (placeholder). The `generate-audio` endpoint accepts `language` in the request body; callers must pass it explicitly.
 - Storage path: `{story_id}/{chapter_id}/{voice_id}.mp3`. Public read, service role upload.
 - Reader shows voice toggle (female/male names from `getDefaultVoices(lang)`).
 - Free users: 1 credit to unlock audio. Paid users: included.
+- Inngest integration for auto-generation on publish is planned but not yet wired. Currently `generate-audio` is called directly.
 
 ## Session handoff
 

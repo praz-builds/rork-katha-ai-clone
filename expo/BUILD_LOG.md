@@ -26,7 +26,7 @@
 1. Author publishes story
 2. Backend calls `generate-audio` with story text + language
 3. EN: submits 2 RunPod jobs (Aria + Kai) in parallel
-4. ES: routed to edge-tts (pending implementation)
+4. ES: routed to edge-tts (synthesis pending implementation, returns PENDING_IMPLEMENTATION status)
 5. On completion: audio uploaded to Storage, `chapters.audio_url` updated
 6. Reader sees play/pause button with voice toggle
 7. Paid users: plays instantly. Free users: 1 credit to unlock audio per story.
