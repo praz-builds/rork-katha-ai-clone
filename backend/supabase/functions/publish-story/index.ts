@@ -113,11 +113,16 @@ serve(async (req) => {
       );
 
       if (result) {
-        coverImageUrl = result.url;
-        await serviceClient
+        const { error: coverUpdateError } = await serviceClient
           .from("stories")
-          .update({ cover_image_url: coverImageUrl })
+          .update({ cover_image_url: result.url })
           .eq("id", storyId);
+
+        if (coverUpdateError) {
+          console.error("Failed to save cover URL:", coverUpdateError);
+        } else {
+          coverImageUrl = result.url;
+        }
       }
     } catch (coverError) {
       console.error("Cover generation failed (non-fatal):", coverError);

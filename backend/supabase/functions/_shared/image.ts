@@ -28,7 +28,7 @@ export async function generateCoverImage(
     return null;
   }
 
-  const storagePath = `covers/${storyId}/cover.webp`;
+  const storagePath = `covers/${storyId}/cover.png`;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -148,7 +148,7 @@ async function uploadToStorage(
   const { error } = await supabase.storage
     .from("covers")
     .upload(path, bytes, {
-      contentType: "image/webp",
+      contentType: "image/png",
       upsert: true,
     });
 

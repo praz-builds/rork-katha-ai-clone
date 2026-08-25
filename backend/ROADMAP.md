@@ -63,8 +63,8 @@
 - [x] Add `generateCoverImage(storyId, genre, title, themes, characters)` function to `_shared/image.ts`
 - [x] 16 genre-specific prompt templates in `_shared/cover-prompts.ts` (style, palette, composition, mood, character approach)
 - [x] Retry logic: up to 3 attempts, progressive prompt simplification on moderation rejection
-- [x] DALL-E 3 output: 1024x1792 portrait (native portrait mode)
-- [x] Upload generated image to Supabase Storage bucket `covers/` as WebP
+- [x] DALL-E 3 output: 1024x1792 portrait PNG (native portrait mode, native format)
+- [x] Upload generated image to Supabase Storage bucket `covers/` as PNG
 - [x] Return public URL; store in `stories.cover_image_url`
 - [x] No text-on-image (titles composited programmatically in future)
 
@@ -82,8 +82,8 @@
 
 ### Wire into publish flow
 
-- [x] Call `generateCoverImage()` on publish (inline in publish-story, best-effort non-blocking)
-- [ ] Migrate cover generation to Inngest async step (currently synchronous in publish-story)
+- [x] Call `generateCoverImage()` on publish (synchronous inline in publish-story, best-effort — does not fail the publish on error)
+- [ ] Migrate cover generation from synchronous inline to Inngest async step to avoid blocking the publish response
 - [ ] Call `generate-audio` on publish (via Inngest async step -- endpoint ready, Inngest not yet wired)
 - [x] On image failure: genre-based gradient fallback (story still publishes)
 - [ ] On audio failure: save story without audio, mark `audio_status: 'failed'`

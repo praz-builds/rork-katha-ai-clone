@@ -231,7 +231,7 @@ All 7 edge functions deployed and ACTIVE:
 ### Cover Image Generation
 
 - Created `_shared/cover-prompts.ts`: 16 genre-specific prompt templates with style, palette, composition, mood, and character approach (scene/silhouette/portrait).
-- Created `_shared/image.ts`: `generateCoverImage()` function — calls DALL-E 3 at 1024x1792 portrait, uploads to Supabase Storage `covers/` bucket as WebP, returns public URL.
+- Created `_shared/image.ts`: `generateCoverImage()` function — calls DALL-E 3 at 1024x1792 portrait, uploads to Supabase Storage `covers/` bucket as PNG (DALL-E 3 native format), returns public URL.
 - 3-retry logic with progressive prompt simplification on moderation rejection.
 - Non-blocking: cover generation failure does not block story publishing.
 - Updated `publish-story/index.ts` to trigger cover generation after setting `is_public = true`, stores result in `stories.cover_image_url`.
