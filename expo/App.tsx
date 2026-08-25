@@ -556,10 +556,8 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
 
   const getAudioUrl = useCallback((): string | undefined => {
     // Prefer gender-specific audio, fallback to single audioUrl
-    if (chapter.audioUrls) {
-      return voiceGender === "male" ? chapter.audioUrls.male : chapter.audioUrls.female;
-    }
-    return chapter.audioUrl;
+    const genderUrl = voiceGender === "male" ? chapter.audioUrls?.male : chapter.audioUrls?.female;
+    return genderUrl ?? chapter.audioUrl;
   }, [chapter.audioUrl, chapter.audioUrls, voiceGender]);
 
   const handlePlayTap = useCallback(async () => {
