@@ -313,11 +313,13 @@ function validateGenerationRequest(
     )
   ) return { error: "genre must contain 1 to 3 short values" };
 
-  const topic = body.topic;
-  if (typeof topic !== "string" || topic.trim().length < 20) {
-    return {
-      error: "Story seed must be at least 20 characters",
-    };
+  const rawTopic = body.topic;
+  if (typeof rawTopic !== "string") {
+    return { error: "Story seed must be at least 20 characters" };
+  }
+  const topic = rawTopic.trim();
+  if (topic.length < 20) {
+    return { error: "Story seed must be at least 20 characters" };
   }
   if (topic.length > 1000) {
     return { error: "Story seed must be 1000 characters or fewer" };
@@ -361,7 +363,7 @@ function validateGenerationRequest(
 
   return {
     genres: rawGenres.map((genre) => (genre as string).trim()),
-    topic: typeof topic === "string" ? topic.trim() : undefined,
+    topic,
     characters: characters as CharacterInput[],
     requestId,
   };
