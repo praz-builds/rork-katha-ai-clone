@@ -97,7 +97,7 @@
     "language": "Language",
     "generate": "Generate Draft (1 credit)",
     "generating": "Generating...",
-    "seedHint": "Write at least 4 characters in your story seed",
+    "seedHint": "Give Katha a clear premise ({{count}}/20 characters minimum)",
     "creditsNeeded": "You need credits to generate a story",
     "addSeed": "Add a story seed",
     "creditsNeededTitle": "Credits needed",

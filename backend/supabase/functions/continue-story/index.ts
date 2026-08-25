@@ -9,6 +9,7 @@ import {
   parseUuid,
   readJsonObject,
 } from "../_shared/operations.ts";
+import { buildContinuationSystemPrompt } from "../_shared/story-prompts.ts";
 import { parseGeneratedStoryText } from "../_shared/story_text.ts";
 
 serve(async (req) => {
@@ -105,7 +106,7 @@ serve(async (req) => {
     // Verify story ownership
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
-      .select("id, title, genre, topic, author_id")
+      .select("id, title, genre, topic, author_id, language")
       .eq("id", story_id)
       .single();
 
@@ -163,11 +164,19 @@ serve(async (req) => {
       ?.map((c) => `Chapter ${c.chapter_number}: ${c.content}`)
       .join("\n\n");
 
-    const systemPrompt =
-      "You are a creative story writer continuing an existing story. Maintain consistency with previous chapters.";
+    const primaryGenre = Array.isArray(story.genre)
+      ? story.genre[0] ?? "drama"
+      : (story.genre ?? "drama");
+    const storyLanguage = typeof story.language === "string"
+      ? story.language
+      : undefined;
+    const systemPrompt = buildContinuationSystemPrompt(
+      primaryGenre,
+      storyLanguage,
+    );
     const userPrompt =
       `Continue this story with Chapter ${nextChapterNum}.\n\nTitle: ${story.title}\nGenre: ${
-        story.genre.join(", ")
+        Array.isArray(story.genre) ? story.genre.join(", ") : story.genre
       }\n\nPrevious chapters:\n${previousText}\n\nWrite the next chapter (600-900 words). Start with the chapter title on the first line.`;
 
     try {
