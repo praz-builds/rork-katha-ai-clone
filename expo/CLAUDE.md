@@ -64,7 +64,7 @@ After onboarding or paywall changes:
 
 ## Audio narration system (2026-08-25)
 
-- RunPod endpoint `euevq9pcv3herw` runs VibeVoice 1.5B. Scale-to-zero, ADA_24 GPU.
+- Using MiniMax Speech 02 HD public endpoint (`minimax-speech-02-hd`) on RunPod. No custom deployment.
 - 2 voices per language at launch: Aria+Kai (EN), Elvira+Alvaro (ES). 4 more EN voices reserved for Premium Voices.
 - Audio generated at publish time (both voices), cached permanently in Supabase Storage bucket `audio`.
 - Language routing: EN to RunPod, ES to edge-tts (placeholder). The `generate-audio` endpoint accepts `language` in the request body; callers must pass it explicitly.

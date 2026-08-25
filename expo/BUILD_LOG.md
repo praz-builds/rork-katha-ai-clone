@@ -6,9 +6,9 @@
 
 ### Shipped
 
-- Deployed RunPod serverless endpoint `katha-tts` (ID: `euevq9pcv3herw`) with VibeVoice 1.5B on ADA_24 GPU, scale-to-zero, max 3 workers, FlashBoot enabled.
+- Using **MiniMax Speech 02 HD** public endpoint on RunPod (no custom deployment needed). VibeVoice custom endpoint was abandoned (container crash-looped). Chatterbox Turbo was rejected (generative, invented content instead of reading the story).
 - Created voice registry with 8 voices: 6 English (Aria, Luna, Zara, Kai, Ravi, Leo) + 2 Spanish (Elvira, Alvaro). Launch uses 2 per language (Aria+Kai for EN, Elvira+Alvaro for ES). Remaining 4 reserved for future Premium Voices feature.
-- Built `generate-audio` edge function with language-aware routing: English to RunPod (VibeVoice), Spanish to edge-tts (placeholder pending implementation).
+- Built `generate-audio` edge function with language-aware routing: English to MiniMax Speech 02 HD (faithful TTS), Spanish to edge-tts (placeholder pending implementation).
 - Built `audio-status` edge function: polls RunPod job status, decodes base64 audio, uploads to Supabase Storage `audio` bucket, updates `chapters.audio_url`.
 - Added shared `_shared/edge-tts.ts` utility with voice mappings and language defaults.
 - Reader screen voice toggle: shows Aria/Kai for English stories, Elvira/Alvaro for Spanish stories, auto-detected from story language field.
@@ -25,18 +25,34 @@
 
 1. Author publishes story
 2. Backend calls `generate-audio` with story text + language
-3. EN: submits 2 RunPod jobs (Aria + Kai) in parallel
+3. EN: submits 2 MiniMax jobs (Wise_Woman for Aria, Deep_Voice_Man for Kai)
 4. ES: routed to edge-tts (synthesis pending implementation, returns PENDING_IMPLEMENTATION status)
 5. On completion: audio uploaded to Storage, `chapters.audio_url` updated
 6. Reader sees play/pause button with voice toggle
 7. Paid users: plays instantly. Free users: 1 credit to unlock audio per story.
 
+### Functional Reader (PR #20)
+
+- Audio playback via expo-av (native) with working play/pause
+- Like toggle with count increment/decrement
+- Bookmark toggle with icon state change
+- Share via clipboard (web) / Share API (native)
+- Comment input with send button, adds to local list
+- Follow author toggle
+- Professional design: neutral gray avatars, ink buttons, flat comment layout, 16px icons
+
+### Dual Voice (PR #21)
+
+- Added `audioUrls` (female/male) to Chapter type
+- Voice toggle loads correct gender audio
+- Fallback: if gender-specific URL missing, uses generic audioUrl
+
 ### Cost Model
 
-- RunPod charges only during GPU generation (~30s per voice, ~$0.006 per audio)
-- 2 voices per story = ~$0.012 per published story
-- Storage: ~2MB per story (both voices), persisted permanently in Supabase Storage
-- 1,000 stories = ~$12 RunPod + ~2GB storage
+- MiniMax Speech 02 HD: ~$0.04 per chapter narration, ~30s generation
+- 2 voices per story = ~$0.08 per published story
+- Audio served from CloudFront (no CORS issues, no storage cost until we copy to Supabase)
+- 1,000 stories = ~$80 MiniMax
 
 ### Primary Files
 
