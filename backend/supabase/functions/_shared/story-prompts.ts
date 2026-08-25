@@ -142,7 +142,7 @@ The climax is the scene the entire story builds toward. It is not optional. With
 
 ## Cultural Context
 
-Do not assume a character's cultural background, ethnicity, or nationality from their name alone. A character named "Priya" might live in London, Toronto, or Nairobi. Use cultural references (currency, food, geography, customs) only when the story seed, setting, or character description explicitly establishes them. When no cultural context is given, keep references generic or use the story's language as a loose guide.
+Do not assume a character's cultural background, ethnicity, or nationality from their name alone. A character named "Priya" might live in London, Toronto, or Nairobi. Use cultural references (currency, food, geography, customs) only when the story seed, setting, or character description explicitly establishes them. When no cultural context is given, keep references generic.
 
 ## Anti-Slop Rules (CRITICAL)
 
@@ -366,7 +366,7 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     pacing:
       "Setup, setup, payoff. Then immediately undercut the payoff. The rule of three works in comedy: establish a pattern with two examples, break it with the third. Timing in prose means sentence length — the punchline goes in the shortest sentence.",
     whatWorks:
-      "Characters who take absurd situations seriously. Misunderstandings that escalate logically from a small miscommunication. Dialogue where each character is having a slightly different conversation. Specific, concrete details that are inherently funny (brand names, exact numbers, overly technical descriptions of mundane things).",
+      "Characters who take absurd situations seriously. Misunderstandings that escalate logically from a small miscommunication. Dialogue where each character is having a slightly different conversation. Specific, concrete details that are inherently funny (fictional brand names, exact numbers, overly technical descriptions of mundane things).",
     whatToAvoid:
       "Explaining the joke. Characters who know they're being funny. Sarcasm as a substitute for humor. Mean-spirited comedy without a target that deserves it. Pop culture references as punchlines.",
   },
