@@ -112,7 +112,7 @@ export const stories: Story[] = [
         title: "The Letter",
         chapterNumber: 1,
         isPublished: true,
-        audioUrl: "https://image.runpod.ai/chatterbox-turbo/lucy-6a3949f1-9b40-469d-b177-8b12c8873112.wav",
+        audioUrl: "https://d2h7xmz5gqybh9.cloudfront.net/predictions/4df808e2a4ce425caadd22b4af8c3784/1.mp3",
         paragraphs: [
           "The bottle washed ashore on a Tuesday, green glass worn smooth by decades of salt and current. Tom Hardy had kept the lighthouse at Pemaquid Point for thirty-one years, and in that time he had found many things on the beach. But never a bottle with a letter inside.",
           "The paper was thick, hand-pressed, and the handwriting was precise, almost mechanical. Dear Keeper, it began. By the time you read this, the light will have failed. I am writing from the future. The lighthouse fell in the storm of seventy-eight. I am asking you to prevent it.",

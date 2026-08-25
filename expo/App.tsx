@@ -570,29 +570,16 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
         setIsPlaying(true);
       } else {
         isLoadingAudioRef.current = true;
-        if (Platform.OS === "web") {
-          // On web, use HTML5 Audio to avoid CORS issues with expo-av
-          const audio = new window.Audio(audioUrl);
-          audio.onended = () => setIsPlaying(false);
-          audio.onerror = () => {
-            setIsPlaying(false);
-            isLoadingAudioRef.current = false;
-          };
-          await audio.play();
-          // Store a wrapper so pause/unload work
-          soundRef.current = { pauseAsync: async () => audio.pause(), playAsync: async () => audio.play(), unloadAsync: async () => { audio.pause(); audio.src = ""; } } as unknown as Audio.Sound;
-        } else {
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: audioUrl },
-            { shouldPlay: true },
-            (status) => {
-              if (status.isLoaded && status.didJustFinish) {
-                setIsPlaying(false);
-              }
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: true },
+          (status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              setIsPlaying(false);
             }
-          );
-          soundRef.current = sound;
-        }
+          }
+        );
+        soundRef.current = sound;
         setIsPlaying(true);
         isLoadingAudioRef.current = false;
       }

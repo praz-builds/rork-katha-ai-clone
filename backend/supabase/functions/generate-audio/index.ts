@@ -7,8 +7,8 @@ import {
   generateWithEdgeTts,
 } from "../_shared/edge-tts.ts";
 
-// Public endpoint — no deployment needed, pay per use
-const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/chatterbox-turbo";
+// MiniMax Speech 02 HD — faithful text-to-speech, public endpoint, no deployment
+const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/minimax-speech-02-hd";
 
 serve(async (req) => {
   const cors = handleCors(req);
