@@ -369,22 +369,71 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
 };
 
 // ---------------------------------------------------------------------------
+// Supported values — used to normalize user input before interpolation
+// ---------------------------------------------------------------------------
+
+const SUPPORTED_GENRES = new Set(Object.keys(GENRE_VOICES));
+
+const SUPPORTED_LANGUAGES = new Set([
+  "English",
+  "Spanish",
+  "Portuguese",
+  "Hindi",
+  "French",
+  "German",
+  "Italian",
+  "Japanese",
+  "Korean",
+  "Chinese",
+  "Arabic",
+  "Russian",
+  "Turkish",
+  "Indonesian",
+  "Thai",
+]);
+
+function normalizeGenre(genre: string): string {
+  if (SUPPORTED_GENRES.has(genre)) return genre;
+  const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
+  for (const supported of SUPPORTED_GENRES) {
+    if (supported.toLowerCase() === lower) return supported;
+  }
+  return "drama";
+}
+
+function normalizeLanguage(language: string | undefined): string | undefined {
+  if (!language) return undefined;
+  if (SUPPORTED_LANGUAGES.has(language)) return language;
+  const lower = language.toLowerCase();
+  for (const supported of SUPPORTED_LANGUAGES) {
+    if (supported.toLowerCase() === lower) return supported;
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Prompt builders
 // ---------------------------------------------------------------------------
 
 /**
  * Build a complete system prompt for initial story generation.
  * Combines base rules + genre-specific voice + optional language instruction.
+ *
+ * Genre and language are normalized to supported values before interpolation
+ * to prevent prompt injection via user-controlled strings.
  */
 export function buildStorySystemPrompt(
   genre: string,
   language?: string,
 ): string {
+  const safeGenre = normalizeGenre(genre);
+  const safeLang = normalizeLanguage(language);
+
   const base = buildBaseRules();
-  const genreVoice = GENRE_VOICES[genre] ?? GENRE_VOICES.drama;
+  const genreVoice = GENRE_VOICES[safeGenre] ?? GENRE_VOICES.drama;
 
   const genreSection = `
-## Genre: ${genre}
+## Genre: ${safeGenre}
 
 ### Voice & Tone
 ${genreVoice.voice}
@@ -398,8 +447,8 @@ ${genreVoice.whatWorks}
 ### What to Avoid in This Genre
 ${genreVoice.whatToAvoid}`;
 
-  const languageSection = language && language !== "English"
-    ? `\n\n## Language\n\nWrite the entire story in ${language}. All dialogue, narration, and the title must be in ${language}. Do not mix languages unless a character would naturally code-switch.`
+  const languageSection = safeLang && safeLang !== "English"
+    ? `\n\n## Language\n\nWrite the entire story in ${safeLang}. All dialogue, narration, and the title must be in ${safeLang}. Do not mix languages unless a character would naturally code-switch.`
     : "";
 
   return `${base}\n${genreSection}${languageSection}`;

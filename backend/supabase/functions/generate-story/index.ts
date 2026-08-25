@@ -314,10 +314,13 @@ function validateGenerationRequest(
   ) return { error: "genre must contain 1 to 3 short values" };
 
   const topic = body.topic;
-  if (
-    topic !== undefined && (typeof topic !== "string" || topic.length > 1000)
-  ) {
-    return { error: "topic must be a string of 1000 characters or fewer" };
+  if (typeof topic !== "string" || topic.trim().length < 20) {
+    return {
+      error: "Story seed must be at least 20 characters",
+    };
+  }
+  if (topic.length > 1000) {
+    return { error: "Story seed must be 1000 characters or fewer" };
   }
 
   const characters = body.characters ?? [];
