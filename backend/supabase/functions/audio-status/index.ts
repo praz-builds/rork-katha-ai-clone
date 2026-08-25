@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { decode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
 
-const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/euevq9pcv3herw";
+const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/chatterbox-turbo";
 
 serve(async (req) => {
   const cors = handleCors(req);

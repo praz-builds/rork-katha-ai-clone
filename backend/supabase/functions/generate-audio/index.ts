@@ -7,7 +7,8 @@ import {
   generateWithEdgeTts,
 } from "../_shared/edge-tts.ts";
 
-const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/euevq9pcv3herw";
+// Public endpoint — no deployment needed, pay per use
+const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/chatterbox-turbo";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -95,7 +96,7 @@ serve(async (req) => {
   }
 });
 
-// ─── English: RunPod (VibeVoice) ──────────────────────────────────────────────
+// ─── English: RunPod (Chatterbox Turbo — public endpoint) ────────────────────
 
 interface AudioJobParams {
   story_id: string;
@@ -127,9 +128,7 @@ async function handleRunPod(
       },
       body: JSON.stringify({
         input: {
-          text: params.text,
-          voice: voiceId,
-          language: "en",
+          prompt: params.text,
         },
       }),
     });
