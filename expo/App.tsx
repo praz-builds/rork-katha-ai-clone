@@ -554,9 +554,17 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
 
   const isLoadingAudioRef = useRef(false);
 
+  const getAudioUrl = useCallback((): string | undefined => {
+    // Prefer gender-specific audio, fallback to single audioUrl
+    if (chapter.audioUrls) {
+      return voiceGender === "male" ? chapter.audioUrls.male : chapter.audioUrls.female;
+    }
+    return chapter.audioUrl;
+  }, [chapter.audioUrl, chapter.audioUrls, voiceGender]);
+
   const handlePlayTap = useCallback(async () => {
     if (isLoadingAudioRef.current) return;
-    const audioUrl = chapter.audioUrl;
+    const audioUrl = getAudioUrl();
     if (!audioUrl) {
       Alert.alert("Audio narration", "Audio narration will be generated when this story is published.");
       return;
@@ -588,7 +596,7 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
       Alert.alert("Playback error", "Could not play audio. Please try again.");
       setIsPlaying(false);
     }
-  }, [isPlaying, chapter.audioUrl]);
+  }, [isPlaying, getAudioUrl]);
 
   const handleVoiceChange = useCallback(async (gender: "female" | "male") => {
     if (gender === voiceGender || isLoadingAudioRef.current) return;

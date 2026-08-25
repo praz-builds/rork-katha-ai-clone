@@ -43,6 +43,7 @@ export type Chapter = {
   chapterNumber: number;
   isPublished: boolean;
   audioUrl?: string;
+  audioUrls?: { female?: string; male?: string };
 };
 
 export type Story = {
