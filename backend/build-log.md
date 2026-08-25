@@ -223,3 +223,48 @@ All 7 edge functions deployed and ACTIVE:
 - The exact production Expo web origin is not known; add it to `ALLOWED_ORIGINS` before production browser clients call the functions.
 - No authenticated test user/JWT was available in this session, so live `generate-story`, `continue-story`, `feedback`, and disabled credit endpoint behavior were not exercised end to end.
 - Annual subscription monthly allocation, refund clawbacks, and AdMob SSV remain production blockers.
+
+## 2026-08-26 — Genre-aware anti-slop story prompt system
+
+**Session:** Production-grade story generation prompt rewrite, dramatic arc guidance, series structure.
+
+### Story Generation Prompt System
+
+- Created `_shared/story-prompts.ts` (540+ lines): genre-aware prompt builder replacing the 31-line generic prompt in `_shared/prompts.ts`.
+- **Anti-slop rules**: 43 banned AI-overused words, 42 banned cliche phrases, 10 banned AI-default character names.
+- **Craft rules**: show-don't-tell enforcement, sentence rhythm variation, dialogue craft (said-only tags, distinct character voices, interruptions), sensory grounding (2+ senses beyond sight), no em dashes, no meta-commentary.
+- **16 genre-specific voice modules**: romance, fantasy, romantasy, mystery, thriller, horror, scifi, adventure, historical, darkAcademia, drama, sliceOfLife, mythology, poetry, comedy, bedtime.
+- **Cultural context**: AI infers culture from character names and traits naturally.
+- **Language-aware**: 15 supported languages normalized before prompt interpolation.
+- Genre and language normalized to supported enums to prevent prompt injection.
+
+### Dramatic Arc & Series Structure
+
+- **Standalone stories**: setup 30%, rising tension 40%, climax + aftermath 30%. Climax is mandatory.
+- **Mid-series chapters** (`mode: "chapter"`): advance plot, end on hook, never resolve central conflict.
+- **Series finale** (`mode: "finale"`): resolve main arc, callback to earlier chapters, close doors.
+- `MAX_SERIES_CHAPTERS = 7` enforced in `continue-story` endpoint.
+- Auto-finale at chapter 7. Optional `is_finale` flag for early endings.
+
+### Input Validation
+
+- Story seed minimum raised from 4 to 20 characters (client-side and server-side).
+- Language field now sent from Expo client to backend API.
+
+### Files Changed
+
+- `_shared/story-prompts.ts` (NEW)
+- `generate-story/index.ts` (updated)
+- `continue-story/index.ts` (updated)
+- `expo/src/screens/CreateStudioScreen.tsx` (updated)
+- `expo/src/lib/api.ts` (updated)
+- `expo/src/i18n/en.json`, `es.json`, `pt.json` (updated)
+
+### Documentation
+
+- Created `AGENTS.md` as canonical repo instruction file for all agent sessions.
+- `CLAUDE.md` and `CODEX.md` simplified to redirect to `AGENTS.md`.
+
+### PR Status
+
+- PR #24 (`codex/story-prompt-system`): CodeRabbit APPROVED after 4 review rounds.
