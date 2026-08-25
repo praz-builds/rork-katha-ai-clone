@@ -119,9 +119,8 @@ async function callDalle3(prompt: string): Promise<string> {
     const url = data?.data?.[0]?.url;
     if (!url) throw new Error("DALL-E 3 returned no image URL");
 
-    const revised = data?.data?.[0]?.revised_prompt;
-    if (revised) {
-      console.log("[cover] revised prompt:", revised.slice(0, 200));
+    if (data?.data?.[0]?.revised_prompt) {
+      console.log("[cover] prompt was revised by DALL-E");
     }
 
     return url;
@@ -131,9 +130,15 @@ async function callDalle3(prompt: string): Promise<string> {
 }
 
 async function downloadImage(url: string): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function uploadToStorage(

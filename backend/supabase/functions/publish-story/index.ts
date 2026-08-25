@@ -116,7 +116,9 @@ serve(async (req) => {
         const { error: coverUpdateError } = await serviceClient
           .from("stories")
           .update({ cover_image_url: result.url })
-          .eq("id", storyId);
+          .eq("id", storyId)
+          .select("id")
+          .single();
 
         if (coverUpdateError) {
           console.error("Failed to save cover URL:", coverUpdateError);
