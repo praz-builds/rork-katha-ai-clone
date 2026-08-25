@@ -130,6 +130,20 @@ function buildBaseRules(): string {
 4. Incorporate all specified characters naturally — they must have distinct voices and speech patterns.
 5. End with a resonant final line, not a moral lecture.
 
+## Dramatic Arc (Short Story)
+
+Every standalone short story must have a complete dramatic arc:
+
+- **First 30% (Setup):** Establish the character's ordinary world. Introduce the disruption, the thing that makes today different. Ground the reader in a specific place and moment before anything happens.
+- **Middle 40% (Rising tension):** Complications multiply. The character is forced to act, and their actions create new problems. The stakes become personal. Something is at risk that the reader cares about.
+- **Final 30% (Climax + Aftermath):** The moment of highest tension or choice. The character confronts the central problem. Then a brief aftermath, not a full resolution but a landing. The reader should feel the story is finished, even if questions remain.
+
+The climax is the scene the entire story builds toward. It is not optional. Without it, the story feels like it stopped rather than ended.
+
+## Cultural Context
+
+Do not assume a character's cultural background, ethnicity, or nationality from their name alone. A character named "Priya" might live in London, Toronto, or Nairobi. Use cultural references (currency, food, geography, customs) only when the story seed, setting, or character description explicitly establishes them. When no cultural context is given, keep references generic or use the story's language as a loose guide.
+
 ## Anti-Slop Rules (CRITICAL)
 
 These rules exist because AI-generated fiction has recognizable tells. You must avoid all of them.
@@ -456,28 +470,61 @@ ${genreVoice.whatToAvoid}`;
 
 /**
  * Build a system prompt for chapter continuation.
- * Same quality rules but with instructions for maintaining consistency.
+ *
+ * @param mode - "chapter" for mid-series chapters, "finale" for the final chapter
  */
 export function buildContinuationSystemPrompt(
   genre: string,
   language?: string,
+  mode: "chapter" | "finale" = "chapter",
 ): string {
   const storyPrompt = buildStorySystemPrompt(genre, language);
 
-  return `${storyPrompt}
-
+  const sharedRules = `
 ## Continuation Rules
 
-You are writing the next chapter of an existing story. Additional rules:
+You are writing the next chapter of an existing story. Core rules:
 
 1. Maintain the voice, tone, and style established in previous chapters.
 2. Do not repeat information the reader already knows. Trust what came before.
 3. Each character's speech pattern must stay consistent with how they spoke in earlier chapters.
-4. Advance at least one plot thread and introduce at least one new question or tension.
-5. The chapter should feel like a natural continuation — as if the same author wrote it on the same day.
-6. Do not summarize previous chapters. Start in the middle of something happening.
-7. Length: 600-900 words for a continuation chapter.`;
+4. The chapter should feel like a natural continuation, as if the same author wrote it on the same day.
+5. Do not summarize previous chapters. Start in the middle of something happening.
+6. Length: 600-900 words for a continuation chapter.`;
+
+  if (mode === "finale") {
+    return `${storyPrompt}
+${sharedRules}
+
+## Series Finale
+
+This is the FINAL chapter of the series. You must bring the story to a satisfying close:
+
+1. Resolve the central tension that has been building across all previous chapters. The main conflict must reach its climax in this chapter.
+2. Call back to at least one specific detail, line, or moment from an earlier chapter. The reader should feel the payoff of having followed the whole series.
+3. Every major character arc must land. Characters should be changed by what happened, not simply present for the ending.
+4. The final paragraph should feel earned, not rushed. Give the story room to breathe after the climax.
+5. Loose threads can remain, but the reader must feel that the story they signed up for is complete.
+6. Do NOT introduce new major characters, subplots, or mysteries. This chapter closes doors, it does not open them.`;
+  }
+
+  return `${storyPrompt}
+${sharedRules}
+
+## Mid-Series Chapter
+
+This chapter is part of an ongoing series. The story is NOT ending yet:
+
+1. Advance at least one plot thread meaningfully. Something must change that cannot be undone.
+2. End on an unresolved moment: a question, a revelation, a door opening, a character making a decision whose consequences are not yet clear.
+3. Do NOT resolve the central conflict. Build toward it, complicate it, but do not close it.
+4. Introduce at least one new question, tension, or piece of information that makes the reader want to continue.
+5. Shift at least one relationship or dynamic permanently. A friendship cracks, a secret is revealed, an alliance forms.
+6. The final line should pull the reader forward, not offer closure.`;
 }
+
+/** Maximum number of chapters in a series. */
+export const MAX_SERIES_CHAPTERS = 7;
 
 /**
  * Build the user prompt for initial story generation.
