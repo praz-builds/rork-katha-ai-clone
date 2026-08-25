@@ -223,3 +223,34 @@ All 7 edge functions deployed and ACTIVE:
 - The exact production Expo web origin is not known; add it to `ALLOWED_ORIGINS` before production browser clients call the functions.
 - No authenticated test user/JWT was available in this session, so live `generate-story`, `continue-story`, `feedback`, and disabled credit endpoint behavior were not exercised end to end.
 - Annual subscription monthly allocation, refund clawbacks, and AdMob SSV remain production blockers.
+
+## 2026-08-25 — Cover image generation and genre consolidation
+
+**Session:** DALL-E 3 cover image pipeline, genre system overhaul, Supabase covers bucket.
+
+### Cover Image Generation
+
+- Created `_shared/cover-prompts.ts`: 16 genre-specific prompt templates with style, palette, composition, mood, and character approach (scene/silhouette/portrait).
+- Created `_shared/image.ts`: `generateCoverImage()` function — calls DALL-E 3 at 1024x1792 portrait, uploads to Supabase Storage `covers/` bucket as WebP, returns public URL.
+- 3-retry logic with progressive prompt simplification on moderation rejection.
+- Non-blocking: cover generation failure does not block story publishing.
+- Updated `publish-story/index.ts` to trigger cover generation after setting `is_public = true`, stores result in `stories.cover_image_url`.
+
+### Genre Consolidation (18 to 16)
+
+- Dropped: `lgbtq`, `motivational`, `spirituality`, `contemporary` (better served as tags/themes).
+- Added: `romantasy` ($610M market, +34% YoY), `darkAcademia` (trending BookTok genre), `bedtime` (replaces `kids`, app differentiator).
+- Renamed: `kids` to `bedtime` (positions as adult bedtime stories, Calm/Headspace alignment).
+
+### Storage
+
+- Migration `00008_covers_storage_bucket.sql`: creates `covers` bucket (public read, service role upload, 5MB limit, WebP/PNG/JPEG).
+- Applied to live Supabase project via `supabase db push`.
+- RLS policies: public SELECT, service_role INSERT/UPDATE.
+
+### Files Changed
+
+- `_shared/cover-prompts.ts` (NEW)
+- `_shared/image.ts` (NEW)
+- `publish-story/index.ts` (updated)
+- `migrations/00008_covers_storage_bucket.sql` (NEW)

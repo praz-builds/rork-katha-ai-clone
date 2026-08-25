@@ -1,24 +1,22 @@
 import type { Author, CreditLedgerEntry, Genre, Story } from "@/types/domain";
 
 export const genres: Genre[] = [
-  "adventure",
-  "mystery",
   "romance",
-  "scifi",
   "fantasy",
-  "horror",
-  "poetry",
-  "drama",
-  "mythology",
+  "romantasy",
+  "mystery",
   "thriller",
-  "sliceOfLife",
+  "horror",
+  "scifi",
+  "adventure",
   "historical",
-  "contemporary",
-  "lgbtq",
+  "darkAcademia",
+  "drama",
+  "sliceOfLife",
+  "mythology",
+  "poetry",
   "comedy",
-  "spirituality",
-  "motivational",
-  "kids"
+  "bedtime"
 ];
 
 export const authors: Author[] = [

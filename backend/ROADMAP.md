@@ -58,14 +58,15 @@
 
 **Goal:** Every generated story gets a cover image + audio narration.
 
-### Cover Image Generation (DALL-E 3)
+### Cover Image Generation (DALL-E 3) — DONE (2026-08-25)
 
-- [ ] Add `generateCoverImage(title, genre, themes, language)` function to `_shared/image.ts`
-- [ ] Prompt template: "3D CGI animated film style" (NEVER "Pixar" — hard block)
-- [ ] Retry logic: up to 3 attempts, simplify scene description on moderation rejection
-- [ ] Strip "AI", "generated", "artificial intelligence" from image metadata
-- [ ] Upload generated image to Supabase Storage bucket `covers/`
-- [ ] Return public URL; store in `stories.cover_image_url`
+- [x] Add `generateCoverImage(storyId, genre, title, themes, characters)` function to `_shared/image.ts`
+- [x] 16 genre-specific prompt templates in `_shared/cover-prompts.ts` (style, palette, composition, mood, character approach)
+- [x] Retry logic: up to 3 attempts, progressive prompt simplification on moderation rejection
+- [x] DALL-E 3 output: 1024x1792 portrait (native portrait mode)
+- [x] Upload generated image to Supabase Storage bucket `covers/` as WebP
+- [x] Return public URL; store in `stories.cover_image_url`
+- [x] No text-on-image (titles composited programmatically in future)
 
 ### Audio Narration (DONE -- 2026-08-25)
 
@@ -81,14 +82,15 @@
 
 ### Wire into publish flow
 
-- [ ] Call `generateCoverImage()` on publish (via Inngest async step)
+- [x] Call `generateCoverImage()` on publish (inline in publish-story, best-effort non-blocking)
+- [ ] Migrate cover generation to Inngest async step (currently synchronous in publish-story)
 - [ ] Call `generate-audio` on publish (via Inngest async step -- endpoint ready, Inngest not yet wired)
-- [ ] On image failure: use genre-based gradient fallback (still save story)
+- [x] On image failure: genre-based gradient fallback (story still publishes)
 - [ ] On audio failure: save story without audio, mark `audio_status: 'failed'`
 
 ### Storage Setup
 
-- [ ] Create Supabase Storage bucket `covers` (public read)
+- [x] Created Supabase Storage bucket `covers` (public read, service role upload, 5MB limit, WebP/PNG/JPEG) — migration 00008
 - [x] Created Supabase Storage bucket `audio` (public read, service role upload)
 - [ ] Set appropriate CORS + size limits
 - [ ] Configure Supabase Storage bucket CORS for production media access

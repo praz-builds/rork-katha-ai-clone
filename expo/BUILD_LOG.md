@@ -253,3 +253,39 @@
 - Keyboard entry remains on real `TextInput` controls for name, email, OTP, and Other genre. A fresh automated keyboard/browser pass was blocked because Playwright could not install Chromium for this desktop runtime (`mac13` unsupported).
 - Narrow-width browser QA beyond 390 x 844 and physical iOS/Android phone validation remain pending before native release.
 - Release readiness: this revision is not ready for production release until the full post-patch web flow, keyboard behavior, narrow layouts, reduced-motion behavior, and native iOS/Android builds are validated on supported runners/devices.
+
+## 2026-08-25: Genre Consolidation and Cover Image Support
+
+### Genre System Overhaul (18 to 16)
+
+- Consolidated genres based on 2025-2026 market research across Wattpad, Kindle, Goodreads, Dreame, Royal Road.
+- Dropped: `lgbtq`, `motivational`, `spirituality`, `contemporary` (better as tags/themes than genres).
+- Added: `romantasy` ($610M market), `darkAcademia` (BookTok trending), `bedtime` (replaces `kids`).
+- Updated across all layers: `domain.ts` (GENRES array + Genre type), `theme.ts` (labels + gradients), `seed.ts`, `en.json`/`es.json`/`pt.json` (i18n), `KathaOnboardingFlowV2.jsx` (aligned from 21 to 16+Other).
+- CreateStudioScreen and Home now show all genres (were previously sliced to 12 and 10).
+
+### Cover Image Support
+
+- `Cover` component now supports remote URLs via `story.coverImageUrl` with bundled image fallback.
+- Added `coverImageUrl?: string` to Story type.
+- Reader hero redesigned: portrait cover card overlaid on blurred hero background.
+
+### Onboarding Genre Alignment
+
+- Onboarding GENRES constant was 21 items, now aligned to same 16 core genres + "Other".
+- Eliminates mismatch between onboarding preferences and in-app genre taxonomy.
+
+### Files Changed
+
+- `src/types/domain.ts`: 16-genre GENRES, coverImageUrl on Story
+- `src/theme/theme.ts`: New labels + gradients (inc. romantasy, darkAcademia, bedtime)
+- `src/components/KathaPrimitives.tsx`: Cover supports remote URLs
+- `src/data/seed.ts`: Genre list aligned
+- `src/i18n/en.json`, `es.json`, `pt.json`: Genre translations
+- `src/screens/KathaOnboardingFlowV2.jsx`: Aligned genres
+- `src/screens/CreateStudioScreen.tsx`: All genres, default romance
+- `App.tsx`: All genre chips, hero redesign, default rows romance/fantasy/mystery
+
+### Verification
+
+- `pnpm typecheck`: zero errors.

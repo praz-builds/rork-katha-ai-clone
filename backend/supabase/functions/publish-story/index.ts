@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
+import { generateCoverImage } from "../_shared/image.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -78,6 +79,15 @@ serve(async (req) => {
       );
     }
 
+    // Fetch full story data for cover generation
+    const { data: fullStory, error: fullError } = await serviceClient
+      .from("stories")
+      .select("id, title, genre, topic")
+      .eq("id", storyId)
+      .single();
+
+    if (fullError) throw fullError;
+
     // Publish the story
     const { error: updateError } = await serviceClient
       .from("stories")
@@ -86,7 +96,38 @@ serve(async (req) => {
 
     if (updateError) throw updateError;
 
-    return respond({ published: true, story_id: storyId });
+    // Generate cover image (best-effort, does not block publishing)
+    let coverImageUrl: string | null = null;
+    try {
+      const genres = Array.isArray(fullStory.genre)
+        ? fullStory.genre
+        : [fullStory.genre];
+      const primaryGenre = genres[0] ?? "drama";
+      const themes = genres.slice(1);
+
+      const result = await generateCoverImage(
+        storyId,
+        primaryGenre,
+        fullStory.title,
+        themes,
+      );
+
+      if (result) {
+        coverImageUrl = result.url;
+        await serviceClient
+          .from("stories")
+          .update({ cover_image_url: coverImageUrl })
+          .eq("id", storyId);
+      }
+    } catch (coverError) {
+      console.error("Cover generation failed (non-fatal):", coverError);
+    }
+
+    return respond({
+      published: true,
+      story_id: storyId,
+      cover_image_url: coverImageUrl,
+    });
   } catch (error) {
     console.error("publish-story error:", error);
     return respond({ error: "Internal server error" }, 500);

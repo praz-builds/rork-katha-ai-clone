@@ -204,8 +204,8 @@ function HomeScreen({
 
   const showFiltered = query.trim().length > 0 || genre !== "all";
 
-  // Mock onboarding genres — Adventure, Mystery, Fantasy
-  const onboardingGenres: Genre[] = ["adventure", "mystery", "fantasy"];
+  // Default genre rows for home feed
+  const onboardingGenres: Genre[] = ["romance", "fantasy", "mystery"];
   const genreRows = onboardingGenres
     .map((g) => ({ genre: g, stories: allStories.filter((s) => s.genre === g) }))
     .filter((row) => row.stories.length > 0);
@@ -236,7 +236,7 @@ function HomeScreen({
         {/* Genre chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           <Chip label="All" selected={genre === "all"} onPress={() => setGenre("all")} />
-          {genres.slice(0, 10).map((item) => (
+          {genres.map((item) => (
             <Chip key={item} label={genreLabels[item]} selected={genre === item} onPress={() => setGenre(item)} />
           ))}
         </ScrollView>
@@ -657,7 +657,13 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   return (
     <View style={styles.reader}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Cover story={story} size="hero" />
+        {/* Hero: portrait cover with blurred background */}
+        <View style={styles.heroWrap}>
+          <Cover story={story} size="hero" />
+          <View style={styles.heroOverlay}>
+            <Cover story={story} size="card" />
+          </View>
+        </View>
         <View style={styles.readerBody}>
           <Pressable onPress={onBack} style={styles.backButton}>
             <ChevronLeft size={18} color={colors.ink} />
@@ -1134,6 +1140,16 @@ const styles = StyleSheet.create({
 
   /* ── Reader ── */
   reader: { flex: 1, backgroundColor: colors.sepia },
+  heroWrap: { position: "relative", overflow: "hidden" },
+  heroOverlay: {
+    position: "absolute",
+    bottom: spacing.xl,
+    alignSelf: "center",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   readerBody: { padding: spacing.xl, paddingBottom: spacing.huge },
   backButton: {
     alignSelf: "flex-start",

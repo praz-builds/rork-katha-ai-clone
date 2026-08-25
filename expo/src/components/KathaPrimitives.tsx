@@ -58,11 +58,16 @@ export function Chip({
 }
 
 export function Cover({ story, size = "card" }: { story: Story; size?: "card" | "hero" | "mini" }) {
-  const image = story.coverImage ? imageAssets[story.coverImage] : undefined;
+  const bundledImage = story.coverImage ? imageAssets[story.coverImage] : undefined;
+  const remoteUri = story.coverImageUrl;
   const gradient = genreGradients[story.genre];
   return (
     <LinearGradient colors={gradient} style={[styles.cover, styles[`${size}Cover`]]}>
-      {image ? <Image source={image} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+      {remoteUri ? (
+        <Image source={{ uri: remoteUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      ) : bundledImage ? (
+        <Image source={bundledImage} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      ) : null}
       <LinearGradient colors={["transparent", "rgba(0,0,0,0.62)"]} style={StyleSheet.absoluteFill} />
       <View style={styles.coverTextWrap}>
         <Text numberOfLines={3} style={[styles.coverTitle, size === "mini" && styles.coverMiniTitle]}>

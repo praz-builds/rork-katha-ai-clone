@@ -105,7 +105,7 @@ const LANGUAGES = [
 ] as const;
 
 const INITIAL_DRAFT: StudioDraft = {
-  genre: "fantasy",
+  genre: "romance",
   seed: "",
   language: "English",
   characters: [
@@ -542,7 +542,7 @@ export default function CreateStudioScreen({
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.genreRow}
               >
-                {genres.slice(0, 12).map((item) => (
+                {genres.map((item) => (
                   <Pressable
                     key={item}
                     onPress={() => {

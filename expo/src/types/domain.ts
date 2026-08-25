@@ -1,22 +1,20 @@
 export const GENRES = [
-  "adventure",
-  "comedy",
-  "contemporary",
-  "drama",
+  "romance",
   "fantasy",
-  "historical",
-  "horror",
-  "kids",
-  "lgbtq",
-  "motivational",
+  "romantasy",
   "mystery",
+  "thriller",
+  "horror",
+  "scifi",
+  "adventure",
+  "historical",
+  "darkAcademia",
+  "drama",
+  "sliceOfLife",
   "mythology",
   "poetry",
-  "romance",
-  "scifi",
-  "sliceOfLife",
-  "spirituality",
-  "thriller",
+  "comedy",
+  "bedtime",
 ] as const;
 
 export type Genre = (typeof GENRES)[number];
@@ -61,6 +59,7 @@ export type Story = {
   isFeatured: boolean;
   language: string;
   coverImage?: ImageName;
+  coverImageUrl?: string;
 };
 
 export type ImageName =
