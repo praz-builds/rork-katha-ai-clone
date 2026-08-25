@@ -552,15 +552,13 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
     };
   }, []);
 
+  const isLoadingAudioRef = useRef(false);
+
   const handlePlayTap = useCallback(async () => {
+    if (isLoadingAudioRef.current) return;
     const audioUrl = chapter.audioUrl;
     if (!audioUrl) {
-      // No audio URL yet — show informative message
-      if (Platform.OS === "web") {
-        Alert.alert("Audio narration", "Audio will be available after the story is published with narration. Requires a dev build for native playback.");
-      } else {
-        Alert.alert("Audio narration", "Audio narration will be generated when this story is published. Stay tuned!");
-      }
+      Alert.alert("Audio narration", "Audio narration will be generated when this story is published.");
       return;
     }
     try {
@@ -571,6 +569,7 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
         await soundRef.current.playAsync();
         setIsPlaying(true);
       } else {
+        isLoadingAudioRef.current = true;
         const { sound } = await Audio.Sound.createAsync(
           { uri: audioUrl },
           { shouldPlay: true },
@@ -582,18 +581,19 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
         );
         soundRef.current = sound;
         setIsPlaying(true);
+        isLoadingAudioRef.current = false;
       }
     } catch {
+      isLoadingAudioRef.current = false;
       Alert.alert("Playback error", "Could not play audio. Please try again.");
       setIsPlaying(false);
     }
   }, [isPlaying, chapter.audioUrl]);
 
   const handleVoiceChange = useCallback(async (gender: "female" | "male") => {
-    if (gender === voiceGender) return;
-    // Unload current audio when switching voice
+    if (gender === voiceGender || isLoadingAudioRef.current) return;
     if (soundRef.current) {
-      await soundRef.current.unloadAsync();
+      try { await soundRef.current.unloadAsync(); } catch {}
       soundRef.current = null;
     }
     setIsPlaying(false);
