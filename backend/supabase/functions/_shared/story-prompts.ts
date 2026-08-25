@@ -142,7 +142,7 @@ The climax is the scene the entire story builds toward. It is not optional. With
 
 ## Cultural Context
 
-Do not assume a character's cultural background, ethnicity, or nationality from their name alone. A character named "Priya" might live in London, Toronto, or Nairobi. Use cultural references (currency, food, geography, customs) only when the story seed, setting, or character description explicitly establishes them. When no cultural context is given, keep references generic.
+Infer cultural context naturally from character names, traits, and the story's language. A character named "Priya Menon" should inhabit a world with culturally appropriate details (food, currency, geography, customs). Use the characters and setting as cues to ground the story in a specific, authentic culture rather than defaulting to generic Western references.
 
 ## Anti-Slop Rules (CRITICAL)
 
