@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initSentry, initPostHog } from "@/lib/analytics";
 import { initAdapty } from "@/lib/adapty";
 import { setupAndroidChannel } from "@/lib/notifications";
@@ -8,16 +8,20 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View
 } from "react-native";
+import { Audio } from "expo-av";
 import {
   Bell,
+  BookmarkCheck,
   BookOpen,
   Bookmark,
   ChevronLeft,
@@ -30,6 +34,7 @@ import {
   Play,
   Plus,
   Search,
+  Send,
   Share2,
   Sparkles,
   Star,
@@ -506,6 +511,14 @@ function ProfileScreen({
 
 /* ─────────────────────────────── Reader Screen ─────────────────────────────── */
 
+type ReaderComment = { id: number; user: string; text: string; time: string };
+
+const INITIAL_COMMENTS: ReaderComment[] = [
+  { id: 1, user: "Mira R.", text: "This story had me hooked from the first line. The lighthouse metaphor is beautiful.", time: "2h ago" },
+  { id: 2, user: "Dev S.", text: "Beautiful writing. The ending was unexpected but satisfying.", time: "5h ago" },
+  { id: 3, user: "Aanya K.", text: "I want a sequel to this. What happens to the lighthouse?", time: "1d ago" },
+];
+
 function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const author = authorFor(story.authorId);
   const chapter = story.chapters[0];
@@ -518,12 +531,122 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const femaleVoice = getVoice(voicePair[0] ?? "aria");
   const maleVoice = getVoice(voicePair[1] ?? "kai");
 
-  const comingSoon = () => Alert.alert("Coming soon", "This feature will be available soon.");
+  // Audio player state (expo-av)
+  const soundRef = useRef<Audio.Sound | null>(null);
 
-  const handlePlayTap = () => {
-    // Mock: in production, check isPremium -> play directly, else deduct 1 credit
-    setIsPlaying((prev) => !prev);
-  };
+  // Local interaction state
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(story.likes);
+  const [isSaved, setIsSaved] = useState(false);
+  const [comments, setComments] = useState<ReaderComment[]>(INITIAL_COMMENTS);
+  const [commentText, setCommentText] = useState("");
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [shareToast, setShareToast] = useState(false);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  const isLoadingAudioRef = useRef(false);
+
+  const handlePlayTap = useCallback(async () => {
+    if (isLoadingAudioRef.current) return;
+    const audioUrl = chapter.audioUrl;
+    if (!audioUrl) {
+      Alert.alert("Audio narration", "Audio narration will be generated when this story is published.");
+      return;
+    }
+    try {
+      if (isPlaying && soundRef.current) {
+        await soundRef.current.pauseAsync();
+        setIsPlaying(false);
+      } else if (soundRef.current) {
+        await soundRef.current.playAsync();
+        setIsPlaying(true);
+      } else {
+        isLoadingAudioRef.current = true;
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: true },
+          (status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              setIsPlaying(false);
+            }
+          }
+        );
+        soundRef.current = sound;
+        setIsPlaying(true);
+        isLoadingAudioRef.current = false;
+      }
+    } catch {
+      isLoadingAudioRef.current = false;
+      Alert.alert("Playback error", "Could not play audio. Please try again.");
+      setIsPlaying(false);
+    }
+  }, [isPlaying, chapter.audioUrl]);
+
+  const handleVoiceChange = useCallback(async (gender: "female" | "male") => {
+    if (gender === voiceGender || isLoadingAudioRef.current) return;
+    if (soundRef.current) {
+      try { await soundRef.current.unloadAsync(); } catch {}
+      soundRef.current = null;
+    }
+    setIsPlaying(false);
+    setVoiceGender(gender);
+  }, [voiceGender]);
+
+  const handleLike = useCallback(() => {
+    setIsLiked((prev) => {
+      setLikeCount((count) => prev ? count - 1 : count + 1);
+      return !prev;
+    });
+  }, []);
+
+  const handleSave = useCallback(() => {
+    setIsSaved((prev) => !prev);
+  }, []);
+
+  const handleShare = useCallback(async () => {
+    const text = `${story.title} by ${author.displayName}\n\nRead on Katha AI`;
+    if (Platform.OS === "web") {
+      try {
+        await navigator.clipboard.writeText(text);
+        setShareToast(true);
+        setTimeout(() => setShareToast(false), 2000);
+      } catch {
+        Alert.alert("Share", text);
+      }
+    } else {
+      try {
+        await Share.share({ message: text });
+      } catch {
+        // User cancelled share
+      }
+    }
+  }, [story.title, author.displayName]);
+
+  const handleSubmitComment = useCallback(() => {
+    const trimmed = commentText.trim();
+    if (!trimmed) return;
+    const newComment: ReaderComment = {
+      id: Date.now(),
+      user: "You",
+      text: trimmed,
+      time: "just now",
+    };
+    setComments((prev) => [newComment, ...prev]);
+    setCommentText("");
+    Alert.alert("Comment added", "Your comment is saved locally. Comments will persist after authentication is connected.");
+  }, [commentText]);
+
+  const handleFollow = useCallback(() => {
+    setIsFollowing((prev) => !prev);
+  }, []);
 
   return (
     <View style={styles.reader}>
@@ -548,21 +671,37 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
             </Pressable>
             <View style={styles.voiceToggle}>
               <Pressable
-                onPress={() => { setVoiceGender("female"); setIsPlaying(false); }}
+                onPress={() => handleVoiceChange("female")}
                 style={[styles.voiceToggleBtn, voiceGender === "female" && styles.voiceToggleBtnActive]}
               >
                 <Text style={[styles.voiceToggleText, voiceGender === "female" && styles.voiceToggleTextActive]}>{femaleVoice.name}</Text>
               </Pressable>
               <Pressable
-                onPress={() => { setVoiceGender("male"); setIsPlaying(false); }}
+                onPress={() => handleVoiceChange("male")}
                 style={[styles.voiceToggleBtn, voiceGender === "male" && styles.voiceToggleBtnActive]}
               >
                 <Text style={[styles.voiceToggleText, voiceGender === "male" && styles.voiceToggleTextActive]}>{maleVoice.name}</Text>
               </Pressable>
             </View>
-            <Bookmark size={21} color={colors.sepiaText} />
-            <Share2 size={21} color={colors.sepiaText} />
+            <Pressable onPress={handleSave} accessibilityLabel={isSaved ? "Unsave story" : "Save story"} accessibilityRole="button">
+              {isSaved ? (
+                <BookmarkCheck size={21} color={colors.sepiaText} />
+              ) : (
+                <Bookmark size={21} color={colors.sepiaText} />
+              )}
+            </Pressable>
+            <Pressable onPress={handleShare} accessibilityLabel="Share story" accessibilityRole="button">
+              <Share2 size={21} color={colors.sepiaText} />
+            </Pressable>
           </View>
+
+          {/* Share toast */}
+          {shareToast && (
+            <View style={styles.shareToast}>
+              <Text style={styles.shareToastText}>Copied to clipboard!</Text>
+            </View>
+          )}
+
           <Text style={styles.chapterTitle}>{chapter.title}</Text>
           {chapter.paragraphs.map((paragraph, index) => (
             <Text key={index} style={styles.paragraph}>
@@ -573,25 +712,28 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           {/* ── Engagement bar (Substack-style) ── */}
           <View style={styles.engagementDivider} />
           <View style={styles.engagementRow}>
-            <Pressable onPress={comingSoon} accessibilityLabel={`Like, ${formatNumber(story.likes)}`} accessibilityRole="button" style={styles.engagementAction}>
-              <Heart size={20} color={colors.heart} />
-              <Text style={styles.engagementCount}>{formatNumber(story.likes)}</Text>
+            <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" style={styles.engagementAction}>
+              <Heart size={16} color={isLiked ? colors.heart : colors.sepiaText} fill={isLiked ? colors.heart : "none"} />
+              <Text style={styles.engagementCount}>{formatNumber(likeCount)}</Text>
             </Pressable>
-            <Pressable onPress={comingSoon} accessibilityLabel="Comments, 42" accessibilityRole="button" style={styles.engagementAction}>
-              <MessageCircle size={20} color={colors.muted} />
-              <Text style={styles.engagementCount}>42</Text>
+            <View style={styles.engagementAction}>
+              <MessageCircle size={16} color={colors.sepiaText} />
+              <Text style={styles.engagementCount}>{comments.length}</Text>
+            </View>
+            <Pressable onPress={handleSave} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" style={styles.engagementAction}>
+              {isSaved ? (
+                <BookmarkCheck size={16} color={colors.sepiaText} />
+              ) : (
+                <Bookmark size={16} color={colors.sepiaText} />
+              )}
             </Pressable>
-            <Pressable onPress={comingSoon} style={styles.engagementAction}>
-              <Bookmark size={20} color={colors.muted} />
-              <Text style={styles.engagementLabel}>Save</Text>
-            </Pressable>
-            <Pressable onPress={comingSoon} style={styles.engagementAction}>
-              <Share2 size={20} color={colors.muted} />
-              <Text style={styles.engagementLabel}>Share</Text>
+            <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
+              <Share2 size={16} color={colors.sepiaText} />
             </Pressable>
           </View>
 
-          {/* ── Author card ── */}
+          {/* ── Author section ── */}
+          <View style={styles.authorDivider} />
           <View style={styles.readerAuthorCard}>
             <View style={styles.readerAuthorCardTop}>
               <View style={styles.authorAvatarSmall}>
@@ -602,25 +744,54 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
                 <Text style={styles.readerAuthorBio} numberOfLines={2}>{author.bio}</Text>
               </View>
             </View>
-            <Pressable onPress={comingSoon} style={styles.followButton}>
-              <Text style={styles.followButtonText}>Follow</Text>
+            <Pressable onPress={handleFollow} style={[styles.followButton, isFollowing && styles.followButtonFollowing]}>
+              <Text style={[styles.followButtonText, isFollowing && styles.followButtonTextFollowing]}>{isFollowing ? "Following" : "Follow"}</Text>
             </Pressable>
           </View>
 
-          {/* ── Comments preview ── */}
+          {/* ── Comments section ── */}
+          <View style={styles.authorDivider} />
           <View style={styles.commentsSection}>
-            <Text style={styles.commentsSectionTitle}>Comments (42)</Text>
-            <View style={styles.commentCard}>
-              <Text style={styles.commentBody}>"This story had me hooked from the first line"</Text>
-              <Text style={styles.commentAuthor}>@reader1</Text>
+            <Text style={styles.commentsSectionTitle}>Comments ({comments.length})</Text>
+
+            {/* Comment input */}
+            <View style={styles.commentInputRow}>
+              <View style={styles.commentInputAvatar}>
+                <Text style={styles.commentInputAvatarText}>Y</Text>
+              </View>
+              <View style={styles.commentInputWrap}>
+                <TextInput
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholder="Add a comment..."
+                  placeholderTextColor={colors.tertiary}
+                  style={styles.commentInput}
+                  multiline
+                  maxLength={500}
+                />
+              </View>
+              {commentText.trim().length > 0 && (
+                <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
+                  <Send size={16} color="#FFFFFF" />
+                </Pressable>
+              )}
             </View>
-            <View style={styles.commentCard}>
-              <Text style={styles.commentBody}>"Beautiful writing. The ending was unexpected."</Text>
-              <Text style={styles.commentAuthor}>@reader2</Text>
-            </View>
-            <Pressable onPress={comingSoon}>
-              <Text style={styles.viewAllComments}>View all comments</Text>
-            </Pressable>
+
+            {/* Comment list */}
+            {comments.map((comment) => (
+              <View key={comment.id} style={styles.commentItem}>
+                <View style={styles.commentItemAvatar}>
+                  <Text style={styles.commentItemAvatarText}>{comment.user.charAt(0)}</Text>
+                </View>
+                <View style={styles.commentItemContent}>
+                  <View style={styles.commentItemMeta}>
+                    <Text style={styles.commentItemUser}>{comment.user}</Text>
+                    <Text style={styles.commentItemTime}>{comment.time}</Text>
+                  </View>
+                  <Text style={styles.commentItemText}>{comment.text}</Text>
+                </View>
+              </View>
+            ))}
           </View>
         </View>
       </ScrollView>
@@ -983,43 +1154,37 @@ const styles = StyleSheet.create({
   /* ── Reader engagement ── */
   engagementDivider: {
     height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.xl
+    backgroundColor: "rgba(74,59,42,0.12)",
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg
   },
   engagementRow: {
     flexDirection: "row",
-    justifyContent: "space-around",
     alignItems: "center",
-    marginBottom: spacing.xl
+    gap: spacing.xl,
+    marginBottom: spacing.lg
   },
   engagementAction: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md
+    gap: 4,
+    paddingVertical: spacing.xs
   },
   engagementCount: {
     fontFamily: fonts.ui,
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  engagementLabel: {
-    fontFamily: fonts.ui,
-    color: colors.muted,
-    fontSize: 14,
+    color: colors.sepiaText,
+    fontSize: 13,
     fontWeight: "700"
   },
 
   /* ── Reader author card ── */
+  authorDivider: {
+    height: 1,
+    backgroundColor: "rgba(74,59,42,0.12)",
+    marginBottom: spacing.lg
+  },
   readerAuthorCard: {
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     gap: spacing.md
   },
   readerAuthorCardTop: {
@@ -1028,82 +1193,179 @@ const styles = StyleSheet.create({
     gap: spacing.md
   },
   authorAvatarSmall: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: colors.accent,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#9C9691",
     alignItems: "center",
     justifyContent: "center"
   },
   authorInitialSmall: {
     fontFamily: fonts.display,
     color: "#FFFFFF",
-    fontSize: 22
+    fontSize: 20
   },
   readerAuthorInfo: { flex: 1 },
   readerAuthorName: {
     fontFamily: fonts.display,
-    color: colors.ink,
+    color: colors.sepiaText,
     fontSize: 17
   },
   readerAuthorBio: {
     fontFamily: fonts.ui,
-    color: colors.muted,
+    color: colors.sepiaText,
+    opacity: 0.6,
     fontSize: 13,
     lineHeight: 18
   },
   followButton: {
     alignSelf: "flex-start",
-    minHeight: 38,
+    minHeight: 36,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
+    backgroundColor: colors.ink,
     alignItems: "center",
     justifyContent: "center"
   },
+  followButtonFollowing: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: "rgba(74,59,42,0.25)"
+  },
   followButtonText: {
     fontFamily: fonts.ui,
-    color: colors.accent,
+    color: "#FFFFFF",
     fontWeight: "800",
     fontSize: 14
   },
+  followButtonTextFollowing: {
+    color: colors.sepiaText
+  },
 
-  /* ── Reader comments preview ── */
+  /* ── Reader comments ── */
   commentsSection: {
-    gap: spacing.md
+    gap: 0
   },
   commentsSectionTitle: {
     fontFamily: fonts.display,
     color: colors.sepiaText,
-    fontSize: 20
+    fontSize: 20,
+    marginBottom: spacing.lg
   },
-  commentCard: {
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
+  /* Comment input */
+  commentInputRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    marginBottom: spacing.lg
+  },
+  commentInputAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#9C9691",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4
+  },
+  commentInputAvatarText: {
+    fontFamily: fonts.ui,
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  commentInputWrap: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(74,59,42,0.06)",
     borderWidth: 1,
-    borderColor: colors.border
+    borderColor: "rgba(74,59,42,0.12)",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    justifyContent: "center"
   },
-  commentBody: {
-    fontFamily: fonts.reader,
-    color: colors.ink,
-    fontSize: 15,
-    lineHeight: 22,
-    fontStyle: "italic"
-  },
-  commentAuthor: {
-    marginTop: spacing.sm,
+  commentInput: {
     fontFamily: fonts.ui,
-    color: colors.muted,
+    color: colors.sepiaText,
+    fontSize: 14,
+    lineHeight: 20,
+    padding: 0,
+    margin: 0
+  },
+  commentSendBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.ink,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4
+  },
+  /* Comment items */
+  commentItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(74,59,42,0.08)"
+  },
+  commentItemAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#9C9691",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  commentItemAvatarText: {
+    fontFamily: fonts.ui,
+    color: "#FFFFFF",
     fontSize: 12,
-    fontWeight: "700"
+    fontWeight: "800"
   },
-  viewAllComments: {
+  commentItemContent: {
+    flex: 1
+  },
+  commentItemMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: 2
+  },
+  commentItemUser: {
     fontFamily: fonts.ui,
-    color: colors.accent,
-    fontWeight: "800",
-    fontSize: 14
+    color: colors.sepiaText,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  commentItemTime: {
+    fontFamily: fonts.ui,
+    color: colors.sepiaText,
+    opacity: 0.5,
+    fontSize: 12
+  },
+  commentItemText: {
+    fontFamily: fonts.ui,
+    color: colors.sepiaText,
+    fontSize: 14,
+    lineHeight: 20
+  },
+  /* Share toast */
+  shareToast: {
+    alignSelf: "flex-start",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.ink,
+    marginBottom: spacing.md
+  },
+  shareToastText: {
+    fontFamily: fonts.ui,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700"
   },
 
   /* ── Credits screen ── */
