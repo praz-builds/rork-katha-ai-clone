@@ -7,6 +7,38 @@
 
 ---
 
+## 2026-08-27 — Security audit + critical/high fixes
+
+**Session:** Created custom security-scan skill, ran full audit via 3 parallel CLI agents, fixed all critical and high code-level findings.
+
+### Security Skill
+
+- Created `.agents/skills/security-scan/SKILL.md` — zero-dependency security scanning powered by the CLI agent itself. Covers 8 categories: secrets, injection, auth, input validation, dependencies, infrastructure, mobile, data privacy.
+- Installed `@openai/codex-security` v0.1.20 globally + 14 skill files synced. Not used for scanning (requires gpt-5.6-sol access); custom skill used instead.
+
+### Audit Results
+
+- **2 CRITICAL, 6 HIGH, 9 MEDIUM, 5 LOW** findings across 330+ files.
+- 3 parallel scan agents: secrets exposure, injection/auth, deps/mobile/infra.
+
+### Fixes Applied (commit 7baea6a)
+
+| ID | Severity | Fix |
+|---|---|---|
+| CRIT-2 | Critical | `audio-status`: parseUuid() on story_id/chapter_id, voice_id allowlisted. Path traversal eliminated. |
+| HIGH-2 | High | `edit-story`: tone allowlisted to 10 values, custom notes wrapped + truncated. Prompt injection mitigated. |
+| HIGH-3 | High | `generate-audio`: parseUuid() replaces raw string checks. |
+| HIGH-4 | High | `audio-status`: ownership verification before writing audio_url. |
+| HIGH-5 | High | `feed`: fixed following_id -> author_id column name (was crashing returning-user feed). |
+
+### Remaining (non-code)
+
+- CRIT-1: Rotate OpenAI API key at platform.openai.com
+- HIGH-1: Rate limiting (needs Redis/KV — follow-up PR)
+- HIGH-6: Set production CORS origin in Supabase secrets
+
+---
+
 ## 2026-08-27 — Create Studio UX polish + draft persistence
 
 **Session:** Product UX improvements to the Create flow and draft auto-save.

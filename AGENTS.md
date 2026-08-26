@@ -40,6 +40,22 @@ After onboarding or paywall changes:
 4. Open `http://localhost:8090/` in a 390 x 844 mobile viewport.
 5. Walk the full flow: intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, one-time offer, success, Home handoff.
 
+## Security Gate (MANDATORY before pushing to GitHub)
+
+**Every agent session MUST run `/security-scan` before pushing code to GitHub.** The skill is at `.agents/skills/security-scan/SKILL.md`. It runs entirely on the CLI agent (no external API keys needed).
+
+What it checks:
+1. Secrets & credentials exposure (hardcoded keys, .gitignore gaps)
+2. Injection vulnerabilities (SQL, command, prompt injection)
+3. Authentication & authorization gaps (missing auth, RLS, ownership checks)
+4. Input validation (unbounded strings, missing UUID validation)
+5. Mobile-specific issues (AsyncStorage PII, deep link hijacking, unencrypted storage)
+6. Infrastructure misconfig (CORS, error exposure, debug flags)
+
+If the scan finds CRITICAL or HIGH issues, **fix them before pushing**. MEDIUM and LOW findings should be documented and tracked for follow-up.
+
+To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, injection/auth, deps/mobile/infra) for thorough coverage.
+
 ## Infrastructure & Services
 
 | Service | Purpose | Key / Config | Status |
