@@ -1,14 +1,12 @@
 import React from 'react';
 import { StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
+import { colors, fonts } from '@/theme';
 
 type BrandWordmarkProps = {
   size?: number;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
 };
-
-const ORANGE = '#FF6B1A';
-const INK = '#1E1A16';
 
 export default function BrandWordmark({ size = 28, style, textStyle }: BrandWordmarkProps) {
   return (
@@ -24,8 +22,8 @@ export default function BrandWordmark({ size = 28, style, textStyle }: BrandWord
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'baseline' },
-  word: { fontFamily: 'Baloo2', fontWeight: '900', letterSpacing: 0 },
-  ai: { marginLeft: 2, fontFamily: 'Baloo2', fontWeight: '900', letterSpacing: 0, color: ORANGE },
-  orange: { color: ORANGE },
-  ink: { color: INK },
+  word: { fontFamily: fonts.brand, fontWeight: '900', letterSpacing: 0 },
+  ai: { marginLeft: 2, fontFamily: fonts.brand, fontWeight: '900', letterSpacing: 0, color: colors.accent },
+  orange: { color: colors.accent },
+  ink: { color: colors.ink },
 });

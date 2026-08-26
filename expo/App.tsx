@@ -59,7 +59,7 @@ import { getDefaultVoices, getVoice } from "@/data/voices";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
-import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme/theme";
+import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 
 type LibrarySegment = "saved" | "history" | "myStories" | "comments";
@@ -674,9 +674,9 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
     <View style={[styles.readerToolbar, centered && styles.readerToolbarCentered]}>
       <Pressable onPress={handlePlayTap} style={styles.audioPill}>
         {isPlaying ? (
-          <Pause size={16} color="#FFFFFF" />
+          <Pause size={16} color={colors.surface} />
         ) : (
-          <Play size={16} color="#FFFFFF" />
+          <Play size={16} color={colors.surface} />
         )}
         <Text style={styles.audioText}>{isPlaying ? "Playing" : "Listen"}</Text>
       </Pressable>
@@ -698,13 +698,13 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
       )}
       <Pressable onPress={handleSave} accessibilityLabel={isSaved ? "Unsave story" : "Save story"} accessibilityRole="button">
         {isSaved ? (
-          <BookmarkCheck size={18} color="#6a5c4c" />
+          <BookmarkCheck size={18} color={colors.sepiaSecondary} />
         ) : (
-          <Bookmark size={18} color="#6a5c4c" />
+          <Bookmark size={18} color={colors.sepiaSecondary} />
         )}
       </Pressable>
       <Pressable onPress={handleShare} accessibilityLabel="Share story" accessibilityRole="button">
-        <Share2 size={18} color="#6a5c4c" />
+        <Share2 size={18} color={colors.sepiaSecondary} />
       </Pressable>
     </View>
   );
@@ -814,7 +814,7 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           </View>
           {commentText.trim().length > 0 && (
             <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
-              <Send size={16} color="#FFFFFF" />
+              <Send size={16} color={colors.surface} />
             </Pressable>
           )}
         </View>
@@ -1036,7 +1036,7 @@ function BottomTabs({ selected, onSelect }: { selected: TabKey; onSelect: (tab: 
         return (
           <Pressable key={key} onPress={() => onSelect(key)} accessibilityLabel={raised ? "Create story" : label} accessibilityRole="tab" accessibilityState={{ selected: active }} style={styles.tabItem}>
             <View style={[raised ? styles.raisedTab : styles.flatTab, active && !raised && styles.flatTabActive]}>
-              <Icon size={raised ? 26 : 20} color={raised ? "#FFFFFF" : active ? colors.accent : colors.tertiary} />
+              <Icon size={raised ? 26 : 20} color={raised ? colors.surface : active ? colors.accent : colors.tertiary} />
             </View>
             {!raised && label ? <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text> : null}
           </Pressable>
@@ -1096,7 +1096,7 @@ const styles = StyleSheet.create({
   },
   creditBadgeText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontSize: 10,
     fontWeight: "900"
   },
@@ -1110,7 +1110,7 @@ const styles = StyleSheet.create({
   },
   writeCTATitle: {
     fontFamily: fonts.display,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontSize: 24,
     lineHeight: 28
   },
@@ -1140,7 +1140,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -1155,7 +1155,7 @@ const styles = StyleSheet.create({
   continueCard: { marginHorizontal: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.ink, flexDirection: "row", gap: spacing.md, alignItems: "center" },
   continueCopy: { flex: 1 },
   continueEyebrow: { fontFamily: fonts.ui, color: colors.accent, fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
-  continueTitle: { marginTop: spacing.xs, fontFamily: fonts.display, color: "#FFFFFF", fontSize: 25, lineHeight: 28 },
+  continueTitle: { marginTop: spacing.xs, fontFamily: fonts.display, color: colors.surface, fontSize: 25, lineHeight: 28 },
   continueMeta: { marginTop: spacing.sm, fontFamily: fonts.ui, color: "rgba(255,255,255,0.7)", fontWeight: "700" },
 
   /* ── Horizontal rail ── */
@@ -1218,7 +1218,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacing.xl
   },
-  profileName: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 24 },
+  profileName: { fontFamily: fonts.display, color: colors.surface, fontSize: 24 },
   profileMeta: { marginTop: spacing.xs, fontFamily: fonts.ui, color: colors.muted, fontWeight: "700" },
   profileActions: { marginTop: spacing.lg, width: "100%" },
   profileButtonRow: { flexDirection: "row", gap: spacing.md },
@@ -1470,13 +1470,13 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#9C9691",
+    backgroundColor: colors.tertiary,
     alignItems: "center",
     justifyContent: "center"
   },
   authorInitialSmall: {
     fontFamily: fonts.display,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontSize: 20
   },
   readerAuthorInfo: { flex: 1 },
@@ -1508,7 +1508,7 @@ const styles = StyleSheet.create({
   },
   followButtonText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "800",
     fontSize: 14
   },
@@ -1537,14 +1537,14 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#9C9691",
+    backgroundColor: colors.tertiary,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 4
   },
   commentInputAvatarText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontSize: 14,
     fontWeight: "800"
   },
@@ -1589,13 +1589,13 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "#9C9691",
+    backgroundColor: colors.tertiary,
     alignItems: "center",
     justifyContent: "center"
   },
   commentItemAvatarText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontSize: 12,
     fontWeight: "800"
   },
@@ -1637,7 +1637,7 @@ const styles = StyleSheet.create({
   },
   shareToastText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontSize: 13,
     fontWeight: "700"
   },
@@ -1654,7 +1654,7 @@ const styles = StyleSheet.create({
   /* ── Author screen ── */
   authorHeader: { alignItems: "center", gap: spacing.sm, marginBottom: spacing.xl },
   authorAvatar: { width: 86, height: 86, borderRadius: 28, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
-  authorInitial: { fontFamily: fonts.display, color: "#FFFFFF", fontSize: 42 },
+  authorInitial: { fontFamily: fonts.display, color: colors.surface, fontSize: 42 },
   authorBio: { paddingHorizontal: spacing.lg, textAlign: "center", fontFamily: fonts.ui, color: colors.muted, lineHeight: 21 },
   authorStats: { flexDirection: "row", gap: spacing.lg },
   stat: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
@@ -1676,13 +1676,13 @@ const styles = StyleSheet.create({
   onboarding: { flex: 1 },
   onboardingHero: { margin: spacing.xl, height: 330, borderRadius: 28, overflow: "hidden", justifyContent: "flex-end" },
   onboardingImage: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, width: "100%", height: "100%" },
-  onboardingTitle: { padding: spacing.xl, fontFamily: fonts.display, color: "#FFFFFF", fontSize: 34, lineHeight: 38 },
+  onboardingTitle: { padding: spacing.xl, fontFamily: fonts.display, color: colors.surface, fontSize: 34, lineHeight: 38 },
   optionPanel: { marginHorizontal: spacing.xl, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.surface, gap: spacing.md },
   optionTitle: { fontFamily: fonts.display, fontSize: 22, color: colors.ink },
   option: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: spacing.lg, backgroundColor: colors.surface2, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   optionSelected: { backgroundColor: colors.ink },
   optionText: { fontFamily: fonts.ui, fontWeight: "800", color: colors.ink },
-  optionTextSelected: { color: "#FFFFFF" },
+  optionTextSelected: { color: colors.surface },
   intentSignIn: { minHeight: 44, alignItems: "center", justifyContent: "center", marginTop: -2 },
   intentSignInText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14.5 },
   intentSignInStrong: { color: colors.ink, fontWeight: "900" },

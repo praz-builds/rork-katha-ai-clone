@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ChevronRight, Sparkles } from "lucide-react-native";
 import { imageAssets } from "@/data/images";
-import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme/theme";
+import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, ImageName, Story } from "@/types/domain";
 
 /**
@@ -100,7 +100,7 @@ export function PrimaryButton({
       ]}
     >
       <Text style={[styles.buttonText, variant === "secondary" && styles.secondaryButtonText]}>{children}</Text>
-      <ChevronRight size={18} color={variant === "secondary" ? colors.ink : "#FFFFFF"} />
+      <ChevronRight size={18} color={variant === "secondary" ? colors.ink : colors.surface} />
     </Pressable>
   );
 }
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "800",
     fontSize: 15
   },
@@ -250,11 +250,11 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   chipTextSelected: {
-    color: "#FFFFFF"
+    color: colors.surface
   },
   cover: {
     overflow: "hidden",
-    backgroundColor: "#e7dcc6"
+    backgroundColor: colors.sepiaPlaceholder
   },
   cardCover: {
     width: 172,
