@@ -7,6 +7,93 @@
 
 ---
 
+## 2026-08-27 — Create Studio UX polish + draft persistence
+
+**Session:** Product UX improvements to the Create flow and draft auto-save.
+
+### Changes
+
+- **Genre chips**: emoji-driven pills in 2-row horizontal scroll (Tumblr-style).
+  Romance cluster positioned for genre variety visibility.
+- **Toggle chips**: added Kids (audience mode), LGBTQ+ (identity lens), Vampire
+  (trope module) as tappable chips below genre picker.
+- **Dynamic seed hints**: progressive coaching text that changes as user types.
+  Warm red pre-threshold, green when ready.
+- **Premise chips**: 3 genre-specific example premises per genre, horizontal
+  scroll, max-width 260px. Disappear after 20 chars typed.
+- **Hero toggle**: replaced green RN Switch with custom Pressable toggle
+  (orange thumb on light-orange track). Works on web, iOS, Android.
+- **Draft persistence**: `AsyncStorage`-based auto-save with 500ms debounce.
+  Drafts restored on mount, cleared on successful generation, expire after 7 days.
+- **Library layout**: compact StoryCards as horizontal rows (96px cover + text),
+  proper margins and spacing.
+- **Header alignment**: CREATE eyebrow + credits pill on same horizontal line.
+- **Renamed "Story seed" to "Your story idea"**.
+- **Languages**: English + Spanish (removed Portuguese from create flow).
+
+---
+
+## 2026-08-27 — Story Generator v5.1 implementation
+
+**Session:** Full implementation of v5.1 taxonomy across backend + Expo.
+
+### Changes
+
+- **Migration 00008:** Added `primary_genre`, `audience_mode`, `identity_lenses`, `trope_modules`, `spice_level`, `content_rating`, `first_line`, `previously_summary` columns. Backfills from `genre[]`. Replaces `complete_story_generation` RPC with extended 10-param signature.
+- **New `_shared/types.ts`:** 15 primary genres, audience modes, identity lenses, spice levels, 10 trope modules, genre-aware constraint maps, migration map, interfaces.
+- **New `_shared/validation.ts`:** Request validation with genre normalization, spice clamping, trope filtering, audience constraints, 40-char seed minimum.
+- **Rewrote `_shared/story-prompts.ts`:** Modular 10-layer assembly (base + engine + genre + audience + identity + trope + spice + continuation + language + JSON schema). Added 4 new genre modules (darkRomance, cozyFantasy, paranormalRomance, contemporary). Deprecated genres map to new ones. Old 2-arg signatures kept as backward-compat wrappers.
+- **Updated `_shared/story_text.ts`:** Added `parseStructuredOutput()` for JSON parsing with text fallback.
+- **Updated `_shared/cover-prompts.ts`:** Added darkRomance, cozyFantasy, paranormalRomance, contemporary configs. Removed drama, sliceOfLife. Updated `normalizeGenre()`.
+- **Updated `generate-story/index.ts`:** Uses new validation, inserts `primary_genre` + taxonomy fields, parses structured JSON output, derives content_rating server-side, passes extended RPC params.
+- **Updated `continue-story/index.ts`:** Reads new story columns, builds modular continuation prompt, uses structured output parser.
+- **Updated `feed/index.ts`:** Selects `primary_genre`, uses it for affinity scoring, excludes `content_rating = 'explicit'`.
+- **Updated `library/index.ts`:** Filters by `primary_genre` instead of `genre[]` contains, excludes explicit content.
+- **Expo `domain.ts`:** 13 UI genres, `CreateDraft` with `primaryGenre`, `audienceMode`, `spiceLevel`, `identityLenses`, `tropeModules`.
+- **Expo `theme.ts`:** 13 genre labels and gradients.
+- **Expo `seed.ts`:** 13 genres, remapped drama/bedtime stories.
+- **Expo `api.ts`:** Sends new fields, reads `primary_genre` from response.
+- **Expo `CreateStudioScreen.tsx`:** Updated draft type, genre selector uses 13 genres, 40-char seed minimum.
+- **Expo `KathaOnboardingFlowV2.jsx`:** 14 genre options (13 + Other).
+- **46 backend tests** (16 validation + 22 prompts + 8 parser): all pass.
+- **33 Expo tests** (theme, seed, i18n, analytics, supabase): all pass.
+
+### Notes
+
+- `genre text[]` column kept for backward-compat reads. New writes populate both `genre` and `primary_genre`.
+- `explicit` spice is feature-flagged (rejected at validation).
+- 5-screen Create flow redesign is follow-up PR.
+
+---
+
+## 2026-08-27 — Story prompt v5.1 production spec
+
+**Session:** Reviewed the research-backed v5 prompt architecture and converted
+the backend prompt reference into a production implementation contract.
+
+### Changes
+
+- Updated `backend/prompts/story-generator.md` from v2.0 to v5.1 production
+  spec.
+- Locked the proposed taxonomy to 15 user-facing adult genre cards, with LGBTQ+
+  as a separate queer identity lens/toggle instead of a primary genre.
+- Documented genre-aware spice layering with `sweet`, `steamy`, and
+  feature-flagged `explicit`; MVP recommendation is Sweet + Steamy only.
+- Reframed Kids and Bedtime as audience modes that force Sweet content and have
+  separate safety/read-aloud constraints.
+- Added the required story-engine layer, structured-output contract, safety
+  boundaries, implementation dependency checklist, and known current mismatches
+  for the production implementation pass.
+
+### Notes
+
+- No runtime TypeScript, schema, or Expo UI files were changed in this session.
+  The next implementation pass must update backend prompt builders, request
+  validation, Supabase columns, feed/library filters, Expo genre controls, and
+  cover prompt mappings together.
+
+---
+
 ## 2026-08-15 — Project scaffolding
 
 **Session:** Initial project setup (from Story For My Kid Claude Code session)

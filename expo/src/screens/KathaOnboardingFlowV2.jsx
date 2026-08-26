@@ -37,7 +37,7 @@ const FF = {
 };
 
 // ── Static data ─────────────────────────────────────────────────────────────
-const GENRES = ['Thriller','Fantasy','Bedtime Stories','Mystery','Adventure','Sci-Fi','Horror','Young Adult','Romance','Dark Romance','Historical','Literary','Fanfiction','Poetry','Mythology','Coming of Age','Contemporary','Comedy','Drama','Non-fiction','Other'];
+const GENRES = ['Romance','Romantasy','Dark Romance','Fantasy','Sci-Fi','Thriller','Mystery','Horror','Contemporary','Historical','Adventure','Comedy','Poetry','Other'];
 const PURPOSES = [
   { k: 'read',  icon: '\uD83D\uDCD6', label: 'Reading',       sub: 'Get lost in stories from around the world' },
   { k: 'write', icon: '\u270D\uFE0F', label: 'Writing',       sub: 'Create stories of my own with Katha' },

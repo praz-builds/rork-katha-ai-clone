@@ -1,26 +1,36 @@
+// 13 UI genres (cozyFantasy + paranormalRomance hidden, DB-only)
 export const GENRES = [
+  "romance",
+  "romantasy",
+  "darkRomance",
+  "fantasy",
+  "scifi",
+  "thriller",
+  "mystery",
+  "horror",
+  "contemporary",
+  "historical",
   "adventure",
   "comedy",
-  "contemporary",
-  "drama",
-  "fantasy",
-  "historical",
-  "horror",
-  "kids",
-  "lgbtq",
-  "motivational",
-  "mystery",
-  "mythology",
   "poetry",
-  "romance",
-  "scifi",
-  "sliceOfLife",
-  "spirituality",
-  "thriller",
-  "bedtime",
 ] as const;
 
 export type Genre = (typeof GENRES)[number];
+
+export type AudienceMode = "adult" | "kids";
+export type SpiceLevel = "sweet" | "steamy";
+export type IdentityLens = "queer";
+export type TropeModule =
+  | "werewolf"
+  | "vampire"
+  | "enemiesToLovers"
+  | "secondChance"
+  | "forcedProximity"
+  | "smallTown"
+  | "fatedMates"
+  | "forbiddenLove"
+  | "lockedRoom"
+  | "secretIdentity";
 
 export type TabKey = "home" | "create" | "library";
 
@@ -52,6 +62,10 @@ export type Story = {
   title: string;
   authorId: string;
   genre: Genre;
+  primaryGenre?: Genre;
+  audienceMode?: AudienceMode;
+  spiceLevel?: SpiceLevel;
+  contentRating?: string;
   synopsis: string;
   chapters: Chapter[];
   likes: number;
@@ -104,7 +118,11 @@ export type CreditLedgerEntry = {
 };
 
 export type CreateDraft = {
-  genre: Genre;
+  primaryGenre: Genre;
+  audienceMode: AudienceMode;
+  spiceLevel: SpiceLevel;
+  identityLenses: IdentityLens[];
+  tropeModules: TropeModule[];
   seed: string;
   language: string;
   characters: { name: string; description: string; isHero: boolean }[];

@@ -1168,7 +1168,7 @@ const styles = StyleSheet.create({
   chipRowFlush: { gap: spacing.sm, paddingBottom: spacing.lg },
 
   /* ── Stack ── */
-  stack: { gap: spacing.md },
+  stack: { gap: spacing.lg },
   accentLink: { color: colors.accent, fontWeight: "800" },
 
   /* ── Library ── */
@@ -1177,7 +1177,7 @@ const styles = StyleSheet.create({
   segmentSelected: { backgroundColor: colors.surface },
   segmentText: { fontFamily: fonts.ui, color: colors.muted, fontSize: 12, fontWeight: "800" },
   segmentTextSelected: { color: colors.ink },
-  segmentContent: { marginTop: spacing.xl },
+  segmentContent: { marginTop: spacing.xl, paddingHorizontal: spacing.xl },
   emptyState: {
     paddingVertical: spacing.huge,
     alignItems: "center",

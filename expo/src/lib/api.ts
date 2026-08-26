@@ -51,7 +51,11 @@ export async function generateStory(
   const { data, error } = await supabase.functions.invoke("generate-story", {
     body: {
       request_id: requestId,
-      genre: draft.genre,
+      primary_genre: draft.primaryGenre,
+      audience_mode: draft.audienceMode,
+      spice_level: draft.spiceLevel,
+      identity_lenses: draft.identityLenses,
+      trope_modules: draft.tropeModules,
       topic: draft.seed,
       characters: draft.characters,
       language: draft.language,
@@ -113,8 +117,13 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
   const id = requiredString(story.id, "story id");
   const chapterId = requiredString(chapter.id, "chapter id");
   const content = requiredString(chapter.content, "chapter content");
+  const serverPrimaryGenre = story.primary_genre;
   const serverGenres = Array.isArray(story.genre) ? story.genre : [];
-  const genre = isGenre(serverGenres[0]) ? serverGenres[0] : draft.genre;
+  const genre = isGenre(serverPrimaryGenre)
+    ? serverPrimaryGenre
+    : isGenre(serverGenres[0])
+      ? serverGenres[0]
+      : draft.primaryGenre;
   const themes = Array.isArray(story.themes)
     ? story.themes.filter((value): value is string => typeof value === "string")
     : [];
@@ -198,8 +207,8 @@ function localGeneratedStory(draft: CreateDraft): Story {
     id: `generated-${Date.now()}`,
     title,
     authorId: "me",
-    genre: draft.genre,
-    synopsis: `A fresh ${draft.genre} story shaped from your seed: ${
+    genre: draft.primaryGenre,
+    synopsis: `A fresh ${draft.primaryGenre} story shaped from your seed: ${
       draft.seed || "a quiet beginning"
     }.`,
     likes: 0,

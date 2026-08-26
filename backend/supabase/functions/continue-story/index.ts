@@ -13,7 +13,8 @@ import {
   buildContinuationSystemPrompt,
   MAX_SERIES_CHAPTERS,
 } from "../_shared/story-prompts.ts";
-import { parseGeneratedStoryText } from "../_shared/story_text.ts";
+import { parseStructuredOutput } from "../_shared/story_text.ts";
+import type { AudienceMode, IdentityLens, SpiceLevel, TropeModule } from "../_shared/types.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -109,7 +110,7 @@ serve(async (req) => {
     // Verify story ownership
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
-      .select("id, title, genre, topic, author_id, language")
+      .select("id, title, genre, primary_genre, audience_mode, identity_lenses, trope_modules, spice_level, topic, author_id, language")
       .eq("id", story_id)
       .single();
 
@@ -175,34 +176,42 @@ serve(async (req) => {
       ?.map((c) => `Chapter ${c.chapter_number}: ${c.content}`)
       .join("\n\n");
 
-    const primaryGenre = Array.isArray(story.genre)
-      ? story.genre[0] ?? "drama"
-      : (story.genre ?? "drama");
+    const primaryGenre: string = story.primary_genre ??
+      (Array.isArray(story.genre) ? story.genre[0] ?? "contemporary" : (story.genre ?? "contemporary"));
     const storyLanguage = typeof story.language === "string"
       ? story.language
       : undefined;
+    const audienceMode = (story.audience_mode ?? "adult") as AudienceMode;
+    const identityLenses = (Array.isArray(story.identity_lenses) ? story.identity_lenses : []) as IdentityLens[];
+    const tropeModules = (Array.isArray(story.trope_modules) ? story.trope_modules : []) as TropeModule[];
+    const rawSpice = story.spice_level ?? "sweet";
+    const spiceLevel = (rawSpice === "explicit" ? "steamy" : rawSpice) as SpiceLevel;
     const isFinale = body.is_finale === true ||
       nextChapterNum >= MAX_SERIES_CHAPTERS;
     const chapterMode = isFinale ? "finale" : "chapter";
-    const systemPrompt = buildContinuationSystemPrompt(
+    const systemPrompt = buildContinuationSystemPrompt({
       primaryGenre,
-      storyLanguage,
-      chapterMode,
-    );
+      audienceMode,
+      identityLenses,
+      tropeModules,
+      spiceLevel,
+      language: storyLanguage,
+      mode: chapterMode,
+    });
     const finaleNote = isFinale
       ? " This is the FINAL chapter. Bring the story to a satisfying close."
       : "";
     const userPrompt =
-      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${
-        Array.isArray(story.genre) ? story.genre.join(", ") : story.genre
-      }\n\nPrevious chapters:\n${previousText}\n\nWrite the next chapter (600-900 words). Start with the chapter title on the first line.`;
+      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}\n\nPrevious chapters:\n${previousText}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
 
     try {
       const result = await generateStoryText(systemPrompt, userPrompt);
-      const { title: chapterTitle, content } = parseGeneratedStoryText(
+      const output = parseStructuredOutput(
         result.text,
         `Chapter ${nextChapterNum}`,
       );
+      const chapterTitle = output.chapter_title || output.title;
+      const content = output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
       const wordCount = content.split(/\s+/).length;
 

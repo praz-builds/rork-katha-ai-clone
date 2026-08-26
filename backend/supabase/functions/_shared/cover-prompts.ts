@@ -114,24 +114,44 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
     mood: "intellectual, brooding, secretive",
     characterApproach: "silhouette",
   },
-  drama: {
+  darkRomance: {
     style:
-      "emotional painterly illustration, expressive brushwork, literary fiction aesthetic",
+      "dark romantic chiaroscuro illustration, dramatic lighting, intense and moody, fine art quality",
     palette:
-      "muted earth tones, overcast greys, single warm accent, soft natural light",
+      "deep crimson, obsidian black, tarnished gold, shadow grey, blood red accents",
     composition:
-      "contemplative scene, generous negative space, single meaningful object, window light",
-    mood: "reflective, bittersweet, human",
+      "close portrait framing, dramatic shadows across face, single rose or blade accent, dark background",
+    mood: "dangerous, intense, possessive",
+    characterApproach: "portrait",
+  },
+  cozyFantasy: {
+    style:
+      "warm whimsical watercolor illustration, gentle rounded forms, storybook charm, soft glowing light",
+    palette:
+      "warm honey, sage green, soft cream, dusty rose, amber candlelight",
+    composition:
+      "cozy interior with magical details, overflowing bookshelves, steaming mugs, friendly creature companion",
+    mood: "warm, gentle, magical",
     characterApproach: "scene",
   },
-  sliceOfLife: {
+  paranormalRomance: {
     style:
-      "warm cozy illustration, gentle watercolor texture, soft afternoon light, everyday beauty",
+      "moonlit atmospheric illustration, supernatural glow effects, gothic romance quality, rich detail",
     palette:
-      "warm caramel, soft sage green, dusty rose, cream, golden hour amber",
+      "midnight blue, blood red, pale silver moonlight, deep violet, ghostly white",
     composition:
-      "intimate everyday scene, kitchen table or window seat, warm interior with soft shadows",
-    mood: "warm, nostalgic, comforting",
+      "figure in moonlit setting, supernatural elements (fangs, glowing eyes, mist), gothic architecture",
+    mood: "alluring, supernatural, dangerous desire",
+    characterApproach: "portrait",
+  },
+  contemporary: {
+    style:
+      "emotional painterly illustration, expressive brushwork, literary fiction aesthetic, warm everyday beauty",
+    palette:
+      "muted earth tones, overcast greys, warm caramel accents, soft sage, golden hour amber",
+    composition:
+      "contemplative scene, generous negative space, single meaningful object, window light or intimate everyday setting",
+    mood: "reflective, bittersweet, human, warm",
     characterApproach: "scene",
   },
   mythology: {
@@ -182,14 +202,30 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
  * The prompt intentionally avoids requesting text-on-image (titles are
  * composited programmatically after generation).
  */
-/** Normalize genre to a supported key, falling back to "drama". */
+/** Normalize genre to a supported key, falling back to "contemporary". */
 function normalizeGenre(genre: string): string {
   if (Object.prototype.hasOwnProperty.call(GENRE_PROMPTS, genre)) return genre;
+
+  // Alias map for deprecated genres
+  const aliases: Record<string, string> = {
+    drama: "contemporary",
+    sliceoflife: "contemporary",
+    darkacademia: "contemporary",
+    mythology: "fantasy",
+    lgbtq: "contemporary",
+    motivational: "contemporary",
+    spirituality: "contemporary",
+    kids: "adventure",
+    bedtime: "adventure",
+  };
+
   const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
+  if (Object.prototype.hasOwnProperty.call(aliases, lower)) return aliases[lower];
+
   for (const key of Object.keys(GENRE_PROMPTS)) {
     if (key.toLowerCase() === lower) return key;
   }
-  return "drama";
+  return "contemporary";
 }
 
 export function buildCoverPrompt(

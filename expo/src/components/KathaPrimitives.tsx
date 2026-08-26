@@ -145,9 +145,24 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
 }
 
 export function StoryCard({ story, onPress, compact }: { story: Story; onPress?: () => void; compact?: boolean }) {
+  if (compact) {
+    return (
+      <Pressable onPress={onPress} style={({ pressed }) => [styles.storyCardCompact, pressed && styles.pressed]}>
+        <Cover story={story} size="mini" />
+        <View style={styles.storyCardCompactBody}>
+          <Text numberOfLines={2} style={styles.storyCardTitle}>
+            {story.title}
+          </Text>
+          <Text style={styles.storyCardMeta} numberOfLines={1}>
+            {genreLabels[story.genre]} {"\u00B7"} {formatNumber(story.views)} reads
+          </Text>
+        </View>
+      </Pressable>
+    );
+  }
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.storyCard, pressed && styles.pressed]}>
-      <Cover story={story} size={compact ? "mini" : "card"} />
+      <Cover story={story} size="card" />
       <Text numberOfLines={2} style={styles.storyCardTitle}>
         {story.title}
       </Text>
@@ -267,12 +282,21 @@ const styles = StyleSheet.create({
     elevation: 8
   },
   miniCover: {
-    width: 74,
+    width: 96,
     aspectRatio: 1,
-    borderRadius: radius.md
+    borderRadius: 14
   },
   storyCard: {
     width: 172,
+  },
+  storyCardCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md
+  },
+  storyCardCompactBody: {
+    flex: 1,
+    gap: 4
   },
   storyCardTitle: {
     marginTop: 12,

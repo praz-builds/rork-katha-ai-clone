@@ -11,7 +11,6 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -27,13 +26,10 @@ import {
   Sparkles,
   Trash2,
   Type,
-  Wand2,
   X,
 } from "lucide-react-native";
 import {
-  Chip,
   CreditPill,
-  GenreSwatch,
   PrimaryButton,
 } from "@/components/KathaPrimitives";
 import {
@@ -41,6 +37,7 @@ import {
   generateStory,
   GenerationRequestError,
 } from "@/lib/api";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
 import { genres } from "@/data/seed";
 import {
   colors,
@@ -49,7 +46,7 @@ import {
   radius,
   spacing,
 } from "@/theme";
-import type { CreateDraft, Genre, Story } from "@/types/domain";
+import type { AudienceMode, CreateDraft, Genre, IdentityLens, SpiceLevel, Story, TropeModule } from "@/types/domain";
 
 // ---------------------------------------------------------------------------
 // Local types
@@ -64,7 +61,11 @@ type DraftCharacter = {
 };
 
 type StudioDraft = {
-  genre: Genre;
+  primaryGenre: Genre;
+  audienceMode: AudienceMode;
+  spiceLevel: SpiceLevel;
+  identityLenses: IdentityLens[];
+  tropeModules: TropeModule[];
   seed: string;
   language: string;
   characters: DraftCharacter[];
@@ -101,11 +102,115 @@ const TONE_OPTIONS = [
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },
   { code: "es", label: "Spanish", flag: "🇪🇸" },
-  { code: "pt", label: "Portuguese", flag: "🇧🇷" },
 ] as const;
 
+const GENRE_EMOJI: Record<Genre, string> = {
+  fantasy: "🐉",
+  scifi: "🚀",
+  thriller: "🔪",
+  mystery: "🔍",
+  horror: "👻",
+  contemporary: "☕",
+  historical: "🏛️",
+  adventure: "🧭",
+  comedy: "😂",
+  poetry: "🪶",
+  romance: "💕",
+  romantasy: "✨",
+  darkRomance: "🖤",
+};
+
+/** Split genres into 2 rows for horizontal scroll (Tumblr-style) */
+const GENRE_ROW_1: Genre[] = [
+  "fantasy", "romance", "thriller", "mystery", "horror", "scifi", "comedy",
+];
+const GENRE_ROW_2: Genre[] = [
+  "romantasy", "darkRomance", "contemporary", "historical", "adventure", "poetry",
+];
+
+const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
+  romance: [
+    "Two rival bakery owners share a vanilla supplier",
+    "A letter meant for someone else changes everything",
+    "They keep meeting at the same bookshop, different shelves",
+  ],
+  romantasy: [
+    "A healer whose magic fails when she lies falls for a spy",
+    "The crown prince's bodyguard can read his emotions",
+    "Two rival mages share one spell book that only works together",
+  ],
+  darkRomance: [
+    "She inherits a vineyard and the debt collector who comes with it",
+    "A hostage negotiator and the voice on the other end of the line",
+    "They were enemies before the arranged marriage",
+  ],
+  fantasy: [
+    "A mapmaker discovers her ink reveals places that shouldn't exist",
+    "The last dragon lives in a subway tunnel",
+    "A city where memories are currency and hers are stolen",
+  ],
+  scifi: [
+    "The AI therapist starts asking for advice",
+    "A colony ship wakes the wrong passengers",
+    "Time runs backward in one room of the space station",
+  ],
+  thriller: [
+    "A forensic accountant finds her dead father laundered money for 30 years",
+    "The witness protection agent is being followed",
+    "Someone is leaving reviews of crimes before they happen",
+  ],
+  mystery: [
+    "A traveler vanishes from a Marrakech hotel. Her sister follows clues.",
+    "The detective's own alibi doesn't hold up",
+    "Every tenant in the building heard something different that night",
+  ],
+  horror: [
+    "The house was cheap. That should have been a warning.",
+    "A lullaby only one child in the family can hear",
+    "The mirror shows the room as it was twenty years ago",
+  ],
+  contemporary: [
+    "A mother writes letters to the ocean. One day, it writes back.",
+    "Two strangers share a hospital waiting room for seven hours",
+    "She finds her grandmother's diary and a name no one recognizes",
+  ],
+  historical: [
+    "A silk trader's daughter decodes a message hidden in fabric patterns",
+    "The last letter from a soldier arrives fifty years late",
+    "A clockmaker in 1920s Vienna builds a device no one ordered",
+  ],
+  adventure: [
+    "A raft guide finds a map of a river that doesn't exist",
+    "The compass points somewhere below the ocean floor",
+    "A rescue mission into a cave system that keeps changing shape",
+  ],
+  comedy: [
+    "A dog walker accidentally enters a dog into a beauty pageant",
+    "The world's worst wizard gets hired by the king",
+    "Two neighbors compete over the most mundane things imaginable",
+  ],
+  poetry: [
+    "The last payphone in the city, and who calls it",
+    "A love story told through weather reports",
+    "What the tide pool remembers",
+  ],
+};
+
+function getSeedHint(length: number): string {
+  if (length === 0) return "The more specific your idea, the better the story";
+  if (length < 20) return "Keep going, give Katha something to work with...";
+  if (length < 40) return `Almost there (${length}/40 characters)`;
+  if (length < 80) return "Good start. Add a character or a twist to make it yours";
+  if (length < 150) return "Nice, that's a strong premise";
+  return "Great detail. Katha has plenty to work with";
+}
+
 const INITIAL_DRAFT: StudioDraft = {
-  genre: "fantasy",
+  primaryGenre: "fantasy",
+  audienceMode: "adult",
+  spiceLevel: "sweet",
+  identityLenses: [],
+  tropeModules: [],
   seed: "",
   language: "English",
   characters: [
@@ -225,8 +330,30 @@ export default function CreateStudioScreen({
     };
   }, []);
 
+  // Restore persisted draft on mount
+  const draftRestoredRef = useRef(false);
+  useEffect(() => {
+    loadDraft().then((saved) => {
+      if (saved) setDraft(saved as StudioDraft);
+      draftRestoredRef.current = true;
+    });
+  }, []);
+
+  // Auto-save draft on changes (debounced 500ms, blocked until restore completes)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (step !== "setup" || !draftRestoredRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveDraft(draft);
+    }, 500);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [draft, step]);
+
   const canGenerate =
-    draft.seed.trim().length >= 20 && credits > 0 && !busy;
+    draft.seed.trim().length >= 40 && credits > 0 && !busy;
 
   const wordCount = paragraphs.reduce((acc, p) => {
     return acc + p.text.split(/\s+/).filter(Boolean).length;
@@ -255,7 +382,11 @@ export default function CreateStudioScreen({
     requestIdRef.current = requestId;
 
     const createDraft: CreateDraft = {
-      genre: draft.genre,
+      primaryGenre: draft.primaryGenre,
+      audienceMode: draft.audienceMode,
+      spiceLevel: draft.spiceLevel,
+      identityLenses: draft.identityLenses,
+      tropeModules: draft.tropeModules,
       seed: draft.seed,
       language: draft.language,
       characters: draft.characters,
@@ -268,6 +399,7 @@ export default function CreateStudioScreen({
         throw new Error("Story generation returned no chapter");
       }
       onCreditUsed();
+      clearDraft();
       setStory(generated);
       setStoryTitle(generated.title);
       setParagraphs(
@@ -527,55 +659,135 @@ export default function CreateStudioScreen({
           >
             {/* Header */}
             <View style={styles.setupHeader}>
-              <View>
+              <View style={styles.setupHeaderTop}>
                 <Text style={styles.eyebrow}>Create</Text>
-                <Text style={styles.h1}>Shape a new story</Text>
+                <CreditPill credits={credits} />
               </View>
-              <CreditPill credits={credits} />
+              <Text style={styles.h1}>Shape a new story</Text>
             </View>
 
             <View style={styles.formCard}>
-              {/* Genre picker */}
+              {/* Genre picker — 2 row horizontal scroll */}
               <Text style={styles.fieldLabel}>Genre</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.genreRow}
-              >
-                {genres.slice(0, 12).map((item) => (
-                  <Pressable
-                    key={item}
-                    onPress={() => {
-                      setDraft((prev) => ({
-                        ...prev,
-                        genre: item,
-                      }));
-                    }}
-                    style={[
-                      styles.genreChoice,
-                      draft.genre === item && styles.genreChoiceSelected,
-                    ]}
-                  >
-                    <GenreSwatch genre={item} />
-                    <Text style={styles.genreChoiceText}>
-                      {genreLabels[item]}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <View style={styles.genreScrollWrap}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genreScrollRow}>
+                  {GENRE_ROW_1.map((item) => (
+                    <Pressable
+                      key={item}
+                      onPress={() => setDraft((prev) => ({ ...prev, primaryGenre: item }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: draft.primaryGenre === item }}
+                      style={[styles.genreChip, draft.primaryGenre === item && styles.genreChipSelected]}
+                    >
+                      <Text style={[styles.genreChipText, draft.primaryGenre === item && styles.genreChipTextSelected]}>
+                        {GENRE_EMOJI[item]} {genreLabels[item]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genreScrollRow}>
+                  {GENRE_ROW_2.map((item) => (
+                    <Pressable
+                      key={item}
+                      onPress={() => setDraft((prev) => ({ ...prev, primaryGenre: item }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: draft.primaryGenre === item }}
+                      style={[styles.genreChip, draft.primaryGenre === item && styles.genreChipSelected]}
+                    >
+                      <Text style={[styles.genreChipText, draft.primaryGenre === item && styles.genreChipTextSelected]}>
+                        {GENRE_EMOJI[item]} {genreLabels[item]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
 
-              {/* Story seed */}
-              <Text style={styles.fieldLabel}>Story seed</Text>
+              {/* Mode toggles — Kids, LGBTQ+, Tropes */}
+              <View style={styles.toggleChipRow}>
+                <Pressable
+                  onPress={() => setDraft((prev) => ({
+                    ...prev,
+                    audienceMode: prev.audienceMode === "kids" ? "adult" : "kids",
+                  }))}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: draft.audienceMode === "kids" }}
+                  style={[styles.toggleChip, draft.audienceMode === "kids" && styles.toggleChipActive]}
+                >
+                  <Text style={[styles.toggleChipText, draft.audienceMode === "kids" && styles.toggleChipTextActive]}>
+                    🧒 Kids
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setDraft((prev) => ({
+                    ...prev,
+                    identityLenses: prev.identityLenses.includes("queer")
+                      ? prev.identityLenses.filter((l) => l !== "queer")
+                      : [...prev.identityLenses, "queer" as const],
+                  }))}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: draft.identityLenses.includes("queer") }}
+                  style={[styles.toggleChip, draft.identityLenses.includes("queer") && styles.toggleChipActive]}
+                >
+                  <Text style={[styles.toggleChipText, draft.identityLenses.includes("queer") && styles.toggleChipTextActive]}>
+                    🏳️‍🌈 LGBTQ+
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setDraft((prev) => ({
+                    ...prev,
+                    tropeModules: prev.tropeModules.includes("vampire")
+                      ? prev.tropeModules.filter((t) => t !== "vampire")
+                      : [...prev.tropeModules, "vampire" as const],
+                  }))}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: draft.tropeModules.includes("vampire") }}
+                  style={[styles.toggleChip, draft.tropeModules.includes("vampire") && styles.toggleChipActive]}
+                >
+                  <Text style={[styles.toggleChipText, draft.tropeModules.includes("vampire") && styles.toggleChipTextActive]}>
+                    🧛 Vampire
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Story idea */}
+              <Text style={styles.fieldLabel}>Your story idea</Text>
               <TextInput
                 multiline
                 value={draft.seed}
                 onChangeText={(seed) =>
                   setDraft((prev) => ({ ...prev, seed }))
                 }
-                placeholder="A lighthouse keeper receives a letter from the future..."
+                placeholder="Describe the story you want Katha to write..."
                 placeholderTextColor={colors.tertiary}
                 style={styles.seedInput}
               />
+              <Text style={[
+                styles.seedHint,
+                draft.seed.trim().length > 0 && draft.seed.trim().length < 40 && styles.seedHintWarm,
+                draft.seed.trim().length >= 40 && styles.seedHintReady,
+              ]}>
+                {getSeedHint(draft.seed.trim().length)}
+              </Text>
+
+              {/* Premise chips */}
+              {draft.seed.trim().length < 20 && (
+                <View>
+                  <Text style={styles.chipSectionLabel}>Try a premise</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.premiseChipScroll}>
+                    {GENRE_PREMISE_CHIPS[draft.primaryGenre].map((premise) => (
+                      <Pressable
+                        key={premise}
+                        onPress={() =>
+                          setDraft((prev) => ({ ...prev, seed: premise }))
+                        }
+                        style={styles.premiseChip}
+                      >
+                        <Text style={styles.premiseChipText}>{premise}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
               {/* Characters */}
               <View style={styles.charactersHeader}>
@@ -631,17 +843,15 @@ export default function CreateStudioScreen({
                   </View>
                   <View style={styles.heroRow}>
                     <Text style={styles.heroLabel}>Hero</Text>
-                    <Switch
-                      value={character.isHero}
-                      onValueChange={(value) =>
-                        updateCharacter(index, "isHero", value)
-                      }
-                      trackColor={{
-                        false: colors.border,
-                        true: colors.accent,
-                      }}
-                      thumbColor={colors.surface}
-                    />
+                    <Pressable
+                      onPress={() => updateCharacter(index, "isHero", !character.isHero)}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: character.isHero }}
+                      accessibilityLabel="Hero"
+                      style={[styles.heroToggleTrack, character.isHero && styles.heroToggleTrackOn]}
+                    >
+                      <View style={[styles.heroToggleThumb, character.isHero && styles.heroToggleThumbOn]} />
+                    </Pressable>
                   </View>
                 </View>
               ))}
@@ -668,11 +878,6 @@ export default function CreateStudioScreen({
                   ? "Generating..."
                   : "Generate Draft — 1 credit"}
               </PrimaryButton>
-              {!canGenerate && !busy && credits > 0 && draft.seed.trim().length < 20 && (
-                <Text style={styles.hintText}>
-                  Give Katha a clear premise ({draft.seed.trim().length}/20 characters minimum)
-                </Text>
-              )}
               {credits === 0 && (
                 <Text style={styles.hintText}>
                   You need credits to generate a story
@@ -758,7 +963,7 @@ export default function CreateStudioScreen({
             <View style={styles.storyInfoRow}>
               <View style={styles.genreBadge}>
                 <Text style={styles.genreBadgeText}>
-                  {genreLabels[story?.genre ?? draft.genre]}
+                  {genreLabels[story?.genre ?? draft.primaryGenre]}
                 </Text>
               </View>
               <Text style={styles.storyInfoMeta}>
@@ -1071,9 +1276,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
+  },
+  setupHeaderTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: spacing.xs,
   },
   eyebrow: {
     fontFamily: fonts.ui,
@@ -1105,26 +1313,60 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 13,
   },
-  genreRow: {
+  genreScrollWrap: {
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    marginHorizontal: -spacing.lg,
   },
-  genreChoice: {
-    minWidth: 132,
-    borderRadius: radius.lg,
+  genreScrollRow: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  genreChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface2,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
   },
-  genreChoiceSelected: {
+  genreChipSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
   },
-  genreChoiceText: {
+  genreChipText: {
     fontFamily: fonts.ui,
-    color: colors.ink,
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  genreChipTextSelected: {
+    color: colors.accent,
+    fontWeight: "800",
+  },
+  toggleChipRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  toggleChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  toggleChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  toggleChipText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  toggleChipTextActive: {
+    color: colors.accent,
     fontWeight: "800",
   },
   seedInput: {
@@ -1136,6 +1378,47 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 16,
     textAlignVertical: "top",
+  },
+  seedHint: {
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: -spacing.xs,
+  },
+  seedHintWarm: {
+    color: colors.heart,
+  },
+  seedHintReady: {
+    color: colors.success,
+  },
+  chipSectionLabel: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0,
+    marginBottom: spacing.sm,
+  },
+  premiseChipScroll: {
+    gap: spacing.sm,
+  },
+  premiseChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxWidth: 260,
+  },
+  premiseChipText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   charactersHeader: {
     flexDirection: "row",
@@ -1190,6 +1473,30 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontWeight: "700",
     fontSize: 13,
+  },
+  heroToggleTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.border,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  heroToggleTrackOn: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  heroToggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+  },
+  heroToggleThumbOn: {
+    alignSelf: "flex-end",
+    backgroundColor: colors.accent,
   },
   languageRow: {
     flexDirection: "row",
