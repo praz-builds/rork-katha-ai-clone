@@ -673,6 +673,8 @@ export default function CreateStudioScreen({
                     <Pressable
                       key={item}
                       onPress={() => setDraft((prev) => ({ ...prev, primaryGenre: item }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: draft.primaryGenre === item }}
                       style={[styles.genreChip, draft.primaryGenre === item && styles.genreChipSelected]}
                     >
                       <Text style={[styles.genreChipText, draft.primaryGenre === item && styles.genreChipTextSelected]}>
@@ -686,6 +688,8 @@ export default function CreateStudioScreen({
                     <Pressable
                       key={item}
                       onPress={() => setDraft((prev) => ({ ...prev, primaryGenre: item }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: draft.primaryGenre === item }}
                       style={[styles.genreChip, draft.primaryGenre === item && styles.genreChipSelected]}
                     >
                       <Text style={[styles.genreChipText, draft.primaryGenre === item && styles.genreChipTextSelected]}>
@@ -703,6 +707,8 @@ export default function CreateStudioScreen({
                     ...prev,
                     audienceMode: prev.audienceMode === "kids" ? "adult" : "kids",
                   }))}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: draft.audienceMode === "kids" }}
                   style={[styles.toggleChip, draft.audienceMode === "kids" && styles.toggleChipActive]}
                 >
                   <Text style={[styles.toggleChipText, draft.audienceMode === "kids" && styles.toggleChipTextActive]}>
@@ -716,6 +722,8 @@ export default function CreateStudioScreen({
                       ? prev.identityLenses.filter((l) => l !== "queer")
                       : [...prev.identityLenses, "queer" as const],
                   }))}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: draft.identityLenses.includes("queer") }}
                   style={[styles.toggleChip, draft.identityLenses.includes("queer") && styles.toggleChipActive]}
                 >
                   <Text style={[styles.toggleChipText, draft.identityLenses.includes("queer") && styles.toggleChipTextActive]}>
@@ -729,6 +737,8 @@ export default function CreateStudioScreen({
                       ? prev.tropeModules.filter((t) => t !== "vampire")
                       : [...prev.tropeModules, "vampire" as const],
                   }))}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: draft.tropeModules.includes("vampire") }}
                   style={[styles.toggleChip, draft.tropeModules.includes("vampire") && styles.toggleChipActive]}
                 >
                   <Text style={[styles.toggleChipText, draft.tropeModules.includes("vampire") && styles.toggleChipTextActive]}>
@@ -833,6 +843,9 @@ export default function CreateStudioScreen({
                     <Text style={styles.heroLabel}>Hero</Text>
                     <Pressable
                       onPress={() => updateCharacter(index, "isHero", !character.isHero)}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: character.isHero }}
+                      accessibilityLabel="Hero"
                       style={[styles.heroToggleTrack, character.isHero && styles.heroToggleTrackOn]}
                     >
                       <View style={[styles.heroToggleThumb, character.isHero && styles.heroToggleThumbOn]} />
@@ -1383,7 +1396,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     marginBottom: spacing.sm,
   },
   premiseChipScroll: {

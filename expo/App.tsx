@@ -1168,7 +1168,7 @@ const styles = StyleSheet.create({
   chipRowFlush: { gap: spacing.sm, paddingBottom: spacing.lg },
 
   /* ── Stack ── */
-  stack: { gap: 16 },
+  stack: { gap: spacing.lg },
   accentLink: { color: colors.accent, fontWeight: "800" },
 
   /* ── Library ── */
