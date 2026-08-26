@@ -148,16 +148,39 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `send-notification` | Push via FCM | G |
 | `referral-verify` | Referral fraud checks | H |
 
-## Story Generation System
+## Story Generation System (v5.1)
 
-The generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts` (571 lines). It is the single source of truth for how Katha AI generates fiction.
+The generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts`. Shared types in `_shared/types.ts`, validation in `_shared/validation.ts`. The prompt spec is `backend/prompts/story-generator.md`.
 
-### Architecture
+### Architecture (v5.1 modular layers)
 
-- `buildStorySystemPrompt(genre, language)` -- ~1100-word system prompt for standalone short stories.
-- `buildContinuationSystemPrompt(genre, language, mode)` -- system prompt for series chapters. Mode is `"chapter"` (mid-series) or `"finale"` (last chapter).
-- `buildUserPrompt(params)` -- structures user input (genre, seed, characters, language) into the user message.
-- Genre and language are normalized to supported enums before interpolation (prompt injection prevention).
+System prompts are assembled from 10 layers:
+1. **Base craft + safety** -- anti-slop, show-don't-tell, rhythm, dialogue, formatting, safety rules
+2. **Story engine** -- protagonist, want, obstacle, stakes, irreversible choice, emotional turn, genre payoff, final image
+3. **Primary genre module** -- 15 voice modules with voice/pacing/what-works/what-to-avoid
+4. **Audience mode** -- kids constraints (ages 4-10, 500-1200 words, safe content)
+5. **Identity lens** -- queer lens guidance
+6. **Trope module** -- werewolf/vampire/enemiesToLovers/etc. rules per genre
+7. **Spice module** -- sweet (fade to black), steamy (sensuality on-page), explicit (feature-flagged)
+8. **Continuation/finale** -- mid-series and finale rules
+9. **Language** -- 15 supported languages
+10. **Output schema** -- structured JSON output format
+
+API:
+- `buildStorySystemPrompt({ primaryGenre, audienceMode?, identityLenses?, tropeModules?, spiceLevel?, language? })` -- modular system prompt.
+- `buildContinuationSystemPrompt({ ...above, mode: "chapter" | "finale" })` -- continuation prompt.
+- `buildUserPrompt({ primaryGenre, audienceMode?, tropeModules?, spiceLevel?, seed, characters?, language? })` -- user message.
+- Old 2-arg signatures (`buildStorySystemPrompt(genre, language)`) still work as deprecated wrappers.
+
+### Taxonomy
+
+- **15 primary genres**: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry.
+- **13 UI genres** (cozyFantasy + paranormalRomance are DB-only, hidden from UI).
+- **2 audience modes**: adult (default), kids (toggle chip in UI).
+- **Spice levels**: sweet (default), steamy, explicit (feature-flagged off).
+- **Identity lenses**: queer.
+- **10 trope modules**: werewolf, vampire, enemiesToLovers, secondChance, forcedProximity, smallTown, fatedMates, forbiddenLove, lockedRoom, secretIdentity. Genre-constrained.
+- **Genre migration map**: drama/sliceOfLife/darkAcademia -> contemporary, mythology -> fantasy, kids/bedtime -> adventure, lgbtq/motivational/spirituality -> contemporary.
 
 ### Quality Rules (enforced in every generation)
 
@@ -167,15 +190,23 @@ The generation pipeline lives in `backend/supabase/functions/_shared/story-promp
 - Show-don't-tell enforcement, sentence rhythm variation, dialogue craft (said-only tags, distinct voices, interruptions), sensory grounding (2+ senses beyond sight per scene).
 - No em dashes, no meta-commentary, no purple prose.
 
-### Genre Modules
+### Structured Output
 
-16 genre-specific voice modules, each with voice/tone, pacing, what-works, and what-to-avoid guidance: romance, fantasy, romantasy, mystery, thriller, horror, scifi, adventure, historical, darkAcademia, drama, sliceOfLife, mythology, poetry, comedy, bedtime.
+LLM returns JSON: `{ title, chapter_title, chapter_body, word_count, themes, first_line, previously_summary }`. Parsed by `parseStructuredOutput()` with text-based fallback via `parseGeneratedStoryText()`.
 
-### Dramatic Arc
+### Validation
 
-- **Standalone stories**: setup (30%) -> rising tension (40%) -> climax + aftermath (30%). Climax is mandatory.
-- **Mid-series chapters**: advance plot, end on hook, never resolve central conflict.
-- **Series finale**: resolve main arc, callback to earlier chapters, close doors.
+`validateGenerationRequest()` in `_shared/validation.ts`:
+- Normalizes genre via migration map
+- Forces sweet spice in kids mode
+- Rejects darkRomance in kids mode
+- Rejects explicit spice (MVP gate)
+- Clamps spice to genre-allowed set
+- Filters tropes to genre-allowed set
+- Strips identity lenses in kids mode
+- 40-char seed minimum, 1000-char ceiling
+
+`deriveContentRating(audienceMode, spiceLevel)` -> kids/steamy/explicit/sweet (stored on story row).
 
 ### Series Limit
 
@@ -183,13 +214,13 @@ The generation pipeline lives in `backend/supabase/functions/_shared/story-promp
 
 ### Cultural Context
 
-The AI infers cultural context from character names, traits, and story language. A character named "Priya Menon" gets culturally appropriate Indian details. No explicit culture/ethnicity field -- inference from names and traits is the design choice.
+The AI infers cultural context from character names, traits, and story language. No explicit culture/ethnicity field -- inference from names and traits is the design choice.
 
 ### Input Requirements
 
-- **Story seed**: 20-character minimum (enforced both client-side and server-side).
-- **Characters**: at least 1 with a name (pre-filled placeholder in UI).
-- **Genre**: required, single-select from 16 supported genres.
+- **Story seed**: 40-character minimum (enforced both client-side and server-side).
+- **Characters**: optional (pre-filled placeholder in UI).
+- **Genre**: required, single-select from 13 UI genres.
 - **Language**: optional, defaults to English. 15 supported languages.
 
 ## Cover Image System

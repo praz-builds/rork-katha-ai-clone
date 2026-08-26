@@ -5,14 +5,17 @@ import { generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
   isStaleReservation,
-  parseRequestId,
   readJsonObject,
 } from "../_shared/operations.ts";
 import {
   buildStorySystemPrompt,
   buildUserPrompt,
 } from "../_shared/story-prompts.ts";
-import { parseGeneratedStoryText } from "../_shared/story_text.ts";
+import { parseStructuredOutput } from "../_shared/story_text.ts";
+import {
+  deriveContentRating,
+  validateGenerationRequest,
+} from "../_shared/validation.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -41,8 +44,20 @@ serve(async (req) => {
     const body = await readJsonObject(req);
     if (!body) return respond({ error: "Invalid JSON request body" }, 400);
     const input = validateGenerationRequest(body);
-    if ("error" in input) return respond({ error: input.error }, 400);
-    const { genres, topic, characters, requestId } = input;
+    if ("error" in input) {
+      return respond({ error: input.error }, input.status ?? 400);
+    }
+    const {
+      primaryGenre,
+      audienceMode,
+      identityLenses,
+      tropeModules,
+      spiceLevel,
+      seed,
+      characters,
+      requestId,
+      language,
+    } = input;
 
     // Use service role client for credit operations
     const serviceClient = createClient(
@@ -118,8 +133,13 @@ serve(async (req) => {
       .insert({
         author_id: user.id,
         title: "Generating...",
-        genre: genres,
-        topic,
+        genre: [primaryGenre],
+        primary_genre: primaryGenre,
+        audience_mode: audienceMode,
+        identity_lenses: identityLenses,
+        trope_modules: tropeModules,
+        spice_level: spiceLevel,
+        topic: seed,
         length_type: "short",
         status: "generating",
       })
@@ -181,15 +201,7 @@ serve(async (req) => {
         const { error: characterError } = await serviceClient
           .from("characters")
           .insert(
-            characters.map((
-              c: {
-                name: string;
-                description?: string;
-                background?: string;
-                appearance?: string;
-                isHero?: boolean;
-              },
-            ) => ({
+            characters.map((c) => ({
               story_id: story.id,
               name: c.name,
               description: c.description,
@@ -201,24 +213,30 @@ serve(async (req) => {
         if (characterError) throw characterError;
       }
 
-      const primaryGenre = genres[0] ?? "drama";
-      const language = typeof body.language === "string"
-        ? body.language.trim()
-        : undefined;
-      const systemPrompt = buildStorySystemPrompt(primaryGenre, language);
+      const systemPrompt = buildStorySystemPrompt({
+        primaryGenre,
+        audienceMode,
+        identityLenses,
+        tropeModules,
+        spiceLevel,
+        language,
+      });
       const userPrompt = buildUserPrompt({
-        genre: genres,
-        topic,
+        primaryGenre,
+        audienceMode,
+        tropeModules,
+        spiceLevel,
+        seed,
         characters,
         language,
       });
       const result = await generateStoryText(systemPrompt, userPrompt);
-      const { title, content } = parseGeneratedStoryText(
-        result.text,
-        "Untitled Story",
-      );
-      if (!content) throw new Error("Generation returned no story content");
-      const wordCount = content.split(/\s+/).length;
+      const output = parseStructuredOutput(result.text, "Untitled Story");
+      if (!output.chapter_body) {
+        throw new Error("Generation returned no story content");
+      }
+      const wordCount = output.chapter_body.split(/\s+/).length;
+      const contentRating = deriveContentRating(audienceMode, spiceLevel);
 
       const { data: chapter, error: completionError } = await serviceClient.rpc(
         "complete_story_generation",
@@ -226,9 +244,13 @@ serve(async (req) => {
           p_operation_id: operation.id,
           p_story_id: story.id,
           p_author_id: user.id,
-          p_title: title,
-          p_content: content,
+          p_title: output.title,
+          p_content: output.chapter_body,
           p_word_count: wordCount,
+          p_themes: output.themes,
+          p_first_line: output.first_line || null,
+          p_previously_summary: output.previously_summary || null,
+          p_content_rating: contentRating,
         },
       );
       if (completionError || !chapter) {
@@ -236,7 +258,13 @@ serve(async (req) => {
       }
 
       return respond({
-        story: { ...story, title, word_count: wordCount, status: "complete" },
+        story: {
+          ...story,
+          title: output.title,
+          word_count: wordCount,
+          status: "complete",
+          primary_genre: primaryGenre,
+        },
         chapter,
         balance: operation.balance,
         model: result.model,
@@ -281,90 +309,4 @@ function jsonResponse(req: Request, body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeadersFor(req), "Content-Type": "application/json" },
   });
-}
-
-type CharacterInput = {
-  name: string;
-  description?: string;
-  background?: string;
-  appearance?: string;
-  isHero?: boolean;
-};
-
-type GenerationInput = {
-  genres: string[];
-  topic?: string;
-  characters: CharacterInput[];
-  requestId: string;
-};
-
-/** Validate and bound all user-controlled prompt input. */
-function validateGenerationRequest(
-  value: unknown,
-): GenerationInput | { error: string } {
-  if (!value || typeof value !== "object") return { error: "Invalid request" };
-  const body = value as Record<string, unknown>;
-  const rawGenres = Array.isArray(body.genre) ? body.genre : [body.genre];
-  if (
-    rawGenres.length < 1 ||
-    rawGenres.length > 3 ||
-    rawGenres.some((genre) =>
-      typeof genre !== "string" || !genre.trim() || genre.length > 50
-    )
-  ) return { error: "genre must contain 1 to 3 short values" };
-
-  const rawTopic = body.topic;
-  if (typeof rawTopic !== "string") {
-    return { error: "Story seed must be at least 20 characters" };
-  }
-  const topic = rawTopic.trim();
-  if (topic.length < 20) {
-    return { error: "Story seed must be at least 20 characters" };
-  }
-  if (topic.length > 1000) {
-    return { error: "Story seed must be 1000 characters or fewer" };
-  }
-
-  const characters = body.characters ?? [];
-  if (!Array.isArray(characters) || characters.length > 10) {
-    return { error: "characters must contain at most 10 items" };
-  }
-  for (const character of characters) {
-    if (!character || typeof character !== "object") {
-      return { error: "Each character must be an object" };
-    }
-    const item = character as Record<string, unknown>;
-    if (
-      typeof item.name !== "string" ||
-      !item.name.trim() ||
-      item.name.length > 100
-    ) {
-      return {
-        error: "Each character needs a name of 100 characters or fewer",
-      };
-    }
-    for (const field of ["description", "background", "appearance"] as const) {
-      if (
-        item[field] !== undefined &&
-        (typeof item[field] !== "string" || item[field].length > 500)
-      ) return { error: `Character ${field} must be 500 characters or fewer` };
-    }
-    if (item.isHero !== undefined && typeof item.isHero !== "boolean") {
-      return { error: "Character isHero must be boolean" };
-    }
-  }
-
-  if (body.lengthType !== undefined && body.lengthType !== "short") {
-    return { error: "Only short-story generation is supported" };
-  }
-
-  const requestId = parseRequestId(body.request_id);
-  if (!requestId) return { error: "Invalid request_id" };
-
-  return {
-    genres: rawGenres.map((genre) => (genre as string).trim()),
-    topic,
-    characters: characters as CharacterInput[],
-    requestId,
-  };
 }

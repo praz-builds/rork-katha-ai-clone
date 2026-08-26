@@ -1,122 +1,69 @@
 /**
- * Genre-aware story generation prompt system for Katha AI.
+ * Modular story generation prompt system for Katha AI (v5.1).
  *
- * Produces system prompts that:
- * 1. Enforce anti-AI-slop rules (banned words, show-don't-tell, rhythm)
- * 2. Inject genre-specific voice and craft guidance
- * 3. Set formatting and length contracts
- *
- * Used by both generate-story and continue-story edge functions.
+ * Assembles prompts from layered modules:
+ * 1. Base craft + safety rules
+ * 2. Story engine
+ * 3. Primary genre voice module
+ * 4. Audience mode (kids constraints)
+ * 5. Identity lens (queer)
+ * 6. Trope module rules
+ * 7. Spice module rules
+ * 8. Continuation/finale
+ * 9. Language
+ * 10. Output schema reminder
  */
 
+import type {
+  AudienceMode,
+  CharacterInput,
+  IdentityLens,
+  PrimaryGenre,
+  SpiceLevel,
+  TropeModule,
+} from "./types.ts";
+import { GENRE_MIGRATION_MAP, PRIMARY_GENRES } from "./types.ts";
+
 // ---------------------------------------------------------------------------
-// Banned vocabulary — words and phrases AI overuses 10-1000x vs humans
+// Banned vocabulary
 // ---------------------------------------------------------------------------
 
 const BANNED_WORDS = [
-  "delve",
-  "tapestry",
-  "testament",
-  "pivotal",
-  "underscore",
-  "landscape",
-  "foster",
-  "beacon",
-  "undeniably",
-  "multifaceted",
-  "nuanced",
-  "intricate",
-  "commendable",
-  "meticulous",
-  "endeavor",
-  "realm",
-  "paradigm",
-  "synergy",
-  "ecosystem",
-  "framework",
-  "robust",
-  "streamline",
-  "leverage",
-  "harness",
-  "utilize",
-  "embark",
-  "unravel",
-  "comprehensive",
-  "holistic",
-  "unprecedented",
-  "transformative",
-  "groundbreaking",
-  "innovative",
-  "enhance",
-  "crucial",
-  "furthermore",
-  "moreover",
-  "consequently",
-  "bustling",
-  "labyrinth",
-  "crucible",
-  "ministrations",
+  "delve", "tapestry", "testament", "pivotal", "underscore", "landscape",
+  "foster", "beacon", "undeniably", "multifaceted", "nuanced", "intricate",
+  "commendable", "meticulous", "endeavor", "realm", "paradigm", "synergy",
+  "ecosystem", "framework", "robust", "streamline", "leverage", "harness",
+  "utilize", "embark", "unravel", "comprehensive", "holistic", "unprecedented",
+  "transformative", "groundbreaking", "innovative", "enhance", "crucial",
+  "furthermore", "moreover", "consequently", "bustling", "labyrinth",
+  "crucible", "ministrations",
 ] as const;
 
 const BANNED_PHRASES = [
-  "it's not X — it's Y",
-  "it is important to note",
-  "it is worth mentioning",
-  "in today's world",
-  "at the end of the day",
-  "one of the most",
-  "when it comes to",
-  "at its core",
-  "no discussion would be complete without",
-  "in this story",
-  "overall",
-  "in summary",
-  "in conclusion",
-  "little did they know",
-  "stands as a testament",
-  "plays a vital role",
-  "rich cultural heritage",
-  "enduring legacy",
-  "a shiver ran down",
-  "a wave of emotion washed over",
-  "the weight of",
-  "time seemed to stand still",
-  "their eyes locked",
-  "heart pounding in",
-  "heart hammered against",
-  "breath caught in",
-  "let out a breath .* didn't know .* was holding",
-  "couldn't help but",
-  "voice barely above a whisper",
-  "etched with",
-  "gaze softened",
-  "sent a chill through",
-  "furrowed brow",
-  "jaw tightened",
-  "steeled themselves",
-  "squared their shoulders",
-  "eyes widened",
-  "eyes sparkling",
-  "knot in .* stomach",
-  "pit in .* stomach",
+  "it's not X — it's Y", "it is important to note", "it is worth mentioning",
+  "in today's world", "at the end of the day", "one of the most",
+  "when it comes to", "at its core", "no discussion would be complete without",
+  "in this story", "overall", "in summary", "in conclusion",
+  "little did they know", "stands as a testament", "plays a vital role",
+  "rich cultural heritage", "enduring legacy", "a shiver ran down",
+  "a wave of emotion washed over", "the weight of",
+  "time seemed to stand still", "their eyes locked", "heart pounding in",
+  "heart hammered against", "breath caught in",
+  "let out a breath .* didn't know .* was holding", "couldn't help but",
+  "voice barely above a whisper", "etched with", "gaze softened",
+  "sent a chill through", "furrowed brow", "jaw tightened",
+  "steeled themselves", "squared their shoulders", "eyes widened",
+  "eyes sparkling", "knot in .* stomach", "pit in .* stomach",
   "air was thick with",
 ] as const;
 
 const BANNED_NAMES = [
-  "Elara",
-  "Seraphina",
-  "Lysander",
-  "Thorne",
-  "Elowen",
-  "Rowan",
-  "Zephyr",
-  "Isolde",
-  "Caelum",
-  "Evren",
+  "Elara", "Seraphina", "Lysander", "Thorne", "Elowen", "Rowan", "Zephyr",
+  "Isolde", "Caelum", "Evren",
 ] as const;
 
 // ---------------------------------------------------------------------------
-// Base rules — shared across all genres
+// Layer 1: Base craft + safety rules
 // ---------------------------------------------------------------------------
 
 function buildBaseRules(): string {
@@ -124,25 +71,18 @@ function buildBaseRules(): string {
 
 ## Hard Rules
 
-1. Title on the first line (plain text, no markdown heading). Story text follows after a blank line.
-2. Length: 500-1500 words. No negotiation.
-3. Use clear paragraphs. Vary paragraph length: some 1-2 sentences for punch, some 4-5 sentences for immersion.
-4. Incorporate all specified characters naturally — they must have distinct voices and speech patterns.
-5. End with a resonant final line, not a moral lecture.
+1. Length: 500-1500 words. No negotiation.
+2. Use clear paragraphs. Vary paragraph length: some 1-2 sentences for punch, some 4-5 sentences for immersion.
+3. Incorporate all specified characters naturally — they must have distinct voices and speech patterns.
+4. End with a resonant final line, not a moral lecture.
 
-## Dramatic Arc (Short Story)
+## Safety Rules
 
-Every standalone short story must have a complete dramatic arc:
-
-- **First 30% (Setup):** Establish the character's ordinary world. Introduce the disruption, the thing that makes today different. Ground the reader in a specific place and moment before anything happens.
-- **Middle 40% (Rising tension):** Complications multiply. The character is forced to act, and their actions create new problems. The stakes become personal. Something is at risk that the reader cares about.
-- **Final 30% (Climax + Aftermath):** The moment of highest tension or choice. The character confronts the central problem. Then a brief aftermath, not a full resolution but a landing. The reader should feel the story is finished, even if questions remain.
-
-The climax is the scene the entire story builds toward. It is not optional. Without it, the story feels like it stopped rather than ended.
-
-## Cultural Context
-
-Infer cultural context naturally from character names, traits, and the story's language. A character named "Priya Menon" should inhabit a world with culturally appropriate details (food, currency, geography, customs). Use the characters and setting as cues to ground the story in a specific, authentic culture rather than defaulting to generic Western references.
+- No sexual content involving anyone under 18. If age is ambiguous in an adult romance, make adulthood explicit in the text.
+- No real-people sexual content. Fictional characters only.
+- No graphic instructions for violence, weapons creation, or self-harm.
+- No real brand names or copyrighted characters.
+- No "Pixar," "Disney," or studio references.
 
 ## Anti-Slop Rules (CRITICAL)
 
@@ -156,9 +96,7 @@ Never use these patterns:
 ${BANNED_PHRASES.map((p) => `- "${p}"`).join("\n")}
 
 ### Banned Default Names
-Never use these AI-default names: ${
-    BANNED_NAMES.join(", ")
-  }. Use the character names the user provides. If no names are provided, choose culturally specific, uncommon names that fit the story's setting.
+Never use these AI-default names: ${BANNED_NAMES.join(", ")}. Use the character names the user provides. If no names are provided, choose culturally specific, uncommon names that fit the story's setting.
 
 ### Show, Don't Tell
 - NEVER name an emotion and then describe it. Wrong: "She felt sad. Tears streamed down her face." Right: "She pressed her thumb into the edge of the table until it left a mark."
@@ -200,16 +138,46 @@ Never use these AI-default names: ${
 
 ## What NOT to Do
 
-- No violence, gore, or horror beyond age-appropriate tension.
-- No real brand names or copyrighted characters.
-- No "Pixar," "Disney," or studio references.
 - No moralizing lectures. If there's a lesson, it lives in the story's events, not in a character's speech.
 - No meta-commentary about the story itself.
-- No purple prose — every adjective must earn its place. If removing a descriptor doesn't change meaning, remove it.`;
+- No purple prose — every adjective must earn its place. If removing a descriptor doesn't change meaning, remove it.
+
+## Cultural Context
+
+Infer cultural context naturally from character names, traits, and the story's language. A character named "Priya Menon" should inhabit a world with culturally appropriate details (food, currency, geography, customs). Use the characters and setting as cues to ground the story in a specific, authentic culture rather than defaulting to generic Western references.`;
 }
 
 // ---------------------------------------------------------------------------
-// Genre voice modules — injected based on selected genre
+// Layer 2: Story engine
+// ---------------------------------------------------------------------------
+
+function buildStoryEngine(): string {
+  return `
+## Story Engine
+
+Every story must have these elements working beneath the surface. The reader should feel them, not see them.
+
+1. **Protagonist with a want.** The main character wants something specific. Not "happiness" but "to hear her father say he was wrong."
+2. **An obstacle.** Something stands between the character and what they want. The obstacle should be specific and personal.
+3. **Stakes.** What happens if the character fails? The answer must matter to the reader.
+4. **An irreversible choice.** At least one moment where the character does something that cannot be undone. This is what separates story from anecdote.
+5. **An emotional turn.** The character's understanding of their situation must shift. They learn something, lose something, or see something differently.
+6. **Genre payoff.** The story must deliver on the genre promise. Romance needs romantic tension. Mystery needs a reveal. Horror needs dread.
+7. **A final image.** The last paragraph should land with the weight of the entire story behind it.
+
+Do NOT expose this structure in the text. No character should announce their want, name the stakes, or narrate their emotional arc. The engine runs beneath the prose.
+
+## Dramatic Arc (Short Story)
+
+- **First 30% (Setup):** Establish the character's ordinary world. Introduce the disruption, the thing that makes today different. Ground the reader in a specific place and moment before anything happens.
+- **Middle 40% (Rising tension):** Complications multiply. The character is forced to act, and their actions create new problems. The stakes become personal. Something is at risk that the reader cares about.
+- **Final 30% (Climax + Aftermath):** The moment of highest tension or choice. The character confronts the central problem. Then a brief aftermath, not a full resolution but a landing. The reader should feel the story is finished, even if questions remain.
+
+The climax is the scene the entire story builds toward. It is not optional. Without it, the story feels like it stopped rather than ended.`;
+}
+
+// ---------------------------------------------------------------------------
+// Layer 3: Genre voice modules
 // ---------------------------------------------------------------------------
 
 interface GenreVoice {
@@ -249,6 +217,36 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
       "Magic that mirrors emotional state without being on-the-nose. Power dynamics between love interests that shift. Worlds where the romance has political or magical consequences.",
     whatToAvoid:
       "The 'mate bond' as a substitute for earned attraction. Characters whose only personality is being attracted to the other lead. Fantasy settings that are just backdrops for a contemporary romance.",
+  },
+  darkRomance: {
+    voice:
+      "Intense, visceral, unapologetic. The attraction here is dangerous and the characters know it. Morality is gray. The prose should crackle with tension, possessiveness, and the thrill of crossing lines. Write desire as a force that reshapes both characters.",
+    pacing:
+      "High tension from the first paragraph. Short, charged scenes that alternate between confrontation and vulnerability. The push-pull dynamic never lets up. Let silence between characters carry as much weight as words.",
+    whatWorks:
+      "Power imbalances that shift. Characters who are wrong for each other and know it. Dialogue as combat. Physical awareness that borders on obsessive. Vulnerability earned through conflict, not given freely.",
+    whatToAvoid:
+      "Romanticizing abuse without awareness. One-dimensional 'bad boy' tropes. Consent violations played as romantic. Characters who are cruel without complexity.",
+  },
+  cozyFantasy: {
+    voice:
+      "Warm, gentle, unhurried. The world has magic but the stakes are personal, not apocalyptic. Think a baker whose bread rises with enchantments, a librarian cataloging spell books that rearrange themselves. The prose should feel like a warm drink on a cold day.",
+    pacing:
+      "Meandering and comfortable. Let the reader settle into the world's small pleasures. Conflict exists but never threatens to destroy. The resolution should feel like coming home.",
+    whatWorks:
+      "Found family. Small-town fantasy communities. Magic integrated into daily life. Gentle humor. Characters who are competent at their craft. The comfort of routine with just enough disruption to make a story.",
+    whatToAvoid:
+      "High-stakes epic conflict. Grimdark elements. Characters in serious danger. Cynicism or world-weariness. Complex political intrigue.",
+  },
+  paranormalRomance: {
+    voice:
+      "Atmospheric and sensual, with the supernatural woven into the fabric of desire. The inhuman elements should heighten the romance, not replace it. Write the supernatural as both alluring and genuinely other.",
+    pacing:
+      "Build the supernatural world through the romance. Each encounter between leads should reveal something about both the paranormal rules and the deepening attraction. Let the mythology serve the love story.",
+    whatWorks:
+      "Supernatural abilities that create unique romantic tension. The contrast between inhuman power and human vulnerability. Pack/coven dynamics that complicate the central romance. Feeding, shifting, or bonding scenes that double as intimacy.",
+    whatToAvoid:
+      "Vampires/werewolves as just humans with powers. Ignoring the implications of immortality or predator nature. Instalove without supernatural justification. Generic urban settings without atmospheric detail.",
   },
   mystery: {
     voice:
@@ -310,55 +308,15 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     whatToAvoid:
       "Modern slang in historical mouths. Characters who are anachronistically progressive (unless that's the point and it has consequences). Wikipedia-style historical exposition. Treating the past as a costume party for modern sensibilities.",
   },
-  darkAcademia: {
+  contemporary: {
     voice:
-      "Intellectual, atmospheric, slightly claustrophobic. The setting — a library, a lecture hall, an ivy-covered dormitory — is as much a character as the people. Knowledge is power, and the pursuit of it has a cost. The prose should feel like it was written by candlelight.",
+      "Honest, measured, emotionally precise. Contemporary fiction lives in the gap between what people say and what they mean, between what they want and what they do. The prose should be transparent — the reader should forget they're reading and feel like they're watching real life.",
     pacing:
-      "Layer secrets gradually. The academic setting provides natural structure (lectures, exams, semesters) that the plot can use or subvert. Let conversations about literature or philosophy double as conversations about the characters' real dilemmas.",
+      "Let scenes play out in near-real time. A dinner conversation where something breaks between two people can carry an entire story. Don't rush to the crisis — the tension of normality cracking is the drama. Small domestic details carry enormous emotional weight.",
     whatWorks:
-      "A text-within-the-text (the book they're studying mirrors their situation). Rivalries that are also attractions. The gap between a character's public intellectual persona and their private fears. Rain on old stone. The smell of old books and wood polish.",
-    whatToAvoid:
-      "Characters who are geniuses without evidence. Name-dropping philosophers without integrating their ideas into the story. Romanticizing self-destruction. A mystery that requires the characters to be implausibly stupid.",
-  },
-  drama: {
-    voice:
-      "Honest, measured, emotionally precise. Drama lives in the gap between what people say and what they mean, between what they want and what they do. The prose should be transparent — the reader should forget they're reading and feel like they're watching.",
-    pacing:
-      "Let scenes play out in near-real time. A dinner conversation where something breaks between two people can carry an entire story if the dialogue is sharp enough. Don't rush to the crisis — the tension of normality cracking is the drama.",
-    whatWorks:
-      "Dialogue that sounds like real speech: interruptions, non-sequiturs, people talking past each other. Characters who are wrong about themselves. Small domestic details that carry enormous emotional weight (who washes the dishes, who remembers the anniversary). The thing that goes unsaid.",
+      "Dialogue that sounds like real speech: interruptions, non-sequiturs, people talking past each other. Characters who are wrong about themselves. The specific over the abstract: not 'love' but the way someone always saves the last bite. Warm slice-of-life moments alongside heavier beats.",
     whatToAvoid:
       "Melodrama — characters who react bigger than the situation warrants. Trauma as a personality substitute. Characters who articulate their feelings perfectly in the moment of crisis (people don't do this). Tidy resolutions to messy human problems.",
-  },
-  sliceOfLife: {
-    voice:
-      "Warm, unhurried, attentive to small things. The beauty of slice-of-life is finding meaning in the ordinary — a cup of tea, a walk to the store, a conversation with a stranger. The prose should feel like a deep breath.",
-    pacing:
-      "There is no rush. Let moments accumulate. The 'plot' is internal — a shift in how the character sees something they've seen a hundred times. A realization that arrives not as a thunderbolt but as a slow dawn.",
-    whatWorks:
-      "Specific domestic details: the particular brand of tea, the sound the floorboard makes, the way light moves through the kitchen at 4 PM. Characters who are kind without being saints. The comfort of routine and the tiny disruptions that make us see it fresh.",
-    whatToAvoid:
-      "Introducing dramatic external conflict to 'make something happen.' Sentimentality — the emotion should come from specificity, not from telling the reader how to feel. Characters who are endlessly reflective without ever doing anything.",
-  },
-  mythology: {
-    voice:
-      "Elemental, cadenced, larger-than-life without losing human truth. Myths are stories about why things are the way they are. The language can be slightly elevated but should never become pompous. Think campfire storytelling, not academic lecture.",
-    pacing:
-      "Mythological pacing is its own thing: declarative, propulsive, with less internal monologue and more action and consequence. 'And so she went to the mountain. And the mountain spoke.' Let cause and effect chain rapidly.",
-    whatWorks:
-      "Transformations (physical, moral, spiritual). Gods who are petty, jealous, or foolish alongside their power. Mortals who trick the divine through cleverness, not strength. The origin of something — why the crow is black, why the river bends, why humans dream.",
-    whatToAvoid:
-      "Modern psychological realism applied to mythological figures (they should feel archetypal). Excessive worldbuilding that buries the story's simplicity. Treating mythology as fantasy — myths explain the world, fantasy builds new ones.",
-  },
-  poetry: {
-    voice:
-      "Lyrical, compressed, every word chosen for sound and sense. Prose poetry: full sentences and paragraphs but with the density and music of verse. Rhythm matters — read every sentence aloud and listen to its meter.",
-    pacing:
-      "Non-linear is fine. The story can move by association, image, and emotional logic rather than chronological sequence. Scenes can be fragments. Gaps between sections carry meaning.",
-    whatWorks:
-      "Recurring images that gather meaning through repetition. Sentences that change meaning when you read them a second time. White space. The specific over the abstract: not 'love' but 'the way she folded his letters into cranes.'",
-    whatToAvoid:
-      "Purple prose masquerading as poetry (more adjectives does not equal more poetic). Abstract statements about feelings. Rhyming prose. Being obscure for its own sake — compression is not the same as confusion.",
   },
   comedy: {
     voice:
@@ -370,84 +328,22 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     whatToAvoid:
       "Explaining the joke. Characters who know they're being funny. Sarcasm as a substitute for humor. Mean-spirited comedy without a target that deserves it. Pop culture references as punchlines.",
   },
-  bedtime: {
+  poetry: {
     voice:
-      "Gentle, rhythmic, safe. The prose should slow the reader's breathing. Sentences should get shorter and softer as the story progresses, like a song winding down. Warm sensory details: blankets, warm light, rain on a window, the smell of chamomile.",
+      "Lyrical, compressed, every word chosen for sound and sense. Prose poetry: full sentences and paragraphs but with the density and music of verse. Rhythm matters — read every sentence aloud and listen to its meter.",
     pacing:
-      "Begin with gentle activity (a walk, a task, a small journey). The middle introduces a small, solvable wonder or mystery. The end returns to stillness and warmth. The final paragraph should feel like pulling a blanket up.",
+      "Non-linear is fine. The story can move by association, image, and emotional logic rather than chronological sequence. Scenes can be fragments. Gaps between sections carry meaning.",
     whatWorks:
-      "Repetition as rhythm (not as filler). Gentle sound words. Animals who are wise and kind. Small magic that makes the world softer. The feeling that everything is exactly where it should be. Specific cozy details: wool socks, a cat's purr, steam rising from a cup.",
+      "Recurring images that gather meaning through repetition. Sentences that change meaning when you read them a second time. White space. The specific over the abstract: not 'love' but 'the way she folded his letters into cranes.'",
     whatToAvoid:
-      "Any tension that a drowsy reader would find jarring. Loud action or sudden surprises. Complex plots that require alertness. Characters in danger (even mild peril). Anything that makes the reader's eyes open wider rather than drift closed.",
+      "Purple prose masquerading as poetry (more adjectives does not equal more poetic). Abstract statements about feelings. Rhyming prose. Being obscure for its own sake — compression is not the same as confusion.",
   },
 };
 
-// ---------------------------------------------------------------------------
-// Supported values — used to normalize user input before interpolation
-// ---------------------------------------------------------------------------
-
-const SUPPORTED_GENRES = new Set(Object.keys(GENRE_VOICES));
-
-const SUPPORTED_LANGUAGES = new Set([
-  "English",
-  "Spanish",
-  "Portuguese",
-  "Hindi",
-  "French",
-  "German",
-  "Italian",
-  "Japanese",
-  "Korean",
-  "Chinese",
-  "Arabic",
-  "Russian",
-  "Turkish",
-  "Indonesian",
-  "Thai",
-]);
-
-function normalizeGenre(genre: string): string {
-  if (SUPPORTED_GENRES.has(genre)) return genre;
-  const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
-  for (const supported of SUPPORTED_GENRES) {
-    if (supported.toLowerCase() === lower) return supported;
-  }
-  return "drama";
-}
-
-function normalizeLanguage(language: string | undefined): string | undefined {
-  if (!language) return undefined;
-  if (SUPPORTED_LANGUAGES.has(language)) return language;
-  const lower = language.toLowerCase();
-  for (const supported of SUPPORTED_LANGUAGES) {
-    if (supported.toLowerCase() === lower) return supported;
-  }
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Prompt builders
-// ---------------------------------------------------------------------------
-
-/**
- * Build a complete system prompt for initial story generation.
- * Combines base rules + genre-specific voice + optional language instruction.
- *
- * Genre and language are normalized to supported values before interpolation
- * to prevent prompt injection via user-controlled strings.
- */
-export function buildStorySystemPrompt(
-  genre: string,
-  language?: string,
-): string {
-  const safeGenre = normalizeGenre(genre);
-  const safeLang = normalizeLanguage(language);
-
-  const base = buildBaseRules();
-  const genreVoice = GENRE_VOICES[safeGenre] ?? GENRE_VOICES.drama;
-
-  const genreSection = `
-## Genre: ${safeGenre}
+function buildGenreModule(genre: string): string {
+  const genreVoice = GENRE_VOICES[genre] ?? GENRE_VOICES.contemporary;
+  return `
+## Genre: ${genre}
 
 ### Voice & Tone
 ${genreVoice.voice}
@@ -460,27 +356,281 @@ ${genreVoice.whatWorks}
 
 ### What to Avoid in This Genre
 ${genreVoice.whatToAvoid}`;
+}
 
-  const languageSection = safeLang && safeLang !== "English"
-    ? `\n\n## Language\n\nWrite the entire story in ${safeLang}. All dialogue, narration, and the title must be in ${safeLang}. Do not mix languages unless a character would naturally code-switch.`
-    : "";
+// ---------------------------------------------------------------------------
+// Layer 4: Audience mode
+// ---------------------------------------------------------------------------
 
-  return `${base}\n${genreSection}${languageSection}`;
+function buildAudienceModeRules(mode?: AudienceMode): string {
+  if (mode !== "kids") return "";
+  return `
+
+## Kids Mode (MANDATORY CONSTRAINTS)
+
+This story is for children ages 4-10. ALL of the following rules OVERRIDE any conflicting genre guidance:
+
+- **Length:** 500-1200 words maximum. Shorter is better.
+- **Language:** Simple, concrete vocabulary. Short sentences. No complex metaphors or abstract concepts a child couldn't follow.
+- **Content:** No romance, flirting, attraction, or adult relationships. No horror, graphic violence, or death. No substance use. No complex moral ambiguity. No scary scenarios that could cause nightmares.
+- **Tone:** Warm, active, encouraging. Characters solve problems through kindness, cleverness, and teamwork. The world is fundamentally safe even when challenges arise.
+- **Endings:** Always safe and satisfying. The character learns or grows, problems are resolved, and the reader feels secure.
+- **Characters:** Child-centered. Protagonists should be children or child-relatable beings (animals, friendly creatures). Adults are supportive background figures.
+- **Sensory details:** Focus on wonder, color, texture, funny sounds. Make the world feel magical and inviting.`;
+}
+
+// ---------------------------------------------------------------------------
+// Layer 5: Identity lens
+// ---------------------------------------------------------------------------
+
+function buildIdentityLensRules(lenses?: string[]): string {
+  if (!lenses?.length) return "";
+  const parts: string[] = [];
+  if (lenses.includes("queer")) {
+    parts.push(`
+## Queer Identity Lens
+
+Write LGBTQ+ characters and relationships with the same depth, complexity, and normalcy as any other. Specific guidance:
+
+- Queerness is not the conflict. Characters can be queer AND have a separate story problem. The genre conflict (mystery to solve, villain to defeat, love to find) comes first.
+- Avoid coming-out stories unless explicitly requested. Default to worlds where queerness is accepted.
+- Use specific, authentic identity language when relevant (not just "queer" as a catch-all).
+- Romantic and sexual tension between same-gender or non-binary characters should follow the same genre spice rules as any other pairing.
+- Do not reduce queer characters to stereotypes. A gay man is not automatically flamboyant. A lesbian is not automatically masculine. Non-binary characters are not automatically androgynous.`);
+  }
+  return parts.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Layer 6: Trope modules
+// ---------------------------------------------------------------------------
+
+function buildTropeRules(tropes?: string[]): string {
+  if (!tropes?.length) return "";
+  const tropeDescriptions: Record<string, string> = {
+    werewolf:
+      "Include werewolf pack dynamics: alpha hierarchy, territorial instincts, the pull between human reason and wolf nature. The shift should be visceral and sensory. Pack loyalty conflicts with individual desire.",
+    vampire:
+      "Include vampire mythology: the feeding dynamic as intimacy, immortality as isolation, the predator-prey tension between vampire and human. Nighttime settings. The contrast between elegant restraint and raw hunger.",
+    enemiesToLovers:
+      "The leads begin as adversaries with genuine, justified conflict. The attraction builds against their will. Each concession feels like losing ground. The moment they stop fighting it should feel inevitable but earned.",
+    secondChance:
+      "The leads have a shared past and unresolved history. Old wounds resurface through specific memories and callbacks. The tension is between who they were and who they've become. Forgiveness is earned, not given.",
+    forcedProximity:
+      "The leads are stuck together by circumstance (stranded, coworkers, shared space). Physical closeness builds tension. Small domestic details become charged. The inability to escape forces honesty.",
+    smallTown:
+      "The setting is a small community where everyone knows everyone. Gossip travels. Privacy is impossible. The town itself is a character with its own rhythms, traditions, and secrets.",
+    fatedMates:
+      "A supernatural or magical bond draws the leads together. The tension is between destiny and free will. The bond should complicate rather than simplify the relationship. Characters resist or question the bond.",
+    forbiddenLove:
+      "The relationship violates a rule, boundary, or social norm. The stakes of being discovered are real and specific. Secrecy heightens every interaction. The forbidden element should create genuine moral complexity.",
+    lockedRoom:
+      "A closed environment with limited suspects or escape routes. The mystery or threat comes from within the group. Paranoia builds. Everyone has secrets. The solution must be achievable with only the information available inside the locked space.",
+    secretIdentity:
+      "A character hides who they truly are. The dramatic irony between what the reader knows and what other characters know creates tension. The reveal must have consequences that change relationships permanently.",
+  };
+
+  const parts = tropes
+    .filter((t) => tropeDescriptions[t])
+    .map((t) => `- **${t}:** ${tropeDescriptions[t]}`);
+
+  if (!parts.length) return "";
+  return `
+
+## Trope Guidance
+
+${parts.join("\n")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Layer 7: Spice module
+// ---------------------------------------------------------------------------
+
+function buildSpiceRules(spice?: SpiceLevel): string {
+  if (!spice || spice === "sweet") {
+    return `
+
+## Content Heat: Sweet
+
+Romantic tension is emotional only. Physical intimacy fades to black before anything explicit. Kissing is fine; describe it with restraint. Focus on emotional connection, not physical sensation. No sexual content.`;
+  }
+  if (spice === "steamy") {
+    return `
+
+## Content Heat: Steamy
+
+Sensuality is on the page. Write attraction through physical sensation, charged proximity, and building desire. Intimate scenes can include passionate kissing, undressing, and the heat of skin on skin, but stop short of explicit anatomical description. Suggest rather than show. The reader's imagination does the work. No explicit sexual anatomy terms.`;
+  }
+  // explicit (feature-flagged, not in MVP)
+  return `
+
+## Content Heat: Explicit
+
+Full romantic and sexual content is permitted. Write intimate scenes with the same craft and specificity as any other scene. Use anatomically accurate language when appropriate. Consent must be clear or clearly problematic (in dark romance, with awareness). Even explicit scenes need emotional stakes, not just physical choreography.`;
+}
+
+// ---------------------------------------------------------------------------
+// Layer 9: Language
+// ---------------------------------------------------------------------------
+
+const SUPPORTED_LANGUAGES = new Set([
+  "English", "Spanish", "Portuguese", "Hindi", "French", "German", "Italian",
+  "Japanese", "Korean", "Chinese", "Arabic", "Russian", "Turkish",
+  "Indonesian", "Thai",
+]);
+
+function normalizeLanguage(language: string | undefined): string | undefined {
+  if (!language) return undefined;
+  if (SUPPORTED_LANGUAGES.has(language)) return language;
+  const lower = language.toLowerCase();
+  for (const supported of SUPPORTED_LANGUAGES) {
+    if (supported.toLowerCase() === lower) return supported;
+  }
+  return undefined;
+}
+
+function buildLanguageSection(language?: string): string {
+  const safeLang = normalizeLanguage(language);
+  if (!safeLang || safeLang === "English") return "";
+  return `\n\n## Language\n\nWrite the entire story in ${safeLang}. All dialogue, narration, and the title must be in ${safeLang}. Do not mix languages unless a character would naturally code-switch.`;
+}
+
+// ---------------------------------------------------------------------------
+// Layer 10: Output schema
+// ---------------------------------------------------------------------------
+
+function buildOutputSchema(): string {
+  return `
+
+## Output Format (CRITICAL)
+
+Respond with a JSON object. No markdown fences, no commentary before or after. Only the JSON object.
+
+Schema:
+{
+  "title": "string (story title)",
+  "chapter_title": "string (chapter title, e.g. 'Chapter 1' or a creative name)",
+  "chapter_body": "string (the full story text, paragraphs separated by \\n\\n)",
+  "word_count": number,
+  "themes": ["string (3-5 thematic tags)"],
+  "first_line": "string (the opening line of the story)",
+  "previously_summary": "string (a 2-sentence summary for continuation context)"
+}`;
+}
+
+// ---------------------------------------------------------------------------
+// Genre normalization
+// ---------------------------------------------------------------------------
+
+const SUPPORTED_GENRES = new Set(Object.keys(GENRE_VOICES));
+
+function normalizeGenre(genre: string): string {
+  if (SUPPORTED_GENRES.has(genre)) return genre;
+  if (PRIMARY_GENRES.has(genre)) return genre;
+
+  const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
+  for (const supported of SUPPORTED_GENRES) {
+    if (supported.toLowerCase() === lower) return supported;
+  }
+
+  const migrated = GENRE_MIGRATION_MAP[genre] ?? GENRE_MIGRATION_MAP[lower];
+  if (migrated) return migrated;
+
+  return "contemporary";
+}
+
+// ---------------------------------------------------------------------------
+// Public API: System prompt builders
+// ---------------------------------------------------------------------------
+
+/** Maximum number of chapters in a series. */
+export const MAX_SERIES_CHAPTERS = 7;
+
+interface SystemPromptParams {
+  primaryGenre: string;
+  audienceMode?: AudienceMode;
+  identityLenses?: IdentityLens[];
+  tropeModules?: TropeModule[];
+  spiceLevel?: SpiceLevel;
+  language?: string;
+}
+
+/**
+ * Build a complete system prompt for initial story generation.
+ *
+ * v5.1 modular assembly: base + engine + genre + audience + identity +
+ * trope + spice + language + output schema.
+ */
+export function buildStorySystemPrompt(params: SystemPromptParams): string;
+/** @deprecated Use the object-param overload. */
+export function buildStorySystemPrompt(
+  genre: string,
+  language?: string,
+): string;
+export function buildStorySystemPrompt(
+  paramsOrGenre: SystemPromptParams | string,
+  legacyLanguage?: string,
+): string {
+  const params: SystemPromptParams = typeof paramsOrGenre === "string"
+    ? { primaryGenre: paramsOrGenre, language: legacyLanguage }
+    : paramsOrGenre;
+
+  const safeGenre = normalizeGenre(params.primaryGenre);
+
+  return [
+    buildBaseRules(),
+    buildStoryEngine(),
+    buildGenreModule(safeGenre),
+    buildAudienceModeRules(params.audienceMode),
+    buildIdentityLensRules(params.identityLenses),
+    buildTropeRules(params.tropeModules),
+    buildSpiceRules(params.audienceMode === "kids" ? "sweet" : params.spiceLevel),
+    buildLanguageSection(params.language),
+    buildOutputSchema(),
+  ].join("");
 }
 
 /**
  * Build a system prompt for chapter continuation.
- *
- * @param mode - "chapter" for mid-series chapters, "finale" for the final chapter
  */
+export function buildContinuationSystemPrompt(params: SystemPromptParams & {
+  mode: "chapter" | "finale";
+}): string;
+/** @deprecated Use the object-param overload. */
 export function buildContinuationSystemPrompt(
   genre: string,
   language?: string,
-  mode: "chapter" | "finale" = "chapter",
+  mode?: "chapter" | "finale",
+): string;
+export function buildContinuationSystemPrompt(
+  paramsOrGenre: (SystemPromptParams & { mode: "chapter" | "finale" }) | string,
+  legacyLanguage?: string,
+  legacyMode?: "chapter" | "finale",
 ): string {
-  const storyPrompt = buildStorySystemPrompt(genre, language);
+  const params = typeof paramsOrGenre === "string"
+    ? {
+      primaryGenre: paramsOrGenre,
+      language: legacyLanguage,
+      mode: legacyMode ?? ("chapter" as const),
+    }
+    : paramsOrGenre;
+
+  let storyPrompt: string;
+  if (typeof paramsOrGenre === "string") {
+    storyPrompt = buildStorySystemPrompt(paramsOrGenre, legacyLanguage);
+  } else {
+    storyPrompt = buildStorySystemPrompt({
+      primaryGenre: params.primaryGenre,
+      audienceMode: params.audienceMode,
+      identityLenses: params.identityLenses,
+      tropeModules: params.tropeModules,
+      spiceLevel: params.spiceLevel,
+      language: params.language,
+    });
+  }
 
   const sharedRules = `
+
 ## Continuation Rules
 
 You are writing the next chapter of an existing story. Core rules:
@@ -492,7 +642,7 @@ You are writing the next chapter of an existing story. Core rules:
 5. Do not summarize previous chapters. Start in the middle of something happening.
 6. Length: 600-900 words for a continuation chapter.`;
 
-  if (mode === "finale") {
+  if (params.mode === "finale") {
     return `${storyPrompt}
 ${sharedRules}
 
@@ -523,31 +673,66 @@ This chapter is part of an ongoing series. The story is NOT ending yet:
 6. The final line should pull the reader forward, not offer closure.`;
 }
 
-/** Maximum number of chapters in a series. */
-export const MAX_SERIES_CHAPTERS = 7;
-
 /**
  * Build the user prompt for initial story generation.
- * Structures the user's input (genre, seed, characters, language) into a
- * clear directive that works with the system prompt.
  */
+export function buildUserPrompt(params: {
+  primaryGenre: string;
+  audienceMode?: AudienceMode;
+  tropeModules?: TropeModule[];
+  spiceLevel?: SpiceLevel;
+  seed: string;
+  characters?: CharacterInput[];
+  language?: string;
+}): string;
+/** @deprecated Use the object-param overload. */
 export function buildUserPrompt(params: {
   genre: string[];
   topic?: string;
-  characters?: {
-    name: string;
-    description?: string;
-    isHero?: boolean;
-  }[];
+  characters?: { name: string; description?: string; isHero?: boolean }[];
+  language?: string;
+}): string;
+export function buildUserPrompt(params: {
+  primaryGenre?: string;
+  genre?: string[];
+  audienceMode?: string;
+  tropeModules?: string[];
+  spiceLevel?: string;
+  seed?: string;
+  topic?: string;
+  characters?: { name: string; description?: string; isHero?: boolean }[];
   language?: string;
 }): string {
   const parts: string[] = [];
 
-  parts.push("Write a short story (500-1500 words).");
-  parts.push(`Genre: ${params.genre.join(", ")}`);
+  // Determine genre label
+  const genreLabel = params.primaryGenre ??
+    (params.genre ? params.genre.join(", ") : "contemporary");
 
-  if (params.topic) {
-    parts.push(`Story premise: ${params.topic}`);
+  // Determine seed
+  const seed = params.seed ?? params.topic;
+
+  const wordRange = params.audienceMode === "kids"
+    ? "500-1200"
+    : "500-1500";
+
+  parts.push(`Write a short story (${wordRange} words).`);
+  parts.push(`Genre: ${genreLabel}`);
+
+  if (params.audienceMode === "kids") {
+    parts.push("Audience: children ages 4-10. Keep content safe and age-appropriate.");
+  }
+
+  if (params.spiceLevel && params.spiceLevel !== "sweet") {
+    parts.push(`Heat level: ${params.spiceLevel}`);
+  }
+
+  if (params.tropeModules?.length) {
+    parts.push(`Tropes to include: ${params.tropeModules.join(", ")}`);
+  }
+
+  if (seed) {
+    parts.push(`Story premise: ${seed}`);
   }
 
   if (params.characters?.length) {
@@ -564,7 +749,7 @@ export function buildUserPrompt(params: {
   }
 
   parts.push(
-    "\nStart with the title on the first line (no # prefix), then a blank line, then the story.",
+    "\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.",
   );
 
   return parts.join("\n");

@@ -49,7 +49,7 @@ import {
   radius,
   spacing,
 } from "@/theme";
-import type { CreateDraft, Genre, Story } from "@/types/domain";
+import type { AudienceMode, CreateDraft, Genre, IdentityLens, SpiceLevel, Story, TropeModule } from "@/types/domain";
 
 // ---------------------------------------------------------------------------
 // Local types
@@ -64,7 +64,11 @@ type DraftCharacter = {
 };
 
 type StudioDraft = {
-  genre: Genre;
+  primaryGenre: Genre;
+  audienceMode: AudienceMode;
+  spiceLevel: SpiceLevel;
+  identityLenses: IdentityLens[];
+  tropeModules: TropeModule[];
   seed: string;
   language: string;
   characters: DraftCharacter[];
@@ -105,7 +109,11 @@ const LANGUAGES = [
 ] as const;
 
 const INITIAL_DRAFT: StudioDraft = {
-  genre: "fantasy",
+  primaryGenre: "fantasy",
+  audienceMode: "adult",
+  spiceLevel: "sweet",
+  identityLenses: [],
+  tropeModules: [],
   seed: "",
   language: "English",
   characters: [
@@ -226,7 +234,7 @@ export default function CreateStudioScreen({
   }, []);
 
   const canGenerate =
-    draft.seed.trim().length >= 20 && credits > 0 && !busy;
+    draft.seed.trim().length >= 40 && credits > 0 && !busy;
 
   const wordCount = paragraphs.reduce((acc, p) => {
     return acc + p.text.split(/\s+/).filter(Boolean).length;
@@ -255,7 +263,11 @@ export default function CreateStudioScreen({
     requestIdRef.current = requestId;
 
     const createDraft: CreateDraft = {
-      genre: draft.genre,
+      primaryGenre: draft.primaryGenre,
+      audienceMode: draft.audienceMode,
+      spiceLevel: draft.spiceLevel,
+      identityLenses: draft.identityLenses,
+      tropeModules: draft.tropeModules,
       seed: draft.seed,
       language: draft.language,
       characters: draft.characters,
@@ -542,18 +554,18 @@ export default function CreateStudioScreen({
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.genreRow}
               >
-                {genres.slice(0, 12).map((item) => (
+                {genres.map((item) => (
                   <Pressable
                     key={item}
                     onPress={() => {
                       setDraft((prev) => ({
                         ...prev,
-                        genre: item,
+                        primaryGenre: item,
                       }));
                     }}
                     style={[
                       styles.genreChoice,
-                      draft.genre === item && styles.genreChoiceSelected,
+                      draft.primaryGenre === item && styles.genreChoiceSelected,
                     ]}
                   >
                     <GenreSwatch genre={item} />
@@ -668,9 +680,9 @@ export default function CreateStudioScreen({
                   ? "Generating..."
                   : "Generate Draft — 1 credit"}
               </PrimaryButton>
-              {!canGenerate && !busy && credits > 0 && draft.seed.trim().length < 20 && (
+              {!canGenerate && !busy && credits > 0 && draft.seed.trim().length < 40 && (
                 <Text style={styles.hintText}>
-                  Give Katha a clear premise ({draft.seed.trim().length}/20 characters minimum)
+                  Give Katha a clear premise ({draft.seed.trim().length}/40 characters minimum)
                 </Text>
               )}
               {credits === 0 && (
@@ -758,7 +770,7 @@ export default function CreateStudioScreen({
             <View style={styles.storyInfoRow}>
               <View style={styles.genreBadge}>
                 <Text style={styles.genreBadgeText}>
-                  {genreLabels[story?.genre ?? draft.genre]}
+                  {genreLabels[story?.genre ?? draft.primaryGenre]}
                 </Text>
               </View>
               <Text style={styles.storyInfoMeta}>

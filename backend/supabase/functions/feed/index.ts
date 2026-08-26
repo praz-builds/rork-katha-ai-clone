@@ -122,11 +122,12 @@ async function buildNewUserFeed(
     await serviceClient
       .from("stories")
       .select(
-        "id, title, genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, profiles!stories_author_id_fkey(display_name)",
+        "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
         { count: "planned" },
       )
       .eq("is_curated", true)
       .eq("status", "complete")
+      .neq("content_rating", "explicit")
       .order("like_count", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -156,11 +157,12 @@ async function buildNewUserFeed(
   let fillQuery = serviceClient
     .from("stories")
     .select(
-      "id, title, genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, profiles!stories_author_id_fkey(display_name)",
+      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
       { count: "planned" },
     )
     .eq("is_public", true)
     .eq("status", "complete")
+    .neq("content_rating", "explicit")
     .order("read_count", { ascending: false })
     .range(fillOffset, fillOffset + remaining - 1);
 
@@ -234,12 +236,13 @@ async function buildReturningUserFeed(
   let candidateQuery = serviceClient
     .from("stories")
     .select(
-      "id, title, genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, profiles!stories_author_id_fkey(display_name)",
+      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
       { count: "planned" },
     )
     .or("is_public.eq.true,is_curated.eq.true")
     .eq("status", "complete")
     .neq("author_id", userId)
+    .neq("content_rating", "explicit")
     .order("created_at", { ascending: false })
     .limit(batchSize);
 
@@ -261,14 +264,16 @@ async function buildReturningUserFeed(
     if (readStoryIds.has(storyId)) continue;
 
     let score = 0;
+    const storyPrimaryGenre = story.primary_genre as string | null;
     const storyGenres: string[] = (story.genre as string[]) ?? [];
     const storyCreatedAt = story.created_at as string;
     const readCount = (story.read_count as number) ?? 0;
     const likeCount = (story.like_count as number) ?? 0;
     const authorId = story.author_id as string;
 
-    // Genre affinity: +3 if any story genre overlaps with preferred genres
+    // Genre affinity: +3 if primary_genre or any legacy genre overlaps with preferred genres
     if (
+      (storyPrimaryGenre && preferredGenreSet.has(storyPrimaryGenre.toLowerCase())) ||
       storyGenres.some((g) => preferredGenreSet.has(g.toLowerCase()))
     ) {
       score += 3;
@@ -340,7 +345,7 @@ async function buildContinueReading(
   const { data: stories, error: storiesError } = await serviceClient
     .from("stories")
     .select(
-      "id, title, genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, profiles!stories_author_id_fkey(display_name)",
+      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
     )
     .in("id", storyIds)
     .eq("status", "complete")

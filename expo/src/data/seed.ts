@@ -1,25 +1,19 @@
 import type { Author, CreditLedgerEntry, Genre, Story } from "@/types/domain";
 
 export const genres: Genre[] = [
-  "adventure",
-  "mystery",
   "romance",
-  "scifi",
+  "romantasy",
+  "darkRomance",
   "fantasy",
-  "horror",
-  "poetry",
-  "drama",
-  "mythology",
+  "scifi",
   "thriller",
-  "sliceOfLife",
-  "historical",
+  "mystery",
+  "horror",
   "contemporary",
-  "lgbtq",
+  "historical",
+  "adventure",
   "comedy",
-  "spirituality",
-  "motivational",
-  "kids",
-  "bedtime"
+  "poetry",
 ];
 
 export const authors: Author[] = [
@@ -171,7 +165,7 @@ export const stories: Story[] = [
     id: "story-3",
     title: "Letters to the Sea",
     authorId: "priyanair",
-    genre: "drama",
+    genre: "contemporary",
     synopsis: "For eleven years, a mother writes letters to the ocean. One day, the ocean writes back.",
     likes: 160,
     bookmarks: 80,
@@ -620,7 +614,7 @@ export const stories: Story[] = [
     id: "story-11",
     title: "Las cien luces de Don Aurelio",
     authorId: "kathaai",
-    genre: "bedtime",
+    genre: "fantasy",
     synopsis: "Un viejo farolero camina por un pueblo donde las farolas se encienden con recuerdos. Esta noche tiene que decidir cu\u00e1l apagar.",
     likes: 1890,
     bookmarks: 720,

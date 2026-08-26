@@ -55,16 +55,17 @@ serve(async (req) => {
     let query = supabase
       .from("stories")
       .select(
-        "id, title, genre, topic, cover_image_url, length_type, word_count, created_at",
+        "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating",
         { count: "planned" },
       )
       .or("is_public.eq.true,is_curated.eq.true")
       .eq("status", "complete")
+      .neq("content_rating", "explicit")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (genre) {
-      query = query.contains("genre", [genre]);
+      query = query.eq("primary_genre", genre);
     }
     if (search) {
       query = query.ilike("title", `%${search}%`);

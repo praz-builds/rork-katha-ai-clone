@@ -47,7 +47,8 @@
       }
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "single"
     },
     "extra": {
       "supabaseUrl": "https://iafeuxgoiknncgyjmugd.supabase.co",
