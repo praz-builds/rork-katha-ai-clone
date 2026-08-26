@@ -27,13 +27,10 @@ import {
   Sparkles,
   Trash2,
   Type,
-  Wand2,
   X,
 } from "lucide-react-native";
 import {
-  Chip,
   CreditPill,
-  GenreSwatch,
   PrimaryButton,
 } from "@/components/KathaPrimitives";
 import {
@@ -107,6 +104,83 @@ const LANGUAGES = [
   { code: "es", label: "Spanish", flag: "🇪🇸" },
   { code: "pt", label: "Portuguese", flag: "🇧🇷" },
 ] as const;
+
+const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
+  romance: [
+    "Two rival bakery owners share a vanilla supplier",
+    "A letter meant for someone else changes everything",
+    "They keep meeting at the same bookshop, different shelves",
+  ],
+  romantasy: [
+    "A healer whose magic fails when she lies falls for a spy",
+    "The crown prince's bodyguard can read his emotions",
+    "Two rival mages share one spell book that only works together",
+  ],
+  darkRomance: [
+    "She inherits a vineyard and the debt collector who comes with it",
+    "A hostage negotiator and the voice on the other end of the line",
+    "They were enemies before the arranged marriage",
+  ],
+  fantasy: [
+    "A mapmaker discovers her ink reveals places that shouldn't exist",
+    "The last dragon lives in a subway tunnel",
+    "A city where memories are currency and hers are stolen",
+  ],
+  scifi: [
+    "The AI therapist starts asking for advice",
+    "A colony ship wakes the wrong passengers",
+    "Time runs backward in one room of the space station",
+  ],
+  thriller: [
+    "A forensic accountant finds her dead father laundered money for 30 years",
+    "The witness protection agent is being followed",
+    "Someone is leaving reviews of crimes before they happen",
+  ],
+  mystery: [
+    "A traveler vanishes from a Marrakech hotel. Her sister follows clues.",
+    "The detective's own alibi doesn't hold up",
+    "Every tenant in the building heard something different that night",
+  ],
+  horror: [
+    "The house was cheap. That should have been a warning.",
+    "A lullaby only one child in the family can hear",
+    "The mirror shows the room as it was twenty years ago",
+  ],
+  contemporary: [
+    "A mother writes letters to the ocean. One day, it writes back.",
+    "Two strangers share a hospital waiting room for seven hours",
+    "She finds her grandmother's diary and a name no one recognizes",
+  ],
+  historical: [
+    "A silk trader's daughter decodes a message hidden in fabric patterns",
+    "The last letter from a soldier arrives fifty years late",
+    "A clockmaker in 1920s Vienna builds a device no one ordered",
+  ],
+  adventure: [
+    "A raft guide finds a map of a river that doesn't exist",
+    "The compass points somewhere below the ocean floor",
+    "A rescue mission into a cave system that keeps changing shape",
+  ],
+  comedy: [
+    "A dog walker accidentally enters a dog into a beauty pageant",
+    "The world's worst wizard gets hired by the king",
+    "Two neighbors compete over the most mundane things imaginable",
+  ],
+  poetry: [
+    "The last payphone in the city, and who calls it",
+    "A love story told through weather reports",
+    "What the tide pool remembers",
+  ],
+};
+
+function getSeedHint(length: number): string {
+  if (length === 0) return "The more specific your idea, the better the story";
+  if (length < 20) return "Keep going, give Katha something to work with...";
+  if (length < 40) return `Almost there (${length}/40 characters)`;
+  if (length < 80) return "Good start. Add a character or a twist to make it yours";
+  if (length < 150) return "Nice, that's a strong premise";
+  return "Great detail. Katha has plenty to work with";
+}
 
 const INITIAL_DRAFT: StudioDraft = {
   primaryGenre: "fantasy",
@@ -549,11 +623,7 @@ export default function CreateStudioScreen({
             <View style={styles.formCard}>
               {/* Genre picker */}
               <Text style={styles.fieldLabel}>Genre</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.genreRow}
-              >
+              <View style={styles.genreGrid}>
                 {genres.map((item) => (
                   <Pressable
                     key={item}
@@ -564,30 +634,58 @@ export default function CreateStudioScreen({
                       }));
                     }}
                     style={[
-                      styles.genreChoice,
-                      draft.primaryGenre === item && styles.genreChoiceSelected,
+                      styles.genreChip,
+                      draft.primaryGenre === item && styles.genreChipSelected,
                     ]}
                   >
-                    <GenreSwatch genre={item} />
-                    <Text style={styles.genreChoiceText}>
+                    <Text style={[
+                      styles.genreChipText,
+                      draft.primaryGenre === item && styles.genreChipTextSelected,
+                    ]}>
                       {genreLabels[item]}
                     </Text>
                   </Pressable>
                 ))}
-              </ScrollView>
+              </View>
 
-              {/* Story seed */}
-              <Text style={styles.fieldLabel}>Story seed</Text>
+              {/* Story idea */}
+              <Text style={styles.fieldLabel}>Your story idea</Text>
               <TextInput
                 multiline
                 value={draft.seed}
                 onChangeText={(seed) =>
                   setDraft((prev) => ({ ...prev, seed }))
                 }
-                placeholder="A lighthouse keeper receives a letter from the future..."
+                placeholder="Describe the story you want Katha to write..."
                 placeholderTextColor={colors.tertiary}
                 style={styles.seedInput}
               />
+              <Text style={[
+                styles.seedHint,
+                draft.seed.trim().length >= 40 && styles.seedHintReady,
+              ]}>
+                {getSeedHint(draft.seed.trim().length)}
+              </Text>
+
+              {/* Premise chips */}
+              {draft.seed.trim().length < 20 && (
+                <View>
+                  <Text style={styles.chipSectionLabel}>Try a premise</Text>
+                  <View style={styles.premiseChipWrap}>
+                    {GENRE_PREMISE_CHIPS[draft.primaryGenre].map((premise) => (
+                      <Pressable
+                        key={premise}
+                        onPress={() =>
+                          setDraft((prev) => ({ ...prev, seed: premise }))
+                        }
+                        style={styles.premiseChip}
+                      >
+                        <Text style={styles.premiseChipText}>{premise}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              )}
 
               {/* Characters */}
               <View style={styles.charactersHeader}>
@@ -680,11 +778,6 @@ export default function CreateStudioScreen({
                   ? "Generating..."
                   : "Generate Draft — 1 credit"}
               </PrimaryButton>
-              {!canGenerate && !busy && credits > 0 && draft.seed.trim().length < 40 && (
-                <Text style={styles.hintText}>
-                  Give Katha a clear premise ({draft.seed.trim().length}/40 characters minimum)
-                </Text>
-              )}
               {credits === 0 && (
                 <Text style={styles.hintText}>
                   You need credits to generate a story
@@ -1117,26 +1210,31 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 13,
   },
-  genreRow: {
+  genreGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
   },
-  genreChoice: {
-    minWidth: 132,
-    borderRadius: radius.lg,
+  genreChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface2,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
   },
-  genreChoiceSelected: {
+  genreChipSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
   },
-  genreChoiceText: {
+  genreChipText: {
     fontFamily: fonts.ui,
-    color: colors.ink,
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  genreChipTextSelected: {
+    color: colors.accent,
     fontWeight: "800",
   },
   seedInput: {
@@ -1148,6 +1246,45 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 16,
     textAlignVertical: "top",
+  },
+  seedHint: {
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: -spacing.xs,
+  },
+  seedHintReady: {
+    color: colors.success,
+  },
+  chipSectionLabel: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
+  premiseChipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  premiseChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  premiseChipText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   charactersHeader: {
     flexDirection: "row",
