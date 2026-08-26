@@ -17,6 +17,7 @@ export const GENRES = [
   "sliceOfLife",
   "spirituality",
   "thriller",
+  "bedtime",
 ] as const;
 
 export type Genre = (typeof GENRES)[number];
@@ -61,6 +62,8 @@ export type Story = {
   isFeatured: boolean;
   language: string;
   coverImage?: ImageName;
+  focalX?: number; // 0-1, default 0.5
+  focalY?: number; // 0-1, default 0.5
 };
 
 export type ImageName =
@@ -79,7 +82,10 @@ export type ImageName =
   | "ravenwick-owl-window.jpg"
   | "rooftop-student.jpg"
   | "saturn-beach-dog.jpg"
-  | "wolf-on-campus.jpg";
+  | "wolf-on-campus.jpg"
+  | "vanilla-problem-lisbon.jpg"
+  | "decimal-point-hardware.jpg"
+  | "cien-luces-farolero.jpg";
 
 export type CreditLedgerEntry = {
   id: string;

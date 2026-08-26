@@ -1,11 +1,75 @@
 import { LinearGradient } from "expo-linear-gradient";
+import React from "react";
 import type { PropsWithChildren } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { Bookmark, ChevronRight, Heart, Sparkles } from "lucide-react-native";
+import { useState } from "react";
+import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ChevronRight, Sparkles } from "lucide-react-native";
 import { imageAssets } from "@/data/images";
-import { authorFor, storyWordCount } from "@/data/seed";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme/theme";
-import type { Genre, Story } from "@/types/domain";
+import type { Genre, ImageName, Story } from "@/types/domain";
+
+/**
+ * Renders an image with focal-point-aware cropping.
+ * On web, uses a native <img> with object-fit/object-position (RN Web's
+ * Image component ignores objectPosition). On native, falls back to
+ * standard RN Image with center crop.
+ */
+export function FocalImage({
+  source,
+  focalX = 0.5,
+  focalY = 0.5,
+  style,
+  onLoad,
+}: {
+  source: number | { uri: string };
+  focalX?: number;
+  focalY?: number;
+  style?: { width: number | string; height: number | string };
+  onLoad?: () => void;
+}) {
+  if (Platform.OS === "web") {
+    let uri: string;
+    try {
+      if (typeof source === "object" && source !== null && "uri" in source) {
+        uri = (source as { uri: string }).uri;
+      } else if (typeof source === "number") {
+        const resolved = Image.resolveAssetSource(source);
+        uri = resolved?.uri ?? "";
+      } else {
+        uri = "";
+      }
+    } catch {
+      uri = "";
+    }
+    if (!uri) {
+      // Fallback to standard RN Image if URI resolution fails
+      return (
+        <Image source={source as number} style={StyleSheet.absoluteFill} resizeMode="cover" onLoad={onLoad} />
+      );
+    }
+    return React.createElement("img", {
+      src: uri,
+      style: {
+        width: style?.width ?? "100%",
+        height: style?.height ?? "100%",
+        objectFit: "cover",
+        objectPosition: `${focalX * 100}% ${focalY * 100}%`,
+        display: "block",
+      },
+      alt: "",
+      onLoad,
+      draggable: false,
+    });
+  }
+  return (
+    <Image
+      source={source}
+      style={StyleSheet.absoluteFill}
+      resizeMode="cover"
+      onLoad={onLoad}
+    />
+  );
+}
 
 export function ScreenScaffold({ children }: PropsWithChildren) {
   return <View style={styles.screen}>{children}</View>;
@@ -57,49 +121,39 @@ export function Chip({
   );
 }
 
-export function Cover({ story, size = "card" }: { story: Story; size?: "card" | "hero" | "mini" }) {
+export function Cover({ story, size = "card" }: { story: Story; size?: "card" | "mini" }) {
   const image = story.coverImage ? imageAssets[story.coverImage] : undefined;
   const gradient = genreGradients[story.genre];
+  const focalX = story.focalX ?? 0.5;
+  const focalY = story.focalY ?? 0.5;
+  const adjustedY = Math.max(0, focalY - 0.07);
+
   return (
-    <LinearGradient colors={gradient} style={[styles.cover, styles[`${size}Cover`]]}>
-      {image ? <Image source={image} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
-      <LinearGradient colors={["transparent", "rgba(0,0,0,0.62)"]} style={StyleSheet.absoluteFill} />
-      <View style={styles.coverTextWrap}>
-        <Text numberOfLines={3} style={[styles.coverTitle, size === "mini" && styles.coverMiniTitle]}>
-          {story.title}
-        </Text>
-        {size !== "mini" ? <Text style={styles.coverMeta}>{genreLabels[story.genre]}</Text> : null}
-      </View>
-    </LinearGradient>
+    <View style={[styles.cover, size === "mini" ? styles.miniCover : styles.cardCover]}>
+      {image ? (
+        <FocalImage
+          source={image}
+          focalX={focalX}
+          focalY={adjustedY}
+          style={{ width: "100%", height: "100%" }}
+        />
+      ) : (
+        <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
+      )}
+    </View>
   );
 }
 
 export function StoryCard({ story, onPress, compact }: { story: Story; onPress?: () => void; compact?: boolean }) {
-  const author = authorFor(story.authorId);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.storyCard, pressed && styles.pressed]}>
       <Cover story={story} size={compact ? "mini" : "card"} />
-      <View style={styles.storyBody}>
-        <Text style={styles.storyGenre}>{genreLabels[story.genre]}</Text>
-        <Text numberOfLines={2} style={styles.storyTitle}>
-          {story.title}
-        </Text>
-        <Text numberOfLines={2} style={styles.storySynopsis}>
-          {story.synopsis}
-        </Text>
-        <Text style={styles.storyAuthor}>by {author.displayName}</Text>
-        <View style={styles.metricsRow}>
-          <View style={styles.metric}>
-            <Heart size={14} color={colors.heart} />
-            <Text style={styles.metricText}>{formatNumber(story.likes)}</Text>
-          </View>
-          <View style={styles.metric}>
-            <Bookmark size={14} color={colors.muted} />
-            <Text style={styles.metricText}>{formatNumber(story.bookmarks)}</Text>
-          </View>
-          <Text style={styles.metricText}>{Math.max(1, Math.round(storyWordCount(story) / 200))} min</Text>
-        </View>
-      </View>
+      <Text numberOfLines={2} style={styles.storyCardTitle}>
+        {story.title}
+      </Text>
+      <Text style={styles.storyCardMeta} numberOfLines={1}>
+        {genreLabels[story.genre]} {"\u00B7"} {formatNumber(story.views)} reads
+      </Text>
     </Pressable>
   );
 }
@@ -200,106 +254,40 @@ const styles = StyleSheet.create({
   },
   cover: {
     overflow: "hidden",
-    justifyContent: "flex-end",
-    backgroundColor: colors.borderStrong
+    backgroundColor: "#e7dcc6"
   },
   cardCover: {
-    width: 108,
-    minHeight: 152,
-    borderRadius: radius.md
-  },
-  heroCover: {
-    height: 340,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl
+    width: 172,
+    aspectRatio: 1,
+    borderRadius: 20,
+    shadowColor: "rgba(80,50,20,1)",
+    shadowOpacity: 0.20,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8
   },
   miniCover: {
     width: 74,
-    minHeight: 96,
+    aspectRatio: 1,
     borderRadius: radius.md
   },
-  coverTextWrap: {
-    padding: spacing.md
-  },
-  coverTitle: {
-    fontFamily: fonts.display,
-    color: "#FFFFFF",
-    fontSize: 18,
-    lineHeight: 21
-  },
-  coverMiniTitle: {
-    fontSize: 12,
-    lineHeight: 14
-  },
-  coverMeta: {
-    marginTop: spacing.xs,
-    fontFamily: fonts.ui,
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1
-  },
   storyCard: {
-    marginHorizontal: spacing.xl,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: "row",
-    gap: spacing.md,
-    shadowColor: "#3D2D1B",
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 }
+    width: 172,
   },
-  storyBody: {
-    flex: 1,
-    gap: spacing.xs
-  },
-  storyGenre: {
-    fontFamily: fonts.ui,
-    color: colors.accent,
-    fontWeight: "800",
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 1
-  },
-  storyTitle: {
+  storyCardTitle: {
+    marginTop: 12,
     fontFamily: fonts.display,
-    color: colors.ink,
-    fontSize: 19,
-    lineHeight: 23
+    color: colors.sepiaHeading,
+    fontSize: 16,
+    fontWeight: "600",
+    lineHeight: 19
   },
-  storySynopsis: {
+  storyCardMeta: {
+    marginTop: 4,
     fontFamily: fonts.ui,
-    color: colors.muted,
+    color: colors.sepiaAccent,
     fontSize: 13,
-    lineHeight: 18
-  },
-  storyAuthor: {
-    fontFamily: fonts.ui,
-    color: colors.tertiary,
-    fontSize: 12,
-    fontWeight: "700"
-  },
-  metricsRow: {
-    marginTop: spacing.xs,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md
-  },
-  metric: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4
-  },
-  metricText: {
-    fontFamily: fonts.ui,
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "700"
+    fontWeight: "600"
   },
   creditPill: {
     paddingHorizontal: spacing.md,

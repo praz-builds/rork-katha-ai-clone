@@ -16,5 +16,8 @@ export const imageAssets: Record<ImageName, number> = {
   "ravenwick-owl-window.jpg": require("../../assets/covers/ravenwick-owl-window.jpg"),
   "rooftop-student.jpg": require("../../assets/covers/rooftop-student.jpg"),
   "saturn-beach-dog.jpg": require("../../assets/covers/saturn-beach-dog.jpg"),
-  "wolf-on-campus.jpg": require("../../assets/covers/wolf-on-campus.jpg")
+  "wolf-on-campus.jpg": require("../../assets/covers/wolf-on-campus.jpg"),
+  "vanilla-problem-lisbon.jpg": require("../../assets/covers/vanilla-problem-lisbon.jpg"),
+  "decimal-point-hardware.jpg": require("../../assets/covers/decimal-point-hardware.jpg"),
+  "cien-luces-farolero.jpg": require("../../assets/covers/cien-luces-farolero.jpg")
 };
