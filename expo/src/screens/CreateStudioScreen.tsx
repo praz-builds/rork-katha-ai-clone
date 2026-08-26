@@ -331,16 +331,18 @@ export default function CreateStudioScreen({
   }, []);
 
   // Restore persisted draft on mount
+  const draftRestoredRef = useRef(false);
   useEffect(() => {
     loadDraft().then((saved) => {
       if (saved) setDraft(saved as StudioDraft);
+      draftRestoredRef.current = true;
     });
   }, []);
 
-  // Auto-save draft on changes (debounced 500ms)
+  // Auto-save draft on changes (debounced 500ms, blocked until restore completes)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (step !== "setup") return;
+    if (step !== "setup" || !draftRestoredRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveDraft(draft);
