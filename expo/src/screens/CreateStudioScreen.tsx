@@ -11,7 +11,6 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -120,11 +119,12 @@ const GENRE_EMOJI: Record<Genre, string> = {
   darkRomance: "🖤",
 };
 
-/** Genre display order: romance cluster at the end so genre variety is visible first */
-const GENRE_DISPLAY_ORDER: Genre[] = [
-  "fantasy", "scifi", "thriller", "mystery", "horror",
-  "contemporary", "historical", "adventure", "comedy", "poetry",
-  "romance", "romantasy", "darkRomance",
+/** Split genres into 2 rows for horizontal scroll (Tumblr-style) */
+const GENRE_ROW_1: Genre[] = [
+  "fantasy", "romance", "thriller", "mystery", "horror", "scifi", "comedy",
+];
+const GENRE_ROW_2: Genre[] = [
+  "romantasy", "darkRomance", "contemporary", "historical", "adventure", "poetry",
 ];
 
 const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
@@ -643,31 +643,76 @@ export default function CreateStudioScreen({
             </View>
 
             <View style={styles.formCard}>
-              {/* Genre picker */}
+              {/* Genre picker — 2 row horizontal scroll */}
               <Text style={styles.fieldLabel}>Genre</Text>
-              <View style={styles.genreGrid}>
-                {GENRE_DISPLAY_ORDER.map((item) => (
-                  <Pressable
-                    key={item}
-                    onPress={() => {
-                      setDraft((prev) => ({
-                        ...prev,
-                        primaryGenre: item,
-                      }));
-                    }}
-                    style={[
-                      styles.genreChip,
-                      draft.primaryGenre === item && styles.genreChipSelected,
-                    ]}
-                  >
-                    <Text style={[
-                      styles.genreChipText,
-                      draft.primaryGenre === item && styles.genreChipTextSelected,
-                    ]}>
-                      {GENRE_EMOJI[item]} {genreLabels[item]}
-                    </Text>
-                  </Pressable>
-                ))}
+              <View style={styles.genreScrollWrap}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genreScrollRow}>
+                  {GENRE_ROW_1.map((item) => (
+                    <Pressable
+                      key={item}
+                      onPress={() => setDraft((prev) => ({ ...prev, primaryGenre: item }))}
+                      style={[styles.genreChip, draft.primaryGenre === item && styles.genreChipSelected]}
+                    >
+                      <Text style={[styles.genreChipText, draft.primaryGenre === item && styles.genreChipTextSelected]}>
+                        {GENRE_EMOJI[item]} {genreLabels[item]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genreScrollRow}>
+                  {GENRE_ROW_2.map((item) => (
+                    <Pressable
+                      key={item}
+                      onPress={() => setDraft((prev) => ({ ...prev, primaryGenre: item }))}
+                      style={[styles.genreChip, draft.primaryGenre === item && styles.genreChipSelected]}
+                    >
+                      <Text style={[styles.genreChipText, draft.primaryGenre === item && styles.genreChipTextSelected]}>
+                        {GENRE_EMOJI[item]} {genreLabels[item]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Mode toggles — Kids, LGBTQ+, Tropes */}
+              <View style={styles.toggleChipRow}>
+                <Pressable
+                  onPress={() => setDraft((prev) => ({
+                    ...prev,
+                    audienceMode: prev.audienceMode === "kids" ? "adult" : "kids",
+                  }))}
+                  style={[styles.toggleChip, draft.audienceMode === "kids" && styles.toggleChipActive]}
+                >
+                  <Text style={[styles.toggleChipText, draft.audienceMode === "kids" && styles.toggleChipTextActive]}>
+                    🧒 Kids
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setDraft((prev) => ({
+                    ...prev,
+                    identityLenses: prev.identityLenses.includes("queer")
+                      ? prev.identityLenses.filter((l) => l !== "queer")
+                      : [...prev.identityLenses, "queer" as const],
+                  }))}
+                  style={[styles.toggleChip, draft.identityLenses.includes("queer") && styles.toggleChipActive]}
+                >
+                  <Text style={[styles.toggleChipText, draft.identityLenses.includes("queer") && styles.toggleChipTextActive]}>
+                    🏳️‍🌈 LGBTQ+
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setDraft((prev) => ({
+                    ...prev,
+                    tropeModules: prev.tropeModules.includes("vampire")
+                      ? prev.tropeModules.filter((t) => t !== "vampire")
+                      : [...prev.tropeModules, "vampire" as const],
+                  }))}
+                  style={[styles.toggleChip, draft.tropeModules.includes("vampire") && styles.toggleChipActive]}
+                >
+                  <Text style={[styles.toggleChipText, draft.tropeModules.includes("vampire") && styles.toggleChipTextActive]}>
+                    🧛 Vampire
+                  </Text>
+                </Pressable>
               </View>
 
               {/* Story idea */}
@@ -694,7 +739,7 @@ export default function CreateStudioScreen({
               {draft.seed.trim().length < 20 && (
                 <View>
                   <Text style={styles.chipSectionLabel}>Try a premise</Text>
-                  <View style={styles.premiseChipWrap}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.premiseChipScroll}>
                     {GENRE_PREMISE_CHIPS[draft.primaryGenre].map((premise) => (
                       <Pressable
                         key={premise}
@@ -706,7 +751,7 @@ export default function CreateStudioScreen({
                         <Text style={styles.premiseChipText}>{premise}</Text>
                       </Pressable>
                     ))}
-                  </View>
+                  </ScrollView>
                 </View>
               )}
 
@@ -764,17 +809,12 @@ export default function CreateStudioScreen({
                   </View>
                   <View style={styles.heroRow}>
                     <Text style={styles.heroLabel}>Hero</Text>
-                    <Switch
-                      value={character.isHero}
-                      onValueChange={(value) =>
-                        updateCharacter(index, "isHero", value)
-                      }
-                      trackColor={{
-                        false: colors.border,
-                        true: colors.accentSoft,
-                      }}
-                      thumbColor={character.isHero ? colors.accent : colors.surface}
-                    />
+                    <Pressable
+                      onPress={() => updateCharacter(index, "isHero", !character.isHero)}
+                      style={[styles.heroToggleTrack, character.isHero && styles.heroToggleTrackOn]}
+                    >
+                      <View style={[styles.heroToggleThumb, character.isHero && styles.heroToggleThumbOn]} />
+                    </Pressable>
                   </View>
                 </View>
               ))}
@@ -1236,10 +1276,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 13,
   },
-  genreGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  genreScrollWrap: {
     gap: spacing.sm,
+    marginHorizontal: -spacing.lg,
+  },
+  genreScrollRow: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
   genreChip: {
     paddingHorizontal: spacing.md,
@@ -1260,6 +1303,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   genreChipTextSelected: {
+    color: colors.accent,
+    fontWeight: "800",
+  },
+  toggleChipRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  toggleChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  toggleChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  toggleChipText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  toggleChipTextActive: {
     color: colors.accent,
     fontWeight: "800",
   },
@@ -1295,9 +1364,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
   },
-  premiseChipWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  premiseChipScroll: {
     gap: spacing.sm,
   },
   premiseChip: {
@@ -1307,6 +1374,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface2,
     borderWidth: 1,
     borderColor: colors.border,
+    maxWidth: 260,
   },
   premiseChipText: {
     fontFamily: fonts.ui,
@@ -1368,6 +1436,30 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontWeight: "700",
     fontSize: 13,
+  },
+  heroToggleTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.border,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  heroToggleTrackOn: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  heroToggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+  },
+  heroToggleThumbOn: {
+    alignSelf: "flex-end",
+    backgroundColor: colors.accent,
   },
   languageRow: {
     flexDirection: "row",
