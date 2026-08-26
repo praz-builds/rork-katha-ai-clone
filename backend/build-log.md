@@ -355,3 +355,109 @@ All 7 edge functions deployed and ACTIVE:
 ### PR Status
 
 - PR #24 (`codex/story-prompt-system`): CodeRabbit APPROVED after 4 review rounds.
+
+---
+
+## 2026-08-26 — Cover image system, sample stories, dev tooling, instruction consolidation
+
+**Session:** Full-day production session covering cover image generation, focal-point display, 3 sample stories, developer tooling, Expo skills integration, and instruction file consolidation.
+
+### Cover Image Pipeline (PR #25)
+
+- **`_shared/image.ts`** (198 lines): OpenAI `gpt-image-1` integration at 1024x1536 portrait. Handles base64 response decoding, 3-attempt retry with progressive prompt simplification on moderation rejection, uploads to Supabase Storage.
+- **`_shared/cover-prompts.ts`** (235 lines): 16 genre-specific prompt configs (style, palette, composition, mood, characterApproach). `normalizeGenre()` prevents prompt injection via own-property check. `buildCoverPrompt()` assembles dynamic prompts from genre + title + themes + characters.
+- **`backend/COVER_IMAGES.md`** (189 lines): Canonical reference for the entire cover system — prompt structure, focal point math per viewport, genre table, API call spec, retry strategy, display layouts.
+
+### Focal-Point Display System (Strategy 1c)
+
+- **`FocalImage` component** (`KathaPrimitives.tsx`): Renders web-native `<img>` with `object-fit: cover` + `object-position` for focal-point-aware cropping. React Native Web's Image component ignores `objectPosition`, so raw `<img>` is required. Falls back to standard RN Image on native.
+- **Story type extended**: Added `focalX?: number` and `focalY?: number` (0-1) to `domain.ts` Story type.
+- **Per-placement crop math**: Library card (1:1 square, y = focalY - 0.07), mobile hero (3:4 full-bleed, y = focalY - 0.02), desktop cover (3:4 sticky, y = focalY).
+
+### Reader Screen Redesign
+
+- **Mobile (< 768px)**: Full-bleed 3:4 hero image with LinearGradient fade into page background, floating white pill back button.
+- **Desktop (>= 768px)**: Two-column layout — 200px sticky cover on left, reading column on right. `maxWidth: 700`, centered.
+- **Chapter navigation**: Pill-style chapter selector (Ch 1 / Ch 2 / Ch 3) for multi-chapter stories. Audio stops and unloads on chapter switch.
+- **Voice toggle**: Hidden when only one narration voice is available.
+- **All existing features preserved**: audio playback, engagement bar, comments, author card, bookmark, share.
+
+### Library Card Redesign
+
+- Square (1:1) cover tile with focal-point anchoring, no text overlay on image.
+- Title + meta line ("Genre . Xk reads") below the card.
+- Card width ~172px, borderRadius 20, warm shadow.
+- Rail gap reduced from 20px to 12px.
+
+### 3 Production-Grade Sample Stories
+
+Generated via the story prompt system and validated against all anti-slop rules:
+
+| Story | Genre | Language | Chapters | Words | Cover | Audio |
+|-------|-------|----------|----------|-------|-------|-------|
+| The Vanilla Problem | romance | EN | 1 | 1,632 | OpenAI gpt-image-1 | Seed Audio (Brielle) |
+| The Decimal Point | mystery | EN | 3 | 3,006 | OpenAI gpt-image-1 | Seed Audio (Holden) |
+| Las cien luces de Don Aurelio | bedtime | ES | 1 | 1,048 | OpenAI gpt-image-1 | Inworld TTS (Lupita) |
+
+QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad dialogue tags across all 5 texts.
+
+### Developer Tooling (PR #26)
+
+- **ESLint 9**: `eslint.config.js` (flat config with `eslint-config-expo`). 0 errors, 22 warnings (pre-existing).
+- **Jest 29**: `jest.config.js` (jest-expo preset, pnpm transforms, `@/` alias). 5 suites, 33 tests.
+- **Test suites**: theme tokens, i18n key parity, analytics no-op, supabase config, seed data validation.
+- **CI**: `.github/workflows/ci.yml` — typecheck + lint + test on every PR. Pinned action SHAs, `permissions: contents: read`, pnpm 11.
+- **Dependencies added**: `react-native-reanimated@~4.1.7`, `react-native-gesture-handler@~2.28.0`, `expo-haptics@~15.0.8`, `eslint@^9`, `eslint-config-expo`, `jest`, `jest-expo`, `@testing-library/react-native`.
+- **Design tokens**: `typography.ts` (7 text styles), `shadows.ts` (3 elevation levels), `motion.ts` (3 duration tokens), `index.ts` barrel export.
+- **Design drift fixes**: 30+ hardcoded `#FFFFFF` replaced with `colors.surface`, barrel import fixes in 3 files.
+
+### Expo Skills Integration
+
+27 Expo skills installed locally from `github.com/expo/skills` into `.agents/skills/`:
+
+| Category | Skills |
+|----------|--------|
+| Core | expo-overview, expo-router, expo-animation, expo-design-system, expo-native-ui, expo-ui |
+| Data | expo-data-fetching |
+| Build | expo-dev-client, expo-module, expo-upgrade, expo-project-structure |
+| EAS | eas-app-stores, eas-workflows, eas-update-insights, eas-observe, eas-simulator, eas-hosting |
+| Platform | expo-app-clip, expo-brownfield, expo-web-to-native, expo-dom, expo-tailwind-setup |
+| Reference | expo-examples, expo-skill-eval, expo-api-docs, expo-review |
+
+**Skill routing table** added to AGENTS.md mapping every task category to its skill path.
+**Mandatory skill usage rules**: animation gate check, design token imports from barrel, navigation via expo-router skill.
+
+### Theme Token Expansion
+
+8 new sepia design tokens added to `theme.ts` for the reader/cover design handoff:
+
+`sepiaHeading`, `sepiaBody`, `sepiaMuted`, `sepiaSecondary`, `sepiaAccent` (darkened to `#A64C1C` for 4.5:1 contrast), `sepiaButton`, `sepiaPlaceholder`, `sepiaToggleTrack`
+
+### Instruction File Consolidation
+
+- **`AGENTS.md`** expanded from 150 to 456 lines with 15 sections. Now contains ALL information previously split across root CLAUDE.md, backend/CLAUDE.md, and expo/CLAUDE.md: infrastructure & services, database schema, edge functions, monetization, audio narration, app architecture, build & deploy.
+- **`CLAUDE.md`** (root): Replaced duplicate content with 5-line redirect to AGENTS.md.
+- **`CODEX.md`**: Replaced chain redirect (CODEX → CLAUDE → AGENTS) with direct redirect to AGENTS.md.
+- **`backend/CLAUDE.md`**: Replaced 233-line standalone file with 5-line redirect to AGENTS.md (all info synthesized into the canonical file).
+- **`story-generator.md`**: Updated from v1.0 (35 lines, basic rules) to v2.0 (120 lines) matching the story-prompts.ts implementation.
+
+### OpenAI API Key
+
+- Key set in Supabase secrets (updated by user).
+- Key saved to `backend/.env` for local development (gitignored).
+- Model confirmed: `gpt-image-1` (dall-e-3 no longer available on this project's API key).
+
+### PR History
+
+| PR | Title | Status |
+|----|-------|--------|
+| #25 | Cover image system with focal-point cropping and sample stories | MERGED (3 rounds, 16 comments addressed) |
+| #26 | Dev tooling, design tokens, test coverage, and drift fixes | MERGED (CodeRabbit approved) |
+| #24 | Genre-aware anti-slop story prompt system + instruction consolidation | MERGED (rebased onto main, CodeRabbit approved) |
+
+### Files Changed (across all 3 PRs)
+
+- 33 files changed, ~3,600 insertions
+- New backend files: `_shared/story-prompts.ts`, `_shared/cover-prompts.ts`, `_shared/image.ts`, `COVER_IMAGES.md`
+- New expo files: 3 cover images, 5 test suites, 4 design token files, ESLint config, Jest config, CI workflow
+- Updated: `App.tsx`, `KathaPrimitives.tsx`, `domain.ts`, `seed.ts`, `images.ts`, `theme.ts`, `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `backend/CLAUDE.md`, `story-generator.md`
