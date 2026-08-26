@@ -6,6 +6,7 @@ import {
   EDGE_TTS_VOICES,
   generateWithEdgeTts,
 } from "../_shared/edge-tts.ts";
+import { parseUuid } from "../_shared/uuid.ts";
 
 // MiniMax Speech 02 HD — faithful text-to-speech, public endpoint, no deployment
 const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/minimax-speech-02-hd";
@@ -32,16 +33,16 @@ serve(async (req) => {
     if (!user) return respond({ error: "Unauthorized" }, 401);
 
     const body = await req.json();
-    const story_id = typeof body.story_id === "string" ? body.story_id : "";
-    const chapter_id = typeof body.chapter_id === "string" ? body.chapter_id : "";
+    const story_id = parseUuid(body.story_id);
+    const chapter_id = parseUuid(body.chapter_id);
     const text = typeof body.text === "string" ? body.text : "";
     const language = typeof body.language === "string" ? body.language : "en";
 
-    if (!story_id || !chapter_id || !text) {
-      return respond(
-        { error: "story_id, chapter_id, and text are required" },
-        400,
-      );
+    if (!story_id || !chapter_id) {
+      return respond({ error: "Valid story_id and chapter_id are required" }, 400);
+    }
+    if (!text) {
+      return respond({ error: "text is required" }, 400);
     }
 
     if (text.length > 50000) {

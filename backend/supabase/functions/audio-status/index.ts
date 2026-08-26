@@ -2,8 +2,10 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { decode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
+import { parseUuid } from "../_shared/uuid.ts";
 
 const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/minimax-speech-02-hd";
+const VALID_VOICE_IDS = new Set(["aria", "kai", "elvira", "alvaro", "onyx", "nova", "echo", "fable"]);
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -28,11 +30,14 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     const jobId = url.searchParams.get("job_id");
-    const storyId = url.searchParams.get("story_id");
-    const chapterId = url.searchParams.get("chapter_id");
-    const voiceId = url.searchParams.get("voice_id") ?? "aria";
+    const storyId = parseUuid(url.searchParams.get("story_id"));
+    const chapterId = parseUuid(url.searchParams.get("chapter_id"));
+    const rawVoiceId = url.searchParams.get("voice_id") ?? "aria";
+    const voiceId = VALID_VOICE_IDS.has(rawVoiceId) ? rawVoiceId : "aria";
 
     if (!jobId) return respond({ error: "job_id is required" }, 400);
+    if (!storyId) return respond({ error: "Invalid story_id" }, 400);
+    if (!chapterId) return respond({ error: "Invalid chapter_id" }, 400);
 
     const runpodApiKey = Deno.env.get("RUNPOD_API_KEY");
     if (!runpodApiKey) return respond({ error: "Not configured" }, 503);
@@ -82,11 +87,20 @@ serve(async (req) => {
       }
 
       // Update chapter with the default voice audio URL (aria = female default)
+      // Verify chapter belongs to the story and the user owns the story
       if (audioUrl && chapterId && voiceId === "aria") {
-        await serviceClient
-          .from("chapters")
-          .update({ audio_url: audioUrl })
-          .eq("id", chapterId);
+        const { data: storyRow } = await serviceClient
+          .from("stories")
+          .select("author_id")
+          .eq("id", storyId)
+          .single();
+        if (storyRow?.author_id === user.id) {
+          await serviceClient
+            .from("chapters")
+            .update({ audio_url: audioUrl })
+            .eq("id", chapterId)
+            .eq("story_id", storyId);
+        }
       }
 
       return respond({

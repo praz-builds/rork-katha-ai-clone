@@ -16,6 +16,11 @@ const VALID_INSTRUCTIONS = new Set([
   "custom",
 ]);
 
+const VALID_TONES = new Set([
+  "darker", "lighter", "more poetic", "more dramatic", "simpler",
+  "funnier", "sadder", "more suspenseful", "warmer", "colder",
+]);
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -110,11 +115,19 @@ serve(async (req) => {
       );
     }
 
-    if (instruction === "change_tone" && (!tone || typeof tone !== "string")) {
-      return respond(
-        { error: "tone is required for change_tone instruction" },
-        400,
-      );
+    if (instruction === "change_tone") {
+      if (!tone || typeof tone !== "string") {
+        return respond(
+          { error: "tone is required for change_tone instruction" },
+          400,
+        );
+      }
+      if (!VALID_TONES.has(tone.toLowerCase())) {
+        return respond(
+          { error: `tone must be one of: ${[...VALID_TONES].join(", ")}` },
+          400,
+        );
+      }
     }
 
     // Use service role for mutations
@@ -242,10 +255,10 @@ function buildEditPrompt(
         "Condense this paragraph while keeping its essence.";
       break;
     case "change_tone":
-      editInstruction = `Rewrite this paragraph with a ${tone} tone.`;
+      editInstruction = `Rewrite this paragraph with a ${tone!.toLowerCase()} tone.`;
       break;
     case "custom":
-      editInstruction = customNote!;
+      editInstruction = `Apply the following edit to this paragraph. Edit request: "${customNote!.slice(0, 500)}"`;
       break;
     default:
       editInstruction = "Rewrite this paragraph.";

@@ -207,7 +207,7 @@ async function buildReturningUserFeed(
   const [followingResult, readStoriesResult] = await Promise.all([
     serviceClient
       .from("user_followers")
-      .select("following_id")
+      .select("author_id")
       .eq("follower_id", userId),
     serviceClient
       .from("story_reads")
@@ -220,7 +220,7 @@ async function buildReturningUserFeed(
 
   const followedAuthorIds = new Set(
     (followingResult.data ?? []).map(
-      (r: Record<string, unknown>) => r.following_id as string,
+      (r: Record<string, unknown>) => r.author_id as string,
     ),
   );
   const readStoryIds = new Set(
