@@ -724,7 +724,16 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
           {story.chapters.map((ch, i) => (
             <Pressable
               key={ch.id}
-              onPress={() => setChapterIndex(i)}
+              onPress={() => {
+                if (i !== chapterIndex) {
+                  if (soundRef.current) {
+                    soundRef.current.unloadAsync();
+                    soundRef.current = null;
+                  }
+                  setIsPlaying(false);
+                  setChapterIndex(i);
+                }
+              }}
               style={[styles.chapterNavBtn, i === chapterIndex && styles.chapterNavBtnActive]}
             >
               <Text style={[styles.chapterNavText, i === chapterIndex && styles.chapterNavTextActive]}>
@@ -1388,15 +1397,15 @@ const styles = StyleSheet.create({
   readerToolbar: { marginVertical: 16, flexDirection: "row", alignItems: "center", gap: 9 },
   readerToolbarCentered: { justifyContent: "center" },
   audioPill: { height: 38, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.sepiaButton, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  audioText: { fontFamily: fonts.ui, color: "#FFFFFF", fontWeight: "700", fontSize: 13 },
+  audioText: { fontFamily: fonts.ui, color: colors.surface, fontWeight: "700", fontSize: 13 },
   chapterNav: {
     flexDirection: "row",
-    gap: 8,
+    gap: spacing.sm,
     marginBottom: spacing.xl,
   },
   chapterNavBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.sepiaPlaceholder,
   },
@@ -1410,7 +1419,7 @@ const styles = StyleSheet.create({
     color: colors.sepiaSecondary,
   },
   chapterNavTextActive: {
-    color: "#FFFFFF",
+    color: colors.surface,
   },
   chapterTitle: { fontFamily: fonts.display, color: colors.sepiaText, fontSize: 25, marginBottom: spacing.lg },
   paragraph: { fontFamily: fonts.reader, color: colors.sepiaBody, fontSize: 15, lineHeight: 23, marginBottom: spacing.lg },

@@ -184,7 +184,7 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
  */
 /** Normalize genre to a supported key, falling back to "drama". */
 function normalizeGenre(genre: string): string {
-  if (genre in GENRE_PROMPTS) return genre;
+  if (Object.prototype.hasOwnProperty.call(GENRE_PROMPTS, genre)) return genre;
   const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
   for (const key of Object.keys(GENRE_PROMPTS)) {
     if (key.toLowerCase() === lower) return key;

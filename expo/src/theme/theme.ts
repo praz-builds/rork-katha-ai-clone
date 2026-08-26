@@ -23,7 +23,7 @@ export const colors = {
   sepiaBody: "#4a3f35",
   sepiaMuted: "#8b7d6b",
   sepiaSecondary: "#6a5c4c",
-  sepiaAccent: "#d9601f",
+  sepiaAccent: "#A64C1C",
   sepiaButton: "#ec6f2c",
   sepiaPlaceholder: "#e7dcc6",
   sepiaToggleTrack: "#e7ddca"

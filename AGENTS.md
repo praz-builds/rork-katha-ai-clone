@@ -78,7 +78,7 @@ pnpm lint         # ESLint with expo config
 pnpm test         # Jest + React Native Testing Library
 ```
 
-All three must pass. CI (`.github/workflows/ci.yml`) enforces these on every PR to `main`.
+All three must pass before pushing.
 
 ## Story Generation System
 
