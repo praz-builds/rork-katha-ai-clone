@@ -48,7 +48,7 @@ import {
   genreLabels,
   radius,
   spacing,
-} from "@/theme/theme";
+} from "@/theme";
 import type { CreateDraft, Genre, Story } from "@/types/domain";
 
 // ---------------------------------------------------------------------------
@@ -990,7 +990,7 @@ export default function CreateStudioScreen({
             style={styles.bottomPublishBtn}
           >
             <Text style={styles.bottomPublishBtnText}>Publish</Text>
-            <ChevronRight size={16} color="#FFFFFF" />
+            <ChevronRight size={16} color={colors.surface} />
           </Pressable>
         </View>
 
@@ -1042,7 +1042,7 @@ export default function CreateStudioScreen({
                   <Text style={styles.modalPrimaryBtnText}>
                     Publish
                   </Text>
-                  <Check size={16} color="#FFFFFF" />
+                  <Check size={16} color={colors.surface} />
                 </Pressable>
               </View>
             </View>
@@ -1266,7 +1266,7 @@ const styles = StyleSheet.create({
   },
   publishHeaderBtnText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "800",
     fontSize: 13,
   },
@@ -1458,7 +1458,7 @@ const styles = StyleSheet.create({
   },
   customPromptSubmitText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "800",
     fontSize: 13,
   },
@@ -1508,7 +1508,7 @@ const styles = StyleSheet.create({
   },
   bottomPublishBtnText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "800",
     fontSize: 14,
   },
@@ -1533,7 +1533,7 @@ const styles = StyleSheet.create({
   },
   undoToastText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "700",
     fontSize: 14,
   },
@@ -1547,7 +1547,7 @@ const styles = StyleSheet.create({
   },
   undoBtnText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "800",
     fontSize: 13,
   },
@@ -1649,7 +1649,7 @@ const styles = StyleSheet.create({
   },
   modalPrimaryBtnText: {
     fontFamily: fonts.ui,
-    color: "#FFFFFF",
+    color: colors.surface,
     fontWeight: "800",
     fontSize: 14,
   },

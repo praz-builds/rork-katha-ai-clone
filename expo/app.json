@@ -26,7 +26,8 @@
         {
           "username": "katha-ai"
         }
-      ]
+      ],
+      "react-native-reanimated/plugin"
     ],
     "updates": {
       "url": "https://u.expo.dev/UPDATE_PROJECT_ID",
