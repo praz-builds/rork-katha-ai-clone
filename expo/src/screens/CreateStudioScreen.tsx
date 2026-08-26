@@ -102,8 +102,30 @@ const TONE_OPTIONS = [
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },
   { code: "es", label: "Spanish", flag: "🇪🇸" },
-  { code: "pt", label: "Portuguese", flag: "🇧🇷" },
 ] as const;
+
+const GENRE_EMOJI: Record<Genre, string> = {
+  fantasy: "🐉",
+  scifi: "🚀",
+  thriller: "🔪",
+  mystery: "🔍",
+  horror: "👻",
+  contemporary: "☕",
+  historical: "🏛️",
+  adventure: "🧭",
+  comedy: "😂",
+  poetry: "🪶",
+  romance: "💕",
+  romantasy: "✨",
+  darkRomance: "🖤",
+};
+
+/** Genre display order: romance cluster at the end so genre variety is visible first */
+const GENRE_DISPLAY_ORDER: Genre[] = [
+  "fantasy", "scifi", "thriller", "mystery", "horror",
+  "contemporary", "historical", "adventure", "comedy", "poetry",
+  "romance", "romantasy", "darkRomance",
+];
 
 const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
   romance: [
@@ -613,18 +635,18 @@ export default function CreateStudioScreen({
           >
             {/* Header */}
             <View style={styles.setupHeader}>
-              <View>
+              <View style={styles.setupHeaderTop}>
                 <Text style={styles.eyebrow}>Create</Text>
-                <Text style={styles.h1}>Shape a new story</Text>
+                <CreditPill credits={credits} />
               </View>
-              <CreditPill credits={credits} />
+              <Text style={styles.h1}>Shape a new story</Text>
             </View>
 
             <View style={styles.formCard}>
               {/* Genre picker */}
               <Text style={styles.fieldLabel}>Genre</Text>
               <View style={styles.genreGrid}>
-                {genres.map((item) => (
+                {GENRE_DISPLAY_ORDER.map((item) => (
                   <Pressable
                     key={item}
                     onPress={() => {
@@ -642,7 +664,7 @@ export default function CreateStudioScreen({
                       styles.genreChipText,
                       draft.primaryGenre === item && styles.genreChipTextSelected,
                     ]}>
-                      {genreLabels[item]}
+                      {GENRE_EMOJI[item]} {genreLabels[item]}
                     </Text>
                   </Pressable>
                 ))}
@@ -662,6 +684,7 @@ export default function CreateStudioScreen({
               />
               <Text style={[
                 styles.seedHint,
+                draft.seed.trim().length > 0 && draft.seed.trim().length < 40 && styles.seedHintWarm,
                 draft.seed.trim().length >= 40 && styles.seedHintReady,
               ]}>
                 {getSeedHint(draft.seed.trim().length)}
@@ -748,9 +771,9 @@ export default function CreateStudioScreen({
                       }
                       trackColor={{
                         false: colors.border,
-                        true: colors.accent,
+                        true: colors.accentSoft,
                       }}
-                      thumbColor={colors.surface}
+                      thumbColor={character.isHero ? colors.accent : colors.surface}
                     />
                   </View>
                 </View>
@@ -1176,9 +1199,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
+  },
+  setupHeaderTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: spacing.xs,
   },
   eyebrow: {
     fontFamily: fonts.ui,
@@ -1253,6 +1279,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     marginTop: -spacing.xs,
+  },
+  seedHintWarm: {
+    color: colors.heart,
   },
   seedHintReady: {
     color: colors.success,
