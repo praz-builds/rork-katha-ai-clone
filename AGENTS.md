@@ -57,7 +57,7 @@ Before writing or modifying Expo code, identify the task category below and load
 | Web-to-native migration | `expo-web-to-native` | `.agents/skills/expo-web-to-native/SKILL.md` |
 | DOM components in native | `expo-dom` | `.agents/skills/expo-dom/SKILL.md` |
 | Reference examples | `expo-examples` | `.agents/skills/expo-examples/SKILL.md` |
-| Skill feedback / eval | `expo-skill-feedback` | `.agents/skills/expo-skill-eval/SKILL.md` |
+| Skill feedback / eval | `expo-skill-eval` | `.agents/skills/expo-skill-eval/SKILL.md` |
 
 ### Mandatory Skill Usage
 

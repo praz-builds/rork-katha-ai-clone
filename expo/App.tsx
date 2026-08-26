@@ -1394,7 +1394,7 @@ const styles = StyleSheet.create({
   },
   backText: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
   readerGenre: { fontFamily: fonts.ui, color: colors.sepiaAccent, fontSize: 11, fontWeight: "700", letterSpacing: 1.5, textTransform: "uppercase" },
-  readerToolbar: { marginVertical: 16, flexDirection: "row", alignItems: "center", gap: 9 },
+  readerToolbar: { marginVertical: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.sm + 1 },
   readerToolbarCentered: { justifyContent: "center" },
   audioPill: { height: 38, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.sepiaButton, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   audioText: { fontFamily: fonts.ui, color: colors.surface, fontWeight: "700", fontSize: 13 },
@@ -1701,13 +1701,13 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   voiceToggleBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
   },
   voiceToggleBtnActive: {
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 12,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
   },
   voiceToggleText: {
     fontFamily: fonts.ui,
