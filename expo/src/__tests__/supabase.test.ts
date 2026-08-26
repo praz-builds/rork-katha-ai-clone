@@ -13,11 +13,15 @@ jest.mock('@supabase/supabase-js', () => ({
   createClient: mockCreateClient,
 }));
 
+beforeEach(() => {
+  mockCreateClient.mockClear();
+  jest.isolateModules(() => {
+    require('@/lib/supabase'); // eslint-disable-line @typescript-eslint/no-require-imports
+  });
+});
+
 describe('supabase client', () => {
   it('creates client with Supabase URL', () => {
-    jest.isolateModules(() => {
-      require('@/lib/supabase');
-    });
     expect(mockCreateClient).toHaveBeenCalledTimes(1);
     const call = mockCreateClient.mock.calls[0] as unknown[];
     expect(call[0]).toContain('supabase.co');
@@ -33,7 +37,7 @@ describe('supabase client', () => {
   it('exports isSupabaseConfigured flag', () => {
     let configured: boolean | undefined;
     jest.isolateModules(() => {
-      const mod = require('@/lib/supabase');
+      const mod = require('@/lib/supabase'); // eslint-disable-line @typescript-eslint/no-require-imports
       configured = mod.isSupabaseConfigured;
     });
     expect(typeof configured).toBe('boolean');
