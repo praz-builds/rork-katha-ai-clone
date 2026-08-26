@@ -7,6 +7,32 @@
 
 ---
 
+## 2026-08-27 — Create Studio UX polish + draft persistence
+
+**Session:** Product UX improvements to the Create flow and draft auto-save.
+
+### Changes
+
+- **Genre chips**: emoji-driven pills in 2-row horizontal scroll (Tumblr-style).
+  Romance cluster positioned for genre variety visibility.
+- **Toggle chips**: added Kids (audience mode), LGBTQ+ (identity lens), Vampire
+  (trope module) as tappable chips below genre picker.
+- **Dynamic seed hints**: progressive coaching text that changes as user types.
+  Warm red pre-threshold, green when ready.
+- **Premise chips**: 3 genre-specific example premises per genre, horizontal
+  scroll, max-width 260px. Disappear after 20 chars typed.
+- **Hero toggle**: replaced green RN Switch with custom Pressable toggle
+  (orange thumb on light-orange track). Works on web, iOS, Android.
+- **Draft persistence**: `AsyncStorage`-based auto-save with 500ms debounce.
+  Drafts restored on mount, cleared on successful generation, expire after 7 days.
+- **Library layout**: compact StoryCards as horizontal rows (96px cover + text),
+  proper margins and spacing.
+- **Header alignment**: CREATE eyebrow + credits pill on same horizontal line.
+- **Renamed "Story seed" to "Your story idea"**.
+- **Languages**: English + Spanish (removed Portuguese from create flow).
+
+---
+
 ## 2026-08-27 — Story Generator v5.1 implementation
 
 **Session:** Full implementation of v5.1 taxonomy across backend + Expo.

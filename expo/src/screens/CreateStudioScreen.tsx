@@ -37,6 +37,7 @@ import {
   generateStory,
   GenerationRequestError,
 } from "@/lib/api";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
 import { genres } from "@/data/seed";
 import {
   colors,
@@ -329,6 +330,26 @@ export default function CreateStudioScreen({
     };
   }, []);
 
+  // Restore persisted draft on mount
+  useEffect(() => {
+    loadDraft().then((saved) => {
+      if (saved) setDraft(saved as StudioDraft);
+    });
+  }, []);
+
+  // Auto-save draft on changes (debounced 500ms)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (step !== "setup") return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveDraft(draft);
+    }, 500);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [draft, step]);
+
   const canGenerate =
     draft.seed.trim().length >= 40 && credits > 0 && !busy;
 
@@ -376,6 +397,7 @@ export default function CreateStudioScreen({
         throw new Error("Story generation returned no chapter");
       }
       onCreditUsed();
+      clearDraft();
       setStory(generated);
       setStoryTitle(generated.title);
       setParagraphs(
