@@ -25,15 +25,23 @@ UPDATE public.stories SET primary_genre = genre[1]
     AND genre IS NOT NULL
     AND array_length(genre, 1) > 0;
 
--- Step 3: Remap deprecated genres
+-- Step 3: Remap deprecated genres (case-sensitive and lowercase variants)
 UPDATE public.stories SET primary_genre = 'contemporary'
-  WHERE primary_genre IN ('drama', 'sliceOfLife', 'darkAcademia', 'lgbtq', 'motivational', 'spirituality');
+  WHERE primary_genre IN ('drama', 'sliceOfLife', 'sliceoflife', 'darkAcademia', 'darkacademia', 'lgbtq', 'motivational', 'spirituality');
 
 UPDATE public.stories SET primary_genre = 'fantasy'
   WHERE primary_genre IN ('mythology');
 
 UPDATE public.stories SET primary_genre = 'adventure'
   WHERE primary_genre IN ('kids', 'bedtime');
+
+-- Catch any remaining values not in the allowed set
+UPDATE public.stories SET primary_genre = 'contemporary'
+  WHERE primary_genre NOT IN (
+    'romance','romantasy','darkRomance','cozyFantasy','paranormalRomance',
+    'fantasy','scifi','thriller','mystery','horror',
+    'contemporary','historical','adventure','comedy','poetry'
+  );
 
 -- Step 4: Set audience_mode for kids/bedtime stories
 UPDATE public.stories SET audience_mode = 'kids'
@@ -54,13 +62,22 @@ UPDATE public.stories SET primary_genre = 'contemporary'
 -- Step 8: Make primary_genre NOT NULL
 ALTER TABLE public.stories ALTER COLUMN primary_genre SET NOT NULL;
 
--- Step 9: Add CHECK constraint for valid genres
-ALTER TABLE public.stories ADD CONSTRAINT stories_primary_genre_check
-  CHECK (primary_genre IN (
-    'romance','romantasy','darkRomance','cozyFantasy','paranormalRomance',
-    'fantasy','scifi','thriller','mystery','horror',
-    'contemporary','historical','adventure','comedy','poetry'
-  ));
+-- Step 9: Add CHECK constraint for valid genres (NOT VALID for reduced locking, then validate)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'stories_primary_genre_check'
+  ) THEN
+    ALTER TABLE public.stories ADD CONSTRAINT stories_primary_genre_check
+      CHECK (primary_genre IN (
+        'romance','romantasy','darkRomance','cozyFantasy','paranormalRomance',
+        'fantasy','scifi','thriller','mystery','horror',
+        'contemporary','historical','adventure','comedy','poetry'
+      )) NOT VALID;
+  END IF;
+END $$;
+
+ALTER TABLE public.stories VALIDATE CONSTRAINT stories_primary_genre_check;
 
 -- Step 10: Add indexes
 CREATE INDEX IF NOT EXISTS idx_stories_primary_genre ON public.stories(primary_genre, status);

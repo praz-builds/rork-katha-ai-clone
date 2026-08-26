@@ -349,6 +349,7 @@ async function buildContinueReading(
     )
     .in("id", storyIds)
     .eq("status", "complete")
+    .neq("content_rating", "explicit")
     .limit(10);
 
   if (storiesError) throw storiesError;

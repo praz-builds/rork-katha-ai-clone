@@ -54,6 +54,14 @@ Deno.test("darkRomance defaults to steamy", () => {
   assertEquals(result.spiceLevel, "steamy");
 });
 
+Deno.test("darkRomance with sweet spice stays sweet (not escalated)", () => {
+  const result = validateGenerationRequest(
+    validRequest({ primary_genre: "darkRomance", spice_level: "sweet" }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.spiceLevel, "sweet");
+});
+
 Deno.test("old genre 'drama' maps to contemporary", () => {
   const result = validateGenerationRequest(
     validRequest({ primary_genre: "drama" }),

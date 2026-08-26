@@ -21,8 +21,9 @@ writer, not by a generic assistant. The prompt system must optimize for:
 
 ## Key v5.1 Decisions
 
-- **15 user-facing genres.** LGBTQ+ is no longer a primary genre. It becomes an
-  identity lens/toggle that can layer onto any adult genre.
+- **15 primary genres (13 in UI).** LGBTQ+ is no longer a primary genre. It becomes an
+  identity lens/toggle that can layer onto any adult genre. cozyFantasy and
+  paranormalRomance exist in the DB constraint but are hidden from the UI.
 - **Kids is an audience mode, not an adult genre peer.** The UI may show Kids and
   Bedtime as creation choices, but backend generation must treat them as locked
   audience modes with separate rules.
@@ -649,8 +650,8 @@ Required request fields:
 
 - `request_id`: client-stable idempotency key
 - `primary_genre`: single supported genre
-- `seed`: 20-character minimum
-- `characters`: at least one named character
+- `seed`: 40-character minimum
+- `characters`: optional (pre-filled placeholder in UI)
 - `language`: optional, normalized supported language
 - `audience_mode`: defaults to `adult`
 - `identity_lenses`: optional, currently only `queer`

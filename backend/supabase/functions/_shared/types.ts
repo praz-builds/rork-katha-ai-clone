@@ -148,7 +148,7 @@ export const GENRE_DEFAULT_SPICE: Record<string, SpiceLevel> = {
 export const GENRE_ALLOWED_SPICE: Record<string, ReadonlySet<string>> = {
   romance: new Set(["sweet", "steamy"]),
   romantasy: new Set(["sweet", "steamy"]),
-  darkRomance: new Set(["steamy"]),
+  darkRomance: new Set(["sweet", "steamy"]),
   cozyFantasy: new Set(["sweet"]),
   paranormalRomance: new Set(["sweet", "steamy"]),
   fantasy: new Set(["sweet", "steamy"]),

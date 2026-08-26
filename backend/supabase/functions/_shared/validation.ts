@@ -39,7 +39,7 @@ export function validateGenerationRequest(
   let rawGenre: string;
   if (typeof body.primary_genre === "string" && body.primary_genre.trim()) {
     rawGenre = body.primary_genre.trim();
-  } else if (Array.isArray(body.genre) && typeof body.genre[0] === "string") {
+  } else if (Array.isArray(body.genre) && typeof body.genre[0] === "string" && body.genre[0].trim()) {
     rawGenre = body.genre[0].trim();
   } else if (typeof body.genre === "string" && body.genre.trim()) {
     rawGenre = body.genre.trim();
@@ -84,10 +84,10 @@ export function validateGenerationRequest(
     spiceLevel = GENRE_DEFAULT_SPICE[primaryGenre] ?? "sweet";
   }
 
-  // Validate spice against genre constraints
+  // Validate spice against genre constraints — only clamp downward, never escalate
   const allowedSpice = GENRE_ALLOWED_SPICE[primaryGenre];
   if (allowedSpice && !allowedSpice.has(spiceLevel)) {
-    spiceLevel = (GENRE_DEFAULT_SPICE[primaryGenre] ?? "sweet") as SpiceLevel;
+    spiceLevel = "sweet";
   }
 
   // --- Identity Lenses ---
@@ -179,9 +179,13 @@ export function validateGenerationRequest(
   if (!requestId) return { error: "Invalid request_id" };
 
   // --- Language ---
-  const language = typeof body.language === "string"
-    ? body.language.trim() || undefined
-    : undefined;
+  let language: string | undefined;
+  if (typeof body.language === "string") {
+    const raw = body.language.trim();
+    if (raw && raw.length <= 50) {
+      language = raw;
+    }
+  }
 
   return {
     primaryGenre,

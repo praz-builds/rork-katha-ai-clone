@@ -22,7 +22,7 @@ import type {
   SpiceLevel,
   TropeModule,
 } from "./types.ts";
-import { GENRE_MIGRATION_MAP, PRIMARY_GENRES } from "./types.ts";
+import { GENRE_MIGRATION_MAP } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Banned vocabulary
@@ -526,7 +526,6 @@ const SUPPORTED_GENRES = new Set(Object.keys(GENRE_VOICES));
 
 function normalizeGenre(genre: string): string {
   if (SUPPORTED_GENRES.has(genre)) return genre;
-  if (PRIMARY_GENRES.has(genre)) return genre;
 
   const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
   for (const supported of SUPPORTED_GENRES) {

@@ -39,6 +39,16 @@ Deno.test("kids mode includes audience mode rules", () => {
   assert(prompt.includes("children ages 4-10"));
 });
 
+Deno.test("kids mode overrides steamy spice to sweet", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "adventure",
+    audienceMode: "kids",
+    spiceLevel: "steamy",
+  });
+  assert(prompt.includes("Content Heat: Sweet"));
+  assert(!prompt.includes("Content Heat: Steamy"));
+});
+
 Deno.test("adult mode does not include kids rules", () => {
   const prompt = buildStorySystemPrompt({
     primaryGenre: "romance",

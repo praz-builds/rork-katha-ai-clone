@@ -220,7 +220,7 @@ function normalizeGenre(genre: string): string {
   };
 
   const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
-  if (aliases[lower]) return aliases[lower];
+  if (Object.prototype.hasOwnProperty.call(aliases, lower)) return aliases[lower];
 
   for (const key of Object.keys(GENRE_PROMPTS)) {
     if (key.toLowerCase() === lower) return key;

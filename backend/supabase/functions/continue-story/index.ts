@@ -184,7 +184,8 @@ serve(async (req) => {
     const audienceMode = (story.audience_mode ?? "adult") as AudienceMode;
     const identityLenses = (Array.isArray(story.identity_lenses) ? story.identity_lenses : []) as IdentityLens[];
     const tropeModules = (Array.isArray(story.trope_modules) ? story.trope_modules : []) as TropeModule[];
-    const spiceLevel = (story.spice_level ?? "sweet") as SpiceLevel;
+    const rawSpice = story.spice_level ?? "sweet";
+    const spiceLevel = (rawSpice === "explicit" ? "steamy" : rawSpice) as SpiceLevel;
     const isFinale = body.is_finale === true ||
       nextChapterNum >= MAX_SERIES_CHAPTERS;
     const chapterMode = isFinale ? "finale" : "chapter";
