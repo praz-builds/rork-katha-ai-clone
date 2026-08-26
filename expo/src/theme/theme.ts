@@ -66,7 +66,8 @@ export const genreLabels: Record<Genre, string> = {
   scifi: "Sci-Fi",
   sliceOfLife: "Slice of life",
   spirituality: "Spirituality",
-  thriller: "Thriller"
+  thriller: "Thriller",
+  bedtime: "Bedtime"
 };
 
 export const genreGradients: Record<Genre, readonly [string, string, string]> = {
@@ -87,5 +88,6 @@ export const genreGradients: Record<Genre, readonly [string, string, string]> = 
   scifi: ["#4A3A8E", "#2D1A5A", "#1A0D3A"],
   sliceOfLife: ["#D4A574", "#A67B52", "#6B4F35"],
   spirituality: ["#6B8E6B", "#4A6B4A", "#2A4A2A"],
-  thriller: ["#3A3A3A", "#1A1A1A", "#0D0D0D"]
+  thriller: ["#3A3A3A", "#1A1A1A", "#0D0D0D"],
+  bedtime: ["#2A2D5E", "#1A1D4A", "#0D0F2A"]
 };
