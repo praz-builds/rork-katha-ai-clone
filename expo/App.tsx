@@ -525,7 +525,9 @@ const INITIAL_COMMENTS: ReaderComment[] = [
 
 function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const author = authorFor(story.authorId);
-  const chapter = story.chapters[0];
+  const [chapterIndex, setChapterIndex] = useState(0);
+  const chapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  const hasMultipleChapters = story.chapters.length > 1;
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
   const [isPlaying, setIsPlaying] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
@@ -548,7 +550,6 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const [commentText, setCommentText] = useState("");
   const [isFollowing, setIsFollowing] = useState(false);
   const [shareToast, setShareToast] = useState(false);
-  const [heroImageLoaded, setHeroImageLoaded] = useState(false);
 
   // Cleanup audio on unmount
   useEffect(() => {
@@ -665,6 +666,9 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
   const focalX = story.focalX ?? 0.5;
   const focalY = story.focalY ?? 0.5;
 
+  // Only show voice toggle when both voices have audio
+  const hasBothVoices = !!(chapter.audioUrls?.female && chapter.audioUrls?.male);
+
   // Shared content blocks
   const renderToolbar = (centered: boolean) => (
     <View style={[styles.readerToolbar, centered && styles.readerToolbarCentered]}>
@@ -676,20 +680,22 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
         )}
         <Text style={styles.audioText}>{isPlaying ? "Playing" : "Listen"}</Text>
       </Pressable>
-      <View style={styles.voiceToggle}>
-        <Pressable
-          onPress={() => handleVoiceChange("female")}
-          style={[styles.voiceToggleBtn, voiceGender === "female" && styles.voiceToggleBtnActive]}
-        >
-          <Text style={[styles.voiceToggleText, voiceGender === "female" && styles.voiceToggleTextActive]}>{femaleVoice.name}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => handleVoiceChange("male")}
-          style={[styles.voiceToggleBtn, voiceGender === "male" && styles.voiceToggleBtnActive]}
-        >
-          <Text style={[styles.voiceToggleText, voiceGender === "male" && styles.voiceToggleTextActive]}>{maleVoice.name}</Text>
-        </Pressable>
-      </View>
+      {hasBothVoices && (
+        <View style={styles.voiceToggle}>
+          <Pressable
+            onPress={() => handleVoiceChange("female")}
+            style={[styles.voiceToggleBtn, voiceGender === "female" && styles.voiceToggleBtnActive]}
+          >
+            <Text style={[styles.voiceToggleText, voiceGender === "female" && styles.voiceToggleTextActive]}>{femaleVoice.name}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => handleVoiceChange("male")}
+            style={[styles.voiceToggleBtn, voiceGender === "male" && styles.voiceToggleBtnActive]}
+          >
+            <Text style={[styles.voiceToggleText, voiceGender === "male" && styles.voiceToggleTextActive]}>{maleVoice.name}</Text>
+          </Pressable>
+        </View>
+      )}
       <Pressable onPress={handleSave} accessibilityLabel={isSaved ? "Unsave story" : "Save story"} accessibilityRole="button">
         {isSaved ? (
           <BookmarkCheck size={18} color="#6a5c4c" />
@@ -712,9 +718,26 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
         </View>
       )}
 
+      {/* Chapter navigation */}
+      {hasMultipleChapters && (
+        <View style={styles.chapterNav}>
+          {story.chapters.map((ch, i) => (
+            <Pressable
+              key={ch.id}
+              onPress={() => setChapterIndex(i)}
+              style={[styles.chapterNavBtn, i === chapterIndex && styles.chapterNavBtnActive]}
+            >
+              <Text style={[styles.chapterNavText, i === chapterIndex && styles.chapterNavTextActive]}>
+                Ch {ch.chapterNumber}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
       <Text style={styles.chapterTitle}>{chapter.title}</Text>
       {chapter.paragraphs.map((paragraph, index) => (
-        <Text key={index} style={[styles.paragraph, isDesktop && styles.paragraphDesktop]}>
+        <Text key={`${chapter.id}-${index}`} style={[styles.paragraph, isDesktop && styles.paragraphDesktop]}>
           {paragraph}
         </Text>
       ))}
@@ -832,8 +855,7 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
                       focalX={focalX}
                       focalY={focalY}
                       style={{ width: "100%", height: "100%" }}
-                      onLoad={() => setHeroImageLoaded(true)}
-                    />
+                            />
                   ) : (
                     <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
                   )}
@@ -867,7 +889,6 @@ function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
               focalX={focalX}
               focalY={heroFocalY}
               style={{ width: "100%", height: "100%" }}
-              onLoad={() => setHeroImageLoaded(true)}
             />
           ) : (
             <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
@@ -1231,7 +1252,7 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     overflow: "hidden",
     position: "relative",
-    backgroundColor: "#e7dcc6"
+    backgroundColor: colors.sepiaPlaceholder
   },
   mobileHeroBackBtn: {
     position: "absolute",
@@ -1254,7 +1275,7 @@ const styles = StyleSheet.create({
   },
   mobileHeroBackText: {
     fontFamily: fonts.ui,
-    color: "#2c241d",
+    color: colors.sepiaHeading,
     fontSize: 13,
     fontWeight: "600"
   },
@@ -1266,7 +1287,7 @@ const styles = StyleSheet.create({
   },
   mobileGenre: {
     fontFamily: fonts.ui,
-    color: "#d9601f",
+    color: colors.sepiaAccent,
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.5,
@@ -1275,7 +1296,7 @@ const styles = StyleSheet.create({
   mobileTitle: {
     marginTop: 8,
     fontFamily: fonts.display,
-    color: "#33291f",
+    color: colors.sepiaHeading,
     fontSize: 24,
     lineHeight: 28,
     textAlign: "center"
@@ -1283,13 +1304,13 @@ const styles = StyleSheet.create({
   mobileAuthor: {
     marginTop: 7,
     fontFamily: fonts.ui,
-    color: "#8b7d6b",
+    color: colors.sepiaMuted,
     fontSize: 13,
     fontWeight: "500",
     textAlign: "center"
   },
   mobileAuthorName: {
-    color: "#6a5c4c",
+    color: colors.sepiaSecondary,
     fontWeight: "600"
   },
   mobileBodyPad: {
@@ -1319,7 +1340,7 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     borderRadius: 16,
     overflow: "hidden",
-    backgroundColor: "#e7dcc6",
+    backgroundColor: colors.sepiaPlaceholder,
     shadowColor: "rgba(60,40,15,1)",
     shadowOpacity: 0.22,
     shadowRadius: 28,
@@ -1333,19 +1354,19 @@ const styles = StyleSheet.create({
   desktopTitle: {
     marginTop: 8,
     fontFamily: fonts.display,
-    color: "#33291f",
+    color: colors.sepiaHeading,
     fontSize: 26,
     lineHeight: 30
   },
   desktopAuthor: {
     marginTop: 7,
     fontFamily: fonts.ui,
-    color: "#8b7d6b",
+    color: colors.sepiaMuted,
     fontSize: 14,
     fontWeight: "500"
   },
   desktopAuthorName: {
-    color: "#6a5c4c",
+    color: colors.sepiaSecondary,
     fontWeight: "600"
   },
 
@@ -1363,13 +1384,36 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg
   },
   backText: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
-  readerGenre: { fontFamily: fonts.ui, color: "#d9601f", fontSize: 11, fontWeight: "700", letterSpacing: 1.5, textTransform: "uppercase" },
+  readerGenre: { fontFamily: fonts.ui, color: colors.sepiaAccent, fontSize: 11, fontWeight: "700", letterSpacing: 1.5, textTransform: "uppercase" },
   readerToolbar: { marginVertical: 16, flexDirection: "row", alignItems: "center", gap: 9 },
   readerToolbarCentered: { justifyContent: "center" },
-  audioPill: { height: 38, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: "#ec6f2c", flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  audioPill: { height: 38, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.sepiaButton, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   audioText: { fontFamily: fonts.ui, color: "#FFFFFF", fontWeight: "700", fontSize: 13 },
+  chapterNav: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: spacing.xl,
+  },
+  chapterNavBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.sepiaPlaceholder,
+  },
+  chapterNavBtnActive: {
+    backgroundColor: colors.sepiaButton,
+  },
+  chapterNavText: {
+    fontFamily: fonts.ui,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.sepiaSecondary,
+  },
+  chapterNavTextActive: {
+    color: "#FFFFFF",
+  },
   chapterTitle: { fontFamily: fonts.display, color: colors.sepiaText, fontSize: 25, marginBottom: spacing.lg },
-  paragraph: { fontFamily: fonts.reader, color: "#4a3f35", fontSize: 15, lineHeight: 23, marginBottom: spacing.lg },
+  paragraph: { fontFamily: fonts.reader, color: colors.sepiaBody, fontSize: 15, lineHeight: 23, marginBottom: spacing.lg },
   paragraphDesktop: { fontSize: 16, lineHeight: 26 },
 
   /* ── Reader engagement ── */
@@ -1644,7 +1688,7 @@ const styles = StyleSheet.create({
   voiceToggle: {
     flexDirection: "row",
     borderRadius: radius.pill,
-    backgroundColor: "#e7ddca",
+    backgroundColor: colors.sepiaToggleTrack,
     padding: 3,
   },
   voiceToggleBtn: {
@@ -1658,12 +1702,12 @@ const styles = StyleSheet.create({
   },
   voiceToggleText: {
     fontFamily: fonts.ui,
-    color: "#a89a86",
+    color: colors.sepiaSecondary,
     fontSize: 12,
     fontWeight: "600",
   },
   voiceToggleTextActive: {
-    color: "#3f342b",
+    color: colors.sepiaHeading,
     fontWeight: "600",
   },
 });

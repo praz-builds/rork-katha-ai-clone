@@ -18,7 +18,15 @@ export const colors = {
   premium: "#C44536",
   success: "#12B5A5",
   sepia: "#F4E8D0",
-  sepiaText: "#4A3B2A"
+  sepiaText: "#4A3B2A",
+  sepiaHeading: "#33291f",
+  sepiaBody: "#4a3f35",
+  sepiaMuted: "#8b7d6b",
+  sepiaSecondary: "#6a5c4c",
+  sepiaAccent: "#d9601f",
+  sepiaButton: "#ec6f2c",
+  sepiaPlaceholder: "#e7dcc6",
+  sepiaToggleTrack: "#e7ddca"
 } as const;
 
 export const spacing = {

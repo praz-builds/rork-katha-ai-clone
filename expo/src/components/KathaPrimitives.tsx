@@ -56,6 +56,7 @@ export function FocalImage({
         objectPosition: `${focalX * 100}% ${focalY * 100}%`,
         display: "block",
       },
+      alt: "",
       onLoad,
       draggable: false,
     });
@@ -276,7 +277,7 @@ const styles = StyleSheet.create({
   storyCardTitle: {
     marginTop: 12,
     fontFamily: fonts.display,
-    color: "#3f342b",
+    color: colors.sepiaHeading,
     fontSize: 16,
     fontWeight: "600",
     lineHeight: 19
@@ -284,7 +285,7 @@ const styles = StyleSheet.create({
   storyCardMeta: {
     marginTop: 4,
     fontFamily: fonts.ui,
-    color: "#d9601f",
+    color: colors.sepiaAccent,
     fontSize: 13,
     fontWeight: "600"
   },

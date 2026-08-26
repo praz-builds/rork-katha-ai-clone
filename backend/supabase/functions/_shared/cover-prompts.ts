@@ -182,13 +182,24 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
  * The prompt intentionally avoids requesting text-on-image (titles are
  * composited programmatically after generation).
  */
+/** Normalize genre to a supported key, falling back to "drama". */
+function normalizeGenre(genre: string): string {
+  if (genre in GENRE_PROMPTS) return genre;
+  const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
+  for (const key of Object.keys(GENRE_PROMPTS)) {
+    if (key.toLowerCase() === lower) return key;
+  }
+  return "drama";
+}
+
 export function buildCoverPrompt(
   genre: string,
   title: string,
   themes: string[],
   characters?: { name: string; description: string }[],
 ): string {
-  const config = GENRE_PROMPTS[genre] ?? GENRE_PROMPTS.drama;
+  const safeGenre = normalizeGenre(genre);
+  const config = GENRE_PROMPTS[safeGenre];
 
   let sceneDescription = `Inspired by the story "${title}"`;
   if (themes.length > 0) {
@@ -212,13 +223,13 @@ export function buildCoverPrompt(
   }
 
   return [
-    `Book cover illustration for a ${genre} story.`,
+    `Book cover illustration for a ${safeGenre} story.`,
     `Visual style: ${config.style}.`,
     `Color palette: ${config.palette}.`,
     `Composition: ${config.composition}. Subject centered in frame for multi-crop display.`,
     `Mood: ${config.mood}.`,
     `${sceneDescription}${characterNote}.`,
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
-    `Square format, centered composition, high quality, professional book cover art.`,
+    `Portrait orientation, centered composition, high quality, professional book cover art.`,
   ].join(" ");
 }
