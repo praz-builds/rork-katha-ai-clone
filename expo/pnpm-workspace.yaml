@@ -1,5 +1,8 @@
 packages: []
 allowBuilds:
+  '@firebase/util': true
+  '@sentry/cli': true
+  protobufjs: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
   - '@expo/cli@57.0.17'
