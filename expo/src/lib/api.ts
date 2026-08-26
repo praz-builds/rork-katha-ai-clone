@@ -54,6 +54,7 @@ export async function generateStory(
       genre: draft.genre,
       topic: draft.seed,
       characters: draft.characters,
+      language: draft.language,
     },
   });
 

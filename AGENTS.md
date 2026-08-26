@@ -1,4 +1,4 @@
-# Katha AI — Repository Contract
+# Katha AI -- Repository Contract
 
 <!-- markdownlint-disable MD013 -->
 
@@ -7,88 +7,156 @@
 
 ## Repository Map
 
-- `expo/` — approved and active Expo SDK 54 application.
-- `backend/` — Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
-- `ios-katha-ai-create-stories/` — preserved Rork-generated iOS reference client.
-- `android-katha-ai/` — preserved Rork-generated Android reference client.
-- `katha-critique/` — critique prototype.
-- `.agents/` — local engineering skills installed outside Git. Treat them as workstation tooling, not trusted repository content.
+- `expo/` -- approved and active Expo SDK 54 application.
+- `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
+- `ios-katha-ai-create-stories/` -- preserved Rork-generated iOS reference client.
+- `android-katha-ai/` -- preserved Rork-generated Android reference client.
+- `katha-critique/` -- critique prototype.
+- `.agents/` -- local engineering skills installed outside Git. Treat them as workstation tooling, not trusted repository content.
 
 ## Working Rules
 
 - Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding.
-- Read `backend/CLAUDE.md`, `backend/ROADMAP.md`, and `backend/build-log.md` before changing Supabase or generation infrastructure.
+- Read `backend/ROADMAP.md` and `backend/build-log.md` before changing Supabase or generation infrastructure.
 - Run Expo commands from `expo/` and Supabase commands from `backend/`.
 - Treat the iOS and Android folders as reference implementations unless a task explicitly targets native code.
 - Keep frontend and backend contracts in this repository. Do not create another Katha application or backend repository.
 - Never commit `.env` files, service-role keys, provider secrets, build output, dependencies, or local Supabase state.
 - Do not reintroduce migration handoff files, duplicate image directories, alternate wordmarks, or parallel design-system documents.
+- **Rule:** Money, credits, API keys, and trusted generation logic stay in the backend. User-facing UI stays in Expo. When a feature spans both, update the contract and both workspaces in the same pull request.
+- **Build log:** Every session that modifies code, schema, or infrastructure MUST append an entry to `backend/build-log.md`.
 
 ## Project Skills
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-### Skill Routing Table
-
-Before writing or modifying Expo code, identify the task category below and load the matching skill's `SKILL.md` from `.agents/skills/<skill-name>/SKILL.md`. When unsure, start with `expo-overview`.
-
-| Task | Skill | Path |
-|---|---|---|
-| First contact / unclear goal | `expo-overview` | `.agents/skills/expo-overview/SKILL.md` |
-| Navigation, routes, tabs, modals, sheets | `expo-router` | `.agents/skills/expo-router/SKILL.md` |
-| Animation, gestures, haptics, press feedback | `expo-animation` | `.agents/skills/expo-animation/SKILL.md` |
-| Design tokens, theme, drift audit | `expo-design-system` | `.agents/skills/expo-design-system/SKILL.md` |
-| Semantic styling, native controls, icons, media | `expo-native-ui` | `.agents/skills/expo-native-ui/SKILL.md` |
-| @expo/ui components (sheets, pickers, lists) | `expo-ui` | `.agents/skills/expo-ui/SKILL.md` |
-| API calls, caching, offline, data loaders | `expo-data-fetching` | `.agents/skills/expo-data-fetching/SKILL.md` |
-| Tailwind / NativeWind setup | `expo-tailwind-setup` | `.agents/skills/expo-tailwind-setup/SKILL.md` |
-| Folder layout for new projects | `expo-project-structure` | `.agents/skills/expo-project-structure/SKILL.md` |
-| Native modules (Swift/Kotlin) | `expo-module` | `.agents/skills/expo-module/SKILL.md` |
-| Development builds | `expo-dev-client` | `.agents/skills/expo-dev-client/SKILL.md` |
-| SDK upgrades | `expo-upgrade` | `.agents/skills/expo-upgrade/SKILL.md` |
-| Build, submit, App Store, Play Store | `eas-app-stores` | `.agents/skills/eas-app-stores/SKILL.md` |
-| CI/CD workflow YAML | `eas-workflows` | `.agents/skills/eas-workflows/SKILL.md` |
-| OTA update health, crash rates | `eas-update-insights` | `.agents/skills/eas-update-insights/SKILL.md` |
-| Performance, startup, TTI | `eas-observe` | `.agents/skills/eas-observe/SKILL.md` |
-| Remote simulators | `eas-simulator` | `.agents/skills/eas-simulator/SKILL.md` |
-| Web hosting, API routes | `eas-hosting` | `.agents/skills/eas-hosting/SKILL.md` |
-| iOS App Clips | `expo-app-clip` | `.agents/skills/expo-app-clip/SKILL.md` |
-| Brownfield integration | `expo-brownfield` | `.agents/skills/expo-brownfield/SKILL.md` |
-| Web-to-native migration | `expo-web-to-native` | `.agents/skills/expo-web-to-native/SKILL.md` |
-| DOM components in native | `expo-dom` | `.agents/skills/expo-dom/SKILL.md` |
-| Reference examples | `expo-examples` | `.agents/skills/expo-examples/SKILL.md` |
-| Skill feedback / eval | `expo-skill-eval` | `.agents/skills/expo-skill-eval/SKILL.md` |
-
-### Mandatory Skill Usage
-
-- **Always load the matching skill before implementation.** Do not write Expo/RN code from general knowledge when a skill exists for the task.
-- **Animation**: Before adding any motion, load `expo-animation` and run the gate check (Step 1: "Should this animate at all?"). Use Reanimated, not core Animated. Follow the "Never Ship" table.
-- **Design tokens**: Import from `@/theme` (the barrel at `src/theme/index.ts`). Never hardcode hex colors, font sizes, or spacing values outside the theme. When drift is suspected, load `expo-design-system` and run the audit from `references/audit.md`.
-- **Navigation changes**: Load `expo-router` before modifying screen routing. When the project migrates to expo-router, follow the skill's file-based routing conventions.
-- **Builds and submissions**: Load `eas-app-stores` before any EAS build/submit command. Follow its versioning and store metadata guidance.
-- **OTA updates**: After publishing an update, use `eas-update-insights` to verify health before promoting to production.
-
 ## Quality Gates
 
-Before pushing any code change, run from `expo/`:
+After onboarding or paywall changes:
+
+1. Run `pnpm typecheck` from `expo/`.
+2. Run `pnpm exec expo-doctor` from `expo/`.
+3. Confirm an Expo web bundle can compile.
+4. Open `http://localhost:8090/` in a 390 x 844 mobile viewport.
+5. Walk the full flow: intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, one-time offer, success, Home handoff.
+
+## Infrastructure & Services
+
+| Service | Purpose | Key / Config | Status |
+|---------|---------|-------------|--------|
+| **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
+| **OpenAI** | Cover images (gpt-image-1) | `OPENAI_API_KEY` in Supabase secrets + `backend/.env` | Set |
+| **Anthropic** | Story generation (Sonnet 4.6 primary, Haiku 4.5 fallback) | `ANTHROPIC_API_KEY` in Supabase secrets | NOT YET SET |
+| **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
+| **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
+| **Adapty** | Subscriptions + credit packs + paywall A/B | Public key in `expo/src/lib/adapty.ts`; webhook secret in Supabase secrets | Set |
+| **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets | Not yet wired |
+| **Sentry** | Error tracking | DSN | Not yet set |
+| **AdMob** | Rewarded video for free credits | Needs server-side verification (SSV) | Not yet wired |
+
+### LLM Fallback Chain
+
+Sonnet 4.6 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Never use `claude --print` CLI for generation (adds 70-100s overhead); use Anthropic SDK directly.
+
+### Supabase Storage Buckets
+
+| Bucket | Purpose | Access |
+|--------|---------|--------|
+| `audio` | Narration MP3s | Public read, service role upload |
+| `covers` | Cover image PNGs | Public read, service role upload; **NEEDS CREATION** |
+
+### Local Dev
 
 ```bash
-pnpm typecheck    # TypeScript strict mode, zero errors
-pnpm lint         # ESLint with expo config
-pnpm test         # Jest + React Native Testing Library
+# backend/.env (never committed)
+ANTHROPIC_API_KEY=xxx
+OPENAI_API_KEY=xxx
+ADAPTY_WEBHOOK_SECRET=xxx
+FIREBASE_SERVICE_ACCOUNT_KEY=xxx
+RUNPOD_API_KEY=xxx
+ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 ```
 
-All three must pass before pushing.
+`ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist for browser clients. Native clients do not send an `Origin` header.
+
+## Database
+
+Schema is in `backend/supabase/migrations/` (7 migrations: 00001-00007).
+
+### Key Tables
+
+| Migration | Tables |
+|-----------|--------|
+| **00001 (Core)** | `profiles`, `credit_ledger`, `stories`, `chapters`, `characters`, `comments`, `streaks`, `ad_rewards`, `referrals` |
+| **00003 (Social)** | `story_reads`, `story_followers`, `user_followers`, `bookmarks`, `story_likes` |
+| **00005 (Operations)** | `generation_operations`, `payment_event_backlog` |
+| **Not yet created** | `device_tokens` (Phase G -- FCM/APNs token storage) |
+
+### Credit Ledger Pattern
+
+- Append-only. Never update rows.
+- Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references.
+- Balance = newest ledger row by `created_at`, then `id`.
+- **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`.
+
+### Security Gate
+
+- Generation requests use client-stable IDs and durable `reserved`, `completed`, or `refunded` operation state.
+- AdMob rewards stay unavailable until server-side verification is implemented.
+- Do not deploy credit or generation changes outside the reviewed migration/function set.
+
+## Edge Functions
+
+All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
+
+### Implemented
+
+| Function | Method | Purpose | Notes |
+|----------|--------|---------|-------|
+| `generate-story` | POST | Auth -> reserve credit -> LLM -> persist -> return | Text path done; image/audio Phase B |
+| `continue-story` | POST | Next chapter (author-only), max 7 chapters | Text path done |
+| `library` | GET | Paginated curated feed with genre filter + search | Done |
+| `feedback` | POST | Comments + one-time feedback credit reward | Done |
+| `adapty-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
+| `generate-audio` | POST | MiniMax Speech 02 HD narration | Accepts `language` in body |
+| `audio-status` | GET | Check audio generation status | Done |
+| `feed` | GET | Feed endpoint | Done |
+| `edit-story` | POST | Paragraph-level AI editing | Done |
+| `publish-story` | POST | Mark story published, trigger cover generation | Done |
+| `deduct-credit` | POST | Legacy generic endpoint | Disabled |
+| `grant-credit` | POST | AdMob SSV reward verification | Disabled until SSV |
+
+### Shared Utilities (`_shared/`)
+
+`adapty.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `image.ts`, `llm.ts`, `operations.ts`, `prompts.ts`, `story-prompts.ts`, `story_text.ts`, `uuid.ts` (plus test files).
+
+### TODO Functions by Phase
+
+| Function | Purpose | Phase |
+|----------|---------|-------|
+| `record-read` | Anti-gaming pipeline | E |
+| `publish-chapter` | Mark published + FCM notifications | D |
+| `follow-story` / `unfollow-story` | Story follow toggles | D |
+| `follow-user` / `unfollow-user` | Author follow toggles | D |
+| `bookmark` / `unbookmark` | Bookmark toggles | D |
+| `like` / `unlike` | Like toggles | D |
+| `feed/for-you`, `feed/trending`, `feed/rising`, `feed/new` | Personalized + variant feeds | F |
+| `search` | Full-text search (pg_trgm + tsvector) | F |
+| `author/:username` | Public author profile | F |
+| `story/:id/analytics` | Author-only per-story analytics | F |
+| `register-device` | Store FCM token | G |
+| `send-notification` | Push via FCM | G |
+| `referral-verify` | Referral fraud checks | H |
 
 ## Story Generation System
 
-The story generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts`. It is the single source of truth for how Katha AI generates fiction.
+The generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts` (571 lines). It is the single source of truth for how Katha AI generates fiction.
 
 ### Architecture
 
-- `buildStorySystemPrompt(genre, language)` — constructs a ~1100-word system prompt for standalone short stories.
-- `buildContinuationSystemPrompt(genre, language, mode)` — constructs the system prompt for series chapters. Mode is `"chapter"` (mid-series) or `"finale"` (last chapter).
-- `buildUserPrompt(params)` — structures user input (genre, seed, characters, language) into the user message.
+- `buildStorySystemPrompt(genre, language)` -- ~1100-word system prompt for standalone short stories.
+- `buildContinuationSystemPrompt(genre, language, mode)` -- system prompt for series chapters. Mode is `"chapter"` (mid-series) or `"finale"` (last chapter).
+- `buildUserPrompt(params)` -- structures user input (genre, seed, characters, language) into the user message.
 - Genre and language are normalized to supported enums before interpolation (prompt injection prevention).
 
 ### Quality Rules (enforced in every generation)
@@ -105,7 +173,7 @@ The story generation pipeline lives in `backend/supabase/functions/_shared/story
 
 ### Dramatic Arc
 
-- **Standalone stories**: setup (30%) → rising tension (40%) → climax + aftermath (30%). Climax is mandatory.
+- **Standalone stories**: setup (30%) -> rising tension (40%) -> climax + aftermath (30%). Climax is mandatory.
 - **Mid-series chapters**: advance plot, end on hook, never resolve central conflict.
 - **Series finale**: resolve main arc, callback to earlier chapters, close doors.
 
@@ -115,7 +183,7 @@ The story generation pipeline lives in `backend/supabase/functions/_shared/story
 
 ### Cultural Context
 
-The AI infers cultural context from character names, traits, and story language. A character named "Priya Menon" gets culturally appropriate Indian details. No explicit culture/ethnicity field — inference from names and traits is the design choice.
+The AI infers cultural context from character names, traits, and story language. A character named "Priya Menon" gets culturally appropriate Indian details. No explicit culture/ethnicity field -- inference from names and traits is the design choice.
 
 ### Input Requirements
 
@@ -126,15 +194,243 @@ The AI infers cultural context from character names, traits, and story language.
 
 ## Cover Image System
 
-Cover images are generated by OpenAI `gpt-image-1` at publish time. Full reference: `backend/COVER_IMAGES.md`. Pipeline: `_shared/image.ts` + `_shared/cover-prompts.ts`.
+Cover images are generated by gpt-image-1 at publish time. The pipeline lives in `backend/supabase/functions/_shared/image.ts` with genre-specific prompt templates in `_shared/cover-prompts.ts`. Full reference: `backend/COVER_IMAGES.md`.
 
-- **Output**: 1024x1536 portrait PNG via `gpt-image-1`. One image per story, focal-point cropping handles all display contexts.
-- **Focal point**: Each story stores `focalX`/`focalY` (0-1). The `FocalImage` component uses `object-position` to anchor crops so faces survive any aspect ratio.
-- **Display**: Strategy 1c (adaptive per placement). Square library card, full-bleed 3:4 mobile hero, two-column sticky desktop. See `backend/COVER_IMAGES.md`.
-- **Prompt**: Dynamic from genre config + title + themes + characters. 16 genre prompt configs with style, palette, composition, mood, characterApproach.
-- **Retry**: 3 attempts with progressive prompt simplification on moderation rejection.
-- **Non-blocking**: cover generation failure does not block story publishing.
-- **Always use OpenAI API for image generation. Never use Higgsfield or other providers.**
+### Model & Output
+
+- **Provider**: OpenAI API only. Never use other image providers.
+- **Model**: `gpt-image-1`.
+- **Output size**: `1024x1536` portrait (2:3 ratio, native book cover format).
+- **Quality**: `"medium"`.
+- **Response format**: base64 (`b64_json`). Decode to PNG bytes.
+- **Storage**: Supabase Storage `covers/{story_id}/cover.png`, public read.
+
+### Prompt Construction
+
+`buildCoverPrompt()` assembles prompts from four layers:
+
+1. **Genre config** (static per genre from `GENRE_PROMPTS`): style, palette, composition, mood, characterApproach (`"scene"` | `"silhouette"` | `"portrait"`).
+2. **Story-specific context** (dynamic): title, themes (up to 4).
+3. **Character integration** (dynamic): scene (no explicit characters), silhouette (distant figure), portrait (three-quarter view).
+4. **Invariant suffix**: no text/titles/words/letters/watermarks, portrait orientation, centered composition, professional book cover art quality.
+
+### Retry Strategy
+
+| Attempt | Strategy |
+|---------|----------|
+| 0 | Full prompt: genre + title + themes + characters |
+| 1 | Simplified: genre + title + 2 themes, no characters |
+| 2 | Generic: genre + title only |
+
+After 3 failures, returns `null`. Story publishing is never blocked.
+
+### Focal-Point System
+
+Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5, 0.5`).
+
+| Placement | Aspect | Y Offset | Where |
+|-----------|--------|----------|-------|
+| Library card | 1:1 square | `focalY - 0.07` | Home feed rail, library grid |
+| Mobile hero | 3:4 portrait | `focalY - 0.02` | Reader screen, < 768px |
+| Desktop cover | 3:4 portrait | `focalY` (direct) | Reader left column, >= 768px |
+
+`FocalImage` component in `expo/src/components/KathaPrimitives.tsx` renders web via raw `<img>` with `object-position` (RN Web's Image ignores it) and native via standard RN Image with `resizeMode="cover"`.
+
+### 16 Genre Prompt Configs
+
+| Genre | Style | Palette | Characters |
+|-------|-------|---------|------------|
+| romance | warm illustrated, soft painterly | warm corals, sunset oranges, blush pinks | portrait |
+| fantasy | epic illustration, rich painterly | deep emerald, royal purple, antique gold | silhouette |
+| romantasy | lush fantasy, jewel-tone | deep amethyst, rose gold, midnight blue | portrait |
+| mystery | noir, high contrast, chiaroscuro | dark slate, deep navy, single red accent | silhouette |
+| thriller | stark cinematic, bold angular shadows | pure black, bright crimson, cold steel grey | silhouette |
+| horror | dark atmospheric, desaturated | near-monochromatic greys, sickly green | silhouette |
+| scifi | retro-futuristic, neon glow | deep space black, electric cyan, neon magenta | silhouette |
+| adventure | bold cinematic, saturated color | warm amber, sunset orange, ocean teal | silhouette |
+| historical | rich period illustration, ornamental | warm sepia, aged gold, burgundy wine | portrait |
+| darkAcademia | moody gothic, candlelit, oil painting | deep mahogany, aged ivory, forest green | silhouette |
+| drama | emotional painterly, expressive | muted earth tones, overcast greys | scene |
+| sliceOfLife | warm cozy, gentle watercolor | warm caramel, soft sage, dusty rose | scene |
+| mythology | mythological, bold ancient art | deep terracotta, burnished bronze, saffron | portrait |
+| poetry | ethereal abstract, dreamy watercolor | soft lavender, misty grey-blue, pale rose | scene |
+| comedy | vibrant pop, bold outlines | sunshine yellow, electric blue, hot pink | scene |
+| bedtime | soft dreamy, moonlit glow | midnight navy, moonlight silver, warm amber | scene |
+
+### Moderation Rules
+
+- "Pixar-inspired" is a HARD BLOCK in OpenAI moderation. Use "3D CGI animated film style".
+- Never include "AI", "generated", "artificial intelligence" in public-facing image metadata.
+
+### Checklist for New Genres
+
+1. Add genre voice module to `_shared/story-prompts.ts`.
+2. Add genre prompt config to `_shared/cover-prompts.ts` (style, palette, composition, mood, characterApproach).
+3. Add genre to `expo/src/types/domain.ts` GENRES array.
+4. Add genre label to `expo/src/theme/theme.ts` genreLabels.
+5. Add genre gradient to `expo/src/theme/theme.ts` genreGradients.
+6. Add genre to `expo/src/data/seed.ts` genres array.
+
+## Audio Narration System
+
+### Provider & Model
+
+- **Primary**: MiniMax Speech 02 HD on RunPod public endpoint (`minimax-speech-02-hd`). Used for English.
+- **Fallback**: edge-tts (placeholder for non-English). Voice: `en-US-JennyNeural`, Rate: -15%. Output: MPEG 2 Layer III at 48kbps CBR. Duration formula: `file_size_bytes * 8 / 48000` seconds.
+
+### Voices
+
+| Language | Female | Male | Provider |
+|----------|--------|------|----------|
+| EN | Aria | Kai | RunPod (MiniMax) |
+| ES | Elvira | Alvaro | edge-tts (placeholder) |
+
+4 additional EN voices reserved for Premium Voices (paid subscribers).
+
+### Pipeline
+
+- Audio generated at publish time (both voices), cached permanently in Supabase Storage bucket `audio`.
+- Storage path: `{story_id}/{chapter_id}/{voice_id}.mp3`. Public read, service role upload.
+- `generate-audio` edge function accepts `language` in request body; callers must pass it explicitly.
+- Language routing: EN -> RunPod, all others -> edge-tts.
+- Reader shows voice toggle (female/male names from `getDefaultVoices(lang)`).
+- Free users: 1 credit to unlock audio. Paid users: included.
+- Inngest integration for auto-generation on publish is planned but not yet wired.
+
+## Monetization
+
+### Product Context
+
+**Katha AI -- Create Stories.** AI-powered mobile-first story platform. Users read curated + community stories for free. Creating stories costs credits. Separate product from Story For My Kid (storyformykid.com). Audience: adults 20-40, casual readers + aspiring writers.
+
+### Key Product Decisions
+
+- **Single currency: Credits.** No coins, no gems, no dual wallets. Backend tracks provenance via `credit_ledger.reason`.
+- **Every story starts as a short story.** AI decides length (500-1500 words). No length picker. Stories become Series when author adds chapters.
+- **Author-only continuation.** Only the original author can add chapters.
+- **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
+- **3-credit welcome bonus.**
+- Kids mode off by default, PIN-gated in parental controls.
+
+### Credits Pricing
+
+| Product | Price | Credits |
+|---------|-------|---------|
+| Pack (small) | $2.99 | 3 |
+| Pack (medium) | $7.99 | 10 |
+| Pack (large) | $14.99 | 25 |
+| Monthly sub | $6.99/mo | 20/mo + ad-free + premium voices |
+| Yearly sub | $49.99/yr | 25/mo + ad-free + premium voices |
+
+Subscription credits carry over up to 2x monthly amount.
+
+### Free Credit Methods
+
+| Method | Amount | Limits |
+|--------|--------|--------|
+| Watch ad | 1 credit | 1 per rolling 24 hours (disabled until SSV) |
+| Reading streak | 1 credit | Every 3 consecutive days |
+| Leave feedback | 1 credit | 1 per story, cap 1/day |
+| Referral | 3 credits | Per unique referral who generates |
+| Social post | 1 credit | Per verified post, max 3/month |
+| Reader earnings | Curve below | Anti-gaming pipeline |
+
+### Creator Earnings Curve
+
+| Reads | Credits earned |
+|-------|---------------|
+| 10 | 10 (1 per read) |
+| 50 | 18 (1 per 5 after 10) |
+| 100 | 28 (1 per 5) |
+| 500 | 68 (1 per 10 after 100) |
+| 1,000 | 118 |
+| 10,000 | 478 (1 per 25 after 1000) |
+
+Anti-gaming: self-read guard, min read time, account age throttle, velocity anomaly detection, session diversity cap, per-story daily cap (10 credits), dedup (1 crediting read per user/story/day). Full spec in `backend/references/strategic-decisions.md` section 6.
+
+## App Architecture
+
+### Navigation
+
+3-tab layout: **Home** | **Create** (+, raised) | **Library**. Profile is a top-right avatar overlay, not a tab.
+
+- `TabKey`: `"home" | "create" | "library"`. `Screen` includes `{ name: "profile" }`.
+- **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): standalone 3-step flow (setup -> editor -> publish). Tab bar remains visible.
+- **Reader**: Substack-style engagement bar, author card, comments preview.
+- **Library**: 4 segments -- Saved, History, My Stories, Comments.
+
+### Onboarding
+
+- Entry point: `expo/src/screens/KathaOnboardingComplete.jsx`.
+- Composes `KathaOnboarding.jsx` and `KathaOnboardingFlowV2.jsx`.
+- 390 x 844 geometry, shared wordmark, fixed intro slots, read/write/both branches.
+- `KathaOnboardingFlowV2` emits collected result through `onDone`; persist when account/profile wiring is added.
+- Do not restore prototype's "Replay the flow" action. Success CTA hands off directly to Home.
+- Keep email/OTP after the paywall action; do not reintroduce mandatory authentication before personalization and value delivery.
+- Do not hard-code localized pricing when Adapty integration begins; render from store payload.
+
+### Product Integration Boundaries
+
+- Email/OTP, notification permission, subscriptions, restores, and offer purchases are currently UI handoff points. Keep callbacks explicit for Supabase/Adapty/native wiring.
+- Notification education: `Allow` is where the real native permission request must be inserted; only granted native response may set consent true.
+
+### Production SDK Initialization
+
+All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog()`, `initAdapty()`, `setupAndroidChannel()`. All SDKs gracefully no-op when API keys are empty.
+
+- `expo/src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
+- `expo/src/lib/adapty.ts`: Adapty v4. Use `getPaywallProducts()` and `purchaseProduct()`.
+- `expo/src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.
+- `expo/src/lib/firebase-analytics.ts`: Firebase Analytics with safe dynamic imports.
+- `expo/src/lib/tracking-transparency.ts`: iOS ATT. Call `requestTrackingPermission()` before analytics.
+
+### Design System
+
+- Fonts: `BricolageGrotesque`, `HankenGrotesk`, `Baloo2` (bundled locally).
+- Assets: `expo/assets/covers` and `expo/assets/avatars`. Do not recreate `assets/images` (removed as duplicate).
+- i18n: `expo/src/i18n/` -- i18next with EN/ES/PT. Not yet wired to components.
+- API keys via `Constants.expoConfig.extra` (app.json); convert to `app.config.ts` for `EXPO_PUBLIC_*` env vars before production.
+
+## Build & Deploy
+
+### Backend
+
+```bash
+supabase start                                 # Start Supabase locally
+supabase db push                               # Apply migrations
+supabase functions deploy generate-story       # Deploy a single function
+supabase secrets set ANTHROPIC_API_KEY=xxx     # Set a secret
+```
+
+### Required Supabase Secrets
+
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ADAPTY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
+
+### Expo
+
+```bash
+cd expo && pnpm install                        # Install dependencies
+pnpm typecheck                                 # TypeScript check
+pnpm exec expo-doctor                          # Expo health check
+pnpm approve-builds                            # Needed for @firebase/util, @sentry/cli, protobufjs
+```
+
+Node v22.23.0 for typecheck (v24 has tsc shim issues).
+
+## Build Phases (Roadmap)
+
+See `backend/ROADMAP.md` for the full phased execution plan with checklists.
+
+| Phase | Focus |
+|-------|-------|
+| **A** | Supabase project + fix critical bugs + deploy existing functions |
+| **B** | Wire gpt-image-1 cover images + MiniMax/edge-tts audio narration |
+| **C** | Adapty webhook HMAC + AdMob SSV verification |
+| **D** | Follow/bookmark/like toggles + publish-chapter with FCM |
+| **E** | record-read endpoint + creator earnings curve + pending credits |
+| **F** | Feed endpoints + search + author profile + analytics |
+| **G** | register-device + FCM integration + notification triggers + crons |
+| **H** | Seed library content + referral verification + cron jobs |
 
 ## Mandatory Git Workflow
 
@@ -148,3 +444,13 @@ Cover images are generated by OpenAI `gpt-image-1` at publish time. Full referen
 - Exceptions require explicit user authorization and documentation in the pull request.
 
 CodeRabbit reviews `main` pull requests, including drafts and incremental pushes, and fails its status when review execution fails. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable for this private repository on its current plan, so this documented merge gate remains mandatory.
+
+## Reference Material
+
+- **Strategic decisions (authoritative):** `backend/references/strategic-decisions.md` -- overrides Blueprint where they conflict.
+- **Product blueprint:** `backend/references/story-generator-app.md` -- original architecture spec.
+- **Cover images (full reference):** `backend/COVER_IMAGES.md`.
+- **Backend roadmap:** `backend/ROADMAP.md` -- phased execution plan with checklists.
+- **Build log:** `backend/build-log.md` -- chronological change record.
+- **Expo design contract:** `expo/DESIGN.md`.
+- **Expo build log:** `expo/BUILD_LOG.md`.

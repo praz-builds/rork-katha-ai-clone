@@ -97,7 +97,7 @@
     "language": "Idioma",
     "generate": "Gerar rascunho (1 cr\u00e9dito)",
     "generating": "Gerando...",
-    "seedHint": "Escreva pelo menos 4 caracteres na semente da sua hist\u00f3ria",
+    "seedHint": "D\u00ea ao Katha uma premissa clara ({{count}}/20 caracteres m\u00ednimo)",
     "creditsNeeded": "Voc\u00ea precisa de cr\u00e9ditos para gerar uma hist\u00f3ria",
     "addSeed": "Adicione uma semente de hist\u00f3ria",
     "creditsNeededTitle": "Creditos necessarios",

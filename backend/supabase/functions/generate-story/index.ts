@@ -8,7 +8,10 @@ import {
   parseRequestId,
   readJsonObject,
 } from "../_shared/operations.ts";
-import { STORY_SYSTEM_PROMPT } from "../_shared/prompts.ts";
+import {
+  buildStorySystemPrompt,
+  buildUserPrompt,
+} from "../_shared/story-prompts.ts";
 import { parseGeneratedStoryText } from "../_shared/story_text.ts";
 
 serve(async (req) => {
@@ -198,12 +201,18 @@ serve(async (req) => {
         if (characterError) throw characterError;
       }
 
+      const primaryGenre = genres[0] ?? "drama";
+      const language = typeof body.language === "string"
+        ? body.language.trim()
+        : undefined;
+      const systemPrompt = buildStorySystemPrompt(primaryGenre, language);
       const userPrompt = buildUserPrompt({
         genre: genres,
         topic,
         characters,
+        language,
       });
-      const result = await generateStoryText(STORY_SYSTEM_PROMPT, userPrompt);
+      const result = await generateStoryText(systemPrompt, userPrompt);
       const { title, content } = parseGeneratedStoryText(
         result.text,
         "Untitled Story",
@@ -304,11 +313,16 @@ function validateGenerationRequest(
     )
   ) return { error: "genre must contain 1 to 3 short values" };
 
-  const topic = body.topic;
-  if (
-    topic !== undefined && (typeof topic !== "string" || topic.length > 1000)
-  ) {
-    return { error: "topic must be a string of 1000 characters or fewer" };
+  const rawTopic = body.topic;
+  if (typeof rawTopic !== "string") {
+    return { error: "Story seed must be at least 20 characters" };
+  }
+  const topic = rawTopic.trim();
+  if (topic.length < 20) {
+    return { error: "Story seed must be at least 20 characters" };
+  }
+  if (topic.length > 1000) {
+    return { error: "Story seed must be 1000 characters or fewer" };
   }
 
   const characters = body.characters ?? [];
@@ -349,27 +363,8 @@ function validateGenerationRequest(
 
   return {
     genres: rawGenres.map((genre) => (genre as string).trim()),
-    topic: typeof topic === "string" ? topic.trim() : undefined,
+    topic,
     characters: characters as CharacterInput[],
     requestId,
   };
-}
-
-function buildUserPrompt(params: {
-  genre: string[];
-  topic?: string;
-  characters?: { name: string; description?: string }[];
-}): string {
-  let prompt = "Write a short story of 500-1500 words.\n";
-  prompt += `Genre: ${params.genre.join(", ")}\n`;
-  if (params.topic) prompt += `Topic/theme: ${params.topic}\n`;
-  if (params.characters?.length) {
-    prompt += `Characters:\n`;
-    params.characters.forEach((c) => {
-      prompt += `- ${c.name}${c.description ? `: ${c.description}` : ""}\n`;
-    });
-  }
-  prompt +=
-    `\nStart with the title on the first line (no # prefix), then the story text.`;
-  return prompt;
 }

@@ -97,7 +97,7 @@
     "language": "Idioma",
     "generate": "Generar borrador (1 cr\u00e9dito)",
     "generating": "Generando...",
-    "seedHint": "Escribe al menos 4 caracteres en la semilla de tu historia",
+    "seedHint": "Dale a Katha una premisa clara ({{count}}/20 caracteres m\u00ednimo)",
     "creditsNeeded": "Necesitas cr\u00e9ditos para generar una historia",
     "addSeed": "Agrega una semilla de historia",
     "creditsNeededTitle": "Se necesitan cr\u00e9ditos",

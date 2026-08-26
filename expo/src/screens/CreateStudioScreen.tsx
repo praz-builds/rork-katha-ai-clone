@@ -226,7 +226,7 @@ export default function CreateStudioScreen({
   }, []);
 
   const canGenerate =
-    draft.seed.trim().length > 3 && credits > 0 && !busy;
+    draft.seed.trim().length >= 20 && credits > 0 && !busy;
 
   const wordCount = paragraphs.reduce((acc, p) => {
     return acc + p.text.split(/\s+/).filter(Boolean).length;
@@ -668,9 +668,9 @@ export default function CreateStudioScreen({
                   ? "Generating..."
                   : "Generate Draft — 1 credit"}
               </PrimaryButton>
-              {!canGenerate && !busy && credits > 0 && draft.seed.trim().length <= 3 && (
+              {!canGenerate && !busy && credits > 0 && draft.seed.trim().length < 20 && (
                 <Text style={styles.hintText}>
-                  Write at least 4 characters in your story seed
+                  Give Katha a clear premise ({draft.seed.trim().length}/20 characters minimum)
                 </Text>
               )}
               {credits === 0 && (

@@ -9,6 +9,10 @@ import {
   parseUuid,
   readJsonObject,
 } from "../_shared/operations.ts";
+import {
+  buildContinuationSystemPrompt,
+  MAX_SERIES_CHAPTERS,
+} from "../_shared/story-prompts.ts";
 import { parseGeneratedStoryText } from "../_shared/story_text.ts";
 
 serve(async (req) => {
@@ -105,7 +109,7 @@ serve(async (req) => {
     // Verify story ownership
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
-      .select("id, title, genre, topic, author_id")
+      .select("id, title, genre, topic, author_id, language")
       .eq("id", story_id)
       .single();
 
@@ -126,6 +130,14 @@ serve(async (req) => {
     }
 
     const nextChapterNum = chapters[0].chapter_number + 1;
+
+    if (nextChapterNum > MAX_SERIES_CHAPTERS) {
+      return respond({
+        error:
+          `Series limit reached. Stories can have at most ${MAX_SERIES_CHAPTERS} chapters.`,
+      }, 400);
+    }
+
     const { data: operation, error: reservationError } = await serviceClient
       .rpc(
         "reserve_generation_operation",
@@ -163,11 +175,26 @@ serve(async (req) => {
       ?.map((c) => `Chapter ${c.chapter_number}: ${c.content}`)
       .join("\n\n");
 
-    const systemPrompt =
-      "You are a creative story writer continuing an existing story. Maintain consistency with previous chapters.";
+    const primaryGenre = Array.isArray(story.genre)
+      ? story.genre[0] ?? "drama"
+      : (story.genre ?? "drama");
+    const storyLanguage = typeof story.language === "string"
+      ? story.language
+      : undefined;
+    const isFinale = body.is_finale === true ||
+      nextChapterNum >= MAX_SERIES_CHAPTERS;
+    const chapterMode = isFinale ? "finale" : "chapter";
+    const systemPrompt = buildContinuationSystemPrompt(
+      primaryGenre,
+      storyLanguage,
+      chapterMode,
+    );
+    const finaleNote = isFinale
+      ? " This is the FINAL chapter. Bring the story to a satisfying close."
+      : "";
     const userPrompt =
-      `Continue this story with Chapter ${nextChapterNum}.\n\nTitle: ${story.title}\nGenre: ${
-        story.genre.join(", ")
+      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${
+        Array.isArray(story.genre) ? story.genre.join(", ") : story.genre
       }\n\nPrevious chapters:\n${previousText}\n\nWrite the next chapter (600-900 words). Start with the chapter title on the first line.`;
 
     try {
