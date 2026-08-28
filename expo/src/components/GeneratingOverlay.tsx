@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
   StyleSheet,
@@ -35,8 +36,16 @@ const PHRASE_INTERVAL = 3200;
 export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
   const [data] = useState(() => getGeneratingPhrases(genre, mode));
   const [phraseIndex, setPhraseIndex] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const currentPhrase = parsePhrase(data.phrases[phraseIndex]);
+
+  // Respect reduced motion preference
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+    return () => sub.remove();
+  }, []);
 
   // Phrase rotation
   useEffect(() => {
@@ -46,9 +55,10 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
     return () => clearInterval(timer);
   }, [data.phrases.length]);
 
-  // Phrase fade
+  // Phrase fade (skip if reduced motion)
   const phraseFade = useRef(new Animated.Value(1)).current;
   useEffect(() => {
+    if (reduceMotion) return;
     Animated.sequence([
       Animated.timing(phraseFade, {
         toValue: 0,
@@ -63,11 +73,12 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [phraseIndex, phraseFade]);
+  }, [phraseIndex, phraseFade, reduceMotion]);
 
-  // Orb breathing (scale + opacity)
-  const orbBreath = useRef(new Animated.Value(0)).current;
+  // Orb breathing (scale + opacity) — static when reduced motion
+  const orbBreath = useRef(new Animated.Value(reduceMotion ? 0.5 : 0)).current;
   useEffect(() => {
+    if (reduceMotion) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(orbBreath, {
@@ -97,11 +108,12 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
     outputRange: [0.7, 1],
   });
 
-  // Ring rotations (slow, different speeds)
+  // Ring rotations — static when reduced motion
   const ringRotate1 = useRef(new Animated.Value(0)).current;
   const ringRotate2 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (reduceMotion) return;
     const r1 = Animated.loop(
       Animated.timing(ringRotate1, {
         toValue: 1,
@@ -132,9 +144,10 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
     outputRange: ["0deg", "-360deg"],
   });
 
-  // Glow halo pulse
-  const haloPulse = useRef(new Animated.Value(0.3)).current;
+  // Glow halo pulse — static when reduced motion
+  const haloPulse = useRef(new Animated.Value(reduceMotion ? 0.4 : 0.3)).current;
   useEffect(() => {
+    if (reduceMotion) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(haloPulse, {

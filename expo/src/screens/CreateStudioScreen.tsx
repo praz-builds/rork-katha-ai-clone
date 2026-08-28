@@ -25,7 +25,6 @@ import {
   Scissors,
   Sparkles,
   Trash2,
-  Type,
   X,
 } from "lucide-react-native";
 import {
@@ -42,7 +41,6 @@ import {
   publishStory,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
-import { genres } from "@/data/seed";
 import {
   colors,
   fonts,
@@ -96,14 +94,6 @@ type CreateStudioProps = {
 // ---------------------------------------------------------------------------
 
 const MAX_CHARACTERS = 5;
-
-const TONE_OPTIONS = [
-  "darker",
-  "lighter",
-  "more poetic",
-  "more dramatic",
-  "simpler",
-] as const;
 
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },
@@ -483,23 +473,20 @@ export default function CreateStudioScreen({
       try {
         const chapter = story?.chapters[activeChapterIndex];
         let result: string;
-        try {
-          if (story && chapter) {
-            result = await editParagraph(
-              story.id,
-              chapter.id,
-              index,
-              instruction as "rewrite" | "expand" | "shorten" | "change_tone" | "custom",
-              { tone: instruction === "change_tone" ? customNote : undefined, customNote: instruction === "custom" ? customNote : undefined },
-            );
-          } else {
-            result = "";
+        // Use real API when configured; local fallback only when unconfigured
+        if (story && chapter) {
+          result = await editParagraph(
+            story.id,
+            chapter.id,
+            index,
+            instruction as "rewrite" | "expand" | "shorten" | "custom",
+            { customNote: instruction === "custom" ? customNote : undefined },
+          );
+          // editParagraph returns "" when Supabase is unconfigured — use local fallback
+          if (!result) {
+            result = await localEditParagraph(previousText, instruction, customNote);
           }
-        } catch {
-          result = "";
-        }
-        // Fall back to local edit if API returns empty
-        if (!result) {
+        } else {
           result = await localEditParagraph(previousText, instruction, customNote);
         }
         setParagraphs((prev) =>
@@ -627,10 +614,14 @@ export default function CreateStudioScreen({
 
     const updatedChapters = story.chapters.map((ch) => ({ ...ch, isPublished: true }));
 
+    // Bounded publish — timeout after 15s so the UI never hangs
     try {
-      await publishStory(story.id);
+      await Promise.race([
+        publishStory(story.id),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000)),
+      ]);
     } catch {
-      // Non-blocking — story is saved locally even if publish call fails
+      // Non-blocking — story is saved locally even if publish call fails or times out
     }
 
     const publishedStory: Story = {
@@ -653,19 +644,23 @@ export default function CreateStudioScreen({
       return;
     }
 
+    // Save current editor state before generating next chapter
+    const savedStory = saveEditorToStory() ?? story;
+
     setAddingChapter(true);
     setStep("generating");
 
     const requestId = createGenerationRequestId();
-    const shouldFinale = isFinale || story.chapters.length + 1 >= MAX_CHAPTERS;
+    const nextChapterNum = savedStory.chapters.length + 1;
+    const shouldFinale = isFinale || nextChapterNum >= MAX_CHAPTERS;
 
     try {
-      const { chapter } = await continueStory(story.id, requestId, shouldFinale);
+      const { chapter } = await continueStory(savedStory.id, requestId, shouldFinale, nextChapterNum);
       onCreditUsed();
 
       const updatedStory: Story = {
-        ...story,
-        chapters: [...story.chapters, chapter],
+        ...savedStory,
+        chapters: [...savedStory.chapters, chapter],
       };
       setStory(updatedStory);
 
@@ -689,7 +684,7 @@ export default function CreateStudioScreen({
     } finally {
       setAddingChapter(false);
     }
-  }, [story, addingChapter, credits, onCreditUsed]);
+  }, [story, addingChapter, credits, onCreditUsed, saveEditorToStory]);
 
   const switchToChapter = useCallback((index: number) => {
     if (!story || index === activeChapterIndex) return;
@@ -1117,12 +1112,18 @@ export default function CreateStudioScreen({
               style={styles.coverPromptInput}
               multiline
             />
-            <Pressable style={styles.regenerateBtn}>
+            <Pressable
+              style={[styles.regenerateBtn, { opacity: 0.5 }]}
+              disabled
+              accessibilityRole="button"
+              accessibilityLabel="Regenerate cover — available after publishing"
+            >
               <RefreshCw size={16} color={colors.accent} />
               <Text style={styles.regenerateBtnText}>Regenerate Cover</Text>
             </Pressable>
             <Text style={styles.coverHint}>
-              A unique AI cover will be generated when you publish.
+              Cover generation uses your prompt above.{"\n"}
+              A unique AI cover will be created when you publish.
             </Text>
           </View>
 
@@ -1223,7 +1224,7 @@ export default function CreateStudioScreen({
         {/* Bottom actions */}
         <View style={styles.reviewActions}>
           <Pressable onPress={handleBackToEditor} style={styles.reviewSecondaryBtn}>
-            <Text style={styles.reviewSecondaryBtnText}>Keep as Draft</Text>
+            <Text style={styles.reviewSecondaryBtnText}>Back to Editor</Text>
           </Pressable>
           <Pressable onPress={handlePublish} style={styles.reviewPublishBtn}>
             <Text style={styles.reviewPublishBtnText}>Publish</Text>
@@ -2051,29 +2052,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 13,
   },
-  tonePicker: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  toneOption: {
-    paddingHorizontal: spacing.md,
-    minHeight: 34,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface2,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  toneOptionText: {
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontWeight: "700",
-    fontSize: 13,
-  },
   customPromptWrap: {
     padding: spacing.md,
     gap: spacing.sm,
@@ -2204,23 +2182,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     textAlign: "center",
-  },
-  continueChapterBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    minHeight: 38,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
-  },
-  continueChapterText: {
-    fontFamily: fonts.ui,
-    color: colors.accent,
-    fontWeight: "800",
-    fontSize: 13,
   },
   bottomPublishBtn: {
     flexDirection: "row",

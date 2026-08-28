@@ -311,9 +311,10 @@ export async function continueStory(
   storyId: string,
   requestId: string,
   isFinale?: boolean,
+  expectedChapterNum?: number,
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
-    return await localContinueStory(storyId, isFinale);
+    return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
   }
 
   const { data, error } = await supabase.functions.invoke("continue-story", {
@@ -336,9 +337,9 @@ export async function continueStory(
     chapter: {
       id: requiredString(chapter.id, "chapter id"),
       storyId,
-      title: typeof chapter.title === "string" ? chapter.title : `Chapter ${chapter.chapter_number ?? 2}`,
+      title: typeof chapter.title === "string" ? chapter.title : `Chapter ${chapter.chapter_number ?? expectedChapterNum ?? 2}`,
       paragraphs: content.split(/\n\s*\n/).filter(Boolean),
-      chapterNumber: typeof chapter.chapter_number === "number" ? chapter.chapter_number : 2,
+      chapterNumber: typeof chapter.chapter_number === "number" ? chapter.chapter_number : (expectedChapterNum ?? 2),
       isPublished: false,
     },
     model: typeof data.model === "string" ? data.model : "unknown",
@@ -348,9 +349,9 @@ export async function continueStory(
 async function localContinueStory(
   _storyId: string,
   isFinale?: boolean,
+  chapterNum = 2,
 ): Promise<{ chapter: Chapter; model: string }> {
   await new Promise((resolve) => setTimeout(resolve, 3000 + Math.random() * 2000));
-  const chapterNum = 2; // Mock always returns chapter 2
   return {
     chapter: {
       id: `chapter-${Date.now()}`,

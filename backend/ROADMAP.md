@@ -58,7 +58,7 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 - [x] Centered composition required so center-crop works for all display sizes
 - [ ] **Create Supabase Storage bucket `covers`** (public read, service role upload)
 
-### Audio Narration (DONE)
+### Audio Narration (English done, Spanish pending)
 
 - [x] MiniMax Speech 02 HD on RunPod public endpoint (`minimax-speech-02-hd`)
 - [x] `generate-audio` edge function with language-aware routing (EN to RunPod)
@@ -145,9 +145,10 @@ Rewarded-ad credits remain disabled until every item below is complete.
 
 ### Expo App Integration
 
-- [ ] Add Expo-compatible Adapty and AdMob packages under `../expo/`
+- [x] Add Expo-compatible Adapty package under `../expo/` (SDK v4, live keys in `src/lib/adapty.ts`)
+- [ ] Add AdMob package under `../expo/`
 - [ ] Configure Expo config plugins in `../expo/app.json` (iOS and Android app IDs)
-- [ ] Wire Adapty public SDK keys and AdMob rewarded-ad unit IDs into Expo runtime config
+- [ ] Wire AdMob rewarded-ad unit IDs into Expo runtime config
 - [ ] Use an Expo development build to verify purchases and rewarded ads on both platforms
 
 ---
