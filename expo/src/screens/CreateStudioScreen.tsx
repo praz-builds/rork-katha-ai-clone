@@ -464,6 +464,8 @@ export default function CreateStudioScreen({
       if (!paragraph || paragraph.isProcessing) return;
 
       const previousText = paragraph.text;
+      // Capture the chapter index at call time to guard against chapter switches
+      const editChapterIndex = activeChapterIndex;
       setParagraphs((prev) =>
         prev.map((p, i) =>
           i === index ? { ...p, isProcessing: true } : p,
@@ -471,9 +473,8 @@ export default function CreateStudioScreen({
       );
 
       try {
-        const chapter = story?.chapters[activeChapterIndex];
+        const chapter = story?.chapters[editChapterIndex];
         let result: string;
-        // Use real API when configured; local fallback only when unconfigured
         if (story && chapter) {
           result = await editParagraph(
             story.id,
@@ -482,13 +483,14 @@ export default function CreateStudioScreen({
             instruction as "rewrite" | "expand" | "shorten" | "custom",
             { customNote: instruction === "custom" ? customNote : undefined },
           );
-          // editParagraph returns "" when Supabase is unconfigured — use local fallback
           if (!result) {
             result = await localEditParagraph(previousText, instruction, customNote);
           }
         } else {
           result = await localEditParagraph(previousText, instruction, customNote);
         }
+        // Only apply if user hasn't switched chapters during the edit
+        if (editChapterIndex !== activeChapterIndex) return;
         setParagraphs((prev) =>
           prev.map((p, i) =>
             i === index
@@ -503,6 +505,7 @@ export default function CreateStudioScreen({
         );
         showUndoToast(index, previousText);
       } catch {
+        if (editChapterIndex !== activeChapterIndex) return;
         setParagraphs((prev) =>
           prev.map((p, i) =>
             i === index ? { ...p, isProcessing: false } : p,
@@ -512,11 +515,10 @@ export default function CreateStudioScreen({
       }
 
       setSelectedIndex(null);
-      // (tone picker removed)
       setCustomPromptIndex(null);
       setCustomPromptText("");
     },
-    [paragraphs, showUndoToast],
+    [paragraphs, showUndoToast, activeChapterIndex],
   );
 
   const deleteParagraph = useCallback(
