@@ -8,7 +8,8 @@ import {
 function validRequest(overrides: Record<string, unknown> = {}) {
   return {
     primary_genre: "romance",
-    topic: "A lighthouse keeper receives a letter from the future warning of a storm",
+    topic:
+      "A lighthouse keeper receives a letter from the future warning of a storm",
     request_id: "test-request-123",
     ...overrides,
   };
@@ -18,8 +19,31 @@ Deno.test("valid adult romance request passes", () => {
   const result = validateGenerationRequest(validRequest());
   if ("error" in result) throw new Error(result.error);
   assertEquals(result.primaryGenre, "romance");
+  assertEquals(result.storyMode, "standalone");
   assertEquals(result.audienceMode, "adult");
   assertEquals(result.spiceLevel, "steamy"); // romance defaults to steamy
+});
+
+Deno.test("is_series maps to series story mode", () => {
+  const result = validateGenerationRequest(validRequest({ is_series: true }));
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.storyMode, "series");
+});
+
+Deno.test("story_mode accepts explicit series value", () => {
+  const result = validateGenerationRequest(
+    validRequest({ story_mode: "series" }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.storyMode, "series");
+});
+
+Deno.test("invalid story_mode rejected", () => {
+  const result = validateGenerationRequest(
+    validRequest({ story_mode: "serial" }),
+  );
+  if (!("error" in result)) throw new Error("Expected error");
+  assertEquals(result.error, "story_mode must be 'standalone' or 'series'");
 });
 
 Deno.test("darkRomance rejected in kids mode", () => {

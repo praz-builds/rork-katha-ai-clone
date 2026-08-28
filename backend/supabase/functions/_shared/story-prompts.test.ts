@@ -83,6 +83,8 @@ Deno.test("output schema reminder present in every prompt", () => {
   const prompt = buildStorySystemPrompt({ primaryGenre: "comedy" });
   assert(prompt.includes("## Output Format (CRITICAL)"));
   assert(prompt.includes("chapter_body"));
+  assert(prompt.includes("series_state"));
+  assert(prompt.includes("hook_type"));
 });
 
 Deno.test("spice rules vary: sweet vs steamy", () => {
@@ -134,6 +136,7 @@ Deno.test("buildContinuationSystemPrompt includes continuation rules", () => {
   });
   assert(prompt.includes("## Continuation Rules"));
   assert(prompt.includes("## Mid-Series Chapter"));
+  assert(prompt.includes("## Mid-Series Chapter Contract"));
 });
 
 Deno.test("buildContinuationSystemPrompt finale mode", () => {
@@ -142,7 +145,38 @@ Deno.test("buildContinuationSystemPrompt finale mode", () => {
     mode: "finale",
   });
   assert(prompt.includes("## Series Finale"));
+  assert(prompt.includes("## Series Finale Contract"));
   assert(!prompt.includes("## Mid-Series Chapter"));
+});
+
+Deno.test("series opening prompt forbids standalone climax", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "fantasy",
+    storyMode: "series",
+    chapterRole: "series_opening",
+  });
+  assert(prompt.includes("## Series Opening Contract"));
+  assert(prompt.includes("Do NOT include the final climax"));
+});
+
+Deno.test("continuation prompt includes current series state", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "thriller",
+    mode: "chapter",
+    seriesState: {
+      central_conflict: "A witness knows who staged the accident.",
+      protagonist_want: "Maya wants to expose the cover-up.",
+      relationship_state: "Maya distrusts Ishan.",
+      open_hooks: ["Who erased the camera feed?"],
+      resolved_hooks: [],
+      promised_payoffs: ["The erased feed will matter."],
+      world_facts: ["The city cameras are privately controlled."],
+      character_changes: ["Maya has stopped trusting official reports."],
+      next_chapter_pressure: "Ishan arrives with the missing drive.",
+    },
+  });
+  assert(prompt.includes("Current series state"));
+  assert(prompt.includes("Who erased the camera feed?"));
 });
 
 Deno.test("buildUserPrompt includes genre and seed", () => {
@@ -168,15 +202,28 @@ Deno.test("buildUserPrompt includes tropes when set", () => {
   const prompt = buildUserPrompt({
     primaryGenre: "romance",
     tropeModules: ["enemiesToLovers", "forcedProximity"],
-    seed: "Two rival bakery owners compete for the same high-end vanilla extract",
+    seed:
+      "Two rival bakery owners compete for the same high-end vanilla extract",
   });
-  assert(prompt.includes("Tropes to include: enemiesToLovers, forcedProximity"));
+  assert(
+    prompt.includes("Tropes to include: enemiesToLovers, forcedProximity"),
+  );
 });
 
 Deno.test("new genre modules exist: darkRomance, cozyFantasy, paranormalRomance, contemporary", () => {
-  for (const genre of ["darkRomance", "cozyFantasy", "paranormalRomance", "contemporary"]) {
+  for (
+    const genre of [
+      "darkRomance",
+      "cozyFantasy",
+      "paranormalRomance",
+      "contemporary",
+    ]
+  ) {
     const prompt = buildStorySystemPrompt({ primaryGenre: genre });
-    assert(prompt.includes(`## Genre: ${genre}`), `Missing genre module for ${genre}`);
+    assert(
+      prompt.includes(`## Genre: ${genre}`),
+      `Missing genre module for ${genre}`,
+    );
   }
 });
 

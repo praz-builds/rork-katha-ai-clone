@@ -1,4 +1,10 @@
-import type { StoryGenerationOutput } from "./types.ts";
+import {
+  EMPTY_SERIES_STATE,
+  HOOK_TYPES,
+  type HookType,
+  type SeriesState,
+  type StoryGenerationOutput,
+} from "./types.ts";
 
 export function parseGeneratedStoryText(
   text: string,
@@ -41,7 +47,10 @@ export function parseStructuredOutput(
 
   try {
     const parsed = JSON.parse(cleaned);
-    if (parsed && typeof parsed === "object" && typeof parsed.chapter_body === "string") {
+    if (
+      parsed && typeof parsed === "object" &&
+      typeof parsed.chapter_body === "string"
+    ) {
       return {
         title: typeof parsed.title === "string" && parsed.title.trim()
           ? parsed.title.trim()
@@ -54,13 +63,20 @@ export function parseStructuredOutput(
           ? parsed.word_count
           : parsed.chapter_body.split(/\s+/).length,
         themes: Array.isArray(parsed.themes)
-          ? parsed.themes.filter((t: unknown): t is string => typeof t === "string")
+          ? parsed.themes.filter((t: unknown): t is string =>
+            typeof t === "string"
+          )
           : [],
         first_line: typeof parsed.first_line === "string"
           ? parsed.first_line.trim()
           : parsed.chapter_body.split(/\n/)[0]?.trim() ?? "",
         previously_summary: typeof parsed.previously_summary === "string"
           ? parsed.previously_summary.trim()
+          : "",
+        series_state: parseSeriesState(parsed.series_state),
+        hook_type: parseHookType(parsed.hook_type),
+        hook_text: typeof parsed.hook_text === "string"
+          ? parsed.hook_text.trim().slice(0, 500)
           : "",
       };
     }
@@ -78,5 +94,48 @@ export function parseStructuredOutput(
     themes: [],
     first_line: content.split(/\n/)[0]?.trim() ?? "",
     previously_summary: "",
+    series_state: EMPTY_SERIES_STATE,
+    hook_type: "none",
+    hook_text: "",
   };
+}
+
+function parseHookType(value: unknown): HookType {
+  if (typeof value === "string" && HOOK_TYPES.has(value)) {
+    return value as HookType;
+  }
+  return "none";
+}
+
+function parseSeriesState(value: unknown): SeriesState {
+  if (!value || typeof value !== "object") return EMPTY_SERIES_STATE;
+  const state = value as Record<string, unknown>;
+  return {
+    central_conflict: stringField(state.central_conflict, 1000),
+    protagonist_want: stringField(state.protagonist_want, 500),
+    relationship_state: stringField(state.relationship_state, 1000),
+    open_hooks: stringList(state.open_hooks, 12, 500),
+    resolved_hooks: stringList(state.resolved_hooks, 12, 500),
+    promised_payoffs: stringList(state.promised_payoffs, 12, 500),
+    world_facts: stringList(state.world_facts, 16, 500),
+    character_changes: stringList(state.character_changes, 16, 500),
+    next_chapter_pressure: stringField(state.next_chapter_pressure, 1000),
+  };
+}
+
+function stringField(value: unknown, maxLength: number): string {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function stringList(
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().slice(0, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
 }

@@ -12,6 +12,7 @@ import {
   buildUserPrompt,
 } from "../_shared/story-prompts.ts";
 import { parseStructuredOutput } from "../_shared/story_text.ts";
+import { EMPTY_SERIES_STATE } from "../_shared/types.ts";
 import {
   deriveContentRating,
   validateGenerationRequest,
@@ -53,11 +54,15 @@ serve(async (req) => {
       identityLenses,
       tropeModules,
       spiceLevel,
+      storyMode,
       seed,
       characters,
       requestId,
       language,
     } = input;
+    const chapterRole = storyMode === "series"
+      ? "series_opening"
+      : "standalone";
 
     // Use service role client for credit operations
     const serviceClient = createClient(
@@ -139,6 +144,7 @@ serve(async (req) => {
         identity_lenses: identityLenses,
         trope_modules: tropeModules,
         spice_level: spiceLevel,
+        story_mode: storyMode,
         topic: seed,
         length_type: "short",
         status: "generating",
@@ -219,6 +225,8 @@ serve(async (req) => {
         identityLenses,
         tropeModules,
         spiceLevel,
+        storyMode,
+        chapterRole,
         language,
       });
       const userPrompt = buildUserPrompt({
@@ -226,6 +234,8 @@ serve(async (req) => {
         audienceMode,
         tropeModules,
         spiceLevel,
+        storyMode,
+        chapterRole,
         seed,
         characters,
         language,
@@ -251,6 +261,14 @@ serve(async (req) => {
           p_first_line: output.first_line || null,
           p_previously_summary: output.previously_summary || null,
           p_content_rating: contentRating,
+          p_chapter_title: output.chapter_title || "Chapter 1",
+          p_story_mode: storyMode,
+          p_chapter_role: chapterRole,
+          p_series_state: storyMode === "series"
+            ? output.series_state
+            : EMPTY_SERIES_STATE,
+          p_hook_type: storyMode === "series" ? output.hook_type : "none",
+          p_hook_text: storyMode === "series" ? output.hook_text || null : null,
         },
       );
       if (completionError || !chapter) {
@@ -264,6 +282,13 @@ serve(async (req) => {
           word_count: wordCount,
           status: "complete",
           primary_genre: primaryGenre,
+          story_mode: storyMode,
+          series_state: storyMode === "series"
+            ? output.series_state
+            : EMPTY_SERIES_STATE,
+          first_line: output.first_line,
+          previously_summary: output.previously_summary,
+          content_rating: contentRating,
         },
         chapter,
         balance: operation.balance,

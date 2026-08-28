@@ -6,19 +6,21 @@
  */
 
 import {
-  type AudienceMode,
   AUDIENCE_MODES,
+  type AudienceMode,
   type CharacterInput,
   GENRE_ALLOWED_SPICE,
   GENRE_ALLOWED_TROPES,
   GENRE_DEFAULT_SPICE,
   GENRE_MIGRATION_MAP,
-  type IdentityLens,
   IDENTITY_LENSES,
+  type IdentityLens,
   PRIMARY_GENRES,
   type PrimaryGenre,
-  type SpiceLevel,
   SPICE_LEVELS,
+  type SpiceLevel,
+  STORY_MODES,
+  type StoryMode,
   TROPE_MODULES,
   type TropeModule,
   type ValidatedGenerationParams,
@@ -39,7 +41,10 @@ export function validateGenerationRequest(
   let rawGenre: string;
   if (typeof body.primary_genre === "string" && body.primary_genre.trim()) {
     rawGenre = body.primary_genre.trim();
-  } else if (Array.isArray(body.genre) && typeof body.genre[0] === "string" && body.genre[0].trim()) {
+  } else if (
+    Array.isArray(body.genre) && typeof body.genre[0] === "string" &&
+    body.genre[0].trim()
+  ) {
     rawGenre = body.genre[0].trim();
   } else if (typeof body.genre === "string" && body.genre.trim()) {
     rawGenre = body.genre.trim();
@@ -48,6 +53,18 @@ export function validateGenerationRequest(
   }
 
   const primaryGenre = normalizeGenre(rawGenre);
+
+  // --- Story Mode ---
+  let storyMode: StoryMode = "standalone";
+  if (typeof body.story_mode === "string" && body.story_mode.trim()) {
+    const mode = body.story_mode.trim();
+    if (!STORY_MODES.has(mode)) {
+      return { error: "story_mode must be 'standalone' or 'series'" };
+    }
+    storyMode = mode as StoryMode;
+  } else if (body.is_series === true) {
+    storyMode = "series";
+  }
 
   // --- Audience Mode ---
   let audienceMode: AudienceMode = "adult";
@@ -189,6 +206,7 @@ export function validateGenerationRequest(
 
   return {
     primaryGenre,
+    storyMode,
     audienceMode,
     identityLenses,
     tropeModules,

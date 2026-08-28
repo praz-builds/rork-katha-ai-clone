@@ -4,8 +4,8 @@
 > `backend/supabase/functions/_shared/story-prompts.ts`.
 >
 > The TypeScript implementation is the runtime source of truth. This document is
-> the product and engineering contract for the VS Code agent that will implement
-> the new prompt architecture across Supabase, Expo, cover prompts, and tests.
+> the product and engineering contract for the prompt architecture across
+> Supabase, Expo, cover prompts, and tests.
 
 ## Product Goal
 
@@ -17,6 +17,7 @@ writer, not by a generic assistant. The prompt system must optimize for:
 - modular identity, spice, and trope layers
 - safe adult-content handling with account-level gating
 - Kids and Bedtime modes that cannot inherit adult behavior
+- standalone and series structures with different ending contracts
 - structured output that can be parsed and filtered downstream
 
 ## Key v5.1 Decisions
@@ -24,9 +25,9 @@ writer, not by a generic assistant. The prompt system must optimize for:
 - **15 primary genres (13 in UI).** LGBTQ+ is no longer a primary genre. It becomes an
   identity lens/toggle that can layer onto any adult genre. cozyFantasy and
   paranormalRomance exist in the DB constraint but are hidden from the UI.
-- **Kids is an audience mode, not an adult genre peer.** The UI may show Kids and
-  Bedtime as creation choices, but backend generation must treat them as locked
-  audience modes with separate rules.
+- **Kids is an audience mode, not an adult genre peer.** Backend generation uses
+  `adult | kids`; any future bedtime UX should map to kids-safe constraints
+  unless a separate backend mode is introduced.
 - **Spice is a genre-aware layer.** Use icon-driven UI and backend enum values:
   `sweet`, `steamy`, `explicit`. MVP should ship `sweet` + `steamy`; keep
   `explicit` behind a feature flag until legal/product review.
@@ -39,8 +40,12 @@ writer, not by a generic assistant. The prompt system must optimize for:
   traits, not living author names or instructions that could imitate a style.
 - **Prompt-only JSON is not enough.** Use API-level structured output/schema
   enforcement where supported, with strict validation fallback.
+- **Series is a story mode, not a genre.** Initial generation can be a complete
+  standalone story or Chapter 1 of a series. Series chapters persist state,
+  hooks, and chapter roles so continuations can build toward a finale.
 - **Every prompt change needs evals.** Genre quality, banned patterns, safety,
-  schema validity, and continuation behavior must be tested before deployment.
+  schema validity, series state, and continuation behavior must be tested before
+  deployment.
 
 ## Runtime Architecture
 
@@ -48,14 +53,15 @@ The runtime prompt builder should assemble layers in this order:
 
 1. Base craft and safety rules
 2. Story engine rules
-3. Primary genre module
-4. Audience mode module (`adult`, `kidsDay`, `kidsBedtime`)
-5. Identity lens module (`queer`, optional)
-6. Trope module (`werewolf`, `vampire`, `enemiesToLovers`, etc., optional)
-7. Spice module (`sweet`, `steamy`, `explicit`)
-8. Continuation/finale module, when applicable
-9. Language module
-10. Output schema reminder
+3. Story mode module (`standalone`, `series`)
+4. Primary genre module
+5. Audience mode module (`adult`, `kids`)
+6. Identity lens module (`queer`, optional)
+7. Trope module (`werewolf`, `vampire`, `enemiesToLovers`, etc., optional)
+8. Spice module (`sweet`, `steamy`, `explicit`)
+9. Continuation/finale module, when applicable
+10. Language module
+11. Output schema reminder
 
 Recommended builder signatures:
 
@@ -77,23 +83,27 @@ type PrimaryGenre =
   | "comedy"
   | "poetry";
 
-type AudienceMode = "adult" | "kidsDay" | "kidsBedtime";
+type AudienceMode = "adult" | "kids";
+type StoryMode = "standalone" | "series";
+type ChapterRole = "standalone" | "series_opening" | "mid_series" | "finale";
 type IdentityLens = "queer";
 type SpiceLevel = "sweet" | "steamy" | "explicit";
 type TropeModule =
   | "werewolf"
   | "vampire"
   | "enemiesToLovers"
-  | "foundFamily"
   | "secondChance"
   | "forcedProximity"
   | "smallTown"
-  | "chosenOne"
-  | "heist"
-  | "lockedRoom";
+  | "fatedMates"
+  | "forbiddenLove"
+  | "lockedRoom"
+  | "secretIdentity";
 
 buildStorySystemPrompt({
   primaryGenre,
+  storyMode,
+  chapterRole,
   audienceMode,
   identityLenses,
   tropeModules,
@@ -109,6 +119,7 @@ buildContinuationSystemPrompt({
   spiceLevel,
   language,
   mode, // "chapter" | "finale"
+  seriesState,
 });
 ```
 
@@ -136,7 +147,7 @@ These are the recommended 15 creation cards for the app:
 
 Separate UI controls:
 
-- **Kids mode:** `kidsDay` or `kidsBedtime`; force `spiceLevel: "sweet"`.
+- **Kids mode:** `kids`; force `spiceLevel: "sweet"`.
 - **Queer lens:** optional toggle; maps to `identityLenses: ["queer"]`.
 - **Spice selector:** icon-driven, genre-specific availability.
 - **Trope chips:** genre-specific suggestions such as Vampire, Werewolf/Shifter,
@@ -244,7 +255,6 @@ Word count is a hard rule, not a suggestion.
 | Standalone (adult) | 500 | 1,500 | Prompt + server validation |
 | Standalone (kids) | 500 | 1,200 | Prompt + server validation |
 | Series chapter | 600 | 900 | Prompt + server validation |
-| Kids bedtime | 400 | 800 | Prompt + server validation |
 
 If the model returns fewer words than the minimum, the server should flag the
 response as degraded and warn the user. Stories below 300 words should be
@@ -666,7 +676,22 @@ Standalone:
   "themes": ["lowercase tag"],
   "first_line": "string",
   "previously_summary": "string",
+  "series_state": {
+    "central_conflict": "",
+    "protagonist_want": "",
+    "relationship_state": "",
+    "open_hooks": [],
+    "resolved_hooks": [],
+    "promised_payoffs": [],
+    "world_facts": [],
+    "character_changes": [],
+    "next_chapter_pressure": ""
+  },
+  "hook_type": "none",
+  "hook_text": "",
   "primary_genre": "romance",
+  "story_mode": "standalone",
+  "chapter_role": "standalone",
   "audience_mode": "adult",
   "identity_lenses": ["queer"],
   "trope_modules": ["vampire"],
@@ -685,7 +710,22 @@ Continuation:
   "themes": ["lowercase tag"],
   "first_line": "string",
   "previously_summary": "string",
+  "series_state": {
+    "central_conflict": "string",
+    "protagonist_want": "string",
+    "relationship_state": "string",
+    "open_hooks": ["string"],
+    "resolved_hooks": ["string"],
+    "promised_payoffs": ["string"],
+    "world_facts": ["string"],
+    "character_changes": ["string"],
+    "next_chapter_pressure": "string"
+  },
+  "hook_type": "none|revelation|reversal|decision|arrival|betrayal|danger|unanswered_question|emotional_rupture",
+  "hook_text": "string",
   "primary_genre": "romance",
+  "story_mode": "series",
+  "chapter_role": "series_opening|mid_series|finale",
   "audience_mode": "adult",
   "identity_lenses": ["queer"],
   "trope_modules": ["vampire"],
@@ -700,6 +740,10 @@ Field rules:
 - `themes`: 2-4 lowercase tags, 1-3 words each.
 - `previously_summary`: 2-4 sentences summarizing this chapter for future
   continuation context.
+- `series_state`: empty strings/arrays for standalone; complete continuity state
+  for every series chapter.
+- `hook_type` and `hook_text`: `none`/empty for standalone and finale; required
+  for series opening and mid-series chapters.
 - `content_rating`: derived server-side too; never trust model output alone.
 
 ## Backend Contract
@@ -708,6 +752,8 @@ Required request fields:
 
 - `request_id`: client-stable idempotency key
 - `primary_genre`: single supported genre
+- `story_mode`: optional, `standalone | series`; legacy `is_series: true` maps
+  to `series`
 - `seed`: 40-character minimum
 - `characters`: optional (pre-filled placeholder in UI)
 - `language`: optional, normalized supported language

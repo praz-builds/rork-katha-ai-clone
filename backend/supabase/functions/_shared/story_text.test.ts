@@ -1,6 +1,4 @@
-import {
-  assertEquals,
-} from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   parseGeneratedStoryText,
   parseStructuredOutput,
@@ -10,18 +8,40 @@ Deno.test("parseStructuredOutput: valid JSON parses correctly", () => {
   const json = JSON.stringify({
     title: "The Storm",
     chapter_title: "Chapter 1",
-    chapter_body: "The rain began at noon.\n\nBy three, the streets were rivers.",
+    chapter_body:
+      "The rain began at noon.\n\nBy three, the streets were rivers.",
     word_count: 12,
     themes: ["weather", "change"],
     first_line: "The rain began at noon.",
     previously_summary: "A storm approaches the coastal town.",
+    series_state: {
+      central_conflict: "The town must survive the unnatural storm.",
+      protagonist_want: "Nia wants to reach the lighthouse.",
+      relationship_state: "Nia and Omar are wary allies.",
+      open_hooks: ["Who lit the lighthouse before dawn?"],
+      resolved_hooks: [],
+      promised_payoffs: ["The lighthouse signal will be explained."],
+      world_facts: ["The tide moves inland at noon."],
+      character_changes: ["Nia chooses to leave shelter."],
+      next_chapter_pressure: "The bridge disappears under water.",
+    },
+    hook_type: "revelation",
+    hook_text: "The lighthouse light turns red.",
   });
   const result = parseStructuredOutput(json, "Fallback");
   assertEquals(result.title, "The Storm");
   assertEquals(result.chapter_title, "Chapter 1");
-  assertEquals(result.chapter_body, "The rain began at noon.\n\nBy three, the streets were rivers.");
+  assertEquals(
+    result.chapter_body,
+    "The rain began at noon.\n\nBy three, the streets were rivers.",
+  );
   assertEquals(result.themes, ["weather", "change"]);
   assertEquals(result.first_line, "The rain began at noon.");
+  assertEquals(result.series_state.open_hooks, [
+    "Who lit the lighthouse before dawn?",
+  ]);
+  assertEquals(result.hook_type, "revelation");
+  assertEquals(result.hook_text, "The lighthouse light turns red.");
 });
 
 Deno.test("parseStructuredOutput: JSON in code fences parses", () => {
@@ -40,10 +60,14 @@ Deno.test("parseStructuredOutput: JSON in code fences parses", () => {
 });
 
 Deno.test("parseStructuredOutput: plain text falls back", () => {
-  const text = "My Great Story\n\nOnce upon a time, there was a castle.\n\nThe end.";
+  const text =
+    "My Great Story\n\nOnce upon a time, there was a castle.\n\nThe end.";
   const result = parseStructuredOutput(text, "Fallback Title");
   assertEquals(result.title, "My Great Story");
-  assertEquals(result.chapter_body, "Once upon a time, there was a castle.\n\nThe end.");
+  assertEquals(
+    result.chapter_body,
+    "Once upon a time, there was a castle.\n\nThe end.",
+  );
   assertEquals(result.chapter_title, "Chapter 1");
 });
 

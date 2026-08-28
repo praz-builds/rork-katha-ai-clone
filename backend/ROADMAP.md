@@ -12,7 +12,7 @@
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
-All bug fixes applied, 8 migrations (00001-00008) pushed, 10 edge functions deployed and ACTIVE.
+All bug fixes applied, 9 migrations (00001-00009) prepared, 10 edge functions deployed and ACTIVE.
 
 ### Remaining Verification
 
@@ -30,6 +30,7 @@ All bug fixes applied, 8 migrations (00001-00008) pushed, 10 edge functions depl
 - [x] Project ID filled in `supabase/config.toml`
 - [x] Supabase CLI installed (v2.114.0), project linked
 - [x] Migrations 00001-00008 applied
+- [ ] Apply migration 00009 for production series state and hook metadata
 - [x] 10 edge functions deployed and ACTIVE
 - [x] `generate-story` double-deduct fix
 - [x] `_shared/credits.ts` replaced with atomic RPCs (`deduct_credit`, `grant_credit`) using `FOR UPDATE` locking

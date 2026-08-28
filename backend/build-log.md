@@ -7,6 +7,26 @@
 
 ---
 
+## 2026-08-28 — Production series state for generation
+
+**Session:** Implemented end-to-end series-mode generation contracts across prompt spec, Supabase schema/RPCs, Edge Functions, parser tests, and Expo API typing.
+
+### Changes
+
+- Added migration `00009_series_state_generation.sql` with `stories.story_mode`, `stories.series_state`, and chapter-level `chapter_role`, `first_line`, `previously_summary`, `hook_type`, and `hook_text`.
+- Extended `complete_story_generation` and `complete_continuation_generation` RPCs so generated chapter metadata and series continuity state persist atomically with existing credit operation locks.
+- Updated `generate-story` to honor `story_mode` / legacy `is_series`, pass story/chapter role into prompts, and persist opening-chapter hooks for series.
+- Updated `continue-story` to pass stored `series_state` into continuation prompts, include Chapter 1 context for finales, auto-mark Chapter 7 as finale, and persist updated hooks/state.
+- Extended structured output parsing, validation, prompt tests, and Expo response mapping for series metadata.
+- Updated `backend/prompts/story-generator.md` and `backend/ROADMAP.md` to reflect the implemented runtime contract.
+
+### Dependency Notes
+
+- RunPod remains an audio-only dependency through `generate-audio` / `audio-status`; text generation, story-mode prompts, and Supabase series state do not require RunPod changes.
+- Production deployment still needs migration `00009` applied and Edge Functions redeployed.
+
+---
+
 ## 2026-08-28 — Create Studio: Progressive Editor, generating overlay, series flow
 
 **Session:** Full Create Studio UX overhaul — generation loading overlay, series chapter flow, cover preview, publish review, and 12 polish fixes.

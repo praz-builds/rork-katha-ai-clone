@@ -16,10 +16,13 @@
 
 import type {
   AudienceMode,
+  ChapterRole,
   CharacterInput,
   IdentityLens,
   PrimaryGenre,
+  SeriesState,
   SpiceLevel,
+  StoryMode,
   TropeModule,
 } from "./types.ts";
 import { GENRE_MIGRATION_MAP } from "./types.ts";
@@ -29,37 +32,105 @@ import { GENRE_MIGRATION_MAP } from "./types.ts";
 // ---------------------------------------------------------------------------
 
 const BANNED_WORDS = [
-  "delve", "tapestry", "testament", "pivotal", "underscore", "landscape",
-  "foster", "beacon", "undeniably", "multifaceted", "nuanced", "intricate",
-  "commendable", "meticulous", "endeavor", "realm", "paradigm", "synergy",
-  "ecosystem", "framework", "robust", "streamline", "leverage", "harness",
-  "utilize", "embark", "unravel", "comprehensive", "holistic", "unprecedented",
-  "transformative", "groundbreaking", "innovative", "enhance", "crucial",
-  "furthermore", "moreover", "consequently", "bustling", "labyrinth",
-  "crucible", "ministrations",
+  "delve",
+  "tapestry",
+  "testament",
+  "pivotal",
+  "underscore",
+  "landscape",
+  "foster",
+  "beacon",
+  "undeniably",
+  "multifaceted",
+  "nuanced",
+  "intricate",
+  "commendable",
+  "meticulous",
+  "endeavor",
+  "realm",
+  "paradigm",
+  "synergy",
+  "ecosystem",
+  "framework",
+  "robust",
+  "streamline",
+  "leverage",
+  "harness",
+  "utilize",
+  "embark",
+  "unravel",
+  "comprehensive",
+  "holistic",
+  "unprecedented",
+  "transformative",
+  "groundbreaking",
+  "innovative",
+  "enhance",
+  "crucial",
+  "furthermore",
+  "moreover",
+  "consequently",
+  "bustling",
+  "labyrinth",
+  "crucible",
+  "ministrations",
 ] as const;
 
 const BANNED_PHRASES = [
-  "it's not X — it's Y", "it is important to note", "it is worth mentioning",
-  "in today's world", "at the end of the day", "one of the most",
-  "when it comes to", "at its core", "no discussion would be complete without",
-  "in this story", "overall", "in summary", "in conclusion",
-  "little did they know", "stands as a testament", "plays a vital role",
-  "rich cultural heritage", "enduring legacy", "a shiver ran down",
-  "a wave of emotion washed over", "the weight of",
-  "time seemed to stand still", "their eyes locked", "heart pounding in",
-  "heart hammered against", "breath caught in",
-  "let out a breath .* didn't know .* was holding", "couldn't help but",
-  "voice barely above a whisper", "etched with", "gaze softened",
-  "sent a chill through", "furrowed brow", "jaw tightened",
-  "steeled themselves", "squared their shoulders", "eyes widened",
-  "eyes sparkling", "knot in .* stomach", "pit in .* stomach",
+  "it's not X — it's Y",
+  "it is important to note",
+  "it is worth mentioning",
+  "in today's world",
+  "at the end of the day",
+  "one of the most",
+  "when it comes to",
+  "at its core",
+  "no discussion would be complete without",
+  "in this story",
+  "overall",
+  "in summary",
+  "in conclusion",
+  "little did they know",
+  "stands as a testament",
+  "plays a vital role",
+  "rich cultural heritage",
+  "enduring legacy",
+  "a shiver ran down",
+  "a wave of emotion washed over",
+  "the weight of",
+  "time seemed to stand still",
+  "their eyes locked",
+  "heart pounding in",
+  "heart hammered against",
+  "breath caught in",
+  "let out a breath .* didn't know .* was holding",
+  "couldn't help but",
+  "voice barely above a whisper",
+  "etched with",
+  "gaze softened",
+  "sent a chill through",
+  "furrowed brow",
+  "jaw tightened",
+  "steeled themselves",
+  "squared their shoulders",
+  "eyes widened",
+  "eyes sparkling",
+  "knot in .* stomach",
+  "pit in .* stomach",
   "air was thick with",
 ] as const;
 
 const BANNED_NAMES = [
-  "Elara", "Seraphina", "Lysander", "Thorne", "Elowen", "Rowan", "Zephyr",
-  "Isolde", "Caelum", "Evren",
+  "Elara",
+  "Seraphina",
+  "Lysander",
+  "Thorne",
+  "Elowen",
+  "Rowan",
+  "Zephyr",
+  "Isolde",
+  "Caelum",
+  "Evren",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -96,7 +167,9 @@ Never use these patterns:
 ${BANNED_PHRASES.map((p) => `- "${p}"`).join("\n")}
 
 ### Banned Default Names
-Never use these AI-default names: ${BANNED_NAMES.join(", ")}. Use the character names the user provides. If no names are provided, choose culturally specific, uncommon names that fit the story's setting.
+Never use these AI-default names: ${
+    BANNED_NAMES.join(", ")
+  }. Use the character names the user provides. If no names are provided, choose culturally specific, uncommon names that fit the story's setting.
 
 ### Show, Don't Tell
 - NEVER name an emotion and then describe it. Wrong: "She felt sad. Tears streamed down her face." Right: "She pressed her thumb into the edge of the table until it left a mark."
@@ -174,6 +247,103 @@ Do NOT expose this structure in the text. No character should announce their wan
 - **Final 30% (Climax + Aftermath):** The moment of highest tension or choice. The character confronts the central problem. Then a brief aftermath, not a full resolution but a landing. The reader should feel the story is finished, even if questions remain.
 
 The climax is the scene the entire story builds toward. It is not optional. Without it, the story feels like it stopped rather than ended.`;
+}
+
+// ---------------------------------------------------------------------------
+// Layer 2b: Story mode and series state
+// ---------------------------------------------------------------------------
+
+function buildStoryModeRules(
+  storyMode: StoryMode = "standalone",
+  chapterRole: ChapterRole = storyMode === "series"
+    ? "series_opening"
+    : "standalone",
+  seriesState?: SeriesState,
+): string {
+  if (storyMode === "standalone" || chapterRole === "standalone") {
+    return `
+
+## Standalone Story Contract
+
+This is a complete standalone story. It must include setup, escalation, climax, and landing in this single response.
+
+- Build toward one decisive climax.
+- Resolve the main story question enough that the reader feels the story is complete.
+- Loose emotional texture is fine, but the central conflict cannot be deferred to another chapter.
+- Use "hook_type": "none" unless the ending has a soft emotional aftertaste rather than a continuation hook.
+- Return an empty but valid "series_state" object.`;
+  }
+
+  const state = seriesState ? formatSeriesState(seriesState) : "";
+  const stateSection = state
+    ? `
+
+Current series state:
+${state}`
+    : "";
+
+  if (chapterRole === "series_opening") {
+    return `
+
+## Series Opening Contract
+
+This is Chapter 1 of a series, not a complete standalone story.
+
+- Establish the protagonist, world, central conflict, primary want, and first complication.
+- Do NOT resolve the central conflict.
+- Do NOT include the final climax. Chapter 1 should feel satisfying as an episode but unfinished as a larger story.
+- End with a strong hook that grows from the chapter's conflict: revelation, reversal, decision, arrival, betrayal, danger, unanswered_question, or emotional_rupture.
+- The hook must not feel pasted onto the final paragraph. It should be the consequence of what happened in the chapter.
+- Return a complete "series_state" object that future chapters can rely on. Include central_conflict, protagonist_want, relationship_state, open_hooks, promised_payoffs, world_facts, character_changes, and next_chapter_pressure.
+- "resolved_hooks" should be empty unless the chapter resolves a smaller opening question.`;
+  }
+
+  if (chapterRole === "finale") {
+    return `
+
+## Series Finale Contract
+
+This is the final chapter of the series.
+
+- Resolve the central conflict in a real climax.
+- Pay off the most important open hooks and promised payoffs from series_state.
+- Call back to at least one specific detail from Chapter 1 or the earliest available context.
+- Land every major character arc.
+- Do not add a new cliffhanger or major unresolved threat.
+- Return "hook_type": "none" and update series_state with resolved_hooks and final character_changes.${stateSection}`;
+  }
+
+  return `
+
+## Mid-Series Chapter Contract
+
+This is a middle chapter of an ongoing series.
+
+- Start from the latest pressure in series_state or the previous chapter.
+- Advance at least one plot thread with an irreversible change.
+- Resolve at most one smaller hook, but do NOT resolve the central conflict.
+- Add or deepen at least one open hook.
+- Shift a relationship, power dynamic, secret, or plan in a way later chapters must honor.
+- End with a concrete hook that follows from the chapter conflict: revelation, reversal, decision, arrival, betrayal, danger, unanswered_question, or emotional_rupture.
+- Update series_state so future chapters know what changed, what remains open, and what pressure should drive the next chapter.${stateSection}`;
+}
+
+function formatSeriesState(state: SeriesState): string {
+  return JSON.stringify(
+    {
+      central_conflict: state.central_conflict,
+      protagonist_want: state.protagonist_want,
+      relationship_state: state.relationship_state,
+      open_hooks: state.open_hooks,
+      resolved_hooks: state.resolved_hooks,
+      promised_payoffs: state.promised_payoffs,
+      world_facts: state.world_facts,
+      character_changes: state.character_changes,
+      next_chapter_pressure: state.next_chapter_pressure,
+    },
+    null,
+    2,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -466,7 +636,7 @@ Sensuality is on the page. Write attraction through physical sensation, charged 
 
 ## Content Heat: Explicit
 
-Full romantic and sexual content is permitted. Write intimate scenes with the same craft and specificity as any other scene. Use anatomically accurate language when appropriate. Consent must be clear or clearly problematic (in dark romance, with awareness). Even explicit scenes need emotional stakes, not just physical choreography.`;
+Full romantic and sexual content is permitted. Write intimate scenes with the same craft and specificity as any other scene. Use anatomically accurate language when appropriate. Consent must be explicit, ongoing, and unambiguous. Even explicit scenes need emotional stakes, not just physical choreography.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -474,9 +644,21 @@ Full romantic and sexual content is permitted. Write intimate scenes with the sa
 // ---------------------------------------------------------------------------
 
 const SUPPORTED_LANGUAGES = new Set([
-  "English", "Spanish", "Portuguese", "Hindi", "French", "German", "Italian",
-  "Japanese", "Korean", "Chinese", "Arabic", "Russian", "Turkish",
-  "Indonesian", "Thai",
+  "English",
+  "Spanish",
+  "Portuguese",
+  "Hindi",
+  "French",
+  "German",
+  "Italian",
+  "Japanese",
+  "Korean",
+  "Chinese",
+  "Arabic",
+  "Russian",
+  "Turkish",
+  "Indonesian",
+  "Thai",
 ]);
 
 function normalizeLanguage(language: string | undefined): string | undefined {
@@ -514,7 +696,20 @@ Schema:
   "word_count": number,
   "themes": ["string (3-5 thematic tags)"],
   "first_line": "string (the opening line of the story)",
-  "previously_summary": "string (a 2-sentence summary for continuation context)"
+  "previously_summary": "string (a 2-sentence summary for continuation context)",
+  "series_state": {
+    "central_conflict": "string",
+    "protagonist_want": "string",
+    "relationship_state": "string",
+    "open_hooks": ["string"],
+    "resolved_hooks": ["string"],
+    "promised_payoffs": ["string"],
+    "world_facts": ["string"],
+    "character_changes": ["string"],
+    "next_chapter_pressure": "string"
+  },
+  "hook_type": "none | revelation | reversal | decision | arrival | betrayal | danger | unanswered_question | emotional_rupture",
+  "hook_text": "string, empty for standalone/finale unless there is a soft non-series resonance"
 }`;
 }
 
@@ -547,6 +742,9 @@ export const MAX_SERIES_CHAPTERS = 7;
 
 interface SystemPromptParams {
   primaryGenre: string;
+  storyMode?: StoryMode;
+  chapterRole?: ChapterRole;
+  seriesState?: SeriesState;
   audienceMode?: AudienceMode;
   identityLenses?: IdentityLens[];
   tropeModules?: TropeModule[];
@@ -579,11 +777,18 @@ export function buildStorySystemPrompt(
   return [
     buildBaseRules(),
     buildStoryEngine(),
+    buildStoryModeRules(
+      params.storyMode,
+      params.chapterRole,
+      params.seriesState,
+    ),
     buildGenreModule(safeGenre),
     buildAudienceModeRules(params.audienceMode),
     buildIdentityLensRules(params.identityLenses),
     buildTropeRules(params.tropeModules),
-    buildSpiceRules(params.audienceMode === "kids" ? "sweet" : params.spiceLevel),
+    buildSpiceRules(
+      params.audienceMode === "kids" ? "sweet" : params.spiceLevel,
+    ),
     buildLanguageSection(params.language),
     buildOutputSchema(),
   ].join("");
@@ -592,9 +797,11 @@ export function buildStorySystemPrompt(
 /**
  * Build a system prompt for chapter continuation.
  */
-export function buildContinuationSystemPrompt(params: SystemPromptParams & {
-  mode: "chapter" | "finale";
-}): string;
+export function buildContinuationSystemPrompt(
+  params: SystemPromptParams & {
+    mode: "chapter" | "finale";
+  },
+): string;
 /** @deprecated Use the object-param overload. */
 export function buildContinuationSystemPrompt(
   genre: string,
@@ -616,7 +823,14 @@ export function buildContinuationSystemPrompt(
 
   let storyPrompt: string;
   if (typeof paramsOrGenre === "string") {
-    storyPrompt = buildStorySystemPrompt(paramsOrGenre, legacyLanguage);
+    storyPrompt = buildStorySystemPrompt({
+      primaryGenre: paramsOrGenre,
+      language: legacyLanguage,
+      storyMode: "series",
+      chapterRole: (legacyMode ?? "chapter") === "finale"
+        ? "finale"
+        : "mid_series",
+    });
   } else {
     storyPrompt = buildStorySystemPrompt({
       primaryGenre: params.primaryGenre,
@@ -625,6 +839,9 @@ export function buildContinuationSystemPrompt(
       tropeModules: params.tropeModules,
       spiceLevel: params.spiceLevel,
       language: params.language,
+      storyMode: "series",
+      chapterRole: params.mode === "finale" ? "finale" : "mid_series",
+      seriesState: params.seriesState,
     });
   }
 
@@ -677,6 +894,9 @@ This chapter is part of an ongoing series. The story is NOT ending yet:
  */
 export function buildUserPrompt(params: {
   primaryGenre: string;
+  storyMode?: StoryMode;
+  chapterRole?: ChapterRole;
+  seriesState?: SeriesState;
   audienceMode?: AudienceMode;
   tropeModules?: TropeModule[];
   spiceLevel?: SpiceLevel;
@@ -695,6 +915,9 @@ export function buildUserPrompt(params: {
   primaryGenre?: string;
   genre?: string[];
   audienceMode?: string;
+  storyMode?: string;
+  chapterRole?: string;
+  seriesState?: SeriesState;
   tropeModules?: string[];
   spiceLevel?: string;
   seed?: string;
@@ -713,13 +936,25 @@ export function buildUserPrompt(params: {
 
   const wordRange = params.audienceMode === "kids"
     ? "500-1200"
+    : params.storyMode === "series"
+    ? "600-900"
     : "500-1500";
 
-  parts.push(`Write a short story (${wordRange} words).`);
+  parts.push(
+    params.storyMode === "series"
+      ? `Write the requested series chapter (${wordRange} words).`
+      : `Write a short story (${wordRange} words).`,
+  );
   parts.push(`Genre: ${genreLabel}`);
 
+  if (params.storyMode === "series") {
+    parts.push(`Series role: ${params.chapterRole ?? "series_opening"}`);
+  }
+
   if (params.audienceMode === "kids") {
-    parts.push("Audience: children ages 4-10. Keep content safe and age-appropriate.");
+    parts.push(
+      "Audience: children ages 4-10. Keep content safe and age-appropriate.",
+    );
   }
 
   if (params.spiceLevel && params.spiceLevel !== "sweet") {
@@ -732,6 +967,10 @@ export function buildUserPrompt(params: {
 
   if (seed) {
     parts.push(`Story premise: ${seed}`);
+  }
+
+  if (params.seriesState) {
+    parts.push(`Series state:\n${formatSeriesState(params.seriesState)}`);
   }
 
   if (params.characters?.length) {

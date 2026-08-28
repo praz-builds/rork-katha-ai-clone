@@ -73,6 +73,53 @@ export const AUDIENCE_MODES: ReadonlySet<string> = new Set<AudienceMode>([
 ]);
 
 // ---------------------------------------------------------------------------
+// Story mode and chapter role
+// ---------------------------------------------------------------------------
+
+export type StoryMode = "standalone" | "series";
+
+export const STORY_MODES: ReadonlySet<string> = new Set<StoryMode>([
+  "standalone",
+  "series",
+]);
+
+export type ChapterRole =
+  | "standalone"
+  | "series_opening"
+  | "mid_series"
+  | "finale";
+
+export const CHAPTER_ROLES: ReadonlySet<string> = new Set<ChapterRole>([
+  "standalone",
+  "series_opening",
+  "mid_series",
+  "finale",
+]);
+
+export type HookType =
+  | "none"
+  | "revelation"
+  | "reversal"
+  | "decision"
+  | "arrival"
+  | "betrayal"
+  | "danger"
+  | "unanswered_question"
+  | "emotional_rupture";
+
+export const HOOK_TYPES: ReadonlySet<string> = new Set<HookType>([
+  "none",
+  "revelation",
+  "reversal",
+  "decision",
+  "arrival",
+  "betrayal",
+  "danger",
+  "unanswered_question",
+  "emotional_rupture",
+]);
+
+// ---------------------------------------------------------------------------
 // Identity Lens
 // ---------------------------------------------------------------------------
 
@@ -267,10 +314,14 @@ export interface StoryGenerationOutput {
   themes: string[];
   first_line: string;
   previously_summary: string;
+  series_state: SeriesState;
+  hook_type: HookType;
+  hook_text: string;
 }
 
 export interface ValidatedGenerationParams {
   primaryGenre: PrimaryGenre;
+  storyMode: StoryMode;
   audienceMode: AudienceMode;
   identityLenses: IdentityLens[];
   tropeModules: TropeModule[];
@@ -280,3 +331,27 @@ export interface ValidatedGenerationParams {
   requestId: string;
   language?: string;
 }
+
+export interface SeriesState {
+  central_conflict: string;
+  protagonist_want: string;
+  relationship_state: string;
+  open_hooks: string[];
+  resolved_hooks: string[];
+  promised_payoffs: string[];
+  world_facts: string[];
+  character_changes: string[];
+  next_chapter_pressure: string;
+}
+
+export const EMPTY_SERIES_STATE: SeriesState = {
+  central_conflict: "",
+  protagonist_want: "",
+  relationship_state: "",
+  open_hooks: [],
+  resolved_hooks: [],
+  promised_payoffs: [],
+  world_facts: [],
+  character_changes: [],
+  next_chapter_pressure: "",
+};
