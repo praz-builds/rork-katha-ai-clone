@@ -97,7 +97,7 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/` (7 migrations: 00001-00007).
+Schema is in `backend/supabase/migrations/` (8 migrations: 00001-00008).
 
 ### Key Tables
 
@@ -402,7 +402,7 @@ Anti-gaming: self-read guard, min read time, account age throttle, velocity anom
 3-tab layout: **Home** | **Create** (+, raised) | **Library**. Profile is a top-right avatar overlay, not a tab.
 
 - `TabKey`: `"home" | "create" | "library"`. `Screen` includes `{ name: "profile" }`.
-- **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): standalone 3-step flow (setup -> editor -> publish). Tab bar remains visible.
+- **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): Progressive Editor flow (setup -> generating -> editor -> cover preview -> publish review -> publishing). Tab bar remains visible. Series mode adds chapter tabs with `+` tab in editor. Standalone stories skip chapter headings.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
 - **Library**: 4 segments -- Saved, History, My Stories, Comments.
 

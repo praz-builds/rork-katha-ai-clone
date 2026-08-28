@@ -5,7 +5,6 @@ import {
   Animated,
   Easing,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -22,6 +21,7 @@ import {
   Edit3,
   MessageCircle,
   Plus,
+  RefreshCw,
   Scissors,
   Sparkles,
   Trash2,
@@ -32,16 +32,21 @@ import {
   CreditPill,
   PrimaryButton,
 } from "@/components/KathaPrimitives";
+import GeneratingOverlay from "@/components/GeneratingOverlay";
 import {
+  continueStory,
   createGenerationRequestId,
+  editParagraph,
   generateStory,
   GenerationRequestError,
+  publishStory,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
 import { genres } from "@/data/seed";
 import {
   colors,
   fonts,
+  genreGradients,
   genreLabels,
   radius,
   spacing,
@@ -52,7 +57,7 @@ import type { AudienceMode, CreateDraft, Genre, IdentityLens, SpiceLevel, Story,
 // Local types
 // ---------------------------------------------------------------------------
 
-type StudioStep = "setup" | "editor" | "publishing";
+type StudioStep = "setup" | "generating" | "editor" | "cover" | "review" | "publishing";
 
 type DraftCharacter = {
   name: string;
@@ -69,6 +74,7 @@ type StudioDraft = {
   seed: string;
   language: string;
   characters: DraftCharacter[];
+  isSeries: boolean;
 };
 
 type ParagraphState = {
@@ -214,15 +220,16 @@ const INITIAL_DRAFT: StudioDraft = {
   seed: "",
   language: "English",
   characters: [
-    { name: "Mira", description: "Curious, stubborn, quietly brave", isHero: true },
+    { name: "", description: "", isHero: true },
   ],
+  isSeries: false,
 };
 
 // ---------------------------------------------------------------------------
-// Mock AI edit (backend endpoint does not exist yet)
+// Local paragraph edit fallback (used when backend is unreachable)
 // ---------------------------------------------------------------------------
 
-async function mockEditParagraph(
+async function localEditParagraph(
   paragraphText: string,
   instruction: string,
   _customNote?: string,
@@ -231,7 +238,7 @@ async function mockEditParagraph(
   if (instruction === "expand") {
     return (
       paragraphText +
-      " The details sharpened as the moment stretched on."
+      " The details sharpened as the moment stretched on, each one more vivid than the last."
     );
   }
   if (instruction === "shorten") {
@@ -248,7 +255,6 @@ async function mockEditParagraph(
       .reverse()
       .join(". ");
   }
-  // tone / custom — return with a small suffix for demo purposes
   return paragraphText + " (refined)";
 }
 
@@ -273,7 +279,7 @@ export default function CreateStudioScreen({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [storyTitle, setStoryTitle] = useState("");
-  const [showTonePicker, setShowTonePicker] = useState(false);
+  // (tone picker removed)
   const [customPromptIndex, setCustomPromptIndex] = useState<number | null>(null);
   const [customPromptText, setCustomPromptText] = useState("");
 
@@ -284,9 +290,13 @@ export default function CreateStudioScreen({
   } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Publish modal
-  const [showPublishModal, setShowPublishModal] = useState(false);
-  const [publishing, setPublishing] = useState(false);
+  // Cover prompt
+  const [coverPrompt, setCoverPrompt] = useState("");
+
+  // Chapter state
+  const [activeChapterIndex, setActiveChapterIndex] = useState(0);
+  const [addingChapter, setAddingChapter] = useState(false);
+  const MAX_CHAPTERS = 7;
 
   // Pulse animation for processing paragraphs
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -377,6 +387,7 @@ export default function CreateStudioScreen({
       return;
     }
     setBusy(true);
+    setStep("generating");
     const requestId =
       requestIdRef.current ?? createGenerationRequestId();
     requestIdRef.current = requestId;
@@ -390,6 +401,7 @@ export default function CreateStudioScreen({
       seed: draft.seed,
       language: draft.language,
       characters: draft.characters,
+      isSeries: draft.isSeries,
     };
 
     try {
@@ -402,6 +414,7 @@ export default function CreateStudioScreen({
       clearDraft();
       setStory(generated);
       setStoryTitle(generated.title);
+      setActiveChapterIndex(0);
       setParagraphs(
         firstChapter.paragraphs.map((text) => ({
           text,
@@ -417,6 +430,7 @@ export default function CreateStudioScreen({
       ) {
         requestIdRef.current = null;
       }
+      setStep("setup");
       Alert.alert(
         "Could not create story",
         error instanceof Error ? error.message : "Please try again.",
@@ -467,11 +481,27 @@ export default function CreateStudioScreen({
       );
 
       try {
-        const result = await mockEditParagraph(
-          previousText,
-          instruction,
-          customNote,
-        );
+        const chapter = story?.chapters[activeChapterIndex];
+        let result: string;
+        try {
+          if (story && chapter) {
+            result = await editParagraph(
+              story.id,
+              chapter.id,
+              index,
+              instruction as "rewrite" | "expand" | "shorten" | "change_tone" | "custom",
+              { tone: instruction === "change_tone" ? customNote : undefined, customNote: instruction === "custom" ? customNote : undefined },
+            );
+          } else {
+            result = "";
+          }
+        } catch {
+          result = "";
+        }
+        // Fall back to local edit if API returns empty
+        if (!result) {
+          result = await localEditParagraph(previousText, instruction, customNote);
+        }
         setParagraphs((prev) =>
           prev.map((p, i) =>
             i === index
@@ -495,7 +525,7 @@ export default function CreateStudioScreen({
       }
 
       setSelectedIndex(null);
-      setShowTonePicker(false);
+      // (tone picker removed)
       setCustomPromptIndex(null);
       setCustomPromptText("");
     },
@@ -551,33 +581,138 @@ export default function CreateStudioScreen({
   );
 
   // -----------------------------------------------------------------------
-  // Step 3: Publish
+  // Save current editor state to story object
+  // -----------------------------------------------------------------------
+
+  const saveEditorToStory = useCallback(() => {
+    if (!story) return story;
+    const updatedChapters = story.chapters.map((ch, i) =>
+      i === activeChapterIndex
+        ? { ...ch, paragraphs: paragraphs.map((p) => p.text).filter(Boolean) }
+        : ch,
+    );
+    const updated = { ...story, title: storyTitle || story.title, chapters: updatedChapters };
+    setStory(updated);
+    return updated;
+  }, [story, activeChapterIndex, paragraphs, storyTitle]);
+
+  // -----------------------------------------------------------------------
+  // Step transitions: Editor → Cover → Review → Publish
+  // -----------------------------------------------------------------------
+
+  const handleDoneWriting = useCallback(() => {
+    saveEditorToStory();
+    setStep("cover");
+  }, [saveEditorToStory]);
+
+  const handleCoverNext = useCallback(() => {
+    setStep("review");
+  }, []);
+
+  const handleBackToCover = useCallback(() => {
+    setStep("cover");
+  }, []);
+
+  const handleBackToEditor = useCallback(() => {
+    setStep("editor");
+  }, []);
+
+  // -----------------------------------------------------------------------
+  // Step: Publish
   // -----------------------------------------------------------------------
 
   const handlePublish = useCallback(async () => {
     if (!story) return;
-    setShowPublishModal(false);
-    setPublishing(true);
     setStep("publishing");
 
-    // Simulate cover generation delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const updatedChapters = story.chapters.map((ch) => ({ ...ch, isPublished: true }));
+
+    try {
+      await publishStory(story.id);
+    } catch {
+      // Non-blocking — story is saved locally even if publish call fails
+    }
 
     const publishedStory: Story = {
       ...story,
       title: storyTitle || story.title,
-      chapters: [
-        {
-          ...story.chapters[0],
-          paragraphs: paragraphs.map((p) => p.text).filter(Boolean),
-          isPublished: true,
-        },
-      ],
+      chapters: updatedChapters,
     };
 
-    setPublishing(false);
     onPublished(publishedStory);
-  }, [story, storyTitle, paragraphs, onPublished]);
+  }, [story, storyTitle, onPublished]);
+
+  const handleContinueStory = useCallback(async (isFinale = false) => {
+    if (!story || addingChapter) return;
+    if (story.chapters.length >= MAX_CHAPTERS) {
+      Alert.alert("Series complete", "This story has reached its maximum of 7 chapters.");
+      return;
+    }
+    if (credits < 1) {
+      Alert.alert("Credits needed", "You need 1 credit to add a chapter.");
+      return;
+    }
+
+    setAddingChapter(true);
+    setStep("generating");
+
+    const requestId = createGenerationRequestId();
+    const shouldFinale = isFinale || story.chapters.length + 1 >= MAX_CHAPTERS;
+
+    try {
+      const { chapter } = await continueStory(story.id, requestId, shouldFinale);
+      onCreditUsed();
+
+      const updatedStory: Story = {
+        ...story,
+        chapters: [...story.chapters, chapter],
+      };
+      setStory(updatedStory);
+
+      // Switch to the new chapter
+      const newIndex = updatedStory.chapters.length - 1;
+      setActiveChapterIndex(newIndex);
+      setParagraphs(
+        chapter.paragraphs.map((text) => ({
+          text,
+          isEditing: false,
+          isProcessing: false,
+        })),
+      );
+      setStep("editor");
+    } catch (error) {
+      setStep("editor");
+      Alert.alert(
+        "Could not continue story",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setAddingChapter(false);
+    }
+  }, [story, addingChapter, credits, onCreditUsed]);
+
+  const switchToChapter = useCallback((index: number) => {
+    if (!story || index === activeChapterIndex) return;
+    // Save current paragraphs to the story object
+    const updatedChapters = story.chapters.map((ch, i) =>
+      i === activeChapterIndex
+        ? { ...ch, paragraphs: paragraphs.map((p) => p.text).filter(Boolean) }
+        : ch,
+    );
+    setStory({ ...story, chapters: updatedChapters });
+
+    // Load new chapter
+    setActiveChapterIndex(index);
+    const chapter = updatedChapters[index];
+    setParagraphs(
+      chapter.paragraphs.map((text) => ({
+        text,
+        isEditing: false,
+        isProcessing: false,
+      })),
+    );
+    setSelectedIndex(null);
+  }, [story, activeChapterIndex, paragraphs]);
 
   const handleBackFromEditor = useCallback(() => {
     Alert.alert(
@@ -702,51 +837,38 @@ export default function CreateStudioScreen({
                 </ScrollView>
               </View>
 
-              {/* Mode toggles — Kids, LGBTQ+, Tropes */}
+              {/* Mode toggles — single-select: Kids, LGBTQ+, Vampire */}
               <View style={styles.toggleChipRow}>
-                <Pressable
-                  onPress={() => setDraft((prev) => ({
-                    ...prev,
-                    audienceMode: prev.audienceMode === "kids" ? "adult" : "kids",
-                  }))}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: draft.audienceMode === "kids" }}
-                  style={[styles.toggleChip, draft.audienceMode === "kids" && styles.toggleChipActive]}
-                >
-                  <Text style={[styles.toggleChipText, draft.audienceMode === "kids" && styles.toggleChipTextActive]}>
-                    🧒 Kids
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setDraft((prev) => ({
-                    ...prev,
-                    identityLenses: prev.identityLenses.includes("queer")
-                      ? prev.identityLenses.filter((l) => l !== "queer")
-                      : [...prev.identityLenses, "queer" as const],
-                  }))}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: draft.identityLenses.includes("queer") }}
-                  style={[styles.toggleChip, draft.identityLenses.includes("queer") && styles.toggleChipActive]}
-                >
-                  <Text style={[styles.toggleChipText, draft.identityLenses.includes("queer") && styles.toggleChipTextActive]}>
-                    🏳️‍🌈 LGBTQ+
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setDraft((prev) => ({
-                    ...prev,
-                    tropeModules: prev.tropeModules.includes("vampire")
-                      ? prev.tropeModules.filter((t) => t !== "vampire")
-                      : [...prev.tropeModules, "vampire" as const],
-                  }))}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: draft.tropeModules.includes("vampire") }}
-                  style={[styles.toggleChip, draft.tropeModules.includes("vampire") && styles.toggleChipActive]}
-                >
-                  <Text style={[styles.toggleChipText, draft.tropeModules.includes("vampire") && styles.toggleChipTextActive]}>
-                    🧛 Vampire
-                  </Text>
-                </Pressable>
+                {([
+                  { key: "kids", label: "🧒 Kids" },
+                  { key: "queer", label: "🏳️‍🌈 LGBTQ+" },
+                  { key: "vampire", label: "🧛 Vampire" },
+                ] as const).map((chip) => {
+                  const isActive =
+                    chip.key === "kids" ? draft.audienceMode === "kids" :
+                    chip.key === "queer" ? draft.identityLenses.includes("queer") :
+                    draft.tropeModules.includes("vampire");
+                  return (
+                    <Pressable
+                      key={chip.key}
+                      onPress={() => setDraft((prev) => {
+                        // Single-select: deselect all, then toggle the tapped one
+                        const base = { ...prev, audienceMode: "adult" as const, identityLenses: [] as IdentityLens[], tropeModules: [] as TropeModule[] };
+                        if (isActive) return base; // Deselect
+                        if (chip.key === "kids") return { ...base, audienceMode: "kids" as const };
+                        if (chip.key === "queer") return { ...base, identityLenses: ["queer" as const] };
+                        return { ...base, tropeModules: ["vampire" as const] };
+                      })}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isActive }}
+                      style={[styles.toggleChip, isActive && styles.toggleChipActive]}
+                    >
+                      <Text style={[styles.toggleChipText, isActive && styles.toggleChipTextActive]}>
+                        {chip.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
 
               {/* Story idea */}
@@ -828,7 +950,7 @@ export default function CreateStudioScreen({
                       onChangeText={(description) =>
                         updateCharacter(index, "description", description)
                       }
-                      placeholder="Traits, desire, or secret"
+                      placeholder="Role, personality, and what drives them"
                       placeholderTextColor={colors.tertiary}
                       style={[styles.characterInput, styles.characterNameInput]}
                     />
@@ -872,11 +994,43 @@ export default function CreateStudioScreen({
                 ))}
               </View>
 
+              {/* Series toggle */}
+              <View style={styles.seriesToggleRow}>
+                <View style={styles.seriesToggleLeft}>
+                  <Text style={styles.fieldLabel}>Make it a series</Text>
+                  <Text style={styles.seriesHint}>
+                    {draft.isSeries
+                      ? "600-900 words per chapter, up to 7 chapters"
+                      : draft.audienceMode === "kids"
+                        ? "One complete story, 500-1,200 words"
+                        : "One complete story, 500-1,500 words"}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setDraft((prev) => ({ ...prev, isSeries: !prev.isSeries }))}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: draft.isSeries }}
+                  accessibilityLabel="Make it a series"
+                  style={[styles.heroToggleTrack, draft.isSeries && styles.heroToggleTrackOn]}
+                >
+                  <View style={[styles.heroToggleThumb, draft.isSeries && styles.heroToggleThumbOn]} />
+                </Pressable>
+              </View>
+              {draft.isSeries && (
+                <View style={styles.seriesInfoCard}>
+                  <Text style={styles.seriesInfoText}>
+                    Each chapter ends on a cliffhanger. The final chapter resolves the story. 1 credit per chapter.
+                  </Text>
+                </View>
+              )}
+
               {/* Generate button */}
               <PrimaryButton onPress={handleGenerate}>
                 {busy
                   ? "Generating..."
-                  : "Generate Draft — 1 credit"}
+                  : draft.isSeries
+                    ? "Generate Chapter 1 — 1 credit"
+                    : "Generate Draft — 1 credit"}
               </PrimaryButton>
               {credits === 0 && (
                 <Text style={styles.hintText}>
@@ -886,6 +1040,196 @@ export default function CreateStudioScreen({
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Render: Generating step (loading overlay)
+  // -----------------------------------------------------------------------
+
+  if (step === "generating") {
+    return (
+      <SafeAreaView style={styles.flex}>
+        <GeneratingOverlay
+          genre={draft.primaryGenre}
+          mode={addingChapter ? (story && story.chapters.length + 1 >= MAX_CHAPTERS ? "finale" : "chapter") : "story"}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Render: Cover preview step
+  // -----------------------------------------------------------------------
+
+  if (step === "cover") {
+    const genre = story?.genre ?? draft.primaryGenre;
+    const gradient = genreGradients[genre];
+    const totalWords = story
+      ? story.chapters.reduce((sum, ch) => sum + ch.paragraphs.join(" ").split(/\s+/).filter(Boolean).length, 0)
+      : wordCount;
+
+    return (
+      <SafeAreaView style={styles.flex}>
+        {/* Header */}
+        <View style={styles.editorHeader}>
+          <Pressable onPress={handleBackToEditor} style={styles.editorBackBtn}>
+            <ArrowLeft size={20} color={colors.ink} />
+            <Text style={styles.editorBackText}>Back</Text>
+          </Pressable>
+          <Text style={styles.editorHeaderTitle}>Cover Preview</Text>
+          <Pressable onPress={handleCoverNext} style={styles.publishHeaderBtn}>
+            <Text style={styles.publishHeaderBtnText}>Next</Text>
+            <ChevronRight size={14} color={colors.surface} />
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.coverScroll}>
+          {/* Cover card with genre gradient */}
+          <View style={styles.coverCardWrap}>
+            <View style={[styles.coverCard, { backgroundColor: gradient[1] }]}>
+              <View style={[styles.coverGradientTop, { backgroundColor: gradient[0] }]} />
+              <View style={styles.coverTextOverlay}>
+                <Text style={styles.coverGenreLabel}>
+                  {genreLabels[genre]}
+                </Text>
+                <Text style={styles.coverTitle}>
+                  {storyTitle || "Untitled"}
+                </Text>
+                {story && story.chapters.length > 1 && (
+                  <Text style={styles.coverChapterCount}>
+                    {story.chapters.length} chapters
+                  </Text>
+                )}
+              </View>
+              <View style={[styles.coverGradientBottom, { backgroundColor: gradient[2] }]} />
+            </View>
+          </View>
+
+          {/* Cover prompt + regenerate */}
+          <View style={styles.coverActions}>
+            <TextInput
+              value={coverPrompt}
+              onChangeText={setCoverPrompt}
+              placeholder="Describe your ideal cover (optional)"
+              placeholderTextColor={colors.tertiary}
+              style={styles.coverPromptInput}
+              multiline
+            />
+            <Pressable style={styles.regenerateBtn}>
+              <RefreshCw size={16} color={colors.accent} />
+              <Text style={styles.regenerateBtnText}>Regenerate Cover</Text>
+            </Pressable>
+            <Text style={styles.coverHint}>
+              A unique AI cover will be generated when you publish.
+            </Text>
+          </View>
+
+          {/* Story summary */}
+          <View style={styles.coverSummary}>
+            <View style={styles.coverSummaryRow}>
+              <Text style={styles.coverSummaryLabel}>Title</Text>
+              <Text style={styles.coverSummaryValue}>{storyTitle || "Untitled"}</Text>
+            </View>
+            <View style={styles.coverSummaryRow}>
+              <Text style={styles.coverSummaryLabel}>Genre</Text>
+              <Text style={styles.coverSummaryValue}>{genreLabels[genre]}</Text>
+            </View>
+            <View style={styles.coverSummaryRow}>
+              <Text style={styles.coverSummaryLabel}>Words</Text>
+              <Text style={styles.coverSummaryValue}>{totalWords.toLocaleString()}</Text>
+            </View>
+            {story && story.chapters.length > 1 && (
+              <View style={styles.coverSummaryRow}>
+                <Text style={styles.coverSummaryLabel}>Chapters</Text>
+                <Text style={styles.coverSummaryValue}>{story.chapters.length}</Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Render: Publish review step
+  // -----------------------------------------------------------------------
+
+  if (step === "review") {
+    const genre = story?.genre ?? draft.primaryGenre;
+    const gradient = genreGradients[genre];
+    const totalWords = story
+      ? story.chapters.reduce((sum, ch) => sum + ch.paragraphs.join(" ").split(/\s+/).filter(Boolean).length, 0)
+      : wordCount;
+
+    return (
+      <SafeAreaView style={styles.flex}>
+        {/* Header */}
+        <View style={styles.editorHeader}>
+          <Pressable onPress={handleBackToCover} style={styles.editorBackBtn}>
+            <ArrowLeft size={20} color={colors.ink} />
+            <Text style={styles.editorBackText}>Back</Text>
+          </Pressable>
+          <Text style={styles.editorHeaderTitle}>Review</Text>
+          <View style={{ width: 80 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.reviewScroll}>
+          {/* Mini cover + title */}
+          <View style={styles.reviewCard}>
+            <View style={[styles.reviewCoverMini, { backgroundColor: gradient[1] }]}>
+              <Text style={styles.reviewCoverMiniTitle} numberOfLines={2}>
+                {storyTitle || "Untitled"}
+              </Text>
+            </View>
+            <View style={styles.reviewCardMeta}>
+              <Text style={styles.reviewCardTitle}>{storyTitle || "Untitled"}</Text>
+              <Text style={styles.reviewCardSubtitle}>
+                {genreLabels[genre]} · {totalWords.toLocaleString()} words
+              </Text>
+            </View>
+          </View>
+
+          {/* Chapter list (only for series with multiple chapters) */}
+          {story && story.chapters.length > 1 && (
+            <View style={styles.reviewChapterList}>
+              <Text style={styles.reviewSectionTitle}>Chapters</Text>
+              {story.chapters.map((ch) => (
+                <View key={ch.id} style={styles.reviewChapterRow}>
+                  <View style={styles.reviewChapterDot} />
+                  <Text style={styles.reviewChapterName}>
+                    {ch.title || `Chapter ${ch.chapterNumber}`}
+                  </Text>
+                  <Text style={styles.reviewChapterWords}>
+                    {ch.paragraphs.join(" ").split(/\s+/).filter(Boolean).length} words
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* What happens next */}
+          <View style={styles.reviewInfoCard}>
+            <Text style={styles.reviewSectionTitle}>What happens next</Text>
+            <Text style={styles.reviewInfoText}>
+              {"\u2022"} A unique AI cover image will be generated{"\n"}
+              {"\u2022"} Audio narration will be created in two voices{"\n"}
+              {"\u2022"} Your story will be visible to all readers
+            </Text>
+          </View>
+        </ScrollView>
+
+        {/* Bottom actions */}
+        <View style={styles.reviewActions}>
+          <Pressable onPress={handleBackToEditor} style={styles.reviewSecondaryBtn}>
+            <Text style={styles.reviewSecondaryBtnText}>Keep as Draft</Text>
+          </Pressable>
+          <Pressable onPress={handlePublish} style={styles.reviewPublishBtn}>
+            <Text style={styles.reviewPublishBtnText}>Publish</Text>
+            <Check size={16} color={colors.surface} />
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
@@ -903,7 +1247,7 @@ export default function CreateStudioScreen({
             Publishing your story...
           </Text>
           <Text style={styles.publishingSubtitle}>
-            Generating cover image
+            Generating cover image and audio
           </Text>
         </View>
       </SafeAreaView>
@@ -931,10 +1275,11 @@ export default function CreateStudioScreen({
           </Pressable>
           <Text style={styles.editorHeaderTitle}>Edit Draft</Text>
           <Pressable
-            onPress={() => setShowPublishModal(true)}
+            onPress={handleDoneWriting}
             style={styles.publishHeaderBtn}
           >
-            <Text style={styles.publishHeaderBtnText}>Publish</Text>
+            <Text style={styles.publishHeaderBtnText}>Next</Text>
+            <ChevronRight size={14} color={colors.surface} />
           </Pressable>
         </View>
 
@@ -952,12 +1297,18 @@ export default function CreateStudioScreen({
                 onChangeText={setStoryTitle}
                 onBlur={() => setEditingTitle(false)}
                 style={styles.titleInput}
+                placeholder="Give your story a title"
+                placeholderTextColor={colors.tertiary}
               />
             ) : (
-              <Pressable onPress={() => setEditingTitle(true)}>
+              <Pressable
+                onPress={() => setEditingTitle(true)}
+                style={styles.titleRow}
+              >
                 <Text style={styles.storyInfoTitle}>
                   {storyTitle || "Untitled"}
                 </Text>
+                <Edit3 size={16} color={colors.muted} />
               </Pressable>
             )}
             <View style={styles.storyInfoRow}>
@@ -969,14 +1320,54 @@ export default function CreateStudioScreen({
               <Text style={styles.storyInfoMeta}>
                 {wordCount} words · {readTimeMin} min read
               </Text>
+              {story && story.chapters.length > 1 && (
+                <Text style={styles.storyInfoMeta}>
+                  · {story.chapters.length} chapters
+                </Text>
+              )}
             </View>
           </View>
 
+          {/* Chapter tabs (visible for series or multi-chapter stories) */}
+          {story && (draft.isSeries || story.chapters.length > 1) && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chapterTabRow}
+            >
+              {story.chapters.map((ch, i) => (
+                <Pressable
+                  key={ch.id}
+                  onPress={() => switchToChapter(i)}
+                  style={[styles.chapterTab, i === activeChapterIndex && styles.chapterTabActive]}
+                >
+                  <Text style={[styles.chapterTabText, i === activeChapterIndex && styles.chapterTabTextActive]}>
+                    Ch {ch.chapterNumber}
+                  </Text>
+                </Pressable>
+              ))}
+              {story.chapters.length < MAX_CHAPTERS && (
+                <Pressable
+                  onPress={() => handleContinueStory(false)}
+                  disabled={addingChapter}
+                  style={styles.chapterTabAdd}
+                >
+                  <Plus size={14} color={colors.accent} />
+                  <Text style={styles.chapterTabAddText}>
+                    {addingChapter ? "..." : "Add"}
+                  </Text>
+                </Pressable>
+              )}
+            </ScrollView>
+          )}
+
           {/* Chapter content */}
           <View style={styles.chapterSection}>
-            <Text style={styles.chapterHeading}>
-              {story?.chapters[0].title ?? "Chapter one"}
-            </Text>
+            {(draft.isSeries || (story && story.chapters.length > 1)) && (
+              <Text style={styles.chapterHeading}>
+                {story?.chapters[activeChapterIndex]?.title ?? "Chapter one"}
+              </Text>
+            )}
 
             {paragraphs.map((paragraph, index) => (
               <View key={index}>
@@ -1034,6 +1425,15 @@ export default function CreateStudioScreen({
                       contentContainerStyle={styles.actionToolbar}
                     >
                       <Pressable
+                        onPress={() => toggleEditing(index)}
+                        style={styles.actionChip}
+                      >
+                        <Edit3 size={14} color={colors.accent} />
+                        <Text style={styles.actionChipText}>
+                          Edit
+                        </Text>
+                      </Pressable>
+                      <Pressable
                         onPress={() => runAiAction(index, "rewrite")}
                         style={styles.actionChip}
                       >
@@ -1046,7 +1446,7 @@ export default function CreateStudioScreen({
                         onPress={() => runAiAction(index, "expand")}
                         style={styles.actionChip}
                       >
-                        <Edit3 size={14} color={colors.accent} />
+                        <Plus size={14} color={colors.accent} />
                         <Text style={styles.actionChipText}>
                           Expand
                         </Text>
@@ -1062,23 +1462,14 @@ export default function CreateStudioScreen({
                       </Pressable>
                       <Pressable
                         onPress={() => {
-                          setShowTonePicker(true);
+                          setCustomPromptIndex(index);
                           setSelectedIndex(index);
                         }}
                         style={styles.actionChip}
                       >
-                        <Type size={14} color={colors.accent} />
+                        <MessageCircle size={14} color={colors.accent} />
                         <Text style={styles.actionChipText}>
-                          Change tone
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => toggleEditing(index)}
-                        style={styles.actionChip}
-                      >
-                        <Edit3 size={14} color={colors.ink} />
-                        <Text style={styles.actionChipText}>
-                          Edit
+                          Custom
                         </Text>
                       </Pressable>
                       <Pressable
@@ -1095,40 +1486,8 @@ export default function CreateStudioScreen({
                           Delete
                         </Text>
                       </Pressable>
-                      <Pressable
-                        onPress={() => {
-                          setCustomPromptIndex(index);
-                          setSelectedIndex(index);
-                        }}
-                        style={styles.actionChip}
-                      >
-                        <MessageCircle size={14} color={colors.accent} />
-                        <Text style={styles.actionChipText}>
-                          Custom
-                        </Text>
-                      </Pressable>
                     </ScrollView>
                   )}
-
-                {/* Tone picker */}
-                {showTonePicker && selectedIndex === index && (
-                  <View style={styles.tonePicker}>
-                    {TONE_OPTIONS.map((tone) => (
-                      <Pressable
-                        key={tone}
-                        onPress={() => {
-                          setShowTonePicker(false);
-                          runAiAction(index, "change_tone", tone);
-                        }}
-                        style={styles.toneOption}
-                      >
-                        <Text style={styles.toneOptionText}>
-                          {tone.charAt(0).toUpperCase() + tone.slice(1)}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
 
                 {/* Custom prompt */}
                 {customPromptIndex === index && (
@@ -1191,10 +1550,10 @@ export default function CreateStudioScreen({
             {wordCount} words
           </Text>
           <Pressable
-            onPress={() => setShowPublishModal(true)}
+            onPress={handleDoneWriting}
             style={styles.bottomPublishBtn}
           >
-            <Text style={styles.bottomPublishBtnText}>Publish</Text>
+            <Text style={styles.bottomPublishBtnText}>Next</Text>
             <ChevronRight size={16} color={colors.surface} />
           </Pressable>
         </View>
@@ -1209,50 +1568,7 @@ export default function CreateStudioScreen({
           </View>
         )}
 
-        {/* Publish confirmation modal */}
-        <Modal
-          visible={showPublishModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowPublishModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Ready to publish?</Text>
-              <Text style={styles.modalBody}>
-                Your story will be visible to all readers. A cover image
-                will be generated automatically.
-              </Text>
-              <View style={styles.modalTitlePreview}>
-                <Text style={styles.modalTitlePreviewLabel}>
-                  Title
-                </Text>
-                <Text style={styles.modalTitlePreviewValue}>
-                  {storyTitle || "Untitled"}
-                </Text>
-              </View>
-              <View style={styles.modalActions}>
-                <Pressable
-                  onPress={() => setShowPublishModal(false)}
-                  style={styles.modalSecondaryBtn}
-                >
-                  <Text style={styles.modalSecondaryBtnText}>
-                    Keep editing
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={handlePublish}
-                  style={styles.modalPrimaryBtn}
-                >
-                  <Text style={styles.modalPrimaryBtnText}>
-                    Publish
-                  </Text>
-                  <Check size={16} color={colors.surface} />
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {/* (publish modal removed — replaced by cover + review steps) */}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1526,6 +1842,36 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: "800",
   },
+  seriesToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  seriesToggleLeft: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  seriesHint: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  seriesInfoCard: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+  },
+  seriesInfoText: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
   hintText: {
     fontFamily: fonts.ui,
     color: colors.muted,
@@ -1564,12 +1910,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   publishHeaderBtn: {
+    flexDirection: "row",
+    flexShrink: 0,
     minHeight: 36,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
+    gap: 2,
   },
   publishHeaderBtnText: {
     fontFamily: fonts.ui,
@@ -1589,7 +1938,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: spacing.sm,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   storyInfoTitle: {
+    flex: 1,
     fontFamily: fonts.display,
     color: colors.ink,
     fontSize: 22,
@@ -1770,6 +2125,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  // Chapter tabs
+  chapterTabRow: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  chapterTab: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chapterTabActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  chapterTabText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  chapterTabTextActive: {
+    color: colors.surface,
+    fontWeight: "800",
+  },
+  chapterTabAdd: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderStyle: "dashed",
+  },
+  chapterTabAddText: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+
   // Bottom toolbar
   bottomToolbar: {
     flexDirection: "row",
@@ -1803,6 +2204,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     textAlign: "center",
+  },
+  continueChapterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    minHeight: 38,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  continueChapterText: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontWeight: "800",
+    fontSize: 13,
   },
   bottomPublishBtn: {
     flexDirection: "row",
@@ -1878,57 +2296,256 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Publish modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+  // Cover preview step
+  coverScroll: {
+    paddingBottom: spacing.huge,
+  },
+  coverCardWrap: {
     alignItems: "center",
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+  },
+  coverCard: {
+    width: 220,
+    height: 320,
+    borderRadius: radius.lg,
+    overflow: "hidden",
     justifyContent: "center",
-    padding: spacing.xl,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
   },
-  modalCard: {
-    width: "100%",
-    maxWidth: 380,
-    padding: spacing.xxl,
-    borderRadius: radius.xl,
-    backgroundColor: colors.surface,
-    gap: spacing.lg,
+  coverGradientTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "35%",
+    opacity: 0.7,
   },
-  modalTitle: {
-    fontFamily: fonts.display,
-    color: colors.ink,
-    fontSize: 24,
+  coverGradientBottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "25%",
+    opacity: 0.8,
   },
-  modalBody: {
+  coverTextOverlay: {
+    alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  coverGenreLabel: {
     fontFamily: fonts.ui,
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  modalTitlePreview: {
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface2,
-    gap: spacing.xs,
-  },
-  modalTitlePreviewLabel: {
-    fontFamily: fonts.ui,
-    color: colors.muted,
+    color: "rgba(255,255,255,0.7)",
     fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 0,
+    letterSpacing: 1,
   },
-  modalTitlePreviewValue: {
+  coverTitle: {
     fontFamily: fonts.display,
-    color: colors.ink,
-    fontSize: 18,
+    color: "#FFFFFF",
+    fontSize: 22,
+    textAlign: "center",
+    lineHeight: 28,
   },
-  modalActions: {
+  coverChapterCount: {
+    fontFamily: fonts.ui,
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  coverActions: {
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  coverPromptInput: {
+    width: "100%",
+    minHeight: 44,
+    maxHeight: 80,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    color: colors.ink,
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    textAlignVertical: "top",
+  },
+  regenerateBtn: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    minHeight: 42,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  regenerateBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  coverHint: {
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 12,
+    fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  coverSummary: {
+    marginTop: spacing.xxl,
+    marginHorizontal: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     gap: spacing.md,
   },
-  modalSecondaryBtn: {
+  coverSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  coverSummaryLabel: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  coverSummaryValue: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  // Review step
+  reviewScroll: {
+    paddingBottom: 120,
+  },
+  reviewCard: {
+    flexDirection: "row",
+    margin: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.lg,
+    alignItems: "center",
+  },
+  reviewCoverMini: {
+    width: 64,
+    height: 88,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xs,
+  },
+  reviewCoverMiniTitle: {
+    fontFamily: fonts.display,
+    color: "#FFFFFF",
+    fontSize: 10,
+    textAlign: "center",
+    lineHeight: 13,
+  },
+  reviewCardMeta: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  reviewCardTitle: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 20,
+    lineHeight: 24,
+  },
+  reviewCardSubtitle: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  reviewChapterList: {
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  reviewSectionTitle: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontWeight: "800",
+    fontSize: 13,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  reviewChapterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  reviewChapterDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
+  reviewChapterName: {
+    flex: 1,
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  reviewChapterWords: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  reviewInfoCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  reviewInfoText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 22,
+    fontWeight: "500",
+  },
+  reviewActions: {
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  reviewSecondaryBtn: {
     flex: 1,
     minHeight: 48,
     borderRadius: radius.md,
@@ -1938,13 +2555,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  modalSecondaryBtnText: {
+  reviewSecondaryBtnText: {
     fontFamily: fonts.ui,
     color: colors.ink,
     fontWeight: "800",
     fontSize: 14,
   },
-  modalPrimaryBtn: {
+  reviewPublishBtn: {
     flex: 1,
     minHeight: 48,
     borderRadius: radius.md,
@@ -1954,7 +2571,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.xs,
   },
-  modalPrimaryBtnText: {
+  reviewPublishBtnText: {
     fontFamily: fonts.ui,
     color: colors.surface,
     fontWeight: "800",

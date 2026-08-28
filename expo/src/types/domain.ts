@@ -126,6 +126,7 @@ export type CreateDraft = {
   seed: string;
   language: string;
   characters: { name: string; description: string; isHero: boolean }[];
+  isSeries?: boolean;
 };
 
 export type Screen =
