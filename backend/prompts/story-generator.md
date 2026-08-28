@@ -188,6 +188,29 @@ language.
 - Kids and Bedtime modes cannot contain sexual content, adult romantic tension,
   graphic violence, substance use, or horror.
 
+## Title Generation
+
+The model generates the title as part of the structured output. Title rules:
+
+- **2-6 words.** Evocative, not descriptive. The title is a promise, not a summary.
+- Genre-appropriate tone: a romance title feels different from a thriller title.
+- No generic AI titles: "The Journey Begins", "A New Dawn", "Shadows of the Past",
+  "Whispers of Fate", "Beyond the Horizon".
+- No spoilers. The title should intrigue, not reveal.
+- No subtitle or colon format ("Title: A Subtitle").
+- The title is user-editable in the editor. The LLM generates the first draft;
+  the author has final say.
+
+Good examples by genre:
+- Romance: "The Vanilla Problem", "Letters Never Sent"
+- Fantasy: "The Cartographer's Mistake", "Where Rivers Forget"
+- Thriller: "Three Rings", "No Forwarding Address"
+- Mystery: "The Last Tenant", "Room 4B"
+- Horror: "Tuesday's Hum", "What the Mirror Kept"
+
+Bad examples (too generic, too AI):
+- "The Enchanted Journey", "Love in the City", "Dark Secrets Revealed"
+
 ## Story Engine
 
 Before writing prose, the model should internally establish:
@@ -211,6 +234,41 @@ Standalone structure:
   pressure, relationship, or risk.
 - **Climax and landing, about 20%.** Highest tension or decisive choice, then a
   brief landing. The story must feel complete.
+
+## Word Count Enforcement
+
+Word count is a hard rule, not a suggestion.
+
+| Mode | Minimum | Maximum | Enforced by |
+|------|---------|---------|-------------|
+| Standalone (adult) | 500 | 1,500 | Prompt + server validation |
+| Standalone (kids) | 500 | 1,200 | Prompt + server validation |
+| Series chapter | 600 | 900 | Prompt + server validation |
+| Kids bedtime | 400 | 800 | Prompt + server validation |
+
+If the model returns fewer words than the minimum, the server should flag the
+response as degraded and warn the user. Stories below 300 words should be
+rejected and the credit refunded.
+
+## Series Chapter Structure
+
+Every initial story starts as a standalone or as Chapter 1 of a series.
+The user chooses "Make it a series" before generation. When `is_series` is true:
+
+- **Chapter 1:** Establish world, protagonist, central want, and the first
+  complication. End on an unresolved moment (a question, revelation, or choice).
+  Do NOT resolve the central conflict.
+- **Chapters 2-6:** Each chapter advances the plot with at least one irreversible
+  change. End on a cliffhanger or hook. Shift relationships or power dynamics.
+  Introduce new tension or deepen existing threads.
+- **Chapter 7 (or any chapter marked `is_finale`):** Resolve the central conflict.
+  Callback to a specific detail from Chapter 1. Land every major character arc.
+  Loose threads are acceptable if the main story is complete.
+
+`MAX_SERIES_CHAPTERS = 7`. Chapter 7 is automatically a finale.
+
+Each chapter is 600-900 words. The complete series (7 chapters) is approximately
+4,200-6,300 words.
 
 Continuation structure:
 

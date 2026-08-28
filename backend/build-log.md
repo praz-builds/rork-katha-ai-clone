@@ -7,6 +7,84 @@
 
 ---
 
+## 2026-08-28 — Create Studio: Progressive Editor, generating overlay, series flow
+
+**Session:** Full Create Studio UX overhaul — generation loading overlay, series chapter flow, cover preview, publish review, and 12 polish fixes.
+
+### Progressive Editor Flow (Variation B)
+
+Replaced the direct editor-to-publish modal with a 6-step flow:
+`setup -> generating -> editor -> cover preview -> publish review -> publishing`
+
+- **Generating overlay**: dark theme with glowing orange orb, concentric rotating rings, genre-aware rotating phrases with italic keyword highlights, secondary status line. Star field background.
+- **Editor**: "Next" button replaces "Publish" in header and toolbar. Chapter tabs with `+` tab for series. Chapter heading hidden for standalone stories.
+- **Cover preview**: genre gradient placeholder card with title overlay, "Regenerate Cover" button with custom prompt input ("Describe your ideal cover").
+- **Publish review**: story card with mini cover, chapter list (series only), "What happens next" info card, sticky "Keep as Draft" / "Publish" bottom bar.
+
+### Series Flow
+
+- **"Make it a series" toggle** on setup screen with word count guidance (600-900 per chapter, up to 7 chapters).
+- **Chapter `+` tab** in editor tab bar for adding chapters (1 credit each).
+- **`continueStory()` API wrapper** calls `continue-story` endpoint with `is_finale` support.
+- **Mode-aware overlay**: different phrases for story/chapter/finale generation.
+- Auto-finale at chapter 7.
+
+### API Wrappers Added (`expo/src/lib/api.ts`)
+
+- `continueStory(storyId, requestId, isFinale?)` — calls `continue-story` endpoint
+- `editParagraph(storyId, chapterId, paragraphIndex, instruction, options?)` — calls `edit-story` endpoint
+- `publishStory(storyId)` — calls `publish-story` endpoint
+- All three have local mock fallbacks when Supabase isn't configured.
+
+### Mock Story Upgrade
+
+- `localGeneratedStory()` now returns 6 genre-aware paragraphs (500-800 words) matching the 500-1500 word production spec. Was ~100 words.
+- Simulates realistic 3.5-6s generation time.
+- Genre-specific opening paragraphs for romance, thriller, mystery, horror, fantasy, sci-fi.
+- Genre-aware creative mock titles replace `titleFromSeed()` (which just capitalized first 5 words of seed).
+
+### UX Polish (12 fixes)
+
+1. Toggle chips (Kids, LGBTQ+, Vampire) now single-select
+2. Character fields empty by default (was pre-filled with "Mira")
+3. Character placeholder: "Role, personality, and what drives them"
+4. Header buttons responsive single-line ("Next >")
+5. Chapter heading hidden for standalone stories
+6. Action toolbar reordered: Edit, Rewrite, Expand, Shorten, Custom, Delete
+7. "Change tone" removed from action toolbar
+8. Paragraph editing wired to real `edit-story` API with local fallback
+9. Cover prompt input for custom cover description
+10. Review screen hides chapter list for standalone
+11. Review bottom bar with sticky Publish/Draft buttons
+12. "What happens next" info card in review
+
+### Spec Updates (`backend/prompts/story-generator.md`)
+
+- **Title Generation** section: 2-6 words, evocative not descriptive, genre examples
+- **Word Count Enforcement** table: min/max per mode, rejection at <300 words
+- **Series Chapter Structure**: cliffhanger rules for Ch 1-6, finale rules for Ch 7
+
+### Documentation Updates
+
+- `AGENTS.md`: Updated Create Studio flow description, migration count
+- `ROADMAP.md`: Refactored — Phase A marked DONE, completed items in collapsible sections, Phase B cover items checked, migration numbers fixed, language distribution corrected
+- `backend/prompts/story-generator.md`: Title rules, word count, series structure
+
+### New Files
+
+- `expo/src/components/GeneratingOverlay.tsx` — dark orb loading overlay
+- `expo/src/data/generating-phrases.ts` — genre-aware phrase templates with keyword slots
+
+### Modified Files
+
+- `expo/src/screens/CreateStudioScreen.tsx` — full Progressive Editor rewrite
+- `expo/src/lib/api.ts` — 3 API wrappers, mock upgrade, genre-aware titles
+- `expo/src/types/domain.ts` — `isSeries` on CreateDraft
+- `backend/ROADMAP.md` — refactored phases
+- `backend/prompts/story-generator.md` — title/word count/series spec
+
+---
+
 ## 2026-08-27 — Security audit + critical/high fixes
 
 **Session:** Created custom security-scan skill, ran full audit via 3 parallel CLI agents, fixed all critical and high code-level findings.
