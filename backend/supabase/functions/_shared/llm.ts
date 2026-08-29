@@ -1,8 +1,40 @@
-import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.30.1";
+import Anthropic from "npm:@anthropic-ai/sdk@0.122.0";
+import {
+  ANTHROPIC_OUTPUT_FORMAT,
+  OPENAI_RESPONSE_FORMAT,
+} from "./story_schema.ts";
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+/**
+ * Secrets are read lazily, not at module load.
+ *
+ * A top-level `Deno.env.get` makes importing this module a side effect: the
+ * test suite then needs --allow-env just to reference a type, and a missing
+ * secret fails at import rather than at the call that needs it.
+ */
+const anthropicKey = () => Deno.env.get("ANTHROPIC_API_KEY");
+const openaiKey = () => Deno.env.get("OPENAI_API_KEY");
 const GENERATION_DEADLINE_MS = 120_000;
+
+/**
+ * Model IDs are complete as written - never append a date suffix. The previous
+ * "claude-haiku-4-5-20251001" was not a valid id, so the Haiku fallback could
+ * only ever 404, and "claude-sonnet-4-6" is superseded by Sonnet 5, which is
+ * both newer and cheaper ($2/$10 per MTok against $3/$15).
+ */
+const PRIMARY_MODEL = "claude-sonnet-5";
+const FALLBACK_MODEL = "claude-haiku-4-5";
+const OPENAI_MODEL = "gpt-4o-mini";
+
+/**
+ * A story plus its series_state runs well past 4096 tokens. The old ceiling
+ * truncated mid-JSON, which parsed as garbage and silently degraded to the text
+ * parser - the root of the intermittent "hook_type: none, state frozen" chapters.
+ */
+const MAX_OUTPUT_TOKENS = 16_000;
+
+/** A paragraph rewrite is short, and the editor UI waits on it inline. */
+const EDIT_MAX_OUTPUT_TOKENS = 2_000;
+const EDIT_DEADLINE_MS = 60_000;
 
 interface GenerationResult {
   text: string;
@@ -10,15 +42,190 @@ interface GenerationResult {
 }
 
 /**
- * Generate story text with fallback chain:
- * Sonnet 4.6 (60s) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s)
+ * A provider failure, shaped for `error_events` (migration 00016).
+ *
+ * Identifiers and enums only - never prompts, seeds, or story prose. Callers can
+ * hand `context` straight to `logError` without having to sanitize it.
  */
-export async function generateStoryText(
+export interface LlmFailure {
+  provider: "anthropic" | "openai";
+  model: string;
+  /** Stable slug for grouping recurrences, e.g. "rate_limited". */
+  code: string;
+  /** HTTP status when the provider returned one. */
+  status?: number;
+  retryable: boolean;
+  message: string;
+}
+
+/** A non-2xx provider response, carrying the status through to classification. */
+export class ProviderHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ProviderHttpError";
+  }
+}
+
+export class AllProvidersFailedError extends Error {
+  constructor(readonly failures: LlmFailure[]) {
+    super(
+      `All LLM providers failed: ${
+        failures.map((f) => `${f.model}=${f.code}`).join(", ")
+      }`,
+    );
+    this.name = "AllProvidersFailedError";
+  }
+
+  /** Ready for logError({ bucket: "llm.provider", context: ... }). */
+  toContext(): Record<string, unknown> {
+    return {
+      attempts: this.failures.length,
+      providers: this.failures.map((f) => f.provider),
+      models: this.failures.map((f) => f.model),
+      codes: this.failures.map((f) => f.code),
+      statuses: this.failures.map((f) => f.status ?? null),
+      retryable: this.failures.some((f) => f.retryable),
+    };
+  }
+}
+
+/**
+ * Classify a thrown provider error into a stable, loggable shape.
+ *
+ * Uses the SDK's typed error classes rather than string matching, so a 429 stays
+ * distinguishable from a 400 even when provider wording changes.
+ */
+export function classifyLlmError(
+  error: unknown,
+  provider: "anthropic" | "openai",
+  model: string,
+): LlmFailure {
+  const base = { provider, model, message: failureMessage(error) };
+
+  // The SDK raises APIUserAbortError when our deadline signal fires. It extends
+  // APIError, so it must be matched before the APIError branch or a timeout is
+  // mislabelled as a provider error.
+  if (error instanceof Anthropic.APIUserAbortError) {
+    return { ...base, code: "timeout", retryable: true };
+  }
+  // The fetch path rejects with the AbortSignal reason.
+  if (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  ) {
+    return { ...base, code: "timeout", retryable: true };
+  }
+  if (error instanceof ProviderHttpError) {
+    return {
+      ...base,
+      code: error.status >= 500 ? "provider_5xx" : "provider_error",
+      status: error.status,
+      // 4xx is a request or credential problem; retrying the same call repeats it.
+      retryable: error.status >= 500 || error.status === 429,
+    };
+  }
+  if (error instanceof Anthropic.NotFoundError) {
+    // Almost always a bad model id - not worth retrying on another attempt.
+    return { ...base, code: "model_not_found", status: 404, retryable: false };
+  }
+  if (error instanceof Anthropic.RateLimitError) {
+    return { ...base, code: "rate_limited", status: 429, retryable: true };
+  }
+  if (error instanceof Anthropic.AuthenticationError) {
+    return { ...base, code: "auth_failed", status: 401, retryable: false };
+  }
+  // APIConnectionError extends APIError in the TS SDK, so it must be checked first.
+  if (error instanceof Anthropic.APIConnectionError) {
+    return { ...base, code: "connection_failed", retryable: true };
+  }
+  if (error instanceof Anthropic.APIError) {
+    const status = (error as { status?: number }).status;
+    return {
+      ...base,
+      code: status && status >= 500 ? "provider_5xx" : "provider_error",
+      status,
+      retryable: !status || status >= 500,
+    };
+  }
+  return { ...base, code: "unknown", retryable: true };
+}
+
+/**
+ * Generate story text with a fallback chain:
+ * Sonnet 5 (60s) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s).
+ *
+ * Every attempt is schema-constrained, so a success is guaranteed to parse.
+ * On total failure this throws AllProvidersFailedError, whose `toContext()`
+ * feeds straight into logError({ bucket: "llm.provider" }).
+ */
+export function generateStoryText(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<GenerationResult> {
-  const failures: string[] = [];
-  const deadline = Date.now() + GENERATION_DEADLINE_MS;
+  return runProviderChain(systemPrompt, userPrompt, {
+    maxTokens: MAX_OUTPUT_TOKENS,
+    // Story generation must come back as the story JSON object.
+    constrainToStorySchema: true,
+    deadlineMs: GENERATION_DEADLINE_MS,
+  });
+}
+
+/**
+ * Rewrite a single paragraph for the Create Studio editor.
+ *
+ * Runs the same provider chain, but returns prose: the response is the edited
+ * paragraph itself, so the story JSON schema must NOT be applied here. A much
+ * smaller ceiling and a shorter deadline keep an inline edit responsive.
+ */
+export function editParagraph(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<GenerationResult> {
+  return runProviderChain(systemPrompt, userPrompt, {
+    maxTokens: EDIT_MAX_OUTPUT_TOKENS,
+    constrainToStorySchema: false,
+    deadlineMs: EDIT_DEADLINE_MS,
+  });
+}
+
+/**
+ * The provider-specific bits of a request that depend on chain options.
+ *
+ * Exported so the branch that decides whether to constrain output can be tested
+ * without a network call - it is the difference between a story (must be the
+ * JSON object) and a paragraph edit (must be prose).
+ */
+export function anthropicRequestShape(options: ChainOptions) {
+  return {
+    max_tokens: options.maxTokens,
+    ...(options.constrainToStorySchema
+      ? { output_config: { format: ANTHROPIC_OUTPUT_FORMAT } }
+      : {}),
+  };
+}
+
+export function openAIRequestShape(options: ChainOptions) {
+  return {
+    max_tokens: options.maxTokens,
+    ...(options.constrainToStorySchema
+      ? { response_format: OPENAI_RESPONSE_FORMAT }
+      : {}),
+  };
+}
+
+export interface ChainOptions {
+  maxTokens: number;
+  constrainToStorySchema: boolean;
+  deadlineMs: number;
+}
+
+async function runProviderChain(
+  systemPrompt: string,
+  userPrompt: string,
+  options: ChainOptions,
+): Promise<GenerationResult> {
+  const failures: LlmFailure[] = [];
+  const deadline = Date.now() + options.deadlineMs;
   let safetyLevel = 0;
   const recordModerationRetry = (level: number) => {
     safetyLevel = Math.max(safetyLevel, level);
@@ -26,39 +233,42 @@ export async function generateStoryText(
   // Attempt 1: Sonnet 4.6
   try {
     const text = await generateAnthropicText(
-      "claude-sonnet-4-6",
+      PRIMARY_MODEL,
       60000,
+      options,
       systemPrompt,
       userPrompt,
       deadline,
       safetyLevel,
       recordModerationRetry,
     );
-    return { text, model: "claude-sonnet-4-6" };
+    return { text, model: PRIMARY_MODEL };
   } catch (e) {
-    console.error("Sonnet 4.6 failed:", e);
-    failures.push(`claude-sonnet-4-6: ${failureMessage(e)}`);
+    console.error(`${PRIMARY_MODEL} failed:`, e);
+    failures.push(classifyLlmError(e, "anthropic", PRIMARY_MODEL));
   }
 
   // Attempt 2: Haiku 4.5
   try {
     const text = await generateAnthropicText(
-      "claude-haiku-4-5-20251001",
+      FALLBACK_MODEL,
       30000,
+      options,
       systemPrompt,
       userPrompt,
       deadline,
       safetyLevel,
       recordModerationRetry,
     );
-    return { text, model: "claude-haiku-4-5" };
+    return { text, model: FALLBACK_MODEL };
   } catch (e) {
-    console.error("Haiku 4.5 failed:", e);
-    failures.push(`claude-haiku-4-5: ${failureMessage(e)}`);
+    console.error(`${FALLBACK_MODEL} failed:`, e);
+    failures.push(classifyLlmError(e, "anthropic", FALLBACK_MODEL));
   }
 
   // Attempt 3: gpt-4o-mini
-  if (OPENAI_API_KEY) {
+  const openaiApiKey = openaiKey();
+  if (openaiApiKey) {
     try {
       const text = await withAbortTimeout(
         remainingDuration(deadline, 30000),
@@ -70,10 +280,10 @@ export async function generateStoryText(
               signal,
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${OPENAI_API_KEY}`,
+                Authorization: `Bearer ${openaiApiKey}`,
               },
               body: JSON.stringify({
-                model: "gpt-4o-mini",
+                model: OPENAI_MODEL,
                 messages: [
                   { role: "system", content: systemPrompt },
                   {
@@ -81,48 +291,56 @@ export async function generateStoryText(
                     content: moderationSafePrompt(userPrompt, safetyLevel),
                   },
                 ],
-                // The prompts require a JSON object. Without this the model
-                // occasionally wraps it in prose or fences, JSON.parse fails,
-                // and parseStructuredOutput silently degrades to the text
-                // parser - which loses hook_type and the whole series_state.
-                response_format: { type: "json_object" },
-                max_tokens: 4096,
+                // json_object guarantees valid JSON but not the right shape,
+                // which still degraded to the text parser. The strict schema
+                // guarantees both.
+                ...openAIRequestShape(options),
               }),
             },
           );
           const payload: unknown = await res.json();
           if (!res.ok) {
-            throw new Error(
+            throw new ProviderHttpError(
               `OpenAI request failed (${res.status}): ${
                 providerError(payload)
               }`,
+              res.status,
             );
           }
           return openAIContent(payload);
         },
       );
-      return { text, model: "gpt-4o-mini" };
+      return { text, model: OPENAI_MODEL };
     } catch (e) {
-      console.error("gpt-4o-mini failed:", e);
-      failures.push(`gpt-4o-mini: ${failureMessage(e)}`);
+      console.error(`${OPENAI_MODEL} failed:`, e);
+      failures.push(classifyLlmError(e, "openai", OPENAI_MODEL));
     }
   } else {
-    failures.push("gpt-4o-mini: OPENAI_API_KEY is not configured");
+    failures.push({
+      provider: "openai",
+      model: OPENAI_MODEL,
+      code: "not_configured",
+      retryable: false,
+      message: "OPENAI_API_KEY is not configured",
+    });
   }
 
-  throw new Error(`All LLM providers failed. ${failures.join(" | ")}`);
+  throw new AllProvidersFailedError(failures);
 }
 
 async function generateAnthropicText(
   model: string,
   timeoutMs: number,
+  options: ChainOptions,
   systemPrompt: string,
   userPrompt: string,
   deadline: number,
   initialSafetyLevel: number,
   onModerationRetry: (level: number) => void,
 ): Promise<string> {
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const apiKey = anthropicKey();
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
+  const client = new Anthropic({ apiKey });
 
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
     try {
@@ -132,13 +350,13 @@ async function generateAnthropicText(
           client.messages.create(
             {
               model,
-              max_tokens: 4096,
+              ...anthropicRequestShape(options),
               system: systemPrompt,
               messages: [{
                 role: "user",
                 content: moderationSafePrompt(userPrompt, attempt),
               }],
-            },
+            } as Anthropic.MessageCreateParamsNonStreaming,
             { signal },
           ),
       );
@@ -240,7 +458,9 @@ async function withAbortTimeout<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(
-    () => controller.abort(new Error(`Timeout after ${ms}ms`)),
+    // A DOMException named AbortError is what fetch and the SDK both surface,
+    // so classifyLlmError can recognise a timeout rather than guessing.
+    () => controller.abort(new DOMException(`Timeout after ${ms}ms`, "AbortError")),
     ms,
   );
 

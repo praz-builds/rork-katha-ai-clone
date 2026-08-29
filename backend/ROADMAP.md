@@ -16,7 +16,7 @@ All bug fixes applied, 15 migrations (00001-00015) applied to the linked project
 
 ### Remaining Verification
 
-- [ ] Set secret: `ANTHROPIC_API_KEY` (waiting on user)
+- [ ] Set secret: `ANTHROPIC_API_KEY` — must be an API key from console.anthropic.com (`sk-ant-api03-`). A `sk-ant-oat01-` CLI/OAuth token expires within hours and is not licensed for end-user traffic. Until this is set, every generation falls through to the `gpt-4o-mini` fallback.
 - [ ] Add production Expo web origin to `ALLOWED_ORIGINS` before production browser traffic
 - [x] Test user created and exercised via the smoke-test harness (`backend/scripts/smoke-series-generation.py`)
 - [x] `generate-story` called end-to-end with credit deduction + story insert verified (smoke harness: 57 assertions across 11 groups)
