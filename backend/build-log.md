@@ -7,6 +7,26 @@
 
 ---
 
+## 2026-08-29 — Expo sends story_mode instead of legacy is_series
+
+**Session:** Aligned the Expo client with the generation request contract documented in PR #30.
+
+### Change
+
+- `expo/src/lib/api.ts` `generateStory()` sent `is_series: draft.isSeries ?? false`. The backend still maps that legacy boolean, but `story_mode` is the current contract and takes precedence in `validateGenerationRequest`. The client now sends `story_mode: draft.isSeries ? "series" : "standalone"` and no longer sends `is_series`.
+- The `isSeries` boolean stays as local Create Studio draft/UI state. Only the wire format changed, so `CreateStudioScreen.tsx` is untouched.
+
+### Tests
+
+- New `expo/src/__tests__/api-generation-contract.test.ts` (8 tests) pins the request contract: `story_mode` is `series` / `standalone` / defaults to `standalone`, `is_series` is absent, `request_id` passes through for idempotent retries, the server `story_mode` and `chapter_role` map back onto the returned story, and `continue-story` sends `is_finale` correctly for finale and mid-series chapters.
+- Expo suite: 41 tests pass (was 33). Typecheck clean, lint 0 errors and no new warnings.
+
+### Note
+
+- No backend change. `is_series` remains supported server-side for older clients; this only stops the shipped client from depending on the legacy path.
+
+---
+
 ## 2026-08-29 — Series state hardening (PR #30 review fixes)
 
 **Session:** Resolved all 11 actionable CodeRabbit findings on PR #30 (`codex/series-state-generation`) and hardened the series-state pipeline for production.
