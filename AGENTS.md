@@ -62,7 +62,7 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 |---------|---------|-------------|--------|
 | **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
 | **OpenAI** | Cover images (gpt-image-1) | `OPENAI_API_KEY` in Supabase secrets + `backend/.env` | Set |
-| **Anthropic** | Story generation (Sonnet 4.6 primary, Haiku 4.5 fallback) | `ANTHROPIC_API_KEY` in Supabase secrets | NOT YET SET |
+| **Anthropic** | Story generation (Sonnet 5 primary, Haiku 4.5 fallback) | `ANTHROPIC_API_KEY` in Supabase secrets | NOT YET SET — see Credential requirement below |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **Adapty** | Subscriptions + credit packs + paywall A/B | Public key in `expo/src/lib/adapty.ts`; webhook secret in Supabase secrets | Set |
@@ -72,7 +72,17 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 
 ### LLM Fallback Chain
 
-Sonnet 4.6 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Never use `claude --print` CLI for generation (adds 70-100s overhead); use Anthropic SDK directly.
+Sonnet 5 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Never use `claude --print` CLI for generation (adds 70-100s overhead); use the Anthropic SDK directly.
+
+**Model IDs are complete as written — never append a date suffix.** `claude-sonnet-5`, `claude-haiku-4-5`. A dated variant such as `claude-haiku-4-5-20251001` is not a valid id and 404s, which silently pushes every request down the chain to `gpt-4o-mini`.
+
+**Credential requirement.** `ANTHROPIC_API_KEY` must be an API key from console.anthropic.com, prefix `sk-ant-api03-`. A `sk-ant-oat01-` value is an OAuth access token minted by `claude` CLI login against a Claude subscription: it expires within hours, so generation breaks mid-session, and subscription auth is a developer-tool credential that is not licensed to serve end-user traffic. The two are separately billed on the same account.
+
+**Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once and both providers enforce it — Anthropic via `output_config.format`, OpenAI via `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
+
+**`max_tokens` is 16,000 for generation**, 2,000 for paragraph edits. The previous 4,096 truncated a chapter plus its `series_state` mid-JSON.
+
+**Provider failures are typed.** `classifyLlmError()` maps SDK error classes to a stable `LlmFailure` (`provider`, `model`, `code`, `status`, `retryable`) rather than string-matching messages. On total failure `generateStoryText` throws `AllProvidersFailedError`, whose `toContext()` returns identifiers and enums only — safe to pass straight to error telemetry.
 
 ### Supabase Storage Buckets
 

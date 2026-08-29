@@ -7,6 +7,44 @@
 
 ---
 
+## 2026-08-30 — LLM layer: correct model IDs, enforced output schema, typed failures
+
+**Session:** Repaired the Anthropic path, which had never actually run. Every generation in the previous session's smoke tests reached `gpt-4o-mini`, the third-choice fallback, and the reason was in the model IDs rather than the missing key.
+
+### Model IDs
+
+- `claude-haiku-4-5-20251001` -> `claude-haiku-4-5`. The dated variant is not a valid id, so the Haiku fallback could only ever 404.
+- `claude-sonnet-4-6` -> `claude-sonnet-5`. Newer and cheaper: $2/$10 per MTok against $3/$15.
+- SDK `@anthropic-ai/sdk` 0.30.1 -> 0.122.0, and the specifier moved from `esm.sh` to `npm:` because esm.sh returns 500 for the package's type declarations under `deno check`.
+
+### max_tokens
+
+Raised from 4,096 to 16,000 for generation (2,000 for paragraph edits). A ~900-word chapter plus a full `series_state` runs past 4,096, so responses truncated mid-JSON, parsed as garbage, and degraded to the text parser — the likely root of the intermittent `hook_type: "none"` chapters with frozen state.
+
+### Output schema is enforced
+
+`_shared/story_schema.ts` defines the story JSON schema once. Anthropic receives it via `output_config.format`, OpenAI via `response_format` with `strict: true`. The prompt previously only described the shape in prose, and a valid-JSON-wrong-shape response (`chapter_body` absent or not a string) fell through to the plain-text parser, which persisted a placeholder `hook_type: "none"` and an empty `series_state` while still spending a credit. Both providers require every property in `required` and `additionalProperties: false` for strict mode; tests pin that.
+
+### edit-story was broken on main
+
+`edit-story/index.ts` imports `editParagraph` from `_shared/llm.ts`, which did not exist — verified failing on `origin/main`, so it predates this work. Paragraph-level AI editing in Create Studio could not have functioned. The provider chain is now parameterised (`maxTokens`, `constrainToStorySchema`, `deadlineMs`) and `editParagraph` runs on it deliberately **without** the story schema, since it returns prose rather than JSON.
+
+### Typed provider failures
+
+`classifyLlmError()` maps SDK error classes — `NotFoundError`, `RateLimitError`, `AuthenticationError`, `APIConnectionError` before `APIError` since it subclasses it — to a stable `LlmFailure` (`provider`, `model`, `code`, `status`, `retryable`) rather than string-matching provider wording. `AllProvidersFailedError.toContext()` emits identifiers and enums only, so it feeds `logError({ bucket: "llm.provider" })` with no sanitizing. A test asserts context never carries prose, enforcing the `error_events` PII rule.
+
+Secrets are now read lazily rather than at module load, so importing `llm.ts` is no longer a side effect requiring `--allow-env`.
+
+### Credential status
+
+`ANTHROPIC_API_KEY` remains unset. A `sk-ant-oat01-` OAuth access token was offered and declined: it is minted by `claude` CLI login against a Claude subscription, expires within hours, and subscription auth is not licensed to serve end-user traffic. An API key from console.anthropic.com (`sk-ant-api03-`) is required. Documented in `AGENTS.md`.
+
+**Not yet verified against Claude.** The smoke suite has only ever run through the OpenAI fallback. The model IDs, schema enforcement and token ceiling are correct by construction and unit-tested, but the Anthropic path has not executed once. First run after the key is set should be treated as the real verification.
+
+89 Deno tests pass (was 79). `deno check` clean for `generate-story`, `continue-story`, `edit-story` and the shared modules.
+
+---
+
 ## 2026-08-29 — Production smoke test: three blocking defects found and fixed
 
 **Session:** Ran the first real authenticated end-to-end test of the generation pipeline. It failed immediately, surfacing two pre-existing production defects that meant the backend had never served a single successful request, plus one defect in the series prompt system.
