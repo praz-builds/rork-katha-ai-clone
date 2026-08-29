@@ -96,24 +96,13 @@ export const CHAPTER_ROLES: ReadonlySet<string> = new Set<ChapterRole>([
   "finale",
 ]);
 
-export type HookType =
-  | "none"
-  | "revelation"
-  | "reversal"
-  | "decision"
-  | "arrival"
-  | "betrayal"
-  | "danger"
-  | "unanswered_question"
-  | "emotional_rupture";
-
 /**
  * Canonical hook values, in one place.
  *
- * The story JSON schema, the runtime Set, and the chapters_hook_type_check
- * constraint in migration 00010 must all agree. Deriving the first two from this
- * array removes one copy; the database constraint is the remaining copy and is
- * asserted against this list in llm.test.ts.
+ * The `HookType` union, the story JSON schema, the runtime `HOOK_TYPES` set and
+ * the chapters_hook_type_check constraint in migration 00010 must all agree.
+ * The first three are derived from this array; the database constraint is the
+ * one remaining copy and is pinned against this list in llm.test.ts.
  */
 export const HOOK_TYPE_VALUES = [
   "none",
@@ -126,6 +115,8 @@ export const HOOK_TYPE_VALUES = [
   "unanswered_question",
   "emotional_rupture",
 ] as const;
+
+export type HookType = typeof HOOK_TYPE_VALUES[number];
 
 export const HOOK_TYPES: ReadonlySet<string> = new Set<string>(HOOK_TYPE_VALUES);
 

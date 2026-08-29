@@ -9,7 +9,7 @@ import {
   openAIRequestShape,
   ProviderHttpError,
 } from "./llm.ts";
-import { HOOK_TYPE_VALUES, HOOK_TYPES } from "./types.ts";
+import { HOOK_TYPE_VALUES, HOOK_TYPES, type HookType } from "./types.ts";
 import {
   ANTHROPIC_OUTPUT_FORMAT,
   OPENAI_RESPONSE_FORMAT,
@@ -255,4 +255,12 @@ Deno.test("classifyLlmError: a provider HTTP status survives classification", ()
   );
   assertEquals(throttled.status, 429);
   assertEquals(throttled.retryable, true);
+});
+
+Deno.test("HookType is derived, so the union cannot drift from the values", () => {
+  // A compile-time assertion: if HookType stopped deriving from
+  // HOOK_TYPE_VALUES, assigning every value to it would stop type-checking.
+  const all: HookType[] = [...HOOK_TYPE_VALUES];
+  assertEquals(all.length, HOOK_TYPE_VALUES.length);
+  assertEquals(new Set(all).size, all.length, "duplicate hook value");
 });
