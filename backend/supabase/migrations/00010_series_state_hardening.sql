@@ -7,9 +7,9 @@
 -- 1. Corrects the 00009 chapter_role backfill, which evaluated the finale
 --    branch before confirming the parent story is a series.
 -- 2. Named table-level CHECK constraints for story_mode, chapter_role, and
---    hook_type, added NOT VALID and validated separately. 00009 declared them
---    inline on ADD COLUMN IF NOT EXISTS, which silently skips the constraint
---    whenever the column already exists.
+--    hook_type, added NOT VALID here and validated in 00011. 00009 declared
+--    them inline on ADD COLUMN IF NOT EXISTS, which silently skips the
+--    constraint whenever the column already exists.
 -- 3. Rebuilds both completion RPCs so an invalid hook_type raises like the
 --    other enum parameters, and so an absent series_state preserves the stored
 --    continuity instead of erasing it.
@@ -34,10 +34,13 @@ WHERE chapter_role = 'finale'
 -- ---------------------------------------------------------------------------
 -- 2. Enforce the allowed values regardless of when the columns were created
 --
---    Each constraint is added NOT VALID and validated in a separate statement.
---    ADD CONSTRAINT ... NOT VALID takes a brief ACCESS EXCLUSIVE lock without
---    scanning the table; VALIDATE CONSTRAINT then scans under a weaker lock
---    that does not block concurrent writes.
+--    Each constraint is added NOT VALID, which takes a brief ACCESS EXCLUSIVE
+--    lock without scanning the table. Validation happens in migration 00011:
+--    supabase db push runs each migration file in a single transaction, so a
+--    VALIDATE CONSTRAINT here would hold this migration's ACCESS EXCLUSIVE lock
+--    until commit and give no concurrency benefit. A separate migration commits
+--    first, so the validation scan runs under its own weaker SHARE UPDATE
+--    EXCLUSIVE lock and does not block writes.
 -- ---------------------------------------------------------------------------
 
 ALTER TABLE public.stories
@@ -46,18 +49,12 @@ ALTER TABLE public.stories
   ADD CONSTRAINT stories_story_mode_check
   CHECK (story_mode IN ('standalone', 'series'))
   NOT VALID;
-ALTER TABLE public.stories
-  VALIDATE CONSTRAINT stories_story_mode_check;
-
 ALTER TABLE public.chapters
   DROP CONSTRAINT IF EXISTS chapters_chapter_role_check;
 ALTER TABLE public.chapters
   ADD CONSTRAINT chapters_chapter_role_check
   CHECK (chapter_role IN ('standalone', 'series_opening', 'mid_series', 'finale'))
   NOT VALID;
-ALTER TABLE public.chapters
-  VALIDATE CONSTRAINT chapters_chapter_role_check;
-
 ALTER TABLE public.chapters
   DROP CONSTRAINT IF EXISTS chapters_hook_type_check;
 ALTER TABLE public.chapters
@@ -74,9 +71,6 @@ ALTER TABLE public.chapters
     'emotional_rupture'
   ))
   NOT VALID;
-ALTER TABLE public.chapters
-  VALIDATE CONSTRAINT chapters_hook_type_check;
-
 -- ---------------------------------------------------------------------------
 -- 3. Rebuild the completion RPCs
 -- ---------------------------------------------------------------------------

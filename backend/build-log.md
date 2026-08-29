@@ -48,12 +48,13 @@
 ### Second review pass
 
 - **Kids series word range.** A kids series chapter was receiving the 500-1200 standalone range from both prompt layers while the continuation contract asks for 600-900. `buildAudienceModeRules()` now emits a 600-900 length rule for any series chapter, and `buildUserPrompt()` prioritizes the series range over the kids standalone range. Kids standalone keeps 500-1200.
-- **Migration lock profile.** `00010` now runs the backfill repair first, then adds each CHECK constraint `NOT VALID` and validates it in a separate statement, so validation scans under a lock that does not block writes.
-- **Docs.** `story-generator.md` no longer describes Bedtime as a mode separate from `kids`; `ROADMAP.md` records migrations 00001-00010 as applied and both edge functions as redeployed.
+- **Migration lock profile.** `00010` now runs the backfill repair first, then adds each CHECK constraint `NOT VALID`. Validation moved to `00011_validate_series_constraints.sql`: `supabase db push` runs each migration file in one transaction, so a `VALIDATE CONSTRAINT` inside `00010` would hold that migration's `ACCESS EXCLUSIVE` lock until commit and give no concurrency benefit. Splitting it lets `00010` commit first so the scan runs under its own `SHARE UPDATE EXCLUSIVE` lock. `VALIDATE CONSTRAINT` is a no-op on an already-valid constraint, so `00011` is safe against the database where `00010` had already validated them.
+- **Docs.** `story-generator.md` no longer describes Bedtime as a mode separate from `kids`. The Kids Day / Kids Bedtime sections are relabelled as tonal *registers* with an explicit "style guidance, not a contract" note, and their unenforced word ranges (500-1200 / 400-800) were removed, since `buildAudienceModeRules()` is the single source of the enforced Kids constraints. The Series Chapter Structure section now documents `story_mode` as the request contract and marks `is_series` as a legacy compatibility field.
+- `ROADMAP.md` records migrations 00001-00011 as applied, both edge functions as redeployed, and moves the planned device-token migration to `00012`.
 
 ### Deployment
 
-- Migration `00010_series_state_hardening.sql` applied to `iafeuxgoiknncgyjmugd`. `supabase migration list` shows 00001-00010 local and remote.
+- Migrations `00010_series_state_hardening.sql` and `00011_validate_series_constraints.sql` applied to `iafeuxgoiknncgyjmugd`. `supabase migration list` shows 00001-00011 local and remote.
 - `generate-story` and `continue-story` redeployed, both ACTIVE at v9.
 - The redeployed functions are compatible with the 00009 RPC signatures, so the deploy did not depend on 00010 landing first.
 

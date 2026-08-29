@@ -263,7 +263,16 @@ rejected and the credit refunded.
 ## Series Chapter Structure
 
 Every initial story starts as a standalone or as Chapter 1 of a series.
-The user chooses "Make it a series" before generation. When `is_series` is true:
+The user chooses "Make it a series" before generation.
+
+The request contract is `story_mode: "standalone" | "series"`, which
+`validateGenerationRequest` maps to the internal `storyMode`. The boolean
+`is_series: true` is a **legacy compatibility field** that maps to
+`story_mode: "series"`; new callers should send `story_mode`. Chapter intent is
+carried by `chapter_role` (`standalone`, `series_opening`, `mid_series`,
+`finale`), which the server derives rather than accepting from the client.
+
+When `story_mode` is `"series"`:
 
 - **Chapter 1:** Establish world, protagonist, central want, and the first
   complication. End on an unresolved moment (a question, revelation, or choice).
@@ -610,24 +619,29 @@ Reader promise: compressed, musical narrative.
 - Avoid abstract declarations, adjective stacking, rhyme-for-rhyme's-sake, and
   obscurity as a substitute for depth.
 
-### Kids Day
+### Kids: day register
+
+> **Style guidance, not a contract.** The backend exposes a single `kids`
+> audience mode. The two registers below are tonal guidance a caller can steer
+> toward through the seed; they are not separate modes, and the prompt builder
+> does not read them. The enforced Kids constraints are in
+> `buildAudienceModeRules()`: 500-1200 words for a standalone story, 600-900 for
+> a series chapter, plus the language, content, tone, ending, and hook rules.
 
 Reader promise: active, warm, concrete, child-centered story.
 
 - Age target: roughly 4-10.
-- Length: 500-1200 words.
 - One clear protagonist, one clear want, one clear problem.
 - The child protagonist solves the problem through effort, curiosity, kindness,
   courage, or cleverness.
 - Mild peril and funny beats are allowed.
 - No adult romance, spice, graphic violence, horror, or moral lecture.
 
-### Kids Bedtime
+### Kids: bedtime register
 
 Reader promise: the child feels safe and ready for sleep.
 
 - Age target: 3-6.
-- Length: 400-800 words.
 - Maximum 12 words per sentence.
 - Prefer concrete, familiar words.
 - Small conflict, quickly resolved.
