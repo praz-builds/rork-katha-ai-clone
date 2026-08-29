@@ -12,7 +12,7 @@
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
-All bug fixes applied, 15 migrations (00001-00015) applied to the linked project, 10 edge functions deployed and ACTIVE.
+All bug fixes applied, 15 migrations (00001-00015) applied to the linked project. **7 of 12 edge functions are deployed** — verified against `supabase functions list` on 2026-08-30.
 
 ### Remaining Verification
 
@@ -38,7 +38,9 @@ All bug fixes applied, 15 migrations (00001-00015) applied to the linked project
 - [x] Migration 00014 applied (re-applies the 00008 taxonomy columns, which were recorded as applied but never ran)
 - [x] Migration 00015 applied (narrows the authenticated UPDATE grant on `stories` to title/topic/cover_image_url/is_public; a table-level grant cannot be narrowed by a column REVOKE)
 - [ ] Profile creation on signup — build with the signup flow; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted
-- [x] 10 edge functions deployed and ACTIVE
+- [ ] Deploy the remaining edge functions. **This was previously ticked claiming "10 deployed and ACTIVE"; {"_tag":"Error","error":{"code":"LegacyProjectNotLinkedError","message":"Cannot find project ref. Have you run supabase link?"}} shows 7.** Deployed: `adapty-webhook`, `continue-story`, `deduct-credit`, `feedback`, `generate-story`, `grant-credit`, `library`. Never deployed: `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story`.
+  - `edit-story` and `publish-story` are called by `expo/src/lib/api.ts` (lines 518, 555), so the Create Studio edit and publish paths currently reach a function that does not exist.
+  - `publish-story` additionally needs the `covers` storage bucket, which is still uncreated.
 - [x] `generate-story` and `continue-story` redeployed for series state hardening (2026-08-29)
 - [x] `generate-story` double-deduct fix
 - [x] `_shared/credits.ts` replaced with atomic RPCs (`deduct_credit`, `grant_credit`) using `FOR UPDATE` locking

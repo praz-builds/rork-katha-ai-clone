@@ -40,6 +40,25 @@ Two documentation errors from the same staleness were corrected rather than carr
 
 **No end-to-end run against Claude.** `CLAUDE_CODE_OAUTH_TOKEN` is not set in Supabase secrets, so the Claude leg has still never executed in this project — with any credential. Whether the Anthropic API accepts a Claude Code OAuth token on `/v1/messages` via plain bearer, without additional headers, is untested here and must not be assumed. No production smoke run was performed, so no `error_events` rows were written this session.
 
+### Deployment correction (production was serving a stale build)
+
+`generate-story` and `continue-story` had been deployed on 2026-08-29 20:58 UTC from the stale `c14d3d4`-based tree, so **683 lines of merged generation fixes from PRs #30, #32 and #33 were on `main` but not live** — `story_schema.ts` did not exist in that build at all, meaning no schema enforcement and the old 4096-token ceiling, which is the root of the intermittent misparse.
+
+Both were redeployed from `origin/main` (`10ecaa8`) on 2026-08-30. Verified: `generate-story` v16 -> v17 (`7fa2e09e` -> `b911ca26`), `continue-story` v19 -> v20 (`9256927a` -> `6cfcf986`), and the upload manifest lists `_shared/story_schema.ts` for both.
+
+### Edge function inventory is not what the ROADMAP claimed
+
+`supabase functions list` shows **7 deployed, not 10**. The ROADMAP checkbox asserting "10 edge functions deployed and ACTIVE" was ticked against a state that has never held; it is now unticked with the real inventory.
+
+| | Functions |
+|---|---|
+| Deployed (7) | `adapty-webhook`, `continue-story`, `deduct-credit`, `feedback`, `generate-story`, `grant-credit`, `library` |
+| **Never deployed (5)** | `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story` |
+
+`expo/src/lib/api.ts` calls `edit-story` (line 518) and `publish-story` (line 555), so the Create Studio edit and publish paths reach functions that do not exist in the project. `publish-story` also depends on the `covers` bucket, which is still uncreated — deploying it alone would not make publishing work.
+
+Not deployed in this session: the five above are a separate decision, and `publish-story` spends money on cover generation the moment it succeeds.
+
 ### Open
 
 1. Set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`, not interactive login) and treat the first run as the real verification.
