@@ -92,7 +92,24 @@ Running the suite repeatedly surfaced intermittent generation failures that a si
 - The `try` block started after fixture creation, so a failure during setup skipped `finally` and leaked the auth user. It now opens before the first request, verified by fault injection.
 - Returning status `0` from `req()` instead of raising introduced a new gap: a create that succeeds server-side but times out on the response leaves `uid` unassigned, so cleanup skipped the account. Cleanup now looks the fixture up by exact email through the admin API. Fault-injected to confirm, which also surfaced two accounts stranded by earlier runs; both were purged.
 
-74 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
+### 8. Review pass: privilege bug, silent degradation, merge intent
+
+A full re-review surfaced six further findings, two of them defects introduced by this PR.
+
+- **`00015`: the `authenticated` UPDATE grant on `stories` was too broad.** `00012` issued a table-level `GRANT UPDATE` and then re-asserted 00006's `REVOKE UPDATE (status)`. A column-level REVOKE cannot subtract a column from a table-level grant, so the revoke was a no-op and story owners could set `stories.status` — exactly what 00006 prevented. `00015` grants only `title`, `topic`, `cover_image_url`, `is_public`. Verified against the project: owner UPDATE of `status` returns 403, of `title` returns 204.
+- **Assertions 11.3/11.4 were documented but never landed.** The string anchor stopped matching after the try/finally re-indentation and the edit silently no-oped, so the harness still carried the old `11.2 no unexpected refunds` while the build log and commit message described its replacement. Implemented and verified in the run output.
+- **`mergeSeriesState` conflated omitted with emptied.** A finale returning `open_hooks: []` kept the stale hooks, contradicting the finale contract, and a new `world_facts` entry replaced all earlier ones. Merging is now presence-aware: `open_hooks` and `promised_payoffs` are live state an explicit empty clears; `resolved_hooks`, `world_facts` and `character_changes` are history that accumulates.
+- **`00014` replaced `identity_lenses` outright.** On replay that would drop every other lens from a story still carrying the legacy `lgbtq` genre. It now merges `queer` in and skips rows that already have it.
+
+### 9. Continuations no longer degrade silently
+
+Repeated runs showed continuations returning HTTP 200 with `hook_type: "none"` and a byte-identical `series_state`. `response_format: { type: "json_object" }` guarantees syntactically valid JSON but not the right shape: when `chapter_body` is not a string, `parseStructuredOutput` falls through to the plain-text parser, whose placeholder `hook_type: "none"` and empty state were being persisted as though they were model output. The chapter ended nowhere and continuity froze for the rest of the series, with the credit still charged.
+
+`parseStructuredOutput` now reports whether the structured parse succeeded, and `continue-story` refuses to persist an unstructured continuation, so the existing refund path runs and the reader can retry.
+
+**Known residual:** on the `gpt-4o-mini` fallback this misparse occurs intermittently — roughly one continuation in six across observed runs. It is now a loud, refunded failure rather than a silent corruption. `ANTHROPIC_API_KEY` is still unset; the prompt system was designed for Claude, and this path is the fallback.
+
+79 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
 
 ---
 

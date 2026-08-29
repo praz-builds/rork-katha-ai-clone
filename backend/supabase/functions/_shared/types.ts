@@ -315,6 +315,10 @@ export interface StoryGenerationOutput {
   first_line: string;
   previously_summary: string;
   series_state: SeriesState;
+  /** The model's raw series_state, kept so merge can tell omitted from emptied. */
+  raw_series_state?: unknown;
+  /** False when the JSON parse failed and the text fallback produced this. */
+  structured?: boolean;
   hook_type: HookType;
   hook_text: string;
 }

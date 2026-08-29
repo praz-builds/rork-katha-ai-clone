@@ -3,6 +3,7 @@ import {
   isEmptySeriesState,
   mergeSeriesState,
   parseGeneratedStoryText,
+  providedSeriesStateKeys,
   parseSeriesState,
   parseStructuredOutput,
 } from "./story_text.ts";
@@ -199,4 +200,67 @@ Deno.test("mergeSeriesState: a full update wins over stored values", () => {
   const merged = mergeSeriesState(prior, next);
   assertEquals(merged.central_conflict, "new");
   assertEquals(merged.open_hooks, ["new hook"]);
+});
+
+Deno.test("mergeSeriesState: an explicitly emptied open_hooks clears", () => {
+  const prior = parseSeriesState({ open_hooks: ["who sent it?"], central_conflict: "the letter" });
+  const next = parseSeriesState({ open_hooks: [], resolved_hooks: ["the brother sent it"] });
+  const merged = mergeSeriesState(prior, next, new Set(["open_hooks", "resolved_hooks"]));
+  // A finale that resolves everything must be able to empty the live set.
+  assertEquals(merged.open_hooks, []);
+  assertEquals(merged.resolved_hooks, ["the brother sent it"]);
+  assertEquals(merged.central_conflict, "the letter");
+});
+
+Deno.test("mergeSeriesState: an omitted open_hooks keeps the prior list", () => {
+  const prior = parseSeriesState({ open_hooks: ["who sent it?"] });
+  const next = parseSeriesState({ resolved_hooks: ["something else"] });
+  const merged = mergeSeriesState(prior, next, new Set(["resolved_hooks"]));
+  assertEquals(merged.open_hooks, ["who sent it?"]);
+});
+
+Deno.test("mergeSeriesState: history accumulates instead of replacing", () => {
+  const prior = parseSeriesState({
+    world_facts: ["the valley shifts at night"],
+    character_changes: ["Lira doubts her instruments"],
+  });
+  const next = parseSeriesState({
+    world_facts: ["the compass spins near the ridge"],
+    character_changes: ["Lira trusts Ovin"],
+  });
+  const merged = mergeSeriesState(prior, next, new Set(["world_facts", "character_changes"]));
+  assertEquals(merged.world_facts, [
+    "the valley shifts at night",
+    "the compass spins near the ridge",
+  ]);
+  assertEquals(merged.character_changes, ["Lira doubts her instruments", "Lira trusts Ovin"]);
+});
+
+Deno.test("providedSeriesStateKeys: reports which keys the model sent", () => {
+  assertEquals(providedSeriesStateKeys({ open_hooks: [], world_facts: ["x"] }).has("open_hooks"), true);
+  assertEquals(providedSeriesStateKeys({ world_facts: ["x"] }).has("open_hooks"), false);
+  assertEquals(providedSeriesStateKeys(null).size, 0);
+  assertEquals(providedSeriesStateKeys([1, 2]).size, 0);
+});
+
+Deno.test("parseStructuredOutput: flags whether the structured parse succeeded", () => {
+  const good = parseStructuredOutput(
+    JSON.stringify({ chapter_body: "A line.", hook_type: "decision" }),
+    "Untitled",
+  );
+  assertEquals(good.structured, true);
+  assertEquals(good.hook_type, "decision");
+
+  // Valid JSON, wrong shape: chapter_body is not a string. This is the case a
+  // live run hit - the text fallback then supplies placeholder hook_type
+  // "none" and an empty series_state, which must not be mistaken for output.
+  const wrongShape = parseStructuredOutput(
+    JSON.stringify({ chapter: { body: "A line." } }),
+    "Untitled",
+  );
+  assertEquals(wrongShape.structured, false);
+  assertEquals(wrongShape.hook_type, "none");
+
+  const notJson = parseStructuredOutput("Just prose, no JSON at all.", "Untitled");
+  assertEquals(notJson.structured, false);
 });

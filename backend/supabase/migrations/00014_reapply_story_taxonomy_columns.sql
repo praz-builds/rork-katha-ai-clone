@@ -63,8 +63,19 @@ UPDATE public.stories SET content_rating = 'kids'
   WHERE audience_mode = 'kids';
 
 -- Step 6: Migrate the LGBTQ+ identity lens
-UPDATE public.stories SET identity_lenses = ARRAY['queer']
-  WHERE 'lgbtq' = ANY(genre);
+--
+-- 00008 assigned ARRAY['queer'] outright. Replaying that on a database that
+-- already carries taxonomy data would drop every other lens from any story
+-- still holding the legacy 'lgbtq' genre, and validation.ts supports multiple
+-- lenses. Merge instead, and skip rows that already have it.
+UPDATE public.stories
+SET identity_lenses = (
+  SELECT ARRAY(
+    SELECT DISTINCT unnest(COALESCE(identity_lenses, '{}') || ARRAY['queer'])
+  )
+)
+WHERE 'lgbtq' = ANY(genre)
+  AND NOT ('queer' = ANY(COALESCE(identity_lenses, '{}')));
 
 -- Step 7: Default any remaining NULL primary_genre
 UPDATE public.stories SET primary_genre = 'contemporary'
