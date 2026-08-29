@@ -245,6 +245,15 @@ serve(async (req) => {
       if (!output.chapter_body) {
         throw new Error("Generation returned no story content");
       }
+      // A series opening whose structured parse failed has no hook and no
+      // series_state - the text fallback only supplies placeholders. Persisting
+      // it starts a series that cannot be continued, so fail and let the refund
+      // path run. Standalone stories need neither, so they keep the fallback.
+      if (storyMode === "series" && output.structured === false) {
+        throw new Error(
+          "Series opening returned unparseable structured output; refusing to start a series without hook or series state",
+        );
+      }
       const wordCount = output.chapter_body.split(/\s+/).length;
       const contentRating = deriveContentRating(audienceMode, spiceLevel);
 

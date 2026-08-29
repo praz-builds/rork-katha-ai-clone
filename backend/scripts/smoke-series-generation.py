@@ -289,10 +289,13 @@ try:
                   bool(new_state.get("next_chapter_pressure"))
                   and new_state.get("next_chapter_pressure") != ch1.get("next_chapter_pressure"),
                   f"{(ch1.get('next_chapter_pressure') or '')[:34]!r} -> {(new_state.get('next_chapter_pressure') or '')[:34]!r}")
-            check("5.8 open_hooks carry this chapter's new hook",
-                  new_state.get("open_hooks") != ch1.get("open_hooks")
-                  and len(new_state.get("open_hooks") or []) > 0,
-                  f"{len(ch1.get('open_hooks') or [])} -> {len(new_state.get('open_hooks') or [])}")
+            # Membership, not just "the list changed": an unrelated non-empty
+            # list would otherwise pass while the chapter's own hook went
+            # unrecorded, which is the persistence gap this exists to catch.
+            ch2_hook = (ch2.get("hook_text") or "").strip()
+            check("5.8 open_hooks contains this chapter's hook_text",
+                  bool(ch2_hook) and ch2_hook in (new_state.get("open_hooks") or []),
+                  f"hook={ch2_hook[:36]!r} among {len(new_state.get('open_hooks') or [])} hooks")
             check("5.9 chapter progress recorded in state",
                   (new_state.get("character_changes") != ch1.get("character_changes"))
                   or (new_state.get("relationship_state") != ch1.get("relationship_state"))

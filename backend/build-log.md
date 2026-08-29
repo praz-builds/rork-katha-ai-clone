@@ -105,7 +105,7 @@ A full re-review surfaced six further findings, two of them defects introduced b
 
 Repeated runs showed continuations returning HTTP 200 with `hook_type: "none"` and a byte-identical `series_state`. `response_format: { type: "json_object" }` guarantees syntactically valid JSON but not the right shape: when `chapter_body` is not a string, `parseStructuredOutput` falls through to the plain-text parser, whose placeholder `hook_type: "none"` and empty state were being persisted as though they were model output. The chapter ended nowhere and continuity froze for the rest of the series, with the credit still charged.
 
-`parseStructuredOutput` now reports whether the structured parse succeeded, and `continue-story` refuses to persist an unstructured continuation, so the existing refund path runs and the reader can retry.
+`parseStructuredOutput` now reports whether the structured parse succeeded. `continue-story` refuses to persist an unstructured continuation, and `generate-story` refuses to start a **series** on one — a series opening with no hook and no state cannot be continued. Standalone stories need neither, so they keep the text fallback. In both cases the existing refund path runs and the reader can retry.
 
 **Known residual:** on the `gpt-4o-mini` fallback this misparse occurs intermittently — roughly one continuation in six across observed runs. It is now a loud, refunded failure rather than a silent corruption. `ANTHROPIC_API_KEY` is still unset; the prompt system was designed for Claude, and this path is the fallback.
 
