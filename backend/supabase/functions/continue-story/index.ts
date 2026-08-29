@@ -275,9 +275,23 @@ serve(async (req) => {
       const nextState = isEmptySeriesState(output.series_state)
         ? seriesState
         : mergeSeriesState(seriesState, output.series_state);
+      // A mid-series chapter must leave its ending hook in open_hooks so later
+      // chapters can pay it off. The model sometimes writes a real hook_text
+      // and hook_type but forgets to record it in the state. The chapter itself
+      // is sound, so refunding it would discard good work for a bookkeeping
+      // miss - record the hook instead.
+      const withHook = (state: typeof nextState) => {
+        const hook = (output.hook_text ?? "").trim();
+        if (!hook || state.open_hooks.includes(hook)) return state;
+        return {
+          ...state,
+          open_hooks: [...state.open_hooks, hook].slice(-12),
+        };
+      };
+
       const persistedState = isFinale
         ? { ...nextState, next_chapter_pressure: "" }
-        : nextState;
+        : withHook(nextState);
 
       const { data: chapter, error: chapterError } = await serviceClient.rpc(
         "complete_continuation_generation",

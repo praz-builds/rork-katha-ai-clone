@@ -70,6 +70,27 @@ def rid(tag):
     return f"smoke-{tag}-{uuid.uuid4().hex[:10]}"
 
 
+def find_user_by_email(target: str) -> str | None:
+    """Locate a fixture auth user by exact email, paging through the admin list.
+
+    Used only when the create response was indeterminate, so the account can
+    still be torn down rather than stranded in the project.
+    """
+    if not target:
+        return None
+    for page in range(1, 11):
+        st, body = req("GET", f"/auth/v1/admin/users?page={page}&per_page=200", key=SVC)
+        if st != 200 or not body:
+            return None
+        users = body.get("users", body) if isinstance(body, dict) else body
+        if not users:
+            return None
+        for u in users:
+            if (u.get("email") or "").lower() == target.lower():
+                return u.get("id")
+    return None
+
+
 # Seeds as a real user would type them, spanning the accepted 40-100 range.
 SEED_STANDALONE = "a barista who hears what strangers regret"                      # 41
 SEED_SERIES = ("a mapmaker discovers the valley she is charting quietly "
@@ -102,6 +123,7 @@ print("=" * 74)
 # Identifiers are declared before the try so finally can clean up whatever
 # was created, even when setup itself fails partway through.
 uid = None
+email = ""
 story_ids = []
 results = {}
 
@@ -382,6 +404,15 @@ finally:
         else:
             leaked.append(f"{label} (HTTP {st})")
             FAIL.append(f"cleanup: {label} left in production (HTTP {st})")
+
+    if uid is None:
+        # The create call may have succeeded server-side while the response
+        # timed out or failed to decode, in which case req() returned 0 and uid
+        # was never assigned. Look the fixture up by its exact email so the
+        # account is not stranded.
+        uid = find_user_by_email(email)
+        if uid:
+            print(f"  recovered orphaned auth user {uid}")
 
     if uid:
         # Order matters, and stories are deleted by author rather than by the

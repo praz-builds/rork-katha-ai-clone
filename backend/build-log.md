@@ -46,7 +46,7 @@ Before the fix the probe showed the state echoed verbatim; after, `next_chapter_
 
 ### Results
 
-`backend/scripts/smoke-series-generation.py` — 57 assertions across 11 groups. Three consecutive runs: 57/57, 57/57, 56/57. The single miss was the model reusing chapter 1's `open_hooks` rather than adding a new one — model compliance on the `gpt-4o-mini` fallback, not a code defect. No fixture leaked in any run.
+`backend/scripts/smoke-series-generation.py` — 57 assertions across 11 groups. Three consecutive runs after the self-heal fix: 57/57, 57/57, 57/57, zero leaks. (Before it: 57/57, 57/57, 56/57.) The single miss was the model writing a real `hook_type` and `hook_text` but not recording that hook in `open_hooks`, so a later chapter had nothing to pay off. The chapter itself was sound and the credit was correctly settled, so refunding would have discarded good work for a bookkeeping miss. `continue-story` now appends the chapter's `hook_text` to `open_hooks` when the model omits it. No fixture leaked in any run.
 
 - Seed validation: 15/28/32-char seeds rejected with 400, no credit charged
 - Standalone: `standalone` role, `hook_type` none, stored `series_state` `{}`, 1028 words, 1 credit
@@ -90,6 +90,7 @@ Running the suite repeatedly surfaced intermittent generation failures that a si
 - Cleanup deleted only the story ids the run tracked. A generation that fails after the story row is inserted leaves an orphan, which blocked the profile delete with a foreign-key 409 and the auth-user delete with a 500. Cleanup now deletes `stories?author_id=eq.{uid}`, with `generation_operations` first since it references stories.
 - `11.2 no unexpected refunds` treated any refund as a defect. A refund after a genuine model failure is the system working as designed. Replaced with `11.3` (every refund matches a generation failure the harness observed) and `11.4` (every operation reached a terminal state), and the harness now prints `last_error` so a refund is diagnosable.
 - The `try` block started after fixture creation, so a failure during setup skipped `finally` and leaked the auth user. It now opens before the first request, verified by fault injection.
+- Returning status `0` from `req()` instead of raising introduced a new gap: a create that succeeds server-side but times out on the response leaves `uid` unassigned, so cleanup skipped the account. Cleanup now looks the fixture up by exact email through the admin API. Fault-injected to confirm, which also surfaced two accounts stranded by earlier runs; both were purged.
 
 74 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
 
