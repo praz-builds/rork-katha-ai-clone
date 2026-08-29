@@ -11,10 +11,20 @@ import {
 } from "../_shared/operations.ts";
 import {
   buildContinuationSystemPrompt,
+  formatSeriesStateBlock,
   MAX_SERIES_CHAPTERS,
 } from "../_shared/story-prompts.ts";
-import { parseStructuredOutput } from "../_shared/story_text.ts";
-import type { AudienceMode, IdentityLens, SpiceLevel, TropeModule } from "../_shared/types.ts";
+import {
+  isEmptySeriesState,
+  parseSeriesState,
+  parseStructuredOutput,
+} from "../_shared/story_text.ts";
+import {
+  type AudienceMode,
+  type IdentityLens,
+  type SpiceLevel,
+  type TropeModule,
+} from "../_shared/types.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -110,7 +120,9 @@ serve(async (req) => {
     // Verify story ownership
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
-      .select("id, title, genre, primary_genre, audience_mode, identity_lenses, trope_modules, spice_level, topic, author_id, language")
+      .select(
+        "id, title, genre, primary_genre, audience_mode, identity_lenses, trope_modules, spice_level, topic, author_id, language, story_mode, series_state, previously_summary",
+      )
       .eq("id", story_id)
       .single();
 
@@ -121,7 +133,9 @@ serve(async (req) => {
     // Keep prompt context bounded while deriving the next chapter from latest.
     const { data: chapters, error: chaptersError } = await serviceClient
       .from("chapters")
-      .select("chapter_number, title, content")
+      .select(
+        "chapter_number, title, content, chapter_role, previously_summary, hook_type, hook_text",
+      )
       .eq("story_id", story_id)
       .order("chapter_number", { ascending: false })
       .limit(4);
@@ -177,18 +191,52 @@ serve(async (req) => {
       .join("\n\n");
 
     const primaryGenre: string = story.primary_genre ??
-      (Array.isArray(story.genre) ? story.genre[0] ?? "contemporary" : (story.genre ?? "contemporary"));
+      (Array.isArray(story.genre)
+        ? story.genre[0] ?? "contemporary"
+        : (story.genre ?? "contemporary"));
     const storyLanguage = typeof story.language === "string"
       ? story.language
       : undefined;
     const audienceMode = (story.audience_mode ?? "adult") as AudienceMode;
-    const identityLenses = (Array.isArray(story.identity_lenses) ? story.identity_lenses : []) as IdentityLens[];
-    const tropeModules = (Array.isArray(story.trope_modules) ? story.trope_modules : []) as TropeModule[];
+    const identityLenses = (Array.isArray(story.identity_lenses)
+      ? story.identity_lenses
+      : []) as IdentityLens[];
+    const tropeModules = (Array.isArray(story.trope_modules)
+      ? story.trope_modules
+      : []) as TropeModule[];
     const rawSpice = story.spice_level ?? "sweet";
-    const spiceLevel = (rawSpice === "explicit" ? "steamy" : rawSpice) as SpiceLevel;
+    const spiceLevel =
+      (rawSpice === "explicit" ? "steamy" : rawSpice) as SpiceLevel;
     const isFinale = body.is_finale === true ||
       nextChapterNum >= MAX_SERIES_CHAPTERS;
     const chapterMode = isFinale ? "finale" : "chapter";
+    const chapterRole = isFinale ? "finale" : "mid_series";
+    const seriesState = parseSeriesState(story.series_state);
+
+    let earliestContext = "";
+    if (
+      isFinale && !chapters.some((c) =>
+        c.chapter_number === 1
+      )
+    ) {
+      const { data: firstChapter, error: firstChapterError } =
+        await serviceClient
+          .from("chapters")
+          .select(
+            "chapter_number, title, content, previously_summary, hook_type, hook_text",
+          )
+          .eq("story_id", story_id)
+          .eq("chapter_number", 1)
+          .maybeSingle();
+      if (firstChapterError) {
+        console.error("chapter 1 context fetch failed", firstChapterError);
+      } else if (firstChapter) {
+        earliestContext = `\n\nChapter 1 callback context:\n${
+          summarizeChapterForPrompt(firstChapter)
+        }`;
+      }
+    }
+
     const systemPrompt = buildContinuationSystemPrompt({
       primaryGenre,
       audienceMode,
@@ -197,12 +245,15 @@ serve(async (req) => {
       spiceLevel,
       language: storyLanguage,
       mode: chapterMode,
+      seriesState,
     });
     const finaleNote = isFinale
       ? " This is the FINAL chapter. Bring the story to a satisfying close."
       : "";
     const userPrompt =
-      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}\n\nPrevious chapters:\n${previousText}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
+      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}\n${
+        formatSeriesStateBlock(seriesState)
+      }\n\nPrevious chapters:\n${previousText}${earliestContext}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
 
     try {
       const result = await generateStoryText(systemPrompt, userPrompt);
@@ -223,6 +274,14 @@ serve(async (req) => {
           p_title: chapterTitle,
           p_content: content,
           p_word_count: wordCount,
+          p_chapter_role: chapterRole,
+          p_first_line: output.first_line || null,
+          p_previously_summary: output.previously_summary || null,
+          p_series_state: isEmptySeriesState(output.series_state)
+            ? seriesState
+            : output.series_state,
+          p_hook_type: isFinale ? "none" : output.hook_type,
+          p_hook_text: isFinale ? null : output.hook_text || null,
         },
       );
       if (chapterError || !chapter) {
@@ -270,4 +329,23 @@ function jsonResponse(req: Request, body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeadersFor(req), "Content-Type": "application/json" },
   });
+}
+
+function summarizeChapterForPrompt(chapter: {
+  chapter_number: number;
+  title?: string | null;
+  content?: string | null;
+  previously_summary?: string | null;
+  hook_type?: string | null;
+  hook_text?: string | null;
+}): string {
+  const summary = chapter.previously_summary?.trim();
+  const body = chapter.content?.trim() ?? "";
+  const excerpt = body.length > 1200 ? `${body.slice(0, 1200)}...` : body;
+  const hook = chapter.hook_text?.trim()
+    ? `\nOpening hook: ${chapter.hook_type ?? "unknown"} - ${chapter.hook_text}`
+    : "";
+  return `Chapter ${chapter.chapter_number}: ${chapter.title ?? "Untitled"}\n${
+    summary || excerpt
+  }${hook}`;
 }

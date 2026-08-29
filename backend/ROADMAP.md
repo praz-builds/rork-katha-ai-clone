@@ -12,7 +12,7 @@
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
-All bug fixes applied, 8 migrations (00001-00008) pushed, 10 edge functions deployed and ACTIVE.
+All bug fixes applied, 11 migrations (00001-00011) applied to the linked project, 10 edge functions deployed and ACTIVE.
 
 ### Remaining Verification
 
@@ -30,7 +30,11 @@ All bug fixes applied, 8 migrations (00001-00008) pushed, 10 edge functions depl
 - [x] Project ID filled in `supabase/config.toml`
 - [x] Supabase CLI installed (v2.114.0), project linked
 - [x] Migrations 00001-00008 applied
+- [x] Migration 00009 applied (production series state and hook metadata)
+- [x] Migration 00010 applied (series state hardening: named CHECK constraints added NOT VALID, backfill repair, hook_type validation, series_state retention)
+- [x] Migration 00011 applied (validates the 00010 CHECK constraints in a separate transaction)
 - [x] 10 edge functions deployed and ACTIVE
+- [x] `generate-story` and `continue-story` redeployed for series state hardening (2026-08-29)
 - [x] `generate-story` double-deduct fix
 - [x] `_shared/credits.ts` replaced with atomic RPCs (`deduct_credit`, `grant_credit`) using `FOR UPDATE` locking
 - [x] `_shared/llm.ts` Haiku model ID updated to `claude-haiku-4-5-20251001`
@@ -261,7 +265,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ### Database
 
-- [ ] Create migration `00009_device_tokens.sql`:
+- [ ] Create migration `00012_device_tokens.sql`:
 
   ```sql
   CREATE TABLE device_tokens (

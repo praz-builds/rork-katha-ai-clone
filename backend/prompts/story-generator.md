@@ -4,8 +4,8 @@
 > `backend/supabase/functions/_shared/story-prompts.ts`.
 >
 > The TypeScript implementation is the runtime source of truth. This document is
-> the product and engineering contract for the VS Code agent that will implement
-> the new prompt architecture across Supabase, Expo, cover prompts, and tests.
+> the product and engineering contract for the prompt architecture across
+> Supabase, Expo, cover prompts, and tests.
 
 ## Product Goal
 
@@ -16,7 +16,8 @@ writer, not by a generic assistant. The prompt system must optimize for:
 - reliable genre promise across 15 user-facing genres
 - modular identity, spice, and trope layers
 - safe adult-content handling with account-level gating
-- Kids and Bedtime modes that cannot inherit adult behavior
+- A Kids mode that cannot inherit adult behavior
+- standalone and series structures with different ending contracts
 - structured output that can be parsed and filtered downstream
 
 ## Key v5.1 Decisions
@@ -24,9 +25,9 @@ writer, not by a generic assistant. The prompt system must optimize for:
 - **15 primary genres (13 in UI).** LGBTQ+ is no longer a primary genre. It becomes an
   identity lens/toggle that can layer onto any adult genre. cozyFantasy and
   paranormalRomance exist in the DB constraint but are hidden from the UI.
-- **Kids is an audience mode, not an adult genre peer.** The UI may show Kids and
-  Bedtime as creation choices, but backend generation must treat them as locked
-  audience modes with separate rules.
+- **Kids is an audience mode, not an adult genre peer.** Backend generation uses
+  `adult | kids`; any future bedtime UX should map to kids-safe constraints
+  unless a separate backend mode is introduced.
 - **Spice is a genre-aware layer.** Use icon-driven UI and backend enum values:
   `sweet`, `steamy`, `explicit`. MVP should ship `sweet` + `steamy`; keep
   `explicit` behind a feature flag until legal/product review.
@@ -39,8 +40,12 @@ writer, not by a generic assistant. The prompt system must optimize for:
   traits, not living author names or instructions that could imitate a style.
 - **Prompt-only JSON is not enough.** Use API-level structured output/schema
   enforcement where supported, with strict validation fallback.
+- **Series is a story mode, not a genre.** Initial generation can be a complete
+  standalone story or Chapter 1 of a series. Series chapters persist state,
+  hooks, and chapter roles so continuations can build toward a finale.
 - **Every prompt change needs evals.** Genre quality, banned patterns, safety,
-  schema validity, and continuation behavior must be tested before deployment.
+  schema validity, series state, and continuation behavior must be tested before
+  deployment.
 
 ## Runtime Architecture
 
@@ -48,14 +53,15 @@ The runtime prompt builder should assemble layers in this order:
 
 1. Base craft and safety rules
 2. Story engine rules
-3. Primary genre module
-4. Audience mode module (`adult`, `kidsDay`, `kidsBedtime`)
-5. Identity lens module (`queer`, optional)
-6. Trope module (`werewolf`, `vampire`, `enemiesToLovers`, etc., optional)
-7. Spice module (`sweet`, `steamy`, `explicit`)
-8. Continuation/finale module, when applicable
-9. Language module
-10. Output schema reminder
+3. Story mode module (`standalone`, `series`)
+4. Primary genre module
+5. Audience mode module (`adult`, `kids`)
+6. Identity lens module (`queer`, optional)
+7. Trope module (`werewolf`, `vampire`, `enemiesToLovers`, etc., optional)
+8. Spice module (`sweet`, `steamy`, `explicit`)
+9. Continuation/finale module, when applicable
+10. Language module
+11. Output schema reminder
 
 Recommended builder signatures:
 
@@ -77,23 +83,27 @@ type PrimaryGenre =
   | "comedy"
   | "poetry";
 
-type AudienceMode = "adult" | "kidsDay" | "kidsBedtime";
+type AudienceMode = "adult" | "kids";
+type StoryMode = "standalone" | "series";
+type ChapterRole = "standalone" | "series_opening" | "mid_series" | "finale";
 type IdentityLens = "queer";
 type SpiceLevel = "sweet" | "steamy" | "explicit";
 type TropeModule =
   | "werewolf"
   | "vampire"
   | "enemiesToLovers"
-  | "foundFamily"
   | "secondChance"
   | "forcedProximity"
   | "smallTown"
-  | "chosenOne"
-  | "heist"
-  | "lockedRoom";
+  | "fatedMates"
+  | "forbiddenLove"
+  | "lockedRoom"
+  | "secretIdentity";
 
 buildStorySystemPrompt({
   primaryGenre,
+  storyMode,
+  chapterRole,
   audienceMode,
   identityLenses,
   tropeModules,
@@ -109,34 +119,35 @@ buildContinuationSystemPrompt({
   spiceLevel,
   language,
   mode, // "chapter" | "finale"
+  seriesState,
 });
 ```
 
 ## User-Facing Taxonomy
 
-These are the recommended 15 creation cards for the app:
+These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFantasy` and `paranormalRomance` are valid DB values but are not rendered as creation cards (see Key v5.1 Decisions).
 
-| # | UI Genre | Internal genre | Notes |
+| UI card # | UI Genre | Internal genre | Notes |
 |---|----------|----------------|-------|
 | 1 | Romance | `romance` | Commercial relationship-forward stories |
 | 2 | Romantasy | `romantasy` | Romance and fantasy arcs have equal weight |
 | 3 | Dark Romance | `darkRomance` | Adult only, steamy default, explicit feature-flagged |
-| 4 | Cozy Fantasy | `cozyFantasy` | Low-stakes warmth, craft, community |
-| 5 | Paranormal Romance | `paranormalRomance` | Host for Werewolf/Shifter and Vampire trope modules |
-| 6 | Fantasy | `fantasy` | Magic, world, cost, wonder |
-| 7 | Sci-Fi | `scifi` | One speculative idea with human consequence |
-| 8 | Thriller | `thriller` | Urgency, threat, ticking clock |
-| 9 | Mystery | `mystery` | Fair-play puzzle |
-| 10 | Horror | `horror` | Dread, wrongness, restraint |
-| 11 | Contemporary | `contemporary` | Absorbs Drama and Slice of Life registers |
-| 12 | Historical | `historical` | Period consciousness and constraints |
-| 13 | Adventure | `adventure` | Motion, environment, physical stakes |
-| 14 | Comedy | `comedy` | Observational or absurd, committed timing |
-| 15 | Poetry | `poetry` | Prose poetry / lyrical narrative mode |
+| - | Cozy Fantasy | `cozyFantasy` | **Backend only, hidden from UI.** Low-stakes warmth, craft, community |
+| - | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Host for Werewolf/Shifter and Vampire trope modules |
+| 4 | Fantasy | `fantasy` | Magic, world, cost, wonder |
+| 5 | Sci-Fi | `scifi` | One speculative idea with human consequence |
+| 6 | Thriller | `thriller` | Urgency, threat, ticking clock |
+| 7 | Mystery | `mystery` | Fair-play puzzle |
+| 8 | Horror | `horror` | Dread, wrongness, restraint |
+| 9 | Contemporary | `contemporary` | Absorbs Drama and Slice of Life registers |
+| 10 | Historical | `historical` | Period consciousness and constraints |
+| 11 | Adventure | `adventure` | Motion, environment, physical stakes |
+| 12 | Comedy | `comedy` | Observational or absurd, committed timing |
+| 13 | Poetry | `poetry` | Prose poetry / lyrical narrative mode |
 
 Separate UI controls:
 
-- **Kids mode:** `kidsDay` or `kidsBedtime`; force `spiceLevel: "sweet"`.
+- **Kids mode:** `kids`; force `spiceLevel: "sweet"`.
 - **Queer lens:** optional toggle; maps to `identityLenses: ["queer"]`.
 - **Spice selector:** icon-driven, genre-specific availability.
 - **Trope chips:** genre-specific suggestions such as Vampire, Werewolf/Shifter,
@@ -185,7 +196,7 @@ language.
   self-harm, or exploitation, even when embedded in fiction.
 - No harassment, defamation, or humiliating fiction about a real identifiable
   person.
-- Kids and Bedtime modes cannot contain sexual content, adult romantic tension,
+- Kids mode cannot contain sexual content, adult romantic tension,
   graphic violence, substance use, or horror.
 
 ## Title Generation
@@ -244,7 +255,6 @@ Word count is a hard rule, not a suggestion.
 | Standalone (adult) | 500 | 1,500 | Prompt + server validation |
 | Standalone (kids) | 500 | 1,200 | Prompt + server validation |
 | Series chapter | 600 | 900 | Prompt + server validation |
-| Kids bedtime | 400 | 800 | Prompt + server validation |
 
 If the model returns fewer words than the minimum, the server should flag the
 response as degraded and warn the user. Stories below 300 words should be
@@ -253,7 +263,21 @@ rejected and the credit refunded.
 ## Series Chapter Structure
 
 Every initial story starts as a standalone or as Chapter 1 of a series.
-The user chooses "Make it a series" before generation. When `is_series` is true:
+The user chooses "Make it a series" before generation.
+
+The request contract is `story_mode: "standalone" | "series"`, which
+`validateGenerationRequest` maps to the internal `storyMode`. The boolean
+`is_series: true` is a **legacy compatibility field** that maps to
+`story_mode: "series"`; new callers should send `story_mode`. Chapter intent is
+carried by `chapter_role` (`standalone`, `series_opening`, `mid_series`,
+`finale`), which the server derives rather than accepting from the client.
+
+`continue-story` derives `chapter_role: "finale"` when the request sets
+`is_finale: true`, or when the next chapter number reaches `MAX_SERIES_CHAPTERS`
+(7). `is_finale` is therefore a `continue-story` request hint, not a stored
+field: the persisted value is always `chapter_role`.
+
+When `story_mode` is `"series"`:
 
 - **Chapter 1:** Establish world, protagonist, central want, and the first
   complication. End on an unresolved moment (a question, revelation, or choice).
@@ -261,7 +285,8 @@ The user chooses "Make it a series" before generation. When `is_series` is true:
 - **Chapters 2-6:** Each chapter advances the plot with at least one irreversible
   change. End on a cliffhanger or hook. Shift relationships or power dynamics.
   Introduce new tension or deepen existing threads.
-- **Chapter 7 (or any chapter marked `is_finale`):** Resolve the central conflict.
+- **`chapter_role: "finale"` (chapter 7, or an earlier chapter requested with
+  `is_finale: true`):** Resolve the central conflict.
   Callback to a specific detail from Chapter 1. Land every major character arc.
   Loose threads are acceptable if the main story is complete.
 
@@ -600,24 +625,29 @@ Reader promise: compressed, musical narrative.
 - Avoid abstract declarations, adjective stacking, rhyme-for-rhyme's-sake, and
   obscurity as a substitute for depth.
 
-### Kids Day
+### Kids: day register
+
+> **Style guidance, not a contract.** The backend exposes a single `kids`
+> audience mode. The two registers below are tonal guidance a caller can steer
+> toward through the seed; they are not separate modes, and the prompt builder
+> does not read them. The enforced Kids constraints are in
+> `buildAudienceModeRules()`: 500-1200 words for a standalone story, 600-900 for
+> a series chapter, plus the language, content, tone, ending, and hook rules.
 
 Reader promise: active, warm, concrete, child-centered story.
 
 - Age target: roughly 4-10.
-- Length: 500-1200 words.
 - One clear protagonist, one clear want, one clear problem.
 - The child protagonist solves the problem through effort, curiosity, kindness,
   courage, or cleverness.
 - Mild peril and funny beats are allowed.
 - No adult romance, spice, graphic violence, horror, or moral lecture.
 
-### Kids Bedtime
+### Kids: bedtime register
 
 Reader promise: the child feels safe and ready for sleep.
 
 - Age target: 3-6.
-- Length: 400-800 words.
 - Maximum 12 words per sentence.
 - Prefer concrete, familiar words.
 - Small conflict, quickly resolved.
@@ -666,7 +696,22 @@ Standalone:
   "themes": ["lowercase tag"],
   "first_line": "string",
   "previously_summary": "string",
+  "series_state": {
+    "central_conflict": "",
+    "protagonist_want": "",
+    "relationship_state": "",
+    "open_hooks": [],
+    "resolved_hooks": [],
+    "promised_payoffs": [],
+    "world_facts": [],
+    "character_changes": [],
+    "next_chapter_pressure": ""
+  },
+  "hook_type": "none",
+  "hook_text": "",
   "primary_genre": "romance",
+  "story_mode": "standalone",
+  "chapter_role": "standalone",
   "audience_mode": "adult",
   "identity_lenses": ["queer"],
   "trope_modules": ["vampire"],
@@ -685,7 +730,22 @@ Continuation:
   "themes": ["lowercase tag"],
   "first_line": "string",
   "previously_summary": "string",
+  "series_state": {
+    "central_conflict": "string",
+    "protagonist_want": "string",
+    "relationship_state": "string",
+    "open_hooks": ["string"],
+    "resolved_hooks": ["string"],
+    "promised_payoffs": ["string"],
+    "world_facts": ["string"],
+    "character_changes": ["string"],
+    "next_chapter_pressure": "string"
+  },
+  "hook_type": "none|revelation|reversal|decision|arrival|betrayal|danger|unanswered_question|emotional_rupture",
+  "hook_text": "string",
   "primary_genre": "romance",
+  "story_mode": "series",
+  "chapter_role": "series_opening|mid_series|finale",
   "audience_mode": "adult",
   "identity_lenses": ["queer"],
   "trope_modules": ["vampire"],
@@ -700,6 +760,10 @@ Field rules:
 - `themes`: 2-4 lowercase tags, 1-3 words each.
 - `previously_summary`: 2-4 sentences summarizing this chapter for future
   continuation context.
+- `series_state`: empty strings/arrays for standalone; complete continuity state
+  for every series chapter.
+- `hook_type` and `hook_text`: `none`/empty for standalone and finale; required
+  for series opening and mid-series chapters.
 - `content_rating`: derived server-side too; never trust model output alone.
 
 ## Backend Contract
@@ -708,6 +772,8 @@ Required request fields:
 
 - `request_id`: client-stable idempotency key
 - `primary_genre`: single supported genre
+- `story_mode`: optional, `standalone | series`; legacy `is_series: true` maps
+  to `series`
 - `seed`: 40-character minimum
 - `characters`: optional (pre-filled placeholder in UI)
 - `language`: optional, normalized supported language

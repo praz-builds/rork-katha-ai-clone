@@ -20,6 +20,18 @@ export type Genre = (typeof GENRES)[number];
 export type AudienceMode = "adult" | "kids";
 export type SpiceLevel = "sweet" | "steamy";
 export type IdentityLens = "queer";
+export type StoryMode = "standalone" | "series";
+export type ChapterRole = "standalone" | "series_opening" | "mid_series" | "finale";
+export type HookType =
+  | "none"
+  | "revelation"
+  | "reversal"
+  | "decision"
+  | "arrival"
+  | "betrayal"
+  | "danger"
+  | "unanswered_question"
+  | "emotional_rupture";
 export type TropeModule =
   | "werewolf"
   | "vampire"
@@ -52,9 +64,26 @@ export type Chapter = {
   title: string;
   paragraphs: string[];
   chapterNumber: number;
+  chapterRole?: ChapterRole;
+  firstLine?: string;
+  previouslySummary?: string;
+  hookType?: HookType;
+  hookText?: string;
   isPublished: boolean;
   audioUrl?: string;
   audioUrls?: { female?: string; male?: string };
+};
+
+export type SeriesState = {
+  central_conflict: string;
+  protagonist_want: string;
+  relationship_state: string;
+  open_hooks: string[];
+  resolved_hooks: string[];
+  promised_payoffs: string[];
+  world_facts: string[];
+  character_changes: string[];
+  next_chapter_pressure: string;
 };
 
 export type Story = {
@@ -63,6 +92,8 @@ export type Story = {
   authorId: string;
   genre: Genre;
   primaryGenre?: Genre;
+  storyMode?: StoryMode;
+  seriesState?: SeriesState;
   audienceMode?: AudienceMode;
   spiceLevel?: SpiceLevel;
   contentRating?: string;

@@ -1,7 +1,16 @@
 import { stories } from "@/data/seed";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { GENRES } from "@/types/domain";
-import type { Chapter, CreateDraft, Genre, Story } from "@/types/domain";
+import type {
+  Chapter,
+  ChapterRole,
+  CreateDraft,
+  Genre,
+  HookType,
+  SeriesState,
+  Story,
+  StoryMode,
+} from "@/types/domain";
 
 export type LibraryResult = {
   stories: Story[];
@@ -128,12 +137,25 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
   const themes = Array.isArray(story.themes)
     ? story.themes.filter((value): value is string => typeof value === "string")
     : [];
+  const storyMode = isStoryMode(story.story_mode)
+    ? story.story_mode
+    : draft.isSeries
+      ? "series"
+      : "standalone";
 
   return {
     id,
     title: requiredString(story.title, "story title"),
     authorId: requiredString(story.author_id, "story author"),
     genre,
+    primaryGenre: genre,
+    storyMode,
+    seriesState: parseSeriesState(story.series_state),
+    audienceMode: story.audience_mode === "kids" ? "kids" : "adult",
+    spiceLevel: story.spice_level === "steamy" ? "steamy" : "sweet",
+    contentRating: typeof story.content_rating === "string"
+      ? story.content_rating
+      : undefined,
     synopsis: typeof story.topic === "string" && story.topic.trim()
       ? story.topic.trim()
       : content.replace(/\s+/g, " ").slice(0, 180),
@@ -147,6 +169,14 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
       chapterNumber: typeof chapter.chapter_number === "number"
         ? chapter.chapter_number
         : 1,
+      chapterRole: parseChapterRole(
+        chapter.chapter_role,
+        storyMode === "series" ? "series_opening" : "standalone",
+      ),
+      firstLine: stringOrUndefined(chapter.first_line),
+      previouslySummary: stringOrUndefined(chapter.previously_summary),
+      hookType: parseHookType(chapter.hook_type),
+      hookText: stringOrUndefined(chapter.hook_text),
       isPublished: chapter.is_published === true,
       audioUrl: typeof chapter.audio_url === "string"
         ? chapter.audio_url
@@ -186,6 +216,74 @@ function isGenre(value: unknown): value is Genre {
   return typeof value === "string" && GENRES.some((genre) => genre === value);
 }
 
+function isStoryMode(value: unknown): value is StoryMode {
+  return value === "standalone" || value === "series";
+}
+
+function parseChapterRole(value: unknown, fallback: ChapterRole): ChapterRole {
+  if (
+    value === "standalone" ||
+    value === "series_opening" ||
+    value === "mid_series" ||
+    value === "finale"
+  ) {
+    return value;
+  }
+  return fallback;
+}
+
+function parseHookType(value: unknown): HookType {
+  if (
+    value === "none" ||
+    value === "revelation" ||
+    value === "reversal" ||
+    value === "decision" ||
+    value === "arrival" ||
+    value === "betrayal" ||
+    value === "danger" ||
+    value === "unanswered_question" ||
+    value === "emotional_rupture"
+  ) {
+    return value;
+  }
+  return "none";
+}
+
+function parseSeriesState(value: unknown): SeriesState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const state = value as Record<string, unknown>;
+  return {
+    central_conflict: stringOrEmpty(state.central_conflict),
+    protagonist_want: stringOrEmpty(state.protagonist_want),
+    relationship_state: stringOrEmpty(state.relationship_state),
+    open_hooks: stringList(state.open_hooks),
+    resolved_hooks: stringList(state.resolved_hooks),
+    promised_payoffs: stringList(state.promised_payoffs),
+    world_facts: stringList(state.world_facts),
+    character_changes: stringList(state.character_changes),
+    next_chapter_pressure: stringOrEmpty(state.next_chapter_pressure),
+  };
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringOrEmpty(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean)
+    : [];
+}
+
 function filterLocalStories(query?: { q?: string; genre?: string }) {
   const normalized = query?.q?.trim().toLowerCase();
   return stories.filter((story) => {
@@ -214,6 +312,20 @@ function localGeneratedStory(draft: CreateDraft): Promise<Story> {
         authorId: "me",
         genre: draft.primaryGenre,
         primaryGenre: draft.primaryGenre,
+        storyMode: draft.isSeries ? "series" : "standalone",
+        seriesState: draft.isSeries
+          ? {
+            central_conflict: "The first chapter opens a larger unresolved problem.",
+            protagonist_want: `${heroName} wants to understand what changed.`,
+            relationship_state: "Key relationships are still forming.",
+            open_hooks: ["A new question remains unanswered."],
+            resolved_hooks: [],
+            promised_payoffs: ["The central mystery will be resolved by the finale."],
+            world_facts: [`The story belongs to ${draft.primaryGenre}.`],
+            character_changes: [`${heroName} has stepped into the conflict.`],
+            next_chapter_pressure: "The next chapter should force a harder choice.",
+          }
+          : undefined,
         audienceMode: draft.audienceMode,
         spiceLevel: draft.spiceLevel,
         synopsis: `A fresh ${draft.primaryGenre} story shaped from your seed: ${
@@ -233,6 +345,9 @@ function localGeneratedStory(draft: CreateDraft): Promise<Story> {
             storyId,
             title: "Chapter one",
             chapterNumber: 1,
+            chapterRole: draft.isSeries ? "series_opening" : "standalone",
+            hookType: draft.isSeries ? "unanswered_question" : "none",
+            hookText: draft.isSeries ? "A question hangs over what comes next." : undefined,
             isPublished: false,
             paragraphs: buildMockParagraphs(heroName, draft),
           },
@@ -340,6 +455,11 @@ export async function continueStory(
       title: typeof chapter.title === "string" ? chapter.title : `Chapter ${chapter.chapter_number ?? expectedChapterNum ?? 2}`,
       paragraphs: content.split(/\n\s*\n/).filter(Boolean),
       chapterNumber: typeof chapter.chapter_number === "number" ? chapter.chapter_number : (expectedChapterNum ?? 2),
+      chapterRole: parseChapterRole(chapter.chapter_role, isFinale ? "finale" : "mid_series"),
+      firstLine: stringOrUndefined(chapter.first_line),
+      previouslySummary: stringOrUndefined(chapter.previously_summary),
+      hookType: parseHookType(chapter.hook_type),
+      hookText: stringOrUndefined(chapter.hook_text),
       isPublished: false,
     },
     model: typeof data.model === "string" ? data.model : "unknown",
@@ -357,6 +477,9 @@ async function localContinueStory(
       id: `chapter-${Date.now()}`,
       storyId: _storyId,
       title: isFinale ? "The final chapter" : `Chapter ${chapterNum}`,
+      chapterRole: isFinale ? "finale" : "mid_series",
+      hookType: isFinale ? "none" : "unanswered_question",
+      hookText: isFinale ? undefined : "The next consequence has not arrived yet.",
       paragraphs: [
         "The story continued where it left off. The characters moved forward, carrying the weight of earlier decisions into new territory. Nothing felt settled yet, but the shape of things was beginning to emerge.",
         "New complications arrived without warning. A piece of information surfaced that changed the meaning of everything that came before. What had seemed like coincidence now looked deliberate, and the stakes shifted accordingly.",
