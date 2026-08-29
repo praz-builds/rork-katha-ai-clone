@@ -68,7 +68,10 @@ export async function generateStory(
       topic: draft.seed,
       characters: draft.characters,
       language: draft.language,
-      is_series: draft.isSeries ?? false,
+      // story_mode is the current request contract. The backend still accepts
+      // the legacy is_series boolean, but story_mode takes precedence there and
+      // is what new callers are expected to send.
+      story_mode: draft.isSeries ? "series" : "standalone",
     },
   });
 
