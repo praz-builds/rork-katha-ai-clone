@@ -78,17 +78,21 @@ def find_user_by_email(target: str) -> str | None:
     """
     if not target:
         return None
-    for page in range(1, 11):
+    wanted = target.lower()
+    page = 1
+    while True:
         st, body = req("GET", f"/auth/v1/admin/users?page={page}&per_page=200", key=SVC)
         if st != 200 or not body:
             return None
         users = body.get("users", body) if isinstance(body, dict) else body
         if not users:
+            # An empty page is the end of the list; there is no fixed page cap,
+            # so the fixture is found however large the project has grown.
             return None
         for u in users:
-            if (u.get("email") or "").lower() == target.lower():
+            if (u.get("email") or "").lower() == wanted:
                 return u.get("id")
-    return None
+        page += 1
 
 
 # Seeds as a real user would type them, spanning the accepted 40-100 range.
