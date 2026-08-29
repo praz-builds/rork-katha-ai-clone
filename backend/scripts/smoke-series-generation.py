@@ -20,6 +20,7 @@ ANON = os.environ["SUPABASE_ANON_KEY"]
 SVC = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 PASS, FAIL = [], []
+gen_failures = 0  # generations the harness observed returning non-200
 
 
 def check(name, cond, detail=""):
@@ -98,51 +99,53 @@ print("=" * 74)
 print("SMOKE TEST - series state generation (PR #30 + #31)")
 print("=" * 74)
 
-email = f"smoke+{uuid.uuid4().hex[:10]}@kathaai.test"
-pw = "Sm0ke!" + uuid.uuid4().hex[:12]
-print(f"\n[0] Test user {email}")
-s, d = req("POST", "/auth/v1/admin/users",
-           {"email": email, "password": pw, "email_confirm": True}, key=SVC)
-if s not in (200, 201):
-    print("  cannot create user:", s, json.dumps(d)[:300])
-    sys.exit(1)
-uid = d["id"]
-print(f"  id {uid}")
-
-# There is no signup flow yet, so no trigger creates the profile row.
-# credit_ledger.user_id references profiles(id), so the harness creates it.
-s, pd = req("POST", "/rest/v1/profiles",
-            {"id": uid, "username": f"smoke_{uid.replace('-', '')[:16]}"}, key=SVC)
-if s not in (200, 201, 204, 409):
-    print("  cannot create profile:", s, json.dumps(pd)[:250])
-    sys.exit(1)
-print(f"  profile row created (HTTP {s})")
-
-s, d = req("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": pw})
-if s != 200:
-    print("  cannot sign in:", s, json.dumps(d)[:300])
-    sys.exit(1)
-jwt = d["access_token"]
-
-gs, gd = rpc("grant_credit", {"p_user_id": uid, "p_amount": 60, "p_reason": "welcome",
-                              "p_reference_id": f"smoke-{uid[:8]}",
-                              "p_operation_key": rid("grant")})
-if gs != 200:
-    print("  grant_credit failed:", gs, json.dumps(gd)[:250])
-    sys.exit(1)
-b_start = balance(uid)
-if b_start != 60:
-    print(f"  unexpected starting balance {b_start}")
-    sys.exit(1)
-print(f"  signed in; balance = {b_start}")
-
+# Identifiers are declared before the try so finally can clean up whatever
+# was created, even when setup itself fails partway through.
+uid = None
 story_ids = []
 results = {}
 
-# The fixture below lives in the production project, so every exit path -
-# assertion failure, transport error, KeyboardInterrupt - must still tear
-# it down. The whole flow runs under try/finally.
+# Everything that touches the production project runs inside this try, with
+# teardown in finally. sys.exit() raises SystemExit, so setup failures unwind
+# through finally rather than skipping it and leaking a fixture.
 try:
+    email = f"smoke+{uuid.uuid4().hex[:10]}@kathaai.test"
+    pw = "Sm0ke!" + uuid.uuid4().hex[:12]
+    print(f"\n[0] Test user {email}")
+    s, d = req("POST", "/auth/v1/admin/users",
+               {"email": email, "password": pw, "email_confirm": True}, key=SVC)
+    if s not in (200, 201):
+        print("  cannot create user:", s, json.dumps(d)[:300])
+        sys.exit(1)
+    uid = d["id"]
+    print(f"  id {uid}")
+
+    # There is no signup flow yet, so no trigger creates the profile row.
+    # credit_ledger.user_id references profiles(id), so the harness creates it.
+    s, pd = req("POST", "/rest/v1/profiles",
+                {"id": uid, "username": f"smoke_{uid.replace('-', '')[:16]}"}, key=SVC)
+    if s not in (200, 201, 204, 409):
+        print("  cannot create profile:", s, json.dumps(pd)[:250])
+        sys.exit(1)
+    print(f"  profile row created (HTTP {s})")
+
+    s, d = req("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": pw})
+    if s != 200:
+        print("  cannot sign in:", s, json.dumps(d)[:300])
+        sys.exit(1)
+    jwt = d["access_token"]
+
+    gs, gd = rpc("grant_credit", {"p_user_id": uid, "p_amount": 60, "p_reason": "welcome",
+                                  "p_reference_id": f"smoke-{uid[:8]}",
+                                  "p_operation_key": rid("grant")})
+    if gs != 200:
+        print("  grant_credit failed:", gs, json.dumps(gd)[:250])
+        sys.exit(1)
+    b_start = balance(uid)
+    if b_start != 60:
+        print(f"  unexpected starting balance {b_start}")
+        sys.exit(1)
+    print(f"  signed in; balance = {b_start}")
 
     # ------------------------------------------------------ 1 seed validation
     print("\n[1] Seed length validation (real users type short prompts)")
@@ -205,6 +208,7 @@ try:
     if s != 200:
         print("  body:", json.dumps(d)[:500])
         FAIL.append("4: series generation")
+        gen_failures += 1
     else:
         st, ch = d["story"], d["chapter"]
         series_id = st["id"]
@@ -232,6 +236,7 @@ try:
         if s != 200:
             print("  body:", json.dumps(d)[:500])
             FAIL.append("5: mid-series continuation")
+            gen_failures += 1
         else:
             ch2 = d["chapter"]
             check("5.1 chapter_role == mid_series", ch2.get("chapter_role") == "mid_series", str(ch2.get("chapter_role")))
@@ -271,6 +276,7 @@ try:
         if s != 200:
             print("  body:", json.dumps(d)[:500])
             FAIL.append("6: finale continuation")
+            gen_failures += 1
         else:
             ch3 = d["chapter"]
             check("6.1 chapter_role == finale", ch3.get("chapter_role") == "finale", str(ch3.get("chapter_role")))
@@ -301,6 +307,7 @@ try:
     if s != 200:
         print("  body:", json.dumps(d)[:500])
         FAIL.append("7: kids series generation")
+        gen_failures += 1
     else:
         st, ch = d["story"], d["chapter"]
         story_ids.append(st["id"])
@@ -362,15 +369,36 @@ try:
         check("11.2 no unexpected refunds", "refunded" not in statuses, str(statuses))
 
 finally:
-    # ---------------------------------------------------------------- cleanup
     print("\n[cleanup]")
-    for sid in story_ids:
-        req("DELETE", f"/rest/v1/stories?id=eq.{sid}", key=SVC)
-    req("DELETE", f"/rest/v1/credit_ledger?user_id=eq.{uid}", key=SVC)
-    req("DELETE", f"/rest/v1/generation_operations?user_id=eq.{uid}", key=SVC)
-    req("DELETE", f"/rest/v1/profiles?id=eq.{uid}", key=SVC)
-    s, _ = req("DELETE", f"/auth/v1/admin/users/{uid}", key=SVC)
-    print(f"  {len(story_ids)} stories + test user removed (HTTP {s})")
+    removed = 0
+    leaked: list[str] = []
+
+    def purge(path: str, label: str) -> None:
+        """Delete a fixture row, recording a failure if it does not go away."""
+        global removed
+        st, _ = req("DELETE", path, key=SVC)
+        if st in (200, 202, 204):
+            removed += 1
+        else:
+            leaked.append(f"{label} (HTTP {st})")
+            FAIL.append(f"cleanup: {label} left in production (HTTP {st})")
+
+    if uid:
+        # Order matters, and stories are deleted by author rather than by the
+        # ids the run tracked: a generation that fails after the story row is
+        # inserted leaves an orphan the harness never saw, which then blocks
+        # the profile delete with a foreign-key 409 and the user delete with a
+        # 500. generation_operations references stories, so it goes first.
+        purge(f"/rest/v1/generation_operations?user_id=eq.{uid}", "generation_operations rows")
+        purge(f"/rest/v1/stories?author_id=eq.{uid}", "stories (all, by author)")
+        purge(f"/rest/v1/credit_ledger?user_id=eq.{uid}", "credit_ledger rows")
+        purge(f"/rest/v1/profiles?id=eq.{uid}", "profile row")
+        purge(f"/auth/v1/admin/users/{uid}", "auth user")
+
+    print(f"  {removed} fixture objects removed")
+    if leaked:
+        # Loud: these are real rows left behind in the live project.
+        print("  NOT REMOVED: " + "; ".join(leaked))
 
 print("\n" + "=" * 74)
 print(f"RESULT: {len(PASS)} passed, {len(FAIL)} failed")

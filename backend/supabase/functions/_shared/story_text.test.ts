@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   isEmptySeriesState,
+  mergeSeriesState,
   parseGeneratedStoryText,
   parseSeriesState,
   parseStructuredOutput,
@@ -164,4 +165,38 @@ Deno.test("isEmptySeriesState: detects states with no continuity", () => {
     isEmptySeriesState(parseSeriesState({ open_hooks: ["who sent it?"] })),
     false,
   );
+});
+
+Deno.test("mergeSeriesState: a partial update never blanks stored continuity", () => {
+  const prior = parseSeriesState({
+    central_conflict: "keep the lighthouse lit",
+    protagonist_want: "prove the light still works",
+    relationship_state: "wary of the inspector",
+    open_hooks: ["who sent the letter?"],
+    world_facts: ["the lamp runs on whale oil"],
+    next_chapter_pressure: "the inspector arrives at dawn",
+  });
+  // A finale that fills resolutions but leaves the conflict blank.
+  const partial = parseSeriesState({
+    resolved_hooks: ["the letter was from the keeper's brother"],
+    character_changes: ["the keeper forgave him"],
+    next_chapter_pressure: "",
+  });
+  const merged = mergeSeriesState(prior, partial);
+
+  assertEquals(merged.central_conflict, "keep the lighthouse lit");
+  assertEquals(merged.protagonist_want, "prove the light still works");
+  assertEquals(merged.world_facts, ["the lamp runs on whale oil"]);
+  assertEquals(merged.resolved_hooks, ["the letter was from the keeper's brother"]);
+  assertEquals(merged.character_changes, ["the keeper forgave him"]);
+  // Pressure is not carried over: a finale clears it deliberately.
+  assertEquals(merged.next_chapter_pressure, "");
+});
+
+Deno.test("mergeSeriesState: a full update wins over stored values", () => {
+  const prior = parseSeriesState({ central_conflict: "old", open_hooks: ["old hook"] });
+  const next = parseSeriesState({ central_conflict: "new", open_hooks: ["new hook"] });
+  const merged = mergeSeriesState(prior, next);
+  assertEquals(merged.central_conflict, "new");
+  assertEquals(merged.open_hooks, ["new hook"]);
 });

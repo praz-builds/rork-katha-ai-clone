@@ -147,6 +147,36 @@ export function isEmptySeriesState(state: SeriesState | null | undefined): boole
     state.character_changes.length === 0;
 }
 
+/**
+ * Merge a freshly generated state over the stored one, field by field.
+ *
+ * An all-or-nothing fallback loses data when the model returns a partial state:
+ * a finale that fills `resolved_hooks` but leaves `central_conflict` blank is
+ * not "empty", so it would overwrite the stored conflict with "". Preferring the
+ * new value per field, and keeping the stored one wherever the model left a
+ * blank, keeps continuity intact without discarding real updates.
+ */
+export function mergeSeriesState(
+  prior: SeriesState,
+  next: SeriesState,
+): SeriesState {
+  const text = (a: string, b: string) => a.trim() ? a : b;
+  const list = (a: string[], b: string[]) => a.length ? a : b;
+  return {
+    central_conflict: text(next.central_conflict, prior.central_conflict),
+    protagonist_want: text(next.protagonist_want, prior.protagonist_want),
+    relationship_state: text(next.relationship_state, prior.relationship_state),
+    open_hooks: list(next.open_hooks, prior.open_hooks),
+    resolved_hooks: list(next.resolved_hooks, prior.resolved_hooks),
+    promised_payoffs: list(next.promised_payoffs, prior.promised_payoffs),
+    world_facts: list(next.world_facts, prior.world_facts),
+    character_changes: list(next.character_changes, prior.character_changes),
+    // Pressure is intentionally NOT carried over: a finale clears it on
+    // purpose, and a stale pressure is worse than none.
+    next_chapter_pressure: next.next_chapter_pressure,
+  };
+}
+
 function stringField(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }

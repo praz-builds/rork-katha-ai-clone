@@ -46,7 +46,7 @@ Before the fix the probe showed the state echoed verbatim; after, `next_chapter_
 
 ### Results
 
-`backend/scripts/smoke-series-generation.py` — 57 assertions across 11 groups, all passing:
+`backend/scripts/smoke-series-generation.py` — 57 assertions across 11 groups. Three consecutive runs: 57/57, 57/57, 56/57. The single miss was the model reusing chapter 1's `open_hooks` rather than adding a new one — model compliance on the `gpt-4o-mini` fallback, not a code defect. No fixture leaked in any run.
 
 - Seed validation: 15/28/32-char seeds rejected with 400, no credit charged
 - Standalone: `standalone` role, `hook_type` none, stored `series_state` `{}`, 1028 words, 1 credit
@@ -74,7 +74,24 @@ The stricter assertions added during review caught the finale leaving `next_chap
 
 `CREATE INDEX CONCURRENTLY` was raised for the two `00014` indexes and deliberately not applied: it cannot run inside a transaction block and `supabase db push` wraps each migration in one, so a separate migration would not help either. `stories` holds 0 rows and both indexes already exist.
 
-72 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
+### 6. LLM robustness
+
+Running the suite repeatedly surfaced intermittent generation failures that a single run hid. The signature was `hook_type: none` plus a byte-identical `series_state` — `parseStructuredOutput` catching a `JSON.parse` failure and silently degrading to the text parser, which returns `hook_type: "none"` and an empty state. A broken chapter was persisted and a credit charged.
+
+- `response_format: { type: "json_object" }` on the OpenAI fallback. The prompts require a JSON object but nothing enforced it, so occasional prose or fences broke parsing.
+- `openAIContent` ignored `finish_reason`. A `length`-truncated response is partial JSON, so it now throws and the existing refund path runs instead of persisting a truncated chapter.
+
+### 7. Field-wise series state merge
+
+`isEmptySeriesState` is all-or-nothing, so a *partial* model response was not "empty" and overwrote stored values with blanks — one run showed a finale erasing `central_conflict` while filling `resolved_hooks`. `mergeSeriesState()` now merges per field, preferring the new value and keeping the stored one wherever the model left a blank. `next_chapter_pressure` deliberately does not carry over, since a finale clears it on purpose.
+
+### Harness corrections
+
+- Cleanup deleted only the story ids the run tracked. A generation that fails after the story row is inserted leaves an orphan, which blocked the profile delete with a foreign-key 409 and the auth-user delete with a 500. Cleanup now deletes `stories?author_id=eq.{uid}`, with `generation_operations` first since it references stories.
+- `11.2 no unexpected refunds` treated any refund as a defect. A refund after a genuine model failure is the system working as designed. Replaced with `11.3` (every refund matches a generation failure the harness observed) and `11.4` (every operation reached a terminal state), and the harness now prints `last_error` so a refund is diagnosable.
+- The `try` block started after fixture creation, so a failure during setup skipped `finally` and leaked the auth user. It now opens before the first request, verified by fault injection.
+
+74 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
 
 ---
 

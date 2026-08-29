@@ -16,6 +16,7 @@ import {
 } from "../_shared/story-prompts.ts";
 import {
   isEmptySeriesState,
+  mergeSeriesState,
   parseSeriesState,
   parseStructuredOutput,
 } from "../_shared/story_text.ts";
@@ -269,9 +270,11 @@ serve(async (req) => {
       // A finale ends the series, so there is no next chapter to build pressure
       // toward. The prompt asks for this, but the model does not reliably
       // comply, and hook_type is already forced the same way below.
+      // Merge field by field: a partial model response must not blank out
+      // continuity that earlier chapters established.
       const nextState = isEmptySeriesState(output.series_state)
         ? seriesState
-        : output.series_state;
+        : mergeSeriesState(seriesState, output.series_state);
       const persistedState = isFinale
         ? { ...nextState, next_chapter_pressure: "" }
         : nextState;
