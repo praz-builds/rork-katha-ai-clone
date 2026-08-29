@@ -571,8 +571,16 @@ function buildAudienceModeRules(
   // reader to end up feeling secure. Resolve that by scoping the safety
   // requirement to the immediate scene and allowing only a gentle open question
   // to carry the series forward.
-  const isOpenChapter = storyMode === "series" &&
+  const isSeriesChapter = storyMode === "series";
+  const isOpenChapter = isSeriesChapter &&
     (chapterRole === "series_opening" || chapterRole === "mid_series");
+
+  // A kids series chapter is still a series chapter: use the 600-900 chapter
+  // range rather than the 500-1200 standalone range, so the two contracts agree
+  // and server-side word-count validation cannot reject a valid generation.
+  const lengthRule = isSeriesChapter
+    ? `- **Length:** 600-900 words. This is a series chapter, so it uses the chapter length, not the standalone story length.`
+    : `- **Length:** 500-1200 words maximum. Shorter is better.`;
 
   const endingRule = isOpenChapter
     ? `- **Endings (series chapter):** End the chapter's immediate scene safely. The characters must be out of danger and the reader must feel secure before the chapter closes. The larger story question may stay open, but carry it forward only as a gentle, non-threatening invitation: a friendly curiosity, a plan for tomorrow, a kind mystery, or a small wonder. Never end on peril, threat, betrayal, loss, or distress.
@@ -585,7 +593,7 @@ function buildAudienceModeRules(
 
 This story is for children ages 4-10. ALL of the following rules OVERRIDE any conflicting genre guidance:
 
-- **Length:** 500-1200 words maximum. Shorter is better.
+${lengthRule}
 - **Language:** Simple, concrete vocabulary. Short sentences. No complex metaphors or abstract concepts a child couldn't follow.
 - **Content:** No romance, flirting, attraction, or adult relationships. No horror, graphic violence, or death. No substance use. No complex moral ambiguity. No scary scenarios that could cause nightmares.
 - **Tone:** Warm, active, encouraging. Characters solve problems through kindness, cleverness, and teamwork. The world is fundamentally safe even when challenges arise.
@@ -984,10 +992,12 @@ export function buildUserPrompt(params: {
   // Determine seed
   const seed = params.seed ?? params.topic;
 
-  const wordRange = params.audienceMode === "kids"
-    ? "500-1200"
-    : params.storyMode === "series"
+  // A series chapter uses the chapter range regardless of audience; kids only
+  // narrows the standalone range.
+  const wordRange = params.storyMode === "series"
     ? "600-900"
+    : params.audienceMode === "kids"
+    ? "500-1200"
     : "500-1500";
 
   parts.push(

@@ -16,7 +16,7 @@ writer, not by a generic assistant. The prompt system must optimize for:
 - reliable genre promise across 15 user-facing genres
 - modular identity, spice, and trope layers
 - safe adult-content handling with account-level gating
-- Kids and Bedtime modes that cannot inherit adult behavior
+- A Kids mode that cannot inherit adult behavior
 - standalone and series structures with different ending contracts
 - structured output that can be parsed and filtered downstream
 
@@ -196,7 +196,7 @@ language.
   self-harm, or exploitation, even when embedded in fiction.
 - No harassment, defamation, or humiliating fiction about a real identifiable
   person.
-- Kids and Bedtime modes cannot contain sexual content, adult romantic tension,
+- Kids mode cannot contain sexual content, adult romantic tension,
   graphic violence, substance use, or horror.
 
 ## Title Generation

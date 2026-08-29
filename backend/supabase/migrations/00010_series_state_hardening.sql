@@ -4,30 +4,59 @@
 -- a follow-up rather than an edit to an applied migration. Every statement is
 -- idempotent and safe to re-run.
 --
--- 1. Named table-level CHECK constraints for story_mode, chapter_role, and
---    hook_type. 00009 declared them inline on ADD COLUMN IF NOT EXISTS, which
---    silently skips the constraint whenever the column already exists.
--- 2. Corrects the 00009 chapter_role backfill, which evaluated the finale
+-- 1. Corrects the 00009 chapter_role backfill, which evaluated the finale
 --    branch before confirming the parent story is a series.
+-- 2. Named table-level CHECK constraints for story_mode, chapter_role, and
+--    hook_type, added NOT VALID and validated separately. 00009 declared them
+--    inline on ADD COLUMN IF NOT EXISTS, which silently skips the constraint
+--    whenever the column already exists.
 -- 3. Rebuilds both completion RPCs so an invalid hook_type raises like the
 --    other enum parameters, and so an absent series_state preserves the stored
 --    continuity instead of erasing it.
 
 -- ---------------------------------------------------------------------------
--- 1. Enforce the allowed values regardless of when the columns were created
+-- 1. Repair chapters that the 00009 backfill labelled 'finale' on a
+--    non-series story purely because chapter_number >= 7
+--
+--    Runs before the constraints so validation sees only conforming rows.
+-- ---------------------------------------------------------------------------
+
+UPDATE public.chapters
+SET chapter_role = 'standalone'
+WHERE chapter_role = 'finale'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.stories s
+    WHERE s.id = chapters.story_id
+      AND s.story_mode = 'series'
+  );
+
+-- ---------------------------------------------------------------------------
+-- 2. Enforce the allowed values regardless of when the columns were created
+--
+--    Each constraint is added NOT VALID and validated in a separate statement.
+--    ADD CONSTRAINT ... NOT VALID takes a brief ACCESS EXCLUSIVE lock without
+--    scanning the table; VALIDATE CONSTRAINT then scans under a weaker lock
+--    that does not block concurrent writes.
 -- ---------------------------------------------------------------------------
 
 ALTER TABLE public.stories
   DROP CONSTRAINT IF EXISTS stories_story_mode_check;
 ALTER TABLE public.stories
   ADD CONSTRAINT stories_story_mode_check
-  CHECK (story_mode IN ('standalone', 'series'));
+  CHECK (story_mode IN ('standalone', 'series'))
+  NOT VALID;
+ALTER TABLE public.stories
+  VALIDATE CONSTRAINT stories_story_mode_check;
 
 ALTER TABLE public.chapters
   DROP CONSTRAINT IF EXISTS chapters_chapter_role_check;
 ALTER TABLE public.chapters
   ADD CONSTRAINT chapters_chapter_role_check
-  CHECK (chapter_role IN ('standalone', 'series_opening', 'mid_series', 'finale'));
+  CHECK (chapter_role IN ('standalone', 'series_opening', 'mid_series', 'finale'))
+  NOT VALID;
+ALTER TABLE public.chapters
+  VALIDATE CONSTRAINT chapters_chapter_role_check;
 
 ALTER TABLE public.chapters
   DROP CONSTRAINT IF EXISTS chapters_hook_type_check;
@@ -43,22 +72,10 @@ ALTER TABLE public.chapters
     'danger',
     'unanswered_question',
     'emotional_rupture'
-  ));
-
--- ---------------------------------------------------------------------------
--- 2. Repair chapters that the 00009 backfill labelled 'finale' on a
---    non-series story purely because chapter_number >= 7
--- ---------------------------------------------------------------------------
-
-UPDATE public.chapters
-SET chapter_role = 'standalone'
-WHERE chapter_role = 'finale'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM public.stories s
-    WHERE s.id = chapters.story_id
-      AND s.story_mode = 'series'
-  );
+  ))
+  NOT VALID;
+ALTER TABLE public.chapters
+  VALIDATE CONSTRAINT chapters_hook_type_check;
 
 -- ---------------------------------------------------------------------------
 -- 3. Rebuild the completion RPCs

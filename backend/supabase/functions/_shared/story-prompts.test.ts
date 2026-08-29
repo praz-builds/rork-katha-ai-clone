@@ -391,3 +391,51 @@ Deno.test("adult series prompts are unaffected by the kids ending rule", () => {
   assert(!prompt.includes("**Endings (series chapter):**"));
   assert(!prompt.includes("Kids Mode"));
 });
+
+Deno.test("kids series chapter uses the 600-900 range in both prompt layers", () => {
+  const system = buildStorySystemPrompt({
+    primaryGenre: "adventure",
+    audienceMode: "kids",
+    storyMode: "series",
+    chapterRole: "series_opening",
+  });
+  assert(system.includes("- **Length:** 600-900 words."));
+  assert(!system.includes("500-1200"));
+
+  const user = buildUserPrompt({
+    primaryGenre: "adventure",
+    audienceMode: "kids",
+    storyMode: "series",
+    chapterRole: "series_opening",
+    seed: "Two friends find a door in the roots of the oldest tree in the park",
+  });
+  assert(user.includes("Write the requested series chapter (600-900 words)."));
+  assert(!user.includes("500-1200"));
+});
+
+Deno.test("kids standalone story keeps the 500-1200 range", () => {
+  const system = buildStorySystemPrompt({
+    primaryGenre: "adventure",
+    audienceMode: "kids",
+    storyMode: "standalone",
+  });
+  assert(system.includes("- **Length:** 500-1200 words maximum."));
+
+  const user = buildUserPrompt({
+    primaryGenre: "adventure",
+    audienceMode: "kids",
+    storyMode: "standalone",
+    seed: "Two friends find a door in the roots of the oldest tree in the park",
+  });
+  assert(user.includes("Write a short story (500-1200 words)."));
+});
+
+Deno.test("kids series finale also uses the chapter range", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "adventure",
+    audienceMode: "kids",
+    mode: "finale",
+  });
+  assert(prompt.includes("- **Length:** 600-900 words."));
+  assert(!prompt.includes("500-1200"));
+});

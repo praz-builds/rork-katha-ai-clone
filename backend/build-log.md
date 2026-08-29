@@ -45,9 +45,21 @@
 - `backend/prompts/story-generator.md`: one UI genre contract. The taxonomy table now matches the shipped Expo list (13 creation cards; `cozyFantasy` and `paranormalRomance` marked backend-only).
 - `backend/ROADMAP.md`: planned device-token migration renumbered to `00011` to clear the `00009` collision.
 
+### Second review pass
+
+- **Kids series word range.** A kids series chapter was receiving the 500-1200 standalone range from both prompt layers while the continuation contract asks for 600-900. `buildAudienceModeRules()` now emits a 600-900 length rule for any series chapter, and `buildUserPrompt()` prioritizes the series range over the kids standalone range. Kids standalone keeps 500-1200.
+- **Migration lock profile.** `00010` now runs the backfill repair first, then adds each CHECK constraint `NOT VALID` and validates it in a separate statement, so validation scans under a lock that does not block writes.
+- **Docs.** `story-generator.md` no longer describes Bedtime as a mode separate from `kids`; `ROADMAP.md` records migrations 00001-00010 as applied and both edge functions as redeployed.
+
+### Deployment
+
+- Migration `00010_series_state_hardening.sql` applied to `iafeuxgoiknncgyjmugd`. `supabase migration list` shows 00001-00010 local and remote.
+- `generate-story` and `continue-story` redeployed, both ACTIVE at v9.
+- The redeployed functions are compatible with the 00009 RPC signatures, so the deploy did not depend on 00010 landing first.
+
 ### Validation
 
-- 65 Deno tests pass (was 53). Added prompt-injection regression tests with hostile text in `SeriesState` fields, fence-escape tests, kids opening/mid-series/standalone/finale prompt tests, and shared-normalizer contract tests.
+- 68 Deno tests pass (was 53). Added prompt-injection regression tests with hostile text in `SeriesState` fields, fence-escape tests, kids opening/mid-series/standalone/finale prompt tests, and shared-normalizer contract tests.
 - `deno check` clean for `generate-story`, `continue-story`, and the changed shared modules.
 - Expo `pnpm typecheck` clean, `pnpm lint` 0 errors, `pnpm test` 33 passed.
 - Security scan: no secrets in the diff, no dynamic SQL, `SECURITY DEFINER` + `SET search_path = ''` + service-role-only grants preserved on both rebuilt RPCs.
