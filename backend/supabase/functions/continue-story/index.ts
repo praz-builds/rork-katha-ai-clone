@@ -16,8 +16,10 @@ import {
 } from "../_shared/story-prompts.ts";
 import {
   isEmptySeriesState,
+  mergeSeriesState,
   parseSeriesState,
   parseStructuredOutput,
+  providedSeriesStateKeys,
 } from "../_shared/story_text.ts";
 import {
   type AudienceMode,
@@ -261,10 +263,50 @@ serve(async (req) => {
         result.text,
         `Chapter ${nextChapterNum}`,
       );
+      // A continuation that falls back to the text parser has no hook_type and
+      // no series_state - the placeholders would persist a chapter that ends
+      // nowhere and freezes continuity for the rest of the series, while still
+      // charging a credit. Fail so the refund path runs and the reader can
+      // retry, rather than saving a hollow chapter.
+      if (output.structured === false) {
+        throw new Error(
+          "Continuation returned unparseable structured output; refusing to persist a chapter without hook or series state",
+        );
+      }
+
       const chapterTitle = output.chapter_title || output.title;
       const content = output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
       const wordCount = content.split(/\s+/).length;
+
+      // A finale ends the series, so there is no next chapter to build pressure
+      // toward. The prompt asks for this, but the model does not reliably
+      // comply, and hook_type is already forced the same way below.
+      // Merge field by field: a partial model response must not blank out
+      // continuity that earlier chapters established.
+      // Which keys the model actually sent decides whether an empty list means
+      // "cleared" or "not mentioned".
+      const providedKeys = providedSeriesStateKeys(output.raw_series_state);
+      const nextState = isEmptySeriesState(output.series_state)
+        ? seriesState
+        : mergeSeriesState(seriesState, output.series_state, providedKeys);
+      // A mid-series chapter must leave its ending hook in open_hooks so later
+      // chapters can pay it off. The model sometimes writes a real hook_text
+      // and hook_type but forgets to record it in the state. The chapter itself
+      // is sound, so refunding it would discard good work for a bookkeeping
+      // miss - record the hook instead.
+      const withHook = (state: typeof nextState) => {
+        const hook = (output.hook_text ?? "").trim();
+        if (!hook || state.open_hooks.includes(hook)) return state;
+        return {
+          ...state,
+          open_hooks: [...state.open_hooks, hook].slice(-12),
+        };
+      };
+
+      const persistedState = isFinale
+        ? { ...nextState, next_chapter_pressure: "" }
+        : withHook(nextState);
 
       const { data: chapter, error: chapterError } = await serviceClient.rpc(
         "complete_continuation_generation",
@@ -277,9 +319,7 @@ serve(async (req) => {
           p_chapter_role: chapterRole,
           p_first_line: output.first_line || null,
           p_previously_summary: output.previously_summary || null,
-          p_series_state: isEmptySeriesState(output.series_state)
-            ? seriesState
-            : output.series_state,
+          p_series_state: persistedState,
           p_hook_type: isFinale ? "none" : output.hook_type,
           p_hook_text: isFinale ? null : output.hook_text || null,
         },

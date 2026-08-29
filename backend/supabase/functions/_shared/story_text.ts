@@ -74,6 +74,8 @@ export function parseStructuredOutput(
           ? parsed.previously_summary.trim()
           : "",
         series_state: parseSeriesState(parsed.series_state),
+        raw_series_state: parsed.series_state,
+        structured: true,
         hook_type: parseHookType(parsed.hook_type),
         hook_text: typeof parsed.hook_text === "string"
           ? parsed.hook_text.trim().slice(0, 500)
@@ -95,6 +97,10 @@ export function parseStructuredOutput(
     first_line: content.split(/\n/)[0]?.trim() ?? "",
     previously_summary: "",
     series_state: EMPTY_SERIES_STATE,
+    raw_series_state: undefined,
+    // The structured parse failed and this came from the plain-text fallback,
+    // so hook_type and series_state below are placeholders, not model output.
+    structured: false,
     hook_type: "none",
     hook_text: "",
   };
@@ -145,6 +151,62 @@ export function isEmptySeriesState(state: SeriesState | null | undefined): boole
     state.promised_payoffs.length === 0 &&
     state.world_facts.length === 0 &&
     state.character_changes.length === 0;
+}
+
+/**
+ * Merge a freshly generated state over the stored one, field by field.
+ *
+ * An all-or-nothing fallback loses data when the model returns a partial state:
+ * a finale that fills `resolved_hooks` but leaves `central_conflict` blank is
+ * not "empty", so it would overwrite the stored conflict with "". Preferring the
+ * new value per field, and keeping the stored one wherever the model left a
+ * blank, keeps continuity intact without discarding real updates.
+ */
+export function mergeSeriesState(
+  prior: SeriesState,
+  next: SeriesState,
+  /**
+   * Keys the model actually supplied. Without this an omitted list and a
+   * deliberately emptied one look identical, so a finale that clears
+   * `open_hooks` would silently keep the stale hooks.
+   */
+  provided?: ReadonlySet<string>,
+): SeriesState {
+  const sent = (key: string) => !provided || provided.has(key);
+  const text = (key: string, a: string, b: string) =>
+    sent(key) && a.trim() ? a : (a.trim() ? a : b);
+
+  /** Live state: an explicit value replaces, an omitted one keeps the old. */
+  const replace = (key: string, a: string[], b: string[]) =>
+    sent(key) ? a : b;
+
+  /** History: entries accumulate across chapters and are never dropped. */
+  const accumulate = (key: string, a: string[], b: string[]) =>
+    sent(key) ? [...new Set([...b, ...a])] : b;
+
+  return {
+    central_conflict: text("central_conflict", next.central_conflict, prior.central_conflict),
+    protagonist_want: text("protagonist_want", next.protagonist_want, prior.protagonist_want),
+    relationship_state: text("relationship_state", next.relationship_state, prior.relationship_state),
+    // Open hooks are the live set: a finale that resolves everything must be
+    // able to empty them.
+    open_hooks: replace("open_hooks", next.open_hooks, prior.open_hooks),
+    promised_payoffs: replace("promised_payoffs", next.promised_payoffs, prior.promised_payoffs),
+    // These only ever grow: losing an earlier world fact or character change
+    // would erase established continuity.
+    resolved_hooks: accumulate("resolved_hooks", next.resolved_hooks, prior.resolved_hooks),
+    world_facts: accumulate("world_facts", next.world_facts, prior.world_facts),
+    character_changes: accumulate("character_changes", next.character_changes, prior.character_changes),
+    // Pressure is intentionally NOT carried over: a finale clears it on
+    // purpose, and a stale pressure is worse than none.
+    next_chapter_pressure: next.next_chapter_pressure,
+  };
+}
+
+/** Keys the model supplied in its `series_state`, for merge intent. */
+export function providedSeriesStateKeys(raw: unknown): ReadonlySet<string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return new Set();
+  return new Set(Object.keys(raw as Record<string, unknown>));
 }
 
 function stringField(value: unknown, maxLength: number): string {

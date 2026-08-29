@@ -304,7 +304,15 @@ This is the final chapter of the series.
 - Call back to at least one specific detail from Chapter 1 or the earliest available context.
 - Land every major character arc.
 - Do not add a new cliffhanger or major unresolved threat.
-- Return "hook_type": "none" and update series_state with resolved_hooks and final character_changes.${stateSection}`;
+- Return "hook_type": "none" and update series_state with resolved_hooks and final character_changes.
+
+### Updating series_state (REQUIRED)
+
+The series_state you return is the state AFTER this finale, not a copy of the state you were given. Returning it unchanged is a failure.
+
+- Every hook this finale pays off MUST move from "open_hooks" to "resolved_hooks".
+- "next_chapter_pressure" MUST be empty: the series is over.
+- "character_changes" MUST record where each major character ended up.${stateSection}`;
   }
 
   return `
@@ -319,7 +327,18 @@ This is a middle chapter of an ongoing series.
 - Add or deepen at least one open hook.
 - Shift a relationship, power dynamic, secret, or plan in a way later chapters must honor.
 - End with a concrete hook that follows from the chapter conflict: revelation, reversal, decision, arrival, betrayal, danger, unanswered_question, or emotional_rupture.
-- Update series_state so future chapters know what changed, what remains open, and what pressure should drive the next chapter.${stateSection}`;
+- Update series_state so future chapters know what changed, what remains open, and what pressure should drive the next chapter.
+
+### Updating series_state (REQUIRED)
+
+The series_state you return is the state AFTER this chapter, not a copy of the state you were given. Returning it unchanged is a failure.
+
+- "next_chapter_pressure" MUST describe what drives the NEXT chapter after this one. It cannot stay as the pressure that drove this chapter.
+- Any hook this chapter answered MUST move from "open_hooks" to "resolved_hooks".
+- Add at least one new entry to "open_hooks" for the hook this chapter ends on.
+- Add this chapter's irreversible change to "character_changes", and any new world detail to "world_facts".
+- "relationship_state" MUST reflect where the relationships stand at the END of this chapter.
+- Keep "central_conflict" stable unless this chapter genuinely redefined it.${stateSection}`;
 }
 
 /**
@@ -751,6 +770,7 @@ Schema:
   "first_line": "string (the opening line of the story)",
   "previously_summary": "string (a 2-sentence summary for continuation context)",
   "series_state": {
+    "_comment": "For a continuation this is the UPDATED state after this chapter. Do not copy the state you were given.",
     "central_conflict": "string",
     "protagonist_want": "string",
     "relationship_state": "string",
@@ -824,7 +844,17 @@ export function buildStorySystemPrompt(
   const params: SystemPromptParams = typeof paramsOrGenre === "string"
     ? { primaryGenre: paramsOrGenre, language: legacyLanguage }
     : paramsOrGenre;
+  return buildStoryPromptBody(params) + buildOutputSchema();
+}
 
+/**
+ * Everything in the story system prompt except the output schema.
+ *
+ * The schema must be the final section of whatever prompt is actually sent, so
+ * callers that append their own sections (continuations) add it themselves
+ * rather than inheriting it in the middle.
+ */
+function buildStoryPromptBody(params: SystemPromptParams): string {
   const safeGenre = normalizeGenre(params.primaryGenre);
 
   return [
@@ -848,7 +878,6 @@ export function buildStorySystemPrompt(
       params.audienceMode === "kids" ? "sweet" : params.spiceLevel,
     ),
     buildLanguageSection(params.language),
-    buildOutputSchema(),
   ].join("");
 }
 
@@ -881,7 +910,7 @@ export function buildContinuationSystemPrompt(
 
   let storyPrompt: string;
   if (typeof paramsOrGenre === "string") {
-    storyPrompt = buildStorySystemPrompt({
+    storyPrompt = buildStoryPromptBody({
       primaryGenre: paramsOrGenre,
       language: legacyLanguage,
       storyMode: "series",
@@ -890,7 +919,7 @@ export function buildContinuationSystemPrompt(
         : "mid_series",
     });
   } else {
-    storyPrompt = buildStorySystemPrompt({
+    storyPrompt = buildStoryPromptBody({
       primaryGenre: params.primaryGenre,
       audienceMode: params.audienceMode,
       identityLenses: params.identityLenses,
@@ -929,7 +958,7 @@ This is the FINAL chapter of the series. You must bring the story to a satisfyin
 3. Every major character arc must land. Characters should be changed by what happened, not simply present for the ending.
 4. The final paragraph should feel earned, not rushed. Give the story room to breathe after the climax.
 5. Loose threads can remain, but the reader must feel that the story they signed up for is complete.
-6. Do NOT introduce new major characters, subplots, or mysteries. This chapter closes doors, it does not open them.`;
+6. Do NOT introduce new major characters, subplots, or mysteries. This chapter closes doors, it does not open them.${buildOutputSchema()}`;
   }
 
   return `${storyPrompt}
@@ -944,7 +973,7 @@ This chapter is part of an ongoing series. The story is NOT ending yet:
 3. Do NOT resolve the central conflict. Build toward it, complicate it, but do not close it.
 4. Introduce at least one new question, tension, or piece of information that makes the reader want to continue.
 5. Shift at least one relationship or dynamic permanently. A friendship cracks, a secret is revealed, an alliance forms.
-6. The final line should pull the reader forward, not offer closure.`;
+6. The final line should pull the reader forward, not offer closure.${buildOutputSchema()}`;
 }
 
 /**

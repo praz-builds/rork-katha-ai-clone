@@ -7,6 +7,112 @@
 
 ---
 
+## 2026-08-29 — Production smoke test: three blocking defects found and fixed
+
+**Session:** Ran the first real authenticated end-to-end test of the generation pipeline. It failed immediately, surfacing two pre-existing production defects that meant the backend had never served a single successful request, plus one defect in the series prompt system.
+
+### 1. No table GRANTs (migration 00012)
+
+RLS policies filter rows; they do not grant table privileges. Migrations 00001-00002 enabled RLS and created 26 policies but never issued a `GRANT`, and the project has no blanket default privileges. Measured state before the fix:
+
+- `authenticated`: 16 of 17 tables returned `42501 permission denied`
+- `service_role`: 17 of 17 returned `42501`
+- The only reachable table was `profiles`, because 00006 happened to grant it explicitly
+
+`00012` issues grants that mirror the existing policies exactly, so no operation is granted that lacks a policy and RLS stays the row-level authority. All 16 real tables were confirmed RLS-enabled first. The 00006 hardening is preserved: `profiles` keeps its column-level SELECT and `REVOKE UPDATE (status) ON stories` is re-asserted. `generation_operations` and `payment_event_backlog` stay service-only.
+
+### 2. Migration 00008 recorded as applied but never ran (migration 00014)
+
+All eight taxonomy columns were missing from `public.stories` while every other migration's columns were present, including 00009's. Drift was isolated to 00008.
+
+This was the direct cause of the HTTP 500s: `generate-story` inserts `audience_mode`, `primary_genre`, `spice_level`, `identity_lenses` and `trope_modules` as its first write, which failed with `42703` and was swallowed by the handler's catch-all. `complete_story_generation` would have failed the same way on `content_rating`.
+
+The v5.1 taxonomy shipped in PR #28 had therefore never functioned against this database. `00014` re-applies 00008 steps 1-10 idempotently; step 11 is skipped because 00010 supersedes it.
+
+### 3. Series state echoed instead of advanced (prompt fix)
+
+Continuations returned a complete `series_state` with every key populated, but copied verbatim from the input. Chapter 2's stored state was byte-identical to chapter 1's, so continuity froze and the finale would have worked from stale state.
+
+Two changes, both verified by probing the model directly with a fixed fixture:
+
+- The mid-series and finale contracts now state that returning the state unchanged is a failure, with per-field requirements (`next_chapter_pressure` must describe the next chapter, answered hooks move to `resolved_hooks`, the new hook is added to `open_hooks`).
+- The output schema is now the final section of the continuation prompt. It had sat 2.4k characters from the end, behind the narrative rules, so the model's last instruction was about prose rather than format.
+
+Before the fix the probe showed the state echoed verbatim; after, `next_chapter_pressure` changed and `open_hooks` grew from 2 to 3.
+
+### 4. Premature trigger reverted (migration 00013)
+
+`00012` originally bundled an `auth.users -> profiles` trigger. It was broken (`pg_catalog.nullif` is not a callable function, and the failing call sat in the DECLARE section where the EXCEPTION handler is not yet active), so it aborted every `auth.users` insert. Since there is no signup flow yet, `00013` drops it rather than shipping a corrected version. Profile creation belongs with the signup work; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted.
+
+### Results
+
+`backend/scripts/smoke-series-generation.py` — 57 assertions across 11 groups. Three consecutive runs after the self-heal fix: 57/57, 57/57, 57/57, zero leaks. (Before it: 57/57, 57/57, 56/57.) The single miss was the model writing a real `hook_type` and `hook_text` but not recording that hook in `open_hooks`, so a later chapter had nothing to pay off. The chapter itself was sound and the credit was correctly settled, so refunding would have discarded good work for a bookkeeping miss. `continue-story` now appends the chapter's `hook_text` to `open_hooks` when the model omits it. No fixture leaked in any run.
+
+- Seed validation: 15/28/32-char seeds rejected with 400, no credit charged
+- Standalone: `standalone` role, `hook_type` none, stored `series_state` `{}`, 1028 words, 1 credit
+- Idempotent replay: same chapter id, `replayed: true`, no second charge
+- Series opening: `series_opening`, hook set, `central_conflict` / `open_hooks` / `next_chapter_pressure` populated, 846 words
+- Mid-series: `mid_series`, state advanced from chapter 1
+- Finale: `finale`, `hook_type` none, state retained
+- Kids series: `content_rating` kids, 600-900 band, safe hook type
+- Legacy `is_series: true` still maps to series
+- Seed sweep 41 to 100 chars across six genres
+- Credit exhaustion returns 402
+- 12 operations all `completed`, no stuck reservations, no unexpected refunds
+
+Seeds are written as a real user would type them (lowercase, casual) and span the full accepted 40-100 range.
+
+### 5. Finale clears next_chapter_pressure server-side
+
+The stricter assertions added during review caught the finale leaving `next_chapter_pressure` populated — pressure toward a chapter that will never exist. The finale contract asks for it to be empty but the model did not comply. `continue-story` now forces it, matching how `hook_type` and `hook_text` are already forced for finales. Deterministic rather than dependent on model compliance.
+
+### Review hardening
+
+- The trigger was removed from the `00012` source as well, so a fresh database never creates it and `00013` is a no-op there. It still matters for the linked project, where the original `00012` already ran.
+- `req()` in the smoke harness returns status `0` on transport, TLS, timeout and decode failures instead of raising, and the whole flow runs under `try/finally`. Previously only `HTTPError` was handled, so a network fault would have skipped cleanup and left test stories, profiles, ledger rows and operations in the production project.
+- The mid-series assertion was `new_state != ch1_state`, which any unrelated field change would satisfy. It now asserts the fields the contract names: `next_chapter_pressure` rewritten, `open_hooks` grown, and progress recorded in `character_changes` / `relationship_state` / `resolved_hooks`. The finale adds three equivalents.
+
+`CREATE INDEX CONCURRENTLY` was raised for the two `00014` indexes and deliberately not applied: it cannot run inside a transaction block and `supabase db push` wraps each migration in one, so a separate migration would not help either. `stories` holds 0 rows and both indexes already exist.
+
+### 6. LLM robustness
+
+Running the suite repeatedly surfaced intermittent generation failures that a single run hid. The signature was `hook_type: none` plus a byte-identical `series_state` — `parseStructuredOutput` catching a `JSON.parse` failure and silently degrading to the text parser, which returns `hook_type: "none"` and an empty state. A broken chapter was persisted and a credit charged.
+
+- `response_format: { type: "json_object" }` on the OpenAI fallback. The prompts require a JSON object but nothing enforced it, so occasional prose or fences broke parsing.
+- `openAIContent` ignored `finish_reason`. A `length`-truncated response is partial JSON, so it now throws and the existing refund path runs instead of persisting a truncated chapter.
+
+### 7. Field-wise series state merge
+
+`isEmptySeriesState` is all-or-nothing, so a *partial* model response was not "empty" and overwrote stored values with blanks — one run showed a finale erasing `central_conflict` while filling `resolved_hooks`. `mergeSeriesState()` now merges per field, preferring the new value and keeping the stored one wherever the model left a blank. `next_chapter_pressure` deliberately does not carry over, since a finale clears it on purpose.
+
+### Harness corrections
+
+- Cleanup deleted only the story ids the run tracked. A generation that fails after the story row is inserted leaves an orphan, which blocked the profile delete with a foreign-key 409 and the auth-user delete with a 500. Cleanup now deletes `stories?author_id=eq.{uid}`, with `generation_operations` first since it references stories.
+- `11.2 no unexpected refunds` treated any refund as a defect. A refund after a genuine model failure is the system working as designed. Replaced with `11.3` (every refund matches a generation failure the harness observed) and `11.4` (every operation reached a terminal state), and the harness now prints `last_error` so a refund is diagnosable.
+- The `try` block started after fixture creation, so a failure during setup skipped `finally` and leaked the auth user. It now opens before the first request, verified by fault injection.
+- Returning status `0` from `req()` instead of raising introduced a new gap: a create that succeeds server-side but times out on the response leaves `uid` unassigned, so cleanup skipped the account. Cleanup now looks the fixture up by exact email through the admin API. Fault-injected to confirm, which also surfaced two accounts stranded by earlier runs; both were purged.
+
+### 8. Review pass: privilege bug, silent degradation, merge intent
+
+A full re-review surfaced six further findings, two of them defects introduced by this PR.
+
+- **`00015`: the `authenticated` UPDATE grant on `stories` was too broad.** `00012` issued a table-level `GRANT UPDATE` and then re-asserted 00006's `REVOKE UPDATE (status)`. A column-level REVOKE cannot subtract a column from a table-level grant, so the revoke was a no-op and story owners could set `stories.status` — exactly what 00006 prevented. `00015` grants only `title`, `topic`, `cover_image_url`, `is_public`. Verified against the project: owner UPDATE of `status` returns 403, of `title` returns 204.
+- **Assertions 11.3/11.4 were documented but never landed.** The string anchor stopped matching after the try/finally re-indentation and the edit silently no-oped, so the harness still carried the old `11.2 no unexpected refunds` while the build log and commit message described its replacement. Implemented and verified in the run output.
+- **`mergeSeriesState` conflated omitted with emptied.** A finale returning `open_hooks: []` kept the stale hooks, contradicting the finale contract, and a new `world_facts` entry replaced all earlier ones. Merging is now presence-aware: `open_hooks` and `promised_payoffs` are live state an explicit empty clears; `resolved_hooks`, `world_facts` and `character_changes` are history that accumulates.
+- **`00014` replaced `identity_lenses` outright.** On replay that would drop every other lens from a story still carrying the legacy `lgbtq` genre. It now merges `queer` in and skips rows that already have it.
+
+### 9. Continuations no longer degrade silently
+
+Repeated runs showed continuations returning HTTP 200 with `hook_type: "none"` and a byte-identical `series_state`. `response_format: { type: "json_object" }` guarantees syntactically valid JSON but not the right shape: when `chapter_body` is not a string, `parseStructuredOutput` falls through to the plain-text parser, whose placeholder `hook_type: "none"` and empty state were being persisted as though they were model output. The chapter ended nowhere and continuity froze for the rest of the series, with the credit still charged.
+
+`parseStructuredOutput` now reports whether the structured parse succeeded. `continue-story` refuses to persist an unstructured continuation, and `generate-story` refuses to start a **series** on one — a series opening with no hook and no state cannot be continued. Standalone stories need neither, so they keep the text fallback. In both cases the existing refund path runs and the reader can retry.
+
+**Known residual:** on the `gpt-4o-mini` fallback this misparse occurs intermittently — roughly one continuation in six across observed runs. It is now a loud, refunded failure rather than a silent corruption. `ANTHROPIC_API_KEY` is still unset; the prompt system was designed for Claude, and this path is the fallback.
+
+79 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
+
+---
+
 ## 2026-08-29 — Expo sends story_mode instead of legacy is_series
 
 **Session:** Aligned the Expo client with the generation request contract documented in PR #30.

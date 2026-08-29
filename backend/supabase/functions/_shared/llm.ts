@@ -81,6 +81,11 @@ export async function generateStoryText(
                     content: moderationSafePrompt(userPrompt, safetyLevel),
                   },
                 ],
+                // The prompts require a JSON object. Without this the model
+                // occasionally wraps it in prose or fences, JSON.parse fails,
+                // and parseStructuredOutput silently degrades to the text
+                // parser - which loses hook_type and the whole series_state.
+                response_format: { type: "json_object" },
                 max_tokens: 4096,
               }),
             },
@@ -199,6 +204,14 @@ function openAIContent(payload: unknown): string {
     !Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object"
   ) {
     throw new Error("OpenAI returned no choices");
+  }
+  const finishReason = (choices[0] as Record<string, unknown>).finish_reason;
+  if (finishReason === "length") {
+    // Truncated output is partial JSON. Parsing it fails and the caller falls
+    // back to the text parser, which persists a chapter with no hook and an
+    // empty series_state while still charging a credit. Fail instead so the
+    // existing refund path runs.
+    throw new Error("OpenAI response truncated (finish_reason=length)");
   }
   const message = (choices[0] as Record<string, unknown>).message;
   if (!message || typeof message !== "object") {
