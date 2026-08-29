@@ -69,56 +69,14 @@ GRANT SELECT ON public.characters TO anon;
 GRANT SELECT ON public.comments   TO anon;
 
 -- ---------------------------------------------------------------------------
--- 5. Auto-create a profile row for every auth user
+-- 5. Backfill profiles for existing auth users
 --
---    credit_ledger.user_id references profiles(id), so without a profile row a
---    user can never be granted credits and generation always fails.
+--    credit_ledger.user_id references profiles(id), so a profile row must exist
+--    before a user can be granted credits. Creating profiles for NEW users
+--    belongs with the signup flow, which does not exist yet - this migration
+--    deliberately adds no trigger on auth.users.
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    -- profiles.username is UNIQUE, so the fallback is derived from the user id
-    -- and cannot collide. A requested username is used only when it is free;
-    -- otherwise the insert would fail on the unique constraint.
-    v_requested text := pg_catalog.nullif(
-        pg_catalog.btrim(NEW.raw_user_meta_data ->> 'username'), ''
-    );
-    v_username text;
-BEGIN
-    IF v_requested IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM public.profiles WHERE username = v_requested
-    ) THEN
-        v_username := v_requested;
-    ELSE
-        v_username := 'user_' || pg_catalog.replace(NEW.id::text, '-', '');
-    END IF;
-
-    INSERT INTO public.profiles (id, username)
-    VALUES (NEW.id, v_username)
-    ON CONFLICT (id) DO NOTHING;
-
-    RETURN NEW;
-EXCEPTION WHEN OTHERS THEN
-    -- Never block account creation on profile setup. A missing profile is
-    -- recoverable through the backfill below; a failed signup is not.
-    RAISE WARNING 'handle_new_user failed for %: %', NEW.id, SQLERRM;
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.handle_new_user() FROM public, anon, authenticated;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- Backfill profiles for auth users created before the trigger existed.
 INSERT INTO public.profiles (id, username)
 SELECT u.id, 'user_' || pg_catalog.replace(u.id::text, '-', '')
 FROM auth.users u

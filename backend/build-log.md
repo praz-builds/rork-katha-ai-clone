@@ -46,7 +46,7 @@ Before the fix the probe showed the state echoed verbatim; after, `next_chapter_
 
 ### Results
 
-`backend/scripts/smoke-series-generation.py` — 51 assertions across 11 groups, all passing:
+`backend/scripts/smoke-series-generation.py` — 57 assertions across 11 groups, all passing:
 
 - Seed validation: 15/28/32-char seeds rejected with 400, no credit charged
 - Standalone: `standalone` role, `hook_type` none, stored `series_state` `{}`, 1028 words, 1 credit
@@ -61,6 +61,18 @@ Before the fix the probe showed the state echoed verbatim; after, `next_chapter_
 - 12 operations all `completed`, no stuck reservations, no unexpected refunds
 
 Seeds are written as a real user would type them (lowercase, casual) and span the full accepted 40-100 range.
+
+### 5. Finale clears next_chapter_pressure server-side
+
+The stricter assertions added during review caught the finale leaving `next_chapter_pressure` populated — pressure toward a chapter that will never exist. The finale contract asks for it to be empty but the model did not comply. `continue-story` now forces it, matching how `hook_type` and `hook_text` are already forced for finales. Deterministic rather than dependent on model compliance.
+
+### Review hardening
+
+- The trigger was removed from the `00012` source as well, so a fresh database never creates it and `00013` is a no-op there. It still matters for the linked project, where the original `00012` already ran.
+- `req()` in the smoke harness returns status `0` on transport, TLS, timeout and decode failures instead of raising, and the whole flow runs under `try/finally`. Previously only `HTTPError` was handled, so a network fault would have skipped cleanup and left test stories, profiles, ledger rows and operations in the production project.
+- The mid-series assertion was `new_state != ch1_state`, which any unrelated field change would satisfy. It now asserts the fields the contract names: `next_chapter_pressure` rewritten, `open_hooks` grown, and progress recorded in `character_changes` / `relationship_state` / `resolved_hooks`. The finale adds three equivalents.
+
+`CREATE INDEX CONCURRENTLY` was raised for the two `00014` indexes and deliberately not applied: it cannot run inside a transaction block and `supabase db push` wraps each migration in one, so a separate migration would not help either. `stories` holds 0 rows and both indexes already exist.
 
 72 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
 

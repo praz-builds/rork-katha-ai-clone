@@ -17,6 +17,11 @@
 -- migration removes it. Profile creation belongs with the signup work, where it
 -- can be built against a real flow and tested. The GRANTs from 00012 are
 -- correct and are deliberately left in place.
+--
+-- The trigger has since been removed from the 00012 source as well, so a fresh
+-- database never creates it and this migration is a no-op there. It still
+-- matters for the linked project, where the original 00012 already ran and the
+-- broken trigger physically exists. Both statements are IF EXISTS.
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user();

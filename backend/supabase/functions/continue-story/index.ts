@@ -266,6 +266,16 @@ serve(async (req) => {
       if (!content) throw new Error("Generation returned no chapter content");
       const wordCount = content.split(/\s+/).length;
 
+      // A finale ends the series, so there is no next chapter to build pressure
+      // toward. The prompt asks for this, but the model does not reliably
+      // comply, and hook_type is already forced the same way below.
+      const nextState = isEmptySeriesState(output.series_state)
+        ? seriesState
+        : output.series_state;
+      const persistedState = isFinale
+        ? { ...nextState, next_chapter_pressure: "" }
+        : nextState;
+
       const { data: chapter, error: chapterError } = await serviceClient.rpc(
         "complete_continuation_generation",
         {
@@ -277,9 +287,7 @@ serve(async (req) => {
           p_chapter_role: chapterRole,
           p_first_line: output.first_line || null,
           p_previously_summary: output.previously_summary || null,
-          p_series_state: isEmptySeriesState(output.series_state)
-            ? seriesState
-            : output.series_state,
+          p_series_state: persistedState,
           p_hook_type: isFinale ? "none" : output.hook_type,
           p_hook_text: isFinale ? null : output.hook_text || null,
         },
