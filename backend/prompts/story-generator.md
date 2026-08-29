@@ -272,6 +272,11 @@ The request contract is `story_mode: "standalone" | "series"`, which
 carried by `chapter_role` (`standalone`, `series_opening`, `mid_series`,
 `finale`), which the server derives rather than accepting from the client.
 
+`continue-story` derives `chapter_role: "finale"` when the request sets
+`is_finale: true`, or when the next chapter number reaches `MAX_SERIES_CHAPTERS`
+(7). `is_finale` is therefore a `continue-story` request hint, not a stored
+field: the persisted value is always `chapter_role`.
+
 When `story_mode` is `"series"`:
 
 - **Chapter 1:** Establish world, protagonist, central want, and the first
@@ -280,7 +285,8 @@ When `story_mode` is `"series"`:
 - **Chapters 2-6:** Each chapter advances the plot with at least one irreversible
   change. End on a cliffhanger or hook. Shift relationships or power dynamics.
   Introduce new tension or deepen existing threads.
-- **Chapter 7 (or any chapter marked `is_finale`):** Resolve the central conflict.
+- **`chapter_role: "finale"` (chapter 7, or an earlier chapter requested with
+  `is_finale: true`):** Resolve the central conflict.
   Callback to a specific detail from Chapter 1. Land every major character arc.
   Loose threads are acceptable if the main story is complete.
 
