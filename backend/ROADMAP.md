@@ -262,7 +262,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ### Database
 
-- [ ] Create migration `00009_device_tokens.sql`:
+- [ ] Create migration `00011_device_tokens.sql`:
 
   ```sql
   CREATE TABLE device_tokens (

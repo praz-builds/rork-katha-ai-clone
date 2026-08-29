@@ -11,14 +11,17 @@ import {
 } from "../_shared/operations.ts";
 import {
   buildContinuationSystemPrompt,
+  formatSeriesStateBlock,
   MAX_SERIES_CHAPTERS,
 } from "../_shared/story-prompts.ts";
-import { parseStructuredOutput } from "../_shared/story_text.ts";
+import {
+  isEmptySeriesState,
+  parseSeriesState,
+  parseStructuredOutput,
+} from "../_shared/story_text.ts";
 import {
   type AudienceMode,
-  EMPTY_SERIES_STATE,
   type IdentityLens,
-  type SeriesState,
   type SpiceLevel,
   type TropeModule,
 } from "../_shared/types.ts";
@@ -225,8 +228,9 @@ serve(async (req) => {
           .eq("story_id", story_id)
           .eq("chapter_number", 1)
           .maybeSingle();
-      if (firstChapterError) throw firstChapterError;
-      if (firstChapter) {
+      if (firstChapterError) {
+        console.error("chapter 1 context fetch failed", firstChapterError);
+      } else if (firstChapter) {
         earliestContext = `\n\nChapter 1 callback context:\n${
           summarizeChapterForPrompt(firstChapter)
         }`;
@@ -247,8 +251,8 @@ serve(async (req) => {
       ? " This is the FINAL chapter. Bring the story to a satisfying close."
       : "";
     const userPrompt =
-      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}\n\nCurrent series state:\n${
-        JSON.stringify(seriesState)
+      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}\n${
+        formatSeriesStateBlock(seriesState)
       }\n\nPrevious chapters:\n${previousText}${earliestContext}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
 
     try {
@@ -273,7 +277,9 @@ serve(async (req) => {
           p_chapter_role: chapterRole,
           p_first_line: output.first_line || null,
           p_previously_summary: output.previously_summary || null,
-          p_series_state: output.series_state,
+          p_series_state: isEmptySeriesState(output.series_state)
+            ? seriesState
+            : output.series_state,
           p_hook_type: isFinale ? "none" : output.hook_type,
           p_hook_text: isFinale ? null : output.hook_text || null,
         },
@@ -323,37 +329,6 @@ function jsonResponse(req: Request, body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeadersFor(req), "Content-Type": "application/json" },
   });
-}
-
-function parseSeriesState(value: unknown): SeriesState {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return EMPTY_SERIES_STATE;
-  }
-
-  const state = value as Record<string, unknown>;
-  return {
-    central_conflict: stringField(state.central_conflict),
-    protagonist_want: stringField(state.protagonist_want),
-    relationship_state: stringField(state.relationship_state),
-    open_hooks: stringList(state.open_hooks),
-    resolved_hooks: stringList(state.resolved_hooks),
-    promised_payoffs: stringList(state.promised_payoffs),
-    world_facts: stringList(state.world_facts),
-    character_changes: stringList(state.character_changes),
-    next_chapter_pressure: stringField(state.next_chapter_pressure),
-  };
-}
-
-function stringField(value: unknown): string {
-  return typeof value === "string" ? value.slice(0, 500) : "";
-}
-
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.slice(0, 240))
-    .slice(0, 12);
 }
 
 function summarizeChapterForPrompt(chapter: {

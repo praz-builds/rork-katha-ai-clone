@@ -265,7 +265,7 @@ serve(async (req) => {
           p_story_mode: storyMode,
           p_chapter_role: chapterRole,
           p_series_state: storyMode === "series"
-            ? output.series_state
+            ? output.series_state ?? EMPTY_SERIES_STATE
             : EMPTY_SERIES_STATE,
           p_hook_type: storyMode === "series" ? output.hook_type : "none",
           p_hook_text: storyMode === "series" ? output.hook_text || null : null,
@@ -284,7 +284,7 @@ serve(async (req) => {
           primary_genre: primaryGenre,
           story_mode: storyMode,
           series_state: storyMode === "series"
-            ? output.series_state
+            ? output.series_state ?? EMPTY_SERIES_STATE
             : EMPTY_SERIES_STATE,
           first_line: output.first_line,
           previously_summary: output.previously_summary,

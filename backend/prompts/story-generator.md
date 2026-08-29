@@ -125,25 +125,25 @@ buildContinuationSystemPrompt({
 
 ## User-Facing Taxonomy
 
-These are the recommended 15 creation cards for the app:
+These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFantasy` and `paranormalRomance` are valid DB values but are not rendered as creation cards (see Key v5.1 Decisions).
 
-| # | UI Genre | Internal genre | Notes |
+| UI card # | UI Genre | Internal genre | Notes |
 |---|----------|----------------|-------|
 | 1 | Romance | `romance` | Commercial relationship-forward stories |
 | 2 | Romantasy | `romantasy` | Romance and fantasy arcs have equal weight |
 | 3 | Dark Romance | `darkRomance` | Adult only, steamy default, explicit feature-flagged |
-| 4 | Cozy Fantasy | `cozyFantasy` | Low-stakes warmth, craft, community |
-| 5 | Paranormal Romance | `paranormalRomance` | Host for Werewolf/Shifter and Vampire trope modules |
-| 6 | Fantasy | `fantasy` | Magic, world, cost, wonder |
-| 7 | Sci-Fi | `scifi` | One speculative idea with human consequence |
-| 8 | Thriller | `thriller` | Urgency, threat, ticking clock |
-| 9 | Mystery | `mystery` | Fair-play puzzle |
-| 10 | Horror | `horror` | Dread, wrongness, restraint |
-| 11 | Contemporary | `contemporary` | Absorbs Drama and Slice of Life registers |
-| 12 | Historical | `historical` | Period consciousness and constraints |
-| 13 | Adventure | `adventure` | Motion, environment, physical stakes |
-| 14 | Comedy | `comedy` | Observational or absurd, committed timing |
-| 15 | Poetry | `poetry` | Prose poetry / lyrical narrative mode |
+| - | Cozy Fantasy | `cozyFantasy` | **Backend only, hidden from UI.** Low-stakes warmth, craft, community |
+| - | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Host for Werewolf/Shifter and Vampire trope modules |
+| 4 | Fantasy | `fantasy` | Magic, world, cost, wonder |
+| 5 | Sci-Fi | `scifi` | One speculative idea with human consequence |
+| 6 | Thriller | `thriller` | Urgency, threat, ticking clock |
+| 7 | Mystery | `mystery` | Fair-play puzzle |
+| 8 | Horror | `horror` | Dread, wrongness, restraint |
+| 9 | Contemporary | `contemporary` | Absorbs Drama and Slice of Life registers |
+| 10 | Historical | `historical` | Period consciousness and constraints |
+| 11 | Adventure | `adventure` | Motion, environment, physical stakes |
+| 12 | Comedy | `comedy` | Observational or absurd, committed timing |
+| 13 | Poetry | `poetry` | Prose poetry / lyrical narrative mode |
 
 Separate UI controls:
 

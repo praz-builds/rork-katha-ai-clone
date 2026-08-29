@@ -107,8 +107,18 @@ function parseHookType(value: unknown): HookType {
   return "none";
 }
 
-function parseSeriesState(value: unknown): SeriesState {
-  if (!value || typeof value !== "object") return EMPTY_SERIES_STATE;
+/**
+ * Normalize an arbitrary value into a `SeriesState`.
+ *
+ * This is the single normalization contract for series continuity. Both initial
+ * generation (model output) and continuation (state read back from the database)
+ * must use it so a stored state is never truncated or filtered differently
+ * between the two paths.
+ */
+export function parseSeriesState(value: unknown): SeriesState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return EMPTY_SERIES_STATE;
+  }
   const state = value as Record<string, unknown>;
   return {
     central_conflict: stringField(state.central_conflict, 1000),
@@ -121,6 +131,20 @@ function parseSeriesState(value: unknown): SeriesState {
     character_changes: stringList(state.character_changes, 16, 500),
     next_chapter_pressure: stringField(state.next_chapter_pressure, 1000),
   };
+}
+
+/** True when the state carries no continuity information worth persisting. */
+export function isEmptySeriesState(state: SeriesState | null | undefined): boolean {
+  if (!state) return true;
+  return !state.central_conflict &&
+    !state.protagonist_want &&
+    !state.relationship_state &&
+    !state.next_chapter_pressure &&
+    state.open_hooks.length === 0 &&
+    state.resolved_hooks.length === 0 &&
+    state.promised_payoffs.length === 0 &&
+    state.world_facts.length === 0 &&
+    state.character_changes.length === 0;
 }
 
 function stringField(value: unknown, maxLength: number): string {

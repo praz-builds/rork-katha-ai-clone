@@ -7,6 +7,53 @@
 
 ---
 
+## 2026-08-29 — Series state hardening (PR #30 review fixes)
+
+**Session:** Resolved all 11 actionable CodeRabbit findings on PR #30 (`codex/series-state-generation`) and hardened the series-state pipeline for production.
+
+### Schema
+
+- Added migration `00010_series_state_hardening.sql`. Migration `00009` was already applied to the linked project, so these corrections ship as a follow-up rather than an edit to an applied migration. Every statement is idempotent.
+  - Named table-level `CHECK` constraints for `stories.story_mode`, `chapters.chapter_role`, and `chapters.hook_type`. `00009` declared them inline on `ADD COLUMN IF NOT EXISTS`, which silently skips the constraint when the column already exists.
+  - Repaired the `00009` `chapter_role` backfill, which evaluated the `finale` branch before confirming the parent story is a series.
+  - Rebuilt both completion RPCs so an invalid `hook_type` raises like the other enum parameters instead of being silently downgraded to `'none'`.
+  - `complete_continuation_generation` now retains the stored `series_state` when `p_series_state` is `NULL` or `'{}'`, so one incomplete model response can no longer erase accumulated continuity.
+
+### Prompt safety
+
+- Persisted series state is no longer interpolated bare into the system-instruction channel. `formatSeriesStateBlock()` wraps it in an explicitly delimited `<series_state>` block labelled as untrusted data, with instructions to ignore any directive inside it.
+- `formatSeriesState()` strips the fence pattern from the payload, so a crafted state value cannot close the block and escape into the instruction channel.
+- Applied to the continuation system prompt, the initial user prompt, and the `continue-story` user prompt (which previously embedded raw `JSON.stringify(seriesState)`).
+
+### Kids mode + series
+
+- `buildAudienceModeRules()` now receives `storyMode` and `chapterRole`. Kids series openings and mid-series chapters get a reconciled ending contract: the immediate scene must resolve safely, while the larger story question may stay open only as a gentle, non-threatening invitation. Hook types are restricted to `unanswered_question`, `arrival`, and `decision`.
+- Kids standalone stories and kids series finales keep the original unconditional "problems are resolved" ending rule.
+
+### Shared normalizer
+
+- `parseSeriesState()` and `isEmptySeriesState()` are now exported from `_shared/story_text.ts`. `continue-story` imported them and dropped its duplicate parser, which applied different limits (500/240 chars, no trimming) than the shared one (1000/500 chars, trimmed and filtered). Stored state now normalizes identically on both the generation and continuation paths.
+- `continue-story` falls back to the prior stored state when the model returns an empty `series_state`.
+- `generate-story` passes an explicit `EMPTY_SERIES_STATE` fallback for series stories.
+
+### Stability
+
+- The optional Chapter 1 callback lookup in the finale path no longer throws. A transient read error on that enrichment query previously aborted the continuation after the credit reservation existed.
+
+### Docs
+
+- `backend/prompts/story-generator.md`: one UI genre contract. The taxonomy table now matches the shipped Expo list (13 creation cards; `cozyFantasy` and `paranormalRomance` marked backend-only).
+- `backend/ROADMAP.md`: planned device-token migration renumbered to `00011` to clear the `00009` collision.
+
+### Validation
+
+- 65 Deno tests pass (was 53). Added prompt-injection regression tests with hostile text in `SeriesState` fields, fence-escape tests, kids opening/mid-series/standalone/finale prompt tests, and shared-normalizer contract tests.
+- `deno check` clean for `generate-story`, `continue-story`, and the changed shared modules.
+- Expo `pnpm typecheck` clean, `pnpm lint` 0 errors, `pnpm test` 33 passed.
+- Security scan: no secrets in the diff, no dynamic SQL, `SECURITY DEFINER` + `SET search_path = ''` + service-role-only grants preserved on both rebuilt RPCs.
+
+---
+
 ## 2026-08-28 — Production series state for generation
 
 **Session:** Implemented end-to-end series-mode generation contracts across prompt spec, Supabase schema/RPCs, Edge Functions, parser tests, and Expo API typing.
