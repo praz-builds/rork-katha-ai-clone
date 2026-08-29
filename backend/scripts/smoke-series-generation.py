@@ -70,28 +70,36 @@ def rid(tag):
     return f"smoke-{tag}-{uuid.uuid4().hex[:10]}"
 
 
-def find_user_by_email(target: str) -> str | None:
-    """Locate a fixture auth user by exact email, paging through the admin list.
+def find_user_by_email(target: str) -> tuple[str | None, bool]:
+    """Locate a fixture auth user by exact email, paging the admin list.
 
-    Used only when the create response was indeterminate, so the account can
-    still be torn down rather than stranded in the project.
+    Returns (user_id, lookup_ok). The second value matters: a failed lookup is
+    NOT the same as "no such user". Collapsing the two would let a transient
+    error silently skip the auth-user deletion and strand the fixture with no
+    signal, which is the exact outcome this function exists to prevent.
+
+    Used only when the create response was indeterminate.
     """
     if not target:
-        return None
+        return None, True
     wanted = target.lower()
     page = 1
     while True:
-        st, body = req("GET", f"/auth/v1/admin/users?page={page}&per_page=200", key=SVC)
-        if st != 200 or not body:
-            return None
+        st, body = None, None
+        for attempt in range(3):  # transient failures are worth retrying
+            st, body = req("GET", f"/auth/v1/admin/users?page={page}&per_page=200", key=SVC)
+            if st == 200 and body is not None:
+                break
+        if st != 200 or body is None:
+            return None, False  # lookup failed; caller must not assume absence
         users = body.get("users", body) if isinstance(body, dict) else body
         if not users:
-            # An empty page is the end of the list; there is no fixed page cap,
-            # so the fixture is found however large the project has grown.
-            return None
+            # An empty page ends the list. No fixed page cap, so project size
+            # cannot hide the fixture.
+            return None, True
         for u in users:
             if (u.get("email") or "").lower() == wanted:
-                return u.get("id")
+                return u.get("id"), True
         page += 1
 
 
@@ -414,9 +422,16 @@ finally:
         # timed out or failed to decode, in which case req() returned 0 and uid
         # was never assigned. Look the fixture up by its exact email so the
         # account is not stranded.
-        uid = find_user_by_email(email)
+        uid, lookup_ok = find_user_by_email(email)
         if uid:
             print(f"  recovered orphaned auth user {uid}")
+        elif not lookup_ok:
+            # Cannot tell whether the account exists, so it may be stranded.
+            leaked.append(f"auth user {email} (lookup failed)")
+            FAIL.append(
+                f"cleanup: could not determine whether {email} exists; "
+                "it may be stranded in the project"
+            )
 
     if uid:
         # Order matters, and stories are deleted by author rather than by the
