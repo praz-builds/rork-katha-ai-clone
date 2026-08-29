@@ -9,11 +9,11 @@
 
 ## 2026-08-30 — LLM layer: correct model IDs, enforced output schema, typed failures
 
-**Session:** Repaired the Anthropic path, which had never actually run. Every generation in the previous session's smoke tests reached `gpt-4o-mini`, the third-choice fallback, and the reason was in the model IDs rather than the missing key.
+**Session:** Repaired the Anthropic path, which has never run. Every generation in the previous session's smoke tests reached `gpt-4o-mini`, the third-choice fallback — the absent `ANTHROPIC_API_KEY` alone accounts for that, and the model IDs were separately found to be non-canonical.
 
 ### Model IDs
 
-- `claude-haiku-4-5-20251001` -> `claude-haiku-4-5`. The dated variant is not a valid id, so the Haiku fallback could only ever 404.
+- `claude-haiku-4-5-20251001` -> `claude-haiku-4-5`, the canonical undated identifier. Standardising on the documented alias, **not** on an observed failure: the Anthropic path has never executed against this project, so the dated form's behaviour here is unverified either way.
 - `claude-sonnet-4-6` -> `claude-sonnet-5`. Newer and cheaper: $2/$10 per MTok against $3/$15.
 - SDK `@anthropic-ai/sdk` 0.30.1 -> 0.122.0, and the specifier moved from `esm.sh` to `npm:` because esm.sh returns 500 for the package's type declarations under `deno check`.
 

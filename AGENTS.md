@@ -74,7 +74,7 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 
 Sonnet 5 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Never use `claude --print` CLI for generation (adds 70-100s overhead); use the Anthropic SDK directly.
 
-**Model IDs are complete as written — never append a date suffix.** `claude-sonnet-5`, `claude-haiku-4-5`. A dated variant such as `claude-haiku-4-5-20251001` is not a valid id and 404s, which silently pushes every request down the chain to `gpt-4o-mini`.
+**Use the canonical undated model IDs:** `claude-sonnet-5`, `claude-haiku-4-5`. Anthropic's current model IDs are complete as written; dated snapshot forms exist for some models but are not the documented identifier for these, and the codebase standardises on the undated alias. (The previous `claude-haiku-4-5-20251001` was replaced on that basis, not because it was observed to fail — the Anthropic path has never executed here, so no such observation exists.)
 
 **Credential requirement.** `ANTHROPIC_API_KEY` must be an API key from console.anthropic.com, prefix `sk-ant-api03-`. A `sk-ant-oat01-` value is an OAuth access token minted by `claude` CLI login against a Claude subscription: it expires within hours, so generation breaks mid-session, and subscription auth is a developer-tool credential that is not licensed to serve end-user traffic. The two are separately billed on the same account.
 

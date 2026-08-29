@@ -58,6 +58,14 @@ export interface LlmFailure {
   message: string;
 }
 
+/** A non-2xx provider response, carrying the status through to classification. */
+export class ProviderHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ProviderHttpError";
+  }
+}
+
 export class AllProvidersFailedError extends Error {
   constructor(readonly failures: LlmFailure[]) {
     super(
@@ -94,6 +102,28 @@ export function classifyLlmError(
 ): LlmFailure {
   const base = { provider, model, message: failureMessage(error) };
 
+  // The SDK raises APIUserAbortError when our deadline signal fires. It extends
+  // APIError, so it must be matched before the APIError branch or a timeout is
+  // mislabelled as a provider error.
+  if (error instanceof Anthropic.APIUserAbortError) {
+    return { ...base, code: "timeout", retryable: true };
+  }
+  // The fetch path rejects with the AbortSignal reason.
+  if (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  ) {
+    return { ...base, code: "timeout", retryable: true };
+  }
+  if (error instanceof ProviderHttpError) {
+    return {
+      ...base,
+      code: error.status >= 500 ? "provider_5xx" : "provider_error",
+      status: error.status,
+      // 4xx is a request or credential problem; retrying the same call repeats it.
+      retryable: error.status >= 500 || error.status === 429,
+    };
+  }
   if (error instanceof Anthropic.NotFoundError) {
     // Almost always a bad model id - not worth retrying on another attempt.
     return { ...base, code: "model_not_found", status: 404, retryable: false };
@@ -116,9 +146,6 @@ export function classifyLlmError(
       status,
       retryable: !status || status >= 500,
     };
-  }
-  if (error instanceof DOMException && error.name === "AbortError") {
-    return { ...base, code: "timeout", retryable: true };
   }
   return { ...base, code: "unknown", retryable: true };
 }
@@ -161,7 +188,32 @@ export function editParagraph(
   });
 }
 
-interface ChainOptions {
+/**
+ * The provider-specific bits of a request that depend on chain options.
+ *
+ * Exported so the branch that decides whether to constrain output can be tested
+ * without a network call - it is the difference between a story (must be the
+ * JSON object) and a paragraph edit (must be prose).
+ */
+export function anthropicRequestShape(options: ChainOptions) {
+  return {
+    max_tokens: options.maxTokens,
+    ...(options.constrainToStorySchema
+      ? { output_config: { format: ANTHROPIC_OUTPUT_FORMAT } }
+      : {}),
+  };
+}
+
+export function openAIRequestShape(options: ChainOptions) {
+  return {
+    max_tokens: options.maxTokens,
+    ...(options.constrainToStorySchema
+      ? { response_format: OPENAI_RESPONSE_FORMAT }
+      : {}),
+  };
+}
+
+export interface ChainOptions {
   maxTokens: number;
   constrainToStorySchema: boolean;
   deadlineMs: number;
@@ -242,19 +294,17 @@ async function runProviderChain(
                 // json_object guarantees valid JSON but not the right shape,
                 // which still degraded to the text parser. The strict schema
                 // guarantees both.
-                ...(options.constrainToStorySchema
-                  ? { response_format: OPENAI_RESPONSE_FORMAT }
-                  : {}),
-                max_tokens: options.maxTokens,
+                ...openAIRequestShape(options),
               }),
             },
           );
           const payload: unknown = await res.json();
           if (!res.ok) {
-            throw new Error(
+            throw new ProviderHttpError(
               `OpenAI request failed (${res.status}): ${
                 providerError(payload)
               }`,
+              res.status,
             );
           }
           return openAIContent(payload);
@@ -300,13 +350,8 @@ async function generateAnthropicText(
           client.messages.create(
             {
               model,
-              max_tokens: options.maxTokens,
+              ...anthropicRequestShape(options),
               system: systemPrompt,
-              // Enforce the output shape rather than asking for it in prose.
-              // Paragraph edits return prose, so they opt out.
-              ...(options.constrainToStorySchema
-                ? { output_config: { format: ANTHROPIC_OUTPUT_FORMAT } }
-                : {}),
               messages: [{
                 role: "user",
                 content: moderationSafePrompt(userPrompt, attempt),
@@ -413,7 +458,9 @@ async function withAbortTimeout<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(
-    () => controller.abort(new Error(`Timeout after ${ms}ms`)),
+    // A DOMException named AbortError is what fetch and the SDK both surface,
+    // so classifyLlmError can recognise a timeout rather than guessing.
+    () => controller.abort(new DOMException(`Timeout after ${ms}ms`, "AbortError")),
     ms,
   );
 

@@ -18,6 +18,8 @@
  * and allowed to be empty rather than omitted.
  */
 
+import { HOOK_TYPE_VALUES } from "./types.ts";
+
 const stringList = {
   type: "array",
   items: { type: "string" },
@@ -89,17 +91,9 @@ export const STORY_OUTPUT_JSON_SCHEMA = {
     },
     hook_type: {
       type: "string",
-      enum: [
-        "none",
-        "revelation",
-        "reversal",
-        "decision",
-        "arrival",
-        "betrayal",
-        "danger",
-        "unanswered_question",
-        "emotional_rupture",
-      ],
+      // Derived, not duplicated: the schema, the runtime HOOK_TYPES set and the
+      // chapters_hook_type_check constraint must not drift apart.
+      enum: HOOK_TYPE_VALUES,
     },
     hook_text: {
       type: "string",

@@ -107,7 +107,15 @@ export type HookType =
   | "unanswered_question"
   | "emotional_rupture";
 
-export const HOOK_TYPES: ReadonlySet<string> = new Set<HookType>([
+/**
+ * Canonical hook values, in one place.
+ *
+ * The story JSON schema, the runtime Set, and the chapters_hook_type_check
+ * constraint in migration 00010 must all agree. Deriving the first two from this
+ * array removes one copy; the database constraint is the remaining copy and is
+ * asserted against this list in llm.test.ts.
+ */
+export const HOOK_TYPE_VALUES = [
   "none",
   "revelation",
   "reversal",
@@ -117,7 +125,9 @@ export const HOOK_TYPES: ReadonlySet<string> = new Set<HookType>([
   "danger",
   "unanswered_question",
   "emotional_rupture",
-]);
+] as const;
+
+export const HOOK_TYPES: ReadonlySet<string> = new Set<string>(HOOK_TYPE_VALUES);
 
 // ---------------------------------------------------------------------------
 // Identity Lens

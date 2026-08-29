@@ -2,7 +2,14 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { AllProvidersFailedError, classifyLlmError } from "./llm.ts";
+import {
+  AllProvidersFailedError,
+  anthropicRequestShape,
+  classifyLlmError,
+  openAIRequestShape,
+  ProviderHttpError,
+} from "./llm.ts";
+import { HOOK_TYPE_VALUES, HOOK_TYPES } from "./types.ts";
 import {
   ANTHROPIC_OUTPUT_FORMAT,
   OPENAI_RESPONSE_FORMAT,
@@ -19,21 +26,32 @@ import {
 
 Deno.test("story schema is valid for strict mode", () => {
   const props = Object.keys(STORY_OUTPUT_JSON_SCHEMA.properties);
-  assertEquals(props.length, STORY_OUTPUT_JSON_SCHEMA.required.length);
+  const required = STORY_OUTPUT_JSON_SCHEMA.required as readonly string[];
   assertEquals(STORY_OUTPUT_JSON_SCHEMA.additionalProperties, false);
+  assertEquals(new Set(required).size, required.length, "duplicate in required");
   for (const key of props) {
-    assert(
-      (STORY_OUTPUT_JSON_SCHEMA.required as readonly string[]).includes(key),
-      `${key} must be in required for strict mode`,
-    );
+    assert(required.includes(key), `${key} must be in required for strict mode`);
+  }
+  for (const key of required) {
+    assert(props.includes(key), `required lists unknown property ${key}`);
   }
 });
 
 Deno.test("series_state schema is valid for strict mode", () => {
   const ss = STORY_OUTPUT_JSON_SCHEMA.properties.series_state;
   const props = Object.keys(ss.properties);
-  assertEquals(props.length, ss.required.length);
+  const required = ss.required as readonly string[];
   assertEquals(ss.additionalProperties, false);
+  // Counts alone would pass with a duplicate in `required` and one property
+  // missing, which both providers reject at generation time. Check membership
+  // both ways.
+  assertEquals(new Set(required).size, required.length, "duplicate in required");
+  for (const key of props) {
+    assert(required.includes(key), `${key} must be in series_state.required`);
+  }
+  for (const key of required) {
+    assert(props.includes(key), `required lists unknown property ${key}`);
+  }
 });
 
 Deno.test("schema covers every field parseStructuredOutput reads", () => {
@@ -56,8 +74,23 @@ Deno.test("schema covers every field parseStructuredOutput reads", () => {
   }
 });
 
-Deno.test("hook_type enum matches the persisted CHECK constraint", () => {
-  assertEquals(STORY_OUTPUT_JSON_SCHEMA.properties.hook_type.enum, [
+Deno.test("hook_type enum is derived from the canonical list, not copied", () => {
+  // The schema enum and the runtime Set now share one source, so they cannot
+  // drift from each other.
+  assertEquals(
+    STORY_OUTPUT_JSON_SCHEMA.properties.hook_type.enum,
+    HOOK_TYPE_VALUES,
+  );
+  for (const value of HOOK_TYPE_VALUES) {
+    assert(HOOK_TYPES.has(value), `${value} missing from HOOK_TYPES`);
+  }
+  assertEquals(HOOK_TYPES.size, HOOK_TYPE_VALUES.length);
+});
+
+Deno.test("canonical hook list matches chapters_hook_type_check", () => {
+  // The remaining copy lives in migration 00010. It cannot be imported here, so
+  // it is pinned: changing the code list without the migration fails this test.
+  assertEquals([...HOOK_TYPE_VALUES], [
     "none",
     "revelation",
     "reversal",
@@ -137,4 +170,89 @@ Deno.test("AllProvidersFailedError: message names each model and code", () => {
   assert(err.message.includes("claude-sonnet-5"));
   assert(err.message.includes("auth_failed"));
   assertEquals(err.name, "AllProvidersFailedError");
+});
+
+
+// ---------------------------------------------------------------------------
+// Request shaping
+//
+// The branch that decides whether output is constrained is the difference
+// between a story (must be the JSON object) and a paragraph edit (must be
+// prose). Constraining an edit would return JSON where the editor expects a
+// rewritten paragraph.
+// ---------------------------------------------------------------------------
+
+const STORY_OPTS = {
+  maxTokens: 16_000,
+  constrainToStorySchema: true,
+  deadlineMs: 120_000,
+};
+const EDIT_OPTS = {
+  maxTokens: 2_000,
+  constrainToStorySchema: false,
+  deadlineMs: 60_000,
+};
+
+Deno.test("story requests constrain output on both providers", () => {
+  const a = anthropicRequestShape(STORY_OPTS) as Record<string, unknown>;
+  assertEquals(a.max_tokens, 16_000);
+  assertEquals(a.output_config, { format: ANTHROPIC_OUTPUT_FORMAT });
+
+  const o = openAIRequestShape(STORY_OPTS) as Record<string, unknown>;
+  assertEquals(o.max_tokens, 16_000);
+  assertEquals(o.response_format, OPENAI_RESPONSE_FORMAT);
+});
+
+Deno.test("paragraph edits are never constrained to the story schema", () => {
+  const a = anthropicRequestShape(EDIT_OPTS) as Record<string, unknown>;
+  assertEquals(a.max_tokens, 2_000);
+  assert(!("output_config" in a), "an edit must not request the story schema");
+
+  const o = openAIRequestShape(EDIT_OPTS) as Record<string, unknown>;
+  assertEquals(o.max_tokens, 2_000);
+  assert(!("response_format" in o), "an edit must not request the story schema");
+});
+
+// ---------------------------------------------------------------------------
+// Timeout and HTTP status classification
+// ---------------------------------------------------------------------------
+
+Deno.test("classifyLlmError: an aborted request is a timeout, not unknown", () => {
+  // withAbortTimeout aborts with exactly this reason.
+  const f = classifyLlmError(
+    new DOMException("Timeout after 30000ms", "AbortError"),
+    "openai",
+    "gpt-4o-mini",
+  );
+  assertEquals(f.code, "timeout");
+  assertEquals(f.retryable, true);
+});
+
+Deno.test("classifyLlmError: a provider HTTP status survives classification", () => {
+  const unauthorized = classifyLlmError(
+    new ProviderHttpError("OpenAI request failed (401): bad key", 401),
+    "openai",
+    "gpt-4o-mini",
+  );
+  assertEquals(unauthorized.status, 401);
+  assertEquals(unauthorized.code, "provider_error");
+  // A bad credential must not be retried as though it were transient.
+  assertEquals(unauthorized.retryable, false);
+
+  const serverError = classifyLlmError(
+    new ProviderHttpError("OpenAI request failed (503): busy", 503),
+    "openai",
+    "gpt-4o-mini",
+  );
+  assertEquals(serverError.status, 503);
+  assertEquals(serverError.code, "provider_5xx");
+  assertEquals(serverError.retryable, true);
+
+  const throttled = classifyLlmError(
+    new ProviderHttpError("OpenAI request failed (429): slow down", 429),
+    "openai",
+    "gpt-4o-mini",
+  );
+  assertEquals(throttled.status, 429);
+  assertEquals(throttled.retryable, true);
 });
