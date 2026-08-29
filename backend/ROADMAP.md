@@ -12,14 +12,14 @@
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
-All bug fixes applied, 11 migrations (00001-00011) applied to the linked project, 10 edge functions deployed and ACTIVE.
+All bug fixes applied, 14 migrations (00001-00014) applied to the linked project, 10 edge functions deployed and ACTIVE.
 
 ### Remaining Verification
 
 - [ ] Set secret: `ANTHROPIC_API_KEY` (waiting on user)
 - [ ] Add production Expo web origin to `ALLOWED_ORIGINS` before production browser traffic
-- [ ] Create a test user via Supabase Auth dashboard
-- [ ] Manually call `generate-story` with curl and verify credit deduction + story insert
+- [x] Test user created and exercised via the smoke-test harness (`backend/scripts/smoke-series-generation.py`)
+- [x] `generate-story` called end-to-end with credit deduction + story insert verified (51/51 smoke assertions pass)
 - [ ] Verify `library` endpoint returns data
 
 <details>
@@ -33,6 +33,10 @@ All bug fixes applied, 11 migrations (00001-00011) applied to the linked project
 - [x] Migration 00009 applied (production series state and hook metadata)
 - [x] Migration 00010 applied (series state hardening: named CHECK constraints added NOT VALID, backfill repair, hook_type validation, series_state retention)
 - [x] Migration 00011 applied (validates the 00010 CHECK constraints in a separate transaction)
+- [x] Migration 00012 applied (restores table GRANTs for anon/authenticated/service_role)
+- [x] Migration 00013 applied (drops the premature handle_new_user trigger from 00012)
+- [x] Migration 00014 applied (re-applies the 00008 taxonomy columns, which were recorded as applied but never ran)
+- [ ] Profile creation on signup — build with the signup flow; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted
 - [x] 10 edge functions deployed and ACTIVE
 - [x] `generate-story` and `continue-story` redeployed for series state hardening (2026-08-29)
 - [x] `generate-story` double-deduct fix
@@ -265,7 +269,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ### Database
 
-- [ ] Create migration `00012_device_tokens.sql`:
+- [ ] Create migration `00015_device_tokens.sql`:
 
   ```sql
   CREATE TABLE device_tokens (

@@ -439,3 +439,64 @@ Deno.test("kids series finale also uses the chapter range", () => {
   assert(prompt.includes("- **Length:** 600-900 words."));
   assert(!prompt.includes("500-1200"));
 });
+
+// ---------------------------------------------------------------------------
+// The output schema must be the final section of every prompt
+//
+// A live smoke test showed continuations returning valid JSON with hook_type
+// set but series_state empty. The continuation prompt appended ~2.4k chars of
+// narrative rules AFTER the schema, so the model's last instruction was
+// "the final line should pull the reader forward" rather than the format
+// contract, and it dropped series_state. Continuity then froze on chapter 1.
+// ---------------------------------------------------------------------------
+
+const SCHEMA_HEADING = "## Output Format (CRITICAL)";
+
+Deno.test("initial story prompt ends with the output schema", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "fantasy",
+    storyMode: "series",
+    chapterRole: "series_opening",
+  });
+  assert(prompt.includes(SCHEMA_HEADING));
+  assert(prompt.trimEnd().endsWith("}"));
+  // Nothing may follow the schema block.
+  assertEquals(prompt.indexOf(SCHEMA_HEADING), prompt.lastIndexOf(SCHEMA_HEADING));
+});
+
+Deno.test("mid-series continuation prompt ends with the output schema", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "fantasy",
+    mode: "chapter",
+  });
+  const at = prompt.indexOf(SCHEMA_HEADING);
+  assert(at !== -1, "continuation prompt must carry the output schema");
+  // The narrative rules must come before the schema, not after it.
+  assert(prompt.indexOf("## Mid-Series Chapter") < at);
+  assert(prompt.trimEnd().endsWith("}"));
+});
+
+Deno.test("finale continuation prompt ends with the output schema", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "fantasy",
+    mode: "finale",
+  });
+  const at = prompt.indexOf(SCHEMA_HEADING);
+  assert(at !== -1);
+  assert(prompt.indexOf("## Series Finale") < at);
+  assert(prompt.trimEnd().endsWith("}"));
+});
+
+Deno.test("continuation prompt still carries genre, series and kids layers", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "fantasy",
+    audienceMode: "kids",
+    mode: "chapter",
+  });
+  // Reordering the schema must not drop any earlier layer.
+  assert(prompt.includes("## Genre: fantasy"));
+  assert(prompt.includes("## Kids Mode (MANDATORY CONSTRAINTS)"));
+  assert(prompt.includes("## Mid-Series Chapter Contract"));
+  assert(prompt.includes("## Continuation Rules"));
+  assert(prompt.includes(SCHEMA_HEADING));
+});

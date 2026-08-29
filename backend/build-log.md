@@ -7,6 +7,65 @@
 
 ---
 
+## 2026-08-29 — Production smoke test: three blocking defects found and fixed
+
+**Session:** Ran the first real authenticated end-to-end test of the generation pipeline. It failed immediately, surfacing two pre-existing production defects that meant the backend had never served a single successful request, plus one defect in the series prompt system.
+
+### 1. No table GRANTs (migration 00012)
+
+RLS policies filter rows; they do not grant table privileges. Migrations 00001-00002 enabled RLS and created 26 policies but never issued a `GRANT`, and the project has no blanket default privileges. Measured state before the fix:
+
+- `authenticated`: 16 of 17 tables returned `42501 permission denied`
+- `service_role`: 17 of 17 returned `42501`
+- The only reachable table was `profiles`, because 00006 happened to grant it explicitly
+
+`00012` issues grants that mirror the existing policies exactly, so no operation is granted that lacks a policy and RLS stays the row-level authority. All 16 real tables were confirmed RLS-enabled first. The 00006 hardening is preserved: `profiles` keeps its column-level SELECT and `REVOKE UPDATE (status) ON stories` is re-asserted. `generation_operations` and `payment_event_backlog` stay service-only.
+
+### 2. Migration 00008 recorded as applied but never ran (migration 00014)
+
+All eight taxonomy columns were missing from `public.stories` while every other migration's columns were present, including 00009's. Drift was isolated to 00008.
+
+This was the direct cause of the HTTP 500s: `generate-story` inserts `audience_mode`, `primary_genre`, `spice_level`, `identity_lenses` and `trope_modules` as its first write, which failed with `42703` and was swallowed by the handler's catch-all. `complete_story_generation` would have failed the same way on `content_rating`.
+
+The v5.1 taxonomy shipped in PR #28 had therefore never functioned against this database. `00014` re-applies 00008 steps 1-10 idempotently; step 11 is skipped because 00010 supersedes it.
+
+### 3. Series state echoed instead of advanced (prompt fix)
+
+Continuations returned a complete `series_state` with every key populated, but copied verbatim from the input. Chapter 2's stored state was byte-identical to chapter 1's, so continuity froze and the finale would have worked from stale state.
+
+Two changes, both verified by probing the model directly with a fixed fixture:
+
+- The mid-series and finale contracts now state that returning the state unchanged is a failure, with per-field requirements (`next_chapter_pressure` must describe the next chapter, answered hooks move to `resolved_hooks`, the new hook is added to `open_hooks`).
+- The output schema is now the final section of the continuation prompt. It had sat 2.4k characters from the end, behind the narrative rules, so the model's last instruction was about prose rather than format.
+
+Before the fix the probe showed the state echoed verbatim; after, `next_chapter_pressure` changed and `open_hooks` grew from 2 to 3.
+
+### 4. Premature trigger reverted (migration 00013)
+
+`00012` originally bundled an `auth.users -> profiles` trigger. It was broken (`pg_catalog.nullif` is not a callable function, and the failing call sat in the DECLARE section where the EXCEPTION handler is not yet active), so it aborted every `auth.users` insert. Since there is no signup flow yet, `00013` drops it rather than shipping a corrected version. Profile creation belongs with the signup work; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted.
+
+### Results
+
+`backend/scripts/smoke-series-generation.py` — 51 assertions across 11 groups, all passing:
+
+- Seed validation: 15/28/32-char seeds rejected with 400, no credit charged
+- Standalone: `standalone` role, `hook_type` none, stored `series_state` `{}`, 1028 words, 1 credit
+- Idempotent replay: same chapter id, `replayed: true`, no second charge
+- Series opening: `series_opening`, hook set, `central_conflict` / `open_hooks` / `next_chapter_pressure` populated, 846 words
+- Mid-series: `mid_series`, state advanced from chapter 1
+- Finale: `finale`, `hook_type` none, state retained
+- Kids series: `content_rating` kids, 600-900 band, safe hook type
+- Legacy `is_series: true` still maps to series
+- Seed sweep 41 to 100 chars across six genres
+- Credit exhaustion returns 402
+- 12 operations all `completed`, no stuck reservations, no unexpected refunds
+
+Seeds are written as a real user would type them (lowercase, casual) and span the full accepted 40-100 range.
+
+72 Deno tests pass (was 68). `deno check` clean. Both edge functions redeployed.
+
+---
+
 ## 2026-08-29 — Expo sends story_mode instead of legacy is_series
 
 **Session:** Aligned the Expo client with the generation request contract documented in PR #30.
