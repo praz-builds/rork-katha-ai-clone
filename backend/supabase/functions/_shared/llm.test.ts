@@ -6,8 +6,11 @@ import {
   AllProvidersFailedError,
   anthropicRequestShape,
   classifyLlmError,
+  CLAUDE_TOKEN_ENV_VARS,
+  claudeAuthToken,
   openAIRequestShape,
   ProviderHttpError,
+  ProviderNotConfiguredError,
 } from "./llm.ts";
 import { HOOK_TYPE_VALUES, HOOK_TYPES, type HookType } from "./types.ts";
 import {
@@ -28,9 +31,16 @@ Deno.test("story schema is valid for strict mode", () => {
   const props = Object.keys(STORY_OUTPUT_JSON_SCHEMA.properties);
   const required = STORY_OUTPUT_JSON_SCHEMA.required as readonly string[];
   assertEquals(STORY_OUTPUT_JSON_SCHEMA.additionalProperties, false);
-  assertEquals(new Set(required).size, required.length, "duplicate in required");
+  assertEquals(
+    new Set(required).size,
+    required.length,
+    "duplicate in required",
+  );
   for (const key of props) {
-    assert(required.includes(key), `${key} must be in required for strict mode`);
+    assert(
+      required.includes(key),
+      `${key} must be in required for strict mode`,
+    );
   }
   for (const key of required) {
     assert(props.includes(key), `required lists unknown property ${key}`);
@@ -45,7 +55,11 @@ Deno.test("series_state schema is valid for strict mode", () => {
   // Counts alone would pass with a duplicate in `required` and one property
   // missing, which both providers reject at generation time. Check membership
   // both ways.
-  assertEquals(new Set(required).size, required.length, "duplicate in required");
+  assertEquals(
+    new Set(required).size,
+    required.length,
+    "duplicate in required",
+  );
   for (const key of props) {
     assert(required.includes(key), `${key} must be in series_state.required`);
   }
@@ -107,7 +121,10 @@ Deno.test("provider format wrappers carry the schema", () => {
   assertEquals(ANTHROPIC_OUTPUT_FORMAT.type, "json_schema");
   assertEquals(ANTHROPIC_OUTPUT_FORMAT.schema, STORY_OUTPUT_JSON_SCHEMA);
   assertEquals(OPENAI_RESPONSE_FORMAT.json_schema.strict, true);
-  assertEquals(OPENAI_RESPONSE_FORMAT.json_schema.schema, STORY_OUTPUT_JSON_SCHEMA);
+  assertEquals(
+    OPENAI_RESPONSE_FORMAT.json_schema.schema,
+    STORY_OUTPUT_JSON_SCHEMA,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -139,8 +156,21 @@ Deno.test("classifyLlmError: message is truncated, never unbounded", () => {
 
 Deno.test("AllProvidersFailedError: context is identifiers and enums only", () => {
   const err = new AllProvidersFailedError([
-    { provider: "anthropic", model: "claude-sonnet-5", code: "rate_limited", status: 429, retryable: true, message: "slow down" },
-    { provider: "openai", model: "gpt-4o-mini", code: "not_configured", retryable: false, message: "no key" },
+    {
+      provider: "anthropic",
+      model: "claude-sonnet-5",
+      code: "rate_limited",
+      status: 429,
+      retryable: true,
+      message: "slow down",
+    },
+    {
+      provider: "openai",
+      model: "gpt-4o-mini",
+      code: "not_configured",
+      retryable: false,
+      message: "no key",
+    },
   ]);
   const ctx = err.toContext();
 
@@ -165,13 +195,19 @@ Deno.test("AllProvidersFailedError: context is identifiers and enums only", () =
 
 Deno.test("AllProvidersFailedError: message names each model and code", () => {
   const err = new AllProvidersFailedError([
-    { provider: "anthropic", model: "claude-sonnet-5", code: "auth_failed", status: 401, retryable: false, message: "bad key" },
+    {
+      provider: "anthropic",
+      model: "claude-sonnet-5",
+      code: "auth_failed",
+      status: 401,
+      retryable: false,
+      message: "bad key",
+    },
   ]);
   assert(err.message.includes("claude-sonnet-5"));
   assert(err.message.includes("auth_failed"));
   assertEquals(err.name, "AllProvidersFailedError");
 });
-
 
 // ---------------------------------------------------------------------------
 // Request shaping
@@ -210,7 +246,10 @@ Deno.test("paragraph edits are never constrained to the story schema", () => {
 
   const o = openAIRequestShape(EDIT_OPTS) as Record<string, unknown>;
   assertEquals(o.max_tokens, 2_000);
-  assert(!("response_format" in o), "an edit must not request the story schema");
+  assert(
+    !("response_format" in o),
+    "an edit must not request the story schema",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -263,4 +302,117 @@ Deno.test("HookType is derived, so the union cannot drift from the values", () =
   const all: HookType[] = [...HOOK_TYPE_VALUES];
   assertEquals(all.length, HOOK_TYPE_VALUES.length);
   assertEquals(new Set(all).size, all.length, "duplicate hook value");
+});
+
+// ---------------------------------------------------------------------------
+// Claude credential resolution
+//
+// Generation authenticates with an OAuth bearer token, never a Console API
+// key. These tests pin the accepted names and their precedence, because a
+// silent miss here means every request falls through to the OpenAI leg and
+// the regression is invisible until someone reads a bill.
+// ---------------------------------------------------------------------------
+
+function withEnv<T>(vars: Record<string, string | null>, fn: () => T): T {
+  const saved = new Map<string, string | undefined>();
+  for (const name of Object.keys(vars)) {
+    saved.set(name, Deno.env.get(name));
+  }
+  try {
+    for (const [name, value] of Object.entries(vars)) {
+      if (value === null) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+    return fn();
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+}
+
+const NO_CLAUDE_TOKENS: Record<string, string | null> = Object.fromEntries(
+  CLAUDE_TOKEN_ENV_VARS.map((name) => [name, null]),
+);
+
+Deno.test("ANTHROPIC_API_KEY is not an accepted credential name", () => {
+  assertEquals(
+    CLAUDE_TOKEN_ENV_VARS.includes(
+      "ANTHROPIC_API_KEY" as typeof CLAUDE_TOKEN_ENV_VARS[number],
+    ),
+    false,
+  );
+  // Present but unread: a leftover Console key must not silently authenticate.
+  const resolved = withEnv(
+    // Deliberately not a realistic key shape: a literal starting "sk-ant-"
+    // trips secret scanners and GitHub push protection on every future push.
+    { ...NO_CLAUDE_TOKENS, ANTHROPIC_API_KEY: "leftover-console-key" },
+    claudeAuthToken,
+  );
+  assertEquals(resolved, undefined);
+});
+
+Deno.test("CLAUDE_CODE_OAUTH_TOKEN wins over both aliases", () => {
+  const resolved = withEnv({
+    CLAUDE_CODE_OAUTH_TOKEN: "primary",
+    ANTHROPIC_AUTH_TOKEN: "alias-a",
+    CLAUDE_TOKEN: "alias-b",
+  }, claudeAuthToken);
+  assertEquals(resolved, "primary");
+});
+
+Deno.test("aliases resolve in declared order", () => {
+  assertEquals(
+    withEnv({
+      ...NO_CLAUDE_TOKENS,
+      ANTHROPIC_AUTH_TOKEN: "alias-a",
+      CLAUDE_TOKEN: "alias-b",
+    }, claudeAuthToken),
+    "alias-a",
+  );
+  assertEquals(
+    withEnv({ ...NO_CLAUDE_TOKENS, CLAUDE_TOKEN: "alias-b" }, claudeAuthToken),
+    "alias-b",
+  );
+});
+
+Deno.test("a whitespace-only token is treated as absent", () => {
+  // Supabase secrets round-trip through a shell; a trailing newline is the
+  // common way a "set" secret is in fact empty.
+  assertEquals(
+    withEnv(
+      { ...NO_CLAUDE_TOKENS, CLAUDE_CODE_OAUTH_TOKEN: "   \n  " },
+      claudeAuthToken,
+    ),
+    undefined,
+  );
+  assertEquals(
+    withEnv(
+      { ...NO_CLAUDE_TOKENS, CLAUDE_CODE_OAUTH_TOKEN: "  tok  " },
+      claudeAuthToken,
+    ),
+    "tok",
+  );
+});
+
+Deno.test("no credential resolves to undefined, not a throw", () => {
+  assertEquals(withEnv(NO_CLAUDE_TOKENS, claudeAuthToken), undefined);
+});
+
+Deno.test("a missing credential is not_configured and never retried", () => {
+  const failure = classifyLlmError(
+    new ProviderNotConfiguredError(
+      "Claude credentials are not configured. Set CLAUDE_CODE_OAUTH_TOKEN.",
+    ),
+    "anthropic",
+    "claude-sonnet-5",
+  );
+  assertEquals(failure.code, "not_configured");
+  assertEquals(failure.retryable, false);
+  // Retrying a deployment gap burns the request budget before OpenAI is tried.
+  assert(
+    !failure.status,
+    "a credential that was never sent has no HTTP status",
+  );
 });

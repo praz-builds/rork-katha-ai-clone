@@ -7,3 +7,13 @@ node_modules
 *.log
 **/supabase/.temp/
 SESSION_HANDOFF.md
+
+# Credential material — never commit (security gate: AGENTS.md)
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist

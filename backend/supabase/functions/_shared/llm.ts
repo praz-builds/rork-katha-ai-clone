@@ -11,7 +11,32 @@ import {
  * test suite then needs --allow-env just to reference a type, and a missing
  * secret fails at import rather than at the call that needs it.
  */
-const anthropicKey = () => Deno.env.get("ANTHROPIC_API_KEY");
+
+/**
+ * Claude auth here is an OAuth bearer token, not a Console API key.
+ *
+ * `CLAUDE_CODE_OAUTH_TOKEN` is canonical; `ANTHROPIC_AUTH_TOKEN` and
+ * `CLAUDE_TOKEN` are accepted so a runtime already carrying either name keeps
+ * working without a redeploy. First non-empty wins, in that order.
+ *
+ * The value goes to the SDK as `authToken`, which sends
+ * `Authorization: Bearer <token>`. An API key instead travels in `x-api-key`,
+ * so the two are not interchangeable and must not be conflated.
+ */
+export const CLAUDE_TOKEN_ENV_VARS = [
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_AUTH_TOKEN",
+  "CLAUDE_TOKEN",
+] as const;
+
+export function claudeAuthToken(): string | undefined {
+  for (const name of CLAUDE_TOKEN_ENV_VARS) {
+    const value = Deno.env.get(name)?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 const openaiKey = () => Deno.env.get("OPENAI_API_KEY");
 const GENERATION_DEADLINE_MS = 120_000;
 
@@ -59,6 +84,21 @@ export interface LlmFailure {
 }
 
 /** A non-2xx provider response, carrying the status through to classification. */
+/**
+ * Raised when a provider has no credential configured at all.
+ *
+ * Distinct from an auth failure: nothing was sent, so this is a deployment
+ * gap rather than a rejected token, and it must never be retried. The OpenAI
+ * leg reports the same `not_configured` code without throwing, because it is
+ * the last link in the chain and has nothing to fall through to.
+ */
+export class ProviderNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderNotConfiguredError";
+  }
+}
+
 export class ProviderHttpError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -114,6 +154,9 @@ export function classifyLlmError(
     (error instanceof Error && error.name === "AbortError")
   ) {
     return { ...base, code: "timeout", retryable: true };
+  }
+  if (error instanceof ProviderNotConfiguredError) {
+    return { ...base, code: "not_configured", retryable: false };
   }
   if (error instanceof ProviderHttpError) {
     return {
@@ -338,9 +381,13 @@ async function generateAnthropicText(
   initialSafetyLevel: number,
   onModerationRetry: (level: number) => void,
 ): Promise<string> {
-  const apiKey = anthropicKey();
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
-  const client = new Anthropic({ apiKey });
+  const authToken = claudeAuthToken();
+  if (!authToken) {
+    throw new ProviderNotConfiguredError(
+      "Claude credentials are not configured. Set CLAUDE_CODE_OAUTH_TOKEN.",
+    );
+  }
+  const client = new Anthropic({ authToken });
 
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
     try {
@@ -460,7 +507,8 @@ async function withAbortTimeout<T>(
   const timer = setTimeout(
     // A DOMException named AbortError is what fetch and the SDK both surface,
     // so classifyLlmError can recognise a timeout rather than guessing.
-    () => controller.abort(new DOMException(`Timeout after ${ms}ms`, "AbortError")),
+    () =>
+      controller.abort(new DOMException(`Timeout after ${ms}ms`, "AbortError")),
     ms,
   );
 

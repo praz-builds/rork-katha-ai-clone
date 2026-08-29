@@ -62,7 +62,7 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 |---------|---------|-------------|--------|
 | **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
 | **OpenAI** | Cover images (gpt-image-1) | `OPENAI_API_KEY` in Supabase secrets + `backend/.env` | Set |
-| **Anthropic** | Story generation (Sonnet 5 primary, Haiku 4.5 fallback) | `ANTHROPIC_API_KEY` in Supabase secrets | NOT YET SET — see Credential requirement below |
+| **Claude** | Story generation (Sonnet 5 primary, Haiku 4.5 fallback) | `CLAUDE_CODE_OAUTH_TOKEN` in Supabase secrets | NOT YET SET — see Credential requirement below |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **Adapty** | Subscriptions + credit packs + paywall A/B | Public key in `expo/src/lib/adapty.ts`; webhook secret in Supabase secrets | Set |
@@ -74,9 +74,25 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 
 Sonnet 5 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Never use `claude --print` CLI for generation (adds 70-100s overhead); use the Anthropic SDK directly.
 
+Both Claude attempts must fail before the OpenAI leg is tried. A missing credential is one such failure — it raises `ProviderNotConfiguredError`, is classified `not_configured` / non-retryable, and falls straight through to `gpt-4o-mini`. **Generation therefore never breaks when the Claude token is absent; it silently gets worse and cheaper.** That is the failure mode to watch for: check `error_event_summary` for `not_configured`, do not wait for a user complaint.
+
 **Use the canonical undated model IDs:** `claude-sonnet-5`, `claude-haiku-4-5`. Anthropic's current model IDs are complete as written; dated snapshot forms exist for some models but are not the documented identifier for these, and the codebase standardises on the undated alias. (The previous `claude-haiku-4-5-20251001` was replaced on that basis, not because it was observed to fail — the Anthropic path has never executed here, so no such observation exists.)
 
-**Credential requirement.** `ANTHROPIC_API_KEY` must be an API key from console.anthropic.com, prefix `sk-ant-api03-`. A `sk-ant-oat01-` value is an OAuth access token minted by `claude` CLI login against a Claude subscription: it expires within hours, so generation breaks mid-session, and subscription auth is a developer-tool credential that is not licensed to serve end-user traffic. The two are separately billed on the same account.
+**Credential requirement.** Claude generation authenticates with an **OAuth bearer token**, read from `CLAUDE_CODE_OAUTH_TOKEN` (aliases, in precedence order: `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_TOKEN`). The value is passed to the SDK as `authToken`, which sends `Authorization: Bearer <token>`. A Console API key travels in `x-api-key` instead — **the two are not interchangeable**, and `ANTHROPIC_API_KEY` is no longer read anywhere in this codebase.
+
+Two distinct tokens share the `sk-ant-oat01-` prefix, and only one is usable here:
+
+| Source | Lifetime | Usable as this secret |
+|--------|----------|----------------------|
+| `claude` CLI interactive `/login` | Hours; refreshed in place by the CLI | **No** — generation dies mid-session when it expires |
+| `claude setup-token` (headless/CI) | Long-lived | Yes |
+
+Two caveats that are **open, not resolved**:
+
+1. **Untested end to end.** No token has ever been set in Supabase, so the Claude leg of the chain has never executed in this project — with either credential type. Bearer transport is verified only at the SDK level (`authToken` -> `Authorization: Bearer`, read from the SDK source). Whether the Anthropic API accepts a Claude Code OAuth token on `/v1/messages` without additional headers is **unverified here**. Treat the first real run as the verification.
+2. **Entitlement.** This token authenticates a Claude *subscription*, which is a developer-tool entitlement, not the metered API. Serving end-user story generation from it is a licensing question for Anthropic, and it is separately billed from Console API usage. Confirm before production traffic.
+
+If either caveat blocks, the fix is a Console API key (`sk-ant-api03-`) and reinstating an `apiKey` path — the surrounding chain, model IDs, and schema enforcement are unaffected either way.
 
 **Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once and both providers enforce it — Anthropic via `output_config.format`, OpenAI via `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
 
@@ -95,7 +111,7 @@ Sonnet 5 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund cr
 
 ```bash
 # backend/.env (never committed)
-ANTHROPIC_API_KEY=xxx
+CLAUDE_CODE_OAUTH_TOKEN=xxx
 OPENAI_API_KEY=xxx
 ADAPTY_WEBHOOK_SECRET=xxx
 FIREBASE_SERVICE_ACCOUNT_KEY=xxx
@@ -107,7 +123,7 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/` (8 migrations: 00001-00008).
+Schema is in `backend/supabase/migrations/` (15 migrations: `00001`-`00015`, all applied to the remote database). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing — a stale branch will not show the newest files and will collide.
 
 ### Key Tables
 
@@ -456,12 +472,12 @@ All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog
 supabase start                                 # Start Supabase locally
 supabase db push                               # Apply migrations
 supabase functions deploy generate-story       # Deploy a single function
-supabase secrets set ANTHROPIC_API_KEY=xxx     # Set a secret
+supabase secrets set CLAUDE_CODE_OAUTH_TOKEN=xxx  # Set the story-generation credential
 ```
 
 ### Required Supabase Secrets
 
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ADAPTY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
+`CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `ADAPTY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
 
 ### Expo
 
