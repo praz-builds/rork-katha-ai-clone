@@ -63,20 +63,39 @@ serve(async (req) => {
       return respond({ published: true, story_id: storyId });
     }
 
-    // Verify at least 1 published chapter
+    // A story needs content before it can go public.
+    //
+    // This used to require a chapter that already had `is_published = true`,
+    // which nothing in the codebase ever set - not generate-story, not
+    // continue-story, and there is no chapter-level publish endpoint. The
+    // client calls publish-story with a story id and nothing else, so the
+    // gate could never be satisfied and publishing was unreachable.
+    //
+    // Publishing a story publishes its chapters: that is what the single
+    // action in Create Studio means.
     const { count, error: chapterError } = await serviceClient
       .from("chapters")
       .select("id", { count: "exact", head: true })
-      .eq("story_id", storyId)
-      .eq("is_published", true);
+      .eq("story_id", storyId);
 
     if (chapterError) throw chapterError;
     if ((count ?? 0) < 1) {
       return respond(
-        { error: "Story must have at least 1 published chapter" },
+        { error: "Story must have at least 1 chapter" },
         400,
       );
     }
+
+    // Publish the chapters first. If the story row went public while its
+    // chapters were still unpublished, the feed would list a story whose
+    // chapter count query returns zero.
+    const { error: chapterPublishError } = await serviceClient
+      .from("chapters")
+      .update({ is_published: true, published_at: new Date().toISOString() })
+      .eq("story_id", storyId)
+      .eq("is_published", false);
+
+    if (chapterPublishError) throw chapterPublishError;
 
     // Publish the story
     const { error: updateError } = await serviceClient
