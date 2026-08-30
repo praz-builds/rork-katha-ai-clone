@@ -207,14 +207,17 @@ try:
     # -------------------------------------------------------- 7 audio-status
     print("\n[7] audio-status")
     # It requires job_id and story_id together; either alone is a 400.
-    # It requires job_id, story_id and chapter_id together.
+    # Requires job_id, story_id and chapter_id together. A well-formed job id
+    # that RunPod has never seen is the expired-job case a real poller hits.
     st, aud = req("GET",
-                  f"/functions/v1/audio-status?job_id=smoke-none"
+                  f"/functions/v1/audio-status?job_id={uuid.uuid4()}"
                   f"&story_id={story_id}&chapter_id={chapter_id}",
                   token=jwt)
     # Only the defined outcomes pass. `st != 400` would also accept a 500 or a
     # 401, i.e. it would go green while the endpoint was broken or unreachable.
-    check("7.1 audio-status answers a well-formed query",
+    # 404 is the expected answer here: 502 would tell a poller to keep retrying
+    # a job that will never exist.
+    check("7.1 an unknown audio job is 404, not a retryable 502",
           st in (200, 202, 404), f"HTTP {st} {json.dumps(aud)[:120]}")
     st, aud = req("GET", f"/functions/v1/audio-status?story_id={story_id}", token=jwt)
     check("7.2 audio-status rejects a query with no job_id", st == 400, f"HTTP {st}")

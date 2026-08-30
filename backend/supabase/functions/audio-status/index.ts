@@ -5,7 +5,16 @@ import { decode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
 import { parseUuid } from "../_shared/uuid.ts";
 
 const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/minimax-speech-02-hd";
-const VALID_VOICE_IDS = new Set(["aria", "kai", "elvira", "alvaro", "onyx", "nova", "echo", "fable"]);
+const VALID_VOICE_IDS = new Set([
+  "aria",
+  "kai",
+  "elvira",
+  "alvaro",
+  "onyx",
+  "nova",
+  "echo",
+  "fable",
+]);
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -48,7 +57,24 @@ serve(async (req) => {
     });
 
     if (!statusResponse.ok) {
-      return respond({ error: "Failed to check job status" }, 502);
+      // An unknown or expired job is not an upstream fault. Answering 502
+      // tells the client "retry, the gateway is broken", so a poller spins
+      // forever on a job id that will never resolve. 404 lets it stop.
+      if (statusResponse.status === 404) {
+        return respond({ error: "Job not found", job_id: jobId }, 404);
+      }
+      // Anything else is a genuine upstream failure. Carry the status so the
+      // cause is visible in logs instead of being flattened to one string.
+      console.error(
+        `RunPod status check failed: HTTP ${statusResponse.status}`,
+      );
+      return respond(
+        {
+          error: "Failed to check job status",
+          upstream_status: statusResponse.status,
+        },
+        502,
+      );
     }
 
     const statusResult = await statusResponse.json();
@@ -121,12 +147,11 @@ serve(async (req) => {
     return respond({
       status: statusResult.status,
       voice_id: voiceId,
-      message:
-        statusResult.status === "IN_QUEUE"
-          ? "Waiting for GPU worker"
-          : statusResult.status === "IN_PROGRESS"
-            ? "Generating audio..."
-            : statusResult.status,
+      message: statusResult.status === "IN_QUEUE"
+        ? "Waiting for GPU worker"
+        : statusResult.status === "IN_PROGRESS"
+        ? "Generating audio..."
+        : statusResult.status,
     });
   } catch (error) {
     console.error("audio-status error:", error);
