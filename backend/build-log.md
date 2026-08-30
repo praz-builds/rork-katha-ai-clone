@@ -7,6 +7,38 @@
 
 ---
 
+## 2026-08-30 — Backend verified end to end
+
+**Session close.** Every edge function is deployed from `main` and exercised against the live project.
+
+### `audio-status` told pollers to retry a job that will never exist
+
+Any non-ok RunPod response was mapped to **502**, which means "upstream is broken, try again". An unknown or expired job id is not an upstream fault, so a polling client would spin forever. RunPod 404 now maps to 404; genuine upstream failures keep 502 and carry `upstream_status` so the cause survives into the logs.
+
+### Final state
+
+| Suite | Result |
+|---|---|
+| `smoke-series-generation.py` | **58 / 58** |
+| `smoke-app-surface.py` | **26 / 26**, 1 pending |
+| Deno unit tests | **121** |
+| Edge functions deployed | **12 / 12** |
+| Migrations applied | `00001`–`00015`, `00017` |
+
+Defects found and fixed today, all of them by running against production rather than by reading code:
+
+1. Production was serving a build four commits behind `main` — 683 lines of merged generation fixes were not live.
+2. Five functions had never been deployed, two of them called by the client.
+3. `feed` returned 500 on every call: `profiles.preferred_genres` did not exist.
+4. `feed` still returned 500: `profiles.display_name` did not exist either; the column is `username`.
+5. `publish-story` could never succeed — it required `chapters.is_published = true` and nothing ever set it.
+6. `feed` did not typecheck; CI never checked the Deno workspace at all.
+7. A stale `ANTHROPIC_API_KEY` could still have authenticated requests through the SDK's implicit env lookup.
+
+**Still open:** the Claude leg has never executed — `CLAUDE_CODE_OAUTH_TOKEN` is unset, so all generation runs on `gpt-4o-mini`. The publish → cover pipeline is not wired on `main`. Neither is a regression; both are named in the entries below.
+
+---
+
 ## 2026-08-30 — `feed` second missing column, and the cover pipeline is not on main
 
 **Session:** Re-running the app-surface smoke after migration `00017` showed `feed` still returning 500. The `preferred_genres` fix was necessary but not sufficient.

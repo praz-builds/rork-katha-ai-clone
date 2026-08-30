@@ -38,8 +38,8 @@ All bug fixes applied, 15 migrations (00001-00015) applied to the linked project
 - [x] Migration 00014 applied (re-applies the 00008 taxonomy columns, which were recorded as applied but never ran)
 - [x] Migration 00015 applied (narrows the authenticated UPDATE grant on `stories` to title/topic/cover_image_url/is_public; a table-level grant cannot be narrowed by a column REVOKE)
 - [ ] Profile creation on signup — build with the signup flow; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted
-- [ ] Deploy the remaining edge functions. **This was previously ticked claiming "10 deployed and ACTIVE"; `supabase functions list` against project `iafeuxgoiknncgyjmugd` returns 7.** Deployed: `adapty-webhook`, `continue-story`, `deduct-credit`, `feedback`, `generate-story`, `grant-credit`, `library`. Never deployed: `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story`.
-  - `edit-story` and `publish-story` are called by `expo/src/lib/api.ts` (lines 518, 555), so the Create Studio edit and publish paths currently reach a function that does not exist.
+- [x] **All 12 edge functions deployed** from `main` on 2026-08-30 and verified with `supabase functions list`: `adapty-webhook`, `audio-status`, `continue-story`, `deduct-credit`, `edit-story`, `feed`, `feedback`, `generate-audio`, `generate-story`, `grant-credit`, `library`, `publish-story`. Five of these had never been deployed at all, which is how the `feed` and `publish-story` defects went unseen.
+  - `edit-story` and `publish-story` are called by `expo/src/lib/api.ts`; both verified working end to end by `backend/scripts/smoke-app-surface.py`.
   - `publish-story` also needs the `covers` storage bucket, which **does exist** (created 2026-08-25: public read, 5 MB limit, png/jpeg/webp).
 - [x] `generate-story` and `continue-story` redeployed for series state hardening (2026-08-29)
 - [x] `generate-story` double-deduct fix
