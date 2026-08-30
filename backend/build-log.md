@@ -55,7 +55,7 @@ Both were redeployed from `origin/main` (`10ecaa8`) on 2026-08-30. Verified: `ge
 | Deployed (7) | `adapty-webhook`, `continue-story`, `deduct-credit`, `feedback`, `generate-story`, `grant-credit`, `library` |
 | **Never deployed (5)** | `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story` |
 
-`expo/src/lib/api.ts` calls `edit-story` (line 518) and `publish-story` (line 555), so the Create Studio edit and publish paths reach functions that do not exist in the project. `publish-story` also depends on the `covers` bucket, which is still uncreated — deploying it alone would not make publishing work.
+`expo/src/lib/api.ts` calls `edit-story` (line 518) and `publish-story` (line 555), so the Create Studio edit and publish paths reach functions that do not exist in the project. `publish-story` also writes to the `covers` bucket, which does exist (see below), so deploying it is the only thing standing between the current state and a working publish path.
 
 Not deployed in this session: the five above are a separate decision, and `publish-story` spends money on cover generation the moment it succeeds.
 

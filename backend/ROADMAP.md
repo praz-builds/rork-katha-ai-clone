@@ -57,7 +57,7 @@ All bug fixes applied, 15 migrations (00001-00015) applied to the linked project
 
 **Goal:** Every generated story gets a cover image + audio narration.
 
-### Cover Image Generation (code done, storage pending)
+### Cover Image Generation (code and storage done; `publish-story` not deployed)
 
 Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full reference: `COVER_IMAGES.md`.
 
@@ -95,7 +95,7 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 
 - [x] Created Supabase Storage bucket `audio` (public read, service role upload)
 - [x] Supabase Storage bucket `covers` created (public read, service role upload) — verified 2026-08-30
-- [ ] Set appropriate size limits on both buckets
+- [ ] Set a size limit on the `audio` bucket (`covers` is capped at 5 MB; `audio` has no limit)
 - [ ] Configure Supabase Storage bucket CORS for production media access
 
 ---
