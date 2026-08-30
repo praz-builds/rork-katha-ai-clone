@@ -65,16 +65,29 @@ Not deployed in this session: the five above are a separate decision, and `publi
 - **Minor, valid, fixed.** `ROADMAP.md` still recorded the dated `claude-haiku-4-5-20251001` as applied, contradicting `AGENTS.md`. Now the canonical undated id.
 - **Minor, not applied.** CodeRabbit read the `2026-08-30` headings as future-dated against a review date of 2026-08-29. The dates are correct in the repo's local timezone (IST, UTC+5:30) — the redeploy recorded above ran at 2026-08-29 23:37 UTC, which is 2026-08-30 05:07 local — and the preceding entry already uses local dates. Changing them would make this entry inconsistent with the rest of the log.
 
+### Review round 2 (CodeRabbit) — a real credential leak
+
+- **Security, Major, valid, fixed.** `new Anthropic({ authToken })` does **not** disable API-key auth. Confirmed in `@anthropic-ai/sdk@0.122.0` source: the constructor runs `if (apiKey === undefined) apiKey = readEnv("ANTHROPIC_API_KEY") ?? null`, and `authHeaders()` returns `[apiKeyAuth(), bearerAuth()]`. A stale `ANTHROPIC_API_KEY` in Supabase secrets would therefore be sent as `X-Api-Key` **alongside** the bearer token, and could authenticate and bill traffic this project believes runs on OAuth.
+
+  This also made the claim in the previous commit — that `ANTHROPIC_API_KEY` "is no longer read anywhere in this codebase" — **false**. The resolver ignored the name; the SDK did not. Client construction moved into `createClaudeClient()` with `apiKey: null` pinned, and `AGENTS.md` corrected.
+
+  The earlier unit test only proved the *resolver* ignored the variable, which is why it passed while the wire was still leaking. The new test asserts the outgoing headers through an injected `fetch`: `X-Api-Key` absent, `Authorization: Bearer` present, with `ANTHROPIC_API_KEY` set in the environment. Fault-injected — removing `apiKey: null` fails it.
+
+- **Data integrity, Major, valid.** The redeploy recorded above was from `origin/main` at `10ecaa8`, which does **not** contain the OAuth resolver. Setting `CLAUDE_CODE_OAUTH_TOKEN` alone will not activate it. `generate-story` and `continue-story` must be redeployed **after this PR merges**; tracked in Open below.
+
+- **Minor, valid, fixed.** `ROADMAP.md` line 41 contained a raw `LegacyProjectNotLinkedError` JSON payload where the evidence should have been. Self-inflicted: an unquoted shell heredoc executed the backtick-quoted `supabase functions list` as a command substitution and pasted its error into the document. The inventory itself was gathered from a linked run and is correct; only the citation was corrupt.
+
 ### Storage buckets verified, not assumed
 
 `AGENTS.md` and `ROADMAP.md` both said the `covers` bucket **needs creation**. It has existed since 2026-08-25: public read, 5 MB limit, `image/png` / `image/jpeg` / `image/webp`, confirmed against the storage API. Three stale checkboxes corrected.
 
 ### Open
 
-1. Set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`, not interactive login) and treat the first run as the real verification.
-2. **Entitlement question:** the token authenticates a Claude subscription, a developer-tool entitlement separate from the metered API. Serving end-user generation from it should be confirmed with Anthropic before production traffic.
-3. Until (1), every generation silently falls through to `gpt-4o-mini`. It does not fail — it gets quietly worse. Watch `error_event_summary` for `not_configured`.
-4. `_shared/errors.ts`, `errors_test.ts` and `00016_error_events.sql` remain uncommitted in the working tree, along with the Observability Gate section Codex drafted for `AGENTS.md`. They are a coherent unit and belong in their own PR; documenting a helper this repo does not yet contain would be worse than leaving both out.
+1. **Redeploy `generate-story` and `continue-story` after this PR merges.** The current deployment is from `10ecaa8` and has no OAuth resolver, so setting the secret alone changes nothing.
+2. Set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`, not interactive login) and treat the first run as the real verification.
+3. **Entitlement question:** the token authenticates a Claude subscription, a developer-tool entitlement separate from the metered API. Serving end-user generation from it should be confirmed with Anthropic before production traffic.
+4. Until (2), every generation silently falls through to `gpt-4o-mini`. It does not fail — it gets quietly worse. Watch `error_event_summary` for `not_configured`.
+5. `_shared/errors.ts`, `errors_test.ts` and `00016_error_events.sql` remain uncommitted in the working tree, along with the Observability Gate section Codex drafted for `AGENTS.md`. They are a coherent unit and belong in their own PR; documenting a helper this repo does not yet contain would be worse than leaving both out.
 
 ## 2026-08-30 — LLM layer: correct model IDs, enforced output schema, typed failures
 

@@ -29,6 +29,29 @@ export const CLAUDE_TOKEN_ENV_VARS = [
   "CLAUDE_TOKEN",
 ] as const;
 
+/**
+ * Builds the Claude client with API-key auth explicitly disabled.
+ *
+ * `apiKey: null` is load-bearing, not defensive noise. The SDK constructor
+ * defaults an omitted `apiKey` to `readEnv("ANTHROPIC_API_KEY")`, and
+ * `authHeaders()` returns `[apiKeyAuth(), bearerAuth()]` — so passing only
+ * `authToken` while a leftover `ANTHROPIC_API_KEY` sits in the environment
+ * sends BOTH `X-Api-Key` and `Authorization`, and the Console key can bill
+ * and authenticate traffic this project believes is running on OAuth.
+ *
+ * `fetchImpl` exists so a test can assert the outgoing headers directly.
+ */
+export function createClaudeClient(
+  authToken: string,
+  fetchImpl?: typeof fetch,
+): Anthropic {
+  return new Anthropic({
+    authToken,
+    apiKey: null,
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
 export function claudeAuthToken(): string | undefined {
   for (const name of CLAUDE_TOKEN_ENV_VARS) {
     const value = Deno.env.get(name)?.trim();
@@ -403,7 +426,7 @@ async function generateAnthropicText(
   onModerationRetry: (level: number) => void,
   authToken: string,
 ): Promise<string> {
-  const client = new Anthropic({ authToken });
+  const client = createClaudeClient(authToken);
 
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
     try {

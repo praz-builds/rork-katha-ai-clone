@@ -8,6 +8,7 @@ import {
   classifyLlmError,
   CLAUDE_TOKEN_ENV_VARS,
   claudeAuthToken,
+  createClaudeClient,
   generateStoryText,
   openAIRequestShape,
   ProviderHttpError,
@@ -450,4 +451,51 @@ Deno.test("an unconfigured Claude records one failure, not one per model", async
   assertEquals(anthropic[0].retryable, false);
   // The OpenAI leg still reports separately; it is a different provider.
   assertEquals(error.failures.length, 2);
+});
+
+Deno.test("a leftover ANTHROPIC_API_KEY never reaches the wire", async () => {
+  // The resolver ignoring the name is not enough. The SDK constructor defaults
+  // an omitted `apiKey` to readEnv("ANTHROPIC_API_KEY"), and authHeaders()
+  // returns [apiKeyAuth(), bearerAuth()] - so without `apiKey: null` a stale
+  // Console key in the environment is sent alongside the bearer token and can
+  // authenticate and bill traffic this project believes runs on OAuth.
+  // Asserted at the request layer, because that is where the bug lived.
+  let seen: Headers | undefined;
+  const captureFetch: typeof fetch = (input, init) => {
+    seen = new Headers(init?.headers ?? (input as Request)?.headers);
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: "msg_1",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-5",
+          content: [{ type: "text", text: "ok" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+  };
+
+  await withEnv(
+    { ...NO_CLAUDE_TOKENS, ANTHROPIC_API_KEY: "leftover-console-key" },
+    async () => {
+      const client = createClaudeClient("oauth-bearer-value", captureFetch);
+      await client.messages.create({
+        model: "claude-sonnet-5",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hi" }],
+      });
+    },
+  );
+
+  assert(seen, "the stub fetch was never invoked");
+  assertEquals(
+    seen.get("x-api-key"),
+    null,
+    "X-Api-Key must be absent: a leftover Console key must never authenticate",
+  );
+  assertEquals(seen.get("authorization"), "Bearer oauth-bearer-value");
 });

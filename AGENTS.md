@@ -78,7 +78,9 @@ Both Claude attempts must fail before the OpenAI leg is tried. A missing credent
 
 **Use the canonical undated model IDs:** `claude-sonnet-5`, `claude-haiku-4-5`. Anthropic's current model IDs are complete as written; dated snapshot forms exist for some models but are not the documented identifier for these, and the codebase standardises on the undated alias. (The previous `claude-haiku-4-5-20251001` was replaced on that basis, not because it was observed to fail — the Anthropic path has never executed here, so no such observation exists.)
 
-**Credential requirement.** Claude generation authenticates with an **OAuth bearer token**, read from `CLAUDE_CODE_OAUTH_TOKEN` (aliases, in precedence order: `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_TOKEN`). The value is passed to the SDK as `authToken`, which sends `Authorization: Bearer <token>`. A Console API key travels in `x-api-key` instead — **the two are not interchangeable**, and `ANTHROPIC_API_KEY` is no longer read anywhere in this codebase.
+**Credential requirement.** Claude generation authenticates with an **OAuth bearer token**, read from `CLAUDE_CODE_OAUTH_TOKEN` (aliases, in precedence order: `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_TOKEN`). The value is passed to the SDK as `authToken`, which sends `Authorization: Bearer <token>`. A Console API key travels in `x-api-key` instead — **the two are not interchangeable**.
+
+**The client must be built with `apiKey: null`.** `_shared/llm.ts` does this in `createClaudeClient()`, and it is load-bearing: the SDK constructor defaults an omitted `apiKey` to `readEnv("ANTHROPIC_API_KEY")`, and `authHeaders()` returns `[apiKeyAuth(), bearerAuth()]`. Passing only `authToken` while a stale `ANTHROPIC_API_KEY` sits in Supabase secrets therefore sends **both** `X-Api-Key` and `Authorization` — and the Console key can authenticate and bill traffic this project believes is running on OAuth. Never construct an `Anthropic` client here without pinning `apiKey`.
 
 Two distinct tokens share the `sk-ant-oat01-` prefix, and only one is usable here:
 
