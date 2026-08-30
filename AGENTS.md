@@ -62,7 +62,8 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 |---------|---------|-------------|--------|
 | **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
 | **OpenAI** | Cover images (gpt-image-1) | `OPENAI_API_KEY` in Supabase secrets + `backend/.env` | Set |
-| **Claude** | Story generation (Sonnet 5 primary, Haiku 4.5 fallback) | `CLAUDE_CODE_OAUTH_TOKEN` in Supabase secrets | NOT YET SET — see Credential requirement below |
+| **Gemini** | Story generation primary (Gemini 3.1 Pro Preview) | `GEMINI_API_KEY` in Supabase secrets | Set, currently quota-blocked (`429 RESOURCE_EXHAUSTED`) |
+| **OpenRouter** | Free-router story generation fallback | `OPENROUTER_API_KEY` in Supabase secrets | Set, currently carrying fallback traffic |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **Adapty** | Subscriptions + credit packs + paywall A/B | Public key in `expo/src/lib/adapty.ts`; webhook secret in Supabase secrets | Set |
@@ -72,35 +73,17 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 
 ### LLM Fallback Chain
 
-Sonnet 5 (60s timeout) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Never use `claude --print` CLI for generation (adds 70-100s overhead); use the Anthropic SDK directly.
+Gemini 3.1 Pro Preview (70s timeout) -> OpenRouter Free Router (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. OpenRouter currently handles fallback traffic until Gemini quota or billing is resolved.
 
-Both Claude attempts must fail before the OpenAI leg is tried. A missing credential is one such failure — it raises `ProviderNotConfiguredError`, is classified `not_configured` / non-retryable, and falls straight through to `gpt-4o-mini`. **Generation therefore never breaks when the Claude token is absent; it silently gets worse and cheaper.** That is the failure mode to watch for: check `error_event_summary` for `not_configured`, do not wait for a user complaint.
+**Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
 
-**Use the canonical undated model IDs:** `claude-sonnet-5`, `claude-haiku-4-5`. Anthropic's current model IDs are complete as written; dated snapshot forms exist for some models but are not the documented identifier for these, and the codebase standardises on the undated alias. (The previous `claude-haiku-4-5-20251001` was replaced on that basis, not because it was observed to fail — the Anthropic path has never executed here, so no such observation exists.)
+**Model IDs:** `gemini-3.1-pro-preview`, `openrouter/free`, `gpt-4o-mini`.
 
-**Credential requirement.** Claude generation authenticates with an **OAuth bearer token**, read from `CLAUDE_CODE_OAUTH_TOKEN` (aliases, in precedence order: `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_TOKEN`). The value is passed to the SDK as `authToken`, which sends `Authorization: Bearer <token>`. A Console API key travels in `x-api-key` instead — **the two are not interchangeable**.
-
-**The client must be built with `apiKey: null`.** `_shared/llm.ts` does this in `createClaudeClient()`, and it is load-bearing: the SDK constructor defaults an omitted `apiKey` to `readEnv("ANTHROPIC_API_KEY")`, and `authHeaders()` returns `[apiKeyAuth(), bearerAuth()]`. Passing only `authToken` while a stale `ANTHROPIC_API_KEY` sits in Supabase secrets therefore sends **both** `X-Api-Key` and `Authorization` — and the Console key can authenticate and bill traffic this project believes is running on OAuth. Never construct an `Anthropic` client here without pinning `apiKey`.
-
-Two distinct tokens share the `sk-ant-oat01-` prefix, and only one is usable here:
-
-| Source | Lifetime | Usable as this secret |
-|--------|----------|----------------------|
-| `claude` CLI interactive `/login` | Hours; refreshed in place by the CLI | **No** — generation dies mid-session when it expires |
-| `claude setup-token` (headless/CI) | Long-lived | Yes |
-
-Two caveats that are **open, not resolved**:
-
-1. **Untested end to end.** No token has ever been set in Supabase, so the Claude leg of the chain has never executed in this project — with either credential type. Bearer transport is verified only at the SDK level (`authToken` -> `Authorization: Bearer`, read from the SDK source). Whether the Anthropic API accepts a Claude Code OAuth token on `/v1/messages` without additional headers is **unverified here**. Treat the first real run as the verification.
-2. **Entitlement.** This token authenticates a Claude *subscription*, which is a developer-tool entitlement, not the metered API. Serving end-user story generation from it is a licensing question for Anthropic, and it is separately billed from Console API usage. Confirm before production traffic.
-
-If either caveat blocks, the fix is a Console API key (`sk-ant-api03-`) and reinstating an `apiKey` path — the surrounding chain, model IDs, and schema enforcement are unaffected either way.
-
-**Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once and both providers enforce it — Anthropic via `output_config.format`, OpenAI via `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
+**Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once. Gemini receives it as `responseSchema`; OpenRouter and OpenAI receive it through `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
 
 **`max_tokens` is 16,000 for generation**, 2,000 for paragraph edits. The previous 4,096 truncated a chapter plus its `series_state` mid-JSON.
 
-**Provider failures are typed.** `classifyLlmError()` maps SDK error classes to a stable `LlmFailure` (`provider`, `model`, `code`, `status`, `retryable`) rather than string-matching messages. On total failure `generateStoryText` throws `AllProvidersFailedError`, whose `toContext()` returns identifiers and enums only — safe to pass straight to error telemetry.
+**Provider failures are typed.** `classifyLlmError()` maps provider errors to a stable `LlmFailure` (`provider`, `model`, `code`, `status`, `retryable`) rather than storing free text in telemetry context. On total failure `generateStoryText` throws `AllProvidersFailedError`, whose `toContext()` returns identifiers and enums only — safe to pass straight to error telemetry.
 
 ### Supabase Storage Buckets
 
@@ -113,7 +96,8 @@ If either caveat blocks, the fix is a Console API key (`sk-ant-api03-`) and rein
 
 ```bash
 # backend/.env (never committed)
-CLAUDE_CODE_OAUTH_TOKEN=xxx
+GEMINI_API_KEY=xxx
+OPENROUTER_API_KEY=xxx
 OPENAI_API_KEY=xxx
 ADAPTY_WEBHOOK_SECRET=xxx
 FIREBASE_SERVICE_ACCOUNT_KEY=xxx
@@ -125,7 +109,7 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/` (15 migrations: `00001`-`00015`, all applied to the remote database). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing — a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015` and `00017`-`00022` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 ### Key Tables
 
@@ -134,6 +118,11 @@ Schema is in `backend/supabase/migrations/` (15 migrations: `00001`-`00015`, all
 | **00001 (Core)** | `profiles`, `credit_ledger`, `stories`, `chapters`, `characters`, `comments`, `streaks`, `ad_rewards`, `referrals` |
 | **00003 (Social)** | `story_reads`, `story_followers`, `user_followers`, `bookmarks`, `story_likes` |
 | **00005 (Operations)** | `generation_operations`, `payment_event_backlog` |
+| **00018 (Observability)** | `error_events` + `error_event_summary` view |
+| **00019 (Observability grants)** | Service-role REST access to `error_events` and `error_event_summary` |
+| **00020 (Observability retention)** | Non-mutating user reference for append-only error telemetry |
+| **00021 (Observability summary)** | One summary row per error fingerprint |
+| **00022 (Observability validation)** | Separate validation for the `error_events.user_id` foreign key |
 | **Not yet created** | `device_tokens` (Phase G -- FCM/APNs token storage) |
 
 ### Credit Ledger Pattern
@@ -474,12 +463,12 @@ All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog
 supabase start                                 # Start Supabase locally
 supabase db push                               # Apply migrations
 supabase functions deploy generate-story       # Deploy a single function
-supabase secrets set CLAUDE_CODE_OAUTH_TOKEN=xxx  # Set the story-generation credential
+supabase secrets set GEMINI_API_KEY=xxx OPENROUTER_API_KEY=xxx  # Set story-generation credentials
 ```
 
 ### Required Supabase Secrets
 
-`CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `ADAPTY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
+`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ADAPTY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
 
 ### Expo
 

@@ -71,7 +71,7 @@
 
 - Migrations `00005`, `00006`, and `00007` plus the modified Edge Functions were deployed to Supabase project `iafeuxgoiknncgyjmugd` on 2026-08-22.
 - `ALLOWED_ORIGINS` is configured for local Expo web verification at `http://localhost:8090`; production browser enablement still requires the exact production Expo web origin.
-- Production enablement still requires a Claude story-generation credential (as of 2026-08-30 that is `CLAUDE_CODE_OAUTH_TOKEN`; this entry originally named `ANTHROPIC_API_KEY`, which is no longer read), Adapty authorization, `ADAPTY_WEBHOOK_SECRET`, and exact product-ID verification.
+- Story-generation provider credentials are deployed. After the 2026-08-30 UTC provider migration, generation uses Gemini -> OpenRouter Free Router -> `gpt-4o-mini`; Gemini is currently quota-blocked and OpenRouter is carrying fallback traffic. Production enablement still requires Adapty authorization, `ADAPTY_WEBHOOK_SECRET`, and exact product-ID verification.
 - AdMob rewards remain disabled until server-side verification is implemented.
 
 ## 2026-08-22 — Backend Controlled Release

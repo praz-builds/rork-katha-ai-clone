@@ -10,7 +10,7 @@
  * still spent.
  *
  * Passing this schema to the provider makes the shape enforced rather than
- * requested: Anthropic via `output_config.format`, OpenAI via
+ * requested: Gemini via `responseSchema`, OpenRouter/OpenAI via
  * `response_format: { type: "json_schema", strict: true }`.
  *
  * Both providers require `additionalProperties: false` and every property listed
@@ -100,12 +100,6 @@ export const STORY_OUTPUT_JSON_SCHEMA = {
       description: "Empty for a standalone story or a finale.",
     },
   },
-} as const;
-
-/** Anthropic Messages API `output_config.format`. */
-export const ANTHROPIC_OUTPUT_FORMAT = {
-  type: "json_schema",
-  schema: STORY_OUTPUT_JSON_SCHEMA,
 } as const;
 
 /** OpenAI chat-completions `response_format`. */

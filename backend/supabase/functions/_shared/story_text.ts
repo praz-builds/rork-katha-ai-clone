@@ -140,7 +140,9 @@ export function parseSeriesState(value: unknown): SeriesState {
 }
 
 /** True when the state carries no continuity information worth persisting. */
-export function isEmptySeriesState(state: SeriesState | null | undefined): boolean {
+export function isEmptySeriesState(
+  state: SeriesState | null | undefined,
+): boolean {
   if (!state) return true;
   return !state.central_conflict &&
     !state.protagonist_want &&
@@ -177,26 +179,49 @@ export function mergeSeriesState(
     sent(key) && a.trim() ? a : (a.trim() ? a : b);
 
   /** Live state: an explicit value replaces, an omitted one keeps the old. */
-  const replace = (key: string, a: string[], b: string[]) =>
-    sent(key) ? a : b;
+  const replace = (key: string, a: string[], b: string[]) => sent(key) ? a : b;
 
   /** History: entries accumulate across chapters and are never dropped. */
   const accumulate = (key: string, a: string[], b: string[]) =>
     sent(key) ? [...new Set([...b, ...a])] : b;
 
   return {
-    central_conflict: text("central_conflict", next.central_conflict, prior.central_conflict),
-    protagonist_want: text("protagonist_want", next.protagonist_want, prior.protagonist_want),
-    relationship_state: text("relationship_state", next.relationship_state, prior.relationship_state),
+    central_conflict: text(
+      "central_conflict",
+      next.central_conflict,
+      prior.central_conflict,
+    ),
+    protagonist_want: text(
+      "protagonist_want",
+      next.protagonist_want,
+      prior.protagonist_want,
+    ),
+    relationship_state: text(
+      "relationship_state",
+      next.relationship_state,
+      prior.relationship_state,
+    ),
     // Open hooks are the live set: a finale that resolves everything must be
     // able to empty them.
     open_hooks: replace("open_hooks", next.open_hooks, prior.open_hooks),
-    promised_payoffs: replace("promised_payoffs", next.promised_payoffs, prior.promised_payoffs),
+    promised_payoffs: replace(
+      "promised_payoffs",
+      next.promised_payoffs,
+      prior.promised_payoffs,
+    ),
     // These only ever grow: losing an earlier world fact or character change
     // would erase established continuity.
-    resolved_hooks: accumulate("resolved_hooks", next.resolved_hooks, prior.resolved_hooks),
+    resolved_hooks: accumulate(
+      "resolved_hooks",
+      next.resolved_hooks,
+      prior.resolved_hooks,
+    ),
     world_facts: accumulate("world_facts", next.world_facts, prior.world_facts),
-    character_changes: accumulate("character_changes", next.character_changes, prior.character_changes),
+    character_changes: accumulate(
+      "character_changes",
+      next.character_changes,
+      prior.character_changes,
+    ),
     // Pressure is intentionally NOT carried over: a finale clears it on
     // purpose, and a stale pressure is worse than none.
     next_chapter_pressure: next.next_chapter_pressure,

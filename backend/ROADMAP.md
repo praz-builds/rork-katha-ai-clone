@@ -12,14 +12,14 @@
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
-All bug fixes applied, 15 migrations (00001-00015) applied to the linked project. **7 of 12 edge functions are deployed** — verified against `supabase functions list` on 2026-08-30.
+All bug fixes applied, migrations `00001`-`00015` and `00017`-`00022` applied to the linked project. Migration `00016_device_tokens.sql` is absent from the repository and remains a pending Phase G task. **12 of 12 edge functions are deployed** — verified through production smoke suites on 2026-08-31 UTC.
 
 ### Remaining Verification
 
-- [ ] Set secret: `CLAUDE_CODE_OAUTH_TOKEN` — a long-lived Claude Code OAuth token from `claude setup-token`, **not** the short-lived token from interactive `claude` login, which expires within hours. Until this is set, every generation silently falls through to the `gpt-4o-mini` fallback rather than failing. See the Credential requirement in `AGENTS.md` for the two open caveats (untested end to end; subscription-entitlement question).
+- [x] Set story-generation secrets: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, and existing `OPENAI_API_KEY`. Claude/Anthropic secret names are intentionally not read by the generation client.
 - [ ] Add production Expo web origin to `ALLOWED_ORIGINS` before production browser traffic
 - [x] Test user created and exercised via the smoke-test harness (`backend/scripts/smoke-series-generation.py`)
-- [x] `generate-story` called end-to-end with credit deduction + story insert verified (smoke harness: 57 assertions across 11 groups)
+- [x] `generate-story` called end-to-end with credit deduction + story insert verified (`smoke-series-generation.py`: 58 assertions across 11 groups)
 - [ ] Verify `library` endpoint returns data
 
 <details>
@@ -37,14 +37,20 @@ All bug fixes applied, 15 migrations (00001-00015) applied to the linked project
 - [x] Migration 00013 applied (drops the premature handle_new_user trigger from 00012)
 - [x] Migration 00014 applied (re-applies the 00008 taxonomy columns, which were recorded as applied but never ran)
 - [x] Migration 00015 applied (narrows the authenticated UPDATE grant on `stories` to title/topic/cover_image_url/is_public; a table-level grant cannot be narrowed by a column REVOKE)
+- [x] Migration 00017 applied (adds `profiles.preferred_genres` for feed personalization)
+- [x] Migration 00018 applied (persistent `error_events` telemetry and `error_event_summary`)
+- [x] Migration 00019 applied (service-role grants for error telemetry over REST)
+- [x] Migration 00020 applied (non-mutating user reference for append-only error telemetry)
+- [x] Migration 00021 applied (one summary row per error fingerprint)
+- [x] Migration 00022 applied (separate validation for the `error_events.user_id` foreign key)
 - [ ] Profile creation on signup — build with the signup flow; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted
-- [x] **All 12 edge functions deployed** from `main` on 2026-08-30 and verified with `supabase functions list`: `adapty-webhook`, `audio-status`, `continue-story`, `deduct-credit`, `edit-story`, `feed`, `feedback`, `generate-audio`, `generate-story`, `grant-credit`, `library`, `publish-story`. Five of these had never been deployed at all, which is how the `feed` and `publish-story` defects went unseen.
+- [x] **All 12 edge functions deployed** from `main` and the Gemini/OpenRouter generation branch on 2026-08-31 UTC. Verified with production smoke suites: `adapty-webhook`, `audio-status`, `continue-story`, `deduct-credit`, `edit-story`, `feed`, `feedback`, `generate-audio`, `generate-story`, `grant-credit`, `library`, `publish-story`. Five of these had never been deployed at all, which is how the `feed` and `publish-story` defects went unseen.
   - `edit-story` and `publish-story` are called by `expo/src/lib/api.ts`; both verified working end to end by `backend/scripts/smoke-app-surface.py`.
   - `publish-story` also needs the `covers` storage bucket, which **does exist** (created 2026-08-25: public read, 5 MB limit, png/jpeg/webp).
 - [x] `generate-story` and `continue-story` redeployed for series state hardening (2026-08-29)
 - [x] `generate-story` double-deduct fix
 - [x] `_shared/credits.ts` replaced with atomic RPCs (`deduct_credit`, `grant_credit`) using `FOR UPDATE` locking
-- [x] `_shared/llm.ts` Haiku model ID is the canonical undated `claude-haiku-4-5` (the dated `claude-haiku-4-5-20251001` form recorded here previously was superseded in PR #33)
+- [x] `_shared/llm.ts` story chain uses Gemini 3.1 Pro Preview -> OpenRouter Free Router -> `gpt-4o-mini`, with typed provider failures and strict schema output for story JSON
 - [x] System prompt loaded from `_shared/prompts.ts`
 - [x] `::date` immutability bugs fixed in migrations 00001 and 00003
 - [x] Local CORS configured: `ALLOWED_ORIGINS=http://localhost:8090`

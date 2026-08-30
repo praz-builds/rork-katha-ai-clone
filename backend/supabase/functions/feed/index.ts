@@ -76,7 +76,8 @@ serve(async (req) => {
     if (profileResult.error && profileResult.error.code !== "PGRST116") {
       throw profileResult.error;
     }
-    const profile = profileResult.data ?? { onboarding_purpose: null, preferred_genres: [] };
+    const profile = profileResult.data ??
+      { onboarding_purpose: null, preferred_genres: [] };
     const isNewUser = (readCountResult.count ?? 0) === 0;
 
     // Build continue_reading list (stories the user started but have unread chapters)
@@ -160,9 +161,7 @@ async function buildNewUserFeed(
   const remaining = limit - (curated?.length ?? 0);
 
   // Adjust offset for the fill query: if we're past all curated, offset into public
-  const fillOffset = offset > curatedTotal
-    ? offset - curatedTotal
-    : 0;
+  const fillOffset = offset > curatedTotal ? offset - curatedTotal : 0;
 
   let fillQuery = serviceClient
     .from("stories")
@@ -283,7 +282,8 @@ async function buildReturningUserFeed(
 
     // Genre affinity: +3 if primary_genre or any legacy genre overlaps with preferred genres
     if (
-      (storyPrimaryGenre && preferredGenreSet.has(storyPrimaryGenre.toLowerCase())) ||
+      (storyPrimaryGenre &&
+        preferredGenreSet.has(storyPrimaryGenre.toLowerCase())) ||
       storyGenres.some((g) => preferredGenreSet.has(g.toLowerCase()))
     ) {
       score += 3;
@@ -347,9 +347,11 @@ async function buildContinueReading(
   if (!readStories?.length) return [];
 
   // Deduplicate story IDs
-  const storyIds = [...new Set(
-    readStories.map((r: Record<string, unknown>) => r.story_id as string),
-  )];
+  const storyIds = [
+    ...new Set(
+      readStories.map((r: Record<string, unknown>) => r.story_id as string),
+    ),
+  ];
 
   // Get stories with their chapter counts
   const { data: stories, error: storiesError } = await serviceClient

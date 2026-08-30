@@ -1,32 +1,31 @@
 import {
   assert,
   assertEquals,
+  assertThrows,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   AllProvidersFailedError,
-  anthropicRequestShape,
   classifyLlmError,
-  CLAUDE_TOKEN_ENV_VARS,
-  claudeAuthToken,
-  createClaudeClient,
+  GEMINI_MODEL,
+  geminiRequestShape,
   generateStoryText,
+  OPENAI_MODEL,
   openAIRequestShape,
+  OPENROUTER_FREE_MODEL,
+  openRouterRequestShape,
   ProviderHttpError,
+  ProviderMalformedResponseError,
   ProviderNotConfiguredError,
+  requireUsableStoryOutput,
 } from "./llm.ts";
 import { HOOK_TYPE_VALUES, HOOK_TYPES, type HookType } from "./types.ts";
 import {
-  ANTHROPIC_OUTPUT_FORMAT,
   OPENAI_RESPONSE_FORMAT,
   STORY_OUTPUT_JSON_SCHEMA,
 } from "./story_schema.ts";
 
 // ---------------------------------------------------------------------------
 // Output schema
-//
-// Both providers reject a strict schema unless every property is listed in
-// `required` and `additionalProperties` is false. A mismatch here fails at
-// request time, in production, on every generation - so it is worth pinning.
 // ---------------------------------------------------------------------------
 
 Deno.test("story schema is valid for strict mode", () => {
@@ -39,10 +38,7 @@ Deno.test("story schema is valid for strict mode", () => {
     "duplicate in required",
   );
   for (const key of props) {
-    assert(
-      required.includes(key),
-      `${key} must be in required for strict mode`,
-    );
+    assert(required.includes(key), `${key} must be in required`);
   }
   for (const key of required) {
     assert(props.includes(key), `required lists unknown property ${key}`);
@@ -54,9 +50,6 @@ Deno.test("series_state schema is valid for strict mode", () => {
   const props = Object.keys(ss.properties);
   const required = ss.required as readonly string[];
   assertEquals(ss.additionalProperties, false);
-  // Counts alone would pass with a duplicate in `required` and one property
-  // missing, which both providers reject at generation time. Check membership
-  // both ways.
   assertEquals(
     new Set(required).size,
     required.length,
@@ -90,9 +83,7 @@ Deno.test("schema covers every field parseStructuredOutput reads", () => {
   }
 });
 
-Deno.test("hook_type enum is derived from the canonical list, not copied", () => {
-  // The schema enum and the runtime Set now share one source, so they cannot
-  // drift from each other.
+Deno.test("hook_type enum is derived from the canonical list", () => {
   assertEquals(
     STORY_OUTPUT_JSON_SCHEMA.properties.hook_type.enum,
     HOOK_TYPE_VALUES,
@@ -104,8 +95,6 @@ Deno.test("hook_type enum is derived from the canonical list, not copied", () =>
 });
 
 Deno.test("canonical hook list matches chapters_hook_type_check", () => {
-  // The remaining copy lives in migration 00010. It cannot be imported here, so
-  // it is pinned: changing the code list without the migration fails this test.
   assertEquals([...HOOK_TYPE_VALUES], [
     "none",
     "revelation",
@@ -119,25 +108,139 @@ Deno.test("canonical hook list matches chapters_hook_type_check", () => {
   ]);
 });
 
-Deno.test("provider format wrappers carry the schema", () => {
-  assertEquals(ANTHROPIC_OUTPUT_FORMAT.type, "json_schema");
-  assertEquals(ANTHROPIC_OUTPUT_FORMAT.schema, STORY_OUTPUT_JSON_SCHEMA);
-  assertEquals(OPENAI_RESPONSE_FORMAT.json_schema.strict, true);
+// ---------------------------------------------------------------------------
+// Request shaping
+// ---------------------------------------------------------------------------
+
+const STORY_OPTS = {
+  maxTokens: 16_000,
+  constrainToStorySchema: true,
+  deadlineMs: 120_000,
+};
+const EDIT_OPTS = {
+  maxTokens: 2_000,
+  constrainToStorySchema: false,
+  deadlineMs: 60_000,
+};
+
+Deno.test("story requests constrain output on all provider shapes", () => {
+  const g = geminiRequestShape(STORY_OPTS).generationConfig as Record<
+    string,
+    unknown
+  >;
+  assertEquals(g.maxOutputTokens, 16_000);
+  assertEquals(g.responseMimeType, "application/json");
+  assert("responseSchema" in g);
+  const responseSchema = g.responseSchema as Record<string, unknown>;
+  assertEquals(responseSchema.type, "OBJECT");
+  assert(!("additionalProperties" in responseSchema));
+  assert(!("description" in responseSchema));
+  const properties = responseSchema.properties as Record<string, unknown>;
+  assertEquals((properties.title as Record<string, unknown>).type, "STRING");
   assertEquals(
-    OPENAI_RESPONSE_FORMAT.json_schema.schema,
-    STORY_OUTPUT_JSON_SCHEMA,
+    (properties.themes as Record<string, unknown>).type,
+    "ARRAY",
   );
+  assertEquals(
+    ((properties.themes as Record<string, unknown>).items as Record<
+      string,
+      unknown
+    >).type,
+    "STRING",
+  );
+  const seriesState = properties.series_state as Record<string, unknown>;
+  assertEquals(seriesState.type, "OBJECT");
+  const seriesProperties = seriesState.properties as Record<string, unknown>;
+  assertEquals(
+    (seriesProperties.open_hooks as Record<string, unknown>).type,
+    "ARRAY",
+  );
+
+  const r = openRouterRequestShape(STORY_OPTS) as Record<string, unknown>;
+  assertEquals(r.max_tokens, 16_000);
+  assertEquals(r.response_format, OPENAI_RESPONSE_FORMAT);
+
+  const o = openAIRequestShape(STORY_OPTS) as Record<string, unknown>;
+  assertEquals(o.max_tokens, 16_000);
+  assertEquals(o.response_format, OPENAI_RESPONSE_FORMAT);
+});
+
+Deno.test("paragraph edits are never constrained to the story schema", () => {
+  const g = geminiRequestShape(EDIT_OPTS).generationConfig as Record<
+    string,
+    unknown
+  >;
+  assertEquals(g.maxOutputTokens, 2_000);
+  assert(!("responseMimeType" in g), "an edit must not request JSON");
+  assert(!("responseSchema" in g), "an edit must not request the story schema");
+
+  const r = openRouterRequestShape(EDIT_OPTS) as Record<string, unknown>;
+  assertEquals(r.max_tokens, 2_000);
+  assert(!("response_format" in r), "an edit must not request JSON");
+
+  const o = openAIRequestShape(EDIT_OPTS) as Record<string, unknown>;
+  assertEquals(o.max_tokens, 2_000);
+  assert(!("response_format" in o), "an edit must not request JSON");
+});
+
+Deno.test("story provider output must contain structured chapter body", () => {
+  const valid = JSON.stringify({
+    title: "T",
+    chapter_title: "C",
+    chapter_body: "A paragraph with story content.",
+    word_count: 5,
+    themes: [],
+    first_line: "A",
+    previously_summary: "",
+    series_state: {
+      central_conflict: "",
+      protagonist_want: "",
+      character_changes: [],
+      relationship_state: "",
+      open_hooks: [],
+      resolved_hooks: [],
+      promised_payoffs: [],
+      world_facts: [],
+      next_chapter_pressure: "",
+    },
+    hook_type: "none",
+    hook_text: "",
+  });
+
+  assertEquals(requireUsableStoryOutput(valid, STORY_OPTS), valid);
+  assertEquals(
+    requireUsableStoryOutput("plain paragraph", EDIT_OPTS),
+    "plain paragraph",
+  );
+});
+
+Deno.test("empty or unparseable story provider output is rejected before persistence", () => {
+  for (
+    const text of [
+      "",
+      '```json\n{"ok":true}\n```',
+      JSON.stringify({ title: "T", chapter_body: "" }),
+      JSON.stringify({ title: "T", chapter_body: "Non-empty body" }),
+    ]
+  ) {
+    assertThrows(
+      () => requireUsableStoryOutput(text, STORY_OPTS),
+      ProviderMalformedResponseError,
+      undefined,
+      `expected rejection for ${JSON.stringify(text)}`,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
 // Error classification
 // ---------------------------------------------------------------------------
 
-Deno.test("classifyLlmError: unknown errors are retryable, not silently dropped", () => {
-  const f = classifyLlmError(new Error("something odd"), "anthropic", "m");
+Deno.test("classifyLlmError: unknown errors are retryable", () => {
+  const f = classifyLlmError(new Error("something odd"), "gemini", "m");
   assertEquals(f.code, "unknown");
   assertEquals(f.retryable, true);
-  assertEquals(f.provider, "anthropic");
+  assertEquals(f.provider, "gemini");
   assertEquals(f.model, "m");
 });
 
@@ -145,30 +248,71 @@ Deno.test("classifyLlmError: an abort is a retryable timeout", () => {
   const f = classifyLlmError(
     new DOMException("aborted", "AbortError"),
     "openai",
-    "gpt-4o-mini",
+    OPENAI_MODEL,
   );
   assertEquals(f.code, "timeout");
   assertEquals(f.retryable, true);
 });
 
-Deno.test("classifyLlmError: message is truncated, never unbounded", () => {
-  const f = classifyLlmError(new Error("x".repeat(5000)), "anthropic", "m");
+Deno.test("classifyLlmError: message is truncated", () => {
+  const f = classifyLlmError(new Error("x".repeat(5000)), "openrouter", "m");
   assert(f.message.length <= 500);
+});
+
+Deno.test("classifyLlmError: HTTP statuses map to stable codes", () => {
+  const unauthorized = classifyLlmError(
+    new ProviderHttpError("OpenRouter request failed (401): bad key", 401),
+    "openrouter",
+    OPENROUTER_FREE_MODEL,
+  );
+  assertEquals(unauthorized.status, 401);
+  assertEquals(unauthorized.code, "auth_failed");
+  assertEquals(unauthorized.retryable, false);
+
+  const serverError = classifyLlmError(
+    new ProviderHttpError("Gemini request failed (503): busy", 503),
+    "gemini",
+    GEMINI_MODEL,
+  );
+  assertEquals(serverError.status, 503);
+  assertEquals(serverError.code, "provider_5xx");
+  assertEquals(serverError.retryable, true);
+
+  const throttled = classifyLlmError(
+    new ProviderHttpError("OpenAI request failed (429): slow down", 429),
+    "openai",
+    OPENAI_MODEL,
+  );
+  assertEquals(throttled.status, 429);
+  assertEquals(throttled.code, "rate_limited");
+  assertEquals(throttled.retryable, true);
+});
+
+Deno.test("classifyLlmError: malformed provider output is retryable", () => {
+  const f = classifyLlmError(
+    new ProviderMalformedResponseError(
+      "Provider returned unparseable story JSON",
+    ),
+    "openrouter",
+    OPENROUTER_FREE_MODEL,
+  );
+  assertEquals(f.code, "malformed_response");
+  assertEquals(f.retryable, true);
 });
 
 Deno.test("AllProvidersFailedError: context is identifiers and enums only", () => {
   const err = new AllProvidersFailedError([
     {
-      provider: "anthropic",
-      model: "claude-sonnet-5",
+      provider: "gemini",
+      model: GEMINI_MODEL,
       code: "rate_limited",
       status: 429,
       retryable: true,
       message: "slow down",
     },
     {
-      provider: "openai",
-      model: "gpt-4o-mini",
+      provider: "openrouter",
+      model: OPENROUTER_FREE_MODEL,
       code: "not_configured",
       retryable: false,
       message: "no key",
@@ -177,13 +321,12 @@ Deno.test("AllProvidersFailedError: context is identifiers and enums only", () =
   const ctx = err.toContext();
 
   assertEquals(ctx.attempts, 2);
-  assertEquals(ctx.providers, ["anthropic", "openai"]);
-  assertEquals(ctx.models, ["claude-sonnet-5", "gpt-4o-mini"]);
+  assertEquals(ctx.providers, ["gemini", "openrouter"]);
+  assertEquals(ctx.models, [GEMINI_MODEL, OPENROUTER_FREE_MODEL]);
   assertEquals(ctx.codes, ["rate_limited", "not_configured"]);
   assertEquals(ctx.statuses, [429, null]);
   assertEquals(ctx.retryable, true);
 
-  // The PII rule for error_events: no free text in context.
   for (const value of Object.values(ctx)) {
     const flat = Array.isArray(value) ? value : [value];
     for (const v of flat) {
@@ -198,131 +341,33 @@ Deno.test("AllProvidersFailedError: context is identifiers and enums only", () =
 Deno.test("AllProvidersFailedError: message names each model and code", () => {
   const err = new AllProvidersFailedError([
     {
-      provider: "anthropic",
-      model: "claude-sonnet-5",
+      provider: "gemini",
+      model: GEMINI_MODEL,
       code: "auth_failed",
       status: 401,
       retryable: false,
       message: "bad key",
     },
   ]);
-  assert(err.message.includes("claude-sonnet-5"));
+  assert(err.message.includes(GEMINI_MODEL));
   assert(err.message.includes("auth_failed"));
   assertEquals(err.name, "AllProvidersFailedError");
 });
 
-// ---------------------------------------------------------------------------
-// Request shaping
-//
-// The branch that decides whether output is constrained is the difference
-// between a story (must be the JSON object) and a paragraph edit (must be
-// prose). Constraining an edit would return JSON where the editor expects a
-// rewritten paragraph.
-// ---------------------------------------------------------------------------
-
-const STORY_OPTS = {
-  maxTokens: 16_000,
-  constrainToStorySchema: true,
-  deadlineMs: 120_000,
-};
-const EDIT_OPTS = {
-  maxTokens: 2_000,
-  constrainToStorySchema: false,
-  deadlineMs: 60_000,
-};
-
-Deno.test("story requests constrain output on both providers", () => {
-  const a = anthropicRequestShape(STORY_OPTS) as Record<string, unknown>;
-  assertEquals(a.max_tokens, 16_000);
-  assertEquals(a.output_config, { format: ANTHROPIC_OUTPUT_FORMAT });
-
-  const o = openAIRequestShape(STORY_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_tokens, 16_000);
-  assertEquals(o.response_format, OPENAI_RESPONSE_FORMAT);
-});
-
-Deno.test("paragraph edits are never constrained to the story schema", () => {
-  const a = anthropicRequestShape(EDIT_OPTS) as Record<string, unknown>;
-  assertEquals(a.max_tokens, 2_000);
-  assert(!("output_config" in a), "an edit must not request the story schema");
-
-  const o = openAIRequestShape(EDIT_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_tokens, 2_000);
-  assert(
-    !("response_format" in o),
-    "an edit must not request the story schema",
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Timeout and HTTP status classification
-// ---------------------------------------------------------------------------
-
-Deno.test("classifyLlmError: an aborted request is a timeout, not unknown", () => {
-  // withAbortTimeout aborts with exactly this reason.
-  const f = classifyLlmError(
-    new DOMException("Timeout after 30000ms", "AbortError"),
-    "openai",
-    "gpt-4o-mini",
-  );
-  assertEquals(f.code, "timeout");
-  assertEquals(f.retryable, true);
-});
-
-Deno.test("classifyLlmError: a provider HTTP status survives classification", () => {
-  const unauthorized = classifyLlmError(
-    new ProviderHttpError("OpenAI request failed (401): bad key", 401),
-    "openai",
-    "gpt-4o-mini",
-  );
-  assertEquals(unauthorized.status, 401);
-  assertEquals(unauthorized.code, "provider_error");
-  // A bad credential must not be retried as though it were transient.
-  assertEquals(unauthorized.retryable, false);
-
-  const serverError = classifyLlmError(
-    new ProviderHttpError("OpenAI request failed (503): busy", 503),
-    "openai",
-    "gpt-4o-mini",
-  );
-  assertEquals(serverError.status, 503);
-  assertEquals(serverError.code, "provider_5xx");
-  assertEquals(serverError.retryable, true);
-
-  const throttled = classifyLlmError(
-    new ProviderHttpError("OpenAI request failed (429): slow down", 429),
-    "openai",
-    "gpt-4o-mini",
-  );
-  assertEquals(throttled.status, 429);
-  assertEquals(throttled.retryable, true);
-});
-
-Deno.test("HookType is derived, so the union cannot drift from the values", () => {
-  // A compile-time assertion: if HookType stopped deriving from
-  // HOOK_TYPE_VALUES, assigning every value to it would stop type-checking.
+Deno.test("HookType is derived from the canonical values", () => {
   const all: HookType[] = [...HOOK_TYPE_VALUES];
   assertEquals(all.length, HOOK_TYPE_VALUES.length);
   assertEquals(new Set(all).size, all.length, "duplicate hook value");
 });
 
 // ---------------------------------------------------------------------------
-// Claude credential resolution
-//
-// Generation authenticates with an OAuth bearer token, never a Console API
-// key. These tests pin the accepted names and their precedence, because a
-// silent miss here means every request falls through to the OpenAI leg and
-// the regression is invisible until someone reads a bill.
+// Secret resolution
 // ---------------------------------------------------------------------------
 
-/**
- * Runs `fn` with the given environment variables applied, then restores them.
- *
- * A `null` value deletes the variable. Restoration runs in a `finally`, so a
- * failing assertion cannot leak a credential name into a later test and make
- * the suite order-dependent.
- */
-function withEnv<T>(vars: Record<string, string | null>, fn: () => T): T {
+async function withEnv<T>(
+  vars: Record<string, string | null>,
+  fn: () => T | Promise<T>,
+): Promise<T> {
   const saved = new Map<string, string | undefined>();
   for (const name of Object.keys(vars)) {
     saved.set(name, Deno.env.get(name));
@@ -332,7 +377,7 @@ function withEnv<T>(vars: Record<string, string | null>, fn: () => T): T {
       if (value === null) Deno.env.delete(name);
       else Deno.env.set(name, value);
     }
-    return fn();
+    return await fn();
   } finally {
     for (const [name, value] of saved) {
       if (value === undefined) Deno.env.delete(name);
@@ -341,98 +386,17 @@ function withEnv<T>(vars: Record<string, string | null>, fn: () => T): T {
   }
 }
 
-const NO_CLAUDE_TOKENS: Record<string, string | null> = Object.fromEntries(
-  CLAUDE_TOKEN_ENV_VARS.map((name) => [name, null]),
-);
-
-Deno.test("ANTHROPIC_API_KEY is not an accepted credential name", () => {
-  assertEquals(
-    CLAUDE_TOKEN_ENV_VARS.includes(
-      "ANTHROPIC_API_KEY" as typeof CLAUDE_TOKEN_ENV_VARS[number],
-    ),
-    false,
-  );
-  // Present but unread: a leftover Console key must not silently authenticate.
-  const resolved = withEnv(
-    // Deliberately not a realistic key shape: a literal starting "sk-ant-"
-    // trips secret scanners and GitHub push protection on every future push.
-    { ...NO_CLAUDE_TOKENS, ANTHROPIC_API_KEY: "leftover-console-key" },
-    claudeAuthToken,
-  );
-  assertEquals(resolved, undefined);
-});
-
-Deno.test("CLAUDE_CODE_OAUTH_TOKEN wins over both aliases", () => {
-  const resolved = withEnv({
-    CLAUDE_CODE_OAUTH_TOKEN: "primary",
-    ANTHROPIC_AUTH_TOKEN: "alias-a",
-    CLAUDE_TOKEN: "alias-b",
-  }, claudeAuthToken);
-  assertEquals(resolved, "primary");
-});
-
-Deno.test("aliases resolve in declared order", () => {
-  assertEquals(
-    withEnv({
-      ...NO_CLAUDE_TOKENS,
-      ANTHROPIC_AUTH_TOKEN: "alias-a",
-      CLAUDE_TOKEN: "alias-b",
-    }, claudeAuthToken),
-    "alias-a",
-  );
-  assertEquals(
-    withEnv({ ...NO_CLAUDE_TOKENS, CLAUDE_TOKEN: "alias-b" }, claudeAuthToken),
-    "alias-b",
-  );
-});
-
-Deno.test("a whitespace-only token is treated as absent", () => {
-  // Supabase secrets round-trip through a shell; a trailing newline is the
-  // common way a "set" secret is in fact empty.
-  assertEquals(
-    withEnv(
-      { ...NO_CLAUDE_TOKENS, CLAUDE_CODE_OAUTH_TOKEN: "   \n  " },
-      claudeAuthToken,
-    ),
-    undefined,
-  );
-  assertEquals(
-    withEnv(
-      { ...NO_CLAUDE_TOKENS, CLAUDE_CODE_OAUTH_TOKEN: "  tok  " },
-      claudeAuthToken,
-    ),
-    "tok",
-  );
-});
-
-Deno.test("no credential resolves to undefined, not a throw", () => {
-  assertEquals(withEnv(NO_CLAUDE_TOKENS, claudeAuthToken), undefined);
-});
-
-Deno.test("a missing credential is not_configured and never retried", () => {
-  const failure = classifyLlmError(
-    new ProviderNotConfiguredError(
-      "Claude credentials are not configured. Set CLAUDE_CODE_OAUTH_TOKEN.",
-    ),
-    "anthropic",
-    "claude-sonnet-5",
-  );
-  assertEquals(failure.code, "not_configured");
-  assertEquals(failure.retryable, false);
-  // Retrying a deployment gap burns the request budget before OpenAI is tried.
-  assert(
-    !failure.status,
-    "a credential that was never sent has no HTTP status",
-  );
-});
-
-Deno.test("an unconfigured Claude records one failure, not one per model", async () => {
-  // Regression: the credential was previously checked inside the per-model
-  // helper, so the identical preflight threw on the Sonnet leg and again on
-  // the Haiku leg - two `not_configured` rows for a single deployment gap.
-  // An occurrence count read later would then show a recurrence that is not one.
+Deno.test("Anthropic and Claude credential names are ignored", async () => {
   const error = await withEnv(
-    { ...NO_CLAUDE_TOKENS, OPENAI_API_KEY: null },
+    {
+      GEMINI_API_KEY: null,
+      OPENROUTER_API_KEY: null,
+      OPENAI_API_KEY: null,
+      ANTHROPIC_API_KEY: "leftover-console-key",
+      CLAUDE_CODE_OAUTH_TOKEN: "leftover-oauth-token",
+      ANTHROPIC_AUTH_TOKEN: "leftover-alias",
+      CLAUDE_TOKEN: "leftover-alias",
+    },
     async () => {
       try {
         await generateStoryText("system", "user");
@@ -443,66 +407,26 @@ Deno.test("an unconfigured Claude records one failure, not one per model", async
     },
   );
 
-  assert(
-    error instanceof AllProvidersFailedError,
-    "no provider is configured, so the chain must fail",
-  );
-  const anthropic = error.failures.filter((f) => f.provider === "anthropic");
-  assertEquals(
-    anthropic.length,
-    1,
-    `expected a single Claude failure, got ${anthropic.length}: ` +
-      anthropic.map((f) => f.model).join(", "),
-  );
-  assertEquals(anthropic[0].code, "not_configured");
-  assertEquals(anthropic[0].retryable, false);
-  // The OpenAI leg still reports separately; it is a different provider.
-  assertEquals(error.failures.length, 2);
+  assert(error instanceof AllProvidersFailedError);
+  assertEquals(error.failures.map((f) => f.provider), [
+    "gemini",
+    "openrouter",
+    "openai",
+  ]);
+  assertEquals(error.failures.map((f) => f.code), [
+    "not_configured",
+    "not_configured",
+    "not_configured",
+  ]);
 });
 
-Deno.test("a leftover ANTHROPIC_API_KEY never reaches the wire", async () => {
-  // The resolver ignoring the name is not enough. The SDK constructor defaults
-  // an omitted `apiKey` to readEnv("ANTHROPIC_API_KEY"), and authHeaders()
-  // returns [apiKeyAuth(), bearerAuth()] - so without `apiKey: null` a stale
-  // Console key in the environment is sent alongside the bearer token and can
-  // authenticate and bill traffic this project believes runs on OAuth.
-  // Asserted at the request layer, because that is where the bug lived.
-  let seen: Headers | undefined;
-  const captureFetch: typeof fetch = (input, init) => {
-    seen = new Headers(init?.headers ?? (input as Request)?.headers);
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          id: "msg_1",
-          type: "message",
-          role: "assistant",
-          model: "claude-sonnet-5",
-          content: [{ type: "text", text: "ok" }],
-          stop_reason: "end_turn",
-          usage: { input_tokens: 1, output_tokens: 1 },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
-    );
-  };
-
-  await withEnv(
-    { ...NO_CLAUDE_TOKENS, ANTHROPIC_API_KEY: "leftover-console-key" },
-    async () => {
-      const client = createClaudeClient("oauth-bearer-value", captureFetch);
-      await client.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 16,
-        messages: [{ role: "user", content: "hi" }],
-      });
-    },
+Deno.test("a missing provider credential is not_configured and never retried", () => {
+  const failure = classifyLlmError(
+    new ProviderNotConfiguredError("GEMINI_API_KEY is not configured"),
+    "gemini",
+    GEMINI_MODEL,
   );
-
-  assert(seen, "the stub fetch was never invoked");
-  assertEquals(
-    seen.get("x-api-key"),
-    null,
-    "X-Api-Key must be absent: a leftover Console key must never authenticate",
-  );
-  assertEquals(seen.get("authorization"), "Bearer oauth-bearer-value");
+  assertEquals(failure.code, "not_configured");
+  assertEquals(failure.retryable, false);
+  assert(!failure.status);
 });

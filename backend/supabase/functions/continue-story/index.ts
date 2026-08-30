@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import { generateStoryText } from "../_shared/llm.ts";
+import { logError } from "../_shared/errors.ts";
+import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
   isStaleReservation,
@@ -33,6 +34,9 @@ serve(async (req) => {
   if (cors) return cors;
   const respond = (body: unknown, status = 200) =>
     jsonResponse(req, body, status);
+  let observedUserId: string | null = null;
+  let observedStoryId: string | null = null;
+  let observedOperationId: string | null = null;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -48,11 +52,13 @@ serve(async (req) => {
     if (!user) {
       return respond({ error: "Unauthorized" }, 401);
     }
+    observedUserId = user.id;
 
     const body = await readJsonObject(req);
     if (!body) return respond({ error: "Invalid JSON request body" }, 400);
     const story_id = parseUuid(body.story_id);
     if (!story_id) return respond({ error: "Invalid story_id" }, 400);
+    observedStoryId = story_id;
     const request_id = body.request_id;
     const requestId = parseRequestId(request_id);
     if (!requestId) return respond({ error: "Invalid request_id" }, 400);
@@ -185,6 +191,7 @@ serve(async (req) => {
         status: operation.status,
       }, 409);
     }
+    observedOperationId = operation.id;
 
     // Build continuation prompt
     const previousText = chapters
@@ -339,6 +346,43 @@ serve(async (req) => {
           p_error: errorMessage(error),
         },
       );
+      const telemetry = [
+        ...(error instanceof AllProvidersFailedError
+          ? [logError({
+            bucket: "llm.provider",
+            severity: "critical",
+            source: "runtime",
+            errorCode: "all_providers_failed",
+            error,
+            context: {
+              ...error.toContext(),
+              operation_id: operation.id,
+              story_id,
+              chapter_number: nextChapterNum,
+              chapter_role: chapterRole,
+              primary_genre: primaryGenre,
+            },
+            userId: user.id,
+          })]
+          : []),
+        logError({
+          bucket: "generation.story",
+          severity: "high",
+          source: "runtime",
+          errorCode: "post_deduction_failed",
+          error,
+          context: {
+            operation_id: operation.id,
+            story_id,
+            chapter_number: nextChapterNum,
+            chapter_role: chapterRole,
+            primary_genre: primaryGenre,
+          },
+          userId: user.id,
+        }),
+      ];
+      await Promise.allSettled(telemetry);
+
       if (refundError) {
         console.error("continue-story refund pending:", refundError);
         return respond({
@@ -359,6 +403,18 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error("continue-story error:", error);
+    await logError({
+      bucket: "generation.story",
+      severity: "high",
+      source: "runtime",
+      errorCode: "unhandled",
+      error,
+      context: {
+        story_id: observedStoryId,
+        operation_id: observedOperationId,
+      },
+      userId: observedUserId,
+    });
     return respond({ error: "Internal server error" }, 500);
   }
 });

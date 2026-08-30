@@ -461,7 +461,10 @@ Deno.test("initial story prompt ends with the output schema", () => {
   assert(prompt.includes(SCHEMA_HEADING));
   assert(prompt.trimEnd().endsWith("}"));
   // Nothing may follow the schema block.
-  assertEquals(prompt.indexOf(SCHEMA_HEADING), prompt.lastIndexOf(SCHEMA_HEADING));
+  assertEquals(
+    prompt.indexOf(SCHEMA_HEADING),
+    prompt.lastIndexOf(SCHEMA_HEADING),
+  );
 });
 
 Deno.test("mid-series continuation prompt ends with the output schema", () => {

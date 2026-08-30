@@ -39,7 +39,10 @@ serve(async (req) => {
     const language = typeof body.language === "string" ? body.language : "en";
 
     if (!story_id || !chapter_id) {
-      return respond({ error: "Valid story_id and chapter_id are required" }, 400);
+      return respond(
+        { error: "Valid story_id and chapter_id are required" },
+        400,
+      );
     }
     if (!text) {
       return respond({ error: "text is required" }, 400);
@@ -196,7 +199,9 @@ async function handleEdgeTts(
     return respond(
       {
         error:
-          `No supported voices found for language "${params.language}". Supported: ${Object.keys(EDGE_TTS_VOICES).join(", ")}`,
+          `No supported voices found for language "${params.language}". Supported: ${
+            Object.keys(EDGE_TTS_VOICES).join(", ")
+          }`,
       },
       400,
     );
@@ -212,6 +217,8 @@ async function handleEdgeTts(
     language: params.language,
     status: "PENDING_IMPLEMENTATION",
     message:
-      `Audio narration for language "${params.language}" is coming soon. Voices: ${pending.map((p) => p.voice_id).join(", ")}.`,
+      `Audio narration for language "${params.language}" is coming soon. Voices: ${
+        pending.map((p) => p.voice_id).join(", ")
+      }.`,
   });
 }

@@ -7,6 +7,63 @@
 
 ---
 
+## 2026-08-31 UTC — CodeRabbit follow-up for provider and telemetry hardening
+
+**Session:** Addressed the latest CodeRabbit review on PR #39 while preserving the user-requested fallback contract: Gemini -> OpenRouter Free Router -> `gpt-4o-mini`.
+
+- Gemini and OpenAI-compatible provider paths now parse HTTP bodies with `response.text()` and defensive JSON parsing, preserving HTTP status classification even when an error body is plain text.
+- Gemini prompt-level `promptFeedback.blockReason` is classified as a moderation rejection before candidate validation, and moderation matching no longer uses the broad bare `safety` substring.
+- Error-context sanitization tests now exercise `sanitizeErrorContext()` directly for circular values while preserving allowlisted request identifiers.
+- Restored migration `00018` to its original summary-view grouping shape and kept migration `00021` as the sole corrective one-row-per-fingerprint migration.
+- Clarified that `00016_device_tokens.sql` remains a pending Phase G migration.
+- Added and applied migration `00022` to validate the replacement `error_events.user_id` foreign key separately from the `NOT VALID` constraint creation.
+- Redeployed production `generate-story`, `continue-story`, and `edit-story` to project `iafeuxgoiknncgyjmugd`.
+
+### Validation
+
+- `deno fmt --check supabase/functions supabase/migrations`: passed.
+- `deno check` for `generate-story`, `continue-story`, `edit-story`, `_shared/llm.ts`, and `_shared/errors.ts`: passed.
+- `deno test --allow-env --allow-net supabase/functions/_shared`: **124 passed**.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-pr39`: passed with bundled Node on PATH; output written to `/tmp/katha-web-export-pr39`.
+- Security scan: no committed Gemini/OpenRouter keys or service-role-style secrets found. Existing `image-size` high advisories remain upstream-blocked pending a published patched release.
+- Production smoke after redeploy:
+  - `smoke-app-surface.py`: **26 / 26**, with the known cover-generation pending note unchanged.
+  - `smoke-series-generation.py`: **58 / 58**, with zero observed generation failures and no stuck `reserved` operations.
+
+## 2026-08-31 UTC — Gemini/OpenRouter story-generation chain deployed
+
+**Session:** Replaced the active story-generation provider chain with Gemini -> OpenRouter Free Router -> `gpt-4o-mini`, removed Anthropic/Claude runtime dependency from `_shared/llm.ts`, set the new Supabase secrets, unset old Claude/Anthropic secret names where present, and deployed the generation functions.
+
+### Runtime changes
+
+- `_shared/llm.ts` now calls provider HTTP APIs directly in this order: `gemini-3.1-pro-preview` (70s), `openrouter/free` (30s), then `gpt-4o-mini` (30s).
+- OpenRouter uses the free router so OpenRouter filters by required request capabilities and randomly selects a compatible free model.
+- Story-generation requests are schema-constrained for all providers: Gemini `responseSchema`; OpenRouter/OpenAI strict `response_format`.
+- Old Claude/Anthropic env names are intentionally ignored. Regression coverage proves `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_TOKEN` cannot authenticate generation.
+- A provider returning HTTP 200 with malformed or empty story JSON now counts as `malformed_response` and falls through to the next provider instead of reaching persistence and refunding after credit deduction.
+
+### Observability
+
+- Added migrations `00018` and `00019` for durable `error_events` telemetry and service-role REST access.
+- Added migration `00020` so profile deletion cannot mutate historical `error_events` rows.
+- Added migration `00021` so `error_event_summary` keeps one row per fingerprint and derives the highest observed severity.
+- Wired `generate-story`, `continue-story`, and `edit-story` to log all-provider failures and post-deduction failures without storing story prose, prompts, seeds, or titles.
+- Production provider probe showed Gemini primary is currently quota-exhausted (`429 RESOURCE_EXHAUSTED`) and OpenRouter recovered. Logged as `llm.provider` / `medium`, fingerprint `40df49d1980191986aa6f5db0e3cc1e7`.
+- A production app-surface smoke found one refunded `generate-story` failure from empty/malformed provider output. Queried first, then fixed at the provider-chain boundary. Fingerprint `b6d4d193620fba18cfb6fb2273d88656`, occurrences `1` when triaged.
+
+### Validation
+
+- Deno check passed for `_shared/llm.ts`, `_shared/errors.ts`, `generate-story`, `continue-story`, and `edit-story`.
+- Deno tests: **124 passed**.
+- Security scan: no committed provider keys or Supabase secrets found. `postcss` and `uuid` advisories fixed through `expo/pnpm-workspace.yaml` overrides and a refreshed Expo lockfile. `image-size` still reports two high advisories via Expo/Metro, but the audited registry exposes no patched `2.0.3` release yet; latest available remains `2.0.2`.
+- Expo typecheck, lint, and Jest passed locally (`41 / 41`). Expo Doctor now passes 14 / 18 checks: `react-native-worklets` is fixed, while local `npm` absence and the pre-existing CI-compatible `eslint-config-expo` / `jest-expo` version mismatch remain.
+- Deployed `generate-story`, `continue-story`, and `edit-story` after the final fix.
+- Production smoke after final deploy:
+  - `smoke-app-surface.py`: **26 / 26**, with the known cover-generation pending note unchanged.
+  - `smoke-series-generation.py`: **58 / 58**.
+
+**Open:** Gemini is configured but not usable until quota/billing is fixed on the Google AI project. OpenRouter Free Router is currently carrying story generation and edit fallback successfully.
+
 ## 2026-08-30 — Backend verified end to end
 
 **Session close.** Every edge function is deployed from `main` and exercised against the live project.

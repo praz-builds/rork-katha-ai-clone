@@ -1,10 +1,12 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import { editParagraph } from "../_shared/llm.ts";
+import { logError } from "../_shared/errors.ts";
+import { AllProvidersFailedError, editParagraph } from "../_shared/llm.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
-const EDIT_SYSTEM_PROMPT = `You are a story editor. You will receive a paragraph from a story and an editing instruction.
+const EDIT_SYSTEM_PROMPT =
+  `You are a story editor. You will receive a paragraph from a story and an editing instruction.
 Return ONLY the edited paragraph text. Do not add commentary, labels, or explanations.
 Maintain the story's existing voice, tense, and point of view unless the instruction specifically asks to change them.`;
 
@@ -17,8 +19,16 @@ const VALID_INSTRUCTIONS = new Set([
 ]);
 
 const VALID_TONES = new Set([
-  "darker", "lighter", "more poetic", "more dramatic", "simpler",
-  "funnier", "sadder", "more suspenseful", "warmer", "colder",
+  "darker",
+  "lighter",
+  "more poetic",
+  "more dramatic",
+  "simpler",
+  "funnier",
+  "sadder",
+  "more suspenseful",
+  "warmer",
+  "colder",
 ]);
 
 serve(async (req) => {
@@ -26,6 +36,10 @@ serve(async (req) => {
   if (cors) return cors;
   const respond = (body: unknown, status = 200) =>
     jsonResponse(req, body, status);
+  let observedUserId: string | null = null;
+  let observedStoryId: string | null = null;
+  let observedChapterId: string | null = null;
+  let observedParagraphIndex: number | null = null;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -40,6 +54,7 @@ serve(async (req) => {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return respond({ error: "Unauthorized" }, 401);
+    observedUserId = user.id;
 
     const body = await readJsonObject(req);
     if (!body) return respond({ error: "Invalid JSON request body" }, 400);
@@ -47,9 +62,11 @@ serve(async (req) => {
     // Validate inputs
     const storyId = parseUuid(body.story_id);
     if (!storyId) return respond({ error: "Invalid story_id" }, 400);
+    observedStoryId = storyId;
 
     const chapterId = parseUuid(body.chapter_id);
     if (!chapterId) return respond({ error: "Invalid chapter_id" }, 400);
+    observedChapterId = chapterId;
 
     const paragraphIndex = body.paragraph_index;
     if (
@@ -62,6 +79,7 @@ serve(async (req) => {
         400,
       );
     }
+    observedParagraphIndex = paragraphIndex;
 
     const instruction = body.instruction;
     if (
@@ -172,7 +190,9 @@ serve(async (req) => {
     if (paragraphIndex >= paragraphs.length) {
       return respond(
         {
-          error: `paragraph_index ${paragraphIndex} is out of range (0-${paragraphs.length - 1})`,
+          error: `paragraph_index ${paragraphIndex} is out of range (0-${
+            paragraphs.length - 1
+          })`,
         },
         400,
       );
@@ -229,6 +249,35 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("edit-story error:", error);
+    if (error instanceof AllProvidersFailedError) {
+      await logError({
+        bucket: "llm.provider",
+        severity: "critical",
+        source: "runtime",
+        errorCode: "all_providers_failed",
+        error,
+        context: {
+          ...error.toContext(),
+          story_id: observedStoryId,
+          chapter_id: observedChapterId,
+          paragraph_index: observedParagraphIndex,
+        },
+        userId: observedUserId,
+      });
+    }
+    await logError({
+      bucket: "generation.edit",
+      severity: "high",
+      source: "runtime",
+      errorCode: "unhandled",
+      error,
+      context: {
+        story_id: observedStoryId,
+        chapter_id: observedChapterId,
+        paragraph_index: observedParagraphIndex,
+      },
+      userId: observedUserId,
+    });
     return respond({ error: "Internal server error" }, 500);
   }
 });
@@ -251,14 +300,18 @@ function buildEditPrompt(
         "Expand this paragraph with more detail and description.";
       break;
     case "shorten":
-      editInstruction =
-        "Condense this paragraph while keeping its essence.";
+      editInstruction = "Condense this paragraph while keeping its essence.";
       break;
     case "change_tone":
-      editInstruction = `Rewrite this paragraph with a ${tone!.toLowerCase()} tone.`;
+      editInstruction = `Rewrite this paragraph with a ${
+        tone!.toLowerCase()
+      } tone.`;
       break;
     case "custom":
-      editInstruction = `Apply the following edit to this paragraph. Edit request: "${customNote!.slice(0, 500)}"`;
+      editInstruction =
+        `Apply the following edit to this paragraph. Edit request: "${
+          customNote!.slice(0, 500)
+        }"`;
       break;
     default:
       editInstruction = "Rewrite this paragraph.";
