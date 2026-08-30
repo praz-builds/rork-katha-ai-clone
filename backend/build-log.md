@@ -17,6 +17,10 @@
 
 Replaced with a `ServiceClient` alias derived from a real call, so the type tracks `createClient` rather than restating it.
 
+### CI now covers the Deno workspace
+
+The typecheck gate only ever ran on `expo/`, which is why four TS2345 errors in `feed` survived to `main`. A second CI job typechecks **every** `backend/supabase/functions/*/index.ts` by glob — so a new function is covered the day it lands rather than when someone remembers to add it — then runs the shared Deno test suite and a format check. Raised in review on PR #35.
+
 ### Deployment
 
 All 12 edge functions deployed from `main`. Five had **never** been deployed: `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story` — two of which (`edit-story`, `publish-story`) are called by `expo/src/lib/api.ts`, so the Create Studio edit and publish paths had been reaching functions that did not exist.

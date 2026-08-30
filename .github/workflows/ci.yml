@@ -46,3 +46,40 @@ jobs:
 
       - name: Test
         run: npx jest --passWithNoTests --ci --coverage
+
+  backend:
+    name: Edge Functions — Typecheck + Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
+      # Every function, not a hand-maintained list: a new one is covered the
+      # day it lands. feed/index.ts reached main with four TS2345 errors
+      # because nothing here typechecked the Deno workspace at all.
+      - name: Typecheck every edge function
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          failed=0
+          for f in backend/supabase/functions/*/index.ts; do
+            name=$(basename "$(dirname "$f")")
+            if deno check "$f"; then
+              echo "::notice::$name OK"
+            else
+              echo "::error::$name failed deno check"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Test shared modules
+        run: deno test --allow-env --allow-net --allow-read backend/supabase/functions/_shared/
+
+      - name: Format check (shared LLM modules)
+        run: deno fmt --check backend/supabase/functions/_shared/llm.ts backend/supabase/functions/_shared/llm.test.ts backend/supabase/functions/_shared/story_schema.ts
