@@ -9,10 +9,17 @@ being discovered by a user again.
 Reads SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY from the
 environment. Never prints key material, story prose, or seeds.
 """
-import json, os, ssl, sys, uuid, urllib.request, urllib.error
+import json
+import os
+import ssl
+import sys
+import urllib.error
+import urllib.request
+import uuid
 
 try:
     import certifi
+
     CTX = ssl.create_default_context(cafile=certifi.where())
 except Exception:
     CTX = ssl.create_default_context()
@@ -66,23 +73,26 @@ try:
     # ------------------------------------------------------------ 0 fixtures
     email = f"smoke+{uuid.uuid4().hex[:10]}@kathaai.test"
     pw = "Sm0ke!" + uuid.uuid4().hex[:12]
-    print(f"\n[0] Fixtures")
+    print("\n[0] Fixtures")
     s, d = req("POST", "/auth/v1/admin/users",
                {"email": email, "password": pw, "email_confirm": True}, key=SVC)
     if s not in (200, 201):
-        print("  cannot create user:", s, json.dumps(d)[:200]); sys.exit(1)
+        print("  cannot create user:", s, json.dumps(d)[:200])
+        sys.exit(1)
     uid = d["id"]
     req("POST", "/rest/v1/profiles",
         {"id": uid, "username": f"smoke_{uid.replace('-', '')[:16]}"}, key=SVC)
     s, d = req("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": pw})
     if s != 200:
-        print("  cannot sign in:", s, json.dumps(d)[:200]); sys.exit(1)
+        print("  cannot sign in:", s, json.dumps(d)[:200])
+        sys.exit(1)
     jwt = d["access_token"]
     gs, gd = rpc("grant_credit", {"p_user_id": uid, "p_amount": 20, "p_reason": "welcome",
                                   "p_reference_id": f"smoke-{uid[:8]}",
                                   "p_operation_key": rid("grant")})
     if gs != 200:
-        print("  grant_credit failed:", gs, json.dumps(gd)[:200]); sys.exit(1)
+        print("  grant_credit failed:", gs, json.dumps(gd)[:200])
+        sys.exit(1)
     print(f"  user {uid} ready")
 
     # ------------------------------------------- 1 every function is deployed
@@ -112,7 +122,8 @@ try:
                   {"seed": "a lighthouse keeper finds a door in the sea floor",
                    "genre": "mystery", "request_id": rid("app")}, token=jwt)
     if not check("2.1 generate-story 200", st == 200, f"HTTP {st}"):
-        print("  ", json.dumps(gen)[:250]); raise SystemExit
+        print("  ", json.dumps(gen)[:250])
+        raise SystemExit
     story_id = gen.get("story", {}).get("id") or gen.get("story_id")
     chapter_id = (gen.get("chapter") or {}).get("id")
     check("2.2 story id returned", bool(story_id))
@@ -176,9 +187,15 @@ try:
         cover = row.get("cover_image_url") or ""
         check("6.3 cover_image_url persisted", bool(cover), "set" if cover else "empty")
         if cover:
-            cs, _ = req("GET", cover.replace(URL, ""), key=ANON) if cover.startswith(URL) else (0, None)
-            check("6.4 cover is publicly readable", cs in (200, 0),
-                  f"HTTP {cs}" if cs else "external URL, skipped")
+            # Only a URL on this project can be fetched with the anon key. A
+            # transport failure returns status 0, which is a failure - not a
+            # reason to pass the check.
+            if cover.startswith(URL):
+                cs, _ = req("GET", cover.replace(URL, ""), key=ANON)
+                check("6.4 cover is publicly readable", cs == 200, f"HTTP {cs}")
+            else:
+                check("6.4 cover URL is on the project origin", False,
+                      f"unexpected host: {cover.split('/')[2] if '//' in cover else cover[:40]}")
 
     # -------------------------------------------------------- 7 audio-status
     print("\n[7] audio-status")
@@ -186,8 +203,10 @@ try:
     st, aud = req("GET",
                   f"/functions/v1/audio-status?job_id=smoke-none&story_id={story_id}",
                   token=jwt)
-    check("7.1 audio-status accepts a well-formed query", st != 400,
-          f"HTTP {st} {json.dumps(aud)[:120]}")
+    # Only the defined outcomes pass. `st != 400` would also accept a 500 or a
+    # 401, i.e. it would go green while the endpoint was broken or unreachable.
+    check("7.1 audio-status answers a well-formed query",
+          st in (200, 202, 404), f"HTTP {st} {json.dumps(aud)[:120]}")
     st, aud = req("GET", f"/functions/v1/audio-status?story_id={story_id}", token=jwt)
     check("7.2 audio-status rejects a query with no job_id", st == 400, f"HTTP {st}")
 
