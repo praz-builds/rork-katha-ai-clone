@@ -105,7 +105,7 @@ If either caveat blocks, the fix is a Console API key (`sk-ant-api03-`) and rein
 | Bucket | Purpose | Access |
 |--------|---------|--------|
 | `audio` | Narration MP3s | Public read, service role upload |
-| `covers` | Cover image PNGs | Public read, service role upload; **NEEDS CREATION** |
+| `covers` | Cover image PNGs | Public read, service role upload. Created 2026-08-25; 5 MB limit; `image/png`, `image/jpeg`, `image/webp` |
 
 ### Local Dev
 

@@ -59,6 +59,16 @@ Both were redeployed from `origin/main` (`10ecaa8`) on 2026-08-30. Verified: `ge
 
 Not deployed in this session: the five above are a separate decision, and `publish-story` spends money on cover generation the moment it succeeds.
 
+### Review round 1 (CodeRabbit)
+
+- **Major, valid, fixed.** The credential was checked inside the per-model helper, so an unconfigured Claude threw the identical preflight on the Sonnet leg and again on the Haiku leg — two `not_configured` rows for one deployment gap, which inflates any occurrence count a recurrence check later reads. The check is hoisted ahead of both legs; one failure is recorded and the chain continues to OpenAI. Regression test added and fault-injected (restoring the duplicate makes it fail with `got 2`).
+- **Minor, valid, fixed.** `ROADMAP.md` still recorded the dated `claude-haiku-4-5-20251001` as applied, contradicting `AGENTS.md`. Now the canonical undated id.
+- **Minor, not applied.** CodeRabbit read the `2026-08-30` headings as future-dated against a review date of 2026-08-29. The dates are correct in the repo's local timezone (IST, UTC+5:30) — the redeploy recorded above ran at 2026-08-29 23:37 UTC, which is 2026-08-30 05:07 local — and the preceding entry already uses local dates. Changing them would make this entry inconsistent with the rest of the log.
+
+### Storage buckets verified, not assumed
+
+`AGENTS.md` and `ROADMAP.md` both said the `covers` bucket **needs creation**. It has existed since 2026-08-25: public read, 5 MB limit, `image/png` / `image/jpeg` / `image/webp`, confirmed against the storage API. Three stale checkboxes corrected.
+
 ### Open
 
 1. Set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`, not interactive login) and treat the first run as the real verification.

@@ -273,40 +273,61 @@ async function runProviderChain(
   const recordModerationRetry = (level: number) => {
     safetyLevel = Math.max(safetyLevel, level);
   };
-  // Attempt 1: Sonnet 4.6
-  try {
-    const text = await generateAnthropicText(
-      PRIMARY_MODEL,
-      60000,
-      options,
-      systemPrompt,
-      userPrompt,
-      deadline,
-      safetyLevel,
-      recordModerationRetry,
-    );
-    return { text, model: PRIMARY_MODEL };
-  } catch (e) {
-    console.error(`${PRIMARY_MODEL} failed:`, e);
-    failures.push(classifyLlmError(e, "anthropic", PRIMARY_MODEL));
-  }
+  // The credential is resolved once, ahead of both Claude legs. Checking it
+  // per-leg would throw the identical preflight error twice and write two
+  // `not_configured` rows for a single deployment gap - inflating any
+  // occurrence count that a recurrence check later reads.
+  const claudeToken = claudeAuthToken();
+  if (claudeToken) {
+    // Attempt 1: Sonnet
+    try {
+      const text = await generateAnthropicText(
+        PRIMARY_MODEL,
+        60000,
+        options,
+        systemPrompt,
+        userPrompt,
+        deadline,
+        safetyLevel,
+        recordModerationRetry,
+        claudeToken,
+      );
+      return { text, model: PRIMARY_MODEL };
+    } catch (e) {
+      console.error(`${PRIMARY_MODEL} failed:`, e);
+      failures.push(classifyLlmError(e, "anthropic", PRIMARY_MODEL));
+    }
 
-  // Attempt 2: Haiku 4.5
-  try {
-    const text = await generateAnthropicText(
-      FALLBACK_MODEL,
-      30000,
-      options,
-      systemPrompt,
-      userPrompt,
-      deadline,
-      safetyLevel,
-      recordModerationRetry,
+    // Attempt 2: Haiku
+    try {
+      const text = await generateAnthropicText(
+        FALLBACK_MODEL,
+        30000,
+        options,
+        systemPrompt,
+        userPrompt,
+        deadline,
+        safetyLevel,
+        recordModerationRetry,
+        claudeToken,
+      );
+      return { text, model: FALLBACK_MODEL };
+    } catch (e) {
+      console.error(`${FALLBACK_MODEL} failed:`, e);
+      failures.push(classifyLlmError(e, "anthropic", FALLBACK_MODEL));
+    }
+  } else {
+    console.error(
+      "Claude skipped: no credential. Set CLAUDE_CODE_OAUTH_TOKEN.",
     );
-    return { text, model: FALLBACK_MODEL };
-  } catch (e) {
-    console.error(`${FALLBACK_MODEL} failed:`, e);
-    failures.push(classifyLlmError(e, "anthropic", FALLBACK_MODEL));
+    failures.push({
+      provider: "anthropic",
+      model: `${PRIMARY_MODEL}+${FALLBACK_MODEL}`,
+      code: "not_configured",
+      retryable: false,
+      message:
+        "Claude credentials are not configured; both Claude models skipped. Set CLAUDE_CODE_OAUTH_TOKEN.",
+    });
   }
 
   // Attempt 3: gpt-4o-mini
@@ -380,13 +401,8 @@ async function generateAnthropicText(
   deadline: number,
   initialSafetyLevel: number,
   onModerationRetry: (level: number) => void,
+  authToken: string,
 ): Promise<string> {
-  const authToken = claudeAuthToken();
-  if (!authToken) {
-    throw new ProviderNotConfiguredError(
-      "Claude credentials are not configured. Set CLAUDE_CODE_OAUTH_TOKEN.",
-    );
-  }
   const client = new Anthropic({ authToken });
 
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {

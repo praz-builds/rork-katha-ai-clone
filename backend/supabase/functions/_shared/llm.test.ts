@@ -8,6 +8,7 @@ import {
   classifyLlmError,
   CLAUDE_TOKEN_ENV_VARS,
   claudeAuthToken,
+  generateStoryText,
   openAIRequestShape,
   ProviderHttpError,
   ProviderNotConfiguredError,
@@ -415,4 +416,38 @@ Deno.test("a missing credential is not_configured and never retried", () => {
     !failure.status,
     "a credential that was never sent has no HTTP status",
   );
+});
+
+Deno.test("an unconfigured Claude records one failure, not one per model", async () => {
+  // Regression: the credential was previously checked inside the per-model
+  // helper, so the identical preflight threw on the Sonnet leg and again on
+  // the Haiku leg - two `not_configured` rows for a single deployment gap.
+  // An occurrence count read later would then show a recurrence that is not one.
+  const error = await withEnv(
+    { ...NO_CLAUDE_TOKENS, OPENAI_API_KEY: null },
+    async () => {
+      try {
+        await generateStoryText("system", "user");
+        return null;
+      } catch (e) {
+        return e;
+      }
+    },
+  );
+
+  assert(
+    error instanceof AllProvidersFailedError,
+    "no provider is configured, so the chain must fail",
+  );
+  const anthropic = error.failures.filter((f) => f.provider === "anthropic");
+  assertEquals(
+    anthropic.length,
+    1,
+    `expected a single Claude failure, got ${anthropic.length}: ` +
+      anthropic.map((f) => f.model).join(", "),
+  );
+  assertEquals(anthropic[0].code, "not_configured");
+  assertEquals(anthropic[0].retryable, false);
+  // The OpenAI leg still reports separately; it is a different provider.
+  assertEquals(error.failures.length, 2);
 });
