@@ -7,6 +7,88 @@
 
 ---
 
+## 2026-08-30 — Claude OAuth-token generation credential
+
+**Session:** Replaced the Console API-key credential for story generation with a Claude Code OAuth bearer token. Implementation originated with Codex; this session ported it onto current `main`, corrected two documentation errors, and added the test coverage.
+
+### Branch correction (the reason this is not Codex's diff)
+
+Codex authored its change on `codex/regenerate-cover-prompt-regressions`, which is based on `c14d3d4` — **four commits behind `main`** (PRs #30, #31, #32, #33). It therefore edited the pre-#33 `llm.ts`: 254 lines, `esm.sh/@anthropic-ai/sdk@0.30.1`, no `story_schema.ts`, no typed failures, no `editParagraph`. Landing that diff would have reverted PR #33 in full and dropped migrations `00009`-`00015` from version control.
+
+The credential change was re-applied to `main`'s 472-line `llm.ts` on a fresh branch. Codex's working tree was left untouched.
+
+Two documentation errors from the same staleness were corrected rather than carried forward:
+
+- Codex's note claiming migrations `00009`-`00015` are applied remotely **with no local file** is false — all fifteen are in version control on `main`. They were absent only from its stale checkout.
+- `AGENTS.md` did say "8 migrations: 00001-00008" while fifteen files existed. That line was stale on `main` (PR #32 added the files without updating it); it now reads `00001`-`00015` and directs agents to `supabase migration list` for the next free number.
+
+### Changes
+
+- `_shared/llm.ts`: `ANTHROPIC_API_KEY` removed. Credential resolves through `claudeAuthToken()` over `CLAUDE_CODE_OAUTH_TOKEN` -> `ANTHROPIC_AUTH_TOKEN` -> `CLAUDE_TOKEN`, first non-empty after trim. Passed to the SDK as `authToken`.
+- New `ProviderNotConfiguredError`, classified `not_configured` / non-retryable. Previously a missing credential fell to the `unknown` branch and was marked **retryable**, so the chain burned both Claude attempts on a deployment gap that no retry could fix.
+- Whitespace-only values are treated as absent — a secret set with a trailing newline is the common way a "configured" secret is in fact empty.
+
+### Verification
+
+- `deno check` clean: `_shared/llm.ts`, `generate-story/index.ts`, `continue-story/index.ts`.
+- `deno fmt --check` clean for `llm.ts` and `llm.test.ts`. Repo-wide it reports 6 unformatted files under `_shared/` — **pre-existing on `main`, which has 8**; this branch formatted the two files it touched and left the rest, so a credential change does not arrive carrying formatting churn. The remaining 6 are tracked debt, not a regression.
+- **119 Deno tests pass** (baseline on `main` measured at 113); 6 new, covering alias precedence, whitespace rejection, `not_configured` classification, and that a stray `ANTHROPIC_API_KEY` in the environment does **not** authenticate.
+- Fault-injected both directions: re-admitting `ANTHROPIC_API_KEY` to the name list and removing `.trim()` each fail the intended test and only that test. The tests are not vacuous.
+- SDK bearer transport confirmed by reading `@anthropic-ai/sdk@0.122.0` source: `authToken` produces `Authorization: Bearer <token>`; `apiKey` produces `x-api-key`. Not interchangeable.
+
+### Not verified
+
+**No end-to-end run against Claude.** `CLAUDE_CODE_OAUTH_TOKEN` is not set in Supabase secrets, so the Claude leg has still never executed in this project — with any credential. Whether the Anthropic API accepts a Claude Code OAuth token on `/v1/messages` via plain bearer, without additional headers, is untested here and must not be assumed. No production smoke run was performed, so no `error_events` rows were written this session.
+
+### Deployment correction (production was serving a stale build)
+
+`generate-story` and `continue-story` had been deployed on 2026-08-29 20:58 UTC from the stale `c14d3d4`-based tree, so **683 lines of merged generation fixes from PRs #30, #32 and #33 were on `main` but not live** — `story_schema.ts` did not exist in that build at all, meaning no schema enforcement and the old 4096-token ceiling, which is the root of the intermittent misparse.
+
+Both were redeployed from `origin/main` (`10ecaa8`) on 2026-08-30. Verified: `generate-story` v16 -> v17 (`7fa2e09e` -> `b911ca26`), `continue-story` v19 -> v20 (`9256927a` -> `6cfcf986`), and the upload manifest lists `_shared/story_schema.ts` for both.
+
+### Edge function inventory is not what the ROADMAP claimed
+
+`supabase functions list` shows **7 deployed, not 10**. The ROADMAP checkbox asserting "10 edge functions deployed and ACTIVE" was ticked against a state that has never held; it is now unticked with the real inventory.
+
+| | Functions |
+|---|---|
+| Deployed (7) | `adapty-webhook`, `continue-story`, `deduct-credit`, `feedback`, `generate-story`, `grant-credit`, `library` |
+| **Never deployed (5)** | `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story` |
+
+`expo/src/lib/api.ts` calls `edit-story` (line 518) and `publish-story` (line 555), so the Create Studio edit and publish paths reach functions that do not exist in the project. `publish-story` also writes to the `covers` bucket, which does exist (see below), so deploying it is the only thing standing between the current state and a working publish path.
+
+Not deployed in this session: the five above are a separate decision, and `publish-story` spends money on cover generation the moment it succeeds.
+
+### Review round 1 (CodeRabbit)
+
+- **Major, valid, fixed.** The credential was checked inside the per-model helper, so an unconfigured Claude threw the identical preflight on the Sonnet leg and again on the Haiku leg — two `not_configured` rows for one deployment gap, which inflates any occurrence count a recurrence check later reads. The check is hoisted ahead of both legs; one failure is recorded and the chain continues to OpenAI. Regression test added and fault-injected (restoring the duplicate makes it fail with `got 2`).
+- **Minor, valid, fixed.** `ROADMAP.md` still recorded the dated `claude-haiku-4-5-20251001` as applied, contradicting `AGENTS.md`. Now the canonical undated id.
+- **Minor, not applied.** CodeRabbit read the `2026-08-30` headings as future-dated against a review date of 2026-08-29. The dates are correct in the repo's local timezone (IST, UTC+5:30) — the redeploy recorded above ran at 2026-08-29 23:37 UTC, which is 2026-08-30 05:07 local — and the preceding entry already uses local dates. Changing them would make this entry inconsistent with the rest of the log.
+
+### Review round 2 (CodeRabbit) — a real credential leak
+
+- **Security, Major, valid, fixed.** `new Anthropic({ authToken })` does **not** disable API-key auth. Confirmed in `@anthropic-ai/sdk@0.122.0` source: the constructor runs `if (apiKey === undefined) apiKey = readEnv("ANTHROPIC_API_KEY") ?? null`, and `authHeaders()` returns `[apiKeyAuth(), bearerAuth()]`. A stale `ANTHROPIC_API_KEY` in Supabase secrets would therefore be sent as `X-Api-Key` **alongside** the bearer token, and could authenticate and bill traffic this project believes runs on OAuth.
+
+  This also made the claim in the previous commit — that `ANTHROPIC_API_KEY` "is no longer read anywhere in this codebase" — **false**. The resolver ignored the name; the SDK did not. Client construction moved into `createClaudeClient()` with `apiKey: null` pinned, and `AGENTS.md` corrected.
+
+  The earlier unit test only proved the *resolver* ignored the variable, which is why it passed while the wire was still leaking. The new test asserts the outgoing headers through an injected `fetch`: `X-Api-Key` absent, `Authorization: Bearer` present, with `ANTHROPIC_API_KEY` set in the environment. Fault-injected — removing `apiKey: null` fails it.
+
+- **Data integrity, Major, valid.** The redeploy recorded above was from `origin/main` at `10ecaa8`, which does **not** contain the OAuth resolver. Setting `CLAUDE_CODE_OAUTH_TOKEN` alone will not activate it. `generate-story` and `continue-story` must be redeployed **after this PR merges**; tracked in Open below.
+
+- **Minor, valid, fixed.** `ROADMAP.md` line 41 contained a raw `LegacyProjectNotLinkedError` JSON payload where the evidence should have been. Self-inflicted: an unquoted shell heredoc executed the backtick-quoted `supabase functions list` as a command substitution and pasted its error into the document. The inventory itself was gathered from a linked run and is correct; only the citation was corrupt.
+
+### Storage buckets verified, not assumed
+
+`AGENTS.md` and `ROADMAP.md` both said the `covers` bucket **needs creation**. It has existed since 2026-08-25: public read, 5 MB limit, `image/png` / `image/jpeg` / `image/webp`, confirmed against the storage API. Three stale checkboxes corrected.
+
+### Open
+
+1. **Redeploy `generate-story` and `continue-story` after this PR merges.** The current deployment is from `10ecaa8` and has no OAuth resolver, so setting the secret alone changes nothing.
+2. Set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`, not interactive login) and treat the first run as the real verification.
+3. **Entitlement question:** the token authenticates a Claude subscription, a developer-tool entitlement separate from the metered API. Serving end-user generation from it should be confirmed with Anthropic before production traffic.
+4. Until (2), every generation silently falls through to `gpt-4o-mini`. It does not fail — it gets quietly worse. Watch `error_event_summary` for `not_configured`.
+5. `_shared/errors.ts`, `errors_test.ts` and `00016_error_events.sql` remain uncommitted in the working tree, along with the Observability Gate section Codex drafted for `AGENTS.md`. They are a coherent unit and belong in their own PR; documenting a helper this repo does not yet contain would be worse than leaving both out.
+
 ## 2026-08-30 — LLM layer: correct model IDs, enforced output schema, typed failures
 
 **Session:** Repaired the Anthropic path, which has never run. Every generation in the previous session's smoke tests reached `gpt-4o-mini`, the third-choice fallback — the absent `ANTHROPIC_API_KEY` alone accounts for that, and the model IDs were separately found to be non-canonical.
@@ -38,6 +120,8 @@ Secrets are now read lazily rather than at module load, so importing `llm.ts` is
 ### Credential status
 
 `ANTHROPIC_API_KEY` remains unset. A `sk-ant-oat01-` OAuth access token was offered and declined: it is minted by `claude` CLI login against a Claude subscription, expires within hours, and subscription auth is not licensed to serve end-user traffic. An API key from console.anthropic.com (`sk-ant-api03-`) is required. Documented in `AGENTS.md`.
+
+> **Superseded 2026-08-30** by the entry below. The project moved to an OAuth bearer token (`CLAUDE_CODE_OAUTH_TOKEN`) and no longer reads `ANTHROPIC_API_KEY`. The reasoning above still holds for the *short-lived* token minted by interactive `claude` login; it does not apply to the long-lived `claude setup-token` form. The entitlement question it raises remains open.
 
 **Not yet verified against Claude.** The smoke suite has only ever run through the OpenAI fallback. The model IDs, schema enforcement and token ceiling are correct by construction and unit-tested, but the Anthropic path has not executed once. First run after the key is set should be treated as the real verification.
 

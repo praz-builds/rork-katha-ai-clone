@@ -12,11 +12,11 @@
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
-All bug fixes applied, 15 migrations (00001-00015) applied to the linked project, 10 edge functions deployed and ACTIVE.
+All bug fixes applied, 15 migrations (00001-00015) applied to the linked project. **7 of 12 edge functions are deployed** — verified against `supabase functions list` on 2026-08-30.
 
 ### Remaining Verification
 
-- [ ] Set secret: `ANTHROPIC_API_KEY` — must be an API key from console.anthropic.com (`sk-ant-api03-`). A `sk-ant-oat01-` CLI/OAuth token expires within hours and is not licensed for end-user traffic. Until this is set, every generation falls through to the `gpt-4o-mini` fallback.
+- [ ] Set secret: `CLAUDE_CODE_OAUTH_TOKEN` — a long-lived Claude Code OAuth token from `claude setup-token`, **not** the short-lived token from interactive `claude` login, which expires within hours. Until this is set, every generation silently falls through to the `gpt-4o-mini` fallback rather than failing. See the Credential requirement in `AGENTS.md` for the two open caveats (untested end to end; subscription-entitlement question).
 - [ ] Add production Expo web origin to `ALLOWED_ORIGINS` before production browser traffic
 - [x] Test user created and exercised via the smoke-test harness (`backend/scripts/smoke-series-generation.py`)
 - [x] `generate-story` called end-to-end with credit deduction + story insert verified (smoke harness: 57 assertions across 11 groups)
@@ -38,11 +38,13 @@ All bug fixes applied, 15 migrations (00001-00015) applied to the linked project
 - [x] Migration 00014 applied (re-applies the 00008 taxonomy columns, which were recorded as applied but never ran)
 - [x] Migration 00015 applied (narrows the authenticated UPDATE grant on `stories` to title/topic/cover_image_url/is_public; a table-level grant cannot be narrowed by a column REVOKE)
 - [ ] Profile creation on signup — build with the signup flow; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted
-- [x] 10 edge functions deployed and ACTIVE
+- [ ] Deploy the remaining edge functions. **This was previously ticked claiming "10 deployed and ACTIVE"; `supabase functions list` against project `iafeuxgoiknncgyjmugd` returns 7.** Deployed: `adapty-webhook`, `continue-story`, `deduct-credit`, `feedback`, `generate-story`, `grant-credit`, `library`. Never deployed: `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story`.
+  - `edit-story` and `publish-story` are called by `expo/src/lib/api.ts` (lines 518, 555), so the Create Studio edit and publish paths currently reach a function that does not exist.
+  - `publish-story` also needs the `covers` storage bucket, which **does exist** (created 2026-08-25: public read, 5 MB limit, png/jpeg/webp).
 - [x] `generate-story` and `continue-story` redeployed for series state hardening (2026-08-29)
 - [x] `generate-story` double-deduct fix
 - [x] `_shared/credits.ts` replaced with atomic RPCs (`deduct_credit`, `grant_credit`) using `FOR UPDATE` locking
-- [x] `_shared/llm.ts` Haiku model ID updated to `claude-haiku-4-5-20251001`
+- [x] `_shared/llm.ts` Haiku model ID is the canonical undated `claude-haiku-4-5` (the dated `claude-haiku-4-5-20251001` form recorded here previously was superseded in PR #33)
 - [x] System prompt loaded from `_shared/prompts.ts`
 - [x] `::date` immutability bugs fixed in migrations 00001 and 00003
 - [x] Local CORS configured: `ALLOWED_ORIGINS=http://localhost:8090`
@@ -55,7 +57,7 @@ All bug fixes applied, 15 migrations (00001-00015) applied to the linked project
 
 **Goal:** Every generated story gets a cover image + audio narration.
 
-### Cover Image Generation (code done, storage pending)
+### Cover Image Generation (code and storage done; `publish-story` not deployed)
 
 Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full reference: `COVER_IMAGES.md`.
 
@@ -65,7 +67,7 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 - [x] Retry logic: 3 attempts with progressive prompt simplification on moderation rejection
 - [x] Upload to Supabase Storage bucket `covers/{story_id}/cover.png`
 - [x] Centered composition required so center-crop works for all display sizes
-- [ ] **Create Supabase Storage bucket `covers`** (public read, service role upload)
+- [x] Supabase Storage bucket `covers` created (public read, 5 MB limit, png/jpeg/webp) — verified against the storage API on 2026-08-30
 
 ### Audio Narration (English done, Spanish pending)
 
@@ -92,8 +94,8 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 ### Storage & CORS
 
 - [x] Created Supabase Storage bucket `audio` (public read, service role upload)
-- [ ] Create Supabase Storage bucket `covers` (public read, service role upload)
-- [ ] Set appropriate size limits on both buckets
+- [x] Supabase Storage bucket `covers` created (public read, service role upload) — verified 2026-08-30
+- [ ] Set a size limit on the `audio` bucket (`covers` is capped at 5 MB; `audio` has no limit)
 - [ ] Configure Supabase Storage bucket CORS for production media access
 
 ---

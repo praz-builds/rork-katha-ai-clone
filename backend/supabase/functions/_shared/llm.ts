@@ -11,7 +11,64 @@ import {
  * test suite then needs --allow-env just to reference a type, and a missing
  * secret fails at import rather than at the call that needs it.
  */
-const anthropicKey = () => Deno.env.get("ANTHROPIC_API_KEY");
+
+/**
+ * Claude auth here is an OAuth bearer token, not a Console API key.
+ *
+ * `CLAUDE_CODE_OAUTH_TOKEN` is canonical; `ANTHROPIC_AUTH_TOKEN` and
+ * `CLAUDE_TOKEN` are accepted so a runtime already carrying either name keeps
+ * working without a redeploy. First non-empty wins, in that order.
+ *
+ * The value goes to the SDK as `authToken`, which sends
+ * `Authorization: Bearer <token>`. An API key instead travels in `x-api-key`,
+ * so the two are not interchangeable and must not be conflated.
+ */
+export const CLAUDE_TOKEN_ENV_VARS = [
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_AUTH_TOKEN",
+  "CLAUDE_TOKEN",
+] as const;
+
+/**
+ * Builds the Claude client with API-key auth explicitly disabled.
+ *
+ * `apiKey: null` is load-bearing, not defensive noise. The SDK constructor
+ * defaults an omitted `apiKey` to `readEnv("ANTHROPIC_API_KEY")`, and
+ * `authHeaders()` returns `[apiKeyAuth(), bearerAuth()]` — so passing only
+ * `authToken` while a leftover `ANTHROPIC_API_KEY` sits in the environment
+ * sends BOTH `X-Api-Key` and `Authorization`, and the Console key can bill
+ * and authenticate traffic this project believes is running on OAuth.
+ *
+ * `fetchImpl` exists so a test can assert the outgoing headers directly.
+ */
+export function createClaudeClient(
+  authToken: string,
+  fetchImpl?: typeof fetch,
+): Anthropic {
+  return new Anthropic({
+    authToken,
+    apiKey: null,
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+/**
+ * Resolves the Claude OAuth bearer token from the environment.
+ *
+ * Returns the first non-empty value across {@link CLAUDE_TOKEN_ENV_VARS},
+ * trimmed. Whitespace-only counts as absent: a secret set with a trailing
+ * newline is the usual way a "configured" secret is in fact empty.
+ *
+ * @returns the token, or `undefined` when no credential is configured.
+ */
+export function claudeAuthToken(): string | undefined {
+  for (const name of CLAUDE_TOKEN_ENV_VARS) {
+    const value = Deno.env.get(name)?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 const openaiKey = () => Deno.env.get("OPENAI_API_KEY");
 const GENERATION_DEADLINE_MS = 120_000;
 
@@ -59,6 +116,21 @@ export interface LlmFailure {
 }
 
 /** A non-2xx provider response, carrying the status through to classification. */
+/**
+ * Raised when a provider has no credential configured at all.
+ *
+ * Distinct from an auth failure: nothing was sent, so this is a deployment
+ * gap rather than a rejected token, and it must never be retried. The OpenAI
+ * leg reports the same `not_configured` code without throwing, because it is
+ * the last link in the chain and has nothing to fall through to.
+ */
+export class ProviderNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderNotConfiguredError";
+  }
+}
+
 export class ProviderHttpError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -114,6 +186,9 @@ export function classifyLlmError(
     (error instanceof Error && error.name === "AbortError")
   ) {
     return { ...base, code: "timeout", retryable: true };
+  }
+  if (error instanceof ProviderNotConfiguredError) {
+    return { ...base, code: "not_configured", retryable: false };
   }
   if (error instanceof ProviderHttpError) {
     return {
@@ -219,6 +294,16 @@ export interface ChainOptions {
   deadlineMs: number;
 }
 
+/**
+ * Tries each provider in order and returns the first success.
+ *
+ * Sonnet, then Haiku, then gpt-4o-mini. Both Claude legs are skipped as a
+ * unit when no credential is configured, recording one `not_configured`
+ * failure rather than one per model.
+ *
+ * @throws {AllProvidersFailedError} with the per-provider failure list when
+ * every attempt fails, so the caller can refund the credit and log context.
+ */
 async function runProviderChain(
   systemPrompt: string,
   userPrompt: string,
@@ -230,40 +315,61 @@ async function runProviderChain(
   const recordModerationRetry = (level: number) => {
     safetyLevel = Math.max(safetyLevel, level);
   };
-  // Attempt 1: Sonnet 4.6
-  try {
-    const text = await generateAnthropicText(
-      PRIMARY_MODEL,
-      60000,
-      options,
-      systemPrompt,
-      userPrompt,
-      deadline,
-      safetyLevel,
-      recordModerationRetry,
-    );
-    return { text, model: PRIMARY_MODEL };
-  } catch (e) {
-    console.error(`${PRIMARY_MODEL} failed:`, e);
-    failures.push(classifyLlmError(e, "anthropic", PRIMARY_MODEL));
-  }
+  // The credential is resolved once, ahead of both Claude legs. Checking it
+  // per-leg would throw the identical preflight error twice and write two
+  // `not_configured` rows for a single deployment gap - inflating any
+  // occurrence count that a recurrence check later reads.
+  const claudeToken = claudeAuthToken();
+  if (claudeToken) {
+    // Attempt 1: Sonnet
+    try {
+      const text = await generateAnthropicText(
+        PRIMARY_MODEL,
+        60000,
+        options,
+        systemPrompt,
+        userPrompt,
+        deadline,
+        safetyLevel,
+        recordModerationRetry,
+        claudeToken,
+      );
+      return { text, model: PRIMARY_MODEL };
+    } catch (e) {
+      console.error(`${PRIMARY_MODEL} failed:`, e);
+      failures.push(classifyLlmError(e, "anthropic", PRIMARY_MODEL));
+    }
 
-  // Attempt 2: Haiku 4.5
-  try {
-    const text = await generateAnthropicText(
-      FALLBACK_MODEL,
-      30000,
-      options,
-      systemPrompt,
-      userPrompt,
-      deadline,
-      safetyLevel,
-      recordModerationRetry,
+    // Attempt 2: Haiku
+    try {
+      const text = await generateAnthropicText(
+        FALLBACK_MODEL,
+        30000,
+        options,
+        systemPrompt,
+        userPrompt,
+        deadline,
+        safetyLevel,
+        recordModerationRetry,
+        claudeToken,
+      );
+      return { text, model: FALLBACK_MODEL };
+    } catch (e) {
+      console.error(`${FALLBACK_MODEL} failed:`, e);
+      failures.push(classifyLlmError(e, "anthropic", FALLBACK_MODEL));
+    }
+  } else {
+    console.error(
+      "Claude skipped: no credential. Set CLAUDE_CODE_OAUTH_TOKEN.",
     );
-    return { text, model: FALLBACK_MODEL };
-  } catch (e) {
-    console.error(`${FALLBACK_MODEL} failed:`, e);
-    failures.push(classifyLlmError(e, "anthropic", FALLBACK_MODEL));
+    failures.push({
+      provider: "anthropic",
+      model: `${PRIMARY_MODEL}+${FALLBACK_MODEL}`,
+      code: "not_configured",
+      retryable: false,
+      message:
+        "Claude credentials are not configured; both Claude models skipped. Set CLAUDE_CODE_OAUTH_TOKEN.",
+    });
   }
 
   // Attempt 3: gpt-4o-mini
@@ -328,6 +434,18 @@ async function runProviderChain(
   throw new AllProvidersFailedError(failures);
 }
 
+/**
+ * Runs one Claude model attempt, retrying only on moderation refusals.
+ *
+ * The caller resolves the credential and passes it in, so this never reads
+ * the environment and there is a single resolution point per chain run.
+ *
+ * @param authToken OAuth bearer token; see {@link createClaudeClient}.
+ * @param onModerationRetry raises the shared safety level so a later
+ * provider in the chain starts at the softened prompt rather than
+ * rediscovering the refusal.
+ * @throws the provider error unmodified, for {@link classifyLlmError}.
+ */
 async function generateAnthropicText(
   model: string,
   timeoutMs: number,
@@ -337,10 +455,9 @@ async function generateAnthropicText(
   deadline: number,
   initialSafetyLevel: number,
   onModerationRetry: (level: number) => void,
+  authToken: string,
 ): Promise<string> {
-  const apiKey = anthropicKey();
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
-  const client = new Anthropic({ apiKey });
+  const client = createClaudeClient(authToken);
 
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
     try {
@@ -460,7 +577,8 @@ async function withAbortTimeout<T>(
   const timer = setTimeout(
     // A DOMException named AbortError is what fetch and the SDK both surface,
     // so classifyLlmError can recognise a timeout rather than guessing.
-    () => controller.abort(new DOMException(`Timeout after ${ms}ms`, "AbortError")),
+    () =>
+      controller.abort(new DOMException(`Timeout after ${ms}ms`, "AbortError")),
     ms,
   );
 
