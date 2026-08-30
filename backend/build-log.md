@@ -7,6 +7,28 @@
 
 ---
 
+## 2026-08-30 — Home feed and publishing were both structurally broken
+
+**Session:** Deploying the five never-deployed functions exposed two client-facing paths that could not have worked. Found by a new smoke suite, not by reading the code.
+
+### `feed` returned HTTP 500 on every authenticated call
+
+`feed/index.ts` selects `profiles.onboarding_purpose, preferred_genres`. **`preferred_genres` was never created.** PostgREST answered `42703 column profiles.preferred_genres does not exist`, the function threw, and the Home tab got a 500 every time.
+
+Same class as migration `00008`: code shipped against a column that only existed in someone's head. Migration `00017` adds it — `text[] not null default '{}'`, additive and safe on a live table — rather than deleting the personalisation the feed was written to use.
+
+### `publish-story` could never succeed
+
+It required at least one chapter with `is_published = true`, then published the story. **Nothing in the codebase ever sets `is_published`.** Not `generate-story`, not `continue-story`, and there is no chapter-level publish endpoint. `expo/src/lib/api.ts` calls `publishStory(storyId)` with a story id and nothing else, so the gate was unsatisfiable and publishing returned 400 forever.
+
+The gate now requires a chapter to *exist*, and publishing a story publishes its chapters — which is what the single Create Studio action means. Chapters are published before the story row, so the feed can never list a story whose chapter-count query returns zero.
+
+### Why neither was caught
+
+Both functions had **never been deployed**. Nothing exercised them, and the CI typecheck gate would not have found either — one is a missing database column, the other a logic gap. `backend/scripts/smoke-app-surface.py` now covers library, feed, edit-story, publish-story and audio-status against the deployed project.
+
+---
+
 ## 2026-08-30 — Full backend deployment: 12 functions live
 
 **Session:** Brought the deployed project up to `main` and fixed the one function that could not pass the typecheck gate.
