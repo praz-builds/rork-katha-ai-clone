@@ -132,7 +132,7 @@ async function buildNewUserFeed(
     await serviceClient
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
+        "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(username)",
         { count: "planned" },
       )
       .eq("is_curated", true)
@@ -167,7 +167,7 @@ async function buildNewUserFeed(
   let fillQuery = serviceClient
     .from("stories")
     .select(
-      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
+      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(username)",
       { count: "planned" },
     )
     .eq("is_public", true)
@@ -246,7 +246,7 @@ async function buildReturningUserFeed(
   let candidateQuery = serviceClient
     .from("stories")
     .select(
-      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
+      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(username)",
       { count: "planned" },
     )
     .or("is_public.eq.true,is_curated.eq.true")
@@ -355,7 +355,7 @@ async function buildContinueReading(
   const { data: stories, error: storiesError } = await serviceClient
     .from("stories")
     .select(
-      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(display_name)",
+      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(username)",
     )
     .in("id", storyIds)
     .eq("status", "complete")
@@ -409,7 +409,9 @@ function flattenAuthor(
       | Record<string, unknown>
       | null
       | undefined;
-    const authorDisplayName = profiles?.display_name ?? null;
+    // The column is `username`; `display_name` has never existed on profiles.
+    // The response field keeps its name so the client contract is unchanged.
+    const authorDisplayName = profiles?.username ?? null;
     const { profiles: _omit, ...rest } = s;
     return { ...rest, author_display_name: authorDisplayName };
   });

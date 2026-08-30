@@ -7,6 +7,30 @@
 
 ---
 
+## 2026-08-30 — `feed` second missing column, and the cover pipeline is not on main
+
+**Session:** Re-running the app-surface smoke after migration `00017` showed `feed` still returning 500. The `preferred_genres` fix was necessary but not sufficient.
+
+### `profiles.display_name` has never existed
+
+All four story queries in `feed` select `profiles!stories_author_id_fkey(display_name)`, and the mapper reads `profiles?.display_name`. The column on `profiles` is **`username`**:
+
+```
+{"code":"42703","message":"column profiles_1.display_name does not exist"}
+```
+
+`display_name` appears nowhere else in the repository — not in another function, not in `expo/src`, not in any migration. It was never a column; it was a guess. Switched all four selects and the mapper to `username`, keeping the response field `author_display_name` so the client contract is unchanged.
+
+Two missing columns in one function is the same failure mode as `00008`, and it is worth naming: **a query is not verified by a typecheck.** `deno check` passes on a `.select()` string that names a column that does not exist, because the string is just a string. Only running it against the database finds these.
+
+### The publish -> cover pipeline is not on `main`
+
+`AGENTS.md` documents `publish-story -> generateCoverImage() -> Supabase Storage`. On `main`, **`generateCoverImage` has no caller at all** — the wiring lives in the uncommitted `regenerate-cover` work in the working tree. Publishing therefore succeeds and leaves `cover_image_url` empty.
+
+Not a regression and not fixed here, because fixing it would collide with that in-flight branch. The smoke suite reports it as `[PENDING]` rather than a pass or a failure, so it cannot be mistaken for done.
+
+---
+
 ## 2026-08-30 — Home feed and publishing were both structurally broken
 
 **Session:** Deploying the five never-deployed functions exposed two client-facing paths that could not have worked. Found by a new smoke suite, not by reading the code.
