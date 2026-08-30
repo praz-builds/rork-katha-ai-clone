@@ -315,6 +315,13 @@ Deno.test("HookType is derived, so the union cannot drift from the values", () =
 // the regression is invisible until someone reads a bill.
 // ---------------------------------------------------------------------------
 
+/**
+ * Runs `fn` with the given environment variables applied, then restores them.
+ *
+ * A `null` value deletes the variable. Restoration runs in a `finally`, so a
+ * failing assertion cannot leak a credential name into a later test and make
+ * the suite order-dependent.
+ */
 function withEnv<T>(vars: Record<string, string | null>, fn: () => T): T {
   const saved = new Map<string, string | undefined>();
   for (const name of Object.keys(vars)) {

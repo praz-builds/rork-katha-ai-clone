@@ -52,6 +52,15 @@ export function createClaudeClient(
   });
 }
 
+/**
+ * Resolves the Claude OAuth bearer token from the environment.
+ *
+ * Returns the first non-empty value across {@link CLAUDE_TOKEN_ENV_VARS},
+ * trimmed. Whitespace-only counts as absent: a secret set with a trailing
+ * newline is the usual way a "configured" secret is in fact empty.
+ *
+ * @returns the token, or `undefined` when no credential is configured.
+ */
 export function claudeAuthToken(): string | undefined {
   for (const name of CLAUDE_TOKEN_ENV_VARS) {
     const value = Deno.env.get(name)?.trim();
@@ -285,6 +294,16 @@ export interface ChainOptions {
   deadlineMs: number;
 }
 
+/**
+ * Tries each provider in order and returns the first success.
+ *
+ * Sonnet, then Haiku, then gpt-4o-mini. Both Claude legs are skipped as a
+ * unit when no credential is configured, recording one `not_configured`
+ * failure rather than one per model.
+ *
+ * @throws {AllProvidersFailedError} with the per-provider failure list when
+ * every attempt fails, so the caller can refund the credit and log context.
+ */
 async function runProviderChain(
   systemPrompt: string,
   userPrompt: string,
@@ -415,6 +434,18 @@ async function runProviderChain(
   throw new AllProvidersFailedError(failures);
 }
 
+/**
+ * Runs one Claude model attempt, retrying only on moderation refusals.
+ *
+ * The caller resolves the credential and passes it in, so this never reads
+ * the environment and there is a single resolution point per chain run.
+ *
+ * @param authToken OAuth bearer token; see {@link createClaudeClient}.
+ * @param onModerationRetry raises the shared safety level so a later
+ * provider in the chain starts at the softened prompt rather than
+ * rediscovering the refusal.
+ * @throws the provider error unmodified, for {@link classifyLlmError}.
+ */
 async function generateAnthropicText(
   model: string,
   timeoutMs: number,
