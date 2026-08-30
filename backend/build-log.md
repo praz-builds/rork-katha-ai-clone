@@ -7,6 +7,28 @@
 
 ---
 
+## 2026-08-30 — Full backend deployment: 12 functions live
+
+**Session:** Brought the deployed project up to `main` and fixed the one function that could not pass the typecheck gate.
+
+### `feed` did not typecheck
+
+`feed/index.ts` annotated four parameters as `ReturnType<typeof createClient>`. That resolves the generic **defaults** (`schema: never`), not the instantiation `createClient(url, key)` actually returns (`schema: "public"`), so every call site failed `deno check` with TS2345. It was never caught because `feed` had never been deployed and the CI gate runs on the Expo workspace, not on the Deno functions.
+
+Replaced with a `ServiceClient` alias derived from a real call, so the type tracks `createClient` rather than restating it.
+
+### CI now covers the Deno workspace
+
+The typecheck gate only ever ran on `expo/`, which is why four TS2345 errors in `feed` survived to `main`. A second CI job typechecks **every** `backend/supabase/functions/*/index.ts` by glob — so a new function is covered the day it lands rather than when someone remembers to add it — then runs the shared Deno test suite and a format check. Raised in review on PR #35.
+
+### Deployment
+
+All 12 edge functions deployed from `main`. Five had **never** been deployed: `audio-status`, `edit-story`, `feed`, `generate-audio`, `publish-story` — two of which (`edit-story`, `publish-story`) are called by `expo/src/lib/api.ts`, so the Create Studio edit and publish paths had been reaching functions that did not exist.
+
+`generate-story` and `continue-story` were redeployed again after PR #34 merged, since the earlier redeploy in this log predates the OAuth resolver.
+
+---
+
 ## 2026-08-30 — Claude OAuth-token generation credential
 
 **Session:** Replaced the Console API-key credential for story generation with a Claude Code OAuth bearer token. Implementation originated with Codex; this session ported it onto current `main`, corrected two documentation errors, and added the test coverage.

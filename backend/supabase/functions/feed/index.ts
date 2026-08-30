@@ -1,5 +1,15 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+/**
+ * The client type as `createClient(url, key)` actually instantiates it.
+ *
+ * `ServiceClient` resolves the *generic defaults* instead
+ * (`schema: never`), which is not assignable from a real call and fails
+ * `deno check` at every call site.
+ */
+type ServiceClient = ReturnType<typeof makeServiceClient>;
+const makeServiceClient = (url: string, key: string) => createClient(url, key);
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 
 const MAX_PAGE = 500;
@@ -113,7 +123,7 @@ serve(async (req) => {
 // ---------------------------------------------------------------------------
 
 async function buildNewUserFeed(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: ServiceClient,
   limit: number,
   offset: number,
 ): Promise<{ feed: unknown[]; total: number }> {
@@ -191,7 +201,7 @@ interface ScoredStory {
 }
 
 async function buildReturningUserFeed(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: ServiceClient,
   userId: string,
   preferredGenres: string[],
   limit: number,
@@ -324,7 +334,7 @@ async function buildReturningUserFeed(
 // ---------------------------------------------------------------------------
 
 async function buildContinueReading(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: ServiceClient,
   userId: string,
 ): Promise<unknown[]> {
   // Stories the user has read at least one chapter of
