@@ -55,9 +55,9 @@ export interface OpenAIModelSpec {
 
 export const OPENAI_MODELS: readonly OpenAIModelSpec[] = [
   { model: "gpt-5.6-luna", reasoning: true },
-  // Interim while Luna is unentitled: a generation ahead of gpt-4o-mini at
-  // ~3x its cost (~$0.006 vs ~$0.002 per story). Luna is both cheaper and
-  // better than this once granted, so this position is not the destination.
+  // Added while Luna was unentitled, kept as the second tier now that it is
+  // not. Luna is both cheaper and better (~$0.004 vs ~$0.006 per story), so
+  // in the normal case this position costs nothing and is pure redundancy.
   { model: "gpt-5-mini", reasoning: true },
   // The safety net. Not gated behind any entitlement, so it always answers.
   { model: "gpt-4o-mini", reasoning: false },
