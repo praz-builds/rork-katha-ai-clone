@@ -73,7 +73,7 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 
 ### LLM Fallback Chain
 
-Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> `gpt-4o-mini` -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. OpenRouter currently handles fallback traffic until Gemini quota or billing is resolved.
+Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> `gpt-4o-mini` -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. As of 2026-08-31 both preferred positions are blocked upstream — Gemini returns `429 RESOURCE_EXHAUSTED` and the pinned OpenRouter model returns `402 Insufficient credits` — so `gpt-4o-mini` is the provider actually serving generation, and `openrouter/free` is the last resort behind it.
 
 **Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
 
@@ -113,7 +113,7 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015` and `00017`-`00023` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015`, `00017`-`00023` and `00025` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 ### Key Tables
 
@@ -128,6 +128,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has migrations `0
 | **00021 (Observability summary)** | One summary row per error fingerprint |
 | **00022 (Observability validation)** | Separate validation for the `error_events.user_id` foreign key |
 | **00023 (Observability retention)** | Detaches `error_events.user_id` from `profiles` so profile deletion cannot mutate, delete, or be blocked by telemetry |
+| **00025 (Observability erasure)** | Nulls `error_events.user_id` on profile deletion, plus on-demand erasure and a 90-day retention backstop (service role only) |
 | **Not yet created** | `device_tokens` (Phase G -- FCM/APNs token storage) |
 
 ### Credit Ledger Pattern

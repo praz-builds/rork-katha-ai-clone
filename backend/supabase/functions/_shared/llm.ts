@@ -113,6 +113,21 @@ export class ProviderMalformedResponseError extends Error {
   }
 }
 
+/**
+ * A provider refused the prompt or its own output on content-policy grounds.
+ *
+ * Distinct from a malformed response: softening retries have already been spent,
+ * so retrying the same prompt against the same provider will be refused again.
+ * `isModerationRejection` still matches it by message, so the retry ladder in
+ * each generator keeps working unchanged.
+ */
+export class ProviderModerationRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderModerationRejectedError";
+  }
+}
+
 export class AllProvidersFailedError extends Error {
   constructor(readonly failures: LlmFailure[]) {
     super(
@@ -164,6 +179,9 @@ export function classifyLlmError(
         error.status === 409 || error.status === 429,
     };
   }
+  if (error instanceof ProviderModerationRejectedError) {
+    return { ...base, code: "moderation_blocked", retryable: false };
+  }
   if (error instanceof ProviderMalformedResponseError) {
     return { ...base, code: "malformed_response", retryable: true };
   }
@@ -172,8 +190,11 @@ export function classifyLlmError(
 
 /**
  * Generate story text with a fallback chain:
- * Gemini 3.1 Pro Preview (70s) -> OpenRouter Free Router (30s) ->
- * gpt-4o-mini (30s).
+ * gemini-3.1-pro-preview -> OpenRouter google/gemini-2.5-flash (pinned, priced)
+ * -> gpt-4o-mini -> openrouter/free (last resort only).
+ *
+ * Each phase is additionally capped at a cumulative fraction of `deadlineMs`
+ * (`PHASE_END_SHARE`), so one slow provider cannot starve the rest of the chain.
  *
  * Every attempt is schema-constrained where the provider supports it, so a
  * success should parse as the story JSON object. On total failure this throws
@@ -475,7 +496,9 @@ async function generateGeminiText(
     }
   }
 
-  throw new Error("Gemini moderation retries exhausted");
+  throw new ProviderModerationRejectedError(
+    "Gemini moderation retries exhausted",
+  );
 }
 
 async function generateOpenRouterText(
@@ -527,7 +550,9 @@ async function generateOpenRouterText(
     }
   }
 
-  throw new Error("OpenRouter moderation retries exhausted");
+  throw new ProviderModerationRejectedError(
+    "OpenRouter moderation retries exhausted",
+  );
 }
 
 async function generateOpenAIText(
@@ -570,7 +595,9 @@ async function generateOpenAIText(
     }
   }
 
-  throw new Error("OpenAI moderation retries exhausted");
+  throw new ProviderModerationRejectedError(
+    "OpenAI moderation retries exhausted",
+  );
 }
 
 async function chatCompletionRequest(input: {
@@ -671,7 +698,9 @@ function geminiContent(payload: unknown): string {
   if (promptFeedback && typeof promptFeedback === "object") {
     const blockReason = (promptFeedback as Record<string, unknown>).blockReason;
     if (typeof blockReason === "string" && blockReason.trim().length > 0) {
-      throw new Error(`Gemini moderation rejection: ${blockReason}`);
+      throw new ProviderModerationRejectedError(
+        `Gemini moderation rejection: ${blockReason}`,
+      );
     }
   }
   const candidates = (payload as Record<string, unknown>).candidates;
@@ -694,7 +723,9 @@ function geminiContent(payload: unknown): string {
       finishReason,
     )
   ) {
-    throw new Error(`Gemini moderation rejection: ${finishReason}`);
+    throw new ProviderModerationRejectedError(
+      `Gemini moderation rejection: ${finishReason}`,
+    );
   }
   const content = candidate.content;
   if (!content || typeof content !== "object") {
@@ -753,7 +784,9 @@ function openAICompatibleContent(
     );
   }
   if (finishReason === "content_filter") {
-    throw new Error(`${providerName} moderation rejection: content_filter`);
+    throw new ProviderModerationRejectedError(
+      `${providerName} moderation rejection: content_filter`,
+    );
   }
   const message = (choices[0] as Record<string, unknown>).message;
   if (!message || typeof message !== "object") {

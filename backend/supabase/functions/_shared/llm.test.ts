@@ -222,6 +222,21 @@ Deno.test("empty or unparseable story provider output is rejected before persist
       '```json\n{"ok":true}\n```',
       JSON.stringify({ title: "T", chapter_body: "" }),
       JSON.stringify({ title: "T", chapter_body: "Non-empty body" }),
+      // series_state present but missing its required keys: this is the branch
+      // of hasCompleteStoryShape that gates persistence, and nothing else here
+      // reaches it.
+      JSON.stringify({
+        title: "T",
+        chapter_title: "C",
+        chapter_body: "Non-empty body",
+        word_count: 3,
+        themes: [],
+        first_line: "N",
+        previously_summary: "",
+        series_state: { central_conflict: "" },
+        hook_type: "none",
+        hook_text: "",
+      }),
     ]
   ) {
     assertThrows(
