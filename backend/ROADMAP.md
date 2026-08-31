@@ -17,10 +17,19 @@ All bug fixes applied, migrations `00001`-`00015`, `00017`-`00023` and `00025` a
 ### Remaining Verification
 
 - [x] Set story-generation secrets: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, and existing `OPENAI_API_KEY`. Claude/Anthropic secret names are intentionally not read by the generation client.
-- [ ] **Unblock a funded primary provider.** As of 2026-08-31 both preferred positions are down and `gpt-4o-mini` is carrying generation:
-  - `GEMINI_API_KEY` returns `429 RESOURCE_EXHAUSTED` — fix quota/billing on the Google AI project.
-  - OpenRouter `google/gemini-2.5-flash` returns `402 Insufficient credits` — add OpenRouter credits.
-  - Until one is fixed, prose quality is capped at `gpt-4o-mini`. Clearing either restores a stronger primary with no code change.
+- [ ] **Unblock a funded primary provider.** As of 2026-09-01 every preferred position is blocked upstream and `gpt-4o-mini` — the weakest model in the chain — is carrying all production generation. Each item below is an account action; none needs a code change or a deploy, because the chain already tries them in this order and simply falls through:
+  - [ ] `GEMINI_API_KEY` returns `429 RESOURCE_EXHAUSTED`. Fix quota/billing on the Google AI project.
+  - [ ] OpenRouter `google/gemini-2.5-flash` returns `402 Insufficient credits`. Add OpenRouter credits.
+  - [ ] OpenAI `gpt-5.6-luna` returns `403 Project ... does not have access to model`. Grant the project access to `gpt-5.6-luna` (OpenAI dashboard → Project → Limits → model access; the model may also require org verification). This is the cheapest win of the three: Luna is $0.20/$1.20 per M against `gpt-4o-mini` at $0.15/$0.60, so a large prose-quality gain for roughly 2x completion cost.
+- [ ] **Provision a dedicated fallback API key for story generation.** Two separate problems with the key situation today:
+  1. **One key does two jobs.** A single `OPENAI_API_KEY` secret serves both DALL·E 3 cover generation (`_shared/image.ts`) and story text (`_shared/llm.ts`). A spend cap, rate limit, revocation, or key rotation on that one credential takes down covers *and* stories together.
+  2. **No funded independent fallback.** Gemini, OpenRouter and the OpenAI Luna entitlement are all currently failing, which leaves exactly one working credential behind all of story generation.
+
+  Actions:
+  - [ ] Decide the provider for the independent fallback. It must not be Claude/Anthropic — see the LLM Fallback Chain note in `AGENTS.md`. A second OpenAI project key is the least work; a genuinely different vendor (DeepSeek, Mistral, Together) buys real vendor-independence and is worth more here.
+  - [ ] If it is another OpenAI key: add it as a new secret (e.g. `OPENAI_STORY_API_KEY`), read it in `_shared/llm.ts` ahead of `OPENAI_API_KEY`, and leave `_shared/image.ts` on the original so covers and stories stop sharing a blast radius.
+  - [ ] If it is a new vendor: add a provider position in `runProviderChain` with its own timeout and `PHASE_END_SHARE` slice, and a `not_configured` path so a missing key falls through rather than erroring.
+  - [ ] Either way, keep `openrouter/free` last. It routes to a random free model and has already served a code model for a prose rewrite in production.
 - [ ] Add production Expo web origin to `ALLOWED_ORIGINS` before production browser traffic
 - [x] Test user created and exercised via the smoke-test harness (`backend/scripts/smoke-series-generation.py`)
 - [x] `generate-story` called end-to-end with credit deduction + story insert verified (`smoke-series-generation.py`: 58 assertions across 11 groups)

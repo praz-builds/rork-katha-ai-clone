@@ -56,6 +56,23 @@ If the scan finds CRITICAL or HIGH issues, **fix them before pushing**. MEDIUM a
 
 To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, injection/auth, deps/mobile/infra) for thorough coverage.
 
+## Observability Gate (MANDATORY after production testing)
+
+**Every agent session that runs a production-level test MUST persist its failures to `public.error_events`.** The skill is at `.agents/skills/error-logging/SKILL.md`; the helper is `_shared/errors.ts`.
+
+A production-level test is any run against deployed infrastructure: a smoke suite, a generation batch, a manual `curl` against a deployed function. Supabase function logs have short retention, so a failure that produced only a `console.error` or a line of chat output is gone within days -- and every incident then gets investigated from scratch.
+
+The rules:
+
+1. **Every failure gets a row**, with the correct bucket (`generation.story`, `generation.cover`, `llm.provider`, `credits`, ...) and severity (`critical` / `high` / `medium` / `low`). A failure reported only in chat did not happen as far as the system is concerned.
+2. **Query `error_event_summary` before fixing.** If `occurrences > 1` this is a recurrence, not a new bug, and the fix belongs at the root cause.
+3. **Cite fingerprints in the build-log entry**, so `backend/build-log.md` and the log agree.
+4. **Never tick a ROADMAP checkbox** for a test that was not actually run and did not actually pass.
+
+`logError()` never throws and never blocks the response path -- a telemetry failure degrades to a console line. Keep the existing `console.error` alongside it for live tailing.
+
+`context` stores identifiers and enums only. Never story prose, seeds, prompts, or any free user text.
+
 ## Infrastructure & Services
 
 | Service | Purpose | Key / Config | Status |
@@ -73,11 +90,15 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 
 ### LLM Fallback Chain
 
-Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> `gpt-4o-mini` -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. As of 2026-08-31 both preferred positions are blocked upstream — Gemini returns `429 RESOURCE_EXHAUSTED` and the pinned OpenRouter model returns `402 Insufficient credits` — so `gpt-4o-mini` is the provider actually serving generation, and `openrouter/free` is the last resort behind it.
+Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> OpenAI (`gpt-5.6-luna`, then `gpt-4o-mini`) -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. As of 2026-08-31 both preferred positions are blocked upstream — Gemini returns `429 RESOURCE_EXHAUSTED` and the pinned OpenRouter model returns `402 Insufficient credits` — and OpenAI `gpt-5.6-luna` returns `403` because the project lacks access to it, so `gpt-4o-mini` is the model actually serving generation, with `openrouter/free` the last resort behind it.
 
-**Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
+**Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. Note `OPENAI_API_KEY` is currently shared with DALL·E 3 cover generation in `_shared/image.ts`, so the two share a blast radius; splitting them is a Phase A task. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
 
-**Model IDs:** `gemini-3.1-pro-preview`, `google/gemini-2.5-flash`, `gpt-4o-mini`, `openrouter/free`.
+**Model IDs:** `gemini-3.1-pro-preview`, `google/gemini-2.5-flash`, `gpt-5.6-luna`, `gpt-4o-mini`, `openrouter/free`.
+
+**The OpenAI position is an ordered list, not one model.** `OPENAI_MODELS` in `_shared/llm.ts` tries `gpt-5.6-luna` and falls back to `gpt-4o-mini`. Access to Luna is granted per OpenAI project; an unentitled project gets `403 ... does not have access to model`, not a degraded result, so a second model has to stand behind it. Granting access upstream needs no deploy — the 403 stops happening and the better model takes over.
+
+**Reasoning models take a different chat-completions contract.** `gpt-5.6-luna` requires `max_completion_tokens`, rejects `max_tokens`, and ignores `temperature`; reasoning tokens are counted inside that budget, so it carries 2x headroom over the visible story length. `gpt-4o-mini` and the OpenRouter path keep the legacy `max_tokens` + `temperature` shape, because OpenRouter still routes to models that only understand it. The `reasoning` flag on each `OpenAIModelSpec` selects the shape.
 
 **Every model whose identity is known in advance is tried before the free router.** `openrouter/free` routes to a random free model per request, so its output cap, latency and prose quality are not repeatable, and free-tier daily caps apply. Production has seen it hand a *code* model a prose rewrite, and a routed model whose output cap is under `max_tokens` returns `finish_reason: "length"`, which the parser rejects. It is the last-ditch attempt before the caller refunds the credit — never a position production leans on.
 

@@ -10,6 +10,7 @@ import {
   geminiRequestShape,
   generateStoryText,
   OPENAI_MODEL,
+  OPENAI_MODELS,
   openAIRequestShape,
   OPENROUTER_FREE_MODEL,
   OPENROUTER_MODEL,
@@ -157,12 +158,22 @@ Deno.test("story requests constrain output on all provider shapes", () => {
     "ARRAY",
   );
 
+  // OpenRouter still routes to models that only understand `max_tokens`, so it
+  // must keep the legacy contract rather than share the reasoning shape.
   const r = openRouterRequestShape(STORY_OPTS) as Record<string, unknown>;
   assertEquals(r.max_tokens, 16_000);
+  assertEquals(r.temperature, 0.8);
   assertEquals(r.response_format, OPENAI_RESPONSE_FORMAT);
 
+  // The direct OpenAI model is a reasoning model: it rejects `max_tokens` and
+  // ignores `temperature`, and its reasoning tokens are counted inside
+  // `max_completion_tokens`, so the budget carries headroom above the visible
+  // story length.
   const o = openAIRequestShape(STORY_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_tokens, 16_000);
+  assertEquals(o.max_completion_tokens, 32_000);
+  assert(!("max_tokens" in o), "a reasoning model rejects max_tokens");
+  assert(!("temperature" in o), "a reasoning model does not take temperature");
+  assertEquals(o.reasoning_effort, "low");
   assertEquals(o.response_format, OPENAI_RESPONSE_FORMAT);
 });
 
@@ -180,7 +191,8 @@ Deno.test("paragraph edits are never constrained to the story schema", () => {
   assert(!("response_format" in r), "an edit must not request JSON");
 
   const o = openAIRequestShape(EDIT_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_tokens, 2_000);
+  assertEquals(o.max_completion_tokens, 4_000);
+  assert(!("max_tokens" in o), "a reasoning model rejects max_tokens");
   assert(!("response_format" in o), "an edit must not request JSON");
 });
 
@@ -428,9 +440,11 @@ Deno.test("Anthropic and Claude credential names are ignored", async () => {
     "gemini",
     "openrouter",
     "openai",
+    "openai",
     "openrouter",
   ]);
   assertEquals(error.failures.map((f) => f.code), [
+    "not_configured",
     "not_configured",
     "not_configured",
     "not_configured",
@@ -462,7 +476,7 @@ Deno.test("the free router is the last attempt in the chain", async () => {
   assertEquals(error.failures.map((f) => f.model), [
     GEMINI_MODEL,
     OPENROUTER_MODEL,
-    OPENAI_MODEL,
+    ...OPENAI_MODELS.map((m) => m.model),
     OPENROUTER_FREE_MODEL,
   ]);
 });
@@ -476,4 +490,37 @@ Deno.test("a missing provider credential is not_configured and never retried", (
   assertEquals(failure.code, "not_configured");
   assertEquals(failure.retryable, false);
   assert(!failure.status);
+});
+
+Deno.test("the OpenAI position falls back past an unentitled model", () => {
+  // gpt-5.6-luna is granted per OpenAI project. An unentitled project gets
+  // `403 does not have access to model`, so a second model has to stand behind
+  // it or the whole position is dead for that project.
+  assert(OPENAI_MODELS.length >= 2, "the OpenAI position needs a fallback");
+  assertEquals(OPENAI_MODELS[0].model, "gpt-5.6-luna");
+  assertEquals(OPENAI_MODELS[0].reasoning, true);
+  assertEquals(OPENAI_MODEL, OPENAI_MODELS[0].model);
+
+  const last = OPENAI_MODELS[OPENAI_MODELS.length - 1];
+  assertEquals(last.reasoning, false, "the safety net must not be gated");
+});
+
+Deno.test("each OpenAI model gets the contract its dialect requires", () => {
+  const reasoning = openAIRequestShape(STORY_OPTS, {
+    model: "gpt-5.6-luna",
+    reasoning: true,
+  }) as Record<string, unknown>;
+  assertEquals(reasoning.max_completion_tokens, 32_000);
+  assert(!("max_tokens" in reasoning));
+  assert(!("temperature" in reasoning));
+
+  // A non-reasoning model rejects `max_completion_tokens`-only phrasing and
+  // still wants a temperature, so it must keep the legacy shape.
+  const legacy = openAIRequestShape(STORY_OPTS, {
+    model: "gpt-4o-mini",
+    reasoning: false,
+  }) as Record<string, unknown>;
+  assertEquals(legacy.max_tokens, 16_000);
+  assertEquals(legacy.temperature, 0.8);
+  assert(!("max_completion_tokens" in legacy));
 });
