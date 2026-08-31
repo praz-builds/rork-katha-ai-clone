@@ -31,10 +31,12 @@ Migrations `00018`-`00023` and `00025` applied to `iafeuxgoiknncgyjmugd`. `error
 - Production `smoke-app-surface.py` **26 / 26** and `smoke-series-generation.py` **58 / 58**.
 - Quality read across romance / thriller / fantasy: 1085-1353 words, in band, distinct openings and titles.
 
-### Known risks
+### Known risks — both closed on the code side 2026-09-01
 
-- **One credential behind everything.** Gemini (`429 RESOURCE_EXHAUSTED`) and OpenRouter (`402 Insufficient credits`) are both unavailable, so all three serving positions authenticate with the same `OPENAI_API_KEY` — which is also the DALL·E 3 cover credential. A dedicated fallback key for story generation is a Phase A task in `backend/ROADMAP.md`.
-- **The chapter word band is prompt-enforced only.** Nothing validates `word_count` before persistence; `gpt-5-mini` produced a 2,026-word chapter against a 500-1500 band, stored and charged for. Not reproducing under Luna, so latent rather than live. Tracked in the roadmap.
+- **One credential behind everything.** `OPENAI_API_KEY` authenticated DALL·E 3 covers *and* story text, so one spend cap or rotation took down both. `_shared/llm.ts` now reads `OPENAI_STORY_API_KEY` ahead of it while `_shared/image.ts` keeps the original. Setting that secret is the entire remaining change; leaving it unset preserves current behaviour.
+- **The chapter word band was prompt-enforced only** — `gpt-5-mini` had a 2,026-word chapter against a 500-1500 band persisted and charged for. `wordBandFor()` is now the single source of truth for prompt and validation alike, and a generation outside 0.75x-1.25x of the band falls through to the next provider instead of reaching the database.
+
+Both remaining items are account actions with no deploy behind them: set `OPENAI_STORY_API_KEY`, and clear the Gemini (`429`) or OpenRouter (`402`) billing block to restore provider-level redundancy ahead of OpenAI.
 
 ## 2026-08-22 — Canonical Repository Consolidation
 

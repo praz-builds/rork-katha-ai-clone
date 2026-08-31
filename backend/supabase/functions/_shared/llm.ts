@@ -2,6 +2,7 @@ import {
   OPENAI_RESPONSE_FORMAT,
   STORY_OUTPUT_JSON_SCHEMA,
 } from "./story_schema.ts";
+import { countWords, type WordBand, wordBandBounds } from "./types.ts";
 import { parseStructuredOutput } from "./story_text.ts";
 
 /**
@@ -69,7 +70,23 @@ export const OPENAI_MODEL = OPENAI_MODELS[0].model;
 
 const geminiKey = () => Deno.env.get("GEMINI_API_KEY")?.trim();
 const openRouterKey = () => Deno.env.get("OPENROUTER_API_KEY")?.trim();
-const openaiKey = () => Deno.env.get("OPENAI_API_KEY")?.trim();
+/**
+ * Story generation prefers its own OpenAI credential and falls back to the
+ * shared one.
+ *
+ * `OPENAI_API_KEY` also authenticates DALL-E 3 cover generation in
+ * `_shared/image.ts`, so while it is the only key set, one spend cap, rate
+ * limit, revocation or rotation takes down covers and stories together - and
+ * with Gemini and OpenRouter both unavailable, every position that can serve
+ * authenticates with it. Setting `OPENAI_STORY_API_KEY` separates the two blast
+ * radii with no code change; leaving it unset preserves today's behaviour.
+ */
+const openaiKey = () =>
+  Deno.env.get("OPENAI_STORY_API_KEY")?.trim() ||
+  Deno.env.get("OPENAI_API_KEY")?.trim();
+
+/** Test seam: which credential story generation would use right now. */
+export const openAIKeyForTest = () => openaiKey();
 const GENERATION_DEADLINE_MS = 120_000;
 
 /**
@@ -246,11 +263,13 @@ export function classifyLlmError(
 export function generateStoryText(
   systemPrompt: string,
   userPrompt: string,
+  wordBand?: WordBand,
 ): Promise<GenerationResult> {
   return runProviderChain(systemPrompt, userPrompt, {
     maxTokens: MAX_OUTPUT_TOKENS,
     constrainToStorySchema: true,
     deadlineMs: GENERATION_DEADLINE_MS,
+    wordBand,
   });
 }
 
@@ -272,6 +291,13 @@ export interface ChainOptions {
   maxTokens: number;
   constrainToStorySchema: boolean;
   deadlineMs: number;
+  /**
+   * The chapter length contract for this request. Omitted for paragraph edits,
+   * which have no band. A generation outside its tolerated bounds is treated
+   * like any other unusable output: it falls through to the next provider
+   * rather than reaching persistence.
+   */
+  wordBand?: WordBand;
 }
 
 export function geminiRequestShape(options: ChainOptions) {
@@ -431,13 +457,49 @@ async function runProviderChain(
 
 export function requireUsableStoryOutput(
   text: string,
-  options: Pick<ChainOptions, "constrainToStorySchema">,
+  options: Pick<ChainOptions, "constrainToStorySchema" | "wordBand">,
 ): string {
   if (!options.constrainToStorySchema) return text;
-  if (hasCompleteStoryShape(text)) return text;
-  throw new ProviderMalformedResponseError(
-    "Provider returned malformed story JSON",
-  );
+  if (!hasCompleteStoryShape(text)) {
+    throw new ProviderMalformedResponseError(
+      "Provider returned malformed story JSON",
+    );
+  }
+  requireUsableChapterLength(text, options.wordBand);
+  return text;
+}
+
+/**
+ * Reject a chapter whose length has run away from the band the prompt asked for.
+ *
+ * The count comes from `chapter_body`, never from the model's self-reported
+ * `word_count`: a model that ignores the band is not a reliable narrator of how
+ * badly it ignored it, and every persistence path counts the body anyway.
+ *
+ * Drift inside the tolerance is normal and is only logged. Outside it the output
+ * is unusable, so it falls through to the next provider exactly like malformed
+ * JSON does - the caller refunds the credit if the whole chain fails, which
+ * beats charging for a chapter that breaks reading-time estimates and narration
+ * cost downstream.
+ */
+function requireUsableChapterLength(text: string, band?: WordBand): void {
+  if (!band) return;
+  const body = parseJsonObject(text)?.chapter_body;
+  if (typeof body !== "string") return;
+
+  const words = countWords(body);
+  const bounds = wordBandBounds(band);
+  if (words < bounds.min || words > bounds.max) {
+    throw new ProviderMalformedResponseError(
+      `Chapter length ${words} words is outside the usable range ` +
+        `${bounds.min}-${bounds.max} for a ${band.min}-${band.max} band`,
+    );
+  }
+  if (words < band.min || words > band.max) {
+    console.warn(
+      `chapter length ${words} words drifted from the ${band.min}-${band.max} band`,
+    );
+  }
 }
 
 function hasCompleteStoryShape(text: string): boolean {
@@ -630,7 +692,9 @@ async function generateOpenAIText(
   const model = spec.model;
   const apiKey = openaiKey();
   if (!apiKey) {
-    throw new ProviderNotConfiguredError("OPENAI_API_KEY is not configured");
+    throw new ProviderNotConfiguredError(
+      "OPENAI_STORY_API_KEY / OPENAI_API_KEY is not configured",
+    );
   }
 
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {

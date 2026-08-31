@@ -92,7 +92,9 @@ The rules:
 
 Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. As of 2026-08-31 both preferred positions are blocked upstream — Gemini returns `429 RESOURCE_EXHAUSTED` and the pinned OpenRouter model returns `402 Insufficient credits` — so OpenAI `gpt-5.6-luna` is the model actually serving generation, with `gpt-5-mini` and `gpt-4o-mini` behind it and `openrouter/free` the last resort.
 
-**Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. Note `OPENAI_API_KEY` is currently shared with DALL·E 3 cover generation in `_shared/image.ts`, so the two share a blast radius; splitting them is a Phase A task. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
+**Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_STORY_API_KEY` falling back to `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
+
+**Set `OPENAI_STORY_API_KEY` to stop stories and covers sharing a blast radius.** `OPENAI_API_KEY` also authenticates DALL·E 3 in `_shared/image.ts`. While it is the only key set, one spend cap, rate limit, revocation or rotation takes down covers *and* stories together — and with Gemini and OpenRouter unavailable, every position that can serve authenticates with it. The code already prefers the dedicated key; setting the secret is the whole change, and leaving it unset preserves current behaviour.
 
 **Model IDs:** `gemini-3.1-pro-preview`, `google/gemini-2.5-flash`, `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`, `openrouter/free`.
 
@@ -110,7 +112,7 @@ Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> OpenAI (`gpt-5
 
 **`max_tokens` is 16,000 for generation**, 2,000 for paragraph edits (32,000 and 4,000 as `max_completion_tokens` on the reasoning path). The previous 4,096 truncated a chapter plus its `series_state` mid-JSON.
 
-**The chapter word band is prompt-enforced only.** `500-1500` standalone, `600-900` per series chapter. Nothing validates `word_count` before persistence, so a model that ignores the ceiling reaches the database and the user is charged — `gpt-5-mini` produced a 2,026-word chapter this way. Tracked in `backend/ROADMAP.md`.
+**The chapter word band is enforced, not just requested.** `wordBandFor()` in `_shared/types.ts` is the single source of truth — `600-900` for a series chapter whatever the audience, `500-1200` standalone kids, `500-1500` standalone adult — and both the prompt and `requireUsableStoryOutput()` read it. A generation outside `wordBandBounds()` (0.75x floor, 1.25x ceiling) is unusable and falls through to the next provider like malformed JSON; drift inside the tolerance is logged only. The count comes from `chapter_body`, never from the model's self-reported `word_count`, because a model that ignores the band is not a reliable narrator of how badly it ignored it. Before this, nothing checked the result and `gpt-5-mini` had a 2,026-word chapter persisted and charged for.
 
 **Provider failures are typed.** `classifyLlmError()` maps provider errors to a stable `LlmFailure` (`provider`, `model`, `code`, `status`, `retryable`) rather than storing free text in telemetry context. On total failure `generateStoryText` throws `AllProvidersFailedError`, whose `toContext()` returns identifiers and enums only — safe to pass straight to error telemetry.
 
