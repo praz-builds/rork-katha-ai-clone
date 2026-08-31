@@ -17,7 +17,7 @@
 
 **Production result on first deploy (superseded the same day — see "Luna went live" below):** Luna returned `403 Project ... does not have access to model gpt-5.6-luna`. The model ID is correct; the OpenAI project simply is not entitled to it. The first deploy — Luna alone, replacing `gpt-4o-mini` — took generation down: every position failed and `generate-story` returned 500. The ordered-list fallback restored it in the same session. Granting project access upstream will switch production to Luna with no deploy.
 
-The `error_events` telemetry added in this branch diagnosed it directly, with no log spelunking: one `all_providers_failed` row carrying `models` and `statuses` arrays showed `gemini=429, google/gemini-2.5-flash=402, gpt-5.6-luna=403, openrouter/free=timeout`. This is the first incident the table has paid for.
+The `error_events` telemetry added in this branch diagnosed it directly, with no log spelunking: one `all_providers_failed` row carrying parallel `models`, `codes` and `statuses` arrays showed `gemini=rate_limited/429`, `google/gemini-2.5-flash=provider_error/402`, `gpt-5.6-luna=auth_failed/403`, and `openrouter/free=timeout` with a null `status`, since an abort never receives an HTTP response. This is the first incident the table has paid for.
 
 Fingerprints, per the Observability Gate in `AGENTS.md`:
 
