@@ -27,8 +27,7 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
   fantasy: {
     style:
       "epic fantasy illustration, rich painterly detail, ornate decorative elements, atmospheric depth",
-    palette:
-      "deep emerald greens, royal purples, antique gold, moonlit silver",
+    palette: "deep emerald greens, royal purples, antique gold, moonlit silver",
     composition:
       "sweeping landscape or silhouetted figure against magical sky, ornate border elements",
     mood: "mystical, grand, wonder",
@@ -97,8 +96,7 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
   historical: {
     style:
       "rich period illustration, ornamental texture, aged paper quality, detailed and layered",
-    palette:
-      "warm sepia, aged gold, burgundy wine, ivory, rich earth tones",
+    palette: "warm sepia, aged gold, burgundy wine, ivory, rich earth tones",
     composition:
       "layered historical scene with period architecture, decorative border elements, textured surfaces",
     mood: "atmospheric, dignified, evocative",
@@ -220,7 +218,9 @@ function normalizeGenre(genre: string): string {
   };
 
   const lower = genre.toLowerCase().replace(/[\s_-]/g, "");
-  if (Object.prototype.hasOwnProperty.call(aliases, lower)) return aliases[lower];
+  if (Object.prototype.hasOwnProperty.call(aliases, lower)) {
+    return aliases[lower];
+  }
 
   for (const key of Object.keys(GENRE_PROMPTS)) {
     if (key.toLowerCase() === lower) return key;
@@ -252,9 +252,11 @@ export function buildCoverPrompt(
       "isHero" in c ? (c as { isHero: boolean }).isHero : false
     ) ?? characters[0];
     if (config.characterApproach === "silhouette") {
-      characterNote = `. Include a distant silhouetted figure suggesting ${hero.description}`;
+      characterNote =
+        `. Include a distant silhouetted figure suggesting ${hero.description}`;
     } else {
-      characterNote = `. Feature a character: ${hero.description}, shown from shoulders up or three-quarter view`;
+      characterNote =
+        `. Feature a character: ${hero.description}, shown from shoulders up or three-quarter view`;
     }
   }
 

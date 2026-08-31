@@ -52,7 +52,8 @@ serve(async (req) => {
     if (story.status !== "complete") {
       return respond(
         {
-          error: `Story cannot be published with status '${story.status}'. Only complete stories can be published.`,
+          error:
+            `Story cannot be published with status '${story.status}'. Only complete stories can be published.`,
         },
         400,
       );

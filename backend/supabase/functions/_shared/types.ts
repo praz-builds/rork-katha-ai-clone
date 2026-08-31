@@ -118,7 +118,9 @@ export const HOOK_TYPE_VALUES = [
 
 export type HookType = typeof HOOK_TYPE_VALUES[number];
 
-export const HOOK_TYPES: ReadonlySet<string> = new Set<string>(HOOK_TYPE_VALUES);
+export const HOOK_TYPES: ReadonlySet<string> = new Set<string>(
+  HOOK_TYPE_VALUES,
+);
 
 // ---------------------------------------------------------------------------
 // Identity Lens

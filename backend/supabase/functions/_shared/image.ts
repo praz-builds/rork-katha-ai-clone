@@ -192,7 +192,5 @@ function extractOpenAIError(payload: unknown): string {
   const error = (payload as Record<string, unknown>).error;
   if (!error || typeof error !== "object") return "unknown error";
   const message = (error as Record<string, unknown>).message;
-  return typeof message === "string"
-    ? message.slice(0, 500)
-    : "unknown error";
+  return typeof message === "string" ? message.slice(0, 500) : "unknown error";
 }

@@ -1,8 +1,8 @@
-import Anthropic from "npm:@anthropic-ai/sdk@0.122.0";
 import {
-  ANTHROPIC_OUTPUT_FORMAT,
   OPENAI_RESPONSE_FORMAT,
+  STORY_OUTPUT_JSON_SCHEMA,
 } from "./story_schema.ts";
+import { parseStructuredOutput } from "./story_text.ts";
 
 /**
  * Secrets are read lazily, not at module load.
@@ -12,86 +12,59 @@ import {
  * secret fails at import rather than at the call that needs it.
  */
 
+export const GEMINI_MODEL = "gemini-3.1-pro-preview";
 /**
- * Claude auth here is an OAuth bearer token, not a Console API key.
+ * The second position is a pinned, priced model, not the free router.
  *
- * `CLAUDE_CODE_OAUTH_TOKEN` is canonical; `ANTHROPIC_AUTH_TOKEN` and
- * `CLAUDE_TOKEN` are accepted so a runtime already carrying either name keeps
- * working without a redeploy. First non-empty wins, in that order.
- *
- * The value goes to the SDK as `authToken`, which sends
- * `Authorization: Bearer <token>`. An API key instead travels in `x-api-key`,
- * so the two are not interchangeable and must not be conflated.
+ * `openrouter/free` picks a free model at random per request, so its output cap,
+ * latency and prose quality are not repeatable, and free-tier daily request caps
+ * apply. A routed model whose output cap is under `MAX_OUTPUT_TOKENS` returns
+ * `finish_reason: "length"`, which `openAICompatibleContent` rejects. Gemini 2.5
+ * Flash is pinned here: 65k output tokens, native structured output, and it bills
+ * through OpenRouter, so a Google-side quota block on `GEMINI_API_KEY` does not
+ * take this position down with it.
  */
-export const CLAUDE_TOKEN_ENV_VARS = [
-  "CLAUDE_CODE_OAUTH_TOKEN",
-  "ANTHROPIC_AUTH_TOKEN",
-  "CLAUDE_TOKEN",
-] as const;
-
+export const OPENROUTER_MODEL = "google/gemini-2.5-flash";
 /**
- * Builds the Claude client with API-key auth explicitly disabled.
+ * Last-ditch only, behind every model whose identity is known in advance.
  *
- * `apiKey: null` is load-bearing, not defensive noise. The SDK constructor
- * defaults an omitted `apiKey` to `readEnv("ANTHROPIC_API_KEY")`, and
- * `authHeaders()` returns `[apiKeyAuth(), bearerAuth()]` — so passing only
- * `authToken` while a leftover `ANTHROPIC_API_KEY` sits in the environment
- * sends BOTH `X-Api-Key` and `Authorization`, and the Console key can bill
- * and authenticate traffic this project believes is running on OAuth.
- *
- * `fetchImpl` exists so a test can assert the outgoing headers directly.
+ * Production has seen this router hand a *code* model a prose rewrite, and its
+ * free-tier daily caps make it unfit to carry traffic.
  */
-export function createClaudeClient(
-  authToken: string,
-  fetchImpl?: typeof fetch,
-): Anthropic {
-  return new Anthropic({
-    authToken,
-    apiKey: null,
-    ...(fetchImpl ? { fetch: fetchImpl } : {}),
-  });
-}
+export const OPENROUTER_FREE_MODEL = "openrouter/free";
+export const OPENAI_MODEL = "gpt-4o-mini";
 
-/**
- * Resolves the Claude OAuth bearer token from the environment.
- *
- * Returns the first non-empty value across {@link CLAUDE_TOKEN_ENV_VARS},
- * trimmed. Whitespace-only counts as absent: a secret set with a trailing
- * newline is the usual way a "configured" secret is in fact empty.
- *
- * @returns the token, or `undefined` when no credential is configured.
- */
-export function claudeAuthToken(): string | undefined {
-  for (const name of CLAUDE_TOKEN_ENV_VARS) {
-    const value = Deno.env.get(name)?.trim();
-    if (value) return value;
-  }
-  return undefined;
-}
-
-const openaiKey = () => Deno.env.get("OPENAI_API_KEY");
+const geminiKey = () => Deno.env.get("GEMINI_API_KEY")?.trim();
+const openRouterKey = () => Deno.env.get("OPENROUTER_API_KEY")?.trim();
+const openaiKey = () => Deno.env.get("OPENAI_API_KEY")?.trim();
 const GENERATION_DEADLINE_MS = 120_000;
 
 /**
- * Model IDs are complete as written - never append a date suffix. The previous
- * "claude-haiku-4-5-20251001" was not a valid id, so the Haiku fallback could
- * only ever 404, and "claude-sonnet-4-6" is superseded by Sonnet 5, which is
- * both newer and cheaper ($2/$10 per MTok against $3/$15).
- */
-const PRIMARY_MODEL = "claude-sonnet-5";
-const FALLBACK_MODEL = "claude-haiku-4-5";
-const OPENAI_MODEL = "gpt-4o-mini";
-
-/**
- * A story plus its series_state runs well past 4096 tokens. The old ceiling
- * truncated mid-JSON, which parsed as garbage and silently degraded to the text
- * parser - the root of the intermittent "hook_type: none, state frozen" chapters.
+ * A story plus its series_state runs well past 4096 tokens.
  */
 const MAX_OUTPUT_TOKENS = 16_000;
 
 /** A paragraph rewrite is short, and the editor UI waits on it inline. */
 const EDIT_MAX_OUTPUT_TOKENS = 2_000;
 const EDIT_DEADLINE_MS = 60_000;
+const GEMINI_TIMEOUT_MS = 70_000;
+const OPENROUTER_TIMEOUT_MS = 30_000;
+const OPENAI_TIMEOUT_MS = 30_000;
+
+/**
+ * Cumulative fractions of `deadlineMs` at which each provider phase must end.
+ *
+ * A provider's moderation retries are bounded only by the shared deadline, so
+ * without per-phase caps the first provider can spend the entire budget and
+ * every fallback aborts before it sends a request - the chain collapses to one
+ * provider in exactly the slow case the fallbacks exist for.
+ */
+const PHASE_END_SHARE = {
+  gemini: 0.4,
+  openrouter: 0.6,
+  openai: 0.85,
+  openrouterFree: 1,
+} as const;
 
 interface GenerationResult {
   text: string;
@@ -105,7 +78,7 @@ interface GenerationResult {
  * hand `context` straight to `logError` without having to sanitize it.
  */
 export interface LlmFailure {
-  provider: "anthropic" | "openai";
+  provider: "gemini" | "openrouter" | "openai";
   model: string;
   /** Stable slug for grouping recurrences, e.g. "rate_limited". */
   code: string;
@@ -115,14 +88,8 @@ export interface LlmFailure {
   message: string;
 }
 
-/** A non-2xx provider response, carrying the status through to classification. */
 /**
  * Raised when a provider has no credential configured at all.
- *
- * Distinct from an auth failure: nothing was sent, so this is a deployment
- * gap rather than a rejected token, and it must never be retried. The OpenAI
- * leg reports the same `not_configured` code without throwing, because it is
- * the last link in the chain and has nothing to fall through to.
  */
 export class ProviderNotConfiguredError extends Error {
   constructor(message: string) {
@@ -131,10 +98,33 @@ export class ProviderNotConfiguredError extends Error {
   }
 }
 
+/** A non-2xx provider response, carrying the status through to classification. */
 export class ProviderHttpError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
     this.name = "ProviderHttpError";
+  }
+}
+
+export class ProviderMalformedResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderMalformedResponseError";
+  }
+}
+
+/**
+ * A provider refused the prompt or its own output on content-policy grounds.
+ *
+ * Distinct from a malformed response: softening retries have already been spent,
+ * so retrying the same prompt against the same provider will be refused again.
+ * `isModerationRejection` still matches it by message, so the retry ladder in
+ * each generator keeps working unchanged.
+ */
+export class ProviderModerationRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderModerationRejectedError";
   }
 }
 
@@ -163,24 +153,14 @@ export class AllProvidersFailedError extends Error {
 
 /**
  * Classify a thrown provider error into a stable, loggable shape.
- *
- * Uses the SDK's typed error classes rather than string matching, so a 429 stays
- * distinguishable from a 400 even when provider wording changes.
  */
 export function classifyLlmError(
   error: unknown,
-  provider: "anthropic" | "openai",
+  provider: LlmFailure["provider"],
   model: string,
 ): LlmFailure {
   const base = { provider, model, message: failureMessage(error) };
 
-  // The SDK raises APIUserAbortError when our deadline signal fires. It extends
-  // APIError, so it must be matched before the APIError branch or a timeout is
-  // mislabelled as a provider error.
-  if (error instanceof Anthropic.APIUserAbortError) {
-    return { ...base, code: "timeout", retryable: true };
-  }
-  // The fetch path rejects with the AbortSignal reason.
   if (
     (error instanceof DOMException && error.name === "AbortError") ||
     (error instanceof Error && error.name === "AbortError")
@@ -193,45 +173,33 @@ export function classifyLlmError(
   if (error instanceof ProviderHttpError) {
     return {
       ...base,
-      code: error.status >= 500 ? "provider_5xx" : "provider_error",
+      code: classifyHttpStatus(error.status),
       status: error.status,
-      // 4xx is a request or credential problem; retrying the same call repeats it.
-      retryable: error.status >= 500 || error.status === 429,
+      retryable: error.status >= 500 || error.status === 408 ||
+        error.status === 409 || error.status === 429,
     };
   }
-  if (error instanceof Anthropic.NotFoundError) {
-    // Almost always a bad model id - not worth retrying on another attempt.
-    return { ...base, code: "model_not_found", status: 404, retryable: false };
+  if (error instanceof ProviderModerationRejectedError) {
+    return { ...base, code: "moderation_blocked", retryable: false };
   }
-  if (error instanceof Anthropic.RateLimitError) {
-    return { ...base, code: "rate_limited", status: 429, retryable: true };
-  }
-  if (error instanceof Anthropic.AuthenticationError) {
-    return { ...base, code: "auth_failed", status: 401, retryable: false };
-  }
-  // APIConnectionError extends APIError in the TS SDK, so it must be checked first.
-  if (error instanceof Anthropic.APIConnectionError) {
-    return { ...base, code: "connection_failed", retryable: true };
-  }
-  if (error instanceof Anthropic.APIError) {
-    const status = (error as { status?: number }).status;
-    return {
-      ...base,
-      code: status && status >= 500 ? "provider_5xx" : "provider_error",
-      status,
-      retryable: !status || status >= 500,
-    };
+  if (error instanceof ProviderMalformedResponseError) {
+    return { ...base, code: "malformed_response", retryable: true };
   }
   return { ...base, code: "unknown", retryable: true };
 }
 
 /**
  * Generate story text with a fallback chain:
- * Sonnet 5 (60s) -> Haiku 4.5 (30s) -> gpt-4o-mini (30s).
+ * gemini-3.1-pro-preview -> OpenRouter google/gemini-2.5-flash (pinned, priced)
+ * -> gpt-4o-mini -> openrouter/free (last resort only).
  *
- * Every attempt is schema-constrained, so a success is guaranteed to parse.
- * On total failure this throws AllProvidersFailedError, whose `toContext()`
- * feeds straight into logError({ bucket: "llm.provider" }).
+ * Each phase is additionally capped at a cumulative fraction of `deadlineMs`
+ * (`PHASE_END_SHARE`), so one slow provider cannot starve the rest of the chain.
+ *
+ * Every attempt is schema-constrained where the provider supports it, so a
+ * success should parse as the story JSON object. On total failure this throws
+ * AllProvidersFailedError, whose `toContext()` feeds straight into
+ * logError({ bucket: "llm.provider" }).
  */
 export function generateStoryText(
   systemPrompt: string,
@@ -239,7 +207,6 @@ export function generateStoryText(
 ): Promise<GenerationResult> {
   return runProviderChain(systemPrompt, userPrompt, {
     maxTokens: MAX_OUTPUT_TOKENS,
-    // Story generation must come back as the story JSON object.
     constrainToStorySchema: true,
     deadlineMs: GENERATION_DEADLINE_MS,
   });
@@ -247,10 +214,6 @@ export function generateStoryText(
 
 /**
  * Rewrite a single paragraph for the Create Studio editor.
- *
- * Runs the same provider chain, but returns prose: the response is the edited
- * paragraph itself, so the story JSON schema must NOT be applied here. A much
- * smaller ceiling and a shorter deadline keep an inline edit responsive.
  */
 export function editParagraph(
   systemPrompt: string,
@@ -263,190 +226,213 @@ export function editParagraph(
   });
 }
 
-/**
- * The provider-specific bits of a request that depend on chain options.
- *
- * Exported so the branch that decides whether to constrain output can be tested
- * without a network call - it is the difference between a story (must be the
- * JSON object) and a paragraph edit (must be prose).
- */
-export function anthropicRequestShape(options: ChainOptions) {
-  return {
-    max_tokens: options.maxTokens,
-    ...(options.constrainToStorySchema
-      ? { output_config: { format: ANTHROPIC_OUTPUT_FORMAT } }
-      : {}),
-  };
-}
-
-export function openAIRequestShape(options: ChainOptions) {
-  return {
-    max_tokens: options.maxTokens,
-    ...(options.constrainToStorySchema
-      ? { response_format: OPENAI_RESPONSE_FORMAT }
-      : {}),
-  };
-}
-
 export interface ChainOptions {
   maxTokens: number;
   constrainToStorySchema: boolean;
   deadlineMs: number;
 }
 
-/**
- * Tries each provider in order and returns the first success.
- *
- * Sonnet, then Haiku, then gpt-4o-mini. Both Claude legs are skipped as a
- * unit when no credential is configured, recording one `not_configured`
- * failure rather than one per model.
- *
- * @throws {AllProvidersFailedError} with the per-provider failure list when
- * every attempt fails, so the caller can refund the credit and log context.
- */
+export function geminiRequestShape(options: ChainOptions) {
+  return {
+    generationConfig: {
+      temperature: 0.8,
+      topP: 0.95,
+      maxOutputTokens: options.maxTokens,
+      ...(options.constrainToStorySchema
+        ? {
+          responseMimeType: "application/json",
+          responseSchema: geminiSchema(STORY_OUTPUT_JSON_SCHEMA),
+        }
+        : {}),
+    },
+  };
+}
+
+export function openRouterRequestShape(options: ChainOptions) {
+  return openAICompatibleRequestShape(options);
+}
+
+export function openAIRequestShape(options: ChainOptions) {
+  return openAICompatibleRequestShape(options);
+}
+
 async function runProviderChain(
   systemPrompt: string,
   userPrompt: string,
   options: ChainOptions,
 ): Promise<GenerationResult> {
   const failures: LlmFailure[] = [];
-  const deadline = Date.now() + options.deadlineMs;
+  const start = Date.now();
+  const deadline = start + options.deadlineMs;
+  /** End of a provider's slice, never past the shared deadline. */
+  const phaseDeadline = (share: number) =>
+    Math.min(deadline, start + Math.floor(options.deadlineMs * share));
   let safetyLevel = 0;
   const recordModerationRetry = (level: number) => {
     safetyLevel = Math.max(safetyLevel, level);
   };
-  // The credential is resolved once, ahead of both Claude legs. Checking it
-  // per-leg would throw the identical preflight error twice and write two
-  // `not_configured` rows for a single deployment gap - inflating any
-  // occurrence count that a recurrence check later reads.
-  const claudeToken = claudeAuthToken();
-  if (claudeToken) {
-    // Attempt 1: Sonnet
-    try {
-      const text = await generateAnthropicText(
-        PRIMARY_MODEL,
-        60000,
-        options,
-        systemPrompt,
-        userPrompt,
-        deadline,
-        safetyLevel,
-        recordModerationRetry,
-        claudeToken,
-      );
-      return { text, model: PRIMARY_MODEL };
-    } catch (e) {
-      console.error(`${PRIMARY_MODEL} failed:`, e);
-      failures.push(classifyLlmError(e, "anthropic", PRIMARY_MODEL));
-    }
 
-    // Attempt 2: Haiku
-    try {
-      const text = await generateAnthropicText(
-        FALLBACK_MODEL,
-        30000,
+  const geminiResult = await tryProvider({
+    failures,
+    provider: "gemini",
+    model: GEMINI_MODEL,
+    run: () =>
+      generateGeminiText(
+        GEMINI_MODEL,
+        GEMINI_TIMEOUT_MS,
         options,
         systemPrompt,
         userPrompt,
-        deadline,
+        phaseDeadline(PHASE_END_SHARE.gemini),
         safetyLevel,
         recordModerationRetry,
-        claudeToken,
-      );
-      return { text, model: FALLBACK_MODEL };
-    } catch (e) {
-      console.error(`${FALLBACK_MODEL} failed:`, e);
-      failures.push(classifyLlmError(e, "anthropic", FALLBACK_MODEL));
-    }
-  } else {
-    console.error(
-      "Claude skipped: no credential. Set CLAUDE_CODE_OAUTH_TOKEN.",
-    );
-    failures.push({
-      provider: "anthropic",
-      model: `${PRIMARY_MODEL}+${FALLBACK_MODEL}`,
-      code: "not_configured",
-      retryable: false,
-      message:
-        "Claude credentials are not configured; both Claude models skipped. Set CLAUDE_CODE_OAUTH_TOKEN.",
-    });
+      ).then((text) => requireUsableStoryOutput(text, options)),
+  });
+  if (geminiResult) {
+    return { text: geminiResult, model: GEMINI_MODEL };
   }
 
-  // Attempt 3: gpt-4o-mini
-  const openaiApiKey = openaiKey();
-  if (openaiApiKey) {
-    try {
-      const text = await withAbortTimeout(
-        remainingDuration(deadline, 30000),
-        async (signal) => {
-          const res = await fetch(
-            "https://api.openai.com/v1/chat/completions",
-            {
-              method: "POST",
-              signal,
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${openaiApiKey}`,
-              },
-              body: JSON.stringify({
-                model: OPENAI_MODEL,
-                messages: [
-                  { role: "system", content: systemPrompt },
-                  {
-                    role: "user",
-                    content: moderationSafePrompt(userPrompt, safetyLevel),
-                  },
-                ],
-                // json_object guarantees valid JSON but not the right shape,
-                // which still degraded to the text parser. The strict schema
-                // guarantees both.
-                ...openAIRequestShape(options),
-              }),
-            },
-          );
-          const payload: unknown = await res.json();
-          if (!res.ok) {
-            throw new ProviderHttpError(
-              `OpenAI request failed (${res.status}): ${
-                providerError(payload)
-              }`,
-              res.status,
-            );
-          }
-          return openAIContent(payload);
-        },
+  let openRouterModel = OPENROUTER_MODEL;
+  const openRouterText = await tryProvider({
+    failures,
+    provider: "openrouter",
+    model: OPENROUTER_MODEL,
+    run: async () => {
+      const result = await generateOpenRouterText(
+        OPENROUTER_MODEL,
+        OPENROUTER_TIMEOUT_MS,
+        options,
+        systemPrompt,
+        userPrompt,
+        phaseDeadline(PHASE_END_SHARE.openrouter),
+        safetyLevel,
+        recordModerationRetry,
       );
-      return { text, model: OPENAI_MODEL };
-    } catch (e) {
-      console.error(`${OPENAI_MODEL} failed:`, e);
-      failures.push(classifyLlmError(e, "openai", OPENAI_MODEL));
-    }
-  } else {
-    failures.push({
-      provider: "openai",
-      model: OPENAI_MODEL,
-      code: "not_configured",
-      retryable: false,
-      message: "OPENAI_API_KEY is not configured",
-    });
+      openRouterModel = result.model;
+      return requireUsableStoryOutput(result.text, options);
+    },
+  });
+  if (openRouterText) {
+    return { text: openRouterText, model: openRouterModel };
+  }
+
+  const openAIText = await tryProvider({
+    failures,
+    provider: "openai",
+    model: OPENAI_MODEL,
+    run: () =>
+      generateOpenAIText(
+        OPENAI_MODEL,
+        OPENAI_TIMEOUT_MS,
+        options,
+        systemPrompt,
+        userPrompt,
+        phaseDeadline(PHASE_END_SHARE.openai),
+        safetyLevel,
+        recordModerationRetry,
+      ).then((text) => requireUsableStoryOutput(text, options)),
+  });
+  if (openAIText) {
+    return { text: openAIText, model: OPENAI_MODEL };
+  }
+
+  // Last-ditch only. The free router picks a free model at random per request -
+  // production has seen it route a *code* model to write prose - so it sits
+  // behind every model whose identity is known in advance. It earns its place
+  // solely as a final attempt before the caller has to refund the credit.
+  let openRouterFreeModel = OPENROUTER_FREE_MODEL;
+  const openRouterFreeText = await tryProvider({
+    failures,
+    provider: "openrouter",
+    model: OPENROUTER_FREE_MODEL,
+    run: async () => {
+      const result = await generateOpenRouterText(
+        OPENROUTER_FREE_MODEL,
+        OPENROUTER_TIMEOUT_MS,
+        options,
+        systemPrompt,
+        userPrompt,
+        phaseDeadline(PHASE_END_SHARE.openrouterFree),
+        safetyLevel,
+        recordModerationRetry,
+      );
+      openRouterFreeModel = result.model;
+      return requireUsableStoryOutput(result.text, options);
+    },
+  });
+  if (openRouterFreeText) {
+    return { text: openRouterFreeText, model: openRouterFreeModel };
   }
 
   throw new AllProvidersFailedError(failures);
 }
 
-/**
- * Runs one Claude model attempt, retrying only on moderation refusals.
- *
- * The caller resolves the credential and passes it in, so this never reads
- * the environment and there is a single resolution point per chain run.
- *
- * @param authToken OAuth bearer token; see {@link createClaudeClient}.
- * @param onModerationRetry raises the shared safety level so a later
- * provider in the chain starts at the softened prompt rather than
- * rediscovering the refusal.
- * @throws the provider error unmodified, for {@link classifyLlmError}.
- */
-async function generateAnthropicText(
+export function requireUsableStoryOutput(
+  text: string,
+  options: Pick<ChainOptions, "constrainToStorySchema">,
+): string {
+  if (!options.constrainToStorySchema) return text;
+  if (hasCompleteStoryShape(text)) return text;
+  throw new ProviderMalformedResponseError(
+    "Provider returned malformed story JSON",
+  );
+}
+
+function hasCompleteStoryShape(text: string): boolean {
+  const parsed = parseStructuredOutput(text, "Untitled Story");
+  if (!parsed.structured || !parsed.chapter_body.trim()) return false;
+
+  const json = parseJsonObject(text);
+  if (!json) return false;
+
+  for (const key of STORY_OUTPUT_JSON_SCHEMA.required) {
+    if (!(key in json)) return false;
+  }
+
+  const seriesState = json.series_state;
+  if (
+    !seriesState || typeof seriesState !== "object" ||
+    Array.isArray(seriesState)
+  ) {
+    return false;
+  }
+  for (const key of STORY_OUTPUT_JSON_SCHEMA.properties.series_state.required) {
+    if (!(key in seriesState)) return false;
+  }
+  return true;
+}
+
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  const unfenced = trimmed.startsWith("```")
+    ? trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim()
+    : trimmed;
+  try {
+    const parsed = JSON.parse(unfenced);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function tryProvider(input: {
+  failures: LlmFailure[];
+  provider: LlmFailure["provider"];
+  model: string;
+  run: () => Promise<string>;
+}): Promise<string | undefined> {
+  try {
+    return await input.run();
+  } catch (error) {
+    console.error(`${input.model} failed:`, error);
+    input.failures.push(classifyLlmError(error, input.provider, input.model));
+    return undefined;
+  }
+}
+
+async function generateGeminiText(
   model: string,
   timeoutMs: number,
   options: ChainOptions,
@@ -455,37 +441,50 @@ async function generateAnthropicText(
   deadline: number,
   initialSafetyLevel: number,
   onModerationRetry: (level: number) => void,
-  authToken: string,
 ): Promise<string> {
-  const client = createClaudeClient(authToken);
+  const apiKey = geminiKey();
+  if (!apiKey) {
+    throw new ProviderNotConfiguredError("GEMINI_API_KEY is not configured");
+  }
 
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
     try {
-      const response = await withAbortTimeout(
+      return await withAbortTimeout(
         remainingDuration(deadline, timeoutMs),
-        (signal) =>
-          client.messages.create(
+        async (signal) => {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${
+              encodeURIComponent(model)
+            }:generateContent`,
             {
-              model,
-              ...anthropicRequestShape(options),
-              system: systemPrompt,
-              messages: [{
-                role: "user",
-                content: moderationSafePrompt(userPrompt, attempt),
-              }],
-            } as Anthropic.MessageCreateParamsNonStreaming,
-            { signal },
-          ),
+              method: "POST",
+              signal,
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": apiKey,
+              },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [{
+                  role: "user",
+                  parts: [{ text: moderationSafePrompt(userPrompt, attempt) }],
+                }],
+                ...geminiRequestShape(options),
+              }),
+            },
+          );
+          const payload = await parseProviderPayload(response);
+          if (!response.ok) {
+            throw new ProviderHttpError(
+              `Gemini request failed (${response.status}): ${
+                providerError(payload)
+              }`,
+              response.status,
+            );
+          }
+          return geminiContent(payload);
+        },
       );
-      if (String(response.stop_reason) === "refusal") {
-        throw new Error("Anthropic moderation refusal");
-      }
-      const text = response.content
-        .filter((block: Anthropic.ContentBlock) => block.type === "text")
-        .map((block: Anthropic.TextBlock) => block.text)
-        .join("");
-      if (!text.trim()) throw new Error("Anthropic returned no text content");
-      return text;
     } catch (error) {
       if (!isModerationRejection(error)) throw error;
       onModerationRetry(Math.min(attempt + 1, 2));
@@ -497,7 +496,164 @@ async function generateAnthropicText(
     }
   }
 
-  throw new Error("Anthropic moderation retries exhausted");
+  throw new ProviderModerationRejectedError(
+    "Gemini moderation retries exhausted",
+  );
+}
+
+async function generateOpenRouterText(
+  model: string,
+  timeoutMs: number,
+  options: ChainOptions,
+  systemPrompt: string,
+  userPrompt: string,
+  deadline: number,
+  initialSafetyLevel: number,
+  onModerationRetry: (level: number) => void,
+): Promise<GenerationResult> {
+  const apiKey = openRouterKey();
+  if (!apiKey) {
+    throw new ProviderNotConfiguredError(
+      "OPENROUTER_API_KEY is not configured",
+    );
+  }
+
+  for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
+    try {
+      const payload = await chatCompletionRequest({
+        providerName: "OpenRouter",
+        url: "https://openrouter.ai/api/v1/chat/completions",
+        apiKey,
+        model,
+        timeoutMs,
+        options,
+        systemPrompt,
+        userPrompt: moderationSafePrompt(userPrompt, attempt),
+        deadline,
+        headers: {
+          "HTTP-Referer": "https://katha.ai",
+          "X-Title": "Katha AI",
+        },
+      });
+      return {
+        text: openAICompatibleContent(payload, "OpenRouter"),
+        model: responseModel(payload) ?? model,
+      };
+    } catch (error) {
+      if (!isModerationRejection(error)) throw error;
+      onModerationRetry(Math.min(attempt + 1, 2));
+      if (attempt === 2) throw error;
+      console.warn(
+        `${model} moderation retry ${attempt + 1} of 2:`,
+        failureMessage(error),
+      );
+    }
+  }
+
+  throw new ProviderModerationRejectedError(
+    "OpenRouter moderation retries exhausted",
+  );
+}
+
+async function generateOpenAIText(
+  model: string,
+  timeoutMs: number,
+  options: ChainOptions,
+  systemPrompt: string,
+  userPrompt: string,
+  deadline: number,
+  initialSafetyLevel: number,
+  onModerationRetry: (level: number) => void,
+): Promise<string> {
+  const apiKey = openaiKey();
+  if (!apiKey) {
+    throw new ProviderNotConfiguredError("OPENAI_API_KEY is not configured");
+  }
+
+  for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
+    try {
+      const payload = await chatCompletionRequest({
+        providerName: "OpenAI",
+        url: "https://api.openai.com/v1/chat/completions",
+        apiKey,
+        model,
+        timeoutMs,
+        options,
+        systemPrompt,
+        userPrompt: moderationSafePrompt(userPrompt, attempt),
+        deadline,
+      });
+      return openAICompatibleContent(payload, "OpenAI");
+    } catch (error) {
+      if (!isModerationRejection(error)) throw error;
+      onModerationRetry(Math.min(attempt + 1, 2));
+      if (attempt === 2) throw error;
+      console.warn(
+        `${model} moderation retry ${attempt + 1} of 2:`,
+        failureMessage(error),
+      );
+    }
+  }
+
+  throw new ProviderModerationRejectedError(
+    "OpenAI moderation retries exhausted",
+  );
+}
+
+async function chatCompletionRequest(input: {
+  providerName: string;
+  url: string;
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+  options: ChainOptions;
+  systemPrompt: string;
+  userPrompt: string;
+  deadline: number;
+  headers?: Record<string, string>;
+}): Promise<unknown> {
+  return await withAbortTimeout(
+    remainingDuration(input.deadline, input.timeoutMs),
+    async (signal) => {
+      const response = await fetch(input.url, {
+        method: "POST",
+        signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${input.apiKey}`,
+          ...input.headers,
+        },
+        body: JSON.stringify({
+          model: input.model,
+          messages: [
+            { role: "system", content: input.systemPrompt },
+            { role: "user", content: input.userPrompt },
+          ],
+          temperature: 0.8,
+          ...openAICompatibleRequestShape(input.options),
+        }),
+      });
+      const payload = await parseProviderPayload(response);
+      if (!response.ok) {
+        throw new ProviderHttpError(
+          `${input.providerName} request failed (${response.status}): ${
+            providerError(payload)
+          }`,
+          response.status,
+        );
+      }
+      return payload;
+    },
+  );
+}
+
+function openAICompatibleRequestShape(options: ChainOptions) {
+  return {
+    max_tokens: options.maxTokens,
+    ...(options.constrainToStorySchema
+      ? { response_format: OPENAI_RESPONSE_FORMAT }
+      : {}),
+  };
 }
 
 function moderationSafePrompt(userPrompt: string, attempt: number): string {
@@ -517,7 +673,155 @@ function isModerationRejection(error: unknown): boolean {
     "unsafe content",
     "content blocked",
     "content filtering",
+    "safety_ratings",
+    "blocked",
   ].some((marker) => message.includes(marker));
+}
+
+function classifyHttpStatus(status: number): string {
+  if (status === 401 || status === 403) return "auth_failed";
+  if (status === 404) return "model_not_found";
+  if (status === 408) return "timeout";
+  if (status === 409) return "provider_conflict";
+  if (status === 429) return "rate_limited";
+  if (status >= 500) return "provider_5xx";
+  return "provider_error";
+}
+
+function geminiContent(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    throw new ProviderMalformedResponseError(
+      "Gemini returned an invalid response",
+    );
+  }
+  const promptFeedback = (payload as Record<string, unknown>).promptFeedback;
+  if (promptFeedback && typeof promptFeedback === "object") {
+    const blockReason = (promptFeedback as Record<string, unknown>).blockReason;
+    if (typeof blockReason === "string" && blockReason.trim().length > 0) {
+      throw new ProviderModerationRejectedError(
+        `Gemini moderation rejection: ${blockReason}`,
+      );
+    }
+  }
+  const candidates = (payload as Record<string, unknown>).candidates;
+  if (
+    !Array.isArray(candidates) || !candidates[0] ||
+    typeof candidates[0] !== "object"
+  ) {
+    throw new ProviderMalformedResponseError("Gemini returned no candidates");
+  }
+  const candidate = candidates[0] as Record<string, unknown>;
+  const finishReason = candidate.finishReason;
+  if (finishReason === "MAX_TOKENS") {
+    throw new ProviderMalformedResponseError(
+      "Gemini response truncated (finishReason=MAX_TOKENS)",
+    );
+  }
+  if (
+    typeof finishReason === "string" &&
+    ["SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"].includes(
+      finishReason,
+    )
+  ) {
+    throw new ProviderModerationRejectedError(
+      `Gemini moderation rejection: ${finishReason}`,
+    );
+  }
+  const content = candidate.content;
+  if (!content || typeof content !== "object") {
+    throw new ProviderMalformedResponseError("Gemini returned no content");
+  }
+  const parts = (content as Record<string, unknown>).parts;
+  if (!Array.isArray(parts)) {
+    throw new ProviderMalformedResponseError("Gemini returned no parts");
+  }
+  const text = parts
+    .filter((part): part is Record<string, unknown> =>
+      Boolean(part) && typeof part === "object"
+    )
+    .map((part) => part.text)
+    .filter((text): text is string => typeof text === "string")
+    .join("");
+  if (!text.trim()) {
+    throw new ProviderMalformedResponseError(
+      "Gemini returned no text content",
+    );
+  }
+  return text;
+}
+
+async function parseProviderPayload(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body.trim()) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return { error: { message: body.slice(0, 500) } };
+  }
+}
+
+function openAICompatibleContent(
+  payload: unknown,
+  providerName: string,
+): string {
+  if (!payload || typeof payload !== "object") {
+    throw new ProviderMalformedResponseError(
+      `${providerName} returned an invalid response`,
+    );
+  }
+  const choices = (payload as Record<string, unknown>).choices;
+  if (
+    !Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object"
+  ) {
+    throw new ProviderMalformedResponseError(
+      `${providerName} returned no choices`,
+    );
+  }
+  const finishReason = (choices[0] as Record<string, unknown>).finish_reason;
+  if (finishReason === "length") {
+    throw new ProviderMalformedResponseError(
+      `${providerName} response truncated (finish_reason=length)`,
+    );
+  }
+  if (finishReason === "content_filter") {
+    throw new ProviderModerationRejectedError(
+      `${providerName} moderation rejection: content_filter`,
+    );
+  }
+  const message = (choices[0] as Record<string, unknown>).message;
+  if (!message || typeof message !== "object") {
+    throw new ProviderMalformedResponseError(
+      `${providerName} returned no message`,
+    );
+  }
+  const content = (message as Record<string, unknown>).content;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new ProviderMalformedResponseError(
+      `${providerName} returned no content`,
+    );
+  }
+  return content;
+}
+
+function responseModel(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const model = (payload as Record<string, unknown>).model;
+  return typeof model === "string" && model.trim() ? model : null;
+}
+
+function providerError(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "invalid error body";
+  const error = (payload as Record<string, unknown>).error;
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    return typeof message === "string"
+      ? message.slice(0, 500)
+      : "unknown provider error";
+  }
+  const message = (payload as Record<string, unknown>).message;
+  return typeof message === "string"
+    ? message.slice(0, 500)
+    : "unknown provider error";
 }
 
 function failureMessage(error: unknown): string {
@@ -526,47 +830,10 @@ function failureMessage(error: unknown): string {
 
 function remainingDuration(deadline: number, providerLimit: number): number {
   const remaining = deadline - Date.now();
-  if (remaining <= 0) throw new Error("Generation deadline exceeded");
+  if (remaining <= 0) {
+    throw new DOMException("Generation deadline exceeded", "AbortError");
+  }
   return Math.min(remaining, providerLimit);
-}
-
-function openAIContent(payload: unknown): string {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("OpenAI returned an invalid response");
-  }
-  const choices = (payload as Record<string, unknown>).choices;
-  if (
-    !Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object"
-  ) {
-    throw new Error("OpenAI returned no choices");
-  }
-  const finishReason = (choices[0] as Record<string, unknown>).finish_reason;
-  if (finishReason === "length") {
-    // Truncated output is partial JSON. Parsing it fails and the caller falls
-    // back to the text parser, which persists a chapter with no hook and an
-    // empty series_state while still charging a credit. Fail instead so the
-    // existing refund path runs.
-    throw new Error("OpenAI response truncated (finish_reason=length)");
-  }
-  const message = (choices[0] as Record<string, unknown>).message;
-  if (!message || typeof message !== "object") {
-    throw new Error("OpenAI returned no message");
-  }
-  const content = (message as Record<string, unknown>).content;
-  if (typeof content !== "string" || !content.trim()) {
-    throw new Error("OpenAI returned no content");
-  }
-  return content;
-}
-
-function providerError(payload: unknown): string {
-  if (!payload || typeof payload !== "object") return "invalid error body";
-  const error = (payload as Record<string, unknown>).error;
-  if (!error || typeof error !== "object") return "unknown provider error";
-  const message = (error as Record<string, unknown>).message;
-  return typeof message === "string"
-    ? message.slice(0, 500)
-    : "unknown provider error";
 }
 
 async function withAbortTimeout<T>(
@@ -575,8 +842,6 @@ async function withAbortTimeout<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(
-    // A DOMException named AbortError is what fetch and the SDK both surface,
-    // so classifyLlmError can recognise a timeout rather than guessing.
     () =>
       controller.abort(new DOMException(`Timeout after ${ms}ms`, "AbortError")),
     ms,
@@ -587,4 +852,18 @@ async function withAbortTimeout<T>(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function geminiSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(geminiSchema);
+  if (!value || typeof value !== "object") return value;
+  const source = value as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(source)) {
+    if (key === "additionalProperties" || key === "description") continue;
+    output[key] = key === "type" && typeof child === "string"
+      ? child.toUpperCase()
+      : geminiSchema(child);
+  }
+  return output;
 }
