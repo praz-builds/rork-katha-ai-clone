@@ -6,6 +6,7 @@ import {
 import {
   AllProvidersFailedError,
   classifyLlmError,
+  editParagraph,
   GEMINI_MODEL,
   geminiRequestShape,
   generateStoryText,
@@ -523,4 +524,64 @@ Deno.test("each OpenAI model gets the contract its dialect requires", () => {
   assertEquals(legacy.max_tokens, 16_000);
   assertEquals(legacy.temperature, 0.8);
   assert(!("max_completion_tokens" in legacy));
+});
+
+// Runs for ~27s by design: it waits out the real slice gpt-5.6-luna is given
+// from the edit deadline. That wall-clock wait is the assertion - a shorter
+// stub would not prove the fallback survives a genuine stall.
+Deno.test("a stalled preferred OpenAI model still leaves room for the fallback", async () => {
+  // Regression guard: the OpenAI window is split per model, not shared. With a
+  // shared deadline a stalled gpt-5.6-luna spends the whole window and
+  // remainingDuration() aborts gpt-4o-mini before fetch() is called, so the
+  // fallback that exists for exactly this case never runs.
+  const realFetch = globalThis.fetch;
+  const attempted: string[] = [];
+
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+    const model = body.model ?? "";
+    attempted.push(model);
+    // Luna never answers; only the abort signal ends it.
+    if (model === "gpt-5.6-luna") {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+    }
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ error: { message: "stub: no fallback content" } }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      ),
+    );
+  }) as typeof fetch;
+
+  try {
+    const error = await withEnv(
+      {
+        GEMINI_API_KEY: null,
+        OPENROUTER_API_KEY: null,
+        OPENAI_API_KEY: "test-key",
+      },
+      async () => {
+        try {
+          await editParagraph("system", "user");
+          return null;
+        } catch (e) {
+          return e;
+        }
+      },
+    );
+
+    assert(error instanceof AllProvidersFailedError);
+    assert(
+      attempted.includes("gpt-4o-mini"),
+      `the fallback was never sent; attempted: ${attempted.join(", ")}`,
+    );
+    const luna = error.failures.find((f) => f.model === "gpt-5.6-luna");
+    assertEquals(luna?.code, "timeout");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

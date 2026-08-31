@@ -356,7 +356,18 @@ async function runProviderChain(
 
   // Each OpenAI model records its own failure, so telemetry shows whether the
   // preferred model was merely unentitled or actually broken.
-  for (const spec of OPENAI_MODELS) {
+  //
+  // The OpenAI window is split evenly across the models rather than shared. A
+  // shared deadline lets a stalled preferred model spend the whole window, and
+  // `remainingDuration` then aborts the model behind it before `fetch` is even
+  // called - the same starvation the per-provider phases exist to prevent,
+  // recurring one level down. An even split guarantees the last model a slice.
+  const openAIPhaseEnd = phaseDeadline(PHASE_END_SHARE.openai);
+  const openAIPhaseStart = Date.now();
+  const openAIWindow = Math.max(0, openAIPhaseEnd - openAIPhaseStart);
+  for (const [index, spec] of OPENAI_MODELS.entries()) {
+    const modelDeadline = openAIPhaseStart +
+      Math.floor((openAIWindow * (index + 1)) / OPENAI_MODELS.length);
     const openAIText = await tryProvider({
       failures,
       provider: "openai",
@@ -368,7 +379,7 @@ async function runProviderChain(
           options,
           systemPrompt,
           userPrompt,
-          phaseDeadline(PHASE_END_SHARE.openai),
+          modelDeadline,
           safetyLevel,
           recordModerationRetry,
         ).then((text) => requireUsableStoryOutput(text, options)),

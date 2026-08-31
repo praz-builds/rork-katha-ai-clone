@@ -20,7 +20,7 @@
 - Added and applied migration `00023` so `error_events.user_id` is a detached identifier and profile deletion cannot mutate, delete, or be blocked by historical telemetry.
 - Redeployed production `generate-story`, `continue-story`, and `edit-story` to project `iafeuxgoiknncgyjmugd`.
 
-## 2026-09-01 — GPT-5.6 Luna in the OpenAI position
+## 2026-08-31 — GPT-5.6 Luna in the OpenAI position
 
 **Session:** Replaced `gpt-4o-mini` with `gpt-5.6-luna` as the preferred OpenAI model, kept `gpt-4o-mini` behind it, and recorded the fallback-credential work in the roadmap.
 
@@ -34,7 +34,8 @@ The `error_events` telemetry added in this branch diagnosed it directly, with no
 
 ### Validation
 
-- `deno fmt --check`, `deno check`, **127 deno tests** pass.
+- `deno fmt --check`, `deno check`, **128 deno tests** pass, including a stalled-Luna regression that proves `gpt-4o-mini` is still sent when the preferred model hangs.
+- The OpenAI window is split evenly per model rather than shared. A shared deadline let a stalled preferred model spend the whole window, and `remainingDuration` then aborted the model behind it before `fetch` was called — the same starvation `PHASE_END_SHARE` prevents between providers, recurring one level down inside the OpenAI position.
 - Production `smoke-app-surface.py`: **26 / 26**; assertion 5.3 names `gpt-4o-mini`.
 - Production `smoke-series-generation.py`: **58 / 58**.
 
@@ -47,7 +48,7 @@ The `error_events` telemetry added in this branch diagnosed it directly, with no
 | OpenAI `gpt-5.6-luna` | `403 does not have access to model` — grant project access |
 | OpenAI `gpt-4o-mini` | **serving all production generation** |
 
-### Review follow-ups (2026-09-01)
+### Review follow-ups (2026-08-31 UTC)
 
 - `ProviderModerationRejectedError` replaces the plain `Error` thrown at every moderation site. `classifyLlmError` records it as `moderation_blocked` with `retryable: false`, so `error_events` no longer files a known, non-retryable content-policy refusal as `unknown` / retryable. `isModerationRejection` still matches it by message, so the softening-retry ladder is unchanged.
 - Migration `00025` gives the detached `error_events.user_id` an erasure path. `00023` removed the foreign key so telemetry could neither block nor be rewritten by profile deletion, which left the identifier with no lifecycle. `00025` nulls it on profile deletion via an `AFTER DELETE` trigger, adds `erase_user_error_telemetry(uuid)` for a request arriving after the profile is gone, and `prune_error_event_user_ids(interval)` as a 90-day retention backstop. All three are service-role only and always preserve the event row. Verified in production: profile deletion stayed non-blocking, the event row survived, `user_id` was nulled.

@@ -17,7 +17,7 @@ All bug fixes applied, migrations `00001`-`00015`, `00017`-`00023` and `00025` a
 ### Remaining Verification
 
 - [x] Set story-generation secrets: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, and existing `OPENAI_API_KEY`. Claude/Anthropic secret names are intentionally not read by the generation client.
-- [ ] **Unblock a funded primary provider.** As of 2026-09-01 every preferred position is blocked upstream and `gpt-4o-mini` — the weakest model in the chain — is carrying all production generation. Each item below is an account action; none needs a code change or a deploy, because the chain already tries them in this order and simply falls through:
+- [ ] **Unblock a funded primary provider.** As of 2026-08-31 UTC every preferred position is blocked upstream and `gpt-4o-mini` — the weakest model in the chain — is carrying all production generation. Each item below is an account action; none needs a code change or a deploy, because the chain already tries them in this order and simply falls through:
   - [ ] `GEMINI_API_KEY` returns `429 RESOURCE_EXHAUSTED`. Fix quota/billing on the Google AI project.
   - [ ] OpenRouter `google/gemini-2.5-flash` returns `402 Insufficient credits`. Add OpenRouter credits.
   - [ ] OpenAI `gpt-5.6-luna` returns `403 Project ... does not have access to model`. Grant the project access to `gpt-5.6-luna` (OpenAI dashboard → Project → Limits → model access; the model may also require org verification). This is the cheapest win of the three: Luna is $0.20/$1.20 per M against `gpt-4o-mini` at $0.15/$0.60, so a large prose-quality gain for roughly 2x completion cost.
