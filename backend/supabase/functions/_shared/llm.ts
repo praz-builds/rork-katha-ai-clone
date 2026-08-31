@@ -36,11 +36,14 @@ export const OPENROUTER_FREE_MODEL = "openrouter/free";
  * The OpenAI position, in preference order.
  *
  * `gpt-5.6-luna` is the model we want: far stronger prose than `gpt-4o-mini` at
- * $0.20/$1.20 per M. Access to it is granted per OpenAI project, though, and a
- * project without it gets `403 ... does not have access to model`, not a
- * degraded result. `gpt-4o-mini` stays behind it so an unentitled project keeps
- * generating, and so enabling Luna upstream needs no deploy - the 403 simply
- * stops happening and the better model takes over.
+ * $0.20/$1.20 per M. Access to it is granted per OpenAI *project* - the org
+ * grant alone is not enough - and a project without it gets
+ * `403 ... does not have access to model`, not a degraded result. Note that
+ * `/v1/models` still lists Luna for an unentitled project: that endpoint returns
+ * the catalogue, not the entitlement, so it cannot be used to probe access.
+ *
+ * The models behind it keep generating meanwhile, and enabling Luna upstream
+ * needs no deploy - the 403 simply stops happening and the better model wins.
  *
  * `reasoning` selects the chat-completions contract: a reasoning model takes
  * `max_completion_tokens` and rejects `temperature`. See the request shapes.
@@ -52,6 +55,11 @@ export interface OpenAIModelSpec {
 
 export const OPENAI_MODELS: readonly OpenAIModelSpec[] = [
   { model: "gpt-5.6-luna", reasoning: true },
+  // Interim while Luna is unentitled: a generation ahead of gpt-4o-mini at
+  // ~3x its cost (~$0.006 vs ~$0.002 per story). Luna is both cheaper and
+  // better than this once granted, so this position is not the destination.
+  { model: "gpt-5-mini", reasoning: true },
+  // The safety net. Not gated behind any entitlement, so it always answers.
   { model: "gpt-4o-mini", reasoning: false },
 ];
 
@@ -224,7 +232,7 @@ export function classifyLlmError(
 /**
  * Generate story text with a fallback chain:
  * gemini-3.1-pro-preview -> OpenRouter google/gemini-2.5-flash (pinned, priced)
- * -> OpenAI (gpt-5.6-luna, then gpt-4o-mini) -> openrouter/free (last resort).
+ * -> OpenAI (gpt-5.6-luna, gpt-5-mini, gpt-4o-mini) -> openrouter/free (last).
  *
  * Each phase is additionally capped at a cumulative fraction of `deadlineMs`
  * (`PHASE_END_SHARE`), so one slow provider cannot starve the rest of the chain.
