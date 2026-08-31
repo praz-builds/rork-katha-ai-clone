@@ -440,17 +440,14 @@ Deno.test("Anthropic and Claude credential names are ignored", async () => {
   assertEquals(error.failures.map((f) => f.provider), [
     "gemini",
     "openrouter",
-    "openai",
-    "openai",
+    ...OPENAI_MODELS.map(() => "openai"),
     "openrouter",
   ]);
-  assertEquals(error.failures.map((f) => f.code), [
-    "not_configured",
-    "not_configured",
-    "not_configured",
-    "not_configured",
-    "not_configured",
-  ]);
+  assertEquals(
+    error.failures.map((f) => f.code),
+    // gemini + pinned openrouter + every OpenAI model + the free router
+    new Array(3 + OPENAI_MODELS.length).fill("not_configured"),
+  );
 });
 
 Deno.test("the free router is the last attempt in the chain", async () => {
@@ -502,8 +499,11 @@ Deno.test("the OpenAI position falls back past an unentitled model", () => {
   assertEquals(OPENAI_MODELS[0].reasoning, true);
   assertEquals(OPENAI_MODEL, OPENAI_MODELS[0].model);
 
+  // The last entry is the safety net and must not itself be entitlement-gated,
+  // or an unentitled project has no working OpenAI position at all.
   const last = OPENAI_MODELS[OPENAI_MODELS.length - 1];
-  assertEquals(last.reasoning, false, "the safety net must not be gated");
+  assertEquals(last.model, "gpt-4o-mini");
+  assertEquals(last.reasoning, false);
 });
 
 Deno.test("each OpenAI model gets the contract its dialect requires", () => {

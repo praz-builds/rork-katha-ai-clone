@@ -28,9 +28,18 @@
 - Luna is a reasoning model, so the direct OpenAI call needed a second chat-completions dialect: `max_completion_tokens` instead of `max_tokens`, no `temperature`, and `reasoning_effort: "low"` because prose does not benefit from long deliberation and every reasoning token is latency the reader waits through. Reasoning tokens are counted inside the completion budget, so it carries 2x headroom over the visible story length. The OpenRouter path keeps the legacy `max_tokens` + `temperature` shape, since it still routes to models that only understand it.
 - `OPENAI_TIMEOUT_MS` raised 30s -> 60s and `PHASE_END_SHARE` rebalanced to 35/50/90/100% to give the reasoning model room.
 
-**Production result:** Luna returned `403 Project ... does not have access to model gpt-5.6-luna`. The model ID is correct; the OpenAI project simply is not entitled to it. The first deploy — Luna alone, replacing `gpt-4o-mini` — took generation down: every position failed and `generate-story` returned 500. The ordered-list fallback restored it in the same session. Granting project access upstream will switch production to Luna with no deploy.
+**Production result (superseded — Luna went live later the same day; see below):** Luna returned `403 Project ... does not have access to model gpt-5.6-luna`. The model ID is correct; the OpenAI project simply is not entitled to it. The first deploy — Luna alone, replacing `gpt-4o-mini` — took generation down: every position failed and `generate-story` returned 500. The ordered-list fallback restored it in the same session. Granting project access upstream will switch production to Luna with no deploy.
 
 The `error_events` telemetry added in this branch diagnosed it directly, with no log spelunking: one `all_providers_failed` row carrying `models` and `statuses` arrays showed `gemini=429, google/gemini-2.5-flash=402, gpt-5.6-luna=403, openrouter/free=timeout`. This is the first incident the table has paid for.
+
+Fingerprints, per the Observability Gate in `AGENTS.md`:
+
+| Fingerprint | Bucket | Code | Occurrences |
+| --- | --- | --- | --- |
+| `e113a07ec4385e039cd8453b37d69c9d` | `llm.provider` | `all_providers_failed` | 1 |
+| `c3cdcc232b713a738c724bb5a65bb111` | `generation.story` | `post_deduction_failed` | 1 |
+
+Both first and last seen `2026-08-31 18:59:59 UTC`, `occurrences = 1` in `error_event_summary` — a single incident, not a recurrence, and neither has reappeared since the ordered-list fallback landed.
 
 ### Validation
 
@@ -39,14 +48,25 @@ The `error_events` telemetry added in this branch diagnosed it directly, with no
 - Production `smoke-app-surface.py`: **26 / 26**; assertion 5.3 names `gpt-4o-mini`.
 - Production `smoke-series-generation.py`: **58 / 58**.
 
-### Known blockers (all upstream account actions, no code change needed)
+### Luna went live the same day
+
+Granting model access at the **org** level was not sufficient: the 403 names a *project*, and the project allowlist is enforced on top of the org grant. Once access was granted on `proj_XsPb…` the chain switched to Luna with no deploy — the 403 simply stopped.
+
+Two things worth remembering from the diagnosis:
+
+- `GET /v1/models` listed `gpt-5.6-luna` for the whole outage. That endpoint returns the catalogue, not the entitlement, so it is useless as an access probe. A temporary diagnostic function that issued real completion requests settled it in one call: Luna `403` on both `/v1/chat/completions` and `/v1/responses`, while `gpt-5.5` and `gpt-5.4` returned `200` on the same key. The diagnostic was deleted immediately after.
+- `gpt-5-mini` was added between Luna and `gpt-4o-mini` while access was pending (~$0.006/story against ~$0.002). It stays as the second tier: once Luna is entitled it is both cheaper *and* better, so the interim model is now pure redundancy rather than a cost the product pays.
+
+Observed while `gpt-5-mini` was serving: one story came back at **2026 words** against a 500-1500 band, in-band on the surrounding runs. The band is prompt-enforced only and nothing rejects an over-length chapter, so a stronger model that ignores the ceiling reaches persistence. Not reproduced under Luna (1085-1353 words across romance/thriller/fantasy), so it is not currently biting — tracked in the roadmap rather than fixed here.
+
+### Provider status after the fix
 
 | Position | Status |
 | --- | --- |
 | `gemini-3.1-pro-preview` | `429 RESOURCE_EXHAUSTED` — Google AI quota/billing |
 | OpenRouter `google/gemini-2.5-flash` | `402 Insufficient credits` — add OpenRouter credits |
-| OpenAI `gpt-5.6-luna` | `403 does not have access to model` — grant project access |
-| OpenAI `gpt-4o-mini` | **serving all production generation** |
+| OpenAI `gpt-5.6-luna` | **serving all production generation** |
+| OpenAI `gpt-5-mini`, `gpt-4o-mini` | fallback tiers, healthy |
 
 ### Review follow-ups (2026-08-31 UTC)
 
