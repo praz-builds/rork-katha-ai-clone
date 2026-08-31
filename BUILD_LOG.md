@@ -2,6 +2,40 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-08-31 — Story generation moved off Anthropic to a four-provider chain
+
+Story generation no longer reads any Claude/Anthropic credential. `_shared/llm.ts` calls provider HTTP APIs directly, in order, and refunds the credit only if every position fails. Merged as PRs #39, #40 and #41.
+
+```
+gemini-3.1-pro-preview
+  -> OpenRouter google/gemini-2.5-flash   (pinned, priced)
+  -> OpenAI: gpt-5.6-luna, gpt-5-mini, gpt-4o-mini
+  -> openrouter/free                      (last resort)
+```
+
+`gpt-5.6-luna` serves production today. Full engineering detail is in `backend/build-log.md`; this entry records what matters at the monorepo level.
+
+### Three things worth carrying forward
+
+- **`openrouter/free` is not a fallback position.** It routes to a random free model per request. In production it served a paragraph rewrite from `cohere/north-mini-code:free` — a code model writing prose — and timed out on a story generation. Every model whose identity is known in advance now runs ahead of it.
+- **OpenAI model access is per-project, not per-org.** Granting Luna at org level left `403 Project ... does not have access to model` in place. Worse, `GET /v1/models` listed Luna throughout the outage: that endpoint returns the catalogue, not the entitlement, so it cannot be used to probe access. Only a real completion request settles it.
+- **Persistent failure telemetry paid for itself immediately.** `public.error_events` (migration `00018`) diagnosed a total-chain outage from one row — the parallel `models`, `codes` and `statuses` arrays reading `gemini=rate_limited/429`, `gemini-2.5-flash=provider_error/402`, `gpt-5.6-luna=auth_failed/403`, `openrouter/free=timeout` (a client-side abort, so its `status` is null) — with no log spelunking. Fingerprints `e113a07ec4385e039cd8453b37d69c9d` and `c3cdcc232b713a738c724bb5a65bb111`, `occurrences = 1` each, neither recurring since. The `AGENTS.md` Observability Gate now requires every production-level test to persist its failures this way.
+
+### Schema
+
+Migrations `00018`-`00023` and `00025` applied to `iafeuxgoiknncgyjmugd`. `error_events.user_id` is a detached identifier: profile deletion can neither be blocked by nor rewrite append-only telemetry, and `00025` supplies the erasure path that detaching otherwise removed — an `AFTER DELETE` trigger, an on-demand `erase_user_error_telemetry(uuid)`, and a 90-day retention backstop, all service-role only, all preserving the event row.
+
+### Verification
+
+- 128 Deno tests, `deno fmt --check` and `deno check` clean; Expo typecheck, lint, Jest and web export pass.
+- Production `smoke-app-surface.py` **26 / 26** and `smoke-series-generation.py` **58 / 58**.
+- Quality read across romance / thriller / fantasy: 1085-1353 words, in band, distinct openings and titles.
+
+### Known risks
+
+- **One credential behind everything.** Gemini (`429 RESOURCE_EXHAUSTED`) and OpenRouter (`402 Insufficient credits`) are both unavailable, so all three serving positions authenticate with the same `OPENAI_API_KEY` — which is also the DALL·E 3 cover credential. A dedicated fallback key for story generation is a Phase A task in `backend/ROADMAP.md`.
+- **The chapter word band is prompt-enforced only.** Nothing validates `word_count` before persistence; `gpt-5-mini` produced a 2,026-word chapter against a 500-1500 band, stored and charged for. Not reproducing under Luna, so latent rather than live. Tracked in the roadmap.
+
 ## 2026-08-22 — Canonical Repository Consolidation
 
 - Confirmed `praz-builds/rork-katha-ai-clone` as the canonical product repository.

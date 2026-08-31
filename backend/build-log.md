@@ -7,30 +7,17 @@
 
 ---
 
-## 2026-08-31 UTC — CodeRabbit follow-up for provider and telemetry hardening
+## 2026-08-31 UTC — GPT-5.6 Luna live in the OpenAI position
 
-**Session:** Addressed the latest CodeRabbit review on PR #39 while preserving the user-requested fallback contract: Gemini -> OpenRouter Free Router -> `gpt-4o-mini`.
+**Session:** Made the OpenAI position an ordered model list — `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini` — diagnosed and cleared a project-level entitlement block on Luna, and recorded the fallback-credential work in the roadmap. Luna now serves all production generation. PRs #40 and #41.
 
-- Gemini and OpenAI-compatible provider paths now parse HTTP bodies with `response.text()` and defensive JSON parsing, preserving HTTP status classification even when an error body is plain text.
-- Gemini prompt-level `promptFeedback.blockReason` is classified as a moderation rejection before candidate validation, and moderation matching no longer uses the broad bare `safety` substring.
-- Error-context sanitization tests now exercise `sanitizeErrorContext()` directly for circular values while preserving allowlisted request identifiers.
-- Restored migration `00018` to its original summary-view grouping shape and kept migration `00021` as the sole corrective one-row-per-fingerprint migration.
-- Clarified that `00016_device_tokens.sql` remains a pending Phase G migration.
-- Added and applied migration `00022` to validate the replacement `error_events.user_id` foreign key separately from the `NOT VALID` constraint creation.
-- Added and applied migration `00023` so `error_events.user_id` is a detached identifier and profile deletion cannot mutate, delete, or be blocked by historical telemetry.
-- Redeployed production `generate-story`, `continue-story`, and `edit-story` to project `iafeuxgoiknncgyjmugd`.
-
-## 2026-08-31 — GPT-5.6 Luna in the OpenAI position
-
-**Session:** Replaced `gpt-4o-mini` with `gpt-5.6-luna` as the preferred OpenAI model, kept `gpt-4o-mini` behind it, and recorded the fallback-credential work in the roadmap.
-
-- `OPENAI_MODELS` makes the OpenAI position an ordered list rather than a single model: `gpt-5.6-luna`, then `gpt-4o-mini`. Each entry records its own `LlmFailure`, so telemetry distinguishes an unentitled model from a broken one.
+- `OPENAI_MODELS` makes the OpenAI position an ordered list rather than a single model: `gpt-5.6-luna`, `gpt-5-mini`, then `gpt-4o-mini`. Each entry records its own `LlmFailure`, so telemetry distinguishes an unentitled model from a broken one. The last entry must never be entitlement-gated, or an unentitled project has no working OpenAI position at all.
 - Luna is a reasoning model, so the direct OpenAI call needed a second chat-completions dialect: `max_completion_tokens` instead of `max_tokens`, no `temperature`, and `reasoning_effort: "low"` because prose does not benefit from long deliberation and every reasoning token is latency the reader waits through. Reasoning tokens are counted inside the completion budget, so it carries 2x headroom over the visible story length. The OpenRouter path keeps the legacy `max_tokens` + `temperature` shape, since it still routes to models that only understand it.
 - `OPENAI_TIMEOUT_MS` raised 30s -> 60s and `PHASE_END_SHARE` rebalanced to 35/50/90/100% to give the reasoning model room.
 
-**Production result (superseded — Luna went live later the same day; see below):** Luna returned `403 Project ... does not have access to model gpt-5.6-luna`. The model ID is correct; the OpenAI project simply is not entitled to it. The first deploy — Luna alone, replacing `gpt-4o-mini` — took generation down: every position failed and `generate-story` returned 500. The ordered-list fallback restored it in the same session. Granting project access upstream will switch production to Luna with no deploy.
+**Production result on first deploy (superseded the same day — see "Luna went live" below):** Luna returned `403 Project ... does not have access to model gpt-5.6-luna`. The model ID is correct; the OpenAI project simply is not entitled to it. The first deploy — Luna alone, replacing `gpt-4o-mini` — took generation down: every position failed and `generate-story` returned 500. The ordered-list fallback restored it in the same session. Granting project access upstream will switch production to Luna with no deploy.
 
-The `error_events` telemetry added in this branch diagnosed it directly, with no log spelunking: one `all_providers_failed` row carrying `models` and `statuses` arrays showed `gemini=429, google/gemini-2.5-flash=402, gpt-5.6-luna=403, openrouter/free=timeout`. This is the first incident the table has paid for.
+The `error_events` telemetry added in this branch diagnosed it directly, with no log spelunking: one `all_providers_failed` row carrying parallel `models`, `codes` and `statuses` arrays showed `gemini=rate_limited/429`, `google/gemini-2.5-flash=provider_error/402`, `gpt-5.6-luna=auth_failed/403`, and `openrouter/free=timeout` with a null `status`, since an abort never receives an HTTP response. This is the first incident the table has paid for.
 
 Fingerprints, per the Observability Gate in `AGENTS.md`:
 
@@ -45,7 +32,7 @@ Both first and last seen `2026-08-31 18:59:59 UTC`, `occurrences = 1` in `error_
 
 - `deno fmt --check`, `deno check`, **128 deno tests** pass, including a stalled-Luna regression that proves `gpt-4o-mini` is still sent when the preferred model hangs.
 - The OpenAI window is split evenly per model rather than shared. A shared deadline let a stalled preferred model spend the whole window, and `remainingDuration` then aborted the model behind it before `fetch` was called — the same starvation `PHASE_END_SHARE` prevents between providers, recurring one level down inside the OpenAI position.
-- Production `smoke-app-surface.py`: **26 / 26**; assertion 5.3 names `gpt-4o-mini`.
+- Production `smoke-app-surface.py`: **26 / 26**; assertion 5.3 names `gpt-5.6-luna` after the entitlement was granted (`gpt-4o-mini`, then `gpt-5-mini`, on the runs before it).
 - Production `smoke-series-generation.py`: **58 / 58**.
 
 ### Luna went live the same day
@@ -55,7 +42,15 @@ Granting model access at the **org** level was not sufficient: the 403 names a *
 Two things worth remembering from the diagnosis:
 
 - `GET /v1/models` listed `gpt-5.6-luna` for the whole outage. That endpoint returns the catalogue, not the entitlement, so it is useless as an access probe. A temporary diagnostic function that issued real completion requests settled it in one call: Luna `403` on both `/v1/chat/completions` and `/v1/responses`, while `gpt-5.5` and `gpt-5.4` returned `200` on the same key. The diagnostic was deleted immediately after.
-- `gpt-5-mini` was added between Luna and `gpt-4o-mini` while access was pending (~$0.006/story against ~$0.002). It stays as the second tier: once Luna is entitled it is both cheaper *and* better, so the interim model is now pure redundancy rather than a cost the product pays.
+- `gpt-5-mini` was added between Luna and `gpt-4o-mini` while access was pending, trading cost for quality against the only model then serving: `gpt-5-mini` ~$0.006/story against `gpt-4o-mini` ~$0.002. It stays as the second tier now that Luna is entitled, and costs the product nothing there — Luna at ~$0.004 is both cheaper *and* better than it, so `gpt-5-mini` only bills when Luna itself fails.
+
+  Per ~1k-word story, at list prices (~700 prompt + ~3,000 completion tokens including reasoning):
+
+  | Model | $/M in | $/M out | ~$/story |
+  | --- | --- | --- | --- |
+  | `gpt-4o-mini` | 0.15 | 0.60 | 0.002 |
+  | `gpt-5.6-luna` | 0.20 | 1.20 | 0.004 |
+  | `gpt-5-mini` | 0.25 | 2.00 | 0.006 |
 
 Observed while `gpt-5-mini` was serving: one story came back at **2026 words** against a 500-1500 band, in-band on the surrounding runs. The band is prompt-enforced only and nothing rejects an over-length chapter, so a stronger model that ignores the ceiling reaches persistence. Not reproduced under Luna (1085-1353 words across romance/thriller/fantasy), so it is not currently biting — tracked in the roadmap rather than fixed here.
 
@@ -67,6 +62,19 @@ Observed while `gpt-5-mini` was serving: one story came back at **2026 words** a
 | OpenRouter `google/gemini-2.5-flash` | `402 Insufficient credits` — add OpenRouter credits |
 | OpenAI `gpt-5.6-luna` | **serving all production generation** |
 | OpenAI `gpt-5-mini`, `gpt-4o-mini` | fallback tiers, healthy |
+
+## 2026-08-31 UTC — CodeRabbit follow-up for provider and telemetry hardening
+
+**Session:** Addressed the CodeRabbit review on PR #39. The chain at the time was Gemini -> OpenRouter Free Router -> `gpt-4o-mini`; it was reordered later the same day so the random free router sits last, and the OpenAI position became a model list. See the Luna entry above for the current shape.
+
+- Gemini and OpenAI-compatible provider paths now parse HTTP bodies with `response.text()` and defensive JSON parsing, preserving HTTP status classification even when an error body is plain text.
+- Gemini prompt-level `promptFeedback.blockReason` is classified as a moderation rejection before candidate validation, and moderation matching no longer uses the broad bare `safety` substring.
+- Error-context sanitization tests now exercise `sanitizeErrorContext()` directly for circular values while preserving allowlisted request identifiers.
+- Restored migration `00018` to its original summary-view grouping shape and kept migration `00021` as the sole corrective one-row-per-fingerprint migration.
+- Clarified that `00016_device_tokens.sql` remains a pending Phase G migration.
+- Added and applied migration `00022` to validate the replacement `error_events.user_id` foreign key separately from the `NOT VALID` constraint creation.
+- Added and applied migration `00023` so `error_events.user_id` is a detached identifier and profile deletion cannot mutate, delete, or be blocked by historical telemetry.
+- Redeployed production `generate-story`, `continue-story`, and `edit-story` to project `iafeuxgoiknncgyjmugd`.
 
 ### Review follow-ups (2026-08-31 UTC)
 
