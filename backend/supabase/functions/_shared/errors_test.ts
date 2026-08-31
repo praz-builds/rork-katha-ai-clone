@@ -52,8 +52,8 @@ Deno.test("sanitizeErrorContext tolerates unserializable context values", () => 
   circular.self = circular;
 
   assertEquals(
-    sanitizeErrorContext({ circular, request_id: "abc-123" }),
-    { request_id: "abc-123" },
+    sanitizeErrorContext({ models: circular, request_id: "abc-123" }),
+    { models: "<omitted: invalid>", request_id: "abc-123" },
   );
 });
 

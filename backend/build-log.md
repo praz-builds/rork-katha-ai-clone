@@ -17,6 +17,7 @@
 - Restored migration `00018` to its original summary-view grouping shape and kept migration `00021` as the sole corrective one-row-per-fingerprint migration.
 - Clarified that `00016_device_tokens.sql` remains a pending Phase G migration.
 - Added and applied migration `00022` to validate the replacement `error_events.user_id` foreign key separately from the `NOT VALID` constraint creation.
+- Added and applied migration `00023` so `error_events.user_id` is a detached identifier and profile deletion cannot mutate, delete, or be blocked by historical telemetry.
 - Redeployed production `generate-story`, `continue-story`, and `edit-story` to project `iafeuxgoiknncgyjmugd`.
 
 ### Validation
@@ -25,6 +26,11 @@
 - `deno check` for `generate-story`, `continue-story`, `edit-story`, `_shared/llm.ts`, and `_shared/errors.ts`: passed.
 - `deno test --allow-env --allow-net supabase/functions/_shared`: **124 passed**.
 - `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-pr39`: passed with bundled Node on PATH; output written to `/tmp/katha-web-export-pr39`.
+- Provider-chain reorder verified in production after redeploying `generate-story`, `continue-story`, `edit-story`:
+  - `smoke-app-surface.py`: **26 / 26**. Assertion 5.3 now names `gpt-4o-mini`; the same assertion named `cohere/north-mini-code:free` before the reorder.
+  - `smoke-series-generation.py`: **58 / 58**.
+  - Live quality read across romance / thriller / fantasy seeds: 846-1100 words, in-band, genre-appropriate prose, with `themes`, `series_state` (`open_hooks`, `world_facts`, `promised_payoffs`, `central_conflict`), `chapter_role`, `hook_type` and `hook_text` all persisted.
+  - Observed chain in production today: Gemini `429 RESOURCE_EXHAUSTED` -> OpenRouter `google/gemini-2.5-flash` `402 Insufficient credits` -> `gpt-4o-mini` serves. Prose quality is therefore capped at `gpt-4o-mini` until one of the two upstream billing blockers is cleared; no code change is needed when they are.
 - Security scan: no committed Gemini/OpenRouter keys or service-role-style secrets found. Existing `image-size` high advisories remain upstream-blocked pending a published patched release.
 - Production smoke after redeploy:
   - `smoke-app-surface.py`: **26 / 26**, with the known cover-generation pending note unchanged.
@@ -32,12 +38,14 @@
 
 ## 2026-08-31 UTC — Gemini/OpenRouter story-generation chain deployed
 
-**Session:** Replaced the active story-generation provider chain with Gemini -> OpenRouter Free Router -> `gpt-4o-mini`, removed Anthropic/Claude runtime dependency from `_shared/llm.ts`, set the new Supabase secrets, unset old Claude/Anthropic secret names where present, and deployed the generation functions.
+**Session:** Replaced the active story-generation provider chain with Gemini -> OpenRouter `google/gemini-2.5-flash` -> `gpt-4o-mini` -> OpenRouter Free Router, removed Anthropic/Claude runtime dependency from `_shared/llm.ts`, set the new Supabase secrets, unset old Claude/Anthropic secret names where present, and deployed the generation functions.
 
 ### Runtime changes
 
-- `_shared/llm.ts` now calls provider HTTP APIs directly in this order: `gemini-3.1-pro-preview` (70s), `openrouter/free` (30s), then `gpt-4o-mini` (30s).
-- OpenRouter uses the free router so OpenRouter filters by required request capabilities and randomly selects a compatible free model.
+- `_shared/llm.ts` now calls provider HTTP APIs directly in this order: `gemini-3.1-pro-preview`, OpenRouter `google/gemini-2.5-flash`, `gpt-4o-mini`, then OpenRouter `openrouter/free`.
+- The second position is a pinned, priced OpenRouter model (65k output cap, native structured output, billed through OpenRouter so a Google-side quota block on `GEMINI_API_KEY` does not take it down).
+- `openrouter/free` moved from the second position to last. It routes to a random free model per request under free-tier daily caps: the 2026-08-31 app-surface smoke run caught it serving a paragraph rewrite from `cohere/north-mini-code:free`, a code model, and a story generation timed out against it at 30s. Every model whose identity is known in advance now runs first, and the router is only the last attempt before the caller refunds the credit.
+- Each provider phase is capped at a cumulative fraction of the shared deadline (`PHASE_END_SHARE`: 40% / 60% / 85% / 100%). Moderation retries are otherwise bounded only by the shared deadline, so a slow first provider could exhaust the budget and abort every fallback before it sent a request.
 - Story-generation requests are schema-constrained for all providers: Gemini `responseSchema`; OpenRouter/OpenAI strict `response_format`.
 - Old Claude/Anthropic env names are intentionally ignored. Regression coverage proves `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_TOKEN` cannot authenticate generation.
 - A provider returning HTTP 200 with malformed or empty story JSON now counts as `malformed_response` and falls through to the next provider instead of reaching persistence and refunding after credit deduction.

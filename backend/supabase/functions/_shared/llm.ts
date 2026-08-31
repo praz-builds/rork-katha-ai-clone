@@ -13,6 +13,24 @@ import { parseStructuredOutput } from "./story_text.ts";
  */
 
 export const GEMINI_MODEL = "gemini-3.1-pro-preview";
+/**
+ * The second position is a pinned, priced model, not the free router.
+ *
+ * `openrouter/free` picks a free model at random per request, so its output cap,
+ * latency and prose quality are not repeatable, and free-tier daily request caps
+ * apply. A routed model whose output cap is under `MAX_OUTPUT_TOKENS` returns
+ * `finish_reason: "length"`, which `openAICompatibleContent` rejects. Gemini 2.5
+ * Flash is pinned here: 65k output tokens, native structured output, and it bills
+ * through OpenRouter, so a Google-side quota block on `GEMINI_API_KEY` does not
+ * take this position down with it.
+ */
+export const OPENROUTER_MODEL = "google/gemini-2.5-flash";
+/**
+ * Last-ditch only, behind every model whose identity is known in advance.
+ *
+ * Production has seen this router hand a *code* model a prose rewrite, and its
+ * free-tier daily caps make it unfit to carry traffic.
+ */
 export const OPENROUTER_FREE_MODEL = "openrouter/free";
 export const OPENAI_MODEL = "gpt-4o-mini";
 
@@ -32,6 +50,21 @@ const EDIT_DEADLINE_MS = 60_000;
 const GEMINI_TIMEOUT_MS = 70_000;
 const OPENROUTER_TIMEOUT_MS = 30_000;
 const OPENAI_TIMEOUT_MS = 30_000;
+
+/**
+ * Cumulative fractions of `deadlineMs` at which each provider phase must end.
+ *
+ * A provider's moderation retries are bounded only by the shared deadline, so
+ * without per-phase caps the first provider can spend the entire budget and
+ * every fallback aborts before it sends a request - the chain collapses to one
+ * provider in exactly the slow case the fallbacks exist for.
+ */
+const PHASE_END_SHARE = {
+  gemini: 0.4,
+  openrouter: 0.6,
+  openai: 0.85,
+  openrouterFree: 1,
+} as const;
 
 interface GenerationResult {
   text: string;
@@ -208,7 +241,11 @@ async function runProviderChain(
   options: ChainOptions,
 ): Promise<GenerationResult> {
   const failures: LlmFailure[] = [];
-  const deadline = Date.now() + options.deadlineMs;
+  const start = Date.now();
+  const deadline = start + options.deadlineMs;
+  /** End of a provider's slice, never past the shared deadline. */
+  const phaseDeadline = (share: number) =>
+    Math.min(deadline, start + Math.floor(options.deadlineMs * share));
   let safetyLevel = 0;
   const recordModerationRetry = (level: number) => {
     safetyLevel = Math.max(safetyLevel, level);
@@ -225,7 +262,7 @@ async function runProviderChain(
         options,
         systemPrompt,
         userPrompt,
-        deadline,
+        phaseDeadline(PHASE_END_SHARE.gemini),
         safetyLevel,
         recordModerationRetry,
       ).then((text) => requireUsableStoryOutput(text, options)),
@@ -234,19 +271,19 @@ async function runProviderChain(
     return { text: geminiResult, model: GEMINI_MODEL };
   }
 
-  let openRouterModel = OPENROUTER_FREE_MODEL;
+  let openRouterModel = OPENROUTER_MODEL;
   const openRouterText = await tryProvider({
     failures,
     provider: "openrouter",
-    model: OPENROUTER_FREE_MODEL,
+    model: OPENROUTER_MODEL,
     run: async () => {
       const result = await generateOpenRouterText(
-        OPENROUTER_FREE_MODEL,
+        OPENROUTER_MODEL,
         OPENROUTER_TIMEOUT_MS,
         options,
         systemPrompt,
         userPrompt,
-        deadline,
+        phaseDeadline(PHASE_END_SHARE.openrouter),
         safetyLevel,
         recordModerationRetry,
       );
@@ -269,13 +306,41 @@ async function runProviderChain(
         options,
         systemPrompt,
         userPrompt,
-        deadline,
+        phaseDeadline(PHASE_END_SHARE.openai),
         safetyLevel,
         recordModerationRetry,
       ).then((text) => requireUsableStoryOutput(text, options)),
   });
   if (openAIText) {
     return { text: openAIText, model: OPENAI_MODEL };
+  }
+
+  // Last-ditch only. The free router picks a free model at random per request -
+  // production has seen it route a *code* model to write prose - so it sits
+  // behind every model whose identity is known in advance. It earns its place
+  // solely as a final attempt before the caller has to refund the credit.
+  let openRouterFreeModel = OPENROUTER_FREE_MODEL;
+  const openRouterFreeText = await tryProvider({
+    failures,
+    provider: "openrouter",
+    model: OPENROUTER_FREE_MODEL,
+    run: async () => {
+      const result = await generateOpenRouterText(
+        OPENROUTER_FREE_MODEL,
+        OPENROUTER_TIMEOUT_MS,
+        options,
+        systemPrompt,
+        userPrompt,
+        phaseDeadline(PHASE_END_SHARE.openrouterFree),
+        safetyLevel,
+        recordModerationRetry,
+      );
+      openRouterFreeModel = result.model;
+      return requireUsableStoryOutput(result.text, options);
+    },
+  });
+  if (openRouterFreeText) {
+    return { text: openRouterFreeText, model: openRouterFreeModel };
   }
 
   throw new AllProvidersFailedError(failures);

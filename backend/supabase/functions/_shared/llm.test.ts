@@ -12,6 +12,7 @@ import {
   OPENAI_MODEL,
   openAIRequestShape,
   OPENROUTER_FREE_MODEL,
+  OPENROUTER_MODEL,
   openRouterRequestShape,
   ProviderHttpError,
   ProviderMalformedResponseError,
@@ -412,11 +413,42 @@ Deno.test("Anthropic and Claude credential names are ignored", async () => {
     "gemini",
     "openrouter",
     "openai",
+    "openrouter",
   ]);
   assertEquals(error.failures.map((f) => f.code), [
     "not_configured",
     "not_configured",
     "not_configured",
+    "not_configured",
+  ]);
+});
+
+Deno.test("the free router is the last attempt in the chain", async () => {
+  const error = await withEnv(
+    {
+      GEMINI_API_KEY: null,
+      OPENROUTER_API_KEY: null,
+      OPENAI_API_KEY: null,
+    },
+    async () => {
+      try {
+        await generateStoryText("system", "user");
+        return null;
+      } catch (e) {
+        return e;
+      }
+    },
+  );
+
+  assert(error instanceof AllProvidersFailedError);
+  // The free router picks a free model at random per request and is capped by
+  // free-tier daily limits, so every model whose identity is known in advance
+  // must be tried before it.
+  assertEquals(error.failures.map((f) => f.model), [
+    GEMINI_MODEL,
+    OPENROUTER_MODEL,
+    OPENAI_MODEL,
+    OPENROUTER_FREE_MODEL,
   ]);
 });
 

@@ -12,11 +12,15 @@
 
 **Goal:** Fix critical bugs, deploy existing functions, verify schema.
 
-All bug fixes applied, migrations `00001`-`00015` and `00017`-`00022` applied to the linked project. Migration `00016_device_tokens.sql` is absent from the repository and remains a pending Phase G task. **12 of 12 edge functions are deployed** — verified through production smoke suites on 2026-08-31 UTC.
+All bug fixes applied, migrations `00001`-`00015` and `00017`-`00023` applied to the linked project. Migration `00016_device_tokens.sql` is absent from the repository and remains a pending Phase G task. **12 of 12 edge functions are deployed** — verified through production smoke suites on 2026-08-31 UTC.
 
 ### Remaining Verification
 
 - [x] Set story-generation secrets: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, and existing `OPENAI_API_KEY`. Claude/Anthropic secret names are intentionally not read by the generation client.
+- [ ] **Unblock a funded primary provider.** As of 2026-08-31 both preferred positions are down and `gpt-4o-mini` is carrying generation:
+  - `GEMINI_API_KEY` returns `429 RESOURCE_EXHAUSTED` — fix quota/billing on the Google AI project.
+  - OpenRouter `google/gemini-2.5-flash` returns `402 Insufficient credits` — add OpenRouter credits.
+  - Until one is fixed, prose quality is capped at `gpt-4o-mini`. Clearing either restores a stronger primary with no code change.
 - [ ] Add production Expo web origin to `ALLOWED_ORIGINS` before production browser traffic
 - [x] Test user created and exercised via the smoke-test harness (`backend/scripts/smoke-series-generation.py`)
 - [x] `generate-story` called end-to-end with credit deduction + story insert verified (`smoke-series-generation.py`: 58 assertions across 11 groups)
@@ -43,6 +47,7 @@ All bug fixes applied, migrations `00001`-`00015` and `00017`-`00022` applied to
 - [x] Migration 00020 applied (non-mutating user reference for append-only error telemetry)
 - [x] Migration 00021 applied (one summary row per error fingerprint)
 - [x] Migration 00022 applied (separate validation for the `error_events.user_id` foreign key)
+- [x] Migration 00023 applied (detaches `error_events.user_id` from `profiles` so telemetry cannot block profile deletion)
 - [ ] Profile creation on signup — build with the signup flow; `credit_ledger.user_id` references `profiles(id)`, so a profile row must exist before credits can be granted
 - [x] **All 12 edge functions deployed** from `main` and the Gemini/OpenRouter generation branch on 2026-08-31 UTC. Verified with production smoke suites: `adapty-webhook`, `audio-status`, `continue-story`, `deduct-credit`, `edit-story`, `feed`, `feedback`, `generate-audio`, `generate-story`, `grant-credit`, `library`, `publish-story`. Five of these had never been deployed at all, which is how the `feed` and `publish-story` defects went unseen.
   - `edit-story` and `publish-story` are called by `expo/src/lib/api.ts`; both verified working end to end by `backend/scripts/smoke-app-surface.py`.

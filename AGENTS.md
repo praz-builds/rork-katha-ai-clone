@@ -73,11 +73,15 @@ To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, i
 
 ### LLM Fallback Chain
 
-Gemini 3.1 Pro Preview (70s timeout) -> OpenRouter Free Router (30s) -> gpt-4o-mini (30s). Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. OpenRouter currently handles fallback traffic until Gemini quota or billing is resolved.
+Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> `gpt-4o-mini` -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. OpenRouter currently handles fallback traffic until Gemini quota or billing is resolved.
 
 **Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
 
-**Model IDs:** `gemini-3.1-pro-preview`, `openrouter/free`, `gpt-4o-mini`.
+**Model IDs:** `gemini-3.1-pro-preview`, `google/gemini-2.5-flash`, `gpt-4o-mini`, `openrouter/free`.
+
+**Every model whose identity is known in advance is tried before the free router.** `openrouter/free` routes to a random free model per request, so its output cap, latency and prose quality are not repeatable, and free-tier daily caps apply. Production has seen it hand a *code* model a prose rewrite, and a routed model whose output cap is under `max_tokens` returns `finish_reason: "length"`, which the parser rejects. It is the last-ditch attempt before the caller refunds the credit — never a position production leans on.
+
+**Each provider gets a bounded slice of the deadline.** `PHASE_END_SHARE` in `_shared/llm.ts` caps each phase at a cumulative fraction of `deadlineMs` (40% / 60% / 85% / 100%). Moderation retries are otherwise bounded only by the shared deadline, so one slow provider would consume the whole budget and every fallback would abort before sending a request.
 
 **Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once. Gemini receives it as `responseSchema`; OpenRouter and OpenAI receive it through `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
 
@@ -109,7 +113,7 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015` and `00017`-`00022` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015` and `00017`-`00023` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 ### Key Tables
 
@@ -123,6 +127,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has migrations `0
 | **00020 (Observability retention)** | Non-mutating user reference for append-only error telemetry |
 | **00021 (Observability summary)** | One summary row per error fingerprint |
 | **00022 (Observability validation)** | Separate validation for the `error_events.user_id` foreign key |
+| **00023 (Observability retention)** | Detaches `error_events.user_id` from `profiles` so profile deletion cannot mutate, delete, or be blocked by telemetry |
 | **Not yet created** | `device_tokens` (Phase G -- FCM/APNs token storage) |
 
 ### Credit Ledger Pattern
