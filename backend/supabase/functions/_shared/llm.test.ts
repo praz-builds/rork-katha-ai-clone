@@ -6,10 +6,12 @@ import {
 import {
   AllProvidersFailedError,
   classifyLlmError,
+  editParagraph,
   GEMINI_MODEL,
   geminiRequestShape,
   generateStoryText,
   OPENAI_MODEL,
+  OPENAI_MODELS,
   openAIRequestShape,
   OPENROUTER_FREE_MODEL,
   OPENROUTER_MODEL,
@@ -157,12 +159,22 @@ Deno.test("story requests constrain output on all provider shapes", () => {
     "ARRAY",
   );
 
+  // OpenRouter still routes to models that only understand `max_tokens`, so it
+  // must keep the legacy contract rather than share the reasoning shape.
   const r = openRouterRequestShape(STORY_OPTS) as Record<string, unknown>;
   assertEquals(r.max_tokens, 16_000);
+  assertEquals(r.temperature, 0.8);
   assertEquals(r.response_format, OPENAI_RESPONSE_FORMAT);
 
+  // The direct OpenAI model is a reasoning model: it rejects `max_tokens` and
+  // ignores `temperature`, and its reasoning tokens are counted inside
+  // `max_completion_tokens`, so the budget carries headroom above the visible
+  // story length.
   const o = openAIRequestShape(STORY_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_tokens, 16_000);
+  assertEquals(o.max_completion_tokens, 32_000);
+  assert(!("max_tokens" in o), "a reasoning model rejects max_tokens");
+  assert(!("temperature" in o), "a reasoning model does not take temperature");
+  assertEquals(o.reasoning_effort, "low");
   assertEquals(o.response_format, OPENAI_RESPONSE_FORMAT);
 });
 
@@ -180,7 +192,8 @@ Deno.test("paragraph edits are never constrained to the story schema", () => {
   assert(!("response_format" in r), "an edit must not request JSON");
 
   const o = openAIRequestShape(EDIT_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_tokens, 2_000);
+  assertEquals(o.max_completion_tokens, 4_000);
+  assert(!("max_tokens" in o), "a reasoning model rejects max_tokens");
   assert(!("response_format" in o), "an edit must not request JSON");
 });
 
@@ -428,9 +441,11 @@ Deno.test("Anthropic and Claude credential names are ignored", async () => {
     "gemini",
     "openrouter",
     "openai",
+    "openai",
     "openrouter",
   ]);
   assertEquals(error.failures.map((f) => f.code), [
+    "not_configured",
     "not_configured",
     "not_configured",
     "not_configured",
@@ -462,7 +477,7 @@ Deno.test("the free router is the last attempt in the chain", async () => {
   assertEquals(error.failures.map((f) => f.model), [
     GEMINI_MODEL,
     OPENROUTER_MODEL,
-    OPENAI_MODEL,
+    ...OPENAI_MODELS.map((m) => m.model),
     OPENROUTER_FREE_MODEL,
   ]);
 });
@@ -476,4 +491,97 @@ Deno.test("a missing provider credential is not_configured and never retried", (
   assertEquals(failure.code, "not_configured");
   assertEquals(failure.retryable, false);
   assert(!failure.status);
+});
+
+Deno.test("the OpenAI position falls back past an unentitled model", () => {
+  // gpt-5.6-luna is granted per OpenAI project. An unentitled project gets
+  // `403 does not have access to model`, so a second model has to stand behind
+  // it or the whole position is dead for that project.
+  assert(OPENAI_MODELS.length >= 2, "the OpenAI position needs a fallback");
+  assertEquals(OPENAI_MODELS[0].model, "gpt-5.6-luna");
+  assertEquals(OPENAI_MODELS[0].reasoning, true);
+  assertEquals(OPENAI_MODEL, OPENAI_MODELS[0].model);
+
+  const last = OPENAI_MODELS[OPENAI_MODELS.length - 1];
+  assertEquals(last.reasoning, false, "the safety net must not be gated");
+});
+
+Deno.test("each OpenAI model gets the contract its dialect requires", () => {
+  const reasoning = openAIRequestShape(STORY_OPTS, {
+    model: "gpt-5.6-luna",
+    reasoning: true,
+  }) as Record<string, unknown>;
+  assertEquals(reasoning.max_completion_tokens, 32_000);
+  assert(!("max_tokens" in reasoning));
+  assert(!("temperature" in reasoning));
+
+  // A non-reasoning model rejects `max_completion_tokens`-only phrasing and
+  // still wants a temperature, so it must keep the legacy shape.
+  const legacy = openAIRequestShape(STORY_OPTS, {
+    model: "gpt-4o-mini",
+    reasoning: false,
+  }) as Record<string, unknown>;
+  assertEquals(legacy.max_tokens, 16_000);
+  assertEquals(legacy.temperature, 0.8);
+  assert(!("max_completion_tokens" in legacy));
+});
+
+// Runs for ~27s by design: it waits out the real slice gpt-5.6-luna is given
+// from the edit deadline. That wall-clock wait is the assertion - a shorter
+// stub would not prove the fallback survives a genuine stall.
+Deno.test("a stalled preferred OpenAI model still leaves room for the fallback", async () => {
+  // Regression guard: the OpenAI window is split per model, not shared. With a
+  // shared deadline a stalled gpt-5.6-luna spends the whole window and
+  // remainingDuration() aborts gpt-4o-mini before fetch() is called, so the
+  // fallback that exists for exactly this case never runs.
+  const realFetch = globalThis.fetch;
+  const attempted: string[] = [];
+
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+    const model = body.model ?? "";
+    attempted.push(model);
+    // Luna never answers; only the abort signal ends it.
+    if (model === "gpt-5.6-luna") {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+    }
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ error: { message: "stub: no fallback content" } }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      ),
+    );
+  }) as typeof fetch;
+
+  try {
+    const error = await withEnv(
+      {
+        GEMINI_API_KEY: null,
+        OPENROUTER_API_KEY: null,
+        OPENAI_API_KEY: "test-key",
+      },
+      async () => {
+        try {
+          await editParagraph("system", "user");
+          return null;
+        } catch (e) {
+          return e;
+        }
+      },
+    );
+
+    assert(error instanceof AllProvidersFailedError);
+    assert(
+      attempted.includes("gpt-4o-mini"),
+      `the fallback was never sent; attempted: ${attempted.join(", ")}`,
+    );
+    const luna = error.failures.find((f) => f.model === "gpt-5.6-luna");
+    assertEquals(luna?.code, "timeout");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

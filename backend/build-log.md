@@ -20,7 +20,35 @@
 - Added and applied migration `00023` so `error_events.user_id` is a detached identifier and profile deletion cannot mutate, delete, or be blocked by historical telemetry.
 - Redeployed production `generate-story`, `continue-story`, and `edit-story` to project `iafeuxgoiknncgyjmugd`.
 
-### Review follow-ups (2026-09-01)
+## 2026-08-31 — GPT-5.6 Luna in the OpenAI position
+
+**Session:** Replaced `gpt-4o-mini` with `gpt-5.6-luna` as the preferred OpenAI model, kept `gpt-4o-mini` behind it, and recorded the fallback-credential work in the roadmap.
+
+- `OPENAI_MODELS` makes the OpenAI position an ordered list rather than a single model: `gpt-5.6-luna`, then `gpt-4o-mini`. Each entry records its own `LlmFailure`, so telemetry distinguishes an unentitled model from a broken one.
+- Luna is a reasoning model, so the direct OpenAI call needed a second chat-completions dialect: `max_completion_tokens` instead of `max_tokens`, no `temperature`, and `reasoning_effort: "low"` because prose does not benefit from long deliberation and every reasoning token is latency the reader waits through. Reasoning tokens are counted inside the completion budget, so it carries 2x headroom over the visible story length. The OpenRouter path keeps the legacy `max_tokens` + `temperature` shape, since it still routes to models that only understand it.
+- `OPENAI_TIMEOUT_MS` raised 30s -> 60s and `PHASE_END_SHARE` rebalanced to 35/50/90/100% to give the reasoning model room.
+
+**Production result:** Luna returned `403 Project ... does not have access to model gpt-5.6-luna`. The model ID is correct; the OpenAI project simply is not entitled to it. The first deploy — Luna alone, replacing `gpt-4o-mini` — took generation down: every position failed and `generate-story` returned 500. The ordered-list fallback restored it in the same session. Granting project access upstream will switch production to Luna with no deploy.
+
+The `error_events` telemetry added in this branch diagnosed it directly, with no log spelunking: one `all_providers_failed` row carrying `models` and `statuses` arrays showed `gemini=429, google/gemini-2.5-flash=402, gpt-5.6-luna=403, openrouter/free=timeout`. This is the first incident the table has paid for.
+
+### Validation
+
+- `deno fmt --check`, `deno check`, **128 deno tests** pass, including a stalled-Luna regression that proves `gpt-4o-mini` is still sent when the preferred model hangs.
+- The OpenAI window is split evenly per model rather than shared. A shared deadline let a stalled preferred model spend the whole window, and `remainingDuration` then aborted the model behind it before `fetch` was called — the same starvation `PHASE_END_SHARE` prevents between providers, recurring one level down inside the OpenAI position.
+- Production `smoke-app-surface.py`: **26 / 26**; assertion 5.3 names `gpt-4o-mini`.
+- Production `smoke-series-generation.py`: **58 / 58**.
+
+### Known blockers (all upstream account actions, no code change needed)
+
+| Position | Status |
+| --- | --- |
+| `gemini-3.1-pro-preview` | `429 RESOURCE_EXHAUSTED` — Google AI quota/billing |
+| OpenRouter `google/gemini-2.5-flash` | `402 Insufficient credits` — add OpenRouter credits |
+| OpenAI `gpt-5.6-luna` | `403 does not have access to model` — grant project access |
+| OpenAI `gpt-4o-mini` | **serving all production generation** |
+
+### Review follow-ups (2026-08-31 UTC)
 
 - `ProviderModerationRejectedError` replaces the plain `Error` thrown at every moderation site. `classifyLlmError` records it as `moderation_blocked` with `retryable: false`, so `error_events` no longer files a known, non-retryable content-policy refusal as `unknown` / retryable. `isModerationRejection` still matches it by message, so the softening-retry ladder is unchanged.
 - Migration `00025` gives the detached `error_events.user_id` an erasure path. `00023` removed the foreign key so telemetry could neither block nor be rewritten by profile deletion, which left the identifier with no lifecycle. `00025` nulls it on profile deletion via an `AFTER DELETE` trigger, adds `erase_user_error_telemetry(uuid)` for a request arriving after the profile is gone, and `prune_error_event_user_ids(interval)` as a 90-day retention backstop. All three are service-role only and always preserve the event row. Verified in production: profile deletion stayed non-blocking, the event row survived, `user_id` was nulled.
