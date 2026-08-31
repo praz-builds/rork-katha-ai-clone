@@ -56,8 +56,9 @@ export interface OpenAIModelSpec {
 export const OPENAI_MODELS: readonly OpenAIModelSpec[] = [
   { model: "gpt-5.6-luna", reasoning: true },
   // Added while Luna was unentitled; kept as the second tier now that Luna is
-  // entitled. Luna is both cheaper and better (~$0.004 vs ~$0.006 per story),
-  // so in the normal case this position costs nothing and is pure redundancy.
+  // entitled. Per ~1k-word story: luna ~$0.004, gpt-5-mini ~$0.006,
+  // gpt-4o-mini ~$0.002. Luna is both cheaper and better than this model, so
+  // in the normal case the position costs nothing and is pure redundancy.
   { model: "gpt-5-mini", reasoning: true },
   // The safety net. Not gated behind any entitlement, so it always answers.
   { model: "gpt-4o-mini", reasoning: false },

@@ -42,7 +42,15 @@ Granting model access at the **org** level was not sufficient: the 403 names a *
 Two things worth remembering from the diagnosis:
 
 - `GET /v1/models` listed `gpt-5.6-luna` for the whole outage. That endpoint returns the catalogue, not the entitlement, so it is useless as an access probe. A temporary diagnostic function that issued real completion requests settled it in one call: Luna `403` on both `/v1/chat/completions` and `/v1/responses`, while `gpt-5.5` and `gpt-5.4` returned `200` on the same key. The diagnostic was deleted immediately after.
-- `gpt-5-mini` was added between Luna and `gpt-4o-mini` while access was pending (~$0.006/story against ~$0.002). It stays as the second tier: once Luna is entitled it is both cheaper *and* better, so the interim model is now pure redundancy rather than a cost the product pays.
+- `gpt-5-mini` was added between Luna and `gpt-4o-mini` while access was pending, trading cost for quality against the only model then serving: `gpt-5-mini` ~$0.006/story against `gpt-4o-mini` ~$0.002. It stays as the second tier now that Luna is entitled, and costs the product nothing there — Luna at ~$0.004 is both cheaper *and* better than it, so `gpt-5-mini` only bills when Luna itself fails.
+
+  Per ~1k-word story, at list prices (~700 prompt + ~3,000 completion tokens including reasoning):
+
+  | Model | $/M in | $/M out | ~$/story |
+  | --- | --- | --- | --- |
+  | `gpt-4o-mini` | 0.15 | 0.60 | 0.002 |
+  | `gpt-5.6-luna` | 0.20 | 1.20 | 0.004 |
+  | `gpt-5-mini` | 0.25 | 2.00 | 0.006 |
 
 Observed while `gpt-5-mini` was serving: one story came back at **2026 words** against a 500-1500 band, in-band on the surrounding runs. The band is prompt-enforced only and nothing rejects an over-length chapter, so a stronger model that ignores the ceiling reaches persistence. Not reproduced under Luna (1085-1353 words across romance/thriller/fantasy), so it is not currently biting — tracked in the roadmap rather than fixed here.
 
