@@ -17,3 +17,7 @@ SESSION_HANDOFF.md
 *.keystore
 google-services.json
 GoogleService-Info.plist
+
+# Agent working artifacts (research memos, design specs) — local only
+research/
+design/

@@ -7,6 +7,12 @@
 > **This document extends the Blueprint — it does not replace it.** Where this doc and the Blueprint conflict, this doc wins (it is newer and more specific).
 >
 > Purpose: give the VS Code backend agent the same context Rork has, so the app and the backend implement the same mental model of loops, credits, and safeguards.
+>
+> **⚠ SUPERSEDED IN PART.** Everything in this document about credit prices, plan
+> prices, grants, earning amounts, subscription tiers, or carry-over is obsolete.
+> `CREDITS_AND_PRICING.md` at the repository root is the source of truth for all
+> of it. The sections below that survive are the *mechanisms* — anti-gaming,
+> growth loops, schema deltas, content model — not the numbers.
 
 ---
 
@@ -70,7 +76,7 @@ Cost-per-active-user, LTV models, subsidy ratios, and unit-economics dashboards 
 
 ### Cost per credit (unchanged from Blueprint)
 
-Fully loaded generation cost: **$0.03–$0.14 per credit spent** (LLM $0.02–$0.10 + image $0.01–$0.04). Any subsidized credit is a direct cost against future ARPU. Model this quarterly.
+Superseded — see `CREDITS_AND_PRICING.md` §2. Measured cost is **$0.0423 per credit** blended ($0.031 text + $0.063 cover + $0.033 character set = $0.127 per 3-credit chapter), plus ~$0.22 per chapter of fresh audio narration. Any subsidized credit is a direct cost against future ARPU.
 
 ---
 
@@ -80,7 +86,7 @@ Fully loaded generation cost: **$0.03–$0.14 per credit spent** (LLM $0.02–$0
 
 - **Every new generation produces a single-chapter short story** (~800–1500 words). No length picker on the create screen.
 - **The AI decides length** based on the topic and prompt — 500 words for a vignette, 1500 for something arc-worthy. Do not expose length as a user choice; it introduces analysis paralysis.
-- **After the first chapter is generated, only the author sees "Continue this story ▸"** at the bottom of the reader. Costs 1 credit per additional chapter. Each chapter gets its own cover art.
+- **After the first chapter is generated, only the author sees "Continue this story ▸"** at the bottom of the reader. Costs 3 credits per additional chapter (text + cover + characters, separately purchasable). Each chapter gets its own cover art.
 - **Optional advanced toggle inside the create wizard: "Plan this as a series"** with chapter count (3 / 5 / 10). When set, the LLM plans the arc and generates chapter 1 with foreshadowing hooks. User still pays per chapter as they generate them.
 - Once a story has 2+ published chapters, it is a **Series** — surfaced with a series badge on cards and a chapter list in the reader.
 
@@ -120,61 +126,20 @@ Backend addition: `stories.themes TEXT[]` (already effectively covered by `genre
 
 ## 4. Complete credit economy — master table
 
-### 4.1 Earning actions
+> **SUPERSEDED. See `CREDITS_AND_PRICING.md` (repository root).**
+>
+> The earning table, spending table, pricing tiers and free-vs-premium behavior
+> that used to live here are obsolete in every particular. See
+> `CREDITS_AND_PRICING.md` §§1, 3, and 5 for every current number, price, grant,
+> SKU, and earning rule. The enduring mechanisms are free reading, one credit per
+> AI action, non-rolling subscription grants, and whole-balance lapse at
+> subscription end; library and unlocked audio remain available.
+>
+> The **creator-earning curve** described in §5.1 and the **anti-gaming pipeline**
+> in §6 are deferred to v1.2, not deleted — they are well designed and will be
+> needed if reader earnings return. Read them as a future spec, not current
+> behavior.
 
-| # | Action | Credits granted | Cooldown / cap | `reason` tag | Purpose / loop |
-| --- | --- | --- | --- | --- | --- |
-| 1 | **Install welcome bonus** | **3** | Once per account | `welcome` (special sub-tag `welcome_bonus`) | Lets a new user experience the full generate → continue → continue arc that is the app's hook. Recommended over 2 because 2 only demonstrates "generate → continue once" — not enough to feel the loop. |
-| 2 | **Watch rewarded ad** | 1 | 1 per 24 hours | `ad_reward` | Daily habit. Conversion funnel — free users form a routine, hit ceiling, upgrade. |
-| 3 | **Reading streak** | 1 | Every 3 consecutive days of reading activity | `streak` | Retention. Missed days reset the streak counter (Duolingo model). |
-| 4 | **Leave a comment on a story** | 1 | 1 per unique story, cap 1/day globally | `feedback` | Community + quality signal. Cap prevents comment spam farming. |
-| 5 | **Referral (friend installs + generates their first story)** | 3 | Per unique referred user (verified via deep link + user_id chain) | `referral` | Acquisition. Only pays out once the referred user has actually generated — proves they're a real converted user, not a shell account. |
-| 6 | **Social post (TikTok/Instagram/Twitter mention verified)** | 1 | Per verified post, max 3/month | `social` | Organic marketing. Manual/semi-automated verification (screenshot upload + moderation queue) in v1. |
-| 7 | **Reads on your published story — first 10 reads** | 1 per read | Only counts if reader isn't the author; other anti-gaming rules apply | `reader_earning` | Onboarding creators. Front-loaded so the first story feels rewarding. |
-| 8 | **Reads on your published story — reads 11–100** | 1 per 5 reads | Same anti-gaming rules | `reader_earning` | Ramp phase. |
-| 9 | **Reads on your published story — reads 101–1000** | 1 per 10 reads | Same anti-gaming rules + per-story daily cap (see §6.6) | `reader_earning` | Sustained growth. |
-| 10 | **Reads on your published story — 1000+ reads** | 1 per 25 reads | Same anti-gaming rules + per-story daily cap | `reader_earning` | Viral cap — protects unit economics on runaway hits. |
-| 11 | **Starter Pack IAP** | 3 credits for $2.99 | Unlimited | `purchase` | Impulse buy tier. |
-| 12 | **Value Pack IAP** | 10 credits for $7.99 | Unlimited | `purchase` | Mid-tier. |
-| 13 | **Power Pack IAP** | 25 credits for $14.99 | Unlimited | `purchase` | Whale tier. |
-| 14 | **Monthly Subscription** | 20 credits/month + ad-free + premium voices | Recurring; carryover cap 2x (max 40 banked) | `subscription` | $6.99/mo. |
-| 15 | **Yearly Subscription** | 25 credits/month + ad-free + premium voices | Recurring; carryover cap 2x (max 50 banked) | `subscription` | $49.99/yr — best value. |
-
-**Creator earnings curve — worked examples:**
-
-| Story lifetime reads | Credits earned by author |
-| --- | --- |
-| 10 | 10 |
-| 50 | 10 + (40/5) = 18 |
-| 100 | 10 + 18 = 28 |
-| 500 | 28 + (400/10) = 68 |
-| 1,000 | 28 + 90 = 118 |
-| 5,000 | 118 + (4000/25) = 278 |
-| 10,000 | 118 + 360 = 478 |
-
-Sanity check: a story with 100 reads pays the author roughly 3 new generations. A viral story with 10,000 reads pays for ~50 new generations. That's motivating on the low end and sustainable on the high end. Treat the curve as a **tunable**, not a constant — revisit quarterly against actual subsidy load.
-
-### 4.2 Spending actions
-
-| # | Action | Credits deducted | Notes | `reason` tag |
-| --- | --- | --- | --- | --- |
-| 1 | **Generate a short story** | 1 | Current runtime generates text only; cover image and audio are planned for Phase B. | `generation` |
-| 2 | **Continue a story (author writes a new chapter)** | 1 per chapter | Author-only. Current runtime generates text only; chapter art is planned for Phase B. | `generation` |
-| 3 | **Regenerate (retry generation)** | 0 in v1 | Failed generations auto-refund. User-initiated retry of a completed story is not offered in v1. | — |
-
-### 4.3 Free-user vs premium behavior
-
-| Behavior | Free | Premium (Monthly/Yearly) |
-| --- | --- | --- |
-| Reading | Unlimited | Unlimited |
-| Ads shown | Rewarded ads on Credits screen only; occasional interstitials | Ad-free everywhere |
-| Voice selection | Default voice(s) | Premium voice library |
-| Credit earning methods | All | All (subscription credits are additional) |
-| Carryover | N/A | Up to 2x monthly grant |
-
-**No feature is locked behind premium.** Premium is: bulk credits + no ads + premium voices. This mirrors Okudu's model and keeps the free tier genuinely usable — which is what makes the funnel work.
-
----
 
 ## 5. Growth loops
 
@@ -214,17 +179,17 @@ Copy examples: *"100 people are waiting for chapter 2"* / *"Your story just cros
 
 ### 5.3 Referral loop
 
-Deep-link based. New user installs from a referral link → account is tagged with `referred_by` → when they generate their first story, the referrer gets 3 credits and the new user gets an extra 1 credit bonus on top of the welcome 3.
+Deep-link based. New user installs from a referral link → account is tagged with `referred_by` → when they generate their first story, the **referrer gets 10 credits and the invited user gets 5**. Caps: 3 payouts/month and 10 lifetime for the referrer; invited account must be ≥24h old at payout. Deferred to v1.1.
 
 **Anti-abuse:** referral pays out only after first *generation*, not first install. This prevents install-farm abuse.
 
 ### 5.4 Streak loop
 
-Daily reading activity increments a streak counter. Every 3 consecutive days grants 1 credit. Streak breaks reset to zero. Streak-warning push notification at 20:00 local time if the day's activity hasn't been logged yet.
+**Retuned, not removed.** Daily reading activity increments a streak counter; milestones pay **1 credit at day 2, day 5, day 7, then every 7 days** (`CREDITS_AND_PRICING.md` §5). Streak breaks reset to zero and rewards restart at day 2. Dates are computed server-side and each milestone is keyed `streak:{user_id}:{milestone_day}` so replays are structural no-ops. The streak-warning push at 20:00 local time stays.
 
 ### 5.5 Ad loop (the paying-conversion funnel)
 
-**Planned and currently disabled:** a verified rewarded ad grants 1 credit per rolling 24 hours. This cannot be activated until AdMob sends signed SSV callbacks directly to the server and the backend provides user-bound claim nonces, global transaction replay protection, and atomic cooldown/grant enforcement. Client reward callbacks never grant credits.
+**Removed from the economy.** Rewarded ads lose money as a credit source at any plausible eCPM (`CREDITS_AND_PRICING.md` §5). Retained here only as a record of the integration requirements, should non-rewarded ads ever ship. Historically: a verified rewarded ad granted 1 credit per rolling 24 hours. This cannot be activated until AdMob sends signed SSV callbacks directly to the server and the backend provides user-bound claim nonces, global transaction replay protection, and atomic cooldown/grant enforcement. Client reward callbacks never grant credits.
 
 As covered in the Blueprint, this loop **loses money per ad-funded generation** but is intended to build a daily-open habit that drives paid conversion (target: 3-8% of free users).
 
@@ -322,7 +287,7 @@ Strategic placement across the app:
 | Empty state on Home | *"Your library's waiting. Write your first story."* |
 | Post-comment (occasionally) | *"You clearly have taste — write one yourself?"* |
 | Author profile of someone you're viewing | *"Follow their style — write in their genre"* |
-| After streak milestone | *"You're on fire. Your next story is on us."* |
+| After a streak milestone | *"Streak milestone reached. You earned 1 credit."* |
 
 **Rule:** the CTA lives on **every reading surface**. Reading is the intake; writing is the monetization event.
 
@@ -499,7 +464,7 @@ alter table profiles add column account_created_at timestamptz default now();
 | Your story crosses 10, 50, 100, 500, 1000 followers | Author | *"[N] people are waiting for chapter [next]"* |
 | You've earned 10, 50, 100 credits from reads | Author | *"Your readers just funded your next [N] stories"* |
 | Streak break warning at 20:00 local | User with active streak, no activity today | *"Your [N]-day streak is at risk. One story keeps it alive."* |
-| Streak milestone hit (3, 7, 14, 30, 100 days) | User | *"[N]-day streak. Here's a credit on us."* |
+| Streak milestone hit (2, 5, 7, then every 7 days) | User | *"[N]-day streak. Here's a credit on us."* |
 | First generation completed | User (in-app moment, not push) | *"Your first story is ready. Welcome to Katha."* |
 
 All push notifications respect per-category opt-out in Settings → Notifications.
@@ -510,7 +475,7 @@ All push notifications respect per-category opt-out in Settings → Notification
 
 Things this doc leaves unresolved — flag for future decision:
 
-1. **Welcome bonus amount** — this doc recommends **3 credits** (vs. Blueprint's 2). Confirm at implementation time; A/B test candidate post-launch.
+1. **Welcome bonus amount — settled.** It is 3 credits after the paywall and one-time-offer decline path; see `CREDITS_AND_PRICING.md` §5.
 2. **Optional internal cooldown on reader-earned credits** — recommended but optional. Backend team decides based on fraud detection load.
 3. **Social post verification workflow** — manual moderation queue in v1 or automated? Recommend manual for v1 (low volume expected), automate once volume justifies.
 4. **Regeneration on user-initiated retry** — not offered in v1. Consider adding as premium-only feature post-launch.
@@ -525,12 +490,14 @@ For clarity — the following remain as specified in the Blueprint:
 
 - Tech stack split (Rork for UI, VS Code agent for backend).
 - Supabase Auth (Google + Apple).
-- Adapty for billing + AdMob for rewarded ads.
-- Pricing tiers ($2.99 / $7.99 / $14.99 IAPs; $6.99/mo, $49.99/yr subs).
-- Cost-per-generation range ($0.03-0.14).
+- RevenueCat for billing. **Rewarded-ad credits are historical/deferred and must
+  not be implemented**; see `CREDITS_AND_PRICING.md` §5.
+- Pricing tiers — **superseded, see `CREDITS_AND_PRICING.md` §3.**
+- Cost-per-generation — **superseded, see `CREDITS_AND_PRICING.md` §2** ($0.127 per chapter).
 - 5-tab bottom nav structure.
 - Append-only credit ledger pattern.
-- Server-side verification for AdMob rewards (SSV) and Adapty webhooks.
+- RevenueCat webhook verification. AdMob SSV material is historical only and
+  cannot authorize a credit path.
 - Phase 1-5 build order (though this doc reshuffles some sub-priorities).
 
 Anything not explicitly overridden here defers to the Blueprint.

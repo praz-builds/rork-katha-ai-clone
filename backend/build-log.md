@@ -1127,3 +1127,63 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - New backend files: `_shared/story-prompts.ts`, `_shared/cover-prompts.ts`, `_shared/image.ts`, `COVER_IMAGES.md`
 - New expo files: 3 cover images, 5 test suites, 4 design token files, ESLint config, Jest config, CI workflow
 - Updated: `App.tsx`, `KathaPrimitives.tsx`, `domain.ts`, `seed.ts`, `images.ts`, `theme.ts`, `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `backend/CLAUDE.md`, `story-generator.md`
+
+### RevenueCat migration (2026-09-02)
+
+- Replaced the prior billing client and webhook with RevenueCat Purchases, RevenueCatUI, a public Test Store SDK key placeholder, entitlement mapping, Customer Center, and server-side product/credit mapping.
+- Added RevenueCat webhook handling with constant-time authorization, sandbox rejection by default, `rc:{event.id}` idempotency, trial grants, refund/chargeback handling, cancellation-versus-expiration behavior, and benign-event acknowledgement.
+- Added bucketed credit accounting: renewable subscription grants reset each period, purchased and earned credits remain distinct while subscribed, chargebacks clamp and record shortfalls, and expiration records an atomic negative lapse ledger row before zeroing every bucket.
+- Added the protected annual monthly-refresh Edge Function and focused Deno/PGlite tests. No deployment, dashboard configuration, commit, or push was performed.
+
+### RevenueCat CodeRabbit fixes (2026-09-02)
+
+- Corrected the webhook contract: only `CANCELLATION` events with RevenueCat's store-refund reasons invoke the clamped chargeback path; ordinary cancellation remains active until expiration, and `REFUND_REVERSED` re-grants credit.
+- Made duplicate credit-operation responses successful webhook acknowledgements, paginated annual grant refreshes by user ID, and isolated per-subscriber refresh failures without logging identifiers.
+- Hardened migration `00026` with a non-blocking validation sequence, provider allowlist, monotonic ledger ordering, allocation lookup index, and partial-refund bucket restoration.
+- Added regression coverage for trial refunds, both product-kind mismatch directions, refund reversals, plain unsubscribe cancellations, and partial refunds. Local verification: `deno test --allow-all supabase/functions/_shared/revenuecat_test.ts supabase/migrations/00026_subscription_credit_buckets_test.ts` (14 passed) and `deno check` on changed Edge Function modules.
+- Updated RevenueCat development-build setup and canonical-economy documentation. No production-level tests were run, so no `error_events` entry was required. No deployment, dashboard configuration, commit, or push was performed.
+- Reconciled the Expo onboarding callback type with its declared empty-purpose state so the required Expo typecheck remains clean.
+
+### RevenueCat CodeRabbit round 2 (2026-09-03)
+
+- Counted duplicate annual-refresh operation keys as successful no-ops, leaving only genuine per-subscriber failures in the refresh failure counter.
+- Made store-refund retries converge: a duplicate credit deduction now still records the subscription lifecycle state. Added a regression test for a failed first subscription write followed by a duplicate-deduction retry.
+- Routed the onboarding sign-in action to the email/OTP flow, retained completion only on its `onDone` callback, and typed the composed onboarding wrapper with the exported result contract.
+- Replaced inaccurate credits hero copy in English, Portuguese, and Spanish with neutral action-oriented wording while client spending remains unbundled.
+- Local verification: Expo typecheck, lint (23 existing warnings, 0 errors), tests (41 passed), Expo doctor (18/18), a compiled 390 x 844 web sign-in handoff, backend tests (15 passed), and `deno check` on the changed Edge Functions. No production-level tests, deployment, dashboard configuration, commit, or push were performed; no `error_events` entry was required.
+
+### RevenueCat migration — review, merge prep, and the ads decision (2026-09-03)
+
+- Completed CodeRabbit rounds 2 and 3 on PR #44. Round 3 fixed a dead control:
+  `presentCustomerCenter()` resolved silently on web and when the SDK never
+  configured, so the caller's `catch` never fired and the Katha Plus row did
+  nothing. It now reports whether it presented and the caller falls back to the
+  paywall. Also corrected the Portuguese `heroDescription` accent.
+- **Recorded every remaining RevenueCat task as blocked on the store listing**
+  (`ROADMAP.md` Phase C, "Blocked on the store listing going live"): the 10 store
+  products, the production `appl_`/`goog_` SDK keys, the `katha_reader` and
+  `katha_writer` entitlements and offerings, wiring the paywall to live package
+  data, scheduling the monthly grant refresh, the App Review question on lapsing
+  purchased packs, and the development-build requirement. All dashboard work; the
+  client and webhook are complete. A release build has no billing until the
+  production keys are pasted in — `activate()` logs an error and returns.
+- **Ads decision: none ship in the MVP.** Added `ROADMAP.md` Phase C2 and resolved
+  §12 item 7 in `CREDITS_AND_PRICING.md`. A proposal to put a house-styled
+  full-screen break between chapters on the free tier, so "read without
+  interruptions" could be sold as a paid benefit, was rejected — house-styled means
+  it earns nothing, so it was friction with no revenue attached, and §7 already
+  cites the finding that users converting to remove friction churn faster than
+  those converting for positive value. Principle 1 and the §7 "never block reading"
+  rule are unchanged.
+- Recorded the standing rule that until ads exist, no paywall, onboarding screen or
+  store listing may claim "ad-free" or "no interruptions" as a paid benefit; a
+  benefit that removes nothing is a misleading-subscription risk at App Review.
+- **Process note.** A second agent was working in the same checkout on the same
+  branch. Work was moved to an isolated git worktree at `/private/tmp/katha-rc-fix`
+  so the shared tree was never written to; that agent's uncommitted edits to
+  `CREDITS_AND_PRICING.md` and its new `STORY_GENERATION_FLOW.md` were left
+  untouched. Two agents sharing one working tree should be avoided — use
+  `git worktree add` instead.
+- No production deployment was performed in this session. The two Supabase secrets
+  `REVENUECAT_WEBHOOK_SECRET` and `SUBSCRIPTION_GRANT_CRON_SECRET` are set on
+  `iafeuxgoiknncgyjmugd`.

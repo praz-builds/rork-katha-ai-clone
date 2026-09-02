@@ -124,29 +124,72 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 
 ## Phase C — Monetization Wiring
 
-**Goal:** Real money flows work. Adapty webhooks grant credits, AdMob SSV verifies ad watches.
+**Goal:** Real money flows work. RevenueCat webhooks grant credits, deduct chargebacks, and lapse balances on expiry. Rewarded ads and AdMob SSV are removed from the economy — see Phase C2.
 
-### Adapty Webhook
+### RevenueCat Webhook
 
 Server-side handling is implemented. Dashboard configuration needed.
 
 #### User Setup
 
-- [ ] Create Adapty account, configure products:
-  - `ai.katha.subscription.monthly` — $6.99/mo, 20 credits
-  - `ai.katha.subscription.yearly` — $49.99/yr, 25 credits/mo
-  - `ai.katha.credits.starter` — $2.99, 3 credits
-  - `ai.katha.credits.value` — $7.99, 10 credits
-  - `ai.katha.credits.power` — $14.99, 25 credits
-- [ ] Set webhook URL to `{SUPABASE_URL}/functions/v1/adapty-webhook`
-- [x] `ADAPTY_WEBHOOK_SECRET` set as Supabase secret
+- [ ] Create RevenueCat project, configure products (canonical list: `CREDITS_AND_PRICING.md` §3):
+  - `ai.katha.sub.reader.weekly` — $4.99, 5 credits
+  - `ai.katha.sub.reader.monthly` — $8.99, 20 credits/mo
+  - `ai.katha.sub.reader.yearly` — $29.99, 20 credits/mo, 3-day trial
+  - `ai.katha.sub.reader.yearly.offer` — $19.99 first year, then $29.99 (one-time offer)
+  - `ai.katha.sub.writer.weekly` — $6.99, 10 credits
+  - `ai.katha.sub.writer.monthly` — $12.99, 50 credits/mo
+  - `ai.katha.sub.writer.yearly` — $49.99, 50 credits/mo, 3-day trial
+  - `ai.katha.credits.small` — $4.99, 10 credits
+  - `ai.katha.credits.medium` — $14.99, 40 credits
+  - `ai.katha.credits.large` — $29.99, 90 credits
+- [ ] Trial grants are reduced: 15 credits (Writer) / 5 (Reader) during the 3-day trial; full grant on first successful charge
+- [ ] Set webhook URL to `{SUPABASE_URL}/functions/v1/revenuecat-webhook`
+- [x] Set `REVENUECAT_WEBHOOK_SECRET` as a Supabase secret
+- [x] Set `SUBSCRIPTION_GRANT_CRON_SECRET` as a Supabase secret
+
+#### Blocked on the store listing going live
+
+None of the following can be done before the app has a live App Store Connect /
+Google Play listing, because RevenueCat products are *mappings* to store products
+and the platform SDK keys are only issued once the store apps are linked. Everything
+here is dashboard work, not code — the client and webhook are complete and deployed.
+
+- [ ] **Create the 10 store products** in App Store Connect and Google Play Console,
+      matching the SKU list above exactly. First-time IAPs are reviewed alongside the
+      first app build, so budget for that review cycle.
+- [ ] **Issue the production RevenueCat SDK keys** (`appl_…` for iOS, `goog_…` for
+      Android) and paste them into `REVENUECAT_IOS_RELEASE_PUBLIC_KEY` /
+      `REVENUECAT_ANDROID_RELEASE_PUBLIC_KEY` in `expo/src/lib/revenuecat.ts`.
+      Until then a release build has no billing at all — `activate()` logs an error
+      and returns. The Test Store key (`test_…`) simulates purchases and is
+      development-only; it can never process a real transaction.
+- [ ] **Create the RevenueCat entitlements** `katha_reader` and `katha_writer`, and
+      the offerings the paywall reads. `katha_ai_pro` is wired as a legacy alias for
+      `katha_writer`.
+- [ ] **Wire the paywall to live RevenueCat package data** — price, renewal terms,
+      trial eligibility and offer copy must come from the SDK, not from the
+      hardcoded `PAYWALL_PRODUCTS` constant. Cannot be validated until the products
+      exist. (Raised in CodeRabbit review of PR #44 and deferred here.)
+- [ ] **Schedule `refresh-subscription-grants`** (monthly) with the
+      `SUBSCRIPTION_GRANT_CRON_SECRET` in the Authorization header. Annual
+      subscribers receive their allowance monthly, and the store emits only one
+      `RENEWAL` per year, so without this scheduler annual plans grant once and
+      then stop.
+- [ ] **Confirm with App Review that voiding purchased pack credits on subscription
+      lapse is permitted** (`CREDITS_AND_PRICING.md` §12 item 5). Packs are
+      consumable IAPs. If it is not permitted, carve packs out of the lapse rule so
+      only granted and earned credits expire.
+- [ ] **Ship a development build** — RevenueCat uses native modules, so Expo Go
+      cannot validate purchases, restores, Paywalls or Customer Center.
+      `expo-dev-client` is installed; the commands are in `expo/README.md`.
 
 #### Production Blockers
 
 - [ ] Verify dashboard authorization and exact product IDs against production configuration
 - [ ] Sync subscription tier and expiry into profiles
-- [ ] Implement monthly allocation scheduling for the annual plan before enabling that SKU
-- [ ] Implement refund clawbacks and backlog reconciliation
+- [x] Implement monthly allocation scheduling for the annual plan before enabling that SKU
+- [x] Implement refund clawbacks and backlog reconciliation
 
 <details>
 <summary>Completed server handling</summary>
@@ -156,33 +199,56 @@ Server-side handling is implemented. Dashboard configuration needed.
 - [x] Purchase, subscription start/renewal, and trial conversion credit events
 - [x] Service-only serialized RPCs for credit grants
 - [x] Transaction-level deduplication across users and event types
-- [x] Unhandled refund events persisted in `payment_event_backlog` (503 response)
+- [x] Unhandled refund events persisted in `payment_event_backlog` (**422** for backlog-eligible validation failures; 503 is reserved for an unconfigured webhook secret)
 
 </details>
 
-### AdMob SSV
+### Rewarded-ad credit path — historical/deferred
 
-Rewarded-ad credits remain disabled until every item below is complete.
-
-- [ ] User: Create AdMob account and get real app IDs and rewarded-ad unit IDs
-- [ ] Generate a one-time claim nonce on the server, bind to authenticated user before showing the ad
-- [ ] Configure AdMob `custom_data` with the opaque claim nonce; never trust app-supplied `user_id`
-- [ ] Add dedicated public AdMob SSV callback endpoint:
-  - Fetch Google's public keys from `https://www.gstatic.com/admob/reward/verifier-keys.json`
-  - Verify ECDSA signature on the SSV callback query params
-  - Resolve user only from the verified, server-issued claim nonce
-- [ ] Persist AdMob `transaction_id` with a global uniqueness constraint for replay protection
-- [ ] Enforce rolling 24-hour cooldown and credit grant in one database transaction
-- [ ] On verified: grant 1 credit with reason `ad_reward`
-- [ ] On invalid signature, unknown/used nonce, replay, or cooldown: reject without granting
+Rewarded-ad credits were removed from the economy (`CREDITS_AND_PRICING.md` §5).
+Do not add AdMob packages, config plugins, unit IDs, SSV endpoints, or QA work for
+this deleted credit path. The former SSV checklist is retained only in git history.
 
 ### Expo App Integration
 
-- [x] Add Expo-compatible Adapty package under `../expo/` (SDK v4, live keys in `src/lib/adapty.ts`)
-- [ ] Add AdMob package under `../expo/`
-- [ ] Configure Expo config plugins in `../expo/app.json` (iOS and Android app IDs)
-- [ ] Wire AdMob rewarded-ad unit IDs into Expo runtime config
-- [ ] Use an Expo development build to verify purchases and rewarded ads on both platforms
+- [x] Add RevenueCat Purchases and RevenueCatUI under `../expo/`
+- [ ] Use an Expo development build to verify RevenueCat purchases on both platforms
+
+---
+
+## Phase C2 — Ads (POST-MVP, not a launch dependency)
+
+**Decision (2026-09-03):** no ads of any kind ship in the MVP. Reading stays free,
+unlimited and **uninterrupted** — principle 1 and the §7 "Never block reading" rule in
+`CREDITS_AND_PRICING.md` stand unchanged.
+
+An earlier draft proposed a house-styled full-screen break between chapters on the free
+tier, so that "read without interruptions" could be sold as a paid benefit. **That is
+dropped.** It earned nothing (house-styled, no ad network), so it was friction with no
+revenue attached, and `CREDITS_AND_PRICING.md` §7 already cites the finding that users who
+convert to remove friction churn faster than users who convert for positive value.
+
+### The rule that must hold until this phase ships
+
+- [ ] **Do not list "ad-free", "no ads", or "no interruptions" as a paid benefit** on any
+      paywall, onboarding screen, or store listing while the free tier has no ads. A
+      benefit that removes nothing is a false benefit and a misleading-subscription risk
+      at App Review. The Reader plan sells audio, offline and credits until ads exist.
+
+### When this phase does ship
+
+- [ ] Decide the format: third-party ad network (earns revenue, adds an SDK dependency and
+      a privacy/ATT surface) vs house-styled house promos (earns nothing — only justifiable
+      if the goal is cross-promotion, not monetization).
+- [ ] If a third-party network: ATT prompt, consent/GDPR handling, and a privacy-manifest
+      update. `expo-tracking-transparency` is already a dependency.
+- [ ] Only once ads are live on the free tier, add "read without interruptions" to the
+      paid benefit lists and amend principle 1 and the §7 Never list in
+      `CREDITS_AND_PRICING.md` **in the same commit**, so the canonical doc never
+      contradicts itself.
+- [ ] Rewarded-ad *credits* stay removed regardless. Rewarded video earns roughly a cent
+      per view against $0.0423 of cost for the credit it would buy, so it loses money as a
+      credit source at any plausible eCPM (`CREDITS_AND_PRICING.md` §5).
 
 ---
 
@@ -220,7 +286,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] **Velocity anomaly detection:** if user has > 50 reads in the last hour, flag for review
 - [ ] **Session diversity cap:** max 10 crediting reads from same `deviceId` per day
 - [ ] **Per-story daily cap:** max 10 credits earned per story per day
-- [ ] **Dedup:** 1 crediting read per `(userId, storyId)` per day
+- [ ] **Dedup:** 1 crediting read per `(userId, storyId)` per day — *reader earnings deferred to v1.2; see `CREDITS_AND_PRICING.md` §5*
 - [ ] Insert to `story_reads`, increment `stories.read_count` and `stories.unique_reader_count`
 
 ### Creator Earnings Curve
@@ -332,6 +398,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 ### Cron Jobs
 
 - [ ] **Streak warning** — daily at 8 PM per user's timezone: "Your N-day streak needs saving"
+- [ ] **Lapse warning** — 3 days before subscription expiry, stating the exact balance at risk: "Your N credits expire when your plan ends on the Xth" (`CREDITS_AND_PRICING.md` §8)
 - [ ] **Weekly digest** — Sunday morning: "Katha's picks for [date]"
 - [ ] **Streak freeze reset** — 1st of each month: reset `freezesAvailable = 2` for Premium users
 
@@ -368,10 +435,11 @@ Each is a simple POST with auth + upsert/delete + count update:
 ### Final Integration Testing
 
 - [ ] E2E: sign up -> generate story -> see cover + audio -> publish -> follower notified
-- [ ] E2E: purchase credits via Adapty -> ledger updated -> generate story
+- [ ] E2E: purchase credits via RevenueCat -> ledger updated -> generate story
 - [ ] E2E: watch ad -> SSV verified -> credit granted -> 24hr cooldown enforced
 - [ ] E2E: follow author -> author publishes -> FCM notification received
-- [ ] E2E: read stories for 3 days -> streak credit awarded
+- [ ] E2E: read stories for 2 days -> streak credit awarded (milestones: day 2, 5, 7, then every 7)
+- [ ] E2E: subscription lapses -> credit balance zeroed, library + unlocked audio + free reading all intact
 - [ ] E2E: refer friend -> friend generates -> both get credits
 - [ ] E2E: search stories -> find by title, theme, author, genre
 - [ ] E2E: kids mode ON -> mature content hidden everywhere
@@ -380,7 +448,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ## PostHog Analytics Plan
 
-> PostHog owns understanding and experimentation. Adapty owns money and subscriptions.
+> PostHog owns understanding and experimentation. RevenueCat owns money and subscriptions.
 
 ### Phase 1: Event Instrumentation
 
@@ -425,10 +493,10 @@ Wire `trackEvent()` calls into every screen.
 | Onboarding length | `onboarding-steps` | full (14) vs short (8) | completion rate |
 | Audio gating | `audio-free-tier` | gated vs free | premium conversion |
 
-Remote config via JSON payloads (no Adapty overlap):
+Remote config via JSON payloads (no RevenueCat overlap):
 - [ ] Welcome credit count, max characters, feature gates, home layout
 
-Price testing goes through Adapty (it owns store products and localized pricing).
+Price testing goes through RevenueCat (it owns store products and localized pricing).
 
 ### Phase 4: Surveys
 
@@ -437,18 +505,18 @@ Price testing goes through Adapty (it owns store products and localized pricing)
 - [ ] Churn prevention survey (trigger: 7 days inactive)
 - [ ] Setup: wrap app in `PostHogSurveyProvider`
 
-### PostHog vs Adapty Boundaries
+### PostHog vs RevenueCat Boundaries
 
 | Concern | Owner |
 |---|---|
 | Onboarding analytics | PostHog |
-| Paywall layout A/B test | Adapty Flow Builder |
+| Paywall layout A/B test | RevenueCat Paywalls |
 | Paywall strategy (when/where to show) | PostHog experiment |
-| Price testing | Adapty |
+| Price testing | RevenueCat |
 | App remote config | PostHog feature flags |
-| Subscription state | Adapty (`isPremium` source of truth) |
+| Subscription state | RevenueCat (`isPremium` source of truth) |
 | User surveys | PostHog |
-| Revenue dashboards | Both (Adapty for exact revenue, PostHog for revenue x behavior) |
+| Revenue dashboards | Both (RevenueCat for exact revenue, PostHog for revenue x behavior) |
 
 ---
 
@@ -457,7 +525,7 @@ Price testing goes through Adapty (it owns store products and localized pricing)
 Not in scope for initial launch:
 
 - [ ] Premium voices (multiple voice options per language)
-- [ ] A/B test paywall variants via Adapty Flow Builder
+- [ ] A/B test paywall variants via RevenueCat Paywalls
 - [ ] Moderation pipeline (flagged content review queue)
 - [ ] Social verification (verified share-to-social for credits)
 - [ ] Community features (story collections, reading lists)
@@ -471,7 +539,7 @@ Not in scope for initial launch:
 - [x] Firebase Analytics + Google Ads attribution
 - [x] i18n infrastructure: EN/ES/PT translations
 - [x] EAS Build configuration
-- [x] Adapty SDK v4 with live keys
+- [x] RevenueCat Purchases and RevenueCatUI integration
 - [x] expo-notifications + push token
 - [x] iOS ATT tracking transparency
 - [x] OTA updates via expo-updates

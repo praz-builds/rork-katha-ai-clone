@@ -4,7 +4,7 @@
 
 > Historical baseline material for the original AI story generator plan.
 > The active client is the Expo app in `../../expo/`; the Swift and Kotlin clients are preserved references.
-> Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ.
+> Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ. **Rewarded-ad credits are historical/deferred** (`CREDITS_AND_PRICING.md` §5): do not use this blueprint to implement, configure, or QA AdMob reward flows.
 > Image and audio sections describe planned Phase B architecture; the current generation runtime returns text only.
 
 ---
@@ -29,9 +29,9 @@ This is a **separate product** from Story For My Kid (storyformykid.com). Differ
 Key Okudu patterns we're adopting:
 
 - Everything free to read. Credits only for generation.
-- 1 credit = 1 generation (short story or chapter).
-- Free credits via ads, streaks, feedback, referrals, social posts.
-- Subscription = bulk credits + premium perks.
+- 1 credit = 1 **AI action**; a chapter is text + cover + characters = 3 credits. (We diverged from Okudu here — see `CREDITS_AND_PRICING.md` §2 for why unbundling was necessary.)
+- Free credits via a reading-streak ladder (day 2 / 5 / 7, then weekly) and referrals. We dropped ads, feedback and social rewards.
+- Subscription = bulk credits, split into Reader and Writer audiences.
 - Ultra-light onboarding (1 question, no paywall upfront).
 - Cover image generated with each story (bundled into credit cost).
 
@@ -51,8 +51,8 @@ The app is built across two environments with clear boundaries:
 |  - All screens & components (React Native)                 |
 |  - Bottom tab navigation                                   |
 |  - Supabase Auth (Google/Apple sign-in)                    |
-|  - Adapty SDK (subscriptions, credit packs, paywalls)      |
-|  - AdMob SDK (rewarded video ads)                          |
+|  - RevenueCat SDK (subscriptions, credit packs, paywalls) |
+|  - AdMob SDK (rewarded video ads, historical/deferred)    |
 |  - Push notifications (Expo/OneSignal)                     |
 |  - Offline caching & local storage                         |
 |  - Audio player UI                                         |
@@ -62,7 +62,7 @@ The app is built across two environments with clear boundaries:
           | REST/RPC           | Webhooks           | SDK
           v                    v                    v
 +------------------+  +----------------+  +----------------+
-|   SUPABASE       |  |  VS CODE       |  |  ADAPTY        |
+|   SUPABASE       |  |  VS CODE       |  |  REVENUECAT    |
 |   (Database +    |  |  AGENT         |  |  (Billing +    |
 |    Auth +        |  |  (Backend      |  |   Credits)     |
 |    Storage)      |  |   logic)       |  +----------------+
@@ -77,7 +77,7 @@ The app is built across two environments with clear boundaries:
                       |    - POST /deduct-credit (pre-generation check)
                       |    - GET  /library (curated story feed)
                       |    - POST /feedback (comments/ratings)
-                      |    - Adapty webhook handler (subscription events)
+|    - RevenueCat webhook handler (subscription events)
                       |
                       |  - Story generation pipeline
                       |    - LLM call (Anthropic SDK — Sonnet/Haiku)
@@ -98,16 +98,16 @@ The app is built across two environments with clear boundaries:
 | ----------- | ------- | ----- |
 | Screens, navigation, UI components | **Rork** | It's a UI builder — this is what it does |
 | Supabase Auth setup (Google/Apple providers) | **Rork** | Rork has Supabase integration |
-| Adapty SDK init, paywall UI, purchase flow | **Rork** | Native SDK, must be in the app |
-| AdMob rewarded video integration | **Rork** | Native SDK, must be in the app |
+| RevenueCat SDK init, paywall UI, purchase flow | **Rork** | Native SDK, must be in the app |
+| AdMob rewarded video integration | **Historical/deferred** | Do not implement a reward-credit path |
 | Push notification setup | **Rork** | Native capability |
 | Audio player component | **Rork** | UI component |
 | Edge Functions (all backend logic) | **VS Code agent** | Server-side code, needs testing, version control |
 | Story generation pipeline | **VS Code agent** | Complex orchestration, API keys, error handling |
 | Database schema, migrations, RLS | **VS Code agent** | SQL, needs review and migration tracking |
 | Credit ledger (grant/deduct/balance) | **VS Code agent** | Business-critical logic, must be server-side |
-| Adapty webhook handler | **VS Code agent** | Server-side webhook processing |
-| AdMob server-side reward verification | **VS Code agent** | Security-critical — never trust client for credits |
+| RevenueCat webhook handler | **VS Code agent** | Server-side webhook processing |
+| AdMob server-side reward verification | **Historical/deferred** | Do not implement a reward-credit path |
 
 ### Rule of Thumb
 >
@@ -147,7 +147,7 @@ Create (center tab, prominent)
   ├── Step 2: Topic (free text + "Get ideas" helper)
   ├── Step 3: Characters (name, description, traits)
   ├── Step 4: Length (Short / Standard / Long)
-  ├── Step 5: Review → "Generate (1 credit)"
+  ├── Step 5: Review → "Generate chapter (3 credits)"
   └── Generation screen (loading animation → result)
 
 Story Detail / Reader
@@ -181,15 +181,15 @@ Settings
 
 ## 4. Monetization Architecture
 
-### Credit System (managed by Adapty + Supabase)
+### Credit System (managed by RevenueCat + Supabase)
 
-**1 credit = 1 text generation** (story or chapter). Cover images and audio narration are planned pipeline additions, not current runtime output.
+**1 credit = 1 AI action.** A full chapter is text (1) + cover (1) + character set (1) = **3 credits**, and the three are separately purchasable so a partial balance still makes progress. Audio is 1 credit per chapter, unlocked permanently. Reading is free and unlimited on every tier. Canonical prices: `CREDITS_AND_PRICING.md`.
 
-Adapty handles IAP/subscription billing. Supabase holds the credit ledger (source of truth).
+RevenueCat handles IAP/subscription billing. Supabase holds the credit ledger (source of truth).
 
 ```text
-User purchases credits (Adapty)
-    → Adapty webhook fires
+User purchases credits (RevenueCat)
+    → RevenueCat webhook fires
     → Edge Function validates receipt
     → Supabase credits table updated
     → App polls balance or gets push update
@@ -198,7 +198,8 @@ User taps "Generate"
     → App calls /generate-story with a stable request_id
     → Edge Function authenticates and looks up that request_id
     → Existing request: reuses its operation without another deduction
-    → New request: reserves the operation and deducts 1 credit atomically
+    → New request: reserves the operation and deducts the action's price atomically
+      (price comes from the server-side price map, never a literal)
     → Edge Function runs the generation pipeline
     → Returns story text
 ```
@@ -207,31 +208,39 @@ The current Expo client does not call `/continue-story`; that client flow is pla
 
 ### Pricing Tiers
 
-| Offering | Price | Credits | Notes |
-| ---------- | ------- | --------- | ------- |
-| Starter Pack | $2.99 | 3 credits | One-time IAP, impulse buy |
-| Value Pack | $7.99 | 10 credits | One-time IAP |
-| Power Pack | $14.99 | 25 credits | One-time IAP |
-| Monthly Sub | $6.99/mo | 20 credits/mo + ad-free + premium voices | Recurring |
-| Yearly Sub | $49.99/yr | 25 credits/mo + ad-free + premium voices | Recurring, best value |
+> **SUPERSEDED. `CREDITS_AND_PRICING.md` (repository root) is the source of truth.**
 
-Subscription credits carry over up to 2x monthly amount (e.g., 20/mo sub → max 40 banked).
+| | Weekly | Monthly | Yearly (3-day trial) |
+| --- | --- | --- | --- |
+| **Reader** | $4.99 / 5 credits | $8.99 / 20 per mo | $29.99 / 20 per mo |
+| **Writer** | $6.99 / 10 credits | $12.99 / 50 per mo | $49.99 / 50 per mo |
+
+Credit packs: **$4.99 / 10**, **$14.99 / 40**, **$29.99 / 90**.
+One-time offer after paywall decline: **Reader yearly $19.99 first year**, then $29.99.
+
+**Subscription grants do not roll over**, and **credits lapse with the subscription** — when a plan ends the whole balance goes to zero. The user's library, unlocked audio and free unlimited reading all survive. Replaces the old 2x carry-over rule.
 
 ### Free Credit Earning Methods
 
-| Method | Reward | Cooldown | Purpose |
-| -------- | -------- | ---------- | --------- |
-| **Watch ad** (rewarded video, planned and disabled) | 1 credit | 1 per rolling 24 hours | Daily engagement |
-| **Reading streak** | 1 credit | Every 3 consecutive days | Retention |
-| **Leave feedback** (comment on a story) | 1 credit | 1 per story | Community + content |
-| **Referral** (friend installs + generates) | 3 credits | Per unique referral | Acquisition |
-| **Social post** (TikTok/Instagram mention) | 1 credit | Per verified post | Organic marketing |
+> **SUPERSEDED. See `CREDITS_AND_PRICING.md` §5.**
+
+| Method | Reward | Cooldown / cap |
+| --- | --- | --- |
+| Reading streak | 1 credit | Day 2, day 5, day 7, then every 7 days. Self-capping at ~4/month |
+| Welcome bonus | 3 credits | Once, on declining the one-time offer |
+| Referral (referrer) | 10 credits | On invited user's first generation; 3/month, 10 lifetime. v1.1 |
+| Referral (invited) | 5 credits | On own first generation, once. v1.1 |
+
+Removed from the economy: rewarded-ad credits, comment/feedback rewards, social post rewards, reader earnings, the flat daily app-open credit, premium voice tiers.
+
+The failed-generation auto-refund stays as system behavior but is not an earn mechanic.
 
 ---
 
+
 ## 5. Rewarded Ads — Integration Plan
 
-> **Current status:** Disabled. Client callbacks cannot grant credits. Activation requires verified AdMob SSV, replay protection, and atomic cooldown/grant handling to be deployed.
+> **Current status: REMOVED from the credit economy** (`CREDITS_AND_PRICING.md` §5) — rewarded video loses money as a credit source at any plausible eCPM. This section is retained only as a record of the integration requirements should non-rewarded ads ever ship. Client callbacks cannot grant credits.
 
 ### How It Works
 
@@ -337,7 +346,7 @@ create table credit_ledger (
     user_id uuid references profiles(id),
     amount integer not null, -- positive = credit, negative = debit
     reason text not null, -- 'purchase', 'subscription', 'ad_reward', 'streak', 'feedback', 'referral', 'social', 'generation'
-    reference_id text, -- Adapty transaction ID, story ID, etc.
+    reference_id text, -- RevenueCat transaction ID, story ID, etc.
     balance_after integer not null, -- running balance
     created_at timestamptz default now()
 );
@@ -501,10 +510,10 @@ POST /generate-story
 
 | Task | Owner |
 | ------ | ------- |
-| Adapty SDK integration | Rork |
+| RevenueCat SDK integration | Rork |
 | Subscription paywall screen | Rork |
 | Credit pack purchase flow | Rork |
-| Adapty webhook handler (Edge Function) | VS Code |
+| RevenueCat webhook handler (Edge Function) | VS Code |
 | AdMob rewarded video integration | Rork |
 | Edge Function: POST /grant-credit (SSV verify) | VS Code |
 | 24hr ad cooldown logic | VS Code |
@@ -531,7 +540,7 @@ POST /generate-story
 | Task | Owner |
 | ------ | ------- |
 | Onboarding A/B testing | Rork + analytics |
-| Paywall A/B testing (pricing, copy) | Adapty remote config |
+| Paywall A/B testing (pricing, copy) | RevenueCat Paywalls |
 | Premium audiobook voices (Google Cloud TTS) | VS Code |
 | Offline mode (download stories) | Rork |
 | Community features (publish your story publicly) | Rork + VS Code |
@@ -551,12 +560,11 @@ POST /generate-story
 - One platform for auth + DB + storage + functions = simpler ops
 - If edge function cold starts become a problem, move generation to a dedicated worker
 
-### Why Adapty (not RevenueCat)?
+### Why RevenueCat?
 
-- Adapty has native **credit/coin system** support (promotional offers, grant credits server-side)
-- Paywall A/B testing built-in (critical for conversion optimization)
-- Webhook-first architecture plays well with Edge Functions
-- Comparable pricing to RevenueCat
+- RevenueCat keeps entitlement state, offerings, managed paywalls, and Customer Center in one native integration.
+- Webhook-first architecture plays well with Edge Functions and the append-only credit ledger.
+- Product grants remain server-side, so the client never mints credits.
 
 ### Why AdMob (not Unity Ads)?
 
@@ -575,7 +583,7 @@ POST /generate-story
 
 ---
 
-## 10. Metrics to Track (PostHog / Adapty)
+## 10. Metrics to Track (PostHog / RevenueCat)
 
 ### North Star
 
@@ -619,7 +627,7 @@ POST /generate-story
 | Content taxonomy (genres, age bands) | Starting genre list |
 | 51 curated stories | Seed library content (re-formatted for new schema) |
 | Image generation learnings | Moderation workarounds, style prompt patterns |
-| Stripe webhook patterns | Adapty webhook handler follows same async patterns |
+| Stripe webhook patterns | RevenueCat webhook handler follows the same async patterns |
 
 ---
 
