@@ -1047,9 +1047,8 @@ economy is tuned on evidence rather than argued about.
     reinstating them; **it does not set the price, and nothing there overrides
     this file.** That document governs the screens, the toggle and when an image
     is generated; this one governs whether an action costs a credit, how many,
-    and at what render cost. The margin derivation lives in a working memo under
-    `research/`, which is gitignored and so unreadable from a clone — its
-    conclusions are in §2 and in this decision.)*
+    and at what render cost. The margin derivation and its conclusions are in
+    §2 and in this decision.)*
 
     Every chapter may have one image. **Chapter 1's is compulsory and becomes the
     story's cover**; chapters 2–N are optional at 1 ✦ each behind a More-options

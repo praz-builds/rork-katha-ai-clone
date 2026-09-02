@@ -22,7 +22,7 @@ Four documents move into one folder with an explicit precedence order, stated in
 | `STORY_PROMPT_SYSTEM.md` | prompt architecture *(was `backend/prompts/story-generator.md`)* |
 | `ONBOARDING_FLOW.md` | everything before Home |
 
-`STORY_GENERATION_FLOW.md` and `ONBOARDING_FLOW.md` were untracked working files and enter version control here for the first time. Every cross-reference in `AGENTS.md`, the roadmap, the build logs, `backend/references/` and the Expo docs was repointed, and all 22 relative markdown links in the repository resolve.
+`STORY_GENERATION_FLOW.md` and `ONBOARDING_FLOW.md` were untracked working files and enter version control here for the first time. Every cross-reference in `AGENTS.md`, the roadmap, the build logs, `backend/references/` and the Expo docs was repointed, and all 30 relative markdown links in the repository resolve.
 
 ### The priced unit was wrong
 
@@ -58,7 +58,7 @@ A new §15 records what the document no longer says, so a reader landing mid-fil
 
 - 125 Deno tests pass; `deno check` clean across every edge function.
 - Expo typecheck, lint and Jest pass.
-- All 22 relative markdown links in the repository resolve.
+- All 30 relative markdown links in the repository resolve.
 - **Not run:** the production smoke suites in `backend/scripts/`, which require `SUPABASE_SERVICE_ROLE_KEY`. No credentials were available in this environment, and no generation was exercised against production.
 
 ---

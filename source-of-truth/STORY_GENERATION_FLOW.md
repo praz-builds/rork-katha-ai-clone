@@ -524,7 +524,10 @@ the cover — see §10.4. The toggle here governs chapters 2–N only.
 > confirm, a Stop that keeps what it wrote, and resume after a kill.
 >
 > The table below is retained because it still describes the two *behaviours*
-> the single flow offers, one per chapter, rather than two modes chosen up front.
+> the single flow offers, **chosen per chapter rather than once for the story**.
+> There is no `writingMode` field, nothing to switch mid-story, and no escape
+> hatch to provide — the choice is simply whether this chapter's *What happens
+> next?* box has anything in it.
 
 | | Steering a chapter | Letting Katha decide |
 |---|---|---|
@@ -532,10 +535,12 @@ the cover — see §10.4. The toggle here governs chapters 2–N only.
 | Best for | Writers who want to steer | Readers who want a finished story |
 | Between chapters | A short *What happens next?* box with suggested continuations, plus **Let Katha decide** | — |
 
-**The mode is switchable mid-story, in both directions.** Committing to type a
-prompt thirty times is a promise most users will break at chapter four, and the
-fix must not be abandoning the story. A **Let Katha decide** escape on every
-interactive prompt does the same job one chapter at a time.
+**Nothing is committed to and nothing needs switching.** Committing to type a
+prompt thirty times is a promise most users would break at chapter four — which
+is why the choice is per chapter rather than per story. A user steers chapter 2,
+leaves the box empty for chapters 3 and 4, and steers again at 5, without ever
+changing a setting. That is what removes the need for a mode, a switch, and an
+escape hatch alike.
 
 ### Chapter length
 
@@ -702,7 +707,7 @@ Library.
 > the reasoning that produced that amendment; its *numbers* are superseded by
 > that file, which used a text cost of $0.031 that has since been replaced by
 > $0.004 on `gpt-5.6-luna`. See §14 item 1 and
-> `research/R6-chapter-art-pricing.md`.
+> [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §2.
 >
 > **This document still does not have the authority to change prices.**
 
@@ -891,7 +896,7 @@ earlier section, that section carries a pointer back here.
    `CREDITS_AND_PRICING.md` defines on a blended basis. There is no loss at any
    cast size up to five.
    The cast cap is nonetheless **3, not 4** (§4 amended) — a product bound, not a
-   margin one. Derivation: `research/R6-chapter-art-pricing.md`.
+   margin one. Derivation: [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §2.
 
 2. **Chapter-length word targets — closed as a contract, open as a measurement.**
    The bands are now defined in code rather than in this table:
@@ -1074,7 +1079,12 @@ are listed here so a reader who lands mid-document is not misled.
 
 ### Engineering
 
-51. **No schema migration required.** New fields extend existing request types.
+51. **A schema migration *is* required** *(corrected 2026-09-02; this decision
+    previously said none was)*. Migration 00027 adds `chapters.image_url`,
+    `characters.portrait_url`, the brief columns and the planned length, and
+    widens `generation_operations.kind` so a cover, a chapter illustration and a
+    cast can each reserve an operation. Without that last change every paid
+    image is charged outside the idempotency and auto-refund path.
 52. **Two new prompt layers** — world and beats — join the ten in
     `story-prompts.ts`.
 53. **`cover-prompts.ts` consumes `whereAndWhen`.** This is what stops generated

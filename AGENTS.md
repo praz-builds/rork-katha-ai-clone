@@ -415,11 +415,11 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 ### Key Product Decisions
 
 - **Single currency: Credits.** No coins, no gems, no dual wallets. Backend tracks provenance via `credit_ledger.reason`.
-- **1 credit = 1 AI action**, not 1 story. **Starting a story is 3 credits** -- cast (1) + chapter 1's words (1) + chapter 1's art (1), which becomes the cover. Each further chapter is 1, or 2 illustrated. Charged as each chapter is written, so an abandoned story costs only what it wrote.
+- **1 credit = 1 AI action**, not 1 story. **Charged today: 1 credit per generation** -- `generate-story` makes exactly one reservation, because neither the cast nor chapter art is built. **Contracted** (`source-of-truth/CREDITS_AND_PRICING.md` §1, not yet shipped): starting a story is 3 -- cast + chapter 1's words + chapter 1's art, which becomes the cover -- then 1 per further chapter, or 2 illustrated. `expo/src/lib/pricing.ts` keeps the two apart; never render a contracted price to a user.
 - **Reading is free, unlimited, on every tier, forever.** No caps, no metering, no daily pass.
 - **Audio is 1 credit per chapter, unlocked permanently.** No voice tiers.
 - **Drafting is free**: unlimited manual editing, 3 free AI redrafts and 20 free paragraph edits per chapter, 1 free cover regeneration per paid cover.
-- **A story has a planned length: 3, 7 or 15 chapters** (default 3), chosen in More options. It drives pacing and the finale, not a batch size -- the user taps Continue for each chapter, and *Write the rest* runs the same loop from chapter 3. There is no Interactive/Auto-Write mode toggle.
+- **Shipped today:** one AI-chosen short story of 500-1500 words, continuable to `MAX_SERIES_CHAPTERS` (7). **Planned, not yet built** (`source-of-truth/STORY_GENERATION_FLOW.md`): a chosen length of 3, 7 or 15 chapters driving pacing and finale derivation, advanced one Continue at a time, with *Write the rest* from chapter 3. There is no Interactive/Auto-Write mode toggle in either.
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
 - **3-credit welcome bonus**, granted only after the user declines both the paywall and the one-time offer.
