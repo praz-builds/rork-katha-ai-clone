@@ -4,7 +4,7 @@
 
 > Historical baseline material for the original AI story generator plan.
 > The active client is the Expo app in `../../expo/`; the Swift and Kotlin clients are preserved references.
-> Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ. **Rewarded-ad credits are historical/deferred** (`../../source-of-truth/CREDITS_AND_PRICING.md` §5): do not use this blueprint to implement, configure, or QA AdMob reward flows.
+> Current requirements in `../../AGENTS.md` and `../references/strategic-decisions.md` override this blueprint where they differ. **Rewarded-ad credits are historical/deferred** (`../../source-of-truth/CREDITS_AND_PRICING.md` §5): do not use this blueprint to implement, configure, or QA AdMob reward flows.
 > Image and audio sections describe planned Phase B architecture; the current generation runtime returns text only.
 
 ---
@@ -29,7 +29,7 @@ This is a **separate product** from Story For My Kid (storyformykid.com). Differ
 Key Okudu patterns we're adopting:
 
 - Everything free to read. Credits only for generation.
-- 1 credit = 1 **AI action**; *(superseded 2026-09-03 — starting a story is 3 credits, each further chapter 1, or 2 illustrated)*. (We diverged from Okudu here — see `../../source-of-truth/CREDITS_AND_PRICING.md` §2 for why unbundling was necessary.)
+- 1 credit = 1 **AI action**; *(superseded 2026-09-02 — starting a story is 3 credits, each further chapter 1, or 2 illustrated)*. (We diverged from Okudu here — see `../../source-of-truth/CREDITS_AND_PRICING.md` §2 for why unbundling was necessary.)
 - Free credits via a reading-streak ladder (day 2 / 5 / 7, then weekly) and referrals. We dropped ads, feedback and social rewards.
 - Subscription = bulk credits, split into Reader and Writer audiences.
 - Ultra-light onboarding (1 question, no paywall upfront).
@@ -183,7 +183,7 @@ Settings
 
 ### Credit System (managed by RevenueCat + Supabase)
 
-**1 credit = 1 AI action.** *(Superseded 2026-09-03.)* This paragraph described a chapter as text + cover + characters = 3 credits. The priced unit is a **story**: starting one is 3 credits (cast + chapter 1's words + chapter 1's art, which is the cover), and each further chapter is 1, or 2 illustrated. The actions remain separately purchasable, so a partial balance still makes progress. Audio is 1 credit per chapter, unlocked permanently. Reading is free and unlimited on every tier. Canonical prices: `../../source-of-truth/CREDITS_AND_PRICING.md`.
+**1 credit = 1 AI action.** *(Superseded 2026-09-02.)* This paragraph described a chapter as text + cover + characters = 3 credits. The priced unit is a **story**: starting one is 3 credits (cast + chapter 1's words + chapter 1's art, which is the cover), and each further chapter is 1, or 2 illustrated. The actions remain separately purchasable, so a partial balance still makes progress. Audio is 1 credit per chapter, unlocked permanently. Reading is free and unlimited on every tier. Canonical prices: `../../source-of-truth/CREDITS_AND_PRICING.md`.
 
 RevenueCat handles IAP/subscription billing. Supabase holds the credit ledger (source of truth).
 

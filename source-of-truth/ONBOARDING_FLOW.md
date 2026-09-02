@@ -710,8 +710,11 @@ one, poem none. Invalid/unavailable output silently returns same-shape fallback
 with internal `concept_source: fallback`, never visible.
 
 The rehearsal creates no `stories`, `chapters`, `characters`, `covers`, audio,
-generation operation, or ledger row. Auth saves editable blueprint. A later full
-chapter follows standard flow: 3 credits.
+generation operation, or ledger row. Auth saves editable blueprint. Turning the saved blueprint into a real story follows the standard flow and
+is priced there: **3 credits to start** — the cast, chapter 1's words and
+chapter 1's art, which becomes the cover — then **1 credit per further
+chapter**, or 2 when chapters are illustrated. See
+[`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §1.
 
 ---
 

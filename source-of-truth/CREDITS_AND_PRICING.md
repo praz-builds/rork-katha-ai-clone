@@ -10,7 +10,7 @@
 > `AGENTS.md`, `backend/ROADMAP.md`, `backend/references/story-generator-app.md`,
 > `backend/references/strategic-decisions.md` and `expo/DESIGN.md`.
 >
-> Last revised 2026-09-03. Cost figures are computed from the shipped code;
+> Last revised 2026-09-02. Cost figures are computed from the shipped code;
 > external rates are cited inline. Sentences that are inference rather than a
 > cited fact say so.
 
@@ -1042,11 +1042,14 @@ economy is tuned on evidence rather than argued about.
    `medium` ($0.042)**; character sets at 1024×1024 `low` ($0.011 each, $0.033
    per set of three). A cast is capped at **3**.
 10. **Chapter art is a priced action, and it is the same feature as the cover.**
-    *(Amended 2026-09-03. This decision previously removed chapter illustrations
-    entirely; `STORY_GENERATION_FLOW.md` §10.4 supersedes that. The margin
-    derivation lives in a working memo under `research/`, which is gitignored and
-    therefore not readable from a clone — the conclusions it produced are in §2
-    and in this decision.)*
+    *(Amended 2026-09-02. This decision previously removed chapter illustrations
+    entirely. `STORY_GENERATION_FLOW.md` §10.4 made the product case for
+    reinstating them; **it does not set the price, and nothing there overrides
+    this file.** That document governs the screens, the toggle and when an image
+    is generated; this one governs whether an action costs a credit, how many,
+    and at what render cost. The margin derivation lives in a working memo under
+    `research/`, which is gitignored and so unreadable from a clone — its
+    conclusions are in §2 and in this decision.)*
 
     Every chapter may have one image. **Chapter 1's is compulsory and becomes the
     story's cover**; chapters 2–N are optional at 1 ✦ each behind a More-options

@@ -7,7 +7,7 @@
 
 ---
 
-## 2026-09-03 UTC — A source-of-truth folder, a corrected cost basis, and every story-flow open item closed
+## 2026-09-02 UTC — A source-of-truth folder, a corrected cost basis, and every story-flow open item closed
 
 **Session:** Documentation only. No code, no schema, no deploy. Bucket B0 of the story-creation rebuild, and the gate for the buckets after it, because everything in the create flow that displays or charges a price reads from these files.
 

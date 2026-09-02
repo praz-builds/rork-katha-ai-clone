@@ -24,7 +24,7 @@
 > loop — is the contract for the rebuild. Read a statement below as "this is what
 > we are building", never as "this is what the app does".
 >
-> Last revised 2026-09-03. Sentences that are inference rather than shipped
+> Last revised 2026-09-02. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---
@@ -356,7 +356,7 @@ Placeholders are re-authored per mode (§3) and per genre where it helps.
 
 ### Limits
 
-Maximum **3** characters — *amended 2026-09-03, was 4; see §14 item 1.* Character
+Maximum **3** characters — *amended 2026-09-02, was 4; see §14 item 1.* Character
 art is **1 credit for the cast**, not per character, matching the existing
 "Generate its characters — 1" line, and portraits render at 1024×1024 low.
 
@@ -517,7 +517,7 @@ the cover — see §10.4. The toggle here governs chapters 2–N only.
 
 ### Writing mode — removed
 
-> **Superseded 2026-09-03 (§15).** There is no mode to choose. Every chapter ends
+> **Superseded 2026-09-02 (§15).** There is no mode to choose. Every chapter ends
 > in a **Continue** with its price on it; a *What happens next?* box above it is
 > optional, and leaving it blank means Katha decides. From chapter 3 a **Write
 > the rest** action runs the same loop under program control, with an itemised
@@ -615,7 +615,7 @@ Create ·  n ✦
 
 ### 10.2 Generation
 
-> **Revised 2026-09-03 (§15).** This section previously described Auto-Write and
+> **Revised 2026-09-02 (§15).** This section previously described Auto-Write and
 > Interactive as two flows the user chooses between. There is one flow.
 
 - **Portraits first, always.** Before chapter 1, from the cast defined in §4.
@@ -696,7 +696,7 @@ Library.
 
 ### 10.6 What this requires of CREDITS_AND_PRICING.md
 
-> **Resolved 2026-09-03.** `CREDITS_AND_PRICING.md` has been amended — decision
+> **Resolved 2026-09-02.** `CREDITS_AND_PRICING.md` has been amended — decision
 > 10 now prices chapter art, the unit is a story rather than a chapter, and the
 > three render tiers are fixed as constraints. The analysis below is retained as
 > the reasoning that produced that amendment; its *numbers* are superseded by
@@ -873,7 +873,7 @@ Draft cards, the Draft badge, chapter progress, sort-by-last-edited.
 
 ---
 
-## 14. Open items — all closed 2026-09-03
+## 14. Open items — all closed 2026-09-02
 
 Every item below was open when this document was written. None is open now. The
 resolutions are load-bearing on the rest of the file, so where one supersedes an
@@ -999,7 +999,7 @@ are listed here so a reader who lands mid-document is not misled.
     cross-chapter consistency, and because the per-chapter loop has no later
     moment when the whole cast is known.
 21. **Reimagine is free once**, then 1 ✦. **Max 3 characters** *(amended
-    2026-09-03, was 4)*. Character art is 1 ✦ for the cast, rendered at
+    2026-09-02, was 4)*. Character art is 1 ✦ for the cast, rendered at
     1024×1024 low.
 
 ### Kids mode
@@ -1024,14 +1024,14 @@ are listed here so a reader who lands mid-document is not misled.
 
 ### Options
 
-33. **Chapters: 3 · 7 · 15**, default 3 *(amended 2026-09-03; 10 and 30 dropped
+33. **Chapters: 3 · 7 · 15**, default 3 *(amended 2026-09-02; 10 and 30 dropped
     until the drop-off-by-chapter metric earns them)*. This is a planned length
     that drives pacing and the finale, not a batch size.
 34. **Chapter length shows its word count** — *Standard · ~1,400 words* — **but
     only once B11 has measured the bands.** Until then the options ship
     unlabelled, because the UI states these as fact and they are unmeasured
     (§14 item 2).
-35. **There is no writing mode** *(amended 2026-09-03)*. One flow: read,
+35. **There is no writing mode** *(amended 2026-09-02)*. One flow: read,
     optionally steer, **Continue** with its price on it. **Write the rest**
     appears from chapter 3 with an itemised confirm, a Stop that keeps what it
     wrote, and resume after a kill.
@@ -1082,7 +1082,7 @@ are listed here so a reader who lands mid-document is not misled.
 54. **Character portraits use a separate image path** from covers, prompted from
     `appearance` + `description`.
 55. **An i18n lint rule** rejects the banned words as values in any locale file.
-56. **§10.6 is resolved and blocks nothing** *(2026-09-03)*.
+56. **§10.6 is resolved and blocks nothing** *(2026-09-02)*.
     `CREDITS_AND_PRICING.md` is amended: a story rather than a chapter is the
     priced unit, chapter art is a priced action again, and three render tiers are
     fixed as constraints. Portraits never lost money — the −$0.18 was computed at

@@ -436,16 +436,11 @@ Rules that constrain every future change:
 - **A subscription must always be the best price per credit against any pack it competes with.** Re-run the inversion check in `source-of-truth/CREDITS_AND_PRICING.md` §4 whenever a price or grant changes.
 - **Writer yearly is the binding constraint** at 40% margin at full burn. Test every pricing change against that row first.
 
-### Free credit methods (summary -- canonical table in `source-of-truth/CREDITS_AND_PRICING.md` §5)
+### Free credit methods
 
-| Method | Amount | Limits |
-|--------|--------|--------|
-| Reading streak | 1 credit | Day 2, day 5, day 7, then every 7 days. Self-capping at ~4/month |
-| Welcome bonus | 3 credits | Once per authenticated account, on declining the one-time offer |
-| Referral (referrer) | 10 credits | On invited user's first generation; 3/month, 10 lifetime. v1.1 |
-| Referral (invited) | 5 credits | On own first generation, once. v1.1 |
+> Deliberately not reproduced. `source-of-truth/CREDITS_AND_PRICING.md` §5 is the only place these amounts and limits are written down, and this file's own working rules forbid copying its tables. The mechanics are: a reading streak, a referral, and a one-off welcome bonus.
 
-A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. Steady-state free earning is **~4 credits/month**, 20% of the Reader plan's 20. The ladder is self-capping, so no monthly ceiling is enforced.
+A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. The ladder is self-capping, so no monthly ceiling is enforced.
 
 The failed-generation **auto-refund stays** (`refund_generation_operation`) but is not an earn mechanic and is not on this table.
 
