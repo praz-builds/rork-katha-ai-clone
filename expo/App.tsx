@@ -2,7 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initSentry, initPostHog } from "@/lib/analytics";
-import { initAdapty } from "@/lib/adapty";
+import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { setupAndroidChannel } from "@/lib/notifications";
 import {
   ActivityIndicator,
@@ -84,7 +84,7 @@ export default function App() {
   useEffect(() => {
     initSentry();
     initPostHog();
-    initAdapty();
+    initRevenueCat();
     setupAndroidChannel();
   }, []);
 
@@ -163,6 +163,12 @@ export default function App() {
           onBack={() => goTabs(tab)}
           onCredits={() => setScreen({ name: "credits" })}
           onPaywall={() => setScreen({ name: "paywall" })}
+          onCustomerCenter={() => {
+            revenueCatService.presentCustomerCenter().catch((error) => {
+              Alert.alert("Subscription management unavailable", "Please try again shortly.");
+              console.warn("RevenueCat Customer Center failed:", error);
+            });
+          }}
         />
       ) : (
         <>
@@ -431,12 +437,14 @@ function ProfileScreen({
   credits,
   onBack,
   onCredits,
-  onPaywall
+  onPaywall,
+  onCustomerCenter
 }: {
   credits: number;
   onBack: () => void;
   onCredits: () => void;
   onPaywall: () => void;
+  onCustomerCenter: () => void;
 }) {
   const settingsRows = [
     ["Notifications", "Chapter alerts and streak nudges", Bell],
@@ -491,7 +499,7 @@ function ProfileScreen({
         {/* Settings rows */}
         <View style={styles.settingsList}>
           {settingsRows.map(([title, subtitle, Icon]) => {
-            const handler = title === "Katha Plus" ? onPaywall : () => Alert.alert("Coming soon", `${title} will be available soon.`);
+            const handler = title === "Katha Plus" ? onCustomerCenter : () => Alert.alert("Coming soon", `${title} will be available soon.`);
             return (
               <Pressable key={title} onPress={handler} accessibilityRole="button" style={styles.settingsRow}>
                 <View style={styles.settingsIcon}>
@@ -947,7 +955,7 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
         <View style={styles.creditHero}>
           <Sparkles size={32} color={colors.accent} />
           <Text style={styles.creditHeroTitle}>1 credit creates 1 story or chapter</Text>
-          <Text style={styles.creditHeroText}>Purchases, rewards, and subscriptions will sync through Supabase and Adapty after the native dev-client phase.</Text>
+          <Text style={styles.creditHeroText}>Purchases and subscriptions sync through Supabase and RevenueCat in native development builds.</Text>
         </View>
         <SectionHeader title="History" />
         {ledger.map((entry) => (

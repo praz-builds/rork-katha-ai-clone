@@ -15,7 +15,7 @@ Use this document before changing onboarding, paywall, or shared visual componen
 5. Do not introduce visible em dashes. Rewrite the sentence or use punctuation that reads naturally.
 6. Preserve the fixed intro geometry and fixed message slots across all three slides.
 7. Do not add a replay screen after onboarding. Success hands off to Home.
-8. Prices shown in the current prototype are placeholders. Production pricing and currency must come from Adapty/store products.
+8. Prices shown in the current prototype are placeholders. Production pricing and currency must come from RevenueCat/store products.
 
 ## Brand Identity
 
@@ -405,9 +405,9 @@ The paywall receives and must continue to use:
 | `plan` | Annual or weekly selection |
 | `trial` | Annual-only 3-day trial flag; weekly never has a trial |
 
-Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the 3-day free trial. Weekly is available through the additional plan option and has no free trial. The current reference pricing is annual `$49.99/year`, weekly `$4.99/week`, and one-time-offer annual `$17.99/year`; the UI must read price, renewal, trial eligibility, and offer copy from product data so production values can come from Adapty/store products before release.
+Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the 3-day free trial. Weekly is available through the additional plan option and has no free trial. Pricing is defined in `CREDITS_AND_PRICING.md` (repository root) and nowhere else: Reader `$4.99/week`, `$8.99/month`, `$29.99/year`; Writer `$6.99/week`, `$12.99/month`, `$49.99/year`; one-time-offer Reader annual `$19.99` first year then `$29.99`. The UI must read price, renewal, trial eligibility, and offer copy from RevenueCat product data — never hardcode these values.
 
-Closing the paywall shows a confirmation sheet before the one-time offer. The one-time offer may follow that close flow, but it must not erase the collected persona. Email/OTP is an integration handoff after the paywall or offer action. Supabase should persist the final `onDone` payload. Adapty should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
+Closing the paywall shows a confirmation sheet before the one-time offer. The one-time offer may follow that close flow, but it must not erase the collected persona. Email/OTP is an integration handoff after the paywall or offer action. Supabase should persist the final `onDone` payload. RevenueCat should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
 
 ## Accessibility, Motion, and Responsiveness
 
@@ -483,4 +483,4 @@ After onboarding or paywall changes:
 - Update this file in the same change as any approved token, geometry, animation, screen-order, or branch change.
 - Compare implementation values against this document during review. If they disagree, resolve the disagreement explicitly rather than adding another source of truth.
 - Never substitute placeholder covers, synthetic avatars, fallback fonts, or improvised logos when bundled assets exist.
-- Preserve explicit callbacks for Supabase, Adapty, purchases, restore, OTP, notifications, and Home handoff.
+- Preserve explicit callbacks for Supabase, RevenueCat, purchases, restore, OTP, notifications, and Home handoff.

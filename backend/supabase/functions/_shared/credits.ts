@@ -37,13 +37,30 @@ type CreditDatabase = {
         };
         Returns: number;
       };
+      refresh_subscription_grant: {
+        Args: {
+          p_user_id: string;
+          p_amount: number;
+          p_reference_id: string;
+          p_operation_key: string;
+        };
+        Returns: number;
+      };
+      lapse_credits: {
+        Args: {
+          p_user_id: string;
+          p_reference_id: string;
+          p_operation_key: string;
+        };
+        Returns: number;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
 };
 
-export type CreditDeductionReason = "generation";
+export type CreditDeductionReason = "generation" | "chargeback";
 export type CreditGrantReason =
   | "purchase"
   | "subscription"
@@ -131,5 +148,39 @@ export async function grantCredit(
   });
 
   if (error) throw new Error(`Failed to grant credit: ${error.message}`);
+  return data as number;
+}
+
+/** Replace, rather than add to, the renewable subscription-grant bucket. */
+export async function refreshSubscriptionGrant(
+  supabase: SupabaseClient<CreditDatabase>,
+  userId: string,
+  amount: number,
+  referenceId: string,
+  operationKey: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("refresh_subscription_grant", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_reference_id: referenceId,
+    p_operation_key: operationKey,
+  });
+  if (error) throw new Error(`Failed to refresh subscription grant: ${error.message}`);
+  return data as number;
+}
+
+/** Atomically zero every credit bucket at subscription lapse. */
+export async function lapseCredits(
+  supabase: SupabaseClient<CreditDatabase>,
+  userId: string,
+  referenceId: string,
+  operationKey: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("lapse_credits", {
+    p_user_id: userId,
+    p_reference_id: referenceId,
+    p_operation_key: operationKey,
+  });
+  if (error) throw new Error(`Failed to lapse credits: ${error.message}`);
   return data as number;
 }

@@ -206,14 +206,14 @@ Deno.test("provider transaction keys cannot credit multiple accounts or reasons"
       secondUser,
     ]);
     await db.query(
-      "select grant_credit($1, 10, 'purchase', 'txn-1', 'adapty:txn-1')",
+      "select grant_credit($1, 10, 'purchase', 'txn-1', 'rc:txn-1')",
       [firstUser],
     );
 
     await assertRejects(
       () =>
         db.query(
-          "select grant_credit($1, 10, 'subscription', 'txn-1', 'adapty:txn-1')",
+          "select grant_credit($1, 10, 'subscription', 'txn-1', 'rc:txn-1')",
           [firstUser],
         ),
       Error,
@@ -222,7 +222,7 @@ Deno.test("provider transaction keys cannot credit multiple accounts or reasons"
     await assertRejects(
       () =>
         db.query(
-          "select grant_credit($1, 10, 'purchase', 'txn-1', 'adapty:txn-1')",
+          "select grant_credit($1, 10, 'purchase', 'txn-1', 'rc:txn-1')",
           [secondUser],
         ),
       Error,
@@ -230,7 +230,7 @@ Deno.test("provider transaction keys cannot credit multiple accounts or reasons"
     );
 
     const rewards = await db.query<{ count: number }>(
-      "select count(*)::integer as count from credit_ledger where operation_key = 'adapty:txn-1'",
+      "select count(*)::integer as count from credit_ledger where operation_key = 'rc:txn-1'",
     );
     assertEquals(rewards.rows[0].count, 1);
   } finally {
@@ -420,7 +420,7 @@ Deno.test("legacy duplicate credit rows resolve deterministically", async () => 
     );
 
     const result = await db.query<{ grant_credit: number }>(
-      "select grant_credit($1, 10, 'purchase', 'legacy', 'adapty:legacy')",
+      "select grant_credit($1, 10, 'purchase', 'legacy', 'rc:legacy')",
       [userId],
     );
     assertEquals(result.rows[0].grant_credit, 10);

@@ -27,7 +27,7 @@ EXPO_PUBLIC_SUPABASE_URL=https://iafeuxgoiknncgyjmugd.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-The app runs in mock-first mode when the key is missing. Supabase authentication, native notification permission, and Adapty purchases remain explicit integration boundaries documented in `BUILD_LOG.md`.
+The app runs in mock-first mode when the key is missing. Supabase authentication, native notification permission, and RevenueCat purchases remain explicit integration boundaries documented in `BUILD_LOG.md`.
 
 ## Checks
 

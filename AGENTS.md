@@ -7,6 +7,7 @@
 
 ## Repository Map
 
+- `CREDITS_AND_PRICING.md` -- **canonical source of truth for all credits, plan prices, grants, store SKUs, and earn mechanics.** Any pricing or credit question is answered there and nowhere else.
 - `expo/` -- approved and active Expo SDK 54 application.
 - `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
 - `ios-katha-ai-create-stories/` -- preserved Rork-generated iOS reference client.
@@ -18,6 +19,7 @@
 
 - Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding.
 - Read `backend/ROADMAP.md` and `backend/build-log.md` before changing Supabase or generation infrastructure.
+- **Read `CREDITS_AND_PRICING.md` before touching anything that prices, grants, deducts, or displays credits.** It is canonical; never hardcode a price or grant that contradicts it, and never copy its tables into another file.
 - Run Expo commands from `expo/` and Supabase commands from `backend/`.
 - Treat the iOS and Android folders as reference implementations unless a task explicitly targets native code.
 - Keep frontend and backend contracts in this repository. Do not create another Katha application or backend repository.
@@ -83,7 +85,7 @@ The rules:
 | **OpenRouter** | Free-router story generation fallback | `OPENROUTER_API_KEY` in Supabase secrets | Set, currently carrying fallback traffic |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
-| **Adapty** | Subscriptions + credit packs + paywall A/B | Public key in `expo/src/lib/adapty.ts`; webhook secret in Supabase secrets | Set |
+| **RevenueCat** | Subscriptions + credit packs + paywalls | Public SDK key in `expo/src/lib/revenuecat.ts`; webhook secret in Supabase secrets | Pending dashboard setup |
 | **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets | Not yet wired |
 | **Sentry** | Error tracking | DSN | Not yet set |
 | **AdMob** | Rewarded video for free credits | Needs server-side verification (SSV) | Not yet wired |
@@ -128,7 +130,8 @@ Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> OpenAI (`gpt-5
 GEMINI_API_KEY=xxx
 OPENROUTER_API_KEY=xxx
 OPENAI_API_KEY=xxx
-ADAPTY_WEBHOOK_SECRET=xxx
+REVENUECAT_WEBHOOK_SECRET=xxx
+SUBSCRIPTION_GRANT_CRON_SECRET=xxx
 FIREBASE_SERVICE_ACCOUNT_KEY=xxx
 RUNPOD_API_KEY=xxx
 ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
@@ -138,7 +141,7 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015`, `00017`-`00023` and `00025` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015`, `00017`-`00023`, `00025` and `00026` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 ### Key Tables
 
@@ -154,6 +157,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has migrations `0
 | **00022 (Observability validation)** | Separate validation for the `error_events.user_id` foreign key |
 | **00023 (Observability retention)** | Detaches `error_events.user_id` from `profiles` so profile deletion cannot mutate, delete, or be blocked by telemetry |
 | **00025 (Observability erasure)** | Nulls `error_events.user_id` on profile deletion, plus on-demand erasure and a 90-day retention backstop (service role only) |
+| **00026 (Subscription credits)** | `credit_balance_buckets`, `credit_chargebacks`, `credit_spend_allocations`, `credit_lapse_operations`, `revenuecat_subscriptions` |
 | **Not yet created** | `device_tokens` (Phase G -- FCM/APNs token storage) |
 
 ### Credit Ledger Pattern
@@ -161,7 +165,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has migrations `0
 - Append-only. Never update rows.
 - Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references.
 - Balance = newest ledger row by `created_at`, then `id`.
-- **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`.
+- **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`CREDITS_AND_PRICING.md` §5).
 
 ### Security Gate
 
@@ -181,7 +185,8 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `continue-story` | POST | Next chapter (author-only), max 7 chapters | Text path done |
 | `library` | GET | Paginated curated feed with genre filter + search | Done |
 | `feedback` | POST | Comments + one-time feedback credit reward | Done |
-| `adapty-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
+| `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
+| `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
 | `generate-audio` | POST | MiniMax Speech 02 HD narration | Accepts `language` in body |
 | `audio-status` | GET | Check audio generation status | Done |
 | `feed` | GET | Feed endpoint | Done |
@@ -192,7 +197,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ### Shared Utilities (`_shared/`)
 
-`adapty.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `image.ts`, `llm.ts`, `operations.ts`, `prompts.ts`, `story-prompts.ts`, `story_text.ts`, `uuid.ts` (plus test files).
+`revenuecat.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `image.ts`, `llm.ts`, `operations.ts`, `prompts.ts`, `story-prompts.ts`, `story_text.ts`, `uuid.ts` (plus test files).
 
 ### TODO Functions by Phase
 
@@ -380,7 +385,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 | EN | Aria | Kai | RunPod (MiniMax) |
 | ES | Elvira | Alvaro | edge-tts (placeholder) |
 
-4 additional EN voices reserved for Premium Voices (paid subscribers).
+4 additional EN voices. **No voice tiers** -- every voice is available on every tier including free (`CREDITS_AND_PRICING.md` decision 5).
 
 ### Pipeline
 
@@ -389,59 +394,68 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - `generate-audio` edge function accepts `language` in request body; callers must pass it explicitly.
 - Language routing: EN -> RunPod, all others -> edge-tts.
 - Reader shows voice toggle (female/male names from `getDefaultVoices(lang)`).
-- Free users: 1 credit to unlock audio. Paid users: included.
+- Audio is **1 credit per chapter, unlocked permanently**, on every tier. Re-listens, pause/resume and library re-opens are free forever. See `CREDITS_AND_PRICING.md` §1.
 - Inngest integration for auto-generation on publish is planned but not yet wired.
 
 ## Monetization
 
+> **`CREDITS_AND_PRICING.md` is the source of truth.** The summary below exists so
+> an agent reading this contract knows the shape of the economy. Every number in
+> it is a copy; if it disagrees with `CREDITS_AND_PRICING.md`, that file wins.
+> **Do not add pricing tables to this file.**
+
 ### Product Context
 
-**Katha AI -- Create Stories.** AI-powered mobile-first story platform. Users read curated + community stories for free. Creating stories costs credits. Separate product from Story For My Kid (storyformykid.com). Audience: adults 20-40, casual readers + aspiring writers.
+**Katha AI -- Create Stories.** AI-powered mobile-first story platform. Reading is free and unlimited, forever, on every tier. Creating and listening cost credits. Separate product from Story For My Kid (storyformykid.com). Audience: adults 20-40, casual readers + aspiring writers.
 
 ### Key Product Decisions
 
 - **Single currency: Credits.** No coins, no gems, no dual wallets. Backend tracks provenance via `credit_ledger.reason`.
-- **Every story starts as a short story.** AI decides length (500-1500 words). No length picker. Stories become Series when author adds chapters.
+- **1 credit = 1 AI action**, not 1 story. A chapter is text (1) + cover (1) + characters (1) = **3 credits**, and the three are separately purchasable.
+- **Reading is free, unlimited, on every tier, forever.** No caps, no metering, no daily pass.
+- **Audio is 1 credit per chapter, unlocked permanently.** No voice tiers.
+- **Drafting is free**: unlimited manual editing, 3 free AI redrafts and 20 free paragraph edits per chapter, 1 free cover regeneration per paid cover.
+- **Every story starts as a short story.** AI decides length (500-1500 words). No length picker. Stories become Series when the author adds chapters.
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
-- **3-credit welcome bonus.**
+- **3-credit welcome bonus**, granted only after the user declines both the paywall and the one-time offer.
 - Kids mode off by default, PIN-gated in parental controls.
 
-### Credits Pricing
+### Plans and packs (summary -- canonical table in `CREDITS_AND_PRICING.md` §3)
 
-| Product | Price | Credits |
-|---------|-------|---------|
-| Pack (small) | $2.99 | 3 |
-| Pack (medium) | $7.99 | 10 |
-| Pack (large) | $14.99 | 25 |
-| Monthly sub | $6.99/mo | 20/mo + ad-free + premium voices |
-| Yearly sub | $49.99/yr | 25/mo + ad-free + premium voices |
+Two audiences, three billing periods:
 
-Subscription credits carry over up to 2x monthly amount.
+| | Weekly | Monthly | Yearly (3-day trial) |
+|---|---|---|---|
+| **Reader** | $4.99 / 5 credits | $8.99 / 20 per mo | $29.99 / 20 per mo |
+| **Writer** | $6.99 / 10 credits | $12.99 / 50 per mo | $49.99 / 50 per mo |
 
-### Free Credit Methods
+Credit packs: **$4.99 / 10**, **$14.99 / 40**, **$29.99 / 90**.
+One-time offer after paywall decline: **Reader yearly $19.99 first year**, then $29.99.
+
+Rules that constrain every future change:
+
+- **Subscription grants do not roll over**, and **credits lapse with the subscription** — when a plan ends the whole balance goes to zero, including earned and pack-purchased credits. What survives is the user's library, their unlocked audio, and free unlimited reading. Lapse must never be silent: 3-day pre-expiry warning stating the exact balance at risk, the same number in the cancellation flow. **Open item: confirm with App Review that voiding purchased pack credits is permitted** (`CREDITS_AND_PRICING.md` §12).
+- **A subscription must always be the best price per credit against any pack it competes with.** Re-run the inversion check in `CREDITS_AND_PRICING.md` §4 whenever a price or grant changes.
+- **Writer yearly is the binding constraint** at 40% margin at full burn. Test every pricing change against that row first.
+
+### Free credit methods (summary -- canonical table in `CREDITS_AND_PRICING.md` §5)
 
 | Method | Amount | Limits |
 |--------|--------|--------|
-| Watch ad | 1 credit | 1 per rolling 24 hours (disabled until SSV) |
-| Reading streak | 1 credit | Every 3 consecutive days |
-| Leave feedback | 1 credit | 1 per story, cap 1/day |
-| Referral | 3 credits | Per unique referral who generates |
-| Social post | 1 credit | Per verified post, max 3/month |
-| Reader earnings | Curve below | Anti-gaming pipeline |
+| Reading streak | 1 credit | Day 2, day 5, day 7, then every 7 days. Self-capping at ~4/month |
+| Welcome bonus | 3 credits | Once per authenticated account, on declining the one-time offer |
+| Referral (referrer) | 10 credits | On invited user's first generation; 3/month, 10 lifetime. v1.1 |
+| Referral (invited) | 5 credits | On own first generation, once. v1.1 |
 
-### Creator Earnings Curve
+A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. Steady-state free earning is **~4 credits/month**, 20% of the Reader plan's 20. The ladder is self-capping, so no monthly ceiling is enforced.
 
-| Reads | Credits earned |
-|-------|---------------|
-| 10 | 10 (1 per read) |
-| 50 | 18 (1 per 5 after 10) |
-| 100 | 28 (1 per 5) |
-| 500 | 68 (1 per 10 after 100) |
-| 1,000 | 118 |
-| 10,000 | 478 (1 per 25 after 1000) |
+The failed-generation **auto-refund stays** (`refund_generation_operation`) but is not an earn mechanic and is not on this table.
 
-Anti-gaming: self-read guard, min read time, account age throttle, velocity anomaly detection, session diversity cap, per-story daily cap (10 credits), dedup (1 crediting read per user/story/day). Full spec in `backend/references/strategic-decisions.md` section 6.
+**Removed from the economy** -- do not reintroduce without amending `CREDITS_AND_PRICING.md`: rewarded-ad credits, comment/feedback rewards, social post rewards, reader earnings, the flat daily app-open credit, premium voice tiers, and the 2x carry-over cap.
+
+**Live defect:** `create_feedback` still grants a credit for a one-character comment, daily, uncapped. Disable before launch.
+
 
 ## App Architecture
 
@@ -462,19 +476,19 @@ Anti-gaming: self-read guard, min read time, account age throttle, velocity anom
 - `KathaOnboardingFlowV2` emits collected result through `onDone`; persist when account/profile wiring is added.
 - Do not restore prototype's "Replay the flow" action. Success CTA hands off directly to Home.
 - Keep email/OTP after the paywall action; do not reintroduce mandatory authentication before personalization and value delivery.
-- Do not hard-code localized pricing when Adapty integration begins; render from store payload.
+- Do not hard-code localized pricing when RevenueCat integration begins; render from store payload.
 
 ### Product Integration Boundaries
 
-- Email/OTP, notification permission, subscriptions, restores, and offer purchases are currently UI handoff points. Keep callbacks explicit for Supabase/Adapty/native wiring.
+- Email/OTP, notification permission, subscriptions, restores, and offer purchases are currently UI handoff points. Keep callbacks explicit for Supabase/RevenueCat/native wiring.
 - Notification education: `Allow` is where the real native permission request must be inserted; only granted native response may set consent true.
 
 ### Production SDK Initialization
 
-All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog()`, `initAdapty()`, `setupAndroidChannel()`. All SDKs gracefully no-op when API keys are empty.
+All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`. All SDKs gracefully no-op when API keys are empty.
 
 - `expo/src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
-- `expo/src/lib/adapty.ts`: Adapty v4. Use `getPaywallProducts()` and `purchaseProduct()`.
+- `expo/src/lib/revenuecat.ts`: RevenueCat Purchases. Use offerings/packages, managed paywalls, and Customer Center.
 - `expo/src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.
 - `expo/src/lib/firebase-analytics.ts`: Firebase Analytics with safe dynamic imports.
 - `expo/src/lib/tracking-transparency.ts`: iOS ATT. Call `requestTrackingPermission()` before analytics.
@@ -499,7 +513,7 @@ supabase secrets set GEMINI_API_KEY=xxx OPENROUTER_API_KEY=xxx  # Set story-gene
 
 ### Required Supabase Secrets
 
-`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ADAPTY_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
+`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`, `SUBSCRIPTION_GRANT_CRON_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
 
 ### Expo
 
@@ -520,7 +534,7 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists.
 |-------|-------|
 | **A** | Supabase project + fix critical bugs + deploy existing functions |
 | **B** | Wire gpt-image-1 cover images + MiniMax/edge-tts audio narration |
-| **C** | Adapty webhook HMAC + AdMob SSV verification |
+| **C** | RevenueCat webhook verification + AdMob SSV verification |
 | **D** | Follow/bookmark/like toggles + publish-chapter with FCM |
 | **E** | record-read endpoint + creator earnings curve + pending credits |
 | **F** | Feed endpoints + search + author profile + analytics |

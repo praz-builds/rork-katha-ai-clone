@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { revenueCatService } from '@/lib/revenuecat';
 import {
   Alert, View, Text, TextInput, Pressable, ScrollView, StyleSheet, StatusBar,
   useWindowDimensions, Animated, Easing, Image, SafeAreaView, Platform,
@@ -200,7 +201,7 @@ export default function KathaOnboardingFlowV2({ onDone = () => {}, initialScreen
       {screen === 'email' && otp && <OtpScreen email={email} code={code} setCode={setCode} onVerify={() => setScreen('success')} onResend={() => setCode('')} onEditEmail={() => setOtp(false)} />}
       {screen === 'notify' && <NotifyScreen onAllow={() => { setNotificationsAllowed(false); setScreen('paywall'); }} onLater={() => { setNotificationsAllowed(false); setScreen('paywall'); }} />}
       {screen === 'building' && <BuildingScreen fname={fname} purpose={purpose} topGenre={topGenre} reduceMotion={reduceMotion} onDone={() => setScreen('notify')} />}
-      {screen === 'paywall' && <Paywall fname={fname} purpose={purpose} topGenre={topGenre} refine={refine} moment={moment} plan={plan} setPlan={setPlan} trial={trial} setTrial={setTrial} reduceMotion={reduceMotion} onSubscribe={() => { setOtp(false); setScreen('email'); }} onClose={() => setScreen('oto')} />}
+      {screen === 'paywall' && <Paywall fname={fname} purpose={purpose} topGenre={topGenre} refine={refine} moment={moment} plan={plan} setPlan={setPlan} trial={trial} setTrial={setTrial} reduceMotion={reduceMotion} onSubscribe={async () => { try { await revenueCatService.presentPaywall(); } catch { Alert.alert('Purchase unavailable', 'Please try again shortly.'); } setOtp(false); setScreen('email'); }} onClose={() => setScreen('oto')} />}
       {screen === 'oto' && <OneTimeOffer reduceMotion={reduceMotion} onClaim={() => { setOtp(false); setScreen('email'); }} onClose={() => { setOtp(false); setScreen('email'); }} />}
       {screen === 'success' && <SuccessScreen fname={fname} purpose={purpose} reduceMotion={reduceMotion} onStart={() => onDone({ name: name.trim(), genres: Object.keys(genres).filter((key) => genres[key]), otherGenre: otherText.trim(), purpose, email: email.trim(), notificationsAllowed, refine, moment, plan, trial })} />}
     </SafeAreaView>
@@ -732,7 +733,7 @@ function Paywall({ fname, purpose, topGenre, refine, moment, plan, setPlan, setT
         <View style={pw.legalSection}>
           <Text style={pw.legalDisclosure}>{selectedProduct.billingDisclosure}</Text>
           <View style={pw.legalLinksRow}>
-            <Pressable onPress={() => Alert.alert('Restore', 'Restore purchases will be available when Adapty is connected.')} accessibilityRole="button"><Text style={pw.legalLink}>Restore purchases</Text></Pressable>
+            <Pressable onPress={async () => { try { await revenueCatService.restorePurchases(); Alert.alert('Restore', 'Your purchases have been restored.'); } catch { Alert.alert('Restore failed', 'Please try again shortly.'); } }} accessibilityRole="button"><Text style={pw.legalLink}>Restore purchases</Text></Pressable>
             <Text style={pw.legalDot}>{'\u00B7'}</Text>
             <Pressable onPress={() => Alert.alert('Terms', 'Terms of Use URL will be configured.')} accessibilityRole="link"><Text style={pw.legalLink}>Terms of Use</Text></Pressable>
             <Text style={pw.legalDot}>{'\u00B7'}</Text>

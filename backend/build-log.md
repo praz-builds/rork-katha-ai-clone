@@ -1127,3 +1127,10 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - New backend files: `_shared/story-prompts.ts`, `_shared/cover-prompts.ts`, `_shared/image.ts`, `COVER_IMAGES.md`
 - New expo files: 3 cover images, 5 test suites, 4 design token files, ESLint config, Jest config, CI workflow
 - Updated: `App.tsx`, `KathaPrimitives.tsx`, `domain.ts`, `seed.ts`, `images.ts`, `theme.ts`, `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `backend/CLAUDE.md`, `story-generator.md`
+
+### RevenueCat migration (2026-09-02)
+
+- Replaced the prior billing client and webhook with RevenueCat Purchases, RevenueCatUI, a public Test Store SDK key placeholder, entitlement mapping, Customer Center, and server-side product/credit mapping.
+- Added RevenueCat webhook handling with constant-time authorization, sandbox rejection by default, `rc:{event.id}` idempotency, trial grants, refund/chargeback handling, cancellation-versus-expiration behavior, and benign-event acknowledgement.
+- Added bucketed credit accounting: renewable subscription grants reset each period, purchased and earned credits remain distinct while subscribed, chargebacks clamp and record shortfalls, and expiration records an atomic negative lapse ledger row before zeroing every bucket.
+- Added the protected annual monthly-refresh Edge Function and focused Deno/PGlite tests. No deployment, dashboard configuration, commit, or push was performed.
