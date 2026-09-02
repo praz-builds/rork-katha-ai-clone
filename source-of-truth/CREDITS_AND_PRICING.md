@@ -41,11 +41,12 @@ Two subscription audiences, because the product has two:
 
 The five findings that shape the numbers:
 
-1. **Unbundling the chapter** collapsed a 55× cost spread. Cover ($0.063),
-   chapter art ($0.042) and characters ($0.033) sit within a factor of two of one
-   another, so each is honestly one credit and the economy lives in whole numbers
-   with no fractions anywhere. Text, at **$0.004** on `gpt-5.6-luna`, is now an
-   order of magnitude cheaper than any of them — creation cost is images.
+1. **Unbundling the chapter is what makes whole-number credits honest.** The
+   three image actions sit within a factor of two of one another — cover
+   $0.063, chapter art $0.042, a cast of three $0.033 — so each is fairly one
+   credit. Text is the outlier at **$0.004**, roughly 16× cheaper than a cover,
+   and it is priced at one credit anyway because a fractional credit is worse
+   than a generous one. Creation cost is images.
 2. **The Writer yearly tier is the binding constraint on everything.** At
    $49.99/yr for 50 credits/month it nets **$0.0708/credit** against
    **$0.0092–$0.0274** of creation cost depending on story shape (§2). Every
@@ -109,8 +110,15 @@ One credit = one AI action.
 
 **Creating a story**
 
-A story is 3, 7 or 15 chapters. You are charged for each AI action as it
+A story runs to a length you choose. You are charged for each AI action as it
 happens, never up front.
+
+> **Planned, not yet shipped.** The 3 / 7 / 15 chapter lengths below are the
+> model this file prices. What ships today is a single AI-chosen short story of
+> 500–1,500 words, continuable to 7 chapters
+> (`MAX_SERIES_CHAPTERS`). The per-action prices are live; the *lengths* are the
+> contract for `STORY_GENERATION_FLOW.md`'s rebuild, and the tables below are
+> pricing examples until it lands.
 
 | | Credits |
 |---|---|
@@ -126,7 +134,14 @@ happens, never up front.
 | 15 chapters | **17** | **31** |
 
 **You pay as each chapter is written**, so a story you stop halfway costs what
-it wrote, not what it planned. Uploading your own cover instead is free.
+it wrote, not what it planned.
+
+**Bringing your own cover is free, and it replaces chapter 1's art rather than
+sitting on top of it.** Upload before you generate and chapter 1's image is
+never made: starting the story costs **2**, not 3. Upload afterwards and it
+replaces the generated cover — but the credit that made it is not refunded,
+because that generation was delivered. Keeping the free typographic concept card
+is also a legitimate published look, and also costs nothing.
 
 **Listening — 1 credit**
 
@@ -219,8 +234,16 @@ tiers via [calculator](https://langcopilot.com/gpt-image-1-pricing)):
 | 1024×1024 | **$0.011** | $0.042 | $0.167 |
 | 1024×1536 | $0.016 | **$0.063** ← covers | $0.250 |
 
-**Three render tiers, and they are constraints rather than defaults.** Each is
-pinned in code with a test; changing one is a pricing change.
+**Three render tiers, and they are constraints rather than defaults.** Changing
+one is a pricing change and returns to this file.
+
+> **Implementation status, stated honestly.** Only the cover tier exists in code
+> today: `_shared/image.ts` requests `gpt-image-1` at 1024×1536 `medium` — and
+> `generateCoverImage()` is **not yet called by any edge function**, so no cover
+> has ever been generated in production. The chapter-art and portrait tiers below
+> are the **contract for the image pipeline still to be built** (bucket B4), not
+> a description of shipped behaviour. Each is to be pinned with a test when that
+> path lands.
 
 | Image | Tier | Cost | Why |
 |---|---|---|---|
@@ -678,7 +701,10 @@ User taps a paid action.
 │     → Proceed. No interruption. No confirmation dialog.
 │
 ├─ balance < cost                    ── NOT-ENOUGH-CREDITS SHEET
-│     Header:  "You have 2 credits. Starting a story needs 3."
+│     Header:  "You have 2 credits. <action> needs <n>."
+│              e.g. "Starting a story needs 3." / "This chapter needs 2."
+│              The action and its cost are BOTH dynamic - never hardcode 3,
+│              which is only ever the story-start price.
 │              (always lead with what they HAVE)
 │     Sub:     "Reading stays free — always."
 │     Footer:  "If a generation fails, your credits come back."
@@ -729,7 +755,7 @@ resentment-generating placement available.
   to their typed premise intact.
 - **After a successful top-up, the pending action fires automatically.** No second
   tap. The user was mid-intent; finish the intent.
-- **Every paid button shows its price**: `Generate chapter · 3 credits`,
+- **Every paid button shows its price**, and the price is the price of *that* action: `Create · 3 credits` to start a story, `Continue · 1 credit` for the next chapter, `Continue · 2 credits` when chapters are illustrated,
   `Listen · 1 credit`. The blocked moment is anticipated, never sprung.
 - **Insufficient balance on entering Create shows an inline banner, never a
   modal.** The user can still type, still browse, still save.
@@ -1016,8 +1042,10 @@ economy is tuned on evidence rather than argued about.
    per set of three). A cast is capped at **3**.
 10. **Chapter art is a priced action, and it is the same feature as the cover.**
     *(Amended 2026-09-03. This decision previously removed chapter illustrations
-    entirely; `STORY_GENERATION_FLOW.md` §10.4 supersedes that, and the margin
-    case is in `research/R6-chapter-art-pricing.md`.)*
+    entirely; `STORY_GENERATION_FLOW.md` §10.4 supersedes that. The margin
+    derivation lives in a working memo under `research/`, which is gitignored and
+    therefore not readable from a clone — the conclusions it produced are in §2
+    and in this decision.)*
 
     Every chapter may have one image. **Chapter 1's is compulsory and becomes the
     story's cover**; chapters 2–N are optional at 1 ✦ each behind a More-options

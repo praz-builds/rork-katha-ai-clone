@@ -16,7 +16,15 @@
 > cost. §10.6 identifies where this document requires that file to be amended;
 > until it is, that file wins.
 >
-> Last revised 2026-09-02. Sentences that are inference rather than shipped
+> **This document is a specification, not a description of shipped behaviour.**
+> Almost none of it exists in code yet. What ships today is a single AI-chosen
+> short story of 500-1,500 words, continuable to 7 chapters, from the setup
+> screen in `CreateStudioScreen.tsx`. Everything here — the three screens, the
+> Craft character sheet, moments, chapter art, the planned length, the Continue
+> loop — is the contract for the rebuild. Read a statement below as "this is what
+> we are building", never as "this is what the app does".
+>
+> Last revised 2026-09-03. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---
