@@ -166,29 +166,16 @@ Server-side handling is implemented. Dashboard configuration needed.
 
 </details>
 
-### AdMob SSV
+### Rewarded-ad credit path — historical/deferred
 
-Rewarded-ad credits remain disabled until every item below is complete.
-
-- [ ] User: Create AdMob account and get real app IDs and rewarded-ad unit IDs
-- [ ] Generate a one-time claim nonce on the server, bind to authenticated user before showing the ad
-- [ ] Configure AdMob `custom_data` with the opaque claim nonce; never trust app-supplied `user_id`
-- [ ] Add dedicated public AdMob SSV callback endpoint:
-  - Fetch Google's public keys from `https://www.gstatic.com/admob/reward/verifier-keys.json`
-  - Verify ECDSA signature on the SSV callback query params
-  - Resolve user only from the verified, server-issued claim nonce
-- [ ] Persist AdMob `transaction_id` with a global uniqueness constraint for replay protection
-- [ ] Enforce rolling 24-hour cooldown and credit grant in one database transaction
-- [ ] ~~On verified: grant 1 credit with reason `ad_reward`~~ — **rewarded-ad credits removed from the economy** (`CREDITS_AND_PRICING.md` §5). Rewarded video loses money as a credit source at any plausible eCPM.
-- [ ] On invalid signature, unknown/used nonce, replay, or cooldown: reject without granting
+Rewarded-ad credits were removed from the economy (`CREDITS_AND_PRICING.md` §5).
+Do not add AdMob packages, config plugins, unit IDs, SSV endpoints, or QA work for
+this deleted credit path. The former SSV checklist is retained only in git history.
 
 ### Expo App Integration
 
-- [x] Add RevenueCat Purchases and RevenueCatUI under `../expo/` (public Test Store key in `src/lib/revenuecat.ts`)
-- [ ] Add AdMob package under `../expo/`
-- [ ] Configure Expo config plugins in `../expo/app.json` (iOS and Android app IDs)
-- [ ] Wire AdMob rewarded-ad unit IDs into Expo runtime config
-- [ ] Use an Expo development build to verify purchases and rewarded ads on both platforms
+- [x] Add RevenueCat Purchases and RevenueCatUI under `../expo/`
+- [ ] Use an Expo development build to verify RevenueCat purchases on both platforms
 
 ---
 

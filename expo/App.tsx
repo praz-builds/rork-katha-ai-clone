@@ -62,6 +62,28 @@ import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 
+/** Payload emitted by KathaOnboardingFlowV2 on completion. */
+type OnboardingResult = {
+  name?: string;
+  genres?: string[];
+  otherGenre?: string;
+  purpose?: "read" | "write" | "both" | "";
+  email?: string;
+  notificationsAllowed?: boolean;
+  refine?: string;
+  moment?: string;
+  plan?: string;
+  trial?: boolean;
+};
+
+const GENRE_BY_LABEL = Object.fromEntries(
+  Object.entries(genreLabels).map(([key, label]) => [label.toLowerCase(), key as Genre])
+) as Record<string, Genre>;
+
+/** Onboarding stores display labels; the app keys everything by Genre. */
+const toGenreKeys = (labels: string[] | undefined): Genre[] =>
+  (labels ?? []).map((label) => GENRE_BY_LABEL[label.trim().toLowerCase()]).filter(Boolean as unknown as (g: Genre | undefined) => g is Genre);
+
 type LibrarySegment = "saved" | "history" | "myStories" | "comments";
 
 export default function App() {
@@ -70,6 +92,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>("home");
   const [credits, setCredits] = useState(3);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
+  const [onboarding, setOnboarding] = useState<OnboardingResult | null>(null);
 
   useEffect(() => {
     Font.loadAsync({
@@ -99,6 +122,10 @@ export default function App() {
   }
 
   const openStory = (storyId: string) => setScreen({ name: "reader", storyId });
+  const finishOnboarding = (result?: OnboardingResult) => {
+    if (result) setOnboarding(result);
+    goTabs("home");
+  };
   const goTabs = (nextTab: TabKey = tab) => {
     setTab(nextTab);
     setScreen({ name: "tabs" });
@@ -110,6 +137,7 @@ export default function App() {
         return (
           <HomeScreen
             credits={credits}
+            preferredGenres={toGenreKeys(onboarding?.genres)}
             generatedStories={generatedStories}
             stories={allStories}
             onStory={openStory}
@@ -146,9 +174,9 @@ export default function App() {
     <ScreenScaffold>
       <StatusBar style="dark" />
       {screen.name === "intro" ? (
-        <KathaOnboardingComplete onDone={() => goTabs("home")} onSignIn={() => goTabs("home")} />
+        <KathaOnboardingComplete onDone={finishOnboarding} onSignIn={finishOnboarding} />
       ) : screen.name === "onboarding" ? (
-        <KathaOnboardingFlowV2 onDone={() => goTabs("home")} />
+        <KathaOnboardingFlowV2 onDone={finishOnboarding} />
       ) : screen.name === "reader" ? (
         <ReaderScreen story={allStories.find((story) => story.id === screen.storyId) ?? allStories[0]} onBack={() => goTabs(tab)} />
       ) : screen.name === "author" ? (
@@ -156,7 +184,7 @@ export default function App() {
       ) : screen.name === "credits" ? (
         <CreditsScreen credits={credits} onBack={() => goTabs(tab)} />
       ) : screen.name === "paywall" ? (
-        <KathaOnboardingFlowV2 initialScreen="paywall" onDone={() => goTabs("home")} />
+        <KathaOnboardingFlowV2 initialScreen="paywall" onDone={finishOnboarding} />
       ) : screen.name === "profile" ? (
         <ProfileScreen
           credits={credits}
@@ -188,7 +216,8 @@ function HomeScreen({
   stories: allStories,
   onStory,
   onProfile,
-  onCreate
+  onCreate,
+  preferredGenres = []
 }: {
   credits: number;
   generatedStories: Story[];
@@ -196,6 +225,7 @@ function HomeScreen({
   onStory: (id: string) => void;
   onProfile: () => void;
   onCreate: () => void;
+  preferredGenres?: Genre[];
 }) {
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState<Genre | "all">("all");
@@ -214,8 +244,8 @@ function HomeScreen({
 
   const showFiltered = query.trim().length > 0 || genre !== "all";
 
-  // Mock onboarding genres — Adventure, Mystery, Fantasy
-  const onboardingGenres: Genre[] = ["adventure", "mystery", "fantasy"];
+  // Genres the user picked during onboarding. Falls back for users who skipped it.
+  const onboardingGenres: Genre[] = preferredGenres.length > 0 ? preferredGenres : ["adventure", "mystery", "fantasy"];
   const genreRows = onboardingGenres
     .map((g) => ({ genre: g, stories: allStories.filter((s) => s.genre === g) }))
     .filter((row) => row.stories.length > 0);
@@ -954,8 +984,8 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
         <Text style={styles.h1}>{credits} credits available</Text>
         <View style={styles.creditHero}>
           <Sparkles size={32} color={colors.accent} />
-          <Text style={styles.creditHeroTitle}>1 credit creates 1 story or chapter</Text>
-          <Text style={styles.creditHeroText}>Purchases and subscriptions sync through Supabase and RevenueCat in native development builds.</Text>
+          <Text style={styles.creditHeroTitle}>3 credits create a full chapter</Text>
+          <Text style={styles.creditHeroText}>One credit each for the text, its cover and its characters. Audio is 1 credit per chapter, unlocked forever. Reading is always free.</Text>
         </View>
         <SectionHeader title="History" />
         {ledger.map((entry) => (

@@ -39,6 +39,16 @@ export type RevenueCatEvent = {
   event_timestamp_ms?: number | null;
   transaction_id?: string | null;
   original_transaction_id?: string | null;
+  cancel_reason?:
+    | "CUSTOMER_SUPPORT"
+    | "DEVELOPER_INITIATED"
+    | "UNSUBSCRIBE"
+    | "BILLING_ERROR"
+    | "PRICE_INCREASE"
+    | "UNKNOWN"
+    | "SUBSCRIPTION_PAUSED"
+    | string
+    | null;
 };
 
 export type RevenueCatWebhookPayload = { event?: RevenueCatEvent };
@@ -51,57 +61,78 @@ export type RevenueCatCreditOperation = {
   transactionId: string;
   subscription: RevenueCatProduct | null;
 };
+export type RevenueCatIdentity = {
+  userId: string;
+  productId: string;
+  eventId: string;
+  product: RevenueCatProduct;
+};
 
 const CREDIT_EVENTS = new Set(["INITIAL_PURCHASE", "RENEWAL", "NON_RENEWING_PURCHASE"]);
 
 export function resolveRevenueCatCredit(event: RevenueCatEvent): RevenueCatCreditOperation | null {
   const eventType = event.type?.toUpperCase();
-  if (!eventType || eventType === "PRODUCT_CHANGE") return null;
+  const isRefund = isStoreRefundCancellation(event);
+  const isRefundReversed = eventType === "REFUND_REVERSED";
+  if (!eventType || (!CREDIT_EVENTS.has(eventType) && !isRefund && !isRefundReversed)) return null;
 
-  const productId = event.product_id;
-  if (!productId || !Object.hasOwn(REVENUECAT_PRODUCT_MAP, productId)) {
-    if (isRefundEvent(eventType)) throw new Error("Unknown product");
-    return null;
-  }
-  if (!event.id) throw new Error("Missing RevenueCat event ID");
-
-  const userId = parseUuid(event.app_user_id);
-  if (!userId) throw new Error("Missing or invalid app_user_id");
-
-  const product = REVENUECAT_PRODUCT_MAP[productId];
-  const transactionId = event.transaction_id ?? event.original_transaction_id ?? event.id;
+  const { userId, productId, eventId, product } = resolveRevenueCatIdentity(event);
+  const transactionId = event.transaction_id ?? event.original_transaction_id ?? eventId;
   if (!transactionId) throw new Error("Missing transaction identifier");
 
-  if (isRefundEvent(eventType)) {
-    return { userId, credits: product.credits, reason: "chargeback", productId, eventId: event.id, transactionId, subscription: product.kind === "subscription" ? product : null };
+  if (isRefund) {
+    return {
+      userId,
+      credits: creditAmountForEvent(product, event),
+      reason: "chargeback",
+      productId,
+      eventId,
+      transactionId,
+      subscription: product.kind === "subscription" ? product : null,
+    };
   }
-  if (!CREDIT_EVENTS.has(eventType)) return null;
-  if (eventType === "NON_RENEWING_PURCHASE" && product.kind !== "pack") {
+  if (!isRefundReversed && eventType === "NON_RENEWING_PURCHASE" && product.kind !== "pack") {
     throw new Error("Subscription received non-renewing purchase event");
   }
-  if (eventType !== "NON_RENEWING_PURCHASE" && product.kind !== "subscription") {
+  if (!isRefundReversed && eventType !== "NON_RENEWING_PURCHASE" && product.kind !== "subscription") {
     throw new Error("Pack received subscription event");
   }
 
-  // A trial must never grant more than the paid period it precedes. Trials are
-  // offered on yearly plans only (CREDITS_AND_PRICING.md §3), but clamping here
-  // means enabling a trial on a shorter interval can never over-grant.
-  const credits = product.kind === "subscription" && event.period_type === "TRIAL"
-    ? Math.min(product.trialCredits ?? product.credits, product.credits)
-    : product.credits;
   return {
     userId,
-    credits,
+    credits: creditAmountForEvent(product, event),
     reason: product.kind === "pack" ? "purchase" : "subscription",
     productId,
-    eventId: event.id,
+    eventId,
     transactionId,
     subscription: product.kind === "subscription" ? product : null,
   };
 }
 
-export function isRefundEvent(eventType: string): boolean {
-  return eventType === "REFUND" || eventType.includes("REFUND");
+/** Resolve lifecycle identity without pretending a lifecycle event is a refund. */
+export function resolveRevenueCatIdentity(event: RevenueCatEvent): RevenueCatIdentity {
+  const productId = event.product_id;
+  if (!productId || !Object.hasOwn(REVENUECAT_PRODUCT_MAP, productId)) {
+    throw new Error("Unknown product");
+  }
+  if (!event.id) throw new Error("Missing RevenueCat event ID");
+  const userId = parseUuid(event.app_user_id);
+  if (!userId) throw new Error("Missing or invalid app_user_id");
+  return { userId, productId, eventId: event.id, product: REVENUECAT_PRODUCT_MAP[productId] };
+}
+
+/** RevenueCat represents store refunds as CANCELLATION events with these reasons. */
+export function isStoreRefundCancellation(event: RevenueCatEvent): boolean {
+  return event.type?.toUpperCase() === "CANCELLATION" &&
+    (event.cancel_reason === "CUSTOMER_SUPPORT" || event.cancel_reason === "DEVELOPER_INITIATED");
+}
+
+function creditAmountForEvent(product: RevenueCatProduct, event: RevenueCatEvent): number {
+  // A trial must never grant or claw back more than the paid period it precedes.
+  // This also keeps REFUND_REVERSED symmetric with the original trial grant.
+  return product.kind === "subscription" && event.period_type === "TRIAL"
+    ? Math.min(product.trialCredits ?? product.credits, product.credits)
+    : product.credits;
 }
 
 export function constantTimeEquals(left: string, right: string): boolean {

@@ -3,14 +3,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   constantTimeEquals,
   eventDate,
+  isStoreRefundCancellation,
   type RevenueCatEvent,
   type RevenueCatWebhookPayload,
   REVENUECAT_PRODUCT_MAP,
   resolveRevenueCatCredit,
+  resolveRevenueCatIdentity,
 } from "../_shared/revenuecat.ts";
 import {
   deductCredit,
   grantCredit,
+  isDuplicateCreditOperationError,
   lapseCredits,
   refreshSubscriptionGrant,
 } from "../_shared/credits.ts";
@@ -48,18 +51,36 @@ serve(async (req) => {
     const eventType = event.type.toUpperCase();
     const serviceClient = createServiceClient();
     if (eventType === "EXPIRATION") {
-      const operation = resolveRevenueCatCreditForLifecycle(event);
+      const identity = resolveRevenueCatIdentity(event);
       await recordSubscription(serviceClient, event, false, false);
       const balance = await lapseCredits(
         serviceClient,
-        operation.userId,
-        `revenuecat:expiration:${operation.productId}`,
-        `rc:${operation.eventId}`,
+        identity.userId,
+        `revenuecat:expiration:${identity.productId}`,
+        `rc:${identity.eventId}`,
       );
       return jsonResponse({ ok: true, balance });
     }
     if (eventType === "CANCELLATION") {
-      // Cancellation means the subscription remains active until EXPIRATION.
+      if (isStoreRefundCancellation(event)) {
+        const operation = resolveRevenueCatCredit(event);
+        if (!operation || operation.reason !== "chargeback") {
+          throw new Error("Invalid RevenueCat refund cancellation");
+        }
+        const balance = await deductCredit(
+          serviceClient,
+          operation.userId,
+          operation.credits,
+          "chargeback",
+          operation.transactionId,
+          `rc:${operation.eventId}`,
+        );
+        if (operation.subscription) {
+          await recordSubscription(serviceClient, event, false, false);
+        }
+        return jsonResponse({ ok: true, balance });
+      }
+      // Plain cancellation means the subscription remains active until EXPIRATION.
       await recordSubscription(serviceClient, event, true, false);
       return jsonResponse({ ok: true, acknowledged: "will not renew" });
     }
@@ -117,6 +138,9 @@ serve(async (req) => {
     }
     return jsonResponse({ ok: true, balance });
   } catch (error) {
+    if (isDuplicateCreditOperationError(error)) {
+      return jsonResponse({ ok: true, acknowledged: "duplicate" });
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     if ([
       "Missing or invalid app_user_id",
@@ -135,14 +159,6 @@ serve(async (req) => {
   }
 });
 
-function resolveRevenueCatCreditForLifecycle(event: RevenueCatEvent) {
-  // EXPIRATION does not grant or refund, but it must identify an authenticated
-  // profile and a SKU before it can zero that profile's balance.
-  const operation = resolveRevenueCatCredit({ ...event, type: "REFUND" });
-  if (!operation) throw new Error("Invalid RevenueCat lifecycle event");
-  return operation;
-}
-
 function createServiceClient() {
   return createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -156,14 +172,14 @@ async function recordSubscription(
   isActive: boolean,
   willRenew: boolean,
 ) {
-  const operation = resolveRevenueCatCreditForLifecycle(event);
-  const product = REVENUECAT_PRODUCT_MAP[operation.productId];
+  const identity = resolveRevenueCatIdentity(event);
+  const product = REVENUECAT_PRODUCT_MAP[identity.productId];
   if (product.kind !== "subscription" || !product.entitlement || !product.tier || !product.interval) {
     throw new Error("Lifecycle event received for a non-subscription product");
   }
   const { error } = await serviceClient.rpc("record_revenuecat_subscription", {
-    p_user_id: operation.userId,
-    p_product_id: operation.productId,
+    p_user_id: identity.userId,
+    p_product_id: identity.productId,
     p_entitlement_id: product.entitlement,
     p_tier: product.tier,
     p_interval: product.interval,
@@ -171,7 +187,7 @@ async function recordSubscription(
     p_is_active: isActive,
     p_will_renew: willRenew,
     p_expires_at: eventDate(event),
-    p_event_id: operation.eventId,
+    p_event_id: identity.eventId,
     p_event_at: new Date(event.event_timestamp_ms ?? Date.now()).toISOString(),
   });
   if (error) throw new Error(`Failed to record RevenueCat subscription: ${error.message}`);

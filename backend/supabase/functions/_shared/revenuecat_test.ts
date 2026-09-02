@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   constantTimeEquals,
+  isStoreRefundCancellation,
   REVENUECAT_PRODUCT_MAP,
   resolveRevenueCatCredit,
 } from "./revenuecat.ts";
@@ -61,10 +62,10 @@ Deno.test("PRODUCT_CHANGE and non-credit lifecycle events never grant", () => {
   );
 });
 
-Deno.test("refund-shaped RevenueCat events resolve to clamped chargebacks", () => {
+Deno.test("store-refund cancellations resolve to clamped chargebacks", () => {
   const operation = resolveRevenueCatCredit({
-    id: "refund-1", type: "REFUND", app_user_id: USER_ID,
-    product_id: "ai.katha.credits.medium", transaction_id: "transaction-refund",
+    id: "refund-1", type: "CANCELLATION", cancel_reason: "CUSTOMER_SUPPORT",
+    app_user_id: USER_ID, product_id: "ai.katha.credits.medium", transaction_id: "transaction-refund",
   });
   assertEquals(operation, {
     userId: USER_ID,
@@ -77,6 +78,33 @@ Deno.test("refund-shaped RevenueCat events resolve to clamped chargebacks", () =
   });
 });
 
+Deno.test("a trial refund claws back only the trial grant", () => {
+  const operation = resolveRevenueCatCredit({
+    id: "trial-refund", type: "CANCELLATION", cancel_reason: "DEVELOPER_INITIATED",
+    app_user_id: USER_ID, product_id: "ai.katha.sub.writer.yearly", period_type: "TRIAL",
+  });
+  assertEquals(operation?.reason, "chargeback");
+  assertEquals(operation?.credits, 15);
+});
+
+Deno.test("plain unsubscribe cancellation is not a refund or credit operation", () => {
+  const event = {
+    id: "unsubscribe", type: "CANCELLATION", cancel_reason: "UNSUBSCRIBE",
+    app_user_id: USER_ID, product_id: "ai.katha.sub.writer.monthly",
+  } as const;
+  assertEquals(isStoreRefundCancellation(event), false);
+  assertEquals(resolveRevenueCatCredit(event), null);
+});
+
+Deno.test("REFUND_REVERSED re-grants the original product credits", () => {
+  const operation = resolveRevenueCatCredit({
+    id: "refund-reversed", type: "REFUND_REVERSED", app_user_id: USER_ID,
+    product_id: "ai.katha.credits.medium", transaction_id: "transaction-reversed",
+  });
+  assertEquals(operation?.reason, "purchase");
+  assertEquals(operation?.credits, 40);
+});
+
 Deno.test("RevenueCat webhook resolver rejects malformed credit events", () => {
   assertThrows(
     () => resolveRevenueCatCredit({ id: "bad-user", type: "RENEWAL", app_user_id: "not-a-uuid", product_id: "ai.katha.sub.reader.monthly" }),
@@ -84,7 +112,7 @@ Deno.test("RevenueCat webhook resolver rejects malformed credit events", () => {
     "Missing or invalid app_user_id",
   );
   assertThrows(
-    () => resolveRevenueCatCredit({ id: "unknown", type: "REFUND", app_user_id: USER_ID, product_id: "unknown" }),
+    () => resolveRevenueCatCredit({ id: "unknown", type: "CANCELLATION", cancel_reason: "CUSTOMER_SUPPORT", app_user_id: USER_ID, product_id: "unknown" }),
     Error,
     "Unknown product",
   );
@@ -97,5 +125,10 @@ Deno.test("RevenueCat webhook resolver rejects malformed credit events", () => {
     () => resolveRevenueCatCredit({ id: "wrong-kind", type: "RENEWAL", app_user_id: USER_ID, product_id: "ai.katha.credits.small" }),
     Error,
     "Pack received subscription event",
+  );
+  assertThrows(
+    () => resolveRevenueCatCredit({ id: "wrong-kind-reverse", type: "NON_RENEWING_PURCHASE", app_user_id: USER_ID, product_id: "ai.katha.sub.reader.monthly" }),
+    Error,
+    "Subscription received non-renewing purchase event",
   );
 });

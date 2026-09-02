@@ -4,7 +4,7 @@
 
 > Historical baseline material for the original AI story generator plan.
 > The active client is the Expo app in `../../expo/`; the Swift and Kotlin clients are preserved references.
-> Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ.
+> Current requirements in `../CLAUDE.md` and `../references/strategic-decisions.md` override this blueprint where they differ. **Rewarded-ad credits are historical/deferred** (`CREDITS_AND_PRICING.md` §5): do not use this blueprint to implement, configure, or QA AdMob reward flows.
 > Image and audio sections describe planned Phase B architecture; the current generation runtime returns text only.
 
 ---
@@ -52,7 +52,7 @@ The app is built across two environments with clear boundaries:
 |  - Bottom tab navigation                                   |
 |  - Supabase Auth (Google/Apple sign-in)                    |
 |  - RevenueCat SDK (subscriptions, credit packs, paywalls) |
-|  - AdMob SDK (rewarded video ads)                          |
+|  - AdMob SDK (rewarded video ads, historical/deferred)    |
 |  - Push notifications (Expo/OneSignal)                     |
 |  - Offline caching & local storage                         |
 |  - Audio player UI                                         |
@@ -99,7 +99,7 @@ The app is built across two environments with clear boundaries:
 | Screens, navigation, UI components | **Rork** | It's a UI builder — this is what it does |
 | Supabase Auth setup (Google/Apple providers) | **Rork** | Rork has Supabase integration |
 | RevenueCat SDK init, paywall UI, purchase flow | **Rork** | Native SDK, must be in the app |
-| AdMob rewarded video integration | **Rork** | Native SDK, must be in the app |
+| AdMob rewarded video integration | **Historical/deferred** | Do not implement a reward-credit path |
 | Push notification setup | **Rork** | Native capability |
 | Audio player component | **Rork** | UI component |
 | Edge Functions (all backend logic) | **VS Code agent** | Server-side code, needs testing, version control |
@@ -107,7 +107,7 @@ The app is built across two environments with clear boundaries:
 | Database schema, migrations, RLS | **VS Code agent** | SQL, needs review and migration tracking |
 | Credit ledger (grant/deduct/balance) | **VS Code agent** | Business-critical logic, must be server-side |
 | RevenueCat webhook handler | **VS Code agent** | Server-side webhook processing |
-| AdMob server-side reward verification | **VS Code agent** | Security-critical — never trust client for credits |
+| AdMob server-side reward verification | **Historical/deferred** | Do not implement a reward-credit path |
 
 ### Rule of Thumb
 >

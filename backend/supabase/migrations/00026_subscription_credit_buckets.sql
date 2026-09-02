@@ -8,13 +8,32 @@ alter table public.credit_ledger
         'purchase', 'subscription', 'ad_reward', 'streak', 'feedback',
         'referral', 'social', 'generation', 'welcome', 'refund',
         'reader_earning', 'chargeback', 'lapse'
-    ));
+    )) not valid;
+alter table public.credit_ledger
+    validate constraint credit_ledger_reason_check;
 
 alter table public.payment_event_backlog
     drop constraint if exists payment_event_backlog_provider_check;
 alter table public.payment_event_backlog
     add constraint payment_event_backlog_provider_check
-        check (pg_catalog.btrim(provider) <> '');
+        check (provider in ('adapty', 'revenuecat'));
+
+-- UUIDs are not chronological. This sequence is the final tie-breaker for
+-- rows created in the same transaction (including a grant reset's two rows).
+create sequence if not exists public.credit_ledger_sequence;
+alter table public.credit_ledger
+    add column if not exists ledger_sequence bigint;
+alter sequence public.credit_ledger_sequence
+    owned by public.credit_ledger.ledger_sequence;
+alter table public.credit_ledger
+    alter column ledger_sequence set default nextval('public.credit_ledger_sequence');
+update public.credit_ledger
+set ledger_sequence = nextval('public.credit_ledger_sequence')
+where ledger_sequence is null;
+alter table public.credit_ledger
+    alter column ledger_sequence set not null;
+create unique index if not exists idx_credit_ledger_sequence
+    on public.credit_ledger(ledger_sequence);
 
 create table if not exists public.credit_balance_buckets (
     user_id uuid primary key references public.profiles(id) on delete cascade,
@@ -91,6 +110,9 @@ create index if not exists idx_revenuecat_subscriptions_monthly_refresh
     on public.revenuecat_subscriptions(interval, is_active, expires_at)
     where interval = 'yearly' and is_active = true;
 
+create index if not exists idx_credit_spend_allocations_user_reference
+    on public.credit_spend_allocations(user_id, reference_id);
+
 -- Legacy rows predate provenance tracking. Preserve their full balance as earned
 -- rather than guessing it was a subscription grant or a pack purchase.
 create or replace function public.ensure_credit_balance_buckets(
@@ -107,7 +129,7 @@ begin
     into v_legacy_balance
     from public.credit_ledger
     where user_id = p_user_id
-    order by created_at desc, id desc
+    order by created_at desc, ledger_sequence desc
     limit 1;
 
     insert into public.credit_balance_buckets(
@@ -281,7 +303,7 @@ begin
     into v_existing_amount, v_existing_reason, v_existing_reference
     from public.credit_ledger
     where user_id = p_user_id and operation_key = p_operation_key
-    order by created_at desc, id desc limit 1;
+    order by created_at desc, ledger_sequence desc limit 1;
     if v_existing_amount is not null then
         if v_existing_amount <> p_amount or v_existing_reason <> p_reason
            or v_existing_reference <> p_reference_id then
@@ -300,6 +322,12 @@ begin
         v_refund_grant := coalesce(v_refund_grant, 0);
         v_refund_purchased := coalesce(v_refund_purchased, 0);
         v_refund_earned := coalesce(v_refund_earned, 0);
+        -- A partial refund restores only the portion of each bucket that was
+        -- spent. The earned bucket receives the exact remainder so the three
+        -- restored parts always sum to p_amount.
+        v_refund_grant := least(v_refund_grant, p_amount);
+        v_refund_purchased := least(v_refund_purchased, p_amount - v_refund_grant);
+        v_refund_earned := p_amount - v_refund_grant - v_refund_purchased;
     end if;
 
     update public.credit_balance_buckets
@@ -317,7 +345,7 @@ begin
             end,
         earned_balance = earned_balance +
             case
-                when p_reason = 'refund' then p_amount - v_refund_grant - v_refund_purchased
+                when p_reason = 'refund' then v_refund_earned
                 when p_reason not in ('subscription', 'purchase') then p_amount
                 else 0
             end,
@@ -415,6 +443,9 @@ declare
     v_buckets public.credit_balance_buckets;
     v_current_balance integer;
 begin
+    -- Deliberate product rule: an expired subscription zeroes every bucket,
+    -- including pack and earned credits (CREDITS_AND_PRICING.md decision 37;
+    -- §12 open item 5 records the pending App Review confirmation).
     if p_reference_id is null or pg_catalog.btrim(p_reference_id) = ''
        or p_operation_key is null or pg_catalog.btrim(p_operation_key) = '' then
         raise exception 'A reference ID and operation key are required';

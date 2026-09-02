@@ -7,13 +7,20 @@ import Purchases, {
 import RevenueCatUI from "react-native-purchases-ui";
 
 // RevenueCat public SDK keys ship in the app binary and are not secrets.
-// TODO: Replace this Test Store key with the production appl_/goog_ keys before release.
+// TODO: Production `appl_` and `goog_` keys have not been issued yet. Add them
+// here before a preview or production build; never use the Test Store in release.
 const REVENUECAT_TEST_STORE_PUBLIC_KEY = "test_VzetjoZZQyauDNrUNmaZqGYkSXE";
-const REVENUECAT_PUBLIC_KEY = Platform.select({
-  ios: REVENUECAT_TEST_STORE_PUBLIC_KEY,
-  android: REVENUECAT_TEST_STORE_PUBLIC_KEY,
-  default: undefined,
-});
+const REVENUECAT_IOS_RELEASE_PUBLIC_KEY: string | undefined = undefined;
+const REVENUECAT_ANDROID_RELEASE_PUBLIC_KEY: string | undefined = undefined;
+const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV ?? (__DEV__ ? "development" : "production");
+const IS_DEVELOPMENT_BUILD = APP_ENV === "development";
+const REVENUECAT_PUBLIC_KEY = IS_DEVELOPMENT_BUILD
+  ? REVENUECAT_TEST_STORE_PUBLIC_KEY
+  : Platform.select({
+    ios: REVENUECAT_IOS_RELEASE_PUBLIC_KEY,
+    android: REVENUECAT_ANDROID_RELEASE_PUBLIC_KEY,
+    default: undefined,
+  });
 
 /** Add a tier by adding exactly one entitlement-to-tier entry here. */
 export const ENTITLEMENT_TIER_MAP = {
@@ -55,7 +62,17 @@ class RevenueCatService {
 
   /** Configure RevenueCat once at startup. Anonymous users receive an SDK ID. */
   async activate(appUserID?: string): Promise<void> {
-    if (Platform.OS === "web" || !REVENUECAT_PUBLIC_KEY) return;
+    if (Platform.OS === "web") return;
+    if (!REVENUECAT_PUBLIC_KEY) {
+      // Fail loudly. A release build with no key silently has no billing at all,
+      // which otherwise only surfaces as zero revenue days later.
+      console.error(
+        `RevenueCat has no public SDK key for APP_ENV="${APP_ENV}" on ${Platform.OS}. ` +
+          "Purchases, restores, paywalls and Customer Center are all disabled. " +
+          "Set the production appl_/goog_ keys in src/lib/revenuecat.ts.",
+      );
+      return;
+    }
 
     if (this._ready) {
       if (appUserID) await this.identify(appUserID);

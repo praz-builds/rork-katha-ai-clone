@@ -421,17 +421,10 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - **3-credit welcome bonus**, granted only after the user declines both the paywall and the one-time offer.
 - Kids mode off by default, PIN-gated in parental controls.
 
-### Plans and packs (summary -- canonical table in `CREDITS_AND_PRICING.md` §3)
+### Plans, packs, and grants
 
-Two audiences, three billing periods:
-
-| | Weekly | Monthly | Yearly (3-day trial) |
-|---|---|---|---|
-| **Reader** | $4.99 / 5 credits | $8.99 / 20 per mo | $29.99 / 20 per mo |
-| **Writer** | $6.99 / 10 credits | $12.99 / 50 per mo | $49.99 / 50 per mo |
-
-Credit packs: **$4.99 / 10**, **$14.99 / 40**, **$29.99 / 90**.
-One-time offer after paywall decline: **Reader yearly $19.99 first year**, then $29.99.
+All plan prices, grants, packs, SKUs, trials, and offers are defined only in
+`CREDITS_AND_PRICING.md` §3. Do not duplicate those values here.
 
 Rules that constrain every future change:
 

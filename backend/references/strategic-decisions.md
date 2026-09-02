@@ -129,15 +129,11 @@ Backend addition: `stories.themes TEXT[]` (already effectively covered by `genre
 > **SUPERSEDED. See `CREDITS_AND_PRICING.md` (repository root).**
 >
 > The earning table, spending table, pricing tiers and free-vs-premium behavior
-> that used to live here are obsolete in every particular. The current economy:
->
-> - **1 credit = 1 AI action.** A chapter is text + cover + characters = **3 credits**.
-> - **Reading is free, unlimited, on every tier, forever.** Audio is 1 credit per chapter, unlocked permanently. No voice tiers.
-> - **Plans:** Reader $4.99 wk / $8.99 mo / $29.99 yr (5 / 20 / 20 credits). Writer $6.99 wk / $12.99 mo / $49.99 yr (10 / 50 / 50 credits).
-> - **Packs:** $4.99 / 10, $14.99 / 40, $29.99 / 90.
-> - **Earning:** reading streak — 1 credit at day 2, day 5, day 7, then every 7 days (~4/month, self-capping); welcome bonus 3; referral 10 + 5 (v1.1). Nothing else.
-> - **Removed entirely:** rewarded-ad credits, comment/feedback rewards, social post rewards, reader earnings, the flat daily app-open credit, premium voice tiers, and the 2× carry-over cap.
-> - **Credits lapse with the subscription.** When a plan ends the whole balance goes to zero. Library, unlocked audio and free reading survive.
+> that used to live here are obsolete in every particular. See
+> `CREDITS_AND_PRICING.md` §§1, 3, and 5 for every current number, price, grant,
+> SKU, and earning rule. The enduring mechanisms are free reading, one credit per
+> AI action, non-rolling subscription grants, and whole-balance lapse at
+> subscription end; library and unlocked audio remain available.
 >
 > The **creator-earning curve** described in §5.1 and the **anti-gaming pipeline**
 > in §6 are deferred to v1.2, not deleted — they are well designed and will be
@@ -291,7 +287,7 @@ Strategic placement across the app:
 | Empty state on Home | *"Your library's waiting. Write your first story."* |
 | Post-comment (occasionally) | *"You clearly have taste — write one yourself?"* |
 | Author profile of someone you're viewing | *"Follow their style — write in their genre"* |
-| After a streak milestone | *"You're on fire. Your next story is on us."* |
+| After a streak milestone | *"Streak milestone reached. You earned 1 credit."* |
 
 **Rule:** the CTA lives on **every reading surface**. Reading is the intake; writing is the monetization event.
 
@@ -479,7 +475,7 @@ All push notifications respect per-category opt-out in Settings → Notification
 
 Things this doc leaves unresolved — flag for future decision:
 
-1. **Welcome bonus amount** — this doc recommends **3 credits** (vs. Blueprint's 2). Confirm at implementation time; A/B test candidate post-launch.
+1. **Welcome bonus amount — settled.** It is 3 credits after the paywall and one-time-offer decline path; see `CREDITS_AND_PRICING.md` §5.
 2. **Optional internal cooldown on reader-earned credits** — recommended but optional. Backend team decides based on fraud detection load.
 3. **Social post verification workflow** — manual moderation queue in v1 or automated? Recommend manual for v1 (low volume expected), automate once volume justifies.
 4. **Regeneration on user-initiated retry** — not offered in v1. Consider adding as premium-only feature post-launch.
@@ -494,12 +490,14 @@ For clarity — the following remain as specified in the Blueprint:
 
 - Tech stack split (Rork for UI, VS Code agent for backend).
 - Supabase Auth (Google + Apple).
-- RevenueCat for billing + AdMob for rewarded ads.
+- RevenueCat for billing. **Rewarded-ad credits are historical/deferred and must
+  not be implemented**; see `CREDITS_AND_PRICING.md` §5.
 - Pricing tiers — **superseded, see `CREDITS_AND_PRICING.md` §3.**
 - Cost-per-generation — **superseded, see `CREDITS_AND_PRICING.md` §2** ($0.127 per chapter).
 - 5-tab bottom nav structure.
 - Append-only credit ledger pattern.
-- Server-side verification for AdMob rewards (SSV) and RevenueCat webhooks.
+- RevenueCat webhook verification. AdMob SSV material is historical only and
+  cannot authorize a credit path.
 - Phase 1-5 build order (though this doc reshuffles some sub-priorities).
 
 Anything not explicitly overridden here defers to the Blueprint.

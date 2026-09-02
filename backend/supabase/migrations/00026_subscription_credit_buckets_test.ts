@@ -93,12 +93,28 @@ Deno.test("expiration writes one negative lapse ledger entry and is idempotent",
     await db.query("select lapse_credits($1, 'expired', 'rc:expired')", [userId]);
     await db.query("select lapse_credits($1, 'expired', 'rc:expired')", [userId]);
     const ledger = await db.query<{ amount: number; reason: string; balance_after: number }>(
-      "select amount, reason, balance_after from credit_ledger where user_id = $1 order by created_at, id", [userId],
+      "select amount, reason, balance_after from credit_ledger where user_id = $1 order by created_at, ledger_sequence", [userId],
     );
     assertEquals(ledger.rows.at(-1), { amount: -30, reason: "lapse", balance_after: 0 });
     const lapses = await db.query<{ count: number }>(
       "select count(*)::integer as count from credit_lapse_operations where user_id = $1", [userId],
     );
     assertEquals(lapses.rows[0].count, 1);
+  } finally { await db.close(); }
+});
+
+Deno.test("partial automatic refunds restore only the refunded allocation", async () => {
+  const db = await createDatabase();
+  const userId = "00000000-0000-4000-8000-000000000095";
+  try {
+    await db.query("insert into auth.users(id) values ($1)", [userId]);
+    await db.query("insert into profiles(id) values ($1)", [userId]);
+    await db.query("select refresh_subscription_grant($1, 5, 'month', 'rc:month')", [userId]);
+    await db.query("select deduct_credit($1, 5, 'generation', 'story', 'generation:story')", [userId]);
+    await db.query("select grant_credit($1, 2, 'refund', 'story', 'refund:story')", [userId]);
+    const buckets = await db.query<{ subscription_grant_balance: number; purchased_balance: number; earned_balance: number }>(
+      "select subscription_grant_balance, purchased_balance, earned_balance from credit_balance_buckets where user_id = $1", [userId],
+    );
+    assertEquals(buckets.rows[0], { subscription_grant_balance: 2, purchased_balance: 0, earned_balance: 0 });
   } finally { await db.close(); }
 });

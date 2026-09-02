@@ -79,7 +79,7 @@
   },
   "credits": {
     "title": "{{count}} cr\u00e9ditos dispon\u00edveis",
-    "heroTitle": "1 cr\u00e9dito cria 1 hist\u00f3ria ou cap\u00edtulo",
+    "heroTitle": "1 cr\u00e9dito gera 1 hist\u00f3ria ou cap\u00edtulo",
     "heroDescription": "Compras e assinaturas sao sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
     "history": "Hist\u00f3rico"
   },

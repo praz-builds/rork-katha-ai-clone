@@ -180,12 +180,12 @@ subscribe or not — plans are for creating and listening.
 
 ## 2. Cost basis
 
-**Text.** `_shared/llm.ts` chains Sonnet 4.6 → Haiku 4.5 → gpt-4o-mini.
-Sonnet 4.6 is **$3/$15 per MTok**; Haiku 4.5 **$1/$5** (Anthropic first-party
-rates). *Inference from measuring the prompt modules:* the assembled system
-prompt is ~8–9k chars ≈ **~2,400 input tokens**; output is 500–1,500 words ≈
-**~800–2,300 output tokens** (`story-prompts.ts:142`, `:809`) → **~$0.031 per
-chapter**, ~$0.004 per paragraph edit.
+**Text.** `_shared/llm.ts` now chains Gemini 3.1 Pro Preview → OpenRouter
+`google/gemini-2.5-flash` → OpenAI (`gpt-5.6-luna`, `gpt-5-mini`,
+`gpt-4o-mini`) → OpenRouter Free Router ([implementation](backend/supabase/functions/_shared/llm.ts)).
+The existing **~$0.031 per chapter** planning figure (and ~$0.004 per paragraph
+edit) was calculated from the retired Anthropic rate card and must be re-measured
+against the current providers; no replacement cost figure is asserted here.
 
 **Images.** `gpt-image-1` ([OpenAI](https://developers.openai.com/api/docs/models/gpt-image-1),
 tiers via [calculator](https://langcopilot.com/gpt-image-1-pricing)):
@@ -280,6 +280,20 @@ is, by revealed preference, not a writer. Discount the thing they might want.
 
 **It renews at full price** ($29.99), so lifetime value recovers in year two, and
 it is a single option with no second decision — the user has already made two.
+
+**It carries a 2-minute countdown**, the only countdown permitted anywhere in the
+product (§7). The clock is legitimate rather than theatrical: at zero the offer
+SKU is disabled for that `user_id` server-side, the screen auto-advances, and the
+price never returns — no Home banner, no recovery push, no second showing. The
+on-screen line is *"You'll never see this again,"* and it is a statement of fact
+the backend enforces. Leaving the screen ends the offer exactly as expiry does.
+The duration is a remotely tunable value, so it can be retuned without a store
+review; 2 minutes is a starting value, not a finding.
+
+**Both paths reach it.** A reader who declines the Reader paywall and a writer
+who declines the Writer paywall see the same screen and the same SKU. Offering
+the Reader plan to a writer decliner is the revealed-preference argument above,
+and it keeps the Writer yearly undiscounted per decision 15.
 
 ### Credit packs
 
@@ -526,35 +540,59 @@ every plan we sell. Daily replenishment is **earned and capped**, never granted.
 
 ## 6. Onboarding and the paywall flow
 
+Onboarding branches on a purpose question and the two paths meet again at the
+offer. Screen-level design is specified in
+[`research/R2-onboarding-conversion.md`](research/R2-onboarding-conversion.md);
+only the money is defined here.
+
 ```
-Signup (authenticated — Apple / Google / email)
+Anonymous session at app open, upgraded to a real account
+before any purchase and before any grant
 │
-├─→  MAIN PAYWALL
-│     Weekly and Yearly shown upfront, both audiences.
-│     Yearly selected by default, carries the 3-day trial badge.
-│     Monthly disclosed below, not led with. Weekly has no trial.
-│     Read-first and write-first users must NOT see the same
-│     value proposition. Dismiss is large, obvious, always present.
-│         │
-│         ├─ Subscribes → trial grant, or full grant on charge → app
-│         │
-│         └─ Declines
-│               │
-│               ↓
-│        ONE-TIME OFFER  (shown once, ever)
-│         "Reader, yearly — $19.99 for your first year"
-│         Single option. No second choice to make.
-│         Dismiss is equally obvious.
-│               │
-│               ├─ Accepts → into the app
-│               │
-│               └─ Declines
-│                     │
-│                     ↓
-│              WELCOME — 3 credits granted
-│              "3 credits to start. Reading is always free."
-│                     │
-└─────────────────────┴─→  Into the app
+├─→  PURPOSE  ── read, or both ──→ genres → taste → shelf reveal
+│         │                              │
+│         └─ write ─→ goal → friction → idea → blueprint → preview
+│                                              │
+│                    ┌─────────────────────────┴──────────┐
+│                    ↓                                    ↓
+│              READER PAYWALL                      WRITER PAYWALL
+│              $4.99/wk · $29.99/yr                $6.99/wk · $49.99/yr
+│              5 cr      · 20 cr/mo                10 cr    · 50 cr/mo
+│              Sells audio and creation.           Outcome-framed, shows
+│              States plainly that reading         the user's own blueprint.
+│              is and stays free.                  "Your story is ready
+│                                                   to be created."
+│              Yearly selected by default, carries the 3-day trial badge.
+│              Monthly disclosed below, not led with. Weekly has no trial.
+│              Dismiss is large, obvious, always present.
+│                    │                                    │
+│                    ├─ Subscribes → trial grant, or full grant on charge → app
+│                    │                                    │
+│                    └─ Declines ──────────┬──────────────┘
+│                                          │
+│                                          ↓
+│                    ONE-TIME OFFER  (shown once, ever, both paths)
+│                     "Reader, yearly — $19.99 for your first year"
+│                     Single option. No second choice to make.
+│                     ⏳ 2:00 countdown. At zero the SKU is disabled
+│                        for this user_id and the price never returns.
+│                     "You'll never see this again."
+│                     Dismiss is equally obvious, full size from frame one.
+│                                          │
+│                                          ├─ Accepts → into the app
+│                                          │
+│                                          └─ Declines or expires
+│                                                │
+│                                                ↓
+│                                         3 credits granted
+│                                                │
+│                                                ↓
+│                                    WELCOME  "Reading is always free."
+│                                    No numbers on this screen; the
+│                                    balance is announced by the in-app
+│                                    message system on landing.
+│                                                │
+└───────────────────────────────────────────────┴─→  Into the app
 ```
 
 **The welcome bonus is the consolation, not the greeting.** It is granted only on
@@ -562,6 +600,10 @@ the path where the user has declined twice — subscribers do not need it and
 should not be given it. Three credits is exactly one complete chapter: text,
 cover, characters. Combined with free unlimited reading and the streak ladder, a
 free user's first day is one chapter created and as much reading as they want.
+
+**The bonus is 3 for everyone.** There is no reader/writer split on it; the 15/5
+split belongs to the *trial* grant (§3), which is a different thing and lands on
+a different path.
 
 **Non-negotiable:** the paywall is skippable at every step, and declining it costs
 the user nothing except the plan they declined. Freemium median D35 trial-to-paid
@@ -644,7 +686,12 @@ resentment-generating placement available.
 
 - Block reading. Ever. On any tier. For any reason.
 - Auto-open the paywall on launch or after a generation completes.
-- Countdown timers, "only 2 left today!", or scarcity framing.
+- Countdown timers, "only 2 left today!", or scarcity framing **on any in-app
+  surface**. The onboarding one-time offer (§6) is the single exception, and it
+  is an exception only because its deadline is real: a 2-minute clock, enforced
+  server-side, after which the SKU is disabled for that user and the price never
+  returns. False scarcity stays banned everywhere, including there — no
+  "only 2 left", no restock, no recovery push, no second showing.
 - Hide, shrink, or delay a dismiss control.
 - Charge for a retry after our own failure.
 - Show the one-time offer more than once.
@@ -709,17 +756,14 @@ Lapse must never be silent. Required:
 A user who loses a balance they were never told about writes a one-star review
 and files a refund. A user who was told twice does not.
 
-### Chargebacks — an unhandled gap
+### Chargebacks — shipped behavior
 
-If RevenueCat reports a refund for a pack, the granted credits should be reversed.
-**This is currently impossible.** `deduct_credit` (migration `00005`) rejects
-every reason except `'generation'` and raises `Insufficient credits` when the
-balance is below the amount — so a user who already spent refunded credits blocks
-their own clawback.
-
-Fix: add a `'chargeback'` deduction reason and **clamp the clawback to the
-available balance** — debit what is there, record the shortfall, never drive the
-balance negative.
+RevenueCat store refunds are processed as `CANCELLATION` events with
+`CUSTOMER_SUPPORT` or `DEVELOPER_INITIATED` reasons. The webhook calls the
+`'chargeback'` deduction path, which clamps the clawback to the available balance,
+records any shortfall, and never drives the balance negative. `REFUND_REVERSED`
+re-grants the original product allocation. Plain cancellation reasons remain
+no-ops until RevenueCat emits `EXPIRATION`.
 
 ## 9. Anti-abuse
 
@@ -859,6 +903,9 @@ economy is tuned on evidence rather than argued about.
 8. **`_shared/edge-tts.ts` returns `null`** — an interface with no implementation.
    MiniMax HD is currently the only voice. Since we are not tiering voices (§1),
    this is acceptable at launch but means every narration carries premium cost.
+9. **Re-measure text-generation cost against the current provider chain.** The
+   retained per-chapter planning estimate in §2 used retired Anthropic rates and
+   must not be treated as a current-provider cost measurement.
 
 ---
 
@@ -909,7 +956,11 @@ economy is tuned on evidence rather than argued about.
     margin and 50 is +40%. The smaller grant also routes overflow demand into
     85–90% margin packs.
 14. **One-time offer: Reader yearly, $19.99 first year, renewing at $29.99.**
-    Shown once, after the main paywall is declined, as a single option.
+    Shown once, ever, after either paywall is declined, as a single option, on
+    **both paths** — a writer who declines the Writer paywall sees the same
+    Reader offer, on the revealed-preference argument in §3. It carries a
+    **2-minute countdown**, the only countdown permitted in the product, and at
+    zero the SKU is disabled for that `user_id` and the price never returns.
 15. **The Writer yearly is never discounted.** At 40% it is the thinnest row in
     the model; the offer sits on the Reader tier instead.
 16. **Credit packs: $4.99 / 10 · $14.99 / 40 · $29.99 / 90.** Sized so every pack
@@ -966,9 +1017,16 @@ economy is tuned on evidence rather than argued about.
 
 ### Onboarding
 
-29. **Sequence: paywall → decline → one-time offer → decline → 3 welcome credits →
-    app.** The welcome bonus is a consolation on the decline path, not a greeting;
-    subscribers do not receive it.
+29. **Sequence: purpose branch → path-specific paywall → decline → one-time
+    offer → decline or expiry → 3 welcome credits → welcome → app.** Readers
+    reach their paywall after the shelf reveal; writers reach theirs after the
+    blueprint and preview. The welcome bonus is a consolation on the decline
+    path, not a greeting; subscribers do not receive it, and it is **3 for
+    everyone** with no reader/writer split.
+29a. **The welcome screen carries no numbers.** It is one shared beat on every
+    path, saying only "Welcome to Katha" and "Reading is always free." The
+    balance is announced separately by the in-app message system on landing, so
+    the screen needs no per-path copy and does not duplicate that message.
 30. **The paywall is skippable at every step**, with a large and obvious dismiss,
     and the one-time offer is shown once ever.
 31. **All grants require an authenticated account** — never an anonymous device
@@ -990,9 +1048,18 @@ economy is tuned on evidence rather than argued about.
 34. **The draft survives the sheet**, and a successful top-up fires the pending
     action automatically without a second tap.
 35. **Prohibitions:** never block reading; no launch-time or post-generation
-    auto-paywall; no countdown timers or false scarcity; no hidden or delayed
-    dismiss control; no charging for a retry after our own failure; never re-show
-    the one-time offer.
+    auto-paywall; no countdown timers or false scarcity **on any in-app
+    surface**; no hidden or delayed dismiss control; no charging for a retry
+    after our own failure; never re-show the one-time offer.
+35a. **The one exception to the countdown ban is the onboarding one-time offer**
+    (§6): a **2-minute** clock on a single screen, shown once ever, carrying the
+    line *"You'll never see this again."* It is permitted only because the
+    deadline is honestly enforced — at zero the SKU is disabled for that
+    `user_id` server-side, there is no recovery push and no second showing, and
+    the price genuinely never returns. Ship the timer as a remotely tunable
+    value so the duration can be changed without a store review. Any countdown
+    whose expiry is not enforced server-side is false scarcity and is banned by
+    decision 35.
 
 ### Balance rules
 

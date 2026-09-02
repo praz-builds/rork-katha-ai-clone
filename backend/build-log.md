@@ -1134,3 +1134,12 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - Added RevenueCat webhook handling with constant-time authorization, sandbox rejection by default, `rc:{event.id}` idempotency, trial grants, refund/chargeback handling, cancellation-versus-expiration behavior, and benign-event acknowledgement.
 - Added bucketed credit accounting: renewable subscription grants reset each period, purchased and earned credits remain distinct while subscribed, chargebacks clamp and record shortfalls, and expiration records an atomic negative lapse ledger row before zeroing every bucket.
 - Added the protected annual monthly-refresh Edge Function and focused Deno/PGlite tests. No deployment, dashboard configuration, commit, or push was performed.
+
+### RevenueCat CodeRabbit fixes (2026-09-02)
+
+- Corrected the webhook contract: only `CANCELLATION` events with RevenueCat's store-refund reasons invoke the clamped chargeback path; ordinary cancellation remains active until expiration, and `REFUND_REVERSED` re-grants credit.
+- Made duplicate credit-operation responses successful webhook acknowledgements, paginated annual grant refreshes by user ID, and isolated per-subscriber refresh failures without logging identifiers.
+- Hardened migration `00026` with a non-blocking validation sequence, provider allowlist, monotonic ledger ordering, allocation lookup index, and partial-refund bucket restoration.
+- Added regression coverage for trial refunds, both product-kind mismatch directions, refund reversals, plain unsubscribe cancellations, and partial refunds. Local verification: `deno test --allow-all supabase/functions/_shared/revenuecat_test.ts supabase/migrations/00026_subscription_credit_buckets_test.ts` (14 passed) and `deno check` on changed Edge Function modules.
+- Updated RevenueCat development-build setup and canonical-economy documentation. No production-level tests were run, so no `error_events` entry was required. No deployment, dashboard configuration, commit, or push was performed.
+- Reconciled the Expo onboarding callback type with its declared empty-purpose state so the required Expo typecheck remains clean.
