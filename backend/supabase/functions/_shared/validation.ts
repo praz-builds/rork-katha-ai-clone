@@ -364,9 +364,11 @@ function sanitizeWritingStyle(
 ): string | undefined {
   if (typeof value !== "string") return undefined;
 
-  // A name token: a capital followed by any run of name characters, so both
-  // "Tolkien" and a bare "K" or "J." match.
-  const NAME = "[A-Z][\\w'\u2019.-]*";
+  // A name token: an uppercase letter followed by any run of name characters, so
+  // "Tolkien", a bare initial "K" or "J.", and non-ASCII names like "García" or
+  // "Ngũgĩ" all match. \p{Lu}/\p{L} rather than [A-Z]/\w because an ASCII-only
+  // class stops at the first accented character and leaks the rest of the name.
+  const NAME = "\\p{Lu}[\\p{L}\\p{M}'\u2019.-]*";
   const PARTICLE = "de|van|von|del|della|da|di|du|la|le|el|bin|ibn|st";
   const TRIGGER =
     "like|in the style of|in the voice of|styled after|modelled after|modeled after|" +
@@ -375,7 +377,7 @@ function sanitizeWritingStyle(
 
   const pattern = new RegExp(
     `\\b(?:${TRIGGER})\\s+(?:${NAME})(?:\\s+(?:${NAME}|${PARTICLE}))*`,
-    "gi",
+    "giu",
   );
 
   const cleaned = value

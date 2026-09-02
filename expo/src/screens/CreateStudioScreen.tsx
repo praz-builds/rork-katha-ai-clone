@@ -196,12 +196,18 @@ const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
   ],
 };
 
+/**
+ * Encouragement, never a gate.
+ *
+ * The old version counted toward 40 characters ("Almost there (12/40)"), which
+ * taught users to pad a sentence rather than to add structure, and framed a
+ * short idea as a failure. Nothing here blocks Create; the slot-based
+ * brief-strength meter replaces the counter proper.
+ */
 function getSeedHint(length: number): string {
   if (length === 0) return "The more specific your idea, the better the story";
-  if (length < 20) return "Keep going, give Katha something to work with...";
-  if (length < 40) return `Almost there (${length}/40 characters)`;
-  if (length < 80) return "Good start. Add a character or a twist to make it yours";
-  if (length < 150) return "Nice, that's a strong premise";
+  if (length < 40) return "Katha will invent most of this. That can be good.";
+  if (length < 150) return "Nice, that's a strong start";
   return "Great detail. Katha has plenty to work with";
 }
 
@@ -356,8 +362,11 @@ export default function CreateStudioScreen({
     };
   }, [draft, step]);
 
+  // One non-whitespace character, matching validation.ts. The 40-character gate
+  // is gone: it taught padding rather than structure, and a one-line idea is a
+  // legitimate choice per source-of-truth/STORY_GENERATION_FLOW.md section 2.
   const canGenerate =
-    draft.seed.trim().length >= 40 && credits > 0 && !busy;
+    draft.seed.trim().length >= 1 && credits > 0 && !busy;
 
   const wordCount = paragraphs.reduce((acc, p) => {
     return acc + p.text.split(/\s+/).filter(Boolean).length;
@@ -888,6 +897,7 @@ export default function CreateStudioScreen({
                 styles.seedHint,
                 draft.seed.trim().length > 0 && draft.seed.trim().length < 40 && styles.seedHintWarm,
                 draft.seed.trim().length >= 40 && styles.seedHintReady,
+                // Styling only - both states are usable; neither blocks Create.
               ]}>
                 {getSeedHint(draft.seed.trim().length)}
               </Text>

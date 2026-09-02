@@ -7,7 +7,7 @@
 
 ---
 
-## 2026-09-03 UTC — Schema and contracts for the story-creation flow (B1)
+## 2026-09-02 UTC — Schema and contracts for the story-creation flow (B1)
 
 **Session:** Migrations 00027/00028 and the request contract they support. No behaviour changes on any existing path: every column is nullable or defaults to today's behaviour, and both widened constraints accept strictly more than they did before.
 
@@ -38,6 +38,14 @@ The new free-text style field is a direct route to "write exactly like <living a
 ### Also corrected
 
 `expo/App.tsx`'s credits explainer still described the retired bundle ("one credit each for the text, its cover and its characters"). It now states the story-start price and the per-chapter price.
+
+### CodeRabbit review, addressed
+
+- **The seed gate was only half removed.** `validation.ts` accepted one character but `CreateStudioScreen.tsx` still required 40, so Create stayed disabled for a valid short idea. The client condition and `getSeedHint()` now match the server; the hint encourages rather than counts toward a threshold.
+- **The author-name sanitiser was ASCII-only.** `[A-Z]` and `\w` stop at the first accented character, so "Gabriel García Márquez" leaked most of the name. It now uses `\p{Lu}`/`\p{L}` with the `u` flag, with regression cases for accented and non-Latin names.
+- **Both new constraints are added `NOT VALID` and validated in 00028.** `ADD CONSTRAINT` holds ACCESS EXCLUSIVE for its scan whether or not the scan can fail, and `generation_operations` is on the hot path of every generation.
+- **The index rebuild cannot use `CONCURRENTLY`** — `supabase db push` wraps each migration in a transaction and concurrent index builds cannot run in one. The brief lock is documented at the statement, with the conditions under which it would need to become an out-of-band rebuild.
+- **Client credit amounts moved out of copy** into `expo/src/lib/pricing.ts`, the single client-side mirror of the per-action costs. It holds no plan prices, grants or SKUs.
 
 ### Validation
 

@@ -83,16 +83,20 @@ ALTER TABLE public.stories
 -- have to be charged some other way.
 --
 -- The new constraint is strictly wider than the old one, so every existing row
--- already satisfies it and validation cannot fail. That is why it is added
--- validated here rather than split across two migrations the way 00010/00011
--- split their narrowing constraints.
+-- already satisfies it and validation is guaranteed to succeed. It is still
+-- added NOT VALID and validated in 00028, because ADD CONSTRAINT holds ACCESS
+-- EXCLUSIVE for the duration of its scan whether or not the scan can fail, and
+-- generation_operations is on the hot path of every generation. NOT VALID takes
+-- the lock only briefly; 00028's VALIDATE runs under SHARE UPDATE EXCLUSIVE,
+-- which does not block reads or writes.
 
 ALTER TABLE public.generation_operations
   DROP CONSTRAINT IF EXISTS generation_operations_kind_check;
 
 ALTER TABLE public.generation_operations
   ADD CONSTRAINT generation_operations_kind_check
-  CHECK (kind IN ('story', 'continuation', 'cover', 'chapter_art', 'characters'));
+  CHECK (kind IN ('story', 'continuation', 'cover', 'chapter_art', 'characters'))
+  NOT VALID;
 
 -- The active-reservation index was unique on (story_id, chapter_number), which
 -- means a chapter's text and that same chapter's art could never be reserved at
@@ -101,6 +105,20 @@ ALTER TABLE public.generation_operations
 -- which is no longer true. Widening it to include kind keeps the protection that
 -- matters (no duplicate reservation of the same action) and drops the one that
 -- does not.
+--
+-- On the index swap and CONCURRENTLY: `supabase db push` runs each migration
+-- file inside a single transaction, and neither CREATE INDEX CONCURRENTLY nor
+-- DROP INDEX CONCURRENTLY may run in a transaction block. The concurrent
+-- sequence is therefore unavailable here without changing how migrations are
+-- applied. The build below takes a brief ACCESS EXCLUSIVE lock on
+-- generation_operations.
+--
+-- That is acceptable for this table today: it holds one row per generation, the
+-- product has not launched, and the partial predicate means only reserved rows
+-- are indexed - in practice a handful at any moment. If this table is ever large
+-- and hot, redo this swap as an out-of-band concurrent rebuild rather than a
+-- migration.
+
 DROP INDEX IF EXISTS public.idx_generation_operations_active_chapter;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_generation_operations_active_chapter

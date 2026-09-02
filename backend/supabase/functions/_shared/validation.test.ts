@@ -309,6 +309,10 @@ Deno.test("writing style keeps the craft and drops the author", () => {
       ", but funnier".replace(/^, /, ""),
     ],
     ["written by Stephen King", undefined],
+    // Non-ASCII names: an ASCII-only pattern stopped at the accent and leaked
+    // the remainder ("Garcia Marquez" surviving from "Gabriel Garcia Marquez").
+    ["like Gabriel Garc\u00eda M\u00e1rquez", undefined],
+    ["lyrical, in the style of Ng\u0169g\u0129 wa Thiong'o", "lyrical"],
   ];
   for (const [input, expected] of cases) {
     const r = validateGenerationRequest(
