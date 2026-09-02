@@ -1143,3 +1143,11 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - Added regression coverage for trial refunds, both product-kind mismatch directions, refund reversals, plain unsubscribe cancellations, and partial refunds. Local verification: `deno test --allow-all supabase/functions/_shared/revenuecat_test.ts supabase/migrations/00026_subscription_credit_buckets_test.ts` (14 passed) and `deno check` on changed Edge Function modules.
 - Updated RevenueCat development-build setup and canonical-economy documentation. No production-level tests were run, so no `error_events` entry was required. No deployment, dashboard configuration, commit, or push was performed.
 - Reconciled the Expo onboarding callback type with its declared empty-purpose state so the required Expo typecheck remains clean.
+
+### RevenueCat CodeRabbit round 2 (2026-09-03)
+
+- Counted duplicate annual-refresh operation keys as successful no-ops, leaving only genuine per-subscriber failures in the refresh failure counter.
+- Made store-refund retries converge: a duplicate credit deduction now still records the subscription lifecycle state. Added a regression test for a failed first subscription write followed by a duplicate-deduction retry.
+- Routed the onboarding sign-in action to the email/OTP flow, retained completion only on its `onDone` callback, and typed the composed onboarding wrapper with the exported result contract.
+- Replaced inaccurate credits hero copy in English, Portuguese, and Spanish with neutral action-oriented wording while client spending remains unbundled.
+- Local verification: Expo typecheck, lint (23 existing warnings, 0 errors), tests (41 passed), Expo doctor (18/18), a compiled 390 x 844 web sign-in handoff, backend tests (15 passed), and `deno check` on the changed Edge Functions. No production-level tests, deployment, dashboard configuration, commit, or push were performed; no `error_events` entry was required.

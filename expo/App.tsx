@@ -61,20 +61,7 @@ import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
-
-/** Payload emitted by KathaOnboardingFlowV2 on completion. */
-type OnboardingResult = {
-  name?: string;
-  genres?: string[];
-  otherGenre?: string;
-  purpose?: "read" | "write" | "both" | "";
-  email?: string;
-  notificationsAllowed?: boolean;
-  refine?: string;
-  moment?: string;
-  plan?: string;
-  trial?: boolean;
-};
+import type { KathaOnboardingResult } from "@/screens/KathaOnboardingFlowV2";
 
 const GENRE_BY_LABEL = Object.fromEntries(
   Object.entries(genreLabels).map(([key, label]) => [label.toLowerCase(), key as Genre])
@@ -92,7 +79,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>("home");
   const [credits, setCredits] = useState(3);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
-  const [onboarding, setOnboarding] = useState<OnboardingResult | null>(null);
+  const [onboarding, setOnboarding] = useState<KathaOnboardingResult | null>(null);
 
   useEffect(() => {
     Font.loadAsync({
@@ -122,8 +109,8 @@ export default function App() {
   }
 
   const openStory = (storyId: string) => setScreen({ name: "reader", storyId });
-  const finishOnboarding = (result?: OnboardingResult) => {
-    if (result) setOnboarding(result);
+  const finishOnboarding = (result: KathaOnboardingResult) => {
+    setOnboarding(result);
     goTabs("home");
   };
   const goTabs = (nextTab: TabKey = tab) => {
@@ -174,9 +161,9 @@ export default function App() {
     <ScreenScaffold>
       <StatusBar style="dark" />
       {screen.name === "intro" ? (
-        <KathaOnboardingComplete onDone={finishOnboarding} onSignIn={finishOnboarding} />
+        <KathaOnboardingComplete onDone={finishOnboarding} onSignIn={() => setScreen({ name: "onboarding" })} />
       ) : screen.name === "onboarding" ? (
-        <KathaOnboardingFlowV2 onDone={finishOnboarding} />
+        <KathaOnboardingFlowV2 initialScreen="email" onDone={finishOnboarding} />
       ) : screen.name === "reader" ? (
         <ReaderScreen story={allStories.find((story) => story.id === screen.storyId) ?? allStories[0]} onBack={() => goTabs(tab)} />
       ) : screen.name === "author" ? (
@@ -984,7 +971,7 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
         <Text style={styles.h1}>{credits} credits available</Text>
         <View style={styles.creditHero}>
           <Sparkles size={32} color={colors.accent} />
-          <Text style={styles.creditHeroTitle}>3 credits create a full chapter</Text>
+          <Text style={styles.creditHeroTitle}>Credits create stories and chapters</Text>
           <Text style={styles.creditHeroText}>One credit each for the text, its cover and its characters. Audio is 1 credit per chapter, unlocked forever. Reading is always free.</Text>
         </View>
         <SectionHeader title="History" />

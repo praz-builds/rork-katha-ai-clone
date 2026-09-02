@@ -7,7 +7,9 @@ import {
   isStoreRefundCancellation,
   REVENUECAT_PRODUCT_MAP,
   resolveRevenueCatCredit,
+  settleStoreRefund,
 } from "./revenuecat.ts";
+import { DuplicateCreditOperationError } from "./credits.ts";
 
 const USER_ID = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
 
@@ -103,6 +105,29 @@ Deno.test("REFUND_REVERSED re-grants the original product credits", () => {
   });
   assertEquals(operation?.reason, "purchase");
   assertEquals(operation?.credits, 40);
+});
+
+Deno.test("a refund retry records a subscription after its deduction already committed", async () => {
+  let subscriptionRecorded = false;
+  const firstAttempt = settleStoreRefund(
+    async () => 0,
+    async () => {
+      throw new Error("temporary subscription write failure");
+    },
+  );
+  await firstAttempt.catch(() => undefined);
+
+  const retry = await settleStoreRefund(
+    async () => {
+      throw new DuplicateCreditOperationError();
+    },
+    async () => {
+      subscriptionRecorded = true;
+    },
+  );
+
+  assertEquals(retry, { balance: null, deductionAlreadyApplied: true });
+  assertEquals(subscriptionRecorded, true);
 });
 
 Deno.test("RevenueCat webhook resolver rejects malformed credit events", () => {

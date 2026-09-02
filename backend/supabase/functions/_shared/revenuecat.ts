@@ -1,4 +1,5 @@
 import { parseUuid } from "./uuid.ts";
+import { isDuplicateCreditOperationError } from "./credits.ts";
 
 export type SubscriptionTier = "reader" | "writer";
 export type RevenueCatProduct = {
@@ -125,6 +126,27 @@ export function resolveRevenueCatIdentity(event: RevenueCatEvent): RevenueCatIde
 export function isStoreRefundCancellation(event: RevenueCatEvent): boolean {
   return event.type?.toUpperCase() === "CANCELLATION" &&
     (event.cancel_reason === "CUSTOMER_SUPPORT" || event.cancel_reason === "DEVELOPER_INITIATED");
+}
+
+/**
+ * Complete the non-credit part of a refund even when its credit deduction was
+ * already committed by an earlier delivery of the same webhook event.
+ */
+export async function settleStoreRefund(
+  deduct: () => Promise<number>,
+  recordSubscription: (() => Promise<void>) | undefined,
+): Promise<{ balance: number | null; deductionAlreadyApplied: boolean }> {
+  let balance: number | null = null;
+  let deductionAlreadyApplied = false;
+  try {
+    balance = await deduct();
+  } catch (error) {
+    if (!isDuplicateCreditOperationError(error)) throw error;
+    deductionAlreadyApplied = true;
+  }
+
+  await recordSubscription?.();
+  return { balance, deductionAlreadyApplied };
 }
 
 function creditAmountForEvent(product: RevenueCatProduct, event: RevenueCatEvent): number {

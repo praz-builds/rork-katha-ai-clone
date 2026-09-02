@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { constantTimeEquals, REVENUECAT_PRODUCT_MAP } from "../_shared/revenuecat.ts";
-import { refreshSubscriptionGrant } from "../_shared/credits.ts";
+import { isDuplicateCreditOperationError, refreshSubscriptionGrant } from "../_shared/credits.ts";
 
 const CRON_SECRET = Deno.env.get("SUBSCRIPTION_GRANT_CRON_SECRET");
 const PAGE_SIZE = 250;
@@ -58,7 +58,11 @@ serve(async (req) => {
           `subscription:${subscription.user_id}:${yearMonth}`,
         );
         refreshed += 1;
-      } catch {
+      } catch (error) {
+        if (isDuplicateCreditOperationError(error)) {
+          refreshed += 1;
+          continue;
+        }
         // Continue: the per-user operation key makes a later cron retry safe.
         failures.refresh_failed = (failures.refresh_failed ?? 0) + 1;
       }

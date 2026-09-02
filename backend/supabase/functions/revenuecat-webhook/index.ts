@@ -9,6 +9,7 @@ import {
   REVENUECAT_PRODUCT_MAP,
   resolveRevenueCatCredit,
   resolveRevenueCatIdentity,
+  settleStoreRefund,
 } from "../_shared/revenuecat.ts";
 import {
   deductCredit,
@@ -67,18 +68,24 @@ serve(async (req) => {
         if (!operation || operation.reason !== "chargeback") {
           throw new Error("Invalid RevenueCat refund cancellation");
         }
-        const balance = await deductCredit(
-          serviceClient,
-          operation.userId,
-          operation.credits,
-          "chargeback",
-          operation.transactionId,
-          `rc:${operation.eventId}`,
+        const settlement = await settleStoreRefund(
+          () => deductCredit(
+            serviceClient,
+            operation.userId,
+            operation.credits,
+            "chargeback",
+            operation.transactionId,
+            `rc:${operation.eventId}`,
+          ),
+          operation.subscription
+            ? () => recordSubscription(serviceClient, event as RevenueCatEvent, false, false)
+            : undefined,
         );
-        if (operation.subscription) {
-          await recordSubscription(serviceClient, event, false, false);
-        }
-        return jsonResponse({ ok: true, balance });
+        return jsonResponse(
+          settlement.deductionAlreadyApplied
+            ? { ok: true, acknowledged: "duplicate" }
+            : { ok: true, balance: settlement.balance },
+        );
       }
       // Plain cancellation means the subscription remains active until EXPIRATION.
       await recordSubscription(serviceClient, event, true, false);
