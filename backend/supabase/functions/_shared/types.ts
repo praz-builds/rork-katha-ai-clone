@@ -298,6 +298,57 @@ export const GENRE_MIGRATION_MAP: Record<string, PrimaryGenre> = {
 };
 
 // ---------------------------------------------------------------------------
+// Story shape: planned length, chapter length, cast size
+// ---------------------------------------------------------------------------
+
+/**
+ * The lengths a story may be planned to.
+ *
+ * This is a planned length, not a batch size: the user still advances one
+ * chapter at a time. It drives pacing and finale derivation, replacing the
+ * fixed `MAX_SERIES_CHAPTERS = 7` in story-prompts.ts.
+ */
+export const PLANNED_CHAPTER_COUNTS = [3, 7, 15] as const;
+
+export type PlannedChapterCount = typeof PLANNED_CHAPTER_COUNTS[number];
+
+export const PLANNED_CHAPTER_COUNT_SET: ReadonlySet<number> = new Set<number>(
+  PLANNED_CHAPTER_COUNTS,
+);
+
+export const DEFAULT_PLANNED_CHAPTER_COUNT: PlannedChapterCount = 3;
+
+export type ChapterLength = "short" | "standard" | "long";
+
+export const CHAPTER_LENGTHS: ReadonlySet<string> = new Set<ChapterLength>([
+  "short",
+  "standard",
+  "long",
+]);
+
+export const DEFAULT_CHAPTER_LENGTH: ChapterLength = "standard";
+
+/**
+ * Maximum characters in a cast, and the number one credit buys.
+ *
+ * Three, not four. A product bound rather than a margin one - four portraits
+ * still clear the floor on the blended basis CREDITS_AND_PRICING.md uses - but
+ * three matches the set-of-three costing in that file and keeps the cast
+ * legible. See source-of-truth/STORY_GENERATION_FLOW.md section 14 item 1.
+ */
+export const MAX_CAST_SIZE = 3;
+
+/**
+ * Maximum beats a user may pin, per source-of-truth/STORY_GENERATION_FLOW.md
+ * section 5. Past roughly five, moments compete for room inside a chapter and
+ * the model returns a checklist instead of a story.
+ */
+export const MAX_MOMENTS = 5;
+
+/** Free-text craft fields are bounded so a prompt cannot be stuffed. */
+export const MAX_BRIEF_FIELD_LENGTH = 300;
+
+// ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
 
@@ -337,6 +388,20 @@ export interface ValidatedGenerationParams {
   characters: CharacterInput[];
   requestId: string;
   language?: string;
+  /** World and era, inferred from the idea and editable as a chip. */
+  whereAndWhen?: string;
+  /** Beats the user pinned. One entry is one schedulable beat. */
+  moments: string[];
+  /** Kids mode only: what the story teaches. */
+  storyValues: string[];
+  /** Free text, sanitised: craft direction, never an author to imitate. */
+  writingStyle?: string;
+  /** Free text: a topic to keep out. */
+  avoid?: string;
+  chapterLength: ChapterLength;
+  plannedChapterCount: PlannedChapterCount;
+  /** Whether chapters 2..N get art. Chapter 1's is compulsory regardless. */
+  illustrateChapters: boolean;
 }
 
 export interface SeriesState {

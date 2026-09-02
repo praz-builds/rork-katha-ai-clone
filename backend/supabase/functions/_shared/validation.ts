@@ -8,13 +8,22 @@
 import {
   AUDIENCE_MODES,
   type AudienceMode,
+  CHAPTER_LENGTHS,
+  type ChapterLength,
   type CharacterInput,
+  DEFAULT_CHAPTER_LENGTH,
+  DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_ALLOWED_SPICE,
   GENRE_ALLOWED_TROPES,
   GENRE_DEFAULT_SPICE,
   GENRE_MIGRATION_MAP,
   IDENTITY_LENSES,
   type IdentityLens,
+  MAX_BRIEF_FIELD_LENGTH,
+  MAX_CAST_SIZE,
+  MAX_MOMENTS,
+  PLANNED_CHAPTER_COUNT_SET,
+  type PlannedChapterCount,
   PRIMARY_GENRES,
   type PrimaryGenre,
   SPICE_LEVELS,
@@ -126,13 +135,18 @@ export function validateGenerationRequest(
   }
 
   // --- Seed ---
+  // The 40-character minimum is removed. It taught padding rather than
+  // structure, and source-of-truth/STORY_GENERATION_FLOW.md section 2 replaces
+  // it with the slot-based brief-strength meter, in which a one-line idea is a
+  // legitimate choice rather than a failure. One non-whitespace character is
+  // the floor; the 1000-character ceiling is unchanged.
   const rawSeed = body.topic ?? body.seed;
   if (typeof rawSeed !== "string") {
-    return { error: "Story seed must be at least 40 characters" };
+    return { error: "Tell Katha what your story is about" };
   }
   const seed = rawSeed.trim();
-  if (seed.length < 40) {
-    return { error: "Story seed must be at least 40 characters" };
+  if (seed.length < 1) {
+    return { error: "Tell Katha what your story is about" };
   }
   if (seed.length > 1000) {
     return { error: "Story seed must be 1000 characters or fewer" };
@@ -142,8 +156,10 @@ export function validateGenerationRequest(
   const characters: CharacterInput[] = [];
   const rawCharacters = body.characters;
   if (rawCharacters !== undefined) {
-    if (!Array.isArray(rawCharacters) || rawCharacters.length > 10) {
-      return { error: "characters must contain at most 10 items" };
+    if (!Array.isArray(rawCharacters) || rawCharacters.length > MAX_CAST_SIZE) {
+      return {
+        error: `A story can have at most ${MAX_CAST_SIZE} characters`,
+      };
     }
     for (const character of rawCharacters) {
       if (!character || typeof character !== "object") {
@@ -204,6 +220,61 @@ export function validateGenerationRequest(
     }
   }
 
+  // --- The brief ---
+  const whereAndWhen = optionalText(body.where_and_when);
+  if (whereAndWhen === TOO_LONG) {
+    return {
+      error:
+        `Where and when must be ${MAX_BRIEF_FIELD_LENGTH} characters or fewer`,
+    };
+  }
+
+  const avoid = optionalText(body.avoid);
+  if (avoid === TOO_LONG) {
+    return {
+      error: `Avoid must be ${MAX_BRIEF_FIELD_LENGTH} characters or fewer`,
+    };
+  }
+
+  const rawStyle = optionalText(body.writing_style);
+  if (rawStyle === TOO_LONG) {
+    return {
+      error:
+        `Writing style must be ${MAX_BRIEF_FIELD_LENGTH} characters or fewer`,
+    };
+  }
+  const writingStyle = sanitizeWritingStyle(rawStyle);
+
+  // Moments are clamped rather than rejected. A user who pins a seventh beat
+  // has not made an error worth an error message; the cap exists because past
+  // roughly five the model returns a checklist instead of a story.
+  const moments = stringList(body.moments).slice(0, MAX_MOMENTS);
+
+  // Values are a kids-mode chip slot and have no meaning in adult mode.
+  const storyValues = audienceMode === "kids"
+    ? stringList(body.story_values ?? body.values).slice(0, MAX_MOMENTS)
+    : [];
+
+  let chapterLength: ChapterLength = DEFAULT_CHAPTER_LENGTH;
+  if (typeof body.chapter_length === "string" && body.chapter_length.trim()) {
+    const cl = body.chapter_length.trim();
+    if (!CHAPTER_LENGTHS.has(cl)) {
+      return { error: "chapter_length must be 'short', 'standard', or 'long'" };
+    }
+    chapterLength = cl as ChapterLength;
+  }
+
+  let plannedChapterCount: PlannedChapterCount = DEFAULT_PLANNED_CHAPTER_COUNT;
+  if (body.planned_chapter_count !== undefined) {
+    const n = body.planned_chapter_count;
+    if (typeof n !== "number" || !PLANNED_CHAPTER_COUNT_SET.has(n)) {
+      return { error: "planned_chapter_count must be 3, 7, or 15" };
+    }
+    plannedChapterCount = n as PlannedChapterCount;
+  }
+
+  const illustrateChapters = body.illustrate_chapters === true;
+
   return {
     primaryGenre,
     storyMode,
@@ -215,6 +286,14 @@ export function validateGenerationRequest(
     characters,
     requestId,
     language,
+    whereAndWhen,
+    moments,
+    storyValues,
+    writingStyle,
+    avoid,
+    chapterLength,
+    plannedChapterCount,
+    illustrateChapters,
   };
 }
 
@@ -230,6 +309,82 @@ export function deriveContentRating(
   if (spiceLevel === "explicit") return "explicit";
   if (spiceLevel === "steamy") return "steamy";
   return "sweet";
+}
+
+// ---------------------------------------------------------------------------
+// Brief helpers
+// ---------------------------------------------------------------------------
+
+/** Sentinel for "present but over the limit", distinct from "absent". */
+const TOO_LONG = Symbol("too-long");
+
+function optionalText(value: unknown): string | undefined | typeof TOO_LONG {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > MAX_BRIEF_FIELD_LENGTH) return TOO_LONG;
+  return trimmed;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    out.push(trimmed.slice(0, MAX_BRIEF_FIELD_LENGTH));
+  }
+  return out;
+}
+
+/**
+ * Strip requests to imitate a named writer.
+ *
+ * The prompt spec is explicit that author touchstones stay in documentation and
+ * never reach a runtime prompt: naming a living author invites both a
+ * style-imitation complaint and the model's flattest pastiche of that author.
+ * A user typing "like Colleen Hoover" wants the craft, so the phrase is removed
+ * and the rest of their direction survives rather than the whole field being
+ * rejected. What is left - "hardboiled", "poetic", "short sentences" - is
+ * exactly what the writing-style layer is for.
+ *
+ * Name tokens allow bare initials ("Ursula K Le Guin", "J. R. R. Tolkien"),
+ * which an earlier version of this pattern stopped at, leaking the surname.
+ *
+ * **Known over-match, accepted deliberately:** a capitalised phrase that is not
+ * a person is stripped too, so "in the style of Gothic Horror" loses its
+ * subject. A regex cannot tell "Le Guin" from "Gothic Horror", and dropping a
+ * little craft direction is the cheaper error. This is defence in depth, not
+ * the only defence - the prompt layer states the craft-traits-not-imitation
+ * rule as well.
+ */
+function sanitizeWritingStyle(
+  value: string | undefined | typeof TOO_LONG,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+
+  // A name token: a capital followed by any run of name characters, so both
+  // "Tolkien" and a bare "K" or "J." match.
+  const NAME = "[A-Z][\\w'\u2019.-]*";
+  const PARTICLE = "de|van|von|del|della|da|di|du|la|le|el|bin|ibn|st";
+  const TRIGGER =
+    "like|in the style of|in the voice of|styled after|modelled after|modeled after|" +
+    "written by|channelling|channeling|imitate|imitating|mimic|mimicking|copy|copying|" +
+    "sound(?:s|ing)? like|read(?:s|ing)? like";
+
+  const pattern = new RegExp(
+    `\\b(?:${TRIGGER})\\s+(?:${NAME})(?:\\s+(?:${NAME}|${PARTICLE}))*`,
+    "gi",
+  );
+
+  const cleaned = value
+    .replace(pattern, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
+    .trim();
+
+  return cleaned.length ? cleaned : undefined;
 }
 
 // ---------------------------------------------------------------------------

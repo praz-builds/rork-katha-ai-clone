@@ -93,7 +93,11 @@ type CreateStudioProps = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_CHARACTERS = 5;
+// Three, matching MAX_CAST_SIZE in the backend's _shared/types.ts and the cap in
+// source-of-truth/STORY_GENERATION_FLOW.md section 4. Before this, the client
+// allowed 5, validation.ts allowed 10 and the spec said 3 - so a user could
+// build a cast the server would reject.
+const MAX_CHARACTERS = 3;
 
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },

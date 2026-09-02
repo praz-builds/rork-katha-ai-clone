@@ -979,7 +979,7 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
         <View style={styles.creditHero}>
           <Sparkles size={32} color={colors.accent} />
           <Text style={styles.creditHeroTitle}>Credits create stories and chapters</Text>
-          <Text style={styles.creditHeroText}>One credit each for the text, its cover and its characters. Audio is 1 credit per chapter, unlocked forever. Reading is always free.</Text>
+          <Text style={styles.creditHeroText}>Starting a story is 3 credits: its cast, chapter 1's words, and chapter 1's art, which becomes the cover. Every chapter after that is 1. Audio is 1 credit per chapter, unlocked forever. Reading is always free.</Text>
         </View>
         <SectionHeader title="History" />
         {ledger.map((entry) => (

@@ -7,6 +7,46 @@
 
 ---
 
+## 2026-09-03 UTC — Schema and contracts for the story-creation flow (B1)
+
+**Session:** Migrations 00027/00028 and the request contract they support. No behaviour changes on any existing path: every column is nullable or defaults to today's behaviour, and both widened constraints accept strictly more than they did before.
+
+### Every paid image can now reserve an operation
+
+`generation_operations.kind` was constrained to `('story', 'continuation')`, so a cover, a chapter illustration or a cast had nowhere to record itself and would have been charged outside the idempotency and auto-refund path that makes text generation safe. The constraint now admits `cover`, `chapter_art` and `characters`, and `reserve_generation_operation` accepts them.
+
+The active-reservation index needed widening too. It was `unique(story_id, chapter_number) where status = 'reserved'`, which encodes "one paid action per chapter" — no longer true once a chapter has both text and art. A chapter's text and its own illustration could never be reserved at the same time; the second insert raised `KTH01`. The sequential flow does not hit that today, but the constraint was wrong rather than merely conservative, so it is now `(story_id, chapter_number, kind)`.
+
+### Columns
+
+`chapters.image_url` / `image_prompt`; `characters.portrait_url`; and on `stories`: `where_and_when`, `moments`, `story_values`, `writing_style`, `avoid`, `chapter_length`, `illustrate_chapters`. `planned_chapter_count` already existed from migration 00003, unused, and becomes the planned length — now constrained to 3, 7 or 15.
+
+`story_values` rather than `values` because `values` is reserved in SQL.
+
+### The 40-character seed gate is gone
+
+`validation.ts` rejected any idea under 40 characters. It taught padding rather than structure, and the flow document replaces it with the slot-based brief-strength meter in which a one-line idea is a legitimate choice. One non-whitespace character is the floor; the 1000-character ceiling is unchanged. Removing it from the UI alone would have produced a 400 from the server, so it had to move here first.
+
+### The cast cap was three different numbers
+
+The client allowed 5 (`CreateStudioScreen.tsx`), the server allowed 10 (`validation.ts`), and the spec said 3 — so a user could assemble a cast the server would reject. All three are now 3, from `MAX_CAST_SIZE` in `_shared/types.ts`.
+
+### Writing style is sanitised, not just bounded
+
+The new free-text style field is a direct route to "write exactly like <living author>", which `source-of-truth/STORY_PROMPT_SYSTEM.md` forbids at runtime. Imitation phrasing and the name after it are stripped and the rest of the direction is kept, so "hardboiled, like Raymond Chandler" reaches the prompt as "hardboiled". A regression test covers bare initials — an earlier pattern stopped at "Ursula" and leaked "K Le Guin". The known over-match (a capitalised phrase that is not a person, such as "in the style of Gothic Horror") is documented at the function and accepted: a regex cannot tell the two apart, and losing a little craft direction is the cheaper error. This is defence in depth; the prompt layer states the rule as well.
+
+### Also corrected
+
+`expo/App.tsx`'s credits explainer still described the retired bundle ("one credit each for the text, its cover and its characters"). It now states the story-start price and the per-chapter price.
+
+### Validation
+
+- 134 Deno tests pass (9 new), `deno check` clean on every edge function, `deno fmt --check` clean.
+- Expo typecheck clean, 0 lint errors, 41 Jest tests pass.
+- **Migrations were not applied.** No Supabase credentials were available in this environment, so 00027/00028 are unreviewed against a live database and no production smoke test was run.
+
+---
+
 ## 2026-08-31 UTC — GPT-5.6 Luna live in the OpenAI position
 
 **Session:** Made the OpenAI position an ordered model list — `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini` — diagnosed and cleared a project-level entitlement block on Luna, and recorded the fallback-credential work in the roadmap. Luna now serves all production generation. PRs #40 and #41.
