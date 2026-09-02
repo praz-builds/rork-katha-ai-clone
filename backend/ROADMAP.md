@@ -124,7 +124,7 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 
 ## Phase C — Monetization Wiring
 
-**Goal:** Real money flows work. RevenueCat webhooks grant credits, AdMob SSV verifies ad watches.
+**Goal:** Real money flows work. RevenueCat webhooks grant credits, deduct chargebacks, and lapse balances on expiry. Rewarded ads and AdMob SSV are removed from the economy — see Phase C2.
 
 ### RevenueCat Webhook
 
@@ -199,7 +199,7 @@ here is dashboard work, not code — the client and webhook are complete and dep
 - [x] Purchase, subscription start/renewal, and trial conversion credit events
 - [x] Service-only serialized RPCs for credit grants
 - [x] Transaction-level deduplication across users and event types
-- [x] Unhandled refund events persisted in `payment_event_backlog` (503 response)
+- [x] Unhandled refund events persisted in `payment_event_backlog` (**422** for backlog-eligible validation failures; 503 is reserved for an unconfigured webhook secret)
 
 </details>
 
