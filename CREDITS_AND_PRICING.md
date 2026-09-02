@@ -898,8 +898,19 @@ economy is tuned on evidence rather than argued about.
    granted and earned credits lapse. **Decide before the SKUs ship.**
 6. **Create the Supabase `covers` bucket.** Still outstanding, and every
    cover-related price assumes it exists.
-7. **Decide whether non-rewarded ads run on the free tier.** Removed from the earn
-   table (§5) but not decided as a revenue question.
+7. **Resolved (2026-09-03): no ads of any kind ship in the MVP.** Reading stays
+   free, unlimited and uninterrupted; principle 1 and the §7 "never block reading"
+   rule stand unchanged. Ads are deferred to `backend/ROADMAP.md` Phase C2, after
+   the MVP launch. A proposal to add a house-styled between-chapter break on the
+   free tier — so "read without interruptions" could be sold as a paid benefit —
+   was **rejected**: house-styled means it earns nothing, so it was friction with
+   no revenue, and §7 already cites the finding that users who convert to remove
+   friction churn faster than those who convert for positive value.
+   **Until ads actually exist, no paywall, onboarding screen, or store listing may
+   list "ad-free", "no ads", or "no interruptions" as a paid benefit** — a benefit
+   that removes nothing is a misleading-subscription risk at App Review. When ads
+   do ship, that benefit line and the two clauses above are amended in the same
+   commit, so this document never contradicts itself.
 8. **`_shared/edge-tts.ts` returns `null`** — an interface with no implementation.
    MiniMax HD is currently the only voice. Since we are not tiering voices (§1),
    this is acceptable at launch but means every narration carries premium cost.

@@ -1151,3 +1151,39 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - Routed the onboarding sign-in action to the email/OTP flow, retained completion only on its `onDone` callback, and typed the composed onboarding wrapper with the exported result contract.
 - Replaced inaccurate credits hero copy in English, Portuguese, and Spanish with neutral action-oriented wording while client spending remains unbundled.
 - Local verification: Expo typecheck, lint (23 existing warnings, 0 errors), tests (41 passed), Expo doctor (18/18), a compiled 390 x 844 web sign-in handoff, backend tests (15 passed), and `deno check` on the changed Edge Functions. No production-level tests, deployment, dashboard configuration, commit, or push were performed; no `error_events` entry was required.
+
+### RevenueCat migration — review, merge prep, and the ads decision (2026-09-03)
+
+- Completed CodeRabbit rounds 2 and 3 on PR #44. Round 3 fixed a dead control:
+  `presentCustomerCenter()` resolved silently on web and when the SDK never
+  configured, so the caller's `catch` never fired and the Katha Plus row did
+  nothing. It now reports whether it presented and the caller falls back to the
+  paywall. Also corrected the Portuguese `heroDescription` accent.
+- **Recorded every remaining RevenueCat task as blocked on the store listing**
+  (`ROADMAP.md` Phase C, "Blocked on the store listing going live"): the 10 store
+  products, the production `appl_`/`goog_` SDK keys, the `katha_reader` and
+  `katha_writer` entitlements and offerings, wiring the paywall to live package
+  data, scheduling the monthly grant refresh, the App Review question on lapsing
+  purchased packs, and the development-build requirement. All dashboard work; the
+  client and webhook are complete. A release build has no billing until the
+  production keys are pasted in — `activate()` logs an error and returns.
+- **Ads decision: none ship in the MVP.** Added `ROADMAP.md` Phase C2 and resolved
+  §12 item 7 in `CREDITS_AND_PRICING.md`. A proposal to put a house-styled
+  full-screen break between chapters on the free tier, so "read without
+  interruptions" could be sold as a paid benefit, was rejected — house-styled means
+  it earns nothing, so it was friction with no revenue attached, and §7 already
+  cites the finding that users converting to remove friction churn faster than
+  those converting for positive value. Principle 1 and the §7 "never block reading"
+  rule are unchanged.
+- Recorded the standing rule that until ads exist, no paywall, onboarding screen or
+  store listing may claim "ad-free" or "no interruptions" as a paid benefit; a
+  benefit that removes nothing is a misleading-subscription risk at App Review.
+- **Process note.** A second agent was working in the same checkout on the same
+  branch. Work was moved to an isolated git worktree at `/private/tmp/katha-rc-fix`
+  so the shared tree was never written to; that agent's uncommitted edits to
+  `CREDITS_AND_PRICING.md` and its new `STORY_GENERATION_FLOW.md` were left
+  untouched. Two agents sharing one working tree should be avoided — use
+  `git worktree add` instead.
+- No production deployment was performed in this session. The two Supabase secrets
+  `REVENUECAT_WEBHOOK_SECRET` and `SUBSCRIPTION_GRANT_CRON_SECRET` are set on
+  `iafeuxgoiknncgyjmugd`.

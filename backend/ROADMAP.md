@@ -216,6 +216,42 @@ this deleted credit path. The former SSV checklist is retained only in git histo
 
 ---
 
+## Phase C2 — Ads (POST-MVP, not a launch dependency)
+
+**Decision (2026-09-03):** no ads of any kind ship in the MVP. Reading stays free,
+unlimited and **uninterrupted** — principle 1 and the §7 "Never block reading" rule in
+`CREDITS_AND_PRICING.md` stand unchanged.
+
+An earlier draft proposed a house-styled full-screen break between chapters on the free
+tier, so that "read without interruptions" could be sold as a paid benefit. **That is
+dropped.** It earned nothing (house-styled, no ad network), so it was friction with no
+revenue attached, and `CREDITS_AND_PRICING.md` §7 already cites the finding that users who
+convert to remove friction churn faster than users who convert for positive value.
+
+### The rule that must hold until this phase ships
+
+- [ ] **Do not list "ad-free", "no ads", or "no interruptions" as a paid benefit** on any
+      paywall, onboarding screen, or store listing while the free tier has no ads. A
+      benefit that removes nothing is a false benefit and a misleading-subscription risk
+      at App Review. The Reader plan sells audio, offline and credits until ads exist.
+
+### When this phase does ship
+
+- [ ] Decide the format: third-party ad network (earns revenue, adds an SDK dependency and
+      a privacy/ATT surface) vs house-styled house promos (earns nothing — only justifiable
+      if the goal is cross-promotion, not monetization).
+- [ ] If a third-party network: ATT prompt, consent/GDPR handling, and a privacy-manifest
+      update. `expo-tracking-transparency` is already a dependency.
+- [ ] Only once ads are live on the free tier, add "read without interruptions" to the
+      paid benefit lists and amend principle 1 and the §7 Never list in
+      `CREDITS_AND_PRICING.md` **in the same commit**, so the canonical doc never
+      contradicts itself.
+- [ ] Rewarded-ad *credits* stay removed regardless. Rewarded video earns roughly a cent
+      per view against $0.0423 of cost for the credit it would buy, so it loses money as a
+      credit source at any plausible eCPM (`CREDITS_AND_PRICING.md` §5).
+
+---
+
 ## Phase D — Social Graph & Engagement
 
 **Goal:** Follow, bookmark, like toggles work server-side. Publishing fires notifications.
