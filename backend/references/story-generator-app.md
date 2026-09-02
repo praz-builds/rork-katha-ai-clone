@@ -29,7 +29,7 @@ This is a **separate product** from Story For My Kid (storyformykid.com). Differ
 Key Okudu patterns we're adopting:
 
 - Everything free to read. Credits only for generation.
-- 1 credit = 1 **AI action**; a chapter is text + cover + characters = 3 credits. (We diverged from Okudu here — see `../../source-of-truth/CREDITS_AND_PRICING.md` §2 for why unbundling was necessary.)
+- 1 credit = 1 **AI action**; *(superseded 2026-09-03 — starting a story is 3 credits, each further chapter 1, or 2 illustrated)*. (We diverged from Okudu here — see `../../source-of-truth/CREDITS_AND_PRICING.md` §2 for why unbundling was necessary.)
 - Free credits via a reading-streak ladder (day 2 / 5 / 7, then weekly) and referrals. We dropped ads, feedback and social rewards.
 - Subscription = bulk credits, split into Reader and Writer audiences.
 - Ultra-light onboarding (1 question, no paywall upfront).
@@ -147,7 +147,7 @@ Create (center tab, prominent)
   ├── Step 2: Topic (free text + "Get ideas" helper)
   ├── Step 3: Characters (name, description, traits)
   ├── Step 4: Length (Short / Standard / Long)
-  ├── Step 5: Review → "Generate chapter (3 credits)"
+  ├── Step 5: Review → "Create · 3 credits"   (superseded: see STORY_GENERATION_FLOW.md)
   └── Generation screen (loading animation → result)
 
 Story Detail / Reader
@@ -183,7 +183,7 @@ Settings
 
 ### Credit System (managed by RevenueCat + Supabase)
 
-**1 credit = 1 AI action.** A full chapter is text (1) + cover (1) + character set (1) = **3 credits**, and the three are separately purchasable so a partial balance still makes progress. Audio is 1 credit per chapter, unlocked permanently. Reading is free and unlimited on every tier. Canonical prices: `../../source-of-truth/CREDITS_AND_PRICING.md`.
+**1 credit = 1 AI action.** *(Superseded 2026-09-03.)* This paragraph described a chapter as text + cover + characters = 3 credits. The priced unit is a **story**: starting one is 3 credits (cast + chapter 1's words + chapter 1's art, which is the cover), and each further chapter is 1, or 2 illustrated. The actions remain separately purchasable, so a partial balance still makes progress. Audio is 1 credit per chapter, unlocked permanently. Reading is free and unlimited on every tier. Canonical prices: `../../source-of-truth/CREDITS_AND_PRICING.md`.
 
 RevenueCat handles IAP/subscription billing. Supabase holds the credit ledger (source of truth).
 

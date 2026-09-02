@@ -351,7 +351,7 @@ Placeholders are re-authored per mode (§3) and per genre where it helps.
 - Aspect ratio is portrait, full-body, on a plain ground — matching the reference
   and matching what the reader UI needs for a character strip.
 - **Portraits are generated once, at story creation, before chapter 1.** They must
-  stay visually consistent across every chapter, and in Interactive mode there is
+  stay visually consistent across every chapter, and once the loop starts there is
   no later moment where the whole cast is known at once.
 
 ### Limits
@@ -593,13 +593,15 @@ Create ·  n ✦
    │
    ├── chapter 1 text (1 ✦)  +  chapter 1 art (1 ✦) ── becomes the cover
    │
-   ├── AUTO-WRITE ────────────────────────────────────┐
-   │     chapters 2…N, straight through               │
-   │     + art per chapter where toggled on (1 ✦)     │
+   │
+   ├── THE LOOP, per chapter, to the planned length ──┐
+   │     read the chapter                    (free)   │
+   │     "What happens next?"  — optional    (free)   │
+   │     Continue          1 ✦, or 2 illustrated      │
    │                                                  │
-   ├── INTERACTIVE ───────────────────────────────────┤
-   │     "What happens next?" → ch 2 → … → N          │
-   │            (or "Let Katha decide")               │
+   │     from ch 3: "Write the rest"  — the same      │
+   │     loop under program control, itemised         │
+   │     confirm, Stop keeps what it wrote            │
    │                                                  ▼
    └────────────────────────────────▶  THE STORY  ◀───┘
                                           │
@@ -613,18 +615,25 @@ Create ·  n ✦
 
 ### 10.2 Generation
 
-- **Portraits first, always.** Before chapter 1, from the cast defined in §4. They
-  must be consistent across every chapter, and in Interactive mode there is no
-  later moment when the whole cast is known at once.
-- **Auto-Write** generates every chapter in sequence with a single progress view.
-  The user can read chapter 1 while later chapters are still generating.
-- **Interactive** generates one chapter, then returns to the story view with a
-  *What happens next?* prompt at the foot of the chapter — a short box with
-  suggested continuations inferred from what just happened, plus **Let Katha
-  decide**. No credit is charged for the suggestions.
+> **Revised 2026-09-03 (§15).** This section previously described Auto-Write and
+> Interactive as two flows the user chooses between. There is one flow.
+
+- **Portraits first, always.** Before chapter 1, from the cast defined in §4.
+  They must be consistent across every chapter, and there is no later moment when
+  the whole cast is known at once.
+- **One chapter at a time.** Each chapter ends in the story view with a
+  **Continue** button carrying its own price. Above it sits an optional *What
+  happens next?* box with suggested continuations inferred from what just
+  happened; leaving it blank means Katha decides. **No credit is charged for the
+  suggestions.**
+- **Write the rest** appears from chapter 3 onward and runs the same loop under
+  program control: an itemised confirm stating text and art separately, a **Stop**
+  that keeps every chapter already written, and a resume prompt if the app is
+  killed mid-run. It is not a second mode — each chapter is still its own
+  request, its own reservation and its own credit.
 - **Each chapter's text is 1 credit**, charged as it is generated, plus 1 for its
-  art where that is on. An interactive story abandoned at chapter 2 of 10 costs
-  what it wrote, not what it planned.
+  art where the toggle is on. A story abandoned at chapter 2 of 10 costs what it
+  wrote, not what it planned.
 - **Failed generations auto-refund**, per `CREDITS_AND_PRICING.md` principle 4.
 
 ### 10.3 Editing
@@ -658,9 +667,9 @@ chapter 1. A story is not a thing with a cover *plus* pictures. It is a sequence
 of chapters, each of which may be illustrated, and the first illustration is the
 one you see on the shelf.
 
-It also settles the ordering problem in Interactive mode. The cover is not
-awkwardly last — chapter 1's art is generated when chapter 1 exists, which in
-both writing modes is early.
+It also settles the ordering problem. The cover is not awkwardly last — chapter
+1's art is generated when chapter 1 exists, which is the second thing that
+happens.
 
 **Before that, the story has a concept cover:** a typographic card — the title
 set on a genre-tinted ground, marked `CONCEPT`. It costs nothing, renders
@@ -820,7 +829,7 @@ derived value.
 | Add See-an-example | Static, one per genre, with **Use this** |
 | Replace the hint with the meter | Slot-based, on screen 3 |
 | Add `Continue a draft (n)` | Screen 1, when drafts exist |
-| More options | Writing mode, chapters 3/7/10/15/30, length with word counts, chapter art for 2–N |
+| More options | Chapters 3/7/15, chapter length, chapter art for 2–N. **No writing mode** — §15 |
 
 ### `backend/supabase/functions/_shared/`
 
@@ -830,7 +839,7 @@ derived value.
 | `story-prompts.ts` | Two new layers — world (`whereAndWhen`) and beats (`moments`); character layer consumes background separately from appearance |
 | `cover-prompts.ts` | Consume `whereAndWhen`. This is what stops covers reading as genre stock art |
 | `image.ts` | Character portrait prompt from `appearance` + `description`; separate from the cover path |
-| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the five allowed values |
+| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3 |
 
 ### `expo/src/i18n/`
 
@@ -853,8 +862,8 @@ Draft cards, the Draft badge, chapter progress, sort-by-last-edited.
 | Craft-character completion — fields filled per character | Tests whether Background and Appearance earn their boxes |
 | Reimagine rate per character | High means the portrait prompt is wrong, not that users are fussy |
 | Moments attach rate, adult vs kids | Decides whether moments graduate onto screen 1 |
-| Writing mode split, and **interactive drop-off by chapter** | The number that says whether Interactive is a feature or a trap |
-| "Let Katha decide" usage rate | If it dominates, Interactive is friction wearing a hat |
+| **Continue-tap drop-off by chapter**, and *Write the rest* usage | Says whether the per-chapter loop is engagement or friction, and at which chapter people stop steering |
+| Share of Continues with an empty *What happens next?* box | If it dominates, steering is friction wearing a hat and the box should shrink |
 | **Chapter-art attach rate** | The most important unresolved figure in the business model — §10.6 |
 | Cover: generate vs regenerate vs upload vs keep-concept | Tells us whether cover generation is worth its credit |
 | Chapters-selected distribution | Whether 15 and 30 are real or decorative |
@@ -987,8 +996,8 @@ are listed here so a reader who lands mid-document is not misled.
 19. **Appearance drives the image; Background drives the voice.** Separating them
     is the point of the four-field split.
 20. **Portraits are generated once, at story creation, before chapter 1** — for
-    cross-chapter consistency, and because Interactive mode has no later moment
-    when the whole cast is known.
+    cross-chapter consistency, and because the per-chapter loop has no later
+    moment when the whole cast is known.
 21. **Reimagine is free once**, then 1 ✦. **Max 3 characters** *(amended
     2026-09-03, was 4)*. Character art is 1 ✦ for the cast, rendered at
     1024×1024 low.
@@ -1041,7 +1050,7 @@ are listed here so a reader who lands mid-document is not misled.
 39. **A typographic concept cover exists from the first moment**, free, so a
     draft has a face immediately.
 40. **Chapter 1's art is generated with chapter 1**, not at publish. That is early
-    in both writing modes, which is what removes the Interactive ordering problem.
+    the second thing that happens, which is what removes the ordering problem.
 41. **Uploading your own cover is free and prominent.** It costs us nothing and
     it is the escape hatch when generation misses.
 42. **Each chapter is charged as it is generated**, so an abandoned interactive

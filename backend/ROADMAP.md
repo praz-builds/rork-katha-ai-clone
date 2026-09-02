@@ -246,9 +246,13 @@ convert to remove friction churn faster than users who convert for positive valu
       paid benefit lists and amend principle 1 and the §7 Never list in
       `../source-of-truth/CREDITS_AND_PRICING.md` **in the same commit**, so the canonical doc never
       contradicts itself.
-- [ ] Rewarded-ad *credits* stay removed regardless. Rewarded video earns roughly a cent
-      per view against $0.0423 of cost for the credit it would buy, so it loses money as a
-      credit source at any plausible eCPM (`../source-of-truth/CREDITS_AND_PRICING.md` §5).
+- [ ] Rewarded-ad *credits* stay removed. **The margin argument for this is stale and
+      must be re-run before the decision is cited again.** It compared ~$0.006-0.012 of
+      rewarded-video revenue per view against $0.0423 of credit cost; the corrected basis
+      is $0.0092-$0.0274 (`../source-of-truth/CREDITS_AND_PRICING.md` §2), which at the
+      favourable end is no longer clearly a loss. The removal still stands on the grounds
+      in `../source-of-truth/CREDITS_AND_PRICING.md` §12 item 7 - no ads of any kind in the
+      MVP - but it should not be defended on unit economics until they are recomputed.
 
 ---
 

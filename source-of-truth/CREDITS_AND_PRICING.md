@@ -691,8 +691,9 @@ free and the funnel is the library, not the paywall.
 
 ## 7. The blocked moment
 
-Because a chapter costs 3 and audio costs 1, partial balances are real and
-common. The sheet has to handle them well.
+Because starting a story costs 3, a further chapter 1 or 2, and audio 1,
+partial balances are real and common. The sheet has to handle them well, and it
+has to name the action it is blocking rather than assume a single price.
 
 ```
 User taps a paid action.
@@ -903,7 +904,7 @@ the abuse.
 | Client | Paywall → one-time offer → welcome sequence | §6 |
 | Client | Cancellation flow must state the exact balance at risk before confirming | §8 |
 | Client | Price label on every paid action | §7 |
-| **Copy** | `expo/App.tsx:953` — *"1 credit creates 1 story or chapter"* is now **wrong** and must reflect 3 credits per chapter | Unbundling |
+| **Copy** | `expo/App.tsx` `CreditsScreen` — the credit explainer still describes the retired bundle (*"one credit each for the text, its cover and its characters"*). It must read: starting a story is 3, each further chapter 1, or 2 illustrated | Unbundling |
 | **RevenueCat** | The 10 SKUs in §3, replacing the current 5 | §3 |
 
 **The single most important implementation note:** prices live in **one
@@ -915,7 +916,7 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 
 | Phase | Contents |
 |---|---|
-| **1 — Launch** | Chapter unbundled at 3 credits; free unlimited reading; free caps on drafting; streak ladder; welcome bonus; lapse warnings; paywall + one-time offer; packs; all 10 SKUs |
+| **1 — Launch** | Story start unbundled at 3 credits, further chapters at 1 (2 illustrated); free unlimited reading; free caps on drafting; streak ladder; welcome bonus; lapse warnings; paywall + one-time offer; packs; all 10 SKUs |
 | **2 — Audio** | Only after RunPod cost is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
 | **3 — v1.1** | Referral with deep-link attribution |
 
@@ -1220,7 +1221,8 @@ economy is tuned on evidence rather than argued about.
     paywall sequence, packs, all SKUs; (2) audio, after cost measurement, catalog
     job first; (3) referral.
 46. **`expo/App.tsx:953` must change.** *"1 credit creates 1 story or chapter"* is
-    now incorrect and must reflect 3 credits per chapter.
+    now incorrect. It must reflect a 3-credit story start, with each further
+    chapter at 1, or 2 when illustrated.
 47. **Launch instrumentation per §11**, with the load-bearing triggers being
     Writer-yearly credit utilization, pack attach rate, and the audio catalog hit
     rate.
