@@ -364,24 +364,50 @@ function sanitizeWritingStyle(
 ): string | undefined {
   if (typeof value !== "string") return undefined;
 
-  // A name token: an uppercase letter followed by any run of name characters, so
-  // "Tolkien", a bare initial "K" or "J.", and non-ASCII names like "García" or
-  // "Ngũgĩ" all match. \p{Lu}/\p{L} rather than [A-Z]/\w because an ASCII-only
-  // class stops at the first accented character and leaks the rest of the name.
+  // A name token: an uppercase letter followed by name characters, so
+  // "Tolkien", a bare initial "K" or "J.", and non-ASCII names like "Garcia"
+  // or "Ngugi" all match. \p{L}-based rather than [A-Z]/\w because an
+  // ASCII-only class stops at the first accented character and leaks the rest.
   const NAME = "\\p{Lu}[\\p{L}\\p{M}'\u2019.-]*";
-  const PARTICLE = "de|van|von|del|della|da|di|du|la|le|el|bin|ibn|st";
+  // Lowercase connectives that sit inside a surname. Without these the pattern
+  // stops mid-name and leaks the remainder: "Ngugi wa Thiong'o" left
+  // "wa Thiong'o" behind before "wa" was listed.
+  const PARTICLE = "de|del|della|da|das|dos|do|di|du|van|von|der|den|ter|ten|" +
+    "la|le|el|al|bin|bint|ibn|ben|abu|wa|mac|mc|st|y|af|av|op|te";
   const TRIGGER =
     "like|in the style of|in the voice of|styled after|modelled after|modeled after|" +
     "written by|channelling|channeling|imitate|imitating|mimic|mimicking|copy|copying|" +
     "sound(?:s|ing)? like|read(?:s|ing)? like";
 
-  const pattern = new RegExp(
-    `\\b(?:${TRIGGER})\\s+(?:${NAME})(?:\\s+(?:${NAME}|${PARTICLE}))*`,
-    "giu",
+  // The trigger is matched case-insensitively; the name is not. These have to be
+  // two regexes rather than one with the `i` flag, because `i` would also apply
+  // to \p{Lu} and make it match lowercase - so "like the sea at dusk" would be
+  // read as a name and the craft direction destroyed.
+  const triggerRe = new RegExp(`\\b(?:${TRIGGER})\\s+`, "giu");
+  const nameRe = new RegExp(
+    `^(?:${NAME})(?:\\s+(?:${NAME}|${PARTICLE}))*`,
+    "u",
   );
 
-  const cleaned = value
-    .replace(pattern, "")
+  // Collect the spans to drop first, then splice, so removing one does not
+  // shift the offsets of the next.
+  const spans: [number, number][] = [];
+  for (const m of value.matchAll(triggerRe)) {
+    const triggerStart = m.index ?? 0;
+    const afterTrigger = triggerStart + m[0].length;
+    const name = nameRe.exec(value.slice(afterTrigger));
+    // No capitalised name after the trigger means this is ordinary prose
+    // ("like the sea at dusk"), and the user's words are left alone.
+    if (!name) continue;
+    spans.push([triggerStart, afterTrigger + name[0].length]);
+  }
+
+  let cleaned = value;
+  for (let i = spans.length - 1; i >= 0; i--) {
+    cleaned = cleaned.slice(0, spans[i][0]) + cleaned.slice(spans[i][1]);
+  }
+
+  cleaned = cleaned
     .replace(/\s{2,}/g, " ")
     .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
     .trim();

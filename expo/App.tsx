@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initSentry, initPostHog } from "@/lib/analytics";
 import {
   CREDITS_PER_AUDIO_UNLOCK,
-  CREDITS_PER_CHAPTER,
-  CREDITS_TO_START_STORY,
+  CREDITS_PER_GENERATION,
+  formatCredits,
 } from "@/lib/pricing";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { setupAndroidChannel } from "@/lib/notifications";
@@ -984,7 +984,7 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
         <View style={styles.creditHero}>
           <Sparkles size={32} color={colors.accent} />
           <Text style={styles.creditHeroTitle}>Credits create stories and chapters</Text>
-          <Text style={styles.creditHeroText}>{`Starting a story is ${CREDITS_TO_START_STORY} credits: its cast, chapter 1's words, and chapter 1's art, which becomes the cover. Every chapter after that is ${CREDITS_PER_CHAPTER}. Audio is ${CREDITS_PER_AUDIO_UNLOCK} credit per chapter, unlocked forever. Reading is always free.`}</Text>
+          <Text style={styles.creditHeroText}>{`Writing a chapter costs ${formatCredits(CREDITS_PER_GENERATION)}. Unlocking a chapter's audio costs ${formatCredits(CREDITS_PER_AUDIO_UNLOCK)}, and you can listen again as often as you like, forever. Reading is always free.`}</Text>
         </View>
         <SectionHeader title="History" />
         {ledger.map((entry) => (

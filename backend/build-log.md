@@ -47,6 +47,13 @@ The new free-text style field is a direct route to "write exactly like <living a
 - **The index rebuild cannot use `CONCURRENTLY`** — `supabase db push` wraps each migration in a transaction and concurrent index builds cannot run in one. The brief lock is documented at the statement, with the conditions under which it would need to become an out-of-band rebuild.
 - **Client credit amounts moved out of copy** into `expo/src/lib/pricing.ts`, the single client-side mirror of the per-action costs. It holds no plan prices, grants or SKUs.
 
+### Second review round
+
+- **The credits screen advertised a price the code does not charge.** The canonical document prices a story start at 3 credits — cast, chapter 1's words, chapter 1's art — but `generate-story` makes exactly one reservation, because neither the cast nor chapter art is built yet. `pricing.ts` now separates **charged today** from **contracted**, the contracted values are marked not-yet-charged, and user-facing copy reads only the charged ones.
+- **The sanitiser's `i` flag applied to `\p{Lu}` as well as the trigger**, so an uppercase-letter class matched lowercase and any prose after a trigger word was read as a name: `"like the sea at dusk"` was destroyed. Trigger and name are now two regexes — the trigger case-insensitive, the name not — and three prose-preservation cases are pinned.
+- **The particle list stopped mid-name.** `"Ngũgĩ wa Thiong'o"` left `"wa Thiong'o"` behind because `wa` was not listed. The set now covers the common Romance, Germanic, Arabic, Celtic and Bantu connectives.
+- The style test asserted only that no author name survived, which would have passed on gutted text. It now asserts exact output for all eleven cases.
+
 ### Validation
 
 - 134 Deno tests pass (9 new), `deno check` clean on every edge function, `deno fmt --check` clean.

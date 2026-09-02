@@ -300,36 +300,41 @@ Deno.test("brief free-text fields are bounded", () => {
 });
 
 Deno.test("writing style keeps the craft and drops the author", () => {
+  // [input, exact expected output]
   const cases: [string, string | undefined][] = [
+    // Plain craft direction is untouched.
     ["poetic, short sentences", "poetic, short sentences"],
+    // An imitation request is removed; anything else the user said survives.
     ["like Colleen Hoover", undefined],
     ["hardboiled, like Raymond Chandler", "hardboiled"],
-    [
-      "in the style of Ursula K Le Guin, but funnier",
-      ", but funnier".replace(/^, /, ""),
-    ],
     ["written by Stephen King", undefined],
-    // Non-ASCII names: an ASCII-only pattern stopped at the accent and leaked
-    // the remainder ("Garcia Marquez" surviving from "Gabriel Garcia Marquez").
+    // Non-ASCII names. An ASCII-only pattern stopped at the accent and leaked
+    // the rest of the name.
     ["like Gabriel Garc\u00eda M\u00e1rquez", undefined],
     ["lyrical, in the style of Ng\u0169g\u0129 wa Thiong'o", "lyrical"],
+    // Initials. An earlier pattern required two characters and stopped at
+    // "Ursula", leaking "K Le Guin".
+    ["in the style of Ursula K Le Guin, but funnier", "but funnier"],
+    ["like J. R. R. Tolkien", undefined],
+    // Lowercase prose after a trigger is NOT a name. A single case-insensitive
+    // regex made \p{Lu} match lowercase, and these were gutted.
+    ["like the sea at dusk", "like the sea at dusk"],
+    [
+      "reads like a diary, short sentences",
+      "reads like a diary, short sentences",
+    ],
+    ["Like a folk tale told badly", "Like a folk tale told badly"],
   ];
+
   for (const [input, expected] of cases) {
-    const r = validateGenerationRequest(
+    const result = validateGenerationRequest(
       validRequest({ writing_style: input }),
     );
-    if ("error" in r) throw new Error(r.error);
-    if (expected === undefined) {
-      assertEquals(r.writingStyle, undefined, `"${input}" survived`);
-    } else {
-      assertEquals(
-        r.writingStyle?.includes("Hoover") ||
-          r.writingStyle?.includes("Chandler") ||
-          r.writingStyle?.includes("Le Guin") ||
-          r.writingStyle?.includes("King"),
-        false,
-        `"${input}" leaked an author name: ${r.writingStyle}`,
-      );
-    }
+    if ("error" in result) throw new Error(result.error);
+    assertEquals(
+      result.writingStyle,
+      expected,
+      `"${input}" produced ${JSON.stringify(result.writingStyle)}`,
+    );
   }
 });
