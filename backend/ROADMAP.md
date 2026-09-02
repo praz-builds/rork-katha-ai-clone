@@ -145,7 +145,44 @@ Server-side handling is implemented. Dashboard configuration needed.
   - `ai.katha.credits.large` — $29.99, 90 credits
 - [ ] Trial grants are reduced: 15 credits (Writer) / 5 (Reader) during the 3-day trial; full grant on first successful charge
 - [ ] Set webhook URL to `{SUPABASE_URL}/functions/v1/revenuecat-webhook`
-- [ ] Set `REVENUECAT_WEBHOOK_SECRET` as a Supabase secret
+- [x] Set `REVENUECAT_WEBHOOK_SECRET` as a Supabase secret
+- [x] Set `SUBSCRIPTION_GRANT_CRON_SECRET` as a Supabase secret
+
+#### Blocked on the store listing going live
+
+None of the following can be done before the app has a live App Store Connect /
+Google Play listing, because RevenueCat products are *mappings* to store products
+and the platform SDK keys are only issued once the store apps are linked. Everything
+here is dashboard work, not code — the client and webhook are complete and deployed.
+
+- [ ] **Create the 10 store products** in App Store Connect and Google Play Console,
+      matching the SKU list above exactly. First-time IAPs are reviewed alongside the
+      first app build, so budget for that review cycle.
+- [ ] **Issue the production RevenueCat SDK keys** (`appl_…` for iOS, `goog_…` for
+      Android) and paste them into `REVENUECAT_IOS_RELEASE_PUBLIC_KEY` /
+      `REVENUECAT_ANDROID_RELEASE_PUBLIC_KEY` in `expo/src/lib/revenuecat.ts`.
+      Until then a release build has no billing at all — `activate()` logs an error
+      and returns. The Test Store key (`test_…`) simulates purchases and is
+      development-only; it can never process a real transaction.
+- [ ] **Create the RevenueCat entitlements** `katha_reader` and `katha_writer`, and
+      the offerings the paywall reads. `katha_ai_pro` is wired as a legacy alias for
+      `katha_writer`.
+- [ ] **Wire the paywall to live RevenueCat package data** — price, renewal terms,
+      trial eligibility and offer copy must come from the SDK, not from the
+      hardcoded `PAYWALL_PRODUCTS` constant. Cannot be validated until the products
+      exist. (Raised in CodeRabbit review of PR #44 and deferred here.)
+- [ ] **Schedule `refresh-subscription-grants`** (monthly) with the
+      `SUBSCRIPTION_GRANT_CRON_SECRET` in the Authorization header. Annual
+      subscribers receive their allowance monthly, and the store emits only one
+      `RENEWAL` per year, so without this scheduler annual plans grant once and
+      then stop.
+- [ ] **Confirm with App Review that voiding purchased pack credits on subscription
+      lapse is permitted** (`CREDITS_AND_PRICING.md` §12 item 5). Packs are
+      consumable IAPs. If it is not permitted, carve packs out of the lapse rule so
+      only granted and earned credits expire.
+- [ ] **Ship a development build** — RevenueCat uses native modules, so Expo Go
+      cannot validate purchases, restores, Paywalls or Customer Center.
+      `expo-dev-client` is installed; the commands are in `expo/README.md`.
 
 #### Production Blockers
 
