@@ -31,7 +31,7 @@ Migrations `00018`-`00023` and `00025` applied to `iafeuxgoiknncgyjmugd`. `error
 - Production `smoke-app-surface.py` **26 / 26** and `smoke-series-generation.py` **58 / 58**.
 - Quality read across romance / thriller / fantasy: 1085-1353 words, in band, distinct openings and titles.
 
-### Known risks — both closed on the code side 2026-09-03
+### Known risks — both closed on the code side 2026-09-02
 
 - **One credential behind everything.** `OPENAI_API_KEY` authenticated DALL·E 3 covers *and* story text, so one spend cap or rotation took down both. `_shared/llm.ts` now reads `OPENAI_STORY_API_KEY` ahead of it while `_shared/image.ts` keeps the original. Setting that secret is the entire remaining change; leaving it unset preserves current behaviour.
 - **The chapter word band was prompt-enforced only** — `gpt-5-mini` had a 2,026-word chapter against a 500-1500 band persisted and charged for. `wordBandFor()` is now the single source of truth for prompt and validation alike, and a generation outside 0.75x-1.25x of the band falls through to the next provider instead of reaching the database. Every length instruction in `story-prompts.ts` — base rules, Kids Mode, continuation rules and the user prompt — is rendered from that band rather than from its own copy of the numbers, so there is no longer a string literal that can disagree with the validator.

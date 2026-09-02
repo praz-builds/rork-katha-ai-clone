@@ -7,7 +7,7 @@
 
 ---
 
-## 2026-09-03 UTC — The prompt reads the word band instead of restating it
+## 2026-09-02 UTC — The prompt reads the word band instead of restating it
 
 **Session:** CodeRabbit review follow-up on the word-band work below. `wordBandFor()` was described as the single source of truth, but `story-prompts.ts` still carried four independent copies of the numbers, so the prompt and the validator could drift apart in exactly the way the helper was introduced to prevent.
 
