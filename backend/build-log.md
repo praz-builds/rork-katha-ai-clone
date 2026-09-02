@@ -7,6 +7,62 @@
 
 ---
 
+## 2026-09-03 UTC — A source-of-truth folder, a corrected cost basis, and every story-flow open item closed
+
+**Session:** Documentation only. No code, no schema, no deploy. Bucket B0 of the story-creation rebuild, and the gate for the buckets after it, because everything in the create flow that displays or charges a price reads from these files.
+
+### `source-of-truth/`
+
+Four documents move into one folder with an explicit precedence order, stated in `source-of-truth/README.md`:
+
+| File | Canonical for |
+| --- | --- |
+| `CREDITS_AND_PRICING.md` | money — prices, grants, SKUs, render tiers, unit costs |
+| `STORY_GENERATION_FLOW.md` | the create flow |
+| `STORY_PROMPT_SYSTEM.md` | prompt architecture *(was `backend/prompts/story-generator.md`)* |
+| `ONBOARDING_FLOW.md` | everything before Home |
+
+`STORY_GENERATION_FLOW.md` and `ONBOARDING_FLOW.md` were untracked working files and enter version control here for the first time. Every cross-reference in `AGENTS.md`, the roadmap, the build logs, `backend/references/` and the Expo docs was repointed, and all 22 relative markdown links in the repository resolve.
+
+### The priced unit was wrong
+
+The pricing file priced a *chapter* at 3 credits — text, cover, characters — written when a story was assumed to be roughly one chapter long. A story is 3, 7 or 15 chapters, so re-casting the characters and regenerating the cover on every chapter was not a price, it was a bug.
+
+**Starting a story is now 3 credits** (cast + chapter 1's words + chapter 1's art, which is the cover). Each further chapter is 1, or 2 illustrated. A 3-chapter story is 5 credits; a 15-chapter story is 17. Charged per chapter as written, so an abandoned story costs what it wrote.
+
+Decision 10, which had removed chapter illustrations as a priced action, is amended: chapter art is one feature with the cover — chapter 1's compulsory, chapters 2–N optional at 1 credit behind a toggle that is off by default.
+
+### The cost basis was stale, and this is the larger finding
+
+The `~$0.031` per-chapter text figure descended from the retired Anthropic rate card. The live chain serves `gpt-5.6-luna` at **~$0.004** per ~1k-word chapter, so text is an order of magnitude cheaper than any image and creation cost is now dominated by images.
+
+Blended creation cost is **$0.0092–$0.0274 per credit** depending on story shape, not `$0.0423`.
+
+**§4 of the pricing file is consequently understated** — its plan table, inversion check and Writer-yearly "constraint of record" all compute against `$0.0423`, some rows by 20 points or more. Conservative rather than wrong, since no margin is overstated, but it is now recorded as the largest known inaccuracy in that file (§12 item 10) rather than left implicit.
+
+Three render tiers become constraints rather than defaults, to be pinned in code with tests: cover 1024×1536 medium, chapter art 1024×1024 medium, portraits 1024×1024 low.
+
+### All seven story-flow open items closed
+
+§14 previously listed seven unresolved items, two of them release-blocking. None is open.
+
+- **The portrait "loss" never existed.** The −$0.18-per-cast figure priced portraits at the cover tier and tested a single action against a floor the pricing file defines on a blended basis. There is no loss at any cast size up to five. The cast cap is nonetheless 3 (was 4) — a product bound, not a margin one.
+- **The chapter-art attach rate is not a launch dependency.** At the fixed tiers, 100% attach clears the floor at 3, 7 and 15 chapters.
+- **The writing-mode toggle is removed.** One flow: read, optionally steer, Continue. *Write the rest* appears from chapter 3 with an itemised confirm, a Stop that keeps what it wrote, and resume after a kill. This removes the orchestration requirement entirely — one Continue is one existing `continue-story` call, one reservation, one credit.
+- **Chapters are 3 · 7 · 15**, a planned length driving pacing and finale derivation, replacing `MAX_SERIES_CHAPTERS`.
+- Inference re-runs only on a non-trivial diff and never overwrites a user-edited value; portraits surface in a cast strip on the title screen rather than inline; kids mode does not filter the feed at launch; `draft.seed` keeps its column name.
+
+A new §15 records what the document no longer says, so a reader landing mid-file is not misled. Superseded reasoning is marked rather than deleted.
+
+### Validation
+
+- 125 Deno tests pass; `deno check` clean across every edge function.
+- Expo typecheck, lint and Jest pass.
+- All 22 relative markdown links in the repository resolve.
+- **Not run:** the production smoke suites in `backend/scripts/`, which require `SUPABASE_SERVICE_ROLE_KEY`. No credentials were available in this environment, and no generation was exercised against production.
+
+---
+
 ## 2026-08-31 UTC — GPT-5.6 Luna live in the OpenAI position
 
 **Session:** Made the OpenAI position an ordered model list — `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini` — diagnosed and cleared a project-level entitlement block on Luna, and recorded the fallback-credential work in the roadmap. Luna now serves all production generation. PRs #40 and #41.
@@ -518,7 +574,7 @@ Repeated runs showed continuations returning HTTP 200 with `hook_type: "none"` a
 
 ### Docs
 
-- `backend/prompts/story-generator.md`: one UI genre contract. The taxonomy table now matches the shipped Expo list (13 creation cards; `cozyFantasy` and `paranormalRomance` marked backend-only).
+- `../source-of-truth/STORY_PROMPT_SYSTEM.md`: one UI genre contract. The taxonomy table now matches the shipped Expo list (13 creation cards; `cozyFantasy` and `paranormalRomance` marked backend-only).
 - `backend/ROADMAP.md`: planned device-token migration renumbered to `00011` to clear the `00009` collision.
 
 ### Second review pass
@@ -554,7 +610,7 @@ Repeated runs showed continuations returning HTTP 200 with `hook_type: "none"` a
 - Updated `generate-story` to honor `story_mode` / legacy `is_series`, pass story/chapter role into prompts, and persist opening-chapter hooks for series.
 - Updated `continue-story` to pass stored `series_state` into continuation prompts, include Chapter 1 context for finales, auto-mark Chapter 7 as finale, and persist updated hooks/state.
 - Extended structured output parsing, validation, prompt tests, and Expo response mapping for series metadata.
-- Updated `backend/prompts/story-generator.md` and `backend/ROADMAP.md` to reflect the implemented runtime contract.
+- Updated `../source-of-truth/STORY_PROMPT_SYSTEM.md` and `backend/ROADMAP.md` to reflect the implemented runtime contract.
 
 ### Dependency Notes
 
@@ -614,7 +670,7 @@ Replaced the direct editor-to-publish modal with a 6-step flow:
 11. Review bottom bar with sticky Publish/Draft buttons
 12. "What happens next" info card in review
 
-### Spec Updates (`backend/prompts/story-generator.md`)
+### Spec Updates (`../source-of-truth/STORY_PROMPT_SYSTEM.md`)
 
 - **Title Generation** section: 2-6 words, evocative not descriptive, genre examples
 - **Word Count Enforcement** table: min/max per mode, rejection at <300 words
@@ -624,7 +680,7 @@ Replaced the direct editor-to-publish modal with a 6-step flow:
 
 - `AGENTS.md`: Updated Create Studio flow description, migration count
 - `ROADMAP.md`: Refactored — Phase A marked DONE, completed items in collapsible sections, Phase B cover items checked, migration numbers fixed, language distribution corrected
-- `backend/prompts/story-generator.md`: Title rules, word count, series structure
+- `../source-of-truth/STORY_PROMPT_SYSTEM.md`: Title rules, word count, series structure
 
 ### New Files
 
@@ -637,7 +693,7 @@ Replaced the direct editor-to-publish modal with a 6-step flow:
 - `expo/src/lib/api.ts` — 3 API wrappers, mock upgrade, genre-aware titles
 - `expo/src/types/domain.ts` — `isSeries` on CreateDraft
 - `backend/ROADMAP.md` — refactored phases
-- `backend/prompts/story-generator.md` — title/word count/series spec
+- `../source-of-truth/STORY_PROMPT_SYSTEM.md` — title/word count/series spec
 
 ---
 
@@ -739,7 +795,7 @@ the backend prompt reference into a production implementation contract.
 
 ### Changes
 
-- Updated `backend/prompts/story-generator.md` from v2.0 to v5.1 production
+- Updated `../source-of-truth/STORY_PROMPT_SYSTEM.md` from v2.0 to v5.1 production
   spec.
 - Locked the proposed taxonomy to 15 user-facing adult genre cards, with LGBTQ+
   as a separate queer identity lens/toggle instead of a primary genre.
@@ -779,7 +835,7 @@ the backend prompt reference into a production implementation contract.
   - `feedback` — comments + one-time feedback credit reward per story
   - `adapty-webhook` — subscription/purchase event handler
 - **Shared utilities:** `_shared/credits.ts` (append-only ledger), `_shared/llm.ts` (Sonnet → Haiku → gpt-4o-mini), `_shared/cors.ts`
-- **Story generator system prompt v1.0** — `prompts/story-generator.md`
+- **Story generator system prompt v1.0** — `../source-of-truth/STORY_PROMPT_SYSTEM.md`
 - **Blueprint reference** — copied from Story For My Kid project
 - **Strategic decisions doc** — `references/strategic-decisions.md` (product identity, credit economy, growth loops, anti-gaming pipeline, content model, CTA strategy, discovery/feed model)
 - **Schema migration 00003** — delta additions from strategic decisions (story_reads, story_followers, user_followers, bookmarks, story_likes, engagement counters, chapter publishing state, language/themes, pending credits, referral chain)
@@ -860,7 +916,7 @@ the backend prompt reference into a production implementation contract.
 
 1. **Double-deduct fix** (`generate-story/index.ts:137`): `newBalance - 1` → `newBalance` (was subtracting again after deductCredit already returned the post-deduction balance)
 2. **Race condition fix** (`credits.ts`): replaced read-then-write pattern with atomic Postgres RPC functions (`deduct_credit`, `grant_credit`) using `FOR UPDATE` row locking
-3. **System prompt fix** (`generate-story/index.ts`): hardcoded string → imported from `_shared/prompts.ts` (mirrors `prompts/story-generator.md`)
+3. **System prompt fix** (`generate-story/index.ts`): hardcoded string → imported from `_shared/prompts.ts` (mirrors `../source-of-truth/STORY_PROMPT_SYSTEM.md`)
 4. **Haiku model ID fix** (`llm.ts:45`): `claude-haiku-4-5-20241022` → `claude-haiku-4-5-20251001`
 
 ### Schema Changes
@@ -1168,7 +1224,7 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
   client and webhook are complete. A release build has no billing until the
   production keys are pasted in — `activate()` logs an error and returns.
 - **Ads decision: none ship in the MVP.** Added `ROADMAP.md` Phase C2 and resolved
-  §12 item 7 in `CREDITS_AND_PRICING.md`. A proposal to put a house-styled
+  §12 item 7 in `../source-of-truth/CREDITS_AND_PRICING.md`. A proposal to put a house-styled
   full-screen break between chapters on the free tier, so "read without
   interruptions" could be sold as a paid benefit, was rejected — house-styled means
   it earns nothing, so it was friction with no revenue attached, and §7 already
@@ -1181,7 +1237,7 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - **Process note.** A second agent was working in the same checkout on the same
   branch. Work was moved to an isolated git worktree at `/private/tmp/katha-rc-fix`
   so the shared tree was never written to; that agent's uncommitted edits to
-  `CREDITS_AND_PRICING.md` and its new `STORY_GENERATION_FLOW.md` were left
+  `../source-of-truth/CREDITS_AND_PRICING.md` and its new `../source-of-truth/STORY_GENERATION_FLOW.md` were left
   untouched. Two agents sharing one working tree should be avoided — use
   `git worktree add` instead.
 - No production deployment was performed in this session. The two Supabase secrets

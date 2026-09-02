@@ -199,7 +199,7 @@ subscribe or not — plans are for creating and listening.
 
 **Text.** `_shared/llm.ts` now chains Gemini 3.1 Pro Preview → OpenRouter
 `google/gemini-2.5-flash` → OpenAI (`gpt-5.6-luna`, `gpt-5-mini`,
-`gpt-4o-mini`) → OpenRouter Free Router ([implementation](backend/supabase/functions/_shared/llm.ts)).
+`gpt-4o-mini`) → OpenRouter Free Router ([implementation](../backend/supabase/functions/_shared/llm.ts)).
 The **~$0.031 per chapter** planning figure came from the retired Anthropic rate
 card and is **no longer used**. The live figure is **~$0.004 per ~1k-word
 chapter** on `gpt-5.6-luna`, recorded in `_shared/llm.ts` alongside its
@@ -594,7 +594,7 @@ every plan we sell. Daily replenishment is **earned and capped**, never granted.
 
 Onboarding branches on a purpose question and the two paths meet again at the
 offer. Screen-level design is specified in
-[`research/R2-onboarding-conversion.md`](research/R2-onboarding-conversion.md);
+`research/R2-onboarding-conversion.md` (working memo, not tracked);
 only the money is defined here.
 
 ```
