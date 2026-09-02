@@ -364,11 +364,20 @@ function sanitizeWritingStyle(
 ): string | undefined {
   if (typeof value !== "string") return undefined;
 
-  // A name token: an uppercase letter followed by name characters, so
-  // "Tolkien", a bare initial "K" or "J.", and non-ASCII names like "Garcia"
-  // or "Ngugi" all match. \p{L}-based rather than [A-Z]/\w because an
-  // ASCII-only class stops at the first accented character and leaks the rest.
-  const NAME = "\\p{Lu}[\\p{L}\\p{M}'\u2019.-]*";
+  // A name token, in two shapes because scripts differ:
+  //
+  //   1. Cased scripts - an uppercase letter then name characters. Covers
+  //      "Tolkien", a bare initial "K" or "J.", and accented names like
+  //      "Garcia" that an ASCII [A-Z]/\w pattern truncates at the accent.
+  //   2. Uncased scripts - \p{Lo}, "Letter, other", which is what Han, Kana,
+  //      Arabic, Hebrew and Devanagari letters are. These have no uppercase, so
+  //      rule 1 can never match them and a name like a Japanese author's would
+  //      pass straight through the filter.
+  //
+  // \p{Lo} is deliberately narrow: Latin lowercase is \p{Ll}, not \p{Lo}, so
+  // admitting uncased scripts cannot resurrect the bug where ordinary lowercase
+  // prose after a trigger was read as a name.
+  const NAME = "(?:\\p{Lu}[\\p{L}\\p{M}'\u2019.-]*|[\\p{Lo}\\p{M}]+)";
   // Lowercase connectives that sit inside a surname. Without these the pattern
   // stops mid-name and leaks the remainder: "Ngugi wa Thiong'o" left
   // "wa Thiong'o" behind before "wa" was listed.
@@ -408,6 +417,10 @@ function sanitizeWritingStyle(
   }
 
   cleaned = cleaned
+    // Removing a name from the middle of a list leaves its separators behind:
+    // "dreamlike, like <name>, in short scenes" becomes "dreamlike, , in short
+    // scenes". Collapse any run of separators into the first one.
+    .replace(/([,;:])(?:\s*[,;:])+/g, "$1")
     .replace(/\s{2,}/g, " ")
     .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
     .trim();

@@ -316,6 +316,13 @@ Deno.test("writing style keeps the craft and drops the author", () => {
     // "Ursula", leaking "K Le Guin".
     ["in the style of Ursula K Le Guin, but funnier", "but funnier"],
     ["like J. R. R. Tolkien", undefined],
+    // Uncased scripts have no uppercase, so a \p{Lu}-only pattern never matched
+    // them and the name passed straight through.
+    ["in the style of \u6751\u4e0a\u6625\u6a39", undefined],
+    [
+      "dreamlike, like \u6751\u4e0a\u6625\u6a39, in short scenes",
+      "dreamlike, in short scenes",
+    ],
     // Lowercase prose after a trigger is NOT a name. A single case-insensitive
     // regex made \p{Lu} match lowercase, and these were gutted.
     ["like the sea at dusk", "like the sea at dusk"],
