@@ -7,6 +7,7 @@ import {
   buildStorySystemPrompt,
   buildUserPrompt,
 } from "./story-prompts.ts";
+import { wordBandFor } from "./types.ts";
 
 Deno.test("buildStorySystemPrompt includes genre module text", () => {
   const prompt = buildStorySystemPrompt({ primaryGenre: "romance" });
@@ -502,4 +503,89 @@ Deno.test("continuation prompt still carries genre, series and kids layers", () 
   assert(prompt.includes("## Mid-Series Chapter Contract"));
   assert(prompt.includes("## Continuation Rules"));
   assert(prompt.includes(SCHEMA_HEADING));
+});
+
+// ---------------------------------------------------------------------------
+// Word band: the prompt must quote wordBandFor(), never its own copy
+// ---------------------------------------------------------------------------
+
+/**
+ * Every length instruction the model reads is rendered from wordBandFor(), so
+ * a change to the band moves the prompt and the validator together. Before
+ * this, story-prompts.ts held four independent string literals and a band
+ * change could silently update the check while leaving the instruction stale.
+ */
+Deno.test("word band: system prompt quotes the band for each mode", () => {
+  const cases: [
+    Parameters<typeof wordBandFor>[0],
+    Parameters<typeof wordBandFor>[1],
+  ][] = [
+    ["standalone", "adult"],
+    ["standalone", "kids"],
+    ["series", "adult"],
+    ["series", "kids"],
+  ];
+
+  for (const [storyMode, audienceMode] of cases) {
+    const band = wordBandFor(storyMode, audienceMode);
+    const prompt = buildStorySystemPrompt({
+      primaryGenre: "fantasy",
+      storyMode,
+      audienceMode,
+    });
+    assert(
+      prompt.includes(`${band.min}-${band.max} words`),
+      `${storyMode}/${audienceMode} prompt omits its own band ${band.min}-${band.max}`,
+    );
+  }
+});
+
+Deno.test("word band: kids standalone never states the adult ceiling", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "fantasy",
+    storyMode: "standalone",
+    audienceMode: "kids",
+  });
+  const kids = wordBandFor("standalone", "kids");
+  const adult = wordBandFor("standalone", "adult");
+  assert(prompt.includes(`${kids.min}-${kids.max} words`));
+  assert(
+    !prompt.includes(`${adult.min}-${adult.max} words`),
+    "kids prompt leaked the adult band",
+  );
+});
+
+Deno.test("word band: continuation rules quote the series band", () => {
+  const band = wordBandFor("series", "adult");
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "thriller",
+    mode: "chapter",
+  });
+  assert(
+    prompt.includes(
+      `Length: ${band.min}-${band.max} words for a continuation chapter.`,
+    ),
+  );
+});
+
+Deno.test("word band: user prompt quotes the same band as the system prompt", () => {
+  const series = wordBandFor("series", "adult");
+  const standalone = wordBandFor("standalone", "adult");
+
+  assertEquals(
+    buildUserPrompt({
+      primaryGenre: "mystery",
+      storyMode: "series",
+      seed: "A locked room with two doors and one key.",
+    }).includes(`(${series.min}-${series.max} words)`),
+    true,
+  );
+  assertEquals(
+    buildUserPrompt({
+      primaryGenre: "mystery",
+      storyMode: "standalone",
+      seed: "A locked room with two doors and one key.",
+    }).includes(`(${standalone.min}-${standalone.max} words)`),
+    true,
+  );
 });

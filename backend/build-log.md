@@ -7,6 +7,34 @@
 
 ---
 
+## 2026-09-03 UTC — The prompt reads the word band instead of restating it
+
+**Session:** CodeRabbit review follow-up on the word-band work below. `wordBandFor()` was described as the single source of truth, but `story-prompts.ts` still carried four independent copies of the numbers, so the prompt and the validator could drift apart in exactly the way the helper was introduced to prevent.
+
+### What changed
+
+Every length instruction the model reads is now rendered from `wordBandFor()`:
+
+| Site | Was | Now |
+| --- | --- | --- |
+| `buildBaseRules()` | `500-1500 words` | `${band.min}-${band.max} words` |
+| `buildAudienceModeRules()` (Kids) | `600-900` / `500-1200` | the band for that mode |
+| Continuation rules | `600-900 words` | the series band |
+| `buildUserPrompt()` | three literal ranges | the band for that mode |
+
+`buildStoryPromptBody()` resolves the band once and passes it down, so a single call decides what the whole prompt says. This also removes a live bug: a kids **standalone** prompt previously stated `500-1500` in its Hard Rules and `500-1200` in its Kids Mode block, giving the model two different ceilings in one prompt.
+
+### Why it matters beyond the review
+
+Chapter length becomes a user-facing control (Short / Standard / Long) in the create-flow rebuild. With the numbers centralised, that is a change to one function; with four string literals it would have been four chances to ship a prompt that contradicts the validator.
+
+### Validation
+
+- 138 Deno tests pass, including four new ones that assert the prompt quotes `wordBandFor()` for every mode combination and that a kids prompt never leaks the adult ceiling.
+- `deno check` clean across every edge function; `deno fmt --check` clean on the CI file list.
+
+---
+
 ## 2026-09-01 UTC — Closed the two open risks from the provider migration
 
 **Session:** Enforced the chapter word band server-side and split the story-generation credential from the cover credential. Both were carried as known risks out of the Luna work; both are now closed on the code side.

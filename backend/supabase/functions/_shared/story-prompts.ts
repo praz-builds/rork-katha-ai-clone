@@ -24,8 +24,9 @@ import type {
   SpiceLevel,
   StoryMode,
   TropeModule,
+  WordBand,
 } from "./types.ts";
-import { GENRE_MIGRATION_MAP } from "./types.ts";
+import { GENRE_MIGRATION_MAP, wordBandFor } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Banned vocabulary
@@ -137,12 +138,12 @@ const BANNED_NAMES = [
 // Layer 1: Base craft + safety rules
 // ---------------------------------------------------------------------------
 
-function buildBaseRules(): string {
+function buildBaseRules(band: WordBand): string {
   return `You are a fiction writer for Katha AI. You write original short stories that feel human-written — with voice, specificity, and emotional truth.
 
 ## Hard Rules
 
-1. Length: 500-1500 words. No negotiation.
+1. Length: ${band.min}-${band.max} words. No negotiation.
 2. Use clear paragraphs. Vary paragraph length: some 1-2 sentences for punch, some 4-5 sentences for immersion.
 3. Incorporate all specified characters naturally — they must have distinct voices and speech patterns.
 4. End with a resonant final line, not a moral lecture.
@@ -582,6 +583,7 @@ function buildAudienceModeRules(
   mode?: AudienceMode,
   storyMode: StoryMode = "standalone",
   chapterRole: ChapterRole = "standalone",
+  band: WordBand = wordBandFor(storyMode, mode ?? "adult"),
 ): string {
   if (mode !== "kids") return "";
 
@@ -594,12 +596,14 @@ function buildAudienceModeRules(
   const isOpenChapter = isSeriesChapter &&
     (chapterRole === "series_opening" || chapterRole === "mid_series");
 
-  // A kids series chapter is still a series chapter: use the 600-900 chapter
-  // range rather than the 500-1200 standalone range, so the two contracts agree
-  // and server-side word-count validation cannot reject a valid generation.
+  // A kids series chapter is still a series chapter: it takes the chapter range
+  // rather than the standalone range, so the two contracts agree and
+  // server-side word-count validation cannot reject a valid generation. The
+  // numbers come from wordBandFor() so this rule and requireUsableStoryOutput()
+  // cannot drift apart.
   const lengthRule = isSeriesChapter
-    ? `- **Length:** 600-900 words. This is a series chapter, so it uses the chapter length, not the standalone story length.`
-    : `- **Length:** 500-1200 words maximum. Shorter is better.`;
+    ? `- **Length:** ${band.min}-${band.max} words. This is a series chapter, so it uses the chapter length, not the standalone story length.`
+    : `- **Length:** ${band.min}-${band.max} words maximum. Shorter is better.`;
 
   const endingRule = isOpenChapter
     ? `- **Endings (series chapter):** End the chapter's immediate scene safely. The characters must be out of danger and the reader must feel secure before the chapter closes. The larger story question may stay open, but carry it forward only as a gentle, non-threatening invitation: a friendly curiosity, a plan for tomorrow, a kind mystery, or a small wonder. Never end on peril, threat, betrayal, loss, or distress.
@@ -857,8 +861,16 @@ export function buildStorySystemPrompt(
 function buildStoryPromptBody(params: SystemPromptParams): string {
   const safeGenre = normalizeGenre(params.primaryGenre);
 
+  // One band for the whole prompt, from the same helper requireUsableStoryOutput()
+  // reads. Every length instruction below is rendered from it, so the prompt and
+  // the check cannot state different numbers.
+  const band = wordBandFor(
+    params.storyMode ?? "standalone",
+    params.audienceMode ?? "adult",
+  );
+
   return [
-    buildBaseRules(),
+    buildBaseRules(band),
     buildStoryEngine(),
     buildStoryModeRules(
       params.storyMode,
@@ -871,6 +883,7 @@ function buildStoryPromptBody(params: SystemPromptParams): string {
       params.storyMode,
       params.chapterRole ??
         (params.storyMode === "series" ? "series_opening" : "standalone"),
+      band,
     ),
     buildIdentityLensRules(params.identityLenses),
     buildTropeRules(params.tropeModules),
@@ -932,6 +945,13 @@ export function buildContinuationSystemPrompt(
     });
   }
 
+  // A continuation is always a series chapter, so its band comes from the same
+  // helper the caller passes to generateStoryText().
+  const continuationBand = wordBandFor(
+    "series",
+    params.audienceMode ?? "adult",
+  );
+
   const sharedRules = `
 
 ## Continuation Rules
@@ -943,7 +963,7 @@ You are writing the next chapter of an existing story. Core rules:
 3. Each character's speech pattern must stay consistent with how they spoke in earlier chapters.
 4. The chapter should feel like a natural continuation, as if the same author wrote it on the same day.
 5. Do not summarize previous chapters. Start in the middle of something happening.
-6. Length: 600-900 words for a continuation chapter.`;
+6. Length: ${continuationBand.min}-${continuationBand.max} words for a continuation chapter.`;
 
   if (params.mode === "finale") {
     return `${storyPrompt}
@@ -1022,12 +1042,13 @@ export function buildUserPrompt(params: {
   const seed = params.seed ?? params.topic;
 
   // A series chapter uses the chapter range regardless of audience; kids only
-  // narrows the standalone range.
-  const wordRange = params.storyMode === "series"
-    ? "600-900"
-    : params.audienceMode === "kids"
-    ? "500-1200"
-    : "500-1500";
+  // narrows the standalone range. Both come from wordBandFor(), so the user
+  // prompt states the same numbers as the system prompt and the validator.
+  const band = wordBandFor(
+    params.storyMode === "series" ? "series" : "standalone",
+    params.audienceMode === "kids" ? "kids" : "adult",
+  );
+  const wordRange = `${band.min}-${band.max}`;
 
   parts.push(
     params.storyMode === "series"
