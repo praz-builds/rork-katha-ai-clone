@@ -80,7 +80,7 @@
   "credits": {
     "title": "{{count}} cr\u00e9ditos dispon\u00edveis",
     "heroTitle": "Cr\u00e9ditos criam hist\u00f3rias e cap\u00edtulos",
-    "heroDescription": "Compras e assinaturas sao sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
+    "heroDescription": "Compras e assinaturas são sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
     "history": "Hist\u00f3rico"
   },
   "create": {

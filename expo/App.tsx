@@ -179,10 +179,17 @@ export default function App() {
           onCredits={() => setScreen({ name: "credits" })}
           onPaywall={() => setScreen({ name: "paywall" })}
           onCustomerCenter={() => {
-            revenueCatService.presentCustomerCenter().catch((error) => {
-              Alert.alert("Subscription management unavailable", "Please try again shortly.");
-              console.warn("RevenueCat Customer Center failed:", error);
-            });
+            revenueCatService
+              .presentCustomerCenter()
+              .then((presented) => {
+                // Unavailable on web, or the SDK never configured. Send the user
+                // to the paywall rather than leaving the row doing nothing.
+                if (!presented) setScreen({ name: "paywall" });
+              })
+              .catch((error) => {
+                Alert.alert("Subscription management unavailable", "Please try again shortly.");
+                console.warn("RevenueCat Customer Center failed:", error);
+              });
           }}
         />
       ) : (

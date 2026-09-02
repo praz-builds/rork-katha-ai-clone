@@ -203,12 +203,18 @@ class RevenueCatService {
     }
   }
 
-  async presentCustomerCenter(): Promise<void> {
-    if (Platform.OS === "web" || !this._ready) return;
+  /**
+   * Returns false when the Customer Center cannot be shown at all — web, or the
+   * SDK never configured (no key, activation failed). Callers must handle that,
+   * otherwise the entry point silently does nothing and reads as a dead control.
+   */
+  async presentCustomerCenter(): Promise<boolean> {
+    if (Platform.OS === "web" || !this._ready) return false;
     try {
       await RevenueCatUI.presentCustomerCenter();
+      return true;
     } catch (error) {
-      if (isUserCancelled(error)) return;
+      if (isUserCancelled(error)) return true;
       console.warn("RevenueCat Customer Center failed:", error);
       throw error;
     }
