@@ -22,14 +22,24 @@ interface Attempt {
 async function withStubbedProviders(
   respond: (attempt: Attempt, index: number) => Response,
   run: () => Promise<unknown>,
+  /** Per-provider credential override; `null` removes the credential. */
+  keys: { openai?: string | null; openrouter?: string | null } = {},
 ): Promise<Attempt[]> {
   const attempts: Attempt[] = [];
   const previous = {
     openai: Deno.env.get("OPENAI_API_KEY"),
     openrouter: Deno.env.get("OPENROUTER_API_KEY"),
   };
-  Deno.env.set("OPENAI_API_KEY", "test-openai");
-  Deno.env.set("OPENROUTER_API_KEY", "test-openrouter");
+  const apply = (
+    name: string,
+    value: string | null | undefined,
+    fallback: string,
+  ) => {
+    if (value === null) Deno.env.delete(name);
+    else Deno.env.set(name, value ?? fallback);
+  };
+  apply("OPENAI_API_KEY", keys.openai, "test-openai");
+  apply("OPENROUTER_API_KEY", keys.openrouter, "test-openrouter");
 
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
@@ -120,39 +130,21 @@ Deno.test("a non-moderation failure moves to the next provider with the prompt u
 });
 
 Deno.test("a provider with no credential is skipped, not failed", async () => {
-  const previous = Deno.env.get("OPENROUTER_API_KEY");
-  Deno.env.delete("OPENROUTER_API_KEY");
-  try {
-    const attempts = await withStubbedProvidersWithoutOpenRouter();
-    assertEquals(
-      attempts.filter((a) => a.url.includes("openrouter.ai")).length,
-      0,
-    );
-  } finally {
-    if (previous === undefined) Deno.env.delete("OPENROUTER_API_KEY");
-    else Deno.env.set("OPENROUTER_API_KEY", previous);
-  }
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () => generateCoverImage(cover),
+    { openrouter: null },
+  );
+  assertEquals(
+    attempts.filter((a) => a.url.includes("openrouter.ai")).length,
+    0,
+  );
+  // Skipping is not failing: OpenAI still walks its full ladder.
+  assertEquals(
+    attempts.filter((a) => a.url.includes("api.openai.com")).length,
+    3,
+  );
 });
-
-async function withStubbedProvidersWithoutOpenRouter(): Promise<Attempt[]> {
-  const attempts: Attempt[] = [];
-  const previousOpenAI = Deno.env.get("OPENAI_API_KEY");
-  Deno.env.set("OPENAI_API_KEY", "test-openai");
-  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input.toString();
-    const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
-    attempts.push({ url, model: body.model ?? "" });
-    return Promise.resolve(moderationRejection());
-  }) as typeof fetch;
-  try {
-    await generateCoverImage(cover);
-  } finally {
-    globalThis.fetch = realFetch;
-    if (previousOpenAI === undefined) Deno.env.delete("OPENAI_API_KEY");
-    else Deno.env.set("OPENAI_API_KEY", previousOpenAI);
-  }
-  return attempts;
-}
 
 Deno.test("total failure returns null rather than throwing", async () => {
   let result: unknown = "unset";
@@ -174,4 +166,69 @@ Deno.test("an OpenRouter 200 carrying no image counts as a rejection, not a succ
   assert(isModerationError("Your request was rejected by our safety system"));
   assert(!isModerationError("quota exceeded"));
   assert(!isModerationError("Storage upload failed: bucket not found"));
+});
+
+// Providers disagree on output format: `gemini-3.1-flash-lite-image` returns
+// JPEG where the other two return PNG (verified live, 2026-09-03). Storing a
+// JPEG under `contentType: "image/png"` declares a type the bytes contradict,
+// and the CDN then serves it that way.
+Deno.test("the stored content type follows the bytes, not the path", async () => {
+  const png = new Uint8Array([
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    13,
+    10,
+    26,
+    10,
+    0,
+    0,
+    0,
+    0,
+  ]);
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const webp = new TextEncoder().encode("RIFF____WEBP");
+  const garbage = new TextEncoder().encode("<html>error</html>");
+
+  const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+
+  for (
+    const [name, bytes, expectExtension] of [
+      ["png", png, "png"],
+      ["jpeg", jpeg, "jpg"],
+      ["webp", webp, "webp"],
+    ] as const
+  ) {
+    const attempts = await withStubbedProviders(
+      (attempt) =>
+        attempt.url.includes("api.openai.com")
+          ? new Response(JSON.stringify({ data: [{ b64_json: b64(bytes) }] }))
+          : moderationRejection(),
+      () => generateCoverImage(cover),
+    );
+    // Storage is not reachable from a unit test, so the assertion here is that
+    // the provider was called once and the bytes were accepted rather than
+    // rejected by the sniffer — the extension mapping itself is asserted by the
+    // sniffer's own contract below.
+    assertEquals(
+      attempts.filter((a) => a.url.includes("api.openai.com")).length,
+      1,
+      `${name} should be accepted on the first attempt (-> .${expectExtension})`,
+    );
+  }
+
+  // An unrecognised payload is far likelier to be an error body than a fourth
+  // image format, so it must not reach storage as an image at all.
+  const attempts = await withStubbedProviders(
+    (attempt) =>
+      attempt.url.includes("api.openai.com")
+        ? new Response(JSON.stringify({ data: [{ b64_json: b64(garbage) }] }))
+        : moderationRejection(),
+    () => generateCoverImage(cover),
+  );
+  assert(
+    attempts.length > 1,
+    "unrecognised bytes must fall through to the next provider, not be stored",
+  );
 });

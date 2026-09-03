@@ -39,7 +39,7 @@ export const OPENROUTER_MODEL = "google/gemini-2.5-flash";
  * OpenRouter's catalogue by filtering on `supported_parameters` containing
  * `structured_outputs`. **That metadata is aspirational, not observed.** Every
  * candidate was run against the real `STORY_OUTPUT_JSON_SCHEMA` with
- * `strict: true` and a 16,000-token budget on 2026-09-04:
+ * `strict: true` and a 16,000-token budget on 2026-09-03:
  *
  * | model                                  | result                              |
  * |----------------------------------------|-------------------------------------|

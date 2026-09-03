@@ -234,7 +234,7 @@ export function buildCoverPrompt(
   themes: string[],
   // `description` is optional because the Craft character sheet only requires a
   // Name; characters without one are filtered out below rather than trusted.
-  characters?: { name: string; description?: string }[],
+  characters?: { name: string; description?: string; isHero?: boolean }[],
   /**
    * World and era, from the create flow's where-and-when chip.
    *
@@ -269,15 +269,14 @@ export function buildCoverPrompt(
     // character sheet requires only a Name, so a name-only character used to
     // put the literal string "suggesting undefined" into the prompt.
     const described = characters.filter((c) => c.description?.trim());
-    const hero = described.find((c) =>
-      "isHero" in c ? (c as { isHero: boolean }).isHero : false
-    ) ?? described[0];
-    if (!hero) {
-      // Nothing usable in the cast: fall through to the genre cover.
-    } else if (config.characterApproach === "silhouette") {
+    // No usable description anywhere in the cast leaves `hero` undefined, and
+    // the prompt falls through to the genre cover — a legitimate result, not a
+    // degraded one.
+    const hero = described.find((c) => c.isHero) ?? described[0];
+    if (hero && config.characterApproach === "silhouette") {
       characterNote =
         `. Include a distant silhouetted figure suggesting ${hero.description}`;
-    } else {
+    } else if (hero) {
       characterNote =
         `. Feature a character: ${hero.description}, shown from shoulders up or three-quarter view`;
     }

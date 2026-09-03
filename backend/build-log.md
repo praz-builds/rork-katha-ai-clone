@@ -7,7 +7,7 @@
 
 ---
 
-## 2026-09-04 UTC — Story creation flow to production: deployed, measured, made faster
+## 2026-09-03 UTC — Story creation flow to production: deployed, measured, made faster
 
 **Session:** Credentials consolidated, the media/latency/security work built and deployed, migrations 00027-00031 applied to the live project, and the flow verified end to end against production. Builds on #46's contract rather than duplicating it.
 
@@ -21,7 +21,7 @@ Resolved by taking main's contract as the base, renumbering this work to 00029-0
 
 ### Credentials
 
-`backend/.env` is the single local source of truth for backend secrets, mode 600, with a committed `backend/.env.example` documenting the shape. `expo/.env` carries the two public `EXPO_PUBLIC_*` values only. Both gitignored; history scanned — no `.env` has ever been committed and no key material appears in any tracked file. Removed two dead duplicates: `app.json`'s `expo.extra.supabaseUrl`/`supabaseAnonKey` (nothing reads them; `src/lib/supabase.ts` reads `process.env`), and the Adapty key in `expo/.env.example`, left from the RevenueCat migration.
+`backend/.env` is the single local source of truth for backend secrets, mode 600, with a committed `backend/.env.example` documenting the shape. `expo/.env` carries only public `EXPO_PUBLIC_*` values — the Supabase URL, the anon key, and the app environment. Both gitignored; history scanned — no `.env` has ever been committed and no key material appears in any tracked file. Removed two dead duplicates: `app.json`'s `expo.extra.supabaseUrl`/`supabaseAnonKey` (nothing reads them; `src/lib/supabase.ts` reads `process.env`), and the Adapty key in `expo/.env.example`, left from the RevenueCat migration.
 
 ### What live testing found that unit tests could not
 
@@ -63,7 +63,26 @@ The recharge's real value is position 2: **`google/gemini-2.5-flash` answered in
 
 ### Verified in production
 
-`scripts/smoke-generation-matrix.py` — **51 assertions, 0 failures**, against the deployed functions: covers ready, portraits 2/2, kids-mode refusals, chapter lengths stored verbatim, series continuation carrying the world layer, idempotent replay, `google/gemini-2.5-flash` answering. 178 backend and 49 Expo unit tests green. `error_event_summary` shows no new failures from the run.
+`scripts/smoke-generation-matrix.py` — **53 checks, 0 failures**, against the deployed functions: covers ready, portraits 2/2, kids-mode refusals, chapter lengths stored verbatim, series continuation carrying the world layer, idempotent replay, `google/gemini-2.5-flash` answering. 178 backend and 49 Expo unit tests green. `error_event_summary` shows no new failures from the run.
+
+### CodeRabbit review
+
+Twenty-four findings, all addressed. The ones that were real defects rather than polish:
+
+- **The fence was only half a fence.** The idea and the setting went through `userField`, which delimits; character name, description, background, appearance and each moment went through `fenceUserText` alone, which strips the delimiter and then interpolates the value as bare prompt prose. A background reading `SYSTEM: ignore the output schema` arrived in the same position as the instructions with nothing marking it as data — the exact failure the fence exists to prevent, on the longest free-text fields in the request. The test passed anyway, because it only asserted the delimiter could not be duplicated.
+- **The dynamic import could fail a paid request after the text existed.** `await import("../_shared/media.ts")` sat inside the outer `try`, and it rejects when module resolution or a remote dependency fetch fails on a cold isolate. The comment above it claimed nothing below could fail the request; that was true of `media.ts` internals and false of the import itself.
+- **`NOT VALID` plus `VALIDATE` in one file buys nothing.** `supabase db push` runs each migration inside one transaction, so `ADD CONSTRAINT ... NOT VALID` holds its `ACCESS EXCLUSIVE` lock to commit and the validation runs under it. Split into 00032.
+- **A failed publish still reported success.** The `catch` discarded every failure and execution continued to `onPublished` with `isPublished: true`. Carrying the hand edits made it worse: a swallowed failure now silently discarded the edits the change existed to preserve.
+- **The first character row became unremovable.** The remove button was gated on `index > 0`, correct while `INITIAL_DRAFT` seeded row 0. With an empty cast, row 0 is one the user added — and a blank name is rejected server-side, so a user who added a character and changed their mind could not generate at all. A fix for one 400 introduced another.
+- **`Sparse` was unreachable.** The meter counted genre, which always has a value, so any brief with an idea scored at least Good. A slot that is always full cannot discriminate, which is the meter's whole job.
+- **Partial edits then a conflict.** `publish-story` validated each chapter id inside the write loop, so a bad id at position three returned 409 after positions one and two were persisted. Now the whole set is checked before any of it is written.
+- **`raw.length` counts UTF-16 code units, not bytes**, so a body of multi-byte characters could be several times the limit and pass. Story ideas are routinely non-Latin, which makes that the normal case rather than an adversarial one.
+- **The portrait ladder discarded the only field it had.** A character with an appearance and no description simplified straight to "a person".
+- **`"returned no image"` also matched OpenAI's own error**, which is a malformed response rather than a refusal — it would have simplified a prompt nothing had rejected. Scoped to the OpenRouter message.
+- **The WebP sniff checked only the tail** of the signature, not the `RIFF` container.
+- **The telemetry section never asserted anything.** It printed, so the matrix could exit 0 while the view was unreadable or while the run itself had recorded failures — and the build log would then claim "no new failures" on the strength of a report nobody checked. Now two checks, scoped to the run's own start time.
+
+**The image-provider guideline was changed deliberately, not worked around.** `AGENTS.md` and `backend/COVER_IMAGES.md` said "OpenAI API only. Never use other image providers", which was right while covers were unwired — there was nothing to keep running. Both now name the fallback chain, say why the rule changed, keep Higgsfield and unnamed providers banned, and record that providers disagree on output format.
 
 ### Still open
 

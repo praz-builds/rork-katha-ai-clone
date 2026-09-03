@@ -138,7 +138,10 @@ begin
         ) returning * into v_operation;
     exception
         when unique_violation then
-            -- Rolls back the story insert above with it.
+            -- The `exception` block is a subtransaction: catching here rolls
+            -- back only the failed insert, not the story insert above it. The
+            -- re-raise is what unwinds the whole function, and with it the
+            -- story - so the message matters as much as the rollback.
             raise exception using
                 errcode = 'KTH01',
                 message = 'Generation chapter already reserved';

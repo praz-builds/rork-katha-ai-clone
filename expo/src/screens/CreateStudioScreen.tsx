@@ -240,19 +240,22 @@ function getBriefStrength(draft: StudioDraft): {
     };
   }
 
+  // Genre is deliberately not counted. It always has a value — the draft opens
+  // on "fantasy" — so including it made every brief with an idea score at least
+  // two, and **Sparse was unreachable**. A slot that is always full cannot
+  // discriminate between briefs, and the meter's whole job is to discriminate.
   let filled = 1;
-  if (draft.primaryGenre) filled += 1;
   if (draft.whereAndWhen?.trim()) filled += 1;
   if (draft.characters.some((c) => c.name.trim())) filled += 1;
   if (draft.moments?.length) filled += 1;
 
-  if (filled >= 5) {
+  if (filled >= 4) {
     return { label: "Rich", detail: "Katha has plenty to work with.", filled };
   }
-  if (filled >= 4) {
+  if (filled === 3) {
     return { label: "Strong", detail: "This will sound like yours.", filled };
   }
-  if (filled >= 2) {
+  if (filled === 2) {
     return { label: "Good", detail: "Enough to write from.", filled };
   }
   return {
@@ -735,7 +738,14 @@ export default function CreateStudioScreen({
 
     const updatedChapters = edited.chapters.map((ch) => ({ ...ch, isPublished: true }));
 
-    // Bounded publish — timeout after 15s so the UI never hangs
+    // A failed publish is reported, not swallowed.
+    //
+    // This used to discard every failure — timeout, network, server rejection —
+    // and then call `onPublished` with `isPublished: true` on every chapter, so
+    // the user saw a published story while the server held the original text.
+    // Carrying the hand edits made that strictly worse: a swallowed failure now
+    // discards the edits this change exists to preserve, and the local state
+    // hides it. Publishing is not something to be optimistic about.
     try {
       await Promise.race([
         publishStory(edited.id, {
@@ -745,10 +755,16 @@ export default function CreateStudioScreen({
             content: ch.paragraphs.filter((p) => p.trim()).join("\n\n"),
           })),
         }),
+        // Bounded so the UI never hangs on a stalled request.
         new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000)),
       ]);
     } catch {
-      // Non-blocking — story is saved locally even if publish call fails or times out
+      setStep("review");
+      Alert.alert(
+        "Couldn't publish",
+        "Your story and every edit are still here. Check your connection and try again.",
+      );
+      return;
     }
 
     const publishedStory: Story = {
@@ -1016,7 +1032,7 @@ export default function CreateStudioScreen({
                 styles.seedHint,
                 // Styling only - every state is usable; none blocks Create.
                 briefStrength.filled >= 2 && styles.seedHintWarm,
-                briefStrength.filled >= 4 && styles.seedHintReady,
+                briefStrength.filled >= 3 && styles.seedHintReady,
               ]}>
                 {briefStrength.label
                   ? `${briefStrength.label} — ${briefStrength.detail}`
@@ -1070,14 +1086,18 @@ export default function CreateStudioScreen({
                       placeholderTextColor={colors.tertiary}
                       style={[styles.characterInput, styles.characterNameInput]}
                     />
-                    {index > 0 && (
-                      <Pressable
-                        onPress={() => removeCharacter(index)}
-                        style={styles.removeCharacterBtn}
-                      >
-                        <X size={16} color={colors.muted} />
-                      </Pressable>
-                    )}
+                    {/* Every row is removable. The `index > 0` guard was
+                        correct while INITIAL_DRAFT seeded row 0; now that the
+                        cast starts empty, row 0 is one the user added, and
+                        leaving it unremovable trapped them — a blank name is
+                        rejected server-side, so a user who added a character
+                        and changed their mind could not generate at all. */}
+                    <Pressable
+                      onPress={() => removeCharacter(index)}
+                      style={styles.removeCharacterBtn}
+                    >
+                      <X size={16} color={colors.muted} />
+                    </Pressable>
                   </View>
                   <View style={styles.characterTopRow}>
                     <TextInput

@@ -29,8 +29,10 @@ create index concurrently if not exists idx_stories_curated_ranked
   where is_curated = true;
 
 -- The "for you" rail filters `is_public OR is_curated` and orders by
--- created_at. An OR across two partial indexes cannot use either, so this one
--- is not partial: it has to be able to answer for rows on both sides.
+-- created_at. An OR across the two single-column partial indexes above cannot
+-- use either of them, so this index carries the disjunction in its own
+-- predicate: it is still partial, but partial on both sides at once, which is
+-- what lets the planner match the rail's WHERE clause as a whole.
 create index concurrently if not exists idx_stories_visible_recent
   on public.stories (status, created_at desc)
   where is_public = true or is_curated = true;

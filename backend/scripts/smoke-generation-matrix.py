@@ -35,6 +35,9 @@ SVC = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 KEEP = "--keep" in sys.argv
 
 PASS, FAIL = [], []
+# Stamped before any request, so section 11 can ask "did anything fail during
+# this run" rather than "has anything ever failed".
+run_started_at = None
 
 
 def check(name, cond, detail=""):
@@ -140,9 +143,19 @@ MOMENTS = [
     "Tomás refuses to make the key",
 ]
 
+import datetime
+# "Z", not "+00:00": the plus decodes to a space inside a query string, and
+# PostgREST then rejects the value with 22007.
+run_started_at = (
+    datetime.datetime.now(datetime.timezone.utc)
+    .isoformat()
+    .replace("+00:00", "Z")
+)
+
 print("=" * 74)
 print("SMOKE MATRIX - story generation flow")
 print("=" * 74)
+print(f"run started {run_started_at}")
 
 uid = None
 email = ""
@@ -368,18 +381,40 @@ try:
 
     # ------------------------------------------------------ 11 telemetry check
     print("\n[11] Failures recorded, per the Observability Gate")
-    st, ev = rest("error_event_summary?select=fingerprint,bucket,error_code,occurrences"
-                  "&order=last_seen.desc&limit=10")
-    if st == 200 and isinstance(ev, list) and ev:
-        for row in ev:
+    # Assertions, not decoration.
+    #
+    # This section only printed, so the matrix could exit 0 while the telemetry
+    # view was unreadable or while this very run had recorded failures - and the
+    # build log would then claim "no new failures" on the strength of a report
+    # nobody checked. Both are now checks.
+    #
+    # Scoped by time rather than by a correlation id: `logError` writes
+    # identifiers and enums only, and adding a run key to its context would mean
+    # threading a test concern through production telemetry. The run start is a
+    # tighter filter than it looks - nothing else writes to this project while
+    # the matrix holds its fixture user.
+    st, ev = req("GET",
+                 "/rest/v1/error_events?select=fingerprint,bucket,error_code,occurred_at"
+                 f"&occurred_at=gte.{run_started_at}"
+                 "&order=occurred_at.desc&limit=50",
+                 key=SVC)
+    check("11.1 telemetry is readable",
+          st == 200 and isinstance(ev, list),
+          f"HTTP {st} {str(ev)[:120]}")
+
+    during_run = [e for e in ev if isinstance(e, dict)] if isinstance(ev, list) else []
+    check("11.2 this run recorded no failures", not during_run,
+          "; ".join(f"{e.get('bucket')}/{e.get('error_code')}" for e in during_run[:5]))
+
+    st2, summary = rest("error_event_summary?select=fingerprint,bucket,error_code,occurrences"
+                        "&order=last_seen.desc&limit=8")
+    if st2 == 200 and isinstance(summary, list):
+        print("       historical, for context:")
+        for row in summary:
             if not isinstance(row, dict):
                 continue
             print(f"       {row.get('bucket',''):<20} {row.get('error_code',''):<28} "
                   f"x{row.get('occurrences','?')}  {str(row.get('fingerprint',''))[:12]}")
-    else:
-        # A view that is absent or unreadable is worth saying out loud rather
-        # than crashing the report after every assertion has already passed.
-        print(f"       (no rows; HTTP {st} {str(ev)[:120]})")
 
 finally:
     print("\n[teardown]")

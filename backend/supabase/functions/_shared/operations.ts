@@ -19,6 +19,13 @@ export function parseRequestId(value: unknown): string | null {
  */
 export const MAX_REQUEST_BYTES = 128 * 1024;
 
+const encoder = new TextEncoder();
+
+/** UTF-8 byte length, which is what a size limit actually means. */
+function byteLength(value: string): number {
+  return encoder.encode(value).length;
+}
+
 /**
  * Parse a request body only when it contains a JSON object, and only when it
  * is small enough to be one of ours.
@@ -41,7 +48,12 @@ export async function readJsonObject(
     const raw = await request.text();
     // A chunked or unlabelled body is only measurable once read. Still cheaper
     // than parsing it: this rejects before `JSON.parse` builds an object graph.
-    if (raw.length > maxBytes) return null;
+    //
+    // Measured in bytes, not in `raw.length` - that counts UTF-16 code units,
+    // so a body of multi-byte characters could be several times `maxBytes` and
+    // still pass. Story ideas are routinely non-Latin, which makes this the
+    // normal case rather than an adversarial one.
+    if (byteLength(raw) > maxBytes) return null;
     const value: unknown = JSON.parse(raw);
     return value && typeof value === "object" && !Array.isArray(value)
       ? value as Record<string, unknown>

@@ -44,7 +44,7 @@ Example for "The Vanilla Problem" (`focalY: 0.22`):
 
 ### Model & Output
 
-- **Provider**: OpenAI API only. Never use Higgsfield or other providers.
+- **Provider**: OpenAI `gpt-image-1`, with OpenRouter (`google/gemini-3.1-flash-image`, then `google/gemini-2.5-flash-image`) behind it. **Higgsfield and any provider not named here remain banned.** See `AGENTS.md` for why the single-provider rule changed on 2026-09-03, and note that providers disagree on output format — content type is sniffed from magic bytes rather than assumed.
 - **Model**: `gpt-image-1` (successor to dall-e-3; check available models if this changes).
 - **Output size**: `1024x1536` portrait (2:3 ratio, native book cover format).
 - **Quality**: `"medium"` (balances cost and detail).

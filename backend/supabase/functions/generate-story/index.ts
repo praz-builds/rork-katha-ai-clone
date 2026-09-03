@@ -324,15 +324,29 @@ serve(async (req) => {
       // `image.ts` and the cover-prompt tables, none of which the text path
       // touches, so parsing them on a cold isolate delayed the response by work
       // not needed until this line. By now the chapter is already persisted.
-      const media = await import("../_shared/media.ts");
-      media.runInBackground(media.generateStoryMedia({
-        storyId: story.id,
-        userId: user.id,
-        genre: primaryGenre,
-        title: output.title,
-        themes: output.themes,
-        whereAndWhen,
-      }));
+      //
+      // The import itself is inside the guard, not only what it returns.
+      // `await import()` rejects when module resolution or a remote dependency
+      // fetch fails on a cold isolate, and `media.ts` pulls in `image.ts` and
+      // the cover-prompt tables - the widest dependency graph in this handler.
+      // Unguarded, that rejection reaches the outer catch *after* the chapter
+      // is persisted, and the user loses a generation whose text succeeded.
+      try {
+        const media = await import("../_shared/media.ts");
+        media.runInBackground(media.generateStoryMedia({
+          storyId: story.id,
+          userId: user.id,
+          genre: primaryGenre,
+          title: output.title,
+          themes: output.themes,
+          whereAndWhen,
+        }));
+      } catch (mediaError) {
+        // The story stays at cover_status 'pending', which the client renders
+        // as the concept card. A story without art is a worse story, not a
+        // failed one.
+        console.error("generate-story media scheduling failed:", mediaError);
+      }
 
       return respond({
         story: {

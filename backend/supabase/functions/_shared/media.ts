@@ -43,9 +43,11 @@ export interface StoryMediaInput {
  * Hand work to the platform's background task runner when there is one.
  *
  * `EdgeRuntime.waitUntil` keeps the isolate alive after the response has been
- * flushed. It does not exist under plain `deno test` or `deno run`, so this
- * degrades to awaiting inline rather than throwing - which is also what makes
- * the function testable.
+ * flushed. It does not exist under plain `deno test` or `deno run`; there this
+ * degrades to a detached promise whose rejection is swallowed, **not** to
+ * awaiting inline. Nothing outside an Edge Function guarantees the work
+ * completes, so a caller that needs the result must await the underlying
+ * promise itself rather than relying on this.
  */
 export function runInBackground(work: Promise<unknown>): void {
   const runtime = (globalThis as {

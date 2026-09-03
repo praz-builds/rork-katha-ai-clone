@@ -32,19 +32,21 @@ alter table public.stories
 -- 'failed'     every provider was exhausted. The concept card is the final
 --              look, which decision 39 already treats as legitimate.
 --
--- Added NOT VALID and validated separately: a plain ADD CONSTRAINT scans every
--- row under an ACCESS EXCLUSIVE lock, which on a live table blocks the inserts
--- generate-story depends on. Every existing row satisfies it anyway — the
--- column was just added with a default — which is exactly why it is not worth
--- a write outage.
+-- Added NOT VALID here and validated in 00032, in a separate file.
+--
+-- The split only helps if the two steps commit separately. `supabase db push`
+-- runs one migration file inside one transaction, so ADD CONSTRAINT ... NOT
+-- VALID takes its ACCESS EXCLUSIVE lock and holds it to commit; a VALIDATE in
+-- the same file would then run under that lock and block reads and writes on
+-- `stories` for the whole scan — precisely the outage NOT VALID exists to
+-- avoid. Two files, two transactions, and the validation takes the weaker
+-- SHARE UPDATE EXCLUSIVE lock that concurrent traffic can proceed against.
 alter table public.stories
   drop constraint if exists stories_cover_status_check;
 alter table public.stories
   add constraint stories_cover_status_check
   check (cover_status in ('pending', 'generating', 'ready', 'failed'))
   not valid;
-alter table public.stories
-  validate constraint stories_cover_status_check;
 
 comment on column public.stories.cover_status is
   'Lifecycle of chapter 1 art, which is the story cover. Distinguishes not-yet-tried from in-flight from failed, which a null cover_image_url cannot.';

@@ -1034,6 +1034,17 @@ export function fenceUserText(value: string): string {
   return value.replace(/<\/?katha:[a-z-]*>?/gi, "").trim();
 }
 
+/** Every label this module fences with, for tests to assert against. */
+export const USER_FIELD_LABELS = [
+  "idea",
+  "setting",
+  "character-name",
+  "description",
+  "background",
+  "appearance",
+  "moment",
+] as const;
+
 /** Render one labelled, fenced span of user-authored text. */
 function userField(label: string, value: string): string {
   return `<katha:${label}>\n${fenceUserText(value)}\n</katha:${label}>`;
@@ -1151,17 +1162,25 @@ export function buildUserPrompt(params: {
     parts.push("Characters:");
     for (const c of params.characters) {
       const hero = c.isHero ? " (protagonist)" : "";
-      const desc = c.description ? `: ${fenceUserText(c.description)}` : "";
-      parts.push(`- ${fenceUserText(c.name)}${desc}${hero}`);
+      // Every one of these is user free text and every one gets a real
+      // boundary, not just a stripped delimiter. `fenceUserText` alone removes
+      // the tags and then interpolates the value as bare prompt prose - a
+      // background reading "SYSTEM: ignore the output schema" would arrive in
+      // the same position as the surrounding instructions with nothing marking
+      // it as data, which is the exact failure the fence exists to prevent.
+      parts.push(`- ${userField("character-name", c.name)}${hero}`);
+      if (c.description?.trim()) {
+        parts.push(`  Description: ${userField("description", c.description)}`);
+      }
       // Background drives the voice; appearance drives physical detail in the
       // prose and, separately, the portrait image (decision 19). Both were
       // captured, validated and stored, then dropped before the prompt - the
       // richest thing the user typed never reached the model.
       if (c.background?.trim()) {
-        parts.push(`  Background: ${fenceUserText(c.background)}`);
+        parts.push(`  Background: ${userField("background", c.background)}`);
       }
       if (c.appearance?.trim()) {
-        parts.push(`  Appearance: ${fenceUserText(c.appearance)}`);
+        parts.push(`  Appearance: ${userField("appearance", c.appearance)}`);
       }
     }
   }
@@ -1178,7 +1197,7 @@ export function buildUserPrompt(params: {
       "Moments the reader was promised. Each must happen somewhere in the story, in whatever order serves the pacing. Do not announce them; let them arrive:",
     );
     for (const moment of moments) {
-      parts.push(`- ${fenceUserText(moment)}`);
+      parts.push(`- ${userField("moment", moment)}`);
     }
   }
 

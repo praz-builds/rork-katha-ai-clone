@@ -114,34 +114,45 @@ serve(async (req) => {
       if (error) throw error;
     }
 
-    for (const chapter of edits.chapters) {
-      const wordCount = chapter.content.trim().split(/\s+/).filter(Boolean)
-        .length;
-      const { data: updated, error } = await serviceClient
+    // Every chapter id is checked to belong to this story *before* any of them
+    // is written. Validating inside the write loop meant a bad id at position
+    // three returned 409 after positions one and two were already persisted -
+    // a partially-edited story that was then not published, which is the worst
+    // of both outcomes. One extra read buys all-or-nothing.
+    if (edits.chapters.length > 0) {
+      const { data: owned, error: ownedError } = await serviceClient
         .from("chapters")
-        .update({ content: chapter.content, word_count: wordCount })
-        .eq("id", chapter.id)
-        // Scoped to this story as well as this id. The id came from the
-        // request body, and ownership was verified for the story, not for an
-        // arbitrary chapter id a caller might substitute.
+        .select("id")
         .eq("story_id", storyId)
-        .select("id");
-      if (error) throw error;
-      // A predicate that matches nothing is not an error to PostgREST, so
-      // without this check a stale or mistyped chapter id would update zero
-      // rows, report success, and publish the original text - which is exactly
-      // the failure this whole edits path exists to prevent. Refuse rather than
-      // publish content the user did not approve.
-      if (!updated?.length) {
+        .in("id", edits.chapters.map((c) => c.id));
+      if (ownedError) throw ownedError;
+
+      const ownedIds = new Set((owned ?? []).map((c) => c.id as string));
+      const foreign = edits.chapters.find((c) => !ownedIds.has(c.id));
+      if (foreign) {
         return respond(
           {
             error:
               "One of the chapters to save does not belong to this story. Nothing was published.",
-            chapter_id: chapter.id,
+            chapter_id: foreign.id,
           },
           409,
         );
       }
+    }
+
+    for (const chapter of edits.chapters) {
+      const wordCount = chapter.content.trim().split(/\s+/).filter(Boolean)
+        .length;
+      const { error } = await serviceClient
+        .from("chapters")
+        .update({ content: chapter.content, word_count: wordCount })
+        .eq("id", chapter.id)
+        // Still scoped to the story as well as the id: the ownership check
+        // above and this predicate are not redundant, because a chapter could
+        // be deleted between the two.
+        .eq("story_id", storyId);
+      if (error) throw error;
     }
 
     if (edits.chapters.length > 0) {

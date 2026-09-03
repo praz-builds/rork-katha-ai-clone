@@ -39,12 +39,18 @@ Deno.test("a described character is preferred over a name-only one", () => {
   assert(prompt.includes("a historical restorer, 34"));
 });
 
-Deno.test("an empty-string description is treated as no description", () => {
-  const prompt = buildCoverPrompt("mystery", "The Empty House", [], [
-    { name: "Elena", description: "   " },
-  ]);
-  assert(!prompt.includes("silhouetted figure"));
-  assert(!prompt.includes("Feature a character"));
+Deno.test("a blank description is treated as no description", () => {
+  for (const description of ["", "   ", "\n"]) {
+    const prompt = buildCoverPrompt("mystery", "The Empty House", [], [
+      { name: "Elena", description },
+    ]);
+    assert(!prompt.includes("silhouetted figure"), JSON.stringify(description));
+    assert(
+      !prompt.includes("Feature a character"),
+      JSON.stringify(description),
+    );
+    assert(!prompt.includes("undefined"), JSON.stringify(description));
+  }
 });
 
 // Decision 53 — this is what stops every mystery cover being the same doorway.

@@ -258,11 +258,19 @@ function buildPortraitPrompt(
   // The ladder drops the free-text fields in the order they are likely to have
   // caused a rejection: appearance carries the physical detail, description the
   // role. Level 2 keeps only the role, which is rarely rejectable.
+  // The ladder drops fields in the order most likely to have caused a
+  // rejection - appearance carries the physical detail, description the role -
+  // but it must never drop the *only* field there is. A character with an
+  // appearance and no description would otherwise simplify straight to "a
+  // person" and be drawn as a stranger, which is worse than no portrait.
+  const primary = description || appearance;
+  const secondary = description ? appearance : "";
+
   const parts = safetyLevel === 0
-    ? [description, appearance]
+    ? [primary, secondary]
     : safetyLevel === 1
-    ? [description]
-    : [description.split(/[,.]/)[0] ?? "a person"];
+    ? [primary]
+    : [primary.split(/[,.]/)[0] || "a person"];
 
   const subject = parts.filter(Boolean).join(". ") || "a person";
 
@@ -554,7 +562,7 @@ function decodeBase64(b64: string): Uint8Array {
  * Identify the image from its magic bytes, not from what we asked for.
  *
  * Providers do not all return what the path extension claims. Verified live on
- * 2026-09-04: `gemini-3.1-flash-image` and `gemini-2.5-flash-image` return PNG,
+ * 2026-09-03: `gemini-3.1-flash-image` and `gemini-2.5-flash-image` return PNG,
  * but `gemini-3.1-flash-lite-image` returns **JPEG** for the identical request.
  * Uploading a JPEG under `contentType: "image/png"` stores a file whose declared
  * type is a lie — the CDN then serves it with the wrong `Content-Type`, and any
@@ -573,9 +581,15 @@ function sniffImageType(
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8) {
     return { contentType: "image/jpeg", extension: "jpg" };
   }
+  // WEBP at offset 8 is only half the signature: the container is RIFF, and
+  // checking the tail alone would accept any 12-byte payload that happened to
+  // contain those four characters in that position.
   if (
-    bytes.length >= 12 && bytes[8] === 0x57 && bytes[9] === 0x45 &&
-    bytes[10] === 0x42 && bytes[11] === 0x50
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 &&
+    bytes[11] === 0x50
   ) {
     return { contentType: "image/webp", extension: "webp" };
   }
@@ -620,7 +634,12 @@ export function isModerationError(message: string): boolean {
     "unsafe content",
     "blocked",
     "prohibited",
-    "returned no image",
+    // OpenRouter signals a refusal as a normal 200 with text and no image, so
+    // this phrase is how that provider says "content policy". It is scoped to
+    // the exact message `generateWithOpenRouter` throws: OpenAI's own
+    // "returned no image data" is a malformed response, not a refusal, and
+    // treating it as one would simplify a prompt that was never rejected.
+    "openrouter returned no image",
   ].some((marker) => lower.includes(marker));
 }
 
