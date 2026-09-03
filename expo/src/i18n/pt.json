@@ -79,8 +79,8 @@
   },
   "credits": {
     "title": "{{count}} cr\u00e9ditos dispon\u00edveis",
-    "heroTitle": "1 cr\u00e9dito cria 1 hist\u00f3ria ou cap\u00edtulo",
-    "heroDescription": "Compras, recompensas e assinaturas serao sincronizadas com Supabase e Adapty apos a fase de dev-client nativo.",
+    "heroTitle": "Cr\u00e9ditos criam hist\u00f3rias e cap\u00edtulos",
+    "heroDescription": "Compras e assinaturas são sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
     "history": "Hist\u00f3rico"
   },
   "create": {

@@ -18,7 +18,23 @@ pnpm install
 pnpm start
 ```
 
-Scan the QR code with Expo Go.
+Expo Go is suitable only for mock/UI review. RevenueCat uses native modules, so
+Expo Go cannot validate purchases, restores, Paywalls, or Customer Center.
+
+## Native RevenueCat development build
+
+```bash
+# Build and install a native development client (first time, or after native changes)
+eas build --profile development --platform ios
+eas build --profile development --platform android
+
+# Start Metro for the installed development client
+pnpm exec expo start --dev-client
+```
+
+The development profile uses the RevenueCat Test Store. Preview and production
+builds intentionally remain unconfigured until the real `appl_`/`goog_` public
+SDK keys are issued.
 
 Use `.env.example` to create `.env.local` when wiring real Supabase calls:
 
@@ -27,7 +43,7 @@ EXPO_PUBLIC_SUPABASE_URL=https://iafeuxgoiknncgyjmugd.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-The app runs in mock-first mode when the key is missing. Supabase authentication, native notification permission, and Adapty purchases remain explicit integration boundaries documented in `BUILD_LOG.md`.
+The app runs in mock-first mode when the key is missing. Supabase authentication, native notification permission, and RevenueCat purchases remain explicit integration boundaries documented in `BUILD_LOG.md`.
 
 ## Checks
 

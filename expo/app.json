@@ -20,7 +20,6 @@
         }
       ],
       "expo-tracking-transparency",
-      "react-native-adapty",
       [
         "expo-updates",
         {

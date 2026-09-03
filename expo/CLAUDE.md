@@ -34,12 +34,12 @@ After onboarding or paywall changes:
 
 ## Product integration boundaries
 
-- Email/OTP, notification permission, subscriptions, restores, and offer purchases are currently UI handoff points. Keep their callbacks explicit so Supabase, Adapty, and native notification wiring can replace the local transitions cleanly.
+- Email/OTP, notification permission, subscriptions, restores, and offer purchases are currently UI handoff points. Keep their callbacks explicit so Supabase, RevenueCat, and native notification wiring can replace the local transitions cleanly.
 - Notification education currently advances to the paywall from any tap. Background taps and `Not now` continue with consent unset/false. `Allow` is where the real Apple/Android permission request must be inserted; only a granted native response may set consent true, then continue to the paywall.
 - The notification review rail auto-scrolls and remains horizontally draggable.
 - Keep email/OTP after the paywall action or first meaningful save; do not reintroduce mandatory authentication before personalization and value delivery.
 - `KathaOnboardingFlowV2` emits the collected onboarding result through `onDone`; persist that payload when account/profile wiring is added.
-- Do not hard-code localized production pricing when Adapty integration begins. Render product and currency values from the store payload.
+- Do not hard-code localized production pricing when RevenueCat integration begins. Render product and currency values from the store payload.
 
 ## Navigation architecture (2026-08-23)
 
@@ -51,11 +51,11 @@ After onboarding or paywall changes:
 
 ## Production infrastructure (2026-08-23)
 
-- All SDK initialization runs in App.tsx useEffect: `initSentry()`, `initPostHog()`, `initAdapty()`, `setupAndroidChannel()`.
+- All SDK initialization runs in App.tsx useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`.
 - API keys are read from `Constants.expoConfig.extra` (configured in app.json, populated via env vars or EAS secrets). Convert to `app.config.ts` to map `EXPO_PUBLIC_*` env vars before production.
 - Firebase requires `google-services.json` in `expo/` and `@react-native-firebase/app` in app.json plugins with `android.googleServicesFile` path set.
 - `src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
-- `src/lib/adapty.ts`: Adapty v4. Use `getPaywallProducts()` and `purchaseProduct()`.
+- `src/lib/revenuecat.ts`: RevenueCat Purchases with offerings/packages, managed paywalls, and Customer Center.
 - `src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.
 - `src/lib/firebase-analytics.ts`: Firebase Analytics with safe dynamic imports. Use `AppEvents.*` helpers.
 - `src/lib/tracking-transparency.ts`: iOS ATT. Call `requestTrackingPermission()` before analytics.
@@ -65,12 +65,12 @@ After onboarding or paywall changes:
 ## Audio narration system (2026-08-25)
 
 - Using MiniMax Speech 02 HD public endpoint (`minimax-speech-02-hd`) on RunPod. No custom deployment.
-- 2 voices per language at launch: Aria+Kai (EN), Elvira+Alvaro (ES). 4 more EN voices reserved for Premium Voices.
+- 2 voices per language at launch: Aria+Kai (EN), Elvira+Alvaro (ES). 4 more EN voices planned. **No voice tiers** — every voice is available on every tier including free (`CREDITS_AND_PRICING.md` decision 5).
 - Audio generated at publish time (both voices), cached permanently in Supabase Storage bucket `audio`.
 - Language routing: EN to RunPod, ES to edge-tts (placeholder). The `generate-audio` endpoint accepts `language` in the request body; callers must pass it explicitly.
 - Storage path: `{story_id}/{chapter_id}/{voice_id}.mp3`. Public read, service role upload.
 - Reader shows voice toggle (female/male names from `getDefaultVoices(lang)`).
-- Free users: 1 credit to unlock audio. Paid users: included.
+- Audio is **1 credit per chapter, unlocked permanently**, on every tier. Re-listens are free forever. No voice tiers. See `CREDITS_AND_PRICING.md` §1.
 - Inngest integration for auto-generation on publish is planned but not yet wired. Currently `generate-audio` is called directly.
 
 ## Session handoff

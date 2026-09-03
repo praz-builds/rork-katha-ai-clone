@@ -79,8 +79,8 @@
   },
   "credits": {
     "title": "{{count}} credits available",
-    "heroTitle": "1 credit creates 1 story or chapter",
-    "heroDescription": "Purchases, rewards, and subscriptions will sync through Supabase and Adapty after the native dev-client phase.",
+    "heroTitle": "Credits create stories and chapters",
+    "heroDescription": "Purchases and subscriptions sync through Supabase and RevenueCat in native development builds.",
     "history": "History"
   },
   "create": {

@@ -9,6 +9,7 @@ type CreditDatabase = {
           user_id: string;
           balance_after: number;
           created_at: string;
+          ledger_sequence: number;
         };
         Insert: never;
         Update: never;
@@ -37,13 +38,30 @@ type CreditDatabase = {
         };
         Returns: number;
       };
+      refresh_subscription_grant: {
+        Args: {
+          p_user_id: string;
+          p_amount: number;
+          p_reference_id: string;
+          p_operation_key: string;
+        };
+        Returns: number;
+      };
+      lapse_credits: {
+        Args: {
+          p_user_id: string;
+          p_reference_id: string;
+          p_operation_key: string;
+        };
+        Returns: number;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
 };
 
-export type CreditDeductionReason = "generation";
+export type CreditDeductionReason = "generation" | "chargeback";
 export type CreditGrantReason =
   | "purchase"
   | "subscription"
@@ -69,7 +87,7 @@ export async function getBalance(
     .select("balance_after")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
+    .order("ledger_sequence", { ascending: false })
     .limit(1)
     .single();
 
@@ -102,8 +120,8 @@ export async function deductCredit(
     if (error.message.includes("Insufficient credits")) {
       throw new Error("Insufficient credits");
     }
-    if (error.message.includes("Duplicate credit operation")) {
-      throw new Error("Duplicate credit operation");
+    if (isDuplicateCreditOperationError(error)) {
+      throw new DuplicateCreditOperationError();
     }
     throw new Error(`Failed to deduct credit: ${error.message}`);
   }
@@ -130,6 +148,66 @@ export async function grantCredit(
     p_operation_key: operationKey,
   });
 
-  if (error) throw new Error(`Failed to grant credit: ${error.message}`);
+  if (error) {
+    if (isDuplicateCreditOperationError(error)) throw new DuplicateCreditOperationError();
+    throw new Error(`Failed to grant credit: ${error.message}`);
+  }
+  return data as number;
+}
+
+/** Replace, rather than add to, the renewable subscription-grant bucket. */
+export async function refreshSubscriptionGrant(
+  supabase: SupabaseClient<CreditDatabase>,
+  userId: string,
+  amount: number,
+  referenceId: string,
+  operationKey: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("refresh_subscription_grant", {
+    p_user_id: userId,
+    p_amount: amount,
+    p_reference_id: referenceId,
+    p_operation_key: operationKey,
+  });
+  if (error) {
+    if (isDuplicateCreditOperationError(error)) throw new DuplicateCreditOperationError();
+    throw new Error(`Failed to refresh subscription grant: ${error.message}`);
+  }
+  return data as number;
+}
+
+/** A concurrent or redelivered payment operation was already recorded. */
+export class DuplicateCreditOperationError extends Error {
+  constructor() {
+    super("Duplicate credit operation");
+    this.name = "DuplicateCreditOperationError";
+  }
+}
+
+export function isDuplicateCreditOperationError(error: unknown): boolean {
+  if (error instanceof DuplicateCreditOperationError) return true;
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown };
+  const message = [candidate.message, candidate.details]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  return candidate.code === "23505" ||
+    message.includes("Duplicate credit operation") ||
+    (/duplicate key/i.test(message) && /operation_key/i.test(message));
+}
+
+/** Atomically zero every credit bucket at subscription lapse. */
+export async function lapseCredits(
+  supabase: SupabaseClient<CreditDatabase>,
+  userId: string,
+  referenceId: string,
+  operationKey: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("lapse_credits", {
+    p_user_id: userId,
+    p_reference_id: referenceId,
+    p_operation_key: operationKey,
+  });
+  if (error) throw new Error(`Failed to lapse credits: ${error.message}`);
   return data as number;
 }

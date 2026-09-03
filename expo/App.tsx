@@ -2,7 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initSentry, initPostHog } from "@/lib/analytics";
-import { initAdapty } from "@/lib/adapty";
+import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { setupAndroidChannel } from "@/lib/notifications";
 import {
   ActivityIndicator,
@@ -61,6 +61,15 @@ import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
+import type { KathaOnboardingResult } from "@/screens/KathaOnboardingFlowV2";
+
+const GENRE_BY_LABEL = Object.fromEntries(
+  Object.entries(genreLabels).map(([key, label]) => [label.toLowerCase(), key as Genre])
+) as Record<string, Genre>;
+
+/** Onboarding stores display labels; the app keys everything by Genre. */
+const toGenreKeys = (labels: string[] | undefined): Genre[] =>
+  (labels ?? []).map((label) => GENRE_BY_LABEL[label.trim().toLowerCase()]).filter(Boolean as unknown as (g: Genre | undefined) => g is Genre);
 
 type LibrarySegment = "saved" | "history" | "myStories" | "comments";
 
@@ -70,6 +79,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>("home");
   const [credits, setCredits] = useState(3);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
+  const [onboarding, setOnboarding] = useState<KathaOnboardingResult | null>(null);
 
   useEffect(() => {
     Font.loadAsync({
@@ -84,7 +94,7 @@ export default function App() {
   useEffect(() => {
     initSentry();
     initPostHog();
-    initAdapty();
+    initRevenueCat();
     setupAndroidChannel();
   }, []);
 
@@ -99,6 +109,10 @@ export default function App() {
   }
 
   const openStory = (storyId: string) => setScreen({ name: "reader", storyId });
+  const finishOnboarding = (result: KathaOnboardingResult) => {
+    setOnboarding(result);
+    goTabs("home");
+  };
   const goTabs = (nextTab: TabKey = tab) => {
     setTab(nextTab);
     setScreen({ name: "tabs" });
@@ -110,6 +124,7 @@ export default function App() {
         return (
           <HomeScreen
             credits={credits}
+            preferredGenres={toGenreKeys(onboarding?.genres)}
             generatedStories={generatedStories}
             stories={allStories}
             onStory={openStory}
@@ -146,9 +161,9 @@ export default function App() {
     <ScreenScaffold>
       <StatusBar style="dark" />
       {screen.name === "intro" ? (
-        <KathaOnboardingComplete onDone={() => goTabs("home")} onSignIn={() => goTabs("home")} />
+        <KathaOnboardingComplete onDone={finishOnboarding} onSignIn={() => setScreen({ name: "onboarding" })} />
       ) : screen.name === "onboarding" ? (
-        <KathaOnboardingFlowV2 onDone={() => goTabs("home")} />
+        <KathaOnboardingFlowV2 initialScreen="email" onDone={finishOnboarding} />
       ) : screen.name === "reader" ? (
         <ReaderScreen story={allStories.find((story) => story.id === screen.storyId) ?? allStories[0]} onBack={() => goTabs(tab)} />
       ) : screen.name === "author" ? (
@@ -156,13 +171,26 @@ export default function App() {
       ) : screen.name === "credits" ? (
         <CreditsScreen credits={credits} onBack={() => goTabs(tab)} />
       ) : screen.name === "paywall" ? (
-        <KathaOnboardingFlowV2 initialScreen="paywall" onDone={() => goTabs("home")} />
+        <KathaOnboardingFlowV2 initialScreen="paywall" onDone={finishOnboarding} />
       ) : screen.name === "profile" ? (
         <ProfileScreen
           credits={credits}
           onBack={() => goTabs(tab)}
           onCredits={() => setScreen({ name: "credits" })}
           onPaywall={() => setScreen({ name: "paywall" })}
+          onCustomerCenter={() => {
+            revenueCatService
+              .presentCustomerCenter()
+              .then((presented) => {
+                // Unavailable on web, or the SDK never configured. Send the user
+                // to the paywall rather than leaving the row doing nothing.
+                if (!presented) setScreen({ name: "paywall" });
+              })
+              .catch((error) => {
+                Alert.alert("Subscription management unavailable", "Please try again shortly.");
+                console.warn("RevenueCat Customer Center failed:", error);
+              });
+          }}
         />
       ) : (
         <>
@@ -182,7 +210,8 @@ function HomeScreen({
   stories: allStories,
   onStory,
   onProfile,
-  onCreate
+  onCreate,
+  preferredGenres = []
 }: {
   credits: number;
   generatedStories: Story[];
@@ -190,6 +219,7 @@ function HomeScreen({
   onStory: (id: string) => void;
   onProfile: () => void;
   onCreate: () => void;
+  preferredGenres?: Genre[];
 }) {
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState<Genre | "all">("all");
@@ -208,8 +238,8 @@ function HomeScreen({
 
   const showFiltered = query.trim().length > 0 || genre !== "all";
 
-  // Mock onboarding genres — Adventure, Mystery, Fantasy
-  const onboardingGenres: Genre[] = ["adventure", "mystery", "fantasy"];
+  // Genres the user picked during onboarding. Falls back for users who skipped it.
+  const onboardingGenres: Genre[] = preferredGenres.length > 0 ? preferredGenres : ["adventure", "mystery", "fantasy"];
   const genreRows = onboardingGenres
     .map((g) => ({ genre: g, stories: allStories.filter((s) => s.genre === g) }))
     .filter((row) => row.stories.length > 0);
@@ -431,12 +461,14 @@ function ProfileScreen({
   credits,
   onBack,
   onCredits,
-  onPaywall
+  onPaywall,
+  onCustomerCenter
 }: {
   credits: number;
   onBack: () => void;
   onCredits: () => void;
   onPaywall: () => void;
+  onCustomerCenter: () => void;
 }) {
   const settingsRows = [
     ["Notifications", "Chapter alerts and streak nudges", Bell],
@@ -491,7 +523,7 @@ function ProfileScreen({
         {/* Settings rows */}
         <View style={styles.settingsList}>
           {settingsRows.map(([title, subtitle, Icon]) => {
-            const handler = title === "Katha Plus" ? onPaywall : () => Alert.alert("Coming soon", `${title} will be available soon.`);
+            const handler = title === "Katha Plus" ? onCustomerCenter : () => Alert.alert("Coming soon", `${title} will be available soon.`);
             return (
               <Pressable key={title} onPress={handler} accessibilityRole="button" style={styles.settingsRow}>
                 <View style={styles.settingsIcon}>
@@ -946,8 +978,8 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
         <Text style={styles.h1}>{credits} credits available</Text>
         <View style={styles.creditHero}>
           <Sparkles size={32} color={colors.accent} />
-          <Text style={styles.creditHeroTitle}>1 credit creates 1 story or chapter</Text>
-          <Text style={styles.creditHeroText}>Purchases, rewards, and subscriptions will sync through Supabase and Adapty after the native dev-client phase.</Text>
+          <Text style={styles.creditHeroTitle}>Credits create stories and chapters</Text>
+          <Text style={styles.creditHeroText}>One credit each for the text, its cover and its characters. Audio is 1 credit per chapter, unlocked forever. Reading is always free.</Text>
         </View>
         <SectionHeader title="History" />
         {ledger.map((entry) => (
