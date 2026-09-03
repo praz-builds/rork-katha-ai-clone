@@ -452,9 +452,23 @@ with `motion.base` cross-fade, no model, no cost. Announce **Opening changed to
 
 Try another is quiet `colors.muted` text with `spacing.huge` hit area. It advances
 through ordered variants, never shuffles, never returns rejected concept during
-session, has no counter, limit, or cost, and replays full choreography. Back from
+session, has **no counter and no cost**, and replays full choreography. Back from
 W3, or back to W1 without idea or Shape change, returns the exact concept, name,
 and opening. Quiet reshuffle is forbidden.
+
+**Exhaustion.** The variants are finite — a bundled starter has at least two, and
+the typed path returns one concept per call — so the control *does* run out, and
+the three prohibitions above decide what happens when it does. It may not repeat
+a rejected concept, it may not shuffle, and §16 forbids a second model call. The
+only remaining behaviour is therefore forced rather than chosen: **when the last
+variant is shown, Try another disappears.** No disabled state, no counter, no
+"that's all" toast — the control is simply not rendered, exactly as it is not
+rendered when a starter has one variant.
+
+The way back to new concepts is the idea box, which is where the user has the
+most control anyway: editing the idea or changing Shape re-enters W2 with a new
+ordered set and restores the control. *(This resolves the contract's "no limit"
+wording, which was true of counters and cost but never of the supply.)*
 
 **Instrumentation:** `onboarding_blueprint_wait_shown { idea_source, shape }`;
 `onboarding_blueprint_ready { concept_source: library|model|fallback,
