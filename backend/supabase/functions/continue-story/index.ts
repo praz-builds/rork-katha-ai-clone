@@ -27,6 +27,7 @@ import {
   type IdentityLens,
   type SpiceLevel,
   type TropeModule,
+  wordBandFor,
 } from "../_shared/types.ts";
 
 serve(async (req) => {
@@ -265,7 +266,13 @@ serve(async (req) => {
       }\n\nPrevious chapters:\n${previousText}${earliestContext}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
 
     try {
-      const result = await generateStoryText(systemPrompt, userPrompt);
+      // A continuation is always a series chapter, so it uses the chapter band
+      // regardless of audience.
+      const result = await generateStoryText(
+        systemPrompt,
+        userPrompt,
+        wordBandFor("series", audienceMode),
+      );
       const output = parseStructuredOutput(
         result.text,
         `Chapter ${nextChapterNum}`,

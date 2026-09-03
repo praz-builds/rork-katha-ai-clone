@@ -362,3 +362,55 @@ export const EMPTY_SERIES_STATE: SeriesState = {
   character_changes: [],
   next_chapter_pressure: "",
 };
+
+/**
+ * The chapter length contract, in one place.
+ *
+ * The prompt states this band and the provider chain enforces it. Before both
+ * read from here the band lived only in prose inside the prompt, nothing checked
+ * the result, and a model that ignored the ceiling reached the database: a
+ * `gpt-5-mini` chapter came back at 2,026 words against a 500-1500 band and was
+ * persisted and charged for. Over-length chapters distort reading-time
+ * estimates, narration cost, and the reader UI.
+ *
+ * A series chapter uses the chapter range whatever the audience; `kids` only
+ * narrows the standalone range.
+ */
+export interface WordBand {
+  min: number;
+  max: number;
+}
+
+export function wordBandFor(
+  storyMode: StoryMode,
+  audienceMode: AudienceMode,
+): WordBand {
+  if (storyMode === "series") return { min: 600, max: 900 };
+  if (audienceMode === "kids") return { min: 500, max: 1200 };
+  return { min: 500, max: 1500 };
+}
+
+/**
+ * How far past the stated band a generation may drift before it is rejected.
+ *
+ * The band is a writing instruction, not a hard contract a model can hit
+ * exactly, so enforcing it literally would throw away good stories. These
+ * bounds catch runaway generation only - the observed 2,026-word failure
+ * against a 1,500 ceiling sits well outside 1.25x, while the natural spread
+ * seen in production (846-1,353 words on a 500-1,500 band, 905-945 on a
+ * 600-900 band) sits comfortably inside.
+ */
+export const WORD_BAND_FLOOR_TOLERANCE = 0.75;
+export const WORD_BAND_CEILING_TOLERANCE = 1.25;
+
+export function wordBandBounds(band: WordBand): WordBand {
+  return {
+    min: Math.floor(band.min * WORD_BAND_FLOOR_TOLERANCE),
+    max: Math.ceil(band.max * WORD_BAND_CEILING_TOLERANCE),
+  };
+}
+
+/** Counted the way every persistence path counts it. */
+export function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}

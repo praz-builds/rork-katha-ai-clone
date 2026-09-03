@@ -7,6 +7,72 @@
 
 ---
 
+## 2026-09-02 UTC — The prompt reads the word band instead of restating it
+
+**Session:** CodeRabbit review follow-up on the word-band work below. `wordBandFor()` was described as the single source of truth, but `story-prompts.ts` still carried four independent copies of the numbers, so the prompt and the validator could drift apart in exactly the way the helper was introduced to prevent.
+
+### What changed
+
+Every length instruction the model reads is now rendered from `wordBandFor()`:
+
+| Site | Was | Now |
+| --- | --- | --- |
+| `buildBaseRules()` | `500-1500 words` | `${band.min}-${band.max} words` |
+| `buildAudienceModeRules()` (Kids) | `600-900` / `500-1200` | the band for that mode |
+| Continuation rules | `600-900 words` | the series band |
+| `buildUserPrompt()` | three literal ranges | the band for that mode |
+
+`buildStoryPromptBody()` resolves the band once and passes it down, so a single call decides what the whole prompt says. This also removes a live bug: a kids **standalone** prompt previously stated `500-1500` in its Hard Rules and `500-1200` in its Kids Mode block, giving the model two different ceilings in one prompt.
+
+### Why it matters beyond the review
+
+Chapter length becomes a user-facing control (Short / Standard / Long) in the create-flow rebuild. With the numbers centralised, that is a change to one function; with four string literals it would have been four chances to ship a prompt that contradicts the validator.
+
+### Two inline findings, both real
+
+**The Kids Mode length rule fought its own minimum.** It read `500-1200 words maximum. Shorter is better.` — an instruction to undershoot, sitting next to a floor of 500. A generation below 0.75x that floor is rejected by `requireUsableStoryOutput()` and burns a provider fallback, so the sentence was buying failed generations. It now reads `500-1200 words. Aim for the lower half of that range, but never go under 500.`, which keeps the brevity Kids Mode wants and the floor the validator enforces.
+
+An existing test pinned the old sentence verbatim. It now asserts the band rather than the wording around it, which is what its name always claimed.
+
+**`AGENTS.md` and `BUILD_LOG.md` both said covers use DALL·E 3.** `_shared/image.ts` requests `gpt-image-1`. Corrected in both.
+
+### Validation
+
+- 136 Deno tests pass on this branch merged with main, including five new ones: four assert the prompt quotes `wordBandFor()` for every mode combination and that a kids prompt never leaks the adult ceiling, and one pins the Kids Mode floor against the instruction that used to contradict it.
+- `deno check` clean across every edge function; `deno fmt --check` clean on the CI file list.
+
+---
+
+## 2026-09-01 UTC — Closed the two open risks from the provider migration
+
+**Session:** Enforced the chapter word band server-side and split the story-generation credential from the cover credential. Both were carried as known risks out of the Luna work; both are now closed on the code side.
+
+### The word band is enforced, not just requested
+
+`wordBandFor()` in `_shared/types.ts` is the single source of truth — `600-900` for a series chapter whatever the audience, `500-1200` standalone kids, `500-1500` standalone adult. The prompt builder and `requireUsableStoryOutput()` both read it, so the instruction and the check can no longer drift apart.
+
+- The count comes from `chapter_body`, never the model's self-reported `word_count`. A model that ignores the band is not a reliable narrator of how badly it ignored it, and every persistence path counts the body anyway.
+- Outside `wordBandBounds()` — 0.75x floor, 1.25x ceiling — the output is unusable and falls through to the next provider exactly like malformed JSON. The credit is refunded if the whole chain fails, which beats charging for a chapter that breaks reading-time estimates and narration cost downstream.
+- Inside the tolerance but outside the stated band, the drift is logged and the story is kept. The band is a writing instruction, not a contract a model can hit exactly; enforcing it literally would throw away good stories. Production series chapters legitimately land at 905-945 against a 600-900 band.
+- The 2,026-word `gpt-5-mini` chapter that motivated this is now a regression test, alongside the observed production spreads (846-1,353 on the standalone band, 905-945 on the series band) as the must-not-reject cases.
+
+### Story generation has its own credential
+
+`_shared/llm.ts` now reads `OPENAI_STORY_API_KEY` ahead of `OPENAI_API_KEY`; `_shared/image.ts` still reads `OPENAI_API_KEY`. `OPENAI_API_KEY` authenticated both `gpt-image-1` covers and story text, so one spend cap, rate limit, revocation or rotation took down covers and stories together — and with Gemini (`429`) and OpenRouter (`402`) unavailable, every position that can serve authenticates with it.
+
+Setting the secret is now the entire remaining change and no deploy follows it. Leaving it unset preserves current behaviour, so this is safe to land ahead of the key existing.
+
+### Validation
+
+- `deno fmt --check`, `deno check`, **134 deno tests** pass (six new: the band mapping, runaway rejection, the must-not-reject production spreads, series-band narrowing, the no-band path, and credential precedence).
+- Production `smoke-app-surface.py`: **26 / 26**; assertion 5.3 names `gpt-5.6-luna`.
+- Production `smoke-series-generation.py`: **58 / 58**, with the length guard live: 1,237 words standalone, 860 and 869 on the series band. No legitimate generation was rejected.
+
+### Still open, and both are account actions
+
+- Set `OPENAI_STORY_API_KEY` in Supabase secrets.
+- Gemini `429` and OpenRouter `402` remain unresolved, so there is still no provider-level redundancy ahead of OpenAI. Adding OpenRouter credits is the cheapest fix — `google/gemini-2.5-flash` is already pinned and deployed in that position.
+
 ## 2026-08-31 UTC — GPT-5.6 Luna live in the OpenAI position
 
 **Session:** Made the OpenAI position an ordered model list — `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini` — diagnosed and cleared a project-level entitlement block on Luna, and recorded the fallback-credential work in the roadmap. Luna now serves all production generation. PRs #40 and #41.

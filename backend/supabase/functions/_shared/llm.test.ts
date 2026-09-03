@@ -12,6 +12,7 @@ import {
   generateStoryText,
   OPENAI_MODEL,
   OPENAI_MODELS,
+  openAIKeyForTest,
   openAIRequestShape,
   OPENROUTER_FREE_MODEL,
   OPENROUTER_MODEL,
@@ -21,7 +22,12 @@ import {
   ProviderNotConfiguredError,
   requireUsableStoryOutput,
 } from "./llm.ts";
-import { HOOK_TYPE_VALUES, HOOK_TYPES, type HookType } from "./types.ts";
+import {
+  HOOK_TYPE_VALUES,
+  HOOK_TYPES,
+  type HookType,
+  wordBandFor,
+} from "./types.ts";
 import {
   OPENAI_RESPONSE_FORMAT,
   STORY_OUTPUT_JSON_SCHEMA,
@@ -584,4 +590,134 @@ Deno.test("a stalled preferred OpenAI model still leaves room for the fallback",
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// ---------------------------------------------------------------------------
+// Chapter length contract
+// ---------------------------------------------------------------------------
+
+function storyOf(words: number): string {
+  return JSON.stringify({
+    title: "T",
+    chapter_title: "C",
+    chapter_body: new Array(words).fill("word").join(" "),
+    // Deliberately wrong: the validator must count the body, not trust this.
+    word_count: 700,
+    themes: [],
+    first_line: "A",
+    previously_summary: "",
+    series_state: {
+      central_conflict: "",
+      protagonist_want: "",
+      character_changes: [],
+      relationship_state: "",
+      open_hooks: [],
+      resolved_hooks: [],
+      promised_payoffs: [],
+      world_facts: [],
+      next_chapter_pressure: "",
+    },
+    hook_type: "none",
+    hook_text: "",
+  });
+}
+
+Deno.test("wordBandFor: a series chapter keeps its band whatever the audience", () => {
+  assertEquals(wordBandFor("series", "adult"), { min: 600, max: 900 });
+  assertEquals(wordBandFor("series", "kids"), { min: 600, max: 900 });
+  assertEquals(wordBandFor("standalone", "kids"), { min: 500, max: 1200 });
+  assertEquals(wordBandFor("standalone", "adult"), { min: 500, max: 1500 });
+});
+
+Deno.test("a runaway chapter is rejected before persistence", () => {
+  const band = wordBandFor("standalone", "adult");
+  const opts = { ...STORY_OPTS, wordBand: band };
+
+  // The exact production failure: gpt-5-mini returned 2026 words against a
+  // 500-1500 band and the chapter was stored and charged for.
+  assertThrows(
+    () => requireUsableStoryOutput(storyOf(2026), opts),
+    ProviderMalformedResponseError,
+  );
+  // A stub chapter is just as unusable as a runaway one.
+  assertThrows(
+    () => requireUsableStoryOutput(storyOf(120), opts),
+    ProviderMalformedResponseError,
+  );
+});
+
+Deno.test("normal length variation is not thrown away", () => {
+  const opts = {
+    ...STORY_OPTS,
+    wordBand: wordBandFor("standalone", "adult"),
+  };
+  // The spread actually observed in production on this band.
+  for (const words of [846, 1085, 1279, 1353, 1500]) {
+    assertEquals(
+      requireUsableStoryOutput(storyOf(words), opts).length > 0,
+      true,
+    );
+  }
+  // Drift past the stated band is tolerated up to the bound, not rejected at it.
+  assertEquals(
+    requireUsableStoryOutput(storyOf(1875), opts).length > 0,
+    true,
+  );
+  assertThrows(
+    () => requireUsableStoryOutput(storyOf(1876), opts),
+    ProviderMalformedResponseError,
+  );
+});
+
+Deno.test("series chapters are held to the narrower chapter band", () => {
+  const opts = { ...STORY_OPTS, wordBand: wordBandFor("series", "adult") };
+  // Observed series chapters under Luna.
+  for (const words of [905, 918, 945]) {
+    assertEquals(
+      requireUsableStoryOutput(storyOf(words), opts).length > 0,
+      true,
+    );
+  }
+  // A standalone-length chapter is out of contract for a series chapter, even
+  // though the same count would be fine on the standalone band.
+  assertThrows(
+    () => requireUsableStoryOutput(storyOf(1200), opts),
+    ProviderMalformedResponseError,
+  );
+});
+
+Deno.test("a request with no band is not length-checked", () => {
+  // Paragraph edits have no chapter contract, and a story request that never
+  // supplied a band must not start failing because of one.
+  assertEquals(
+    requireUsableStoryOutput("plain paragraph", EDIT_OPTS),
+    "plain paragraph",
+  );
+  assertEquals(
+    requireUsableStoryOutput(storyOf(9000), STORY_OPTS).length > 0,
+    true,
+  );
+});
+
+Deno.test("story generation prefers its own OpenAI credential", async () => {
+  // OPENAI_API_KEY also authenticates DALL-E covers. Setting the dedicated key
+  // must take precedence so the two stop sharing a blast radius; leaving it
+  // unset must preserve the previous behaviour.
+  const dedicated = await withEnv(
+    { OPENAI_STORY_API_KEY: "story-key", OPENAI_API_KEY: "shared-key" },
+    () => Promise.resolve(openAIKeyForTest()),
+  );
+  assertEquals(dedicated, "story-key");
+
+  const shared = await withEnv(
+    { OPENAI_STORY_API_KEY: null, OPENAI_API_KEY: "shared-key" },
+    () => Promise.resolve(openAIKeyForTest()),
+  );
+  assertEquals(shared, "shared-key");
+
+  const neither = await withEnv(
+    { OPENAI_STORY_API_KEY: null, OPENAI_API_KEY: null },
+    () => Promise.resolve(openAIKeyForTest()),
+  );
+  assertEquals(neither, undefined);
 });
