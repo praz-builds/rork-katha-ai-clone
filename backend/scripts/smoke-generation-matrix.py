@@ -46,6 +46,39 @@ def check(name, cond, detail=""):
     return cond
 
 
+def persist_failures():
+    """Write every failed assertion to public.error_events.
+
+    Required by the Observability Gate in AGENTS.md: a production-level test's
+    failures must survive the terminal they were printed to. Supabase function
+    logs have short retention, and a failure reported only in chat did not
+    happen as far as the system is concerned - so the next investigation of the
+    same break starts from scratch.
+
+    `source = 'smoke_test'` keeps these out of the runtime buckets, and the
+    assertion name alone goes in the message: it is a fixed string from this
+    file, never story prose, a seed, or anything a user typed. `context` carries
+    identifiers and enums only, per the same gate.
+    """
+    if not FAIL:
+        return
+    rows = [{
+        "bucket": "generation.story",
+        "severity": "high",
+        "source": "smoke_test",
+        "error_code": "smoke_generation_matrix_failed",
+        "message": name,
+        "context": {"assertion": name, "run_started_at": run_started_at},
+    } for name in FAIL]
+    st, body = req("POST", "/rest/v1/error_events", rows, key=SVC)
+    if st in (200, 201, 204):
+        print(f"  persisted {len(rows)} failed assertion(s) to error_events")
+    else:
+        # Telemetry must never be the reason the harness itself blows up, but a
+        # silent failure here would defeat the gate, so it is stated.
+        print(f"  WARNING: could not persist failures (HTTP {st}): {str(body)[:160]}")
+
+
 def req(method, path, body=None, token=None, key=None, timeout=240):
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(URL + path, data=data, method=method)
@@ -450,6 +483,8 @@ finally:
             print(f"  WARNING: fixture auth user {uid} may be stranded: {str(body)[:160]}")
         print("  note: cover and portrait objects in the `covers` bucket are NOT")
         print("        cascade-deleted. Storage orphan cleanup is an open item.")
+
+persist_failures()
 
 print("\n" + "=" * 74)
 print(f"PASS {len(PASS)}   FAIL {len(FAIL)}")
