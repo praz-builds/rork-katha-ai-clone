@@ -38,7 +38,7 @@ An existing test pinned the old sentence verbatim. It now asserts the band rathe
 
 ### Validation
 
-- 139 Deno tests pass, including five new ones: four assert the prompt quotes `wordBandFor()` for every mode combination and that a kids prompt never leaks the adult ceiling, and one pins the Kids Mode floor against the instruction that used to contradict it.
+- 136 Deno tests pass on this branch merged with main, including five new ones: four assert the prompt quotes `wordBandFor()` for every mode combination and that a kids prompt never leaks the adult ceiling, and one pins the Kids Mode floor against the instruction that used to contradict it.
 - `deno check` clean across every edge function; `deno fmt --check` clean on the CI file list.
 
 ---
