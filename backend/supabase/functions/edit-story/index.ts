@@ -95,7 +95,10 @@ serve(async (req) => {
       );
     }
 
-    const customNote = body.custom_note;
+    // `custom_notes` is the name older client builds send. They are already
+    // installed on devices and cannot be fixed by a deploy, so both are
+    // accepted; the client now sends the singular.
+    const customNote = body.custom_note ?? body.custom_notes;
     if (instruction === "custom") {
       if (
         typeof customNote !== "string" ||

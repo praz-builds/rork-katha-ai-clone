@@ -232,7 +232,20 @@ export function buildCoverPrompt(
   genre: string,
   title: string,
   themes: string[],
-  characters?: { name: string; description: string }[],
+  // `description` is optional because the Craft character sheet only requires a
+  // Name; characters without one are filtered out below rather than trusted.
+  characters?: { name: string; description?: string }[],
+  /**
+   * World and era, from the create flow's where-and-when chip.
+   *
+   * This is the field that stops a generated cover reading as genre stock art
+   * (`STORY_GENERATION_FLOW.md` decision 53). Genre plus title alone produces
+   * the same noir doorway for every mystery ever written; "a hill town,
+   * off-season" produces a specific one. It is optional, and the prompt is
+   * well-formed without it - the zero-character, zero-setting case is the
+   * genre cover, which is a legitimate result rather than a degraded one.
+   */
+  whereAndWhen?: string,
 ): string {
   const safeGenre = normalizeGenre(genre);
   const config = GENRE_PROMPTS[safeGenre];
@@ -241,6 +254,9 @@ export function buildCoverPrompt(
   if (themes.length > 0) {
     sceneDescription += `, with themes of ${themes.slice(0, 4).join(", ")}`;
   }
+  if (whereAndWhen?.trim()) {
+    sceneDescription += `, set in ${whereAndWhen.trim()}`;
+  }
 
   let characterNote = "";
   if (
@@ -248,10 +264,17 @@ export function buildCoverPrompt(
     characters.length > 0 &&
     config.characterApproach !== "scene"
   ) {
-    const hero = characters.find((c) =>
+    // Only a character with a usable description can contribute to an image.
+    // `hero.description` is interpolated directly below, and the Craft
+    // character sheet requires only a Name, so a name-only character used to
+    // put the literal string "suggesting undefined" into the prompt.
+    const described = characters.filter((c) => c.description?.trim());
+    const hero = described.find((c) =>
       "isHero" in c ? (c as { isHero: boolean }).isHero : false
-    ) ?? characters[0];
-    if (config.characterApproach === "silhouette") {
+    ) ?? described[0];
+    if (!hero) {
+      // Nothing usable in the cast: fall through to the genre cover.
+    } else if (config.characterApproach === "silhouette") {
       characterNote =
         `. Include a distant silhouetted figure suggesting ${hero.description}`;
     } else {

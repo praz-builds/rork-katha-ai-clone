@@ -14,7 +14,9 @@ import {
   OPENAI_MODELS,
   openAIKeyForTest,
   openAIRequestShape,
+  isProviderDisabled,
   OPENROUTER_FREE_MODEL,
+  OPENROUTER_FREE_MODELS,
   OPENROUTER_MODEL,
   openRouterRequestShape,
   ProviderHttpError,
@@ -447,16 +449,18 @@ Deno.test("Anthropic and Claude credential names are ignored", async () => {
     "gemini",
     "openrouter",
     ...OPENAI_MODELS.map(() => "openai"),
-    "openrouter",
+    ...OPENROUTER_FREE_MODELS.map(() => "openrouter"),
   ]);
   assertEquals(
     error.failures.map((f) => f.code),
     // gemini + pinned openrouter + every OpenAI model + the free router
-    new Array(3 + OPENAI_MODELS.length).fill("not_configured"),
+    new Array(
+      2 + OPENAI_MODELS.length + OPENROUTER_FREE_MODELS.length,
+    ).fill("not_configured"),
   );
 });
 
-Deno.test("the free router is the last attempt in the chain", async () => {
+Deno.test("the free tier is the last phase in the chain", async () => {
   const error = await withEnv(
     {
       GEMINI_API_KEY: null,
@@ -481,8 +485,14 @@ Deno.test("the free router is the last attempt in the chain", async () => {
     GEMINI_MODEL,
     OPENROUTER_MODEL,
     ...OPENAI_MODELS.map((m) => m.model),
-    OPENROUTER_FREE_MODEL,
+    ...OPENROUTER_FREE_MODELS,
   ]);
+  // The blind router must remain last within the free phase: it is the only
+  // entry whose model identity is unknown until the response comes back.
+  assertEquals(
+    OPENROUTER_FREE_MODELS[OPENROUTER_FREE_MODELS.length - 1],
+    "openrouter/free",
+  );
 });
 
 Deno.test("a missing provider credential is not_configured and never retried", () => {
@@ -720,4 +730,94 @@ Deno.test("story generation prefers its own OpenAI credential", async () => {
     () => Promise.resolve(openAIKeyForTest()),
   );
   assertEquals(neither, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// Provider disabling — LLM_DISABLED_PROVIDERS
+// ---------------------------------------------------------------------------
+
+Deno.test("isProviderDisabled matches case-insensitively", () => {
+  assert(isProviderDisabled("gemini", new Set(["gemini"])));
+  assert(isProviderDisabled("GEMINI", new Set(["gemini"])));
+  assert(!isProviderDisabled("openai", new Set(["gemini"])));
+  assert(!isProviderDisabled("gemini", new Set()));
+});
+
+Deno.test("a disabled provider is skipped, not attempted", async () => {
+  const error = await withEnv(
+    {
+      GEMINI_API_KEY: null,
+      OPENROUTER_API_KEY: null,
+      OPENAI_API_KEY: null,
+      OPENAI_STORY_API_KEY: null,
+      LLM_DISABLED_PROVIDERS: "gemini",
+    },
+    async () => {
+      try {
+        await generateStoryText("system", "user");
+        return null;
+      } catch (e) {
+        return e;
+      }
+    },
+  );
+  assert(error instanceof AllProvidersFailedError);
+  // Skipped, not failed. A disabled provider must not appear in telemetry as an
+  // attempt, or every request would log a failure nobody asked it to make.
+  assert(!error.failures.some((f) => f.provider === "gemini"));
+  assertEquals(error.failures[0].model, OPENROUTER_MODEL);
+});
+
+Deno.test("disabling every provider fails cleanly rather than hanging", async () => {
+  const error = await withEnv(
+    {
+      GEMINI_API_KEY: null,
+      OPENROUTER_API_KEY: null,
+      OPENAI_API_KEY: null,
+      OPENAI_STORY_API_KEY: null,
+      LLM_DISABLED_PROVIDERS: "gemini,openrouter,openai",
+    },
+    async () => {
+      try {
+        await generateStoryText("system", "user");
+        return null;
+      } catch (e) {
+        return e;
+      }
+    },
+  );
+  assert(error instanceof AllProvidersFailedError);
+  assertEquals(error.failures.length, 0);
+});
+
+Deno.test("an absent or blank disable list disables nothing", async () => {
+  for (const value of [null, "", "   "]) {
+    const error = await withEnv(
+      {
+        GEMINI_API_KEY: null,
+        OPENROUTER_API_KEY: null,
+        OPENAI_API_KEY: null,
+        OPENAI_STORY_API_KEY: null,
+        LLM_DISABLED_PROVIDERS: value,
+      },
+      async () => {
+        try {
+          await generateStoryText("system", "user");
+          return null;
+        } catch (e) {
+          return e;
+        }
+      },
+    );
+    assert(error instanceof AllProvidersFailedError);
+    assertEquals(error.failures[0].model, GEMINI_MODEL);
+  }
+});
+
+Deno.test("every named free model is a :free variant", () => {
+  // Without the suffix OpenRouter bills the paid variant of the same model,
+  // silently — the position would stop being free without anything failing.
+  for (const model of OPENROUTER_FREE_MODELS.slice(0, -1)) {
+    assert(model.endsWith(":free"), `${model} is not a :free variant`);
+  }
 });
