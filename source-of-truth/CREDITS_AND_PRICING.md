@@ -617,7 +617,7 @@ every plan we sell. Daily replenishment is **earned and capped**, never granted.
 
 Onboarding branches on a purpose question and the two paths meet again at the
 offer. Screen-level design is specified in
-`research/R2-onboarding-conversion.md` (working memo, not tracked);
+[`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md), the canonical onboarding specification;
 only the money is defined here.
 
 ```
@@ -756,8 +756,12 @@ resentment-generating placement available.
   to their typed premise intact.
 - **After a successful top-up, the pending action fires automatically.** No second
   tap. The user was mid-intent; finish the intent.
-- **Every paid button shows its price**, and the price is the price of *that* action: `Create · 3 credits` to start a story, `Continue · 1 credit` for the next chapter, `Continue · 2 credits` when chapters are illustrated,
-  `Listen · 1 credit`. The blocked moment is anticipated, never sprung.
+- **Every paid button shows its price**, and the price is the price of *that*
+  action in *that* state: `Create · 3 credits` to start a story, or `Create · 2
+  credits` when the user has already uploaded their own cover and chapter 1's
+  art will not be generated; `Continue · 1 credit` for the next chapter, or
+  `Continue · 2 credits` when chapters are illustrated; `Listen · 1 credit`. The
+  blocked moment is anticipated, never sprung.
 - **Insufficient balance on entering Create shows an inline banner, never a
   modal.** The user can still type, still browse, still save.
 
@@ -1009,6 +1013,12 @@ economy is tuned on evidence rather than argued about.
 
 ---
 
+<!-- markdownlint-disable MD029 -->
+<!-- Scoped to this block only. The list below is one continuous sequence split
+     by sub-headings, so each sub-list starts at 7, 11, 19, 21 and so on. Those
+     numbers are cited by number from AGENTS.md, both build logs and
+     STORY_GENERATION_FLOW.md, so they must not be renumbered for the linter. -->
+
 ## Decisions
 
 ### Currency and model
@@ -1234,3 +1244,5 @@ economy is tuned on evidence rather than argued about.
 48. **Note, no decision required:** `_shared/image.ts:108` uses `gpt-image-1` at
     1024×1536 `quality: "medium"`, not DALL·E 3 at 1024×1024 as older notes state.
     All costing here uses the code.
+
+<!-- markdownlint-enable MD029 -->

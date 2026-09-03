@@ -361,8 +361,8 @@ Never preselect a chip.
 
 | ID | Label | Visible W2 consequence |
 |---|---|---|
-| `chapter` | **Chapter** | Four **Chapters** beats |
-| `short_story` | **Short story** | One **Chapters** beat |
+| `chapter` | **Chapter** | Four beats under **Chapters** |
+| `short_story` | **Short story** | One beat under **Chapters** |
 | `poem` | **Poem** | No **Chapters** section |
 
 Chapter is default. Shape is selected `colors.accentSoft` and `colors.accent`;

@@ -904,7 +904,7 @@ Draft cards, the Draft badge, chapter progress, sort-by-last-edited.
 | Share of Continues with an empty *What happens next?* box | If it dominates, steering is friction wearing a hat and the box should shrink |
 | **Chapter-art attach rate** | The most important unresolved figure in the business model — §10.6 |
 | Cover: generate vs regenerate vs upload vs keep-concept | Tells us whether cover generation is worth its credit |
-| Chapters-selected distribution | Whether 15 and 30 are real or decorative |
+| `planned_chapter_count` distribution across 3 / 7 / 15 | Whether 7 and 15 are real or decorative, and whether 3 is a default nobody moves off |
 | Draft resume rate, by entry point | Library vs the create-flow link |
 | Brief strength → generation rating | **The load-bearing one.** Any field that does not move it gets cut |
 | Kids-mode share of drafts | Decides whether kids justifies its own App Store listing |

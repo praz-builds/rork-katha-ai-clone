@@ -295,6 +295,13 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ### Creator Earnings Curve
 
+> ⛔ **BLOCKED, not scheduled.** `reader_earning` is retired under the current
+> economy (`../source-of-truth/CREDITS_AND_PRICING.md` §5). Everything in this
+> section — the curve, pending credits, the confirmation cron, and any grant
+> carrying reason `reader_earning` — may not be implemented until that file is
+> amended to reinstate it. The tables below are retained as the design that
+> would be revived, not as work to pick up.
+
 | Reads | Credits per read | Cumulative credits |
 |-------|-----------------|-------------------|
 | 1-10 | 1 per read | 10 |
