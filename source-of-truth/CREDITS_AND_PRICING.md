@@ -1038,9 +1038,12 @@ economy is tuned on evidence rather than argued about.
 8. **Free but capped:** **3 AI redrafts per chapter**, **20 paragraph AI edits per
    chapter**, **1 cover regeneration per paid cover**. Beyond each cap, 1 credit.
 9. **Render settings are constraints, not defaults**, each pinned in code with a
-   test: covers at 1024×1536 `medium` ($0.063); **chapter art at 1024×1024
-   `medium` ($0.042)**; character sets at 1024×1024 `low` ($0.011 each, $0.033
-   per set of three). A cast is capped at **3**.
+   test **as each path lands**: covers at 1024×1536 `medium` ($0.063); **chapter
+   art at 1024×1024 `medium` ($0.042)**; character sets at 1024×1024 `low`
+   ($0.011 each, $0.033 for a set of three). A cast is capped at **3**. Only the
+   cover tier exists in code today, and `generateCoverImage()` is called by no
+   edge function — see §2. The other two are the contract for the image
+   pipeline, not a description of shipped behaviour.
 10. **Chapter art is a priced action, and it is the same feature as the cover.**
     *(Amended 2026-09-02. This decision previously removed chapter illustrations
     entirely. `STORY_GENERATION_FLOW.md` §10.4 made the product case for

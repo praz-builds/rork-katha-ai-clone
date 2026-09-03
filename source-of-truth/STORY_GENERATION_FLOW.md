@@ -140,8 +140,16 @@ a chip row of them competes with the idea box for the same job.
 The **mechanism** survives without the word: `story-prompts.ts` keeps its
 `tropeModules` layer, and inference (§6) populates it silently from the idea
 sentence. A user who writes *"she has to fake-date her brother's best friend"*
-gets `fake-dating` and `forbidden` in the prompt and never sees either term. The
-confusion was the vocabulary, not the capability.
+gets `forbiddenLove` and `forcedProximity` in the prompt and never sees either
+term. The confusion was the vocabulary, not the capability.
+
+**Inference may only emit identifiers that exist in the unions.** `PrimaryGenre`
+and `TropeModule` in `_shared/types.ts` are the whole vocabulary — there is no
+`gothic` genre and no `haunted-house` trope — and `validation.ts` silently drops
+anything outside them, and anything the chosen genre does not allow. An
+invented identifier is therefore not an error the user sees; it is a layer that
+quietly does nothing. The examples in this document use real identifiers for
+that reason.
 
 *If we later want them visible, the honest surface is the **feed** — "more like
 this" — not the create flow. Discovery is where a reader wants a taxonomy;
@@ -418,8 +426,8 @@ On **Continue** from screen 1, one cheap, fast structured call returns:
 
 ```json
 {
-  "genres":       ["mystery", "gothic"],
-  "tropeModules": ["haunted-house"],
+  "genres":       ["mystery", "horror"],
+  "tropeModules": ["lockedRoom"],
   "whereAndWhen": "A hill town, off-season, present day",
   "characters": [
     { "name": "Elena Márquez",
@@ -834,9 +842,16 @@ credits are **not** refunded — they bought a generation that was delivered.
 
 ## 12. What changes in code
 
-No schema migration is required. `whereAndWhen`, `moments`, character
-`background` / `appearance`, `writingMode` and the draft state machine extend
-existing types; the draft state table may want a column but can start as a
+**Migration 00027 is required** *(corrected 2026-09-02; this section previously
+said none was — see Decision 51)*. There is nowhere to store chapter art
+(`chapters.image_url`), character portraits (`characters.portrait_url`), the
+brief fields, or the planned length, and `generation_operations.kind` is
+constrained to `('story','continuation')` — so a cover, a chapter illustration
+and a cast cannot reserve an operation, and every paid image would be charged
+outside the idempotency and auto-refund path.
+
+`whereAndWhen`, `moments` and character `background` / `appearance` do extend
+existing request types without ceremony. The draft state machine can start as a
 derived value.
 
 ### `expo/src/screens/CreateStudioScreen.tsx`
@@ -861,7 +876,7 @@ derived value.
 
 | File | Change |
 |---|---|
-| `types.ts` | `whereAndWhen?`, `moments?`, `writingMode`, character `background` / `appearance` |
+| `types.ts` | `whereAndWhen?`, `moments?`, `chapterLength`, `plannedChapterCount`, character `background` / `appearance`. **No `writingMode`** — there is no mode to store |
 | `story-prompts.ts` | Two new layers — world (`whereAndWhen`) and beats (`moments`); character layer consumes background separately from appearance |
 | `cover-prompts.ts` | Consume `whereAndWhen`. This is what stops covers reading as genre stock art |
 | `image.ts` | Character portrait prompt from `appearance` + `description`; separate from the cover path |

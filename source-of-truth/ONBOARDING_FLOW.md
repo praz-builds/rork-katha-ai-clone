@@ -10,7 +10,7 @@
 > credits, trials, grants, and store products. [`STORY_GENERATION_FLOW.md`](STORY_GENERATION_FLOW.md)
 > is canonical for Create vocabulary. Pricing wins on any conflict.
 >
-> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-03.
+> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-02.
 > *Inference* marks a decision not yet shipped.
 
 ---

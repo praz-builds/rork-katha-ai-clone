@@ -147,7 +147,7 @@ Create (center tab, prominent)
   ├── Step 2: Topic (free text + "Get ideas" helper)
   ├── Step 3: Characters (name, description, traits)
   ├── Step 4: Length (Short / Standard / Long)
-  ├── Step 5: Review → "Create · 3 credits"   (superseded: see STORY_GENERATION_FLOW.md)
+  ├── Step 5: Review → "Create · 3 credits"   (superseded: see `../../source-of-truth/STORY_GENERATION_FLOW.md`)
   └── Generation screen (loading animation → result)
 
 Story Detail / Reader

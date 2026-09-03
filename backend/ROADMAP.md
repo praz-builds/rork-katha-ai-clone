@@ -290,7 +290,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] **Velocity anomaly detection:** if user has > 50 reads in the last hour, flag for review
 - [ ] **Session diversity cap:** max 10 crediting reads from same `deviceId` per day
 - [ ] **Per-story daily cap:** max 10 credits earned per story per day
-- [ ] **Dedup:** 1 crediting read per `(userId, storyId)` per day — *reader earnings deferred to v1.2; see `../source-of-truth/CREDITS_AND_PRICING.md` §5*
+- [ ] **Dedup:** 1 crediting read per `(userId, storyId)` per day — *reader earnings **blocked**, not merely deferred: `reader_earning` is retired under the current economy and may not be reintroduced without amending `../source-of-truth/CREDITS_AND_PRICING.md` first; see `../source-of-truth/CREDITS_AND_PRICING.md` §5*
 - [ ] Insert to `story_reads`, increment `stories.read_count` and `stories.unique_reader_count`
 
 ### Creator Earnings Curve
