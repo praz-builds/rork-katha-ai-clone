@@ -60,7 +60,7 @@ The new free-text style field is a direct route to "write exactly like <living a
 
 - **The seed gate was only half removed.** `validation.ts` accepted one character but `CreateStudioScreen.tsx` still required 40, so Create stayed disabled for a valid short idea. The client condition and `getSeedHint()` now match the server; the hint encourages rather than counts toward a threshold.
 - **The author-name sanitiser was ASCII-only.** `[A-Z]` and `\w` stop at the first accented character, so "Gabriel García Márquez" leaked most of the name. It now uses `\p{Lu}`/`\p{L}` with the `u` flag, with regression cases for accented and non-Latin names.
-- **Both new constraints are added `NOT VALID` and validated in 00028.** `ADD CONSTRAINT` holds ACCESS EXCLUSIVE for its scan whether or not the scan can fail, and `generation_operations` is on the hot path of every generation.
+- **Both new constraints are added `NOT VALID` and validated in 00028.** A plain `ADD CONSTRAINT` holds ACCESS EXCLUSIVE for the whole table scan, whether or not that scan can fail. `NOT VALID` skips the scan and holds ACCESS EXCLUSIVE only briefly — it is still an exclusive lock, just not one held for a scan — and 00028's `VALIDATE CONSTRAINT` then does the scan under SHARE UPDATE EXCLUSIVE, which does not block reads or writes. `generation_operations` is on the hot path of every generation, so the difference matters.
 - **The index rebuild cannot use `CONCURRENTLY`** — `supabase db push` wraps each migration in a transaction and concurrent index builds cannot run in one. The brief lock is documented at the statement, with the conditions under which it would need to become an out-of-band rebuild.
 - **Client credit amounts moved out of copy** into `expo/src/lib/pricing.ts`, the single client-side mirror of the per-action costs. It holds no plan prices, grants or SKUs.
 
@@ -82,6 +82,14 @@ The new free-text style field is a direct route to "write exactly like <living a
 - `MAX_CAST_SIZE` now lives in `expo/src/lib/pricing-limits.ts` and both the screen and the tests read it, rather than the number being restated in a comment.
 - **00028 guards its own precondition** instead of only documenting it. A `DO` block counts offending rows first and raises a message naming the column and the count, rather than letting `VALIDATE CONSTRAINT` abort with something generic.
 - The compatibility statement now says no existing **read or write path** changes, which is what is true — it is not a claim that the migration is unconditionally safe to apply.
+
+### Fifth review round
+
+- **`loadDraft()` could disable auto-save for a whole mount.** The persisted draft is typed by assertion only, so nothing guarantees `characters` is an array. Reading `.length` off a missing value rejected the promise *before* `draftRestoredRef` was set, which left auto-save off and silently discarded everything the user typed afterwards. `characters` is now normalised, and the ref is set in a `finally` so a single unreadable payload cannot disable saving.
+- **`generation_operations.chapter_number` is `NOT NULL` and must be positive**, but the migration never said what a story-level operation should use. The convention is now documented at the function: `story`, `continuation`, `cover` and `chapter_art` carry the chapter they belong to; `characters` carries 1, the chapter it is generated before. The `(story_id, chapter_number, kind)` index keeps all three chapter-1 reservations distinct.
+- The sanitiser's two regexes are built once at module scope rather than per request. `matchAll` copies the regex internally, so sharing one instance does not mutate `lastIndex` across calls.
+- The 300-character brief-field test only checked that 301 is rejected. Flipping `>` to `>=` would have passed it, so the accept side is now pinned too.
+- The `NOT VALID` lock description was imprecise: `NOT VALID` still takes ACCESS EXCLUSIVE, just briefly and without a scan. Corrected.
 
 ### Validation
 

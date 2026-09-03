@@ -292,6 +292,16 @@ Deno.test("brief free-text fields are bounded", () => {
     const r = validateGenerationRequest(validRequest({ [field]: long }));
     assertEquals("error" in r, true, `${field} accepted 301 chars`);
   }
+  // The accept side of the boundary. Without it, flipping `>` to `>=` in
+  // optionalText would still pass this test.
+  const atLimit = "x".repeat(300);
+  for (const field of ["where_and_when", "avoid"]) {
+    const r = validateGenerationRequest(validRequest({ [field]: atLimit }));
+    if ("error" in r) {
+      throw new Error(`${field} rejected exactly 300: ${r.error}`);
+    }
+  }
+
   const ok = validateGenerationRequest(
     validRequest({ where_and_when: "A hill town, off-season, present day" }),
   );

@@ -338,6 +338,48 @@ function stringList(value: unknown): string[] {
   return out;
 }
 
+// Built once. These are constant, and rebuilding two RegExp objects on every
+// request is pure waste on a hot validation path.
+//
+// A name token, in two shapes because scripts differ:
+//
+//   1. Cased scripts - an uppercase letter then name characters. Covers
+//      "Tolkien", a bare initial "K" or "J.", and accented names like
+//      "Garcia" that an ASCII [A-Z]/\w pattern truncates at the accent.
+//   2. Uncased scripts - \p{Lo}, "Letter, other", which is what Han, Kana,
+//      Arabic, Hebrew and Devanagari letters are. These have no uppercase, so
+//      rule 1 can never match them and such a name would pass through.
+//
+// \p{Lo} is deliberately narrow: Latin lowercase is \p{Ll}, not \p{Lo}, so
+// admitting uncased scripts cannot resurrect the bug where ordinary lowercase
+// prose after a trigger was read as a name.
+const STYLE_NAME = "(?:\\p{Lu}[\\p{L}\\p{M}'\u2019.-]*|[\\p{Lo}\\p{M}]+)";
+
+// Lowercase connectives that sit inside a surname. Without these the pattern
+// stops mid-name and leaks the remainder: "Ngugi wa Thiong'o" left
+// "wa Thiong'o" behind before "wa" was listed.
+const STYLE_PARTICLE =
+  "de|del|della|da|das|dos|do|di|du|van|von|der|den|ter|ten|" +
+  "la|le|el|al|bin|bint|ibn|ben|abu|wa|mac|mc|st|y|af|av|op|te";
+
+const STYLE_TRIGGER =
+  "like|in the style of|in the voice of|styled after|modelled after|modeled after|" +
+  "written by|channelling|channeling|imitate|imitating|mimic|mimicking|copy|copying|" +
+  "sound(?:s|ing)? like|read(?:s|ing)? like";
+
+// The trigger is matched case-insensitively; the name is not. These have to be
+// two regexes rather than one with the `i` flag, because `i` would also apply
+// to \p{Lu} and make it match lowercase - so "like the sea at dusk" would be
+// read as a name and the craft direction destroyed.
+const STYLE_TRIGGER_RE = new RegExp(
+  `\\b(?:${STYLE_TRIGGER})\\s+`,
+  "giu",
+);
+const STYLE_NAME_RE = new RegExp(
+  `^(?:${STYLE_NAME})(?:\\s+(?:${STYLE_NAME}|${STYLE_PARTICLE}))*`,
+  "u",
+);
+
 /**
  * Strip requests to imitate a named writer.
  *
@@ -364,47 +406,14 @@ function sanitizeWritingStyle(
 ): string | undefined {
   if (typeof value !== "string") return undefined;
 
-  // A name token, in two shapes because scripts differ:
-  //
-  //   1. Cased scripts - an uppercase letter then name characters. Covers
-  //      "Tolkien", a bare initial "K" or "J.", and accented names like
-  //      "Garcia" that an ASCII [A-Z]/\w pattern truncates at the accent.
-  //   2. Uncased scripts - \p{Lo}, "Letter, other", which is what Han, Kana,
-  //      Arabic, Hebrew and Devanagari letters are. These have no uppercase, so
-  //      rule 1 can never match them and a name like a Japanese author's would
-  //      pass straight through the filter.
-  //
-  // \p{Lo} is deliberately narrow: Latin lowercase is \p{Ll}, not \p{Lo}, so
-  // admitting uncased scripts cannot resurrect the bug where ordinary lowercase
-  // prose after a trigger was read as a name.
-  const NAME = "(?:\\p{Lu}[\\p{L}\\p{M}'\u2019.-]*|[\\p{Lo}\\p{M}]+)";
-  // Lowercase connectives that sit inside a surname. Without these the pattern
-  // stops mid-name and leaks the remainder: "Ngugi wa Thiong'o" left
-  // "wa Thiong'o" behind before "wa" was listed.
-  const PARTICLE = "de|del|della|da|das|dos|do|di|du|van|von|der|den|ter|ten|" +
-    "la|le|el|al|bin|bint|ibn|ben|abu|wa|mac|mc|st|y|af|av|op|te";
-  const TRIGGER =
-    "like|in the style of|in the voice of|styled after|modelled after|modeled after|" +
-    "written by|channelling|channeling|imitate|imitating|mimic|mimicking|copy|copying|" +
-    "sound(?:s|ing)? like|read(?:s|ing)? like";
-
-  // The trigger is matched case-insensitively; the name is not. These have to be
-  // two regexes rather than one with the `i` flag, because `i` would also apply
-  // to \p{Lu} and make it match lowercase - so "like the sea at dusk" would be
-  // read as a name and the craft direction destroyed.
-  const triggerRe = new RegExp(`\\b(?:${TRIGGER})\\s+`, "giu");
-  const nameRe = new RegExp(
-    `^(?:${NAME})(?:\\s+(?:${NAME}|${PARTICLE}))*`,
-    "u",
-  );
-
   // Collect the spans to drop first, then splice, so removing one does not
-  // shift the offsets of the next.
+  // shift the offsets of the next. matchAll copies the regex internally, so
+  // the shared STYLE_TRIGGER_RE's lastIndex is never mutated across calls.
   const spans: [number, number][] = [];
-  for (const m of value.matchAll(triggerRe)) {
+  for (const m of value.matchAll(STYLE_TRIGGER_RE)) {
     const triggerStart = m.index ?? 0;
     const afterTrigger = triggerStart + m[0].length;
-    const name = nameRe.exec(value.slice(afterTrigger));
+    const name = STYLE_NAME_RE.exec(value.slice(afterTrigger));
     // No capitalised name after the trigger means this is ordinary prose
     // ("like the sea at dusk"), and the user's words are left alone.
     if (!name) continue;

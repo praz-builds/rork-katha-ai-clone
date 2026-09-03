@@ -340,22 +340,34 @@ export default function CreateStudioScreen({
   // Restore persisted draft on mount
   const draftRestoredRef = useRef(false);
   useEffect(() => {
-    loadDraft().then((saved) => {
-      if (saved) {
-        // A draft written by an older build may hold more characters than the
-        // cap allows - it was 5 before MAX_CHARACTERS came down to 3. Restoring
-        // it verbatim would let the user press Create and take a 400 from the
-        // server, which validates the same cap. Clamp on the way in so the
-        // restored draft is always submittable.
+    loadDraft()
+      .then((saved) => {
+        if (!saved) return;
         const restored = saved as StudioDraft;
-        setDraft(
-          restored.characters.length > MAX_CHARACTERS
-            ? { ...restored, characters: restored.characters.slice(0, MAX_CHARACTERS) }
-            : restored,
-        );
-      }
-      draftRestoredRef.current = true;
-    });
+
+        // `saved` comes from AsyncStorage and is typed by assertion only, so
+        // nothing guarantees `characters` is an array. A draft written by an
+        // older build, or a partially written one, can omit it - and reading
+        // .length off undefined here would reject the promise before
+        // draftRestoredRef is set, leaving auto-save disabled for the whole
+        // mount and silently discarding everything the user then types.
+        const characters = Array.isArray(restored.characters)
+          ? restored.characters
+          : [];
+
+        // The cap also moved: it was 5 before MAX_CHARACTERS came down to 3, so
+        // an older draft can hold more than the server will accept. Clamp on
+        // the way in rather than letting Create take a 400.
+        setDraft({
+          ...restored,
+          characters: characters.slice(0, MAX_CHARACTERS),
+        });
+      })
+      .finally(() => {
+        // Always, even if the stored draft was unreadable. Otherwise a single
+        // bad payload disables auto-save until the app restarts.
+        draftRestoredRef.current = true;
+      });
   }, []);
 
   // Auto-save draft on changes (debounced 500ms, blocked until restore completes)

@@ -129,6 +129,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_generation_operations_active_chapter
 -- ---------------------------------------------------------------------------
 -- 5. reserve_generation_operation accepts the new kinds
 -- ---------------------------------------------------------------------------
+-- chapter_number is NOT NULL and the function rejects anything <= 0, so every
+-- kind needs one. The convention, which the callers must follow:
+--
+--   story, continuation, cover, chapter_art  ->  the chapter it belongs to
+--   characters                               ->  1
+--
+-- The cast is a story-level action with no chapter of its own; it is pinned to
+-- chapter 1 because that is the chapter it is generated before. Nothing
+-- collides: the unique index is (story_id, chapter_number, kind), so the cast
+-- and chapter 1's text and chapter 1's art are three distinct reservations that
+-- can be held at once.
 -- Only the kind guard changes. Everything else -- the advisory locks, the
 -- replay path, the KTH01 duplicate signal, the single-credit deduction -- is
 -- reproduced exactly as it stands in 00005 so this migration is a guard change
