@@ -1,9 +1,6 @@
 # Story Generation Flow — source of truth
 
-<!-- markdownlint-disable MD013 MD029 -->
-<!-- MD029 is disabled for the whole file: the Decisions list at the foot is one
-     continuous 1-57 sequence broken by sub-headings, and those numbers are
-     referenced from other documents, so they must not be renumbered. -->
+<!-- markdownlint-disable MD013 -->
 
 > **This file is canonical.** Every field, label, placeholder, ordering rule,
 > mode behavior and post-generation step in Katha's story creation flow is
@@ -988,6 +985,12 @@ are listed here so a reader who lands mid-document is not misled.
 
 ---
 
+<!-- markdownlint-disable MD029 -->
+<!-- Scoped to this block only. The list below is one continuous 1-57 sequence
+     split by sub-headings, so each sub-list starts at 6, 13, 17, 33, 51 and so
+     on. Those numbers are cited from AGENTS.md, the build logs and this file's
+     own sections, so they must not be renumbered to satisfy the linter. -->
+
 ## Decisions
 
 ### Vocabulary
@@ -1136,3 +1139,5 @@ are listed here so a reader who lands mid-document is not misled.
 57. **Brief strength → generation rating is the one launch-critical metric.**
     Chapter-art attach rate is no longer launch-critical: 100% attach clears the
     margin floor at every length. It stays instrumented as a product metric.
+
+<!-- markdownlint-enable MD029 -->
