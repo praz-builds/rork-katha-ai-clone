@@ -8,13 +8,22 @@
 import {
   AUDIENCE_MODES,
   type AudienceMode,
+  CHAPTER_LENGTHS,
+  type ChapterLength,
   type CharacterInput,
+  DEFAULT_CHAPTER_LENGTH,
+  DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_ALLOWED_SPICE,
   GENRE_ALLOWED_TROPES,
   GENRE_DEFAULT_SPICE,
   GENRE_MIGRATION_MAP,
   IDENTITY_LENSES,
   type IdentityLens,
+  MAX_BRIEF_FIELD_LENGTH,
+  MAX_CAST_SIZE,
+  MAX_MOMENTS,
+  PLANNED_CHAPTER_COUNT_SET,
+  type PlannedChapterCount,
   PRIMARY_GENRES,
   type PrimaryGenre,
   SPICE_LEVELS,
@@ -126,13 +135,18 @@ export function validateGenerationRequest(
   }
 
   // --- Seed ---
+  // The 40-character minimum is removed. It taught padding rather than
+  // structure, and source-of-truth/STORY_GENERATION_FLOW.md section 2 replaces
+  // it with the slot-based brief-strength meter, in which a one-line idea is a
+  // legitimate choice rather than a failure. One non-whitespace character is
+  // the floor; the 1000-character ceiling is unchanged.
   const rawSeed = body.topic ?? body.seed;
   if (typeof rawSeed !== "string") {
-    return { error: "Story seed must be at least 40 characters" };
+    return { error: "Tell Katha what your story is about" };
   }
   const seed = rawSeed.trim();
-  if (seed.length < 40) {
-    return { error: "Story seed must be at least 40 characters" };
+  if (seed.length < 1) {
+    return { error: "Tell Katha what your story is about" };
   }
   if (seed.length > 1000) {
     return { error: "Story seed must be 1000 characters or fewer" };
@@ -142,8 +156,10 @@ export function validateGenerationRequest(
   const characters: CharacterInput[] = [];
   const rawCharacters = body.characters;
   if (rawCharacters !== undefined) {
-    if (!Array.isArray(rawCharacters) || rawCharacters.length > 10) {
-      return { error: "characters must contain at most 10 items" };
+    if (!Array.isArray(rawCharacters) || rawCharacters.length > MAX_CAST_SIZE) {
+      return {
+        error: `A story can have at most ${MAX_CAST_SIZE} characters`,
+      };
     }
     for (const character of rawCharacters) {
       if (!character || typeof character !== "object") {
@@ -204,6 +220,61 @@ export function validateGenerationRequest(
     }
   }
 
+  // --- The brief ---
+  const whereAndWhen = optionalText(body.where_and_when);
+  if (whereAndWhen === TOO_LONG) {
+    return {
+      error:
+        `Where and when must be ${MAX_BRIEF_FIELD_LENGTH} characters or fewer`,
+    };
+  }
+
+  const avoid = optionalText(body.avoid);
+  if (avoid === TOO_LONG) {
+    return {
+      error: `Avoid must be ${MAX_BRIEF_FIELD_LENGTH} characters or fewer`,
+    };
+  }
+
+  const rawStyle = optionalText(body.writing_style);
+  if (rawStyle === TOO_LONG) {
+    return {
+      error:
+        `Writing style must be ${MAX_BRIEF_FIELD_LENGTH} characters or fewer`,
+    };
+  }
+  const writingStyle = sanitizeWritingStyle(rawStyle);
+
+  // Moments are clamped rather than rejected. A user who pins a seventh beat
+  // has not made an error worth an error message; the cap exists because past
+  // roughly five the model returns a checklist instead of a story.
+  const moments = stringList(body.moments).slice(0, MAX_MOMENTS);
+
+  // Values are a kids-mode chip slot and have no meaning in adult mode.
+  const storyValues = audienceMode === "kids"
+    ? stringList(body.story_values ?? body.values).slice(0, MAX_MOMENTS)
+    : [];
+
+  let chapterLength: ChapterLength = DEFAULT_CHAPTER_LENGTH;
+  if (typeof body.chapter_length === "string" && body.chapter_length.trim()) {
+    const cl = body.chapter_length.trim();
+    if (!CHAPTER_LENGTHS.has(cl)) {
+      return { error: "chapter_length must be 'short', 'standard', or 'long'" };
+    }
+    chapterLength = cl as ChapterLength;
+  }
+
+  let plannedChapterCount: PlannedChapterCount = DEFAULT_PLANNED_CHAPTER_COUNT;
+  if (body.planned_chapter_count !== undefined) {
+    const n = body.planned_chapter_count;
+    if (typeof n !== "number" || !PLANNED_CHAPTER_COUNT_SET.has(n)) {
+      return { error: "planned_chapter_count must be 3, 7, or 15" };
+    }
+    plannedChapterCount = n as PlannedChapterCount;
+  }
+
+  const illustrateChapters = body.illustrate_chapters === true;
+
   return {
     primaryGenre,
     storyMode,
@@ -215,6 +286,14 @@ export function validateGenerationRequest(
     characters,
     requestId,
     language,
+    whereAndWhen,
+    moments,
+    storyValues,
+    writingStyle,
+    avoid,
+    chapterLength,
+    plannedChapterCount,
+    illustrateChapters,
   };
 }
 
@@ -230,6 +309,132 @@ export function deriveContentRating(
   if (spiceLevel === "explicit") return "explicit";
   if (spiceLevel === "steamy") return "steamy";
   return "sweet";
+}
+
+// ---------------------------------------------------------------------------
+// Brief helpers
+// ---------------------------------------------------------------------------
+
+/** Sentinel for "present but over the limit", distinct from "absent". */
+const TOO_LONG = Symbol("too-long");
+
+function optionalText(value: unknown): string | undefined | typeof TOO_LONG {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > MAX_BRIEF_FIELD_LENGTH) return TOO_LONG;
+  return trimmed;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    out.push(trimmed.slice(0, MAX_BRIEF_FIELD_LENGTH));
+  }
+  return out;
+}
+
+// Built once. These are constant, and rebuilding two RegExp objects on every
+// request is pure waste on a hot validation path.
+//
+// A name token, in two shapes because scripts differ:
+//
+//   1. Cased scripts - an uppercase letter then name characters. Covers
+//      "Tolkien", a bare initial "K" or "J.", and accented names like
+//      "Garcia" that an ASCII [A-Z]/\w pattern truncates at the accent.
+//   2. Uncased scripts - \p{Lo}, "Letter, other", which is what Han, Kana,
+//      Arabic, Hebrew and Devanagari letters are. These have no uppercase, so
+//      rule 1 can never match them and such a name would pass through.
+//
+// \p{Lo} is deliberately narrow: Latin lowercase is \p{Ll}, not \p{Lo}, so
+// admitting uncased scripts cannot resurrect the bug where ordinary lowercase
+// prose after a trigger was read as a name.
+const STYLE_NAME = "(?:\\p{Lu}[\\p{L}\\p{M}'\u2019.-]*|[\\p{Lo}\\p{M}]+)";
+
+// Lowercase connectives that sit inside a surname. Without these the pattern
+// stops mid-name and leaks the remainder: "Ngugi wa Thiong'o" left
+// "wa Thiong'o" behind before "wa" was listed.
+const STYLE_PARTICLE =
+  "de|del|della|da|das|dos|do|di|du|van|von|der|den|ter|ten|" +
+  "la|le|el|al|bin|bint|ibn|ben|abu|wa|mac|mc|st|y|af|av|op|te";
+
+const STYLE_TRIGGER =
+  "like|in the style of|in the voice of|styled after|modelled after|modeled after|" +
+  "written by|channelling|channeling|imitate|imitating|mimic|mimicking|copy|copying|" +
+  "sound(?:s|ing)? like|read(?:s|ing)? like";
+
+// The trigger is matched case-insensitively; the name is not. These have to be
+// two regexes rather than one with the `i` flag, because `i` would also apply
+// to \p{Lu} and make it match lowercase - so "like the sea at dusk" would be
+// read as a name and the craft direction destroyed.
+const STYLE_TRIGGER_RE = new RegExp(
+  `\\b(?:${STYLE_TRIGGER})\\s+`,
+  "giu",
+);
+const STYLE_NAME_RE = new RegExp(
+  `^(?:${STYLE_NAME})(?:\\s+(?:${STYLE_NAME}|${STYLE_PARTICLE}))*`,
+  "u",
+);
+
+/**
+ * Strip requests to imitate a named writer.
+ *
+ * The prompt spec is explicit that author touchstones stay in documentation and
+ * never reach a runtime prompt: naming a living author invites both a
+ * style-imitation complaint and the model's flattest pastiche of that author.
+ * A user typing "like Colleen Hoover" wants the craft, so the phrase is removed
+ * and the rest of their direction survives rather than the whole field being
+ * rejected. What is left - "hardboiled", "poetic", "short sentences" - is
+ * exactly what the writing-style layer is for.
+ *
+ * Name tokens allow bare initials ("Ursula K Le Guin", "J. R. R. Tolkien"),
+ * which an earlier version of this pattern stopped at, leaking the surname.
+ *
+ * **Known over-match, accepted deliberately:** a capitalised phrase that is not
+ * a person is stripped too, so "in the style of Gothic Horror" loses its
+ * subject. A regex cannot tell "Le Guin" from "Gothic Horror", and dropping a
+ * little craft direction is the cheaper error. This is defence in depth, not
+ * the only defence - the prompt layer states the craft-traits-not-imitation
+ * rule as well.
+ */
+function sanitizeWritingStyle(
+  value: string | undefined | typeof TOO_LONG,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+
+  // Collect the spans to drop first, then splice, so removing one does not
+  // shift the offsets of the next. matchAll copies the regex internally, so
+  // the shared STYLE_TRIGGER_RE's lastIndex is never mutated across calls.
+  const spans: [number, number][] = [];
+  for (const m of value.matchAll(STYLE_TRIGGER_RE)) {
+    const triggerStart = m.index ?? 0;
+    const afterTrigger = triggerStart + m[0].length;
+    const name = STYLE_NAME_RE.exec(value.slice(afterTrigger));
+    // No capitalised name after the trigger means this is ordinary prose
+    // ("like the sea at dusk"), and the user's words are left alone.
+    if (!name) continue;
+    spans.push([triggerStart, afterTrigger + name[0].length]);
+  }
+
+  let cleaned = value;
+  for (let i = spans.length - 1; i >= 0; i--) {
+    cleaned = cleaned.slice(0, spans[i][0]) + cleaned.slice(spans[i][1]);
+  }
+
+  cleaned = cleaned
+    // Removing a name from the middle of a list leaves its separators behind:
+    // "dreamlike, like <name>, in short scenes" becomes "dreamlike, , in short
+    // scenes". Collapse any run of separators into the first one.
+    .replace(/([,;:])(?:\s*[,;:])+/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
+    .trim();
+
+  return cleaned.length ? cleaned : undefined;
 }
 
 // ---------------------------------------------------------------------------

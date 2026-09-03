@@ -41,6 +41,7 @@ import {
   publishStory,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
+import { MAX_CAST_SIZE } from "@/lib/pricing-limits";
 import {
   colors,
   fonts,
@@ -93,7 +94,7 @@ type CreateStudioProps = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_CHARACTERS = 5;
+const MAX_CHARACTERS = MAX_CAST_SIZE;
 
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },
@@ -192,12 +193,18 @@ const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
   ],
 };
 
+/**
+ * Encouragement, never a gate.
+ *
+ * The old version counted toward 40 characters ("Almost there (12/40)"), which
+ * taught users to pad a sentence rather than to add structure, and framed a
+ * short idea as a failure. Nothing here blocks Create; the slot-based
+ * brief-strength meter replaces the counter proper.
+ */
 function getSeedHint(length: number): string {
   if (length === 0) return "The more specific your idea, the better the story";
-  if (length < 20) return "Keep going, give Katha something to work with...";
-  if (length < 40) return `Almost there (${length}/40 characters)`;
-  if (length < 80) return "Good start. Add a character or a twist to make it yours";
-  if (length < 150) return "Nice, that's a strong premise";
+  if (length < 40) return "Katha will invent most of this. That can be good.";
+  if (length < 150) return "Nice, that's a strong start";
   return "Great detail. Katha has plenty to work with";
 }
 
@@ -333,10 +340,34 @@ export default function CreateStudioScreen({
   // Restore persisted draft on mount
   const draftRestoredRef = useRef(false);
   useEffect(() => {
-    loadDraft().then((saved) => {
-      if (saved) setDraft(saved as StudioDraft);
-      draftRestoredRef.current = true;
-    });
+    loadDraft()
+      .then((saved) => {
+        if (!saved) return;
+        const restored = saved as StudioDraft;
+
+        // `saved` comes from AsyncStorage and is typed by assertion only, so
+        // nothing guarantees `characters` is an array. A draft written by an
+        // older build, or a partially written one, can omit it - and reading
+        // .length off undefined here would reject the promise before
+        // draftRestoredRef is set, leaving auto-save disabled for the whole
+        // mount and silently discarding everything the user then types.
+        const characters = Array.isArray(restored.characters)
+          ? restored.characters
+          : [];
+
+        // The cap also moved: it was 5 before MAX_CHARACTERS came down to 3, so
+        // an older draft can hold more than the server will accept. Clamp on
+        // the way in rather than letting Create take a 400.
+        setDraft({
+          ...restored,
+          characters: characters.slice(0, MAX_CHARACTERS),
+        });
+      })
+      .finally(() => {
+        // Always, even if the stored draft was unreadable. Otherwise a single
+        // bad payload disables auto-save until the app restarts.
+        draftRestoredRef.current = true;
+      });
   }, []);
 
   // Auto-save draft on changes (debounced 500ms, blocked until restore completes)
@@ -352,8 +383,11 @@ export default function CreateStudioScreen({
     };
   }, [draft, step]);
 
+  // One non-whitespace character, matching validation.ts. The 40-character gate
+  // is gone: it taught padding rather than structure, and a one-line idea is a
+  // legitimate choice per source-of-truth/STORY_GENERATION_FLOW.md section 2.
   const canGenerate =
-    draft.seed.trim().length >= 40 && credits > 0 && !busy;
+    draft.seed.trim().length >= 1 && credits > 0 && !busy;
 
   const wordCount = paragraphs.reduce((acc, p) => {
     return acc + p.text.split(/\s+/).filter(Boolean).length;
@@ -390,7 +424,9 @@ export default function CreateStudioScreen({
       tropeModules: draft.tropeModules,
       seed: draft.seed,
       language: draft.language,
-      characters: draft.characters,
+      // Belt and braces with the clamp in loadDraft: validation.ts enforces the
+      // same cap, and a request over it is a 400 rather than a truncation.
+      characters: draft.characters.slice(0, MAX_CHARACTERS),
       isSeries: draft.isSeries,
     };
 
@@ -736,16 +772,23 @@ export default function CreateStudioScreen({
   // Character management (Setup step)
   // -----------------------------------------------------------------------
 
+  // The cap is checked inside the updater, against prev, not against the
+  // draft captured when this callback was created. Two taps in the same frame
+  // both saw the stale length and both appended, so a rapid double-tap on the
+  // last slot produced a cast one over the cap - which validation.ts then
+  // rejects. Checking prev also lets the dependency array empty out, so the
+  // callback identity stops changing on every character edit.
   const addCharacter = useCallback(() => {
-    if (draft.characters.length >= MAX_CHARACTERS) return;
-    setDraft((prev) => ({
-      ...prev,
-      characters: [
-        ...prev.characters,
-        { name: "", description: "", isHero: false },
-      ],
-    }));
-  }, [draft.characters.length]);
+    setDraft((prev) =>
+      prev.characters.length >= MAX_CHARACTERS ? prev : {
+        ...prev,
+        characters: [
+          ...prev.characters,
+          { name: "", description: "", isHero: false },
+        ],
+      }
+    );
+  }, []);
 
   const removeCharacter = useCallback((index: number) => {
     setDraft((prev) => ({
@@ -884,6 +927,7 @@ export default function CreateStudioScreen({
                 styles.seedHint,
                 draft.seed.trim().length > 0 && draft.seed.trim().length < 40 && styles.seedHintWarm,
                 draft.seed.trim().length >= 40 && styles.seedHintReady,
+                // Styling only - both states are usable; neither blocks Create.
               ]}>
                 {getSeedHint(draft.seed.trim().length)}
               </Text>
