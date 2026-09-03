@@ -135,3 +135,86 @@ describe('continueStory request contract', () => {
     expect(bodyOf(mockInvoke.mock.calls[0]).is_finale).toBe(false);
   });
 });
+
+describe('character payload', () => {
+  // The screen used to seed one blank character row and send it verbatim.
+  // `validation.ts` rejects any supplied character without a name, so every
+  // user who never opened the cast — the common case — got a 400 on the
+  // primary path.
+  it('drops characters with no name', async () => {
+    mockInvoke.mockResolvedValueOnce(storyResponse('standalone'));
+    await generateStory(
+      {
+        ...draft,
+        characters: [
+          { name: '', description: '', isHero: true },
+          { name: '   ', description: 'ghost row', isHero: false },
+          { name: 'Elena', description: 'a restorer', isHero: true },
+        ],
+      },
+      'req-characters',
+    );
+    const characters = bodyOf(mockInvoke.mock.calls[0])
+      .characters as { name: string }[];
+    expect(characters).toHaveLength(1);
+    expect(characters[0].name).toBe('Elena');
+  });
+
+  it('sends an empty array when the whole cast is blank', async () => {
+    mockInvoke.mockResolvedValueOnce(storyResponse('standalone'));
+    await generateStory(
+      { ...draft, characters: [{ name: '', description: '', isHero: true }] },
+      'req-blank-cast',
+    );
+    expect(bodyOf(mockInvoke.mock.calls[0]).characters).toEqual([]);
+  });
+
+  it('carries background and appearance through to the request', async () => {
+    mockInvoke.mockResolvedValueOnce(storyResponse('standalone'));
+    await generateStory(
+      {
+        ...draft,
+        characters: [{
+          name: 'Elena',
+          description: 'a restorer',
+          background: 'Has not spoken to her mother in six years.',
+          appearance: 'Dark hair pinned up, paint on her hands.',
+          isHero: true,
+        }],
+      },
+      'req-rich-character',
+    );
+    const characters = bodyOf(mockInvoke.mock.calls[0])
+      .characters as Record<string, unknown>[];
+    expect(characters[0].background).toContain('six years');
+    expect(characters[0].appearance).toContain('Dark hair');
+  });
+});
+
+describe('world and beats fields', () => {
+  it('sends where_and_when, moments and chapter_length when set', async () => {
+    mockInvoke.mockResolvedValueOnce(storyResponse('standalone'));
+    await generateStory(
+      {
+        ...draft,
+        whereAndWhen: 'A hill town, off-season, present day',
+        moments: ['She hears her own name through the wall'],
+        chapterLength: 'long',
+      },
+      'req-world',
+    );
+    const body = bodyOf(mockInvoke.mock.calls[0]);
+    expect(body.where_and_when).toBe('A hill town, off-season, present day');
+    expect(body.moments).toEqual(['She hears her own name through the wall']);
+    expect(body.chapter_length).toBe('long');
+  });
+
+  it('omits them as undefined when unset, rather than sending nulls', async () => {
+    mockInvoke.mockResolvedValueOnce(storyResponse('standalone'));
+    await generateStory(draft, 'req-no-world');
+    const body = bodyOf(mockInvoke.mock.calls[0]);
+    expect(body.where_and_when).toBeUndefined();
+    expect(body.moments).toBeUndefined();
+    expect(body.chapter_length).toBeUndefined();
+  });
+});

@@ -355,3 +355,28 @@ Deno.test("writing style keeps the craft and drops the author", () => {
     );
   }
 });
+
+// Section 3, decisions 23 and 26: kids mode removes rather than defaults, and
+// the removal is enforced server-side, not only in the genre row.
+Deno.test("every genre the kids interface hides is refused server-side", () => {
+  for (
+    const genre of ["darkRomance", "paranormalRomance", "horror", "thriller"]
+  ) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: genre, audience_mode: "kids" }),
+    );
+    if (!("error" in result)) {
+      throw new Error(`${genre} was accepted in kids mode`);
+    }
+  }
+});
+
+Deno.test("kids mode still accepts the genres it does show", () => {
+  for (const genre of ["adventure", "comedy", "fantasy", "mystery"]) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: genre, audience_mode: "kids" }),
+    );
+    if ("error" in result) throw new Error(`${genre}: ${result.error}`);
+    assertEquals(result.spiceLevel, "sweet");
+  }
+});

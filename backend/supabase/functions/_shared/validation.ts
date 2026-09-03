@@ -85,9 +85,19 @@ export function validateGenerationRequest(
     audienceMode = (am || "adult") as AudienceMode;
   }
 
-  // Reject darkRomance in kids mode
-  if (audienceMode === "kids" && primaryGenre === "darkRomance") {
-    return { error: "Dark Romance is not available in kids mode" };
+  // Kids mode removes, it does not default (section 3, decisions 23 and 26).
+  //
+  // The client filters the genre row, but the client is not the enforcement
+  // point: a stale build, a replayed request or a direct call to the function
+  // would otherwise generate horror for a child. This used to reject
+  // `darkRomance` alone, leaving the other three genres the spec removes from
+  // the kids interface fully generatable server-side.
+  if (audienceMode === "kids" && KIDS_BLOCKED_GENRES.has(primaryGenre)) {
+    return {
+      error: `${
+        KIDS_BLOCKED_GENRES.get(primaryGenre)
+      } is not available in kids mode`,
+    };
   }
 
   // --- Spice Level ---
@@ -456,3 +466,16 @@ function normalizeGenre(raw: string): PrimaryGenre {
 
   return "contemporary";
 }
+
+/**
+ * Genres absent from the kids-mode interface, and refused by the server.
+ *
+ * The value is the label used in the error, so the message names the genre the
+ * user chose rather than its internal identifier.
+ */
+const KIDS_BLOCKED_GENRES: ReadonlyMap<string, string> = new Map([
+  ["darkRomance", "Dark Romance"],
+  ["paranormalRomance", "Paranormal Romance"],
+  ["horror", "Horror"],
+  ["thriller", "Thriller"],
+]);

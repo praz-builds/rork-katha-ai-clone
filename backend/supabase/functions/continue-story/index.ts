@@ -130,7 +130,7 @@ serve(async (req) => {
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, audience_mode, identity_lenses, trope_modules, spice_level, topic, author_id, language, story_mode, series_state, previously_summary",
+        "id, title, genre, primary_genre, audience_mode, identity_lenses, trope_modules, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when",
       )
       .eq("id", story_id)
       .single();
@@ -260,8 +260,14 @@ serve(async (req) => {
     const finaleNote = isFinale
       ? " This is the FINAL chapter. Bring the story to a satisfying close."
       : "";
+    // The world layer travels with every chapter, not just the first. Without
+    // it a chapter-7 continuation has only the prose window above to infer the
+    // setting from, and a series drifts out of its own world by degrees.
+    const settingNote = story.where_and_when
+      ? `\nSetting - world and era: ${story.where_and_when}`
+      : "";
     const userPrompt =
-      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}\n${
+      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}${settingNote}\n${
         formatSeriesStateBlock(seriesState)
       }\n\nPrevious chapters:\n${previousText}${earliestContext}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
 

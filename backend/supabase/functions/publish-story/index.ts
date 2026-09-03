@@ -23,11 +23,27 @@ serve(async (req) => {
     } = await supabase.auth.getUser();
     if (!user) return respond({ error: "Unauthorized" }, 401);
 
-    const body = await readJsonObject(req);
+    // Publishing carries whole chapters, so it needs a larger budget than the
+    // shared default - but a bounded one: 30 chapters at MAX_CHAPTER_CHARS.
+    const body = await readJsonObject(req, 30 * MAX_CHAPTER_CHARS + 64 * 1024);
     if (!body) return respond({ error: "Invalid JSON request body" }, 400);
 
     const storyId = parseUuid(body.story_id);
     if (!storyId) return respond({ error: "Invalid story_id" }, 400);
+
+    // Hand-edited content, saved as part of publishing.
+    //
+    // Create Studio's editor is local: typing, restructuring and retitling all
+    // live in React state, and `publishStory` used to send nothing but a story
+    // id. So the server published the text the model originally produced, and
+    // every manual edit the user made was silently discarded at the exact
+    // moment they committed to the story. Editing is free and unlimited
+    // (`STORY_GENERATION_FLOW.md` §10.3), which made this worse, not better -
+    // the more care a user took, the more they lost.
+    //
+    // Both fields are optional so the old single-field call keeps working.
+    const edits = parseEdits(body);
+    if ("error" in edits) return respond({ error: edits.error }, 400);
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -87,6 +103,76 @@ serve(async (req) => {
       );
     }
 
+    // Persist the edits before anything goes public. If a write fails the
+    // story must stay private: publishing content the user did not approve is
+    // worse than not publishing at all.
+    if (edits.title !== undefined) {
+      const { error } = await serviceClient
+        .from("stories")
+        .update({ title: edits.title })
+        .eq("id", storyId);
+      if (error) throw error;
+    }
+
+    // Every chapter id is checked to belong to this story *before* any of them
+    // is written. Validating inside the write loop meant a bad id at position
+    // three returned 409 after positions one and two were already persisted -
+    // a partially-edited story that was then not published, which is the worst
+    // of both outcomes. One extra read buys all-or-nothing.
+    if (edits.chapters.length > 0) {
+      const { data: owned, error: ownedError } = await serviceClient
+        .from("chapters")
+        .select("id")
+        .eq("story_id", storyId)
+        .in("id", edits.chapters.map((c) => c.id));
+      if (ownedError) throw ownedError;
+
+      const ownedIds = new Set((owned ?? []).map((c) => c.id as string));
+      const foreign = edits.chapters.find((c) => !ownedIds.has(c.id));
+      if (foreign) {
+        return respond(
+          {
+            error:
+              "One of the chapters to save does not belong to this story. Nothing was published.",
+            chapter_id: foreign.id,
+          },
+          409,
+        );
+      }
+    }
+
+    for (const chapter of edits.chapters) {
+      const wordCount = chapter.content.trim().split(/\s+/).filter(Boolean)
+        .length;
+      const { error } = await serviceClient
+        .from("chapters")
+        .update({ content: chapter.content, word_count: wordCount })
+        .eq("id", chapter.id)
+        // Still scoped to the story as well as the id: the ownership check
+        // above and this predicate are not redundant, because a chapter could
+        // be deleted between the two.
+        .eq("story_id", storyId);
+      if (error) throw error;
+    }
+
+    if (edits.chapters.length > 0) {
+      const { data: totals, error: totalsError } = await serviceClient
+        .from("chapters")
+        .select("word_count")
+        .eq("story_id", storyId);
+      if (totalsError) throw totalsError;
+      const { error: storyWordError } = await serviceClient
+        .from("stories")
+        .update({
+          word_count: (totals ?? []).reduce(
+            (sum, c) => sum + (c.word_count ?? 0),
+            0,
+          ),
+        })
+        .eq("id", storyId);
+      if (storyWordError) throw storyWordError;
+    }
+
     // Publish the chapters first. If the story row went public while its
     // chapters were still unpublished, the feed would list a story whose
     // chapter count query returns zero.
@@ -112,6 +198,72 @@ serve(async (req) => {
     return respond({ error: "Internal server error" }, 500);
   }
 });
+
+/**
+ * Longest a hand-edited chapter may be, in characters.
+ *
+ * The widest word band is `long`, ceilinged at 3,900 words - roughly 25,000
+ * characters. 60,000 leaves generous room for heavy hand-editing while staying
+ * two orders of magnitude below the 200,000 this started at, which allowed a
+ * single publish to carry 6 MB of text.
+ */
+const MAX_CHAPTER_CHARS = 60_000;
+/** Longest a title may be, matching the column's practical use. */
+const MAX_TITLE_CHARS = 200;
+
+/**
+ * Read the optional `title` and `chapters` edits from a publish request.
+ *
+ * Absent fields mean "unchanged", not "clear": a client that only sends a story
+ * id — every client before this change — must publish exactly what it would
+ * have published before.
+ */
+function parseEdits(
+  body: Record<string, unknown>,
+):
+  | { title?: string; chapters: { id: string; content: string }[] }
+  | { error: string } {
+  let title: string | undefined;
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      return { error: "title must be a non-empty string" };
+    }
+    if (body.title.length > MAX_TITLE_CHARS) {
+      return { error: `title must be ${MAX_TITLE_CHARS} characters or fewer` };
+    }
+    title = body.title.trim();
+  }
+
+  const chapters: { id: string; content: string }[] = [];
+  if (body.chapters !== undefined) {
+    if (!Array.isArray(body.chapters) || body.chapters.length > 30) {
+      return { error: "chapters must be an array of at most 30 items" };
+    }
+    for (const raw of body.chapters) {
+      if (!raw || typeof raw !== "object") {
+        return { error: "Each chapter must be an object" };
+      }
+      const item = raw as Record<string, unknown>;
+      const id = parseUuid(item.id);
+      if (!id) return { error: "Each chapter needs a valid id" };
+      if (typeof item.content !== "string" || !item.content.trim()) {
+        // An empty chapter body is almost certainly a client-state bug rather
+        // than an intention, and overwriting a paid chapter with nothing is
+        // unrecoverable.
+        return { error: "Each chapter needs non-empty content" };
+      }
+      if (item.content.length > MAX_CHAPTER_CHARS) {
+        return {
+          error:
+            `Chapter content must be ${MAX_CHAPTER_CHARS} characters or fewer`,
+        };
+      }
+      chapters.push({ id, content: item.content });
+    }
+  }
+
+  return { title, chapters };
+}
 
 function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

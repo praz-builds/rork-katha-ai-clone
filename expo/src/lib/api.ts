@@ -66,8 +66,19 @@ export async function generateStory(
       identity_lenses: draft.identityLenses,
       trope_modules: draft.tropeModules,
       topic: draft.seed,
-      characters: draft.characters,
+      // Blank rows never leave the device.
+      //
+      // The create screen used to seed one empty character and send it as-is;
+      // `validation.ts` rejects any supplied character without a name, so the
+      // common case — a user who never opened the cast — failed with a 400 on
+      // the primary path. The screen no longer seeds one, and this filter is
+      // the second line of defence: a user who taps "add character" and then
+      // leaves the row blank must not have their generation refused for it.
+      characters: draft.characters.filter((c) => c.name.trim()),
       language: draft.language,
+      where_and_when: draft.whereAndWhen,
+      moments: draft.moments,
+      chapter_length: draft.chapterLength,
       // story_mode is the current request contract. The backend still accepts
       // the legacy is_series boolean, but story_mode takes precedence there and
       // is what new callers are expected to send.
@@ -522,7 +533,11 @@ export async function editParagraph(
       paragraph_index: paragraphIndex,
       instruction,
       tone: options?.tone,
-      custom_notes: options?.customNote,
+      // `custom_note`, singular. The client sent `custom_notes` and the Edge
+      // Function has always read `custom_note`, so every custom paragraph edit
+      // returned 400 with the note the user had just typed sitting in the
+      // request body, unread.
+      custom_note: options?.customNote,
     },
   });
 
@@ -545,7 +560,22 @@ async function localEditParagraph(instruction: EditInstruction): Promise<string>
 // Publish story
 // ---------------------------------------------------------------------------
 
-export async function publishStory(storyId: string): Promise<void> {
+/**
+ * Publish a story, saving any hand edits in the same call.
+ *
+ * `edits` is what stops the editor being a lie. Create Studio's editor is
+ * local — typing, restructuring and retitling live in React state — and this
+ * function used to send nothing but a story id, so the server published the
+ * text the model originally produced and every manual edit was discarded at
+ * the moment the user committed to the story.
+ *
+ * Omitting `edits` publishes exactly what is on the server, which is the old
+ * behaviour and the right one for a story the user never opened the editor on.
+ */
+export async function publishStory(
+  storyId: string,
+  edits?: { title?: string; chapters?: { id: string; content: string }[] },
+): Promise<void> {
   if (!isSupabaseConfigured) {
     // Simulate publish delay (cover image generation takes time)
     await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -553,7 +583,11 @@ export async function publishStory(storyId: string): Promise<void> {
   }
 
   const { error } = await supabase.functions.invoke("publish-story", {
-    body: { story_id: storyId },
+    body: {
+      story_id: storyId,
+      ...(edits?.title ? { title: edits.title } : {}),
+      ...(edits?.chapters?.length ? { chapters: edits.chapters } : {}),
+    },
   });
 
   if (error) {

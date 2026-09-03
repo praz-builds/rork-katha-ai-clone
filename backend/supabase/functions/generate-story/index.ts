@@ -24,6 +24,20 @@ serve(async (req) => {
   if (cors) return cors;
   const respond = (body: unknown, status = 200) =>
     jsonResponse(req, body, status);
+  // Stage timings, in milliseconds from the first line of the handler.
+  //
+  // Latency here is not guessable: the isolate runs in-region with the
+  // database, so a DB round trip is single-digit milliseconds while the LLM
+  // call is tens of seconds, and optimising the wrong one is the default
+  // mistake. This measures instead. It is a handful of `Date.now()` calls and
+  // ships in the response, so a slow generation can be explained from the
+  // client's own payload rather than from a log the user cannot see.
+  const t0 = Date.now();
+  const marks: Record<string, number> = {};
+  const mark = (name: string) => {
+    marks[name] = Date.now() - t0;
+  };
+
   let observedUserId: string | null = null;
   let observedStoryId: string | null = null;
   let observedOperationId: string | null = null;
@@ -45,6 +59,7 @@ serve(async (req) => {
     if (!user) {
       return respond({ error: "Unauthorized" }, 401);
     }
+    mark("auth");
     observedUserId = user.id;
 
     const body = await readJsonObject(req);
@@ -64,6 +79,14 @@ serve(async (req) => {
       characters,
       requestId,
       language,
+      whereAndWhen,
+      moments,
+      storyValues,
+      writingStyle,
+      avoid,
+      chapterLength,
+      plannedChapterCount,
+      illustrateChapters,
     } = input;
     const chapterRole = storyMode === "series"
       ? "series_opening"
@@ -75,58 +98,89 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: existingOperation, error: existingOperationError } =
-      await serviceClient
-        .from("generation_operations")
-        .select("id, story_id, status, result_chapter_id, updated_at")
-        .eq("user_id", user.id)
-        .eq("request_id", requestId)
-        .maybeSingle();
-    if (existingOperationError) throw existingOperationError;
-    if (existingOperation) {
-      if (
-        existingOperation.status === "reserved" &&
-        isStaleReservation(existingOperation.updated_at)
-      ) {
+    // One call opens the generation: idempotency check, story row, credit
+    // reservation. It was three sequential round trips, measured at 1.4-2.2s
+    // before the model was asked for a word - roughly 11% of an 18-second
+    // generation. It is also the correctness fix: the story insert and the
+    // deduction now share a transaction, so an insufficient-credit request
+    // leaves no orphaned `generating` story behind for a best-effort delete
+    // that could itself fail.
+    const { data: begun, error: beginError } = await serviceClient.rpc(
+      "begin_story_generation",
+      {
+        p_user_id: user.id,
+        p_request_id: requestId,
+        p_title: "Generating...",
+        p_primary_genre: primaryGenre,
+        p_audience_mode: audienceMode,
+        p_identity_lenses: identityLenses,
+        p_trope_modules: tropeModules,
+        p_spice_level: spiceLevel,
+        p_story_mode: storyMode,
+        p_topic: seed,
+        p_where_and_when: whereAndWhen ?? null,
+        p_chapter_length: chapterLength,
+        p_planned_chapter_count: plannedChapterCount,
+        p_moments: moments,
+        p_story_values: storyValues,
+        p_writing_style: writingStyle ?? null,
+        p_avoid: avoid ?? null,
+        p_illustrate_chapters: illustrateChapters,
+      },
+    );
+    mark("begin");
+
+    if (beginError || !begun) {
+      if (beginError?.code === "KTH02") {
+        return respond({ error: "Insufficient credits" }, 402);
+      }
+      if (beginError?.code === "KTH01") {
+        return respond({ error: "Generation is already in progress." }, 409);
+      }
+      throw beginError ?? new Error("Generation could not be started");
+    }
+
+    // --- The replay paths. Rare, and deliberately kept off the hot one. ---
+    if (begun.replayed) {
+      let status: string = begun.status;
+      let resultChapterId: string | null = begun.result_chapter_id;
+
+      if (status === "reserved" && isStaleReservation(begun.updated_at)) {
         const { data: reconciliation, error: reconciliationError } =
           await serviceClient.rpc("refund_generation_operation", {
-            p_operation_id: existingOperation.id,
+            p_operation_id: begun.operation_id,
             p_user_id: user.id,
             p_error: "Stale generation reservation reconciled on retry",
           });
         if (reconciliationError || !reconciliation) {
           return respond({
             error: "Generation recovery is pending retry.",
-            operation_id: existingOperation.id,
+            operation_id: begun.operation_id,
           }, 503);
         }
-        existingOperation.status = reconciliation.status;
+        status = reconciliation.status;
         if (reconciliation.result_chapter_id) {
-          existingOperation.result_chapter_id =
-            reconciliation.result_chapter_id;
+          resultChapterId = reconciliation.result_chapter_id;
         }
       }
-      if (existingOperation.status !== "completed") {
+
+      if (status !== "completed") {
         return respond({
-          error: existingOperation.status === "refunded"
+          error: status === "refunded"
             ? "The previous generation failed. Start a new request."
             : "Generation is already in progress.",
-          story_id: existingOperation.story_id,
-          status: existingOperation.status,
+          story_id: begun.story_id,
+          status,
         }, 409);
       }
-      if (!existingOperation.result_chapter_id) {
+      if (!resultChapterId) {
         throw new Error("Completed operation has no chapter");
       }
       const [storyResult, chapterResult] = await Promise.all([
-        serviceClient.from("stories").select("*").eq(
-          "id",
-          existingOperation.story_id,
-        ).single(),
-        serviceClient.from("chapters").select("*").eq(
-          "id",
-          existingOperation.result_chapter_id,
-        ).single(),
+        serviceClient.from("stories").select("*").eq("id", begun.story_id)
+          .single(),
+        serviceClient.from("chapters").select("*").eq("id", resultChapterId)
+          .single(),
       ]);
       if (storyResult.error || chapterResult.error) {
         throw storyResult.error ?? chapterResult.error;
@@ -138,80 +192,26 @@ serve(async (req) => {
       });
     }
 
-    const { data: story, error: storyError } = await serviceClient
-      .from("stories")
-      .insert({
-        author_id: user.id,
-        title: "Generating...",
-        genre: [primaryGenre],
-        primary_genre: primaryGenre,
-        audience_mode: audienceMode,
-        identity_lenses: identityLenses,
-        trope_modules: tropeModules,
-        spice_level: spiceLevel,
-        story_mode: storyMode,
-        topic: seed,
-        length_type: "short",
-        status: "generating",
-      })
-      .select()
-      .single();
-
-    if (storyError || !story) {
-      throw storyError ?? new Error("Story creation failed");
-    }
+    const story = begun.story;
+    const operation = {
+      id: begun.operation_id as string,
+      balance: begun.balance as number,
+    };
     observedStoryId = story.id;
-
-    const { data: operation, error: reservationError } = await serviceClient
-      .rpc(
-        "reserve_generation_operation",
-        {
-          p_user_id: user.id,
-          p_request_id: requestId,
-          p_story_id: story.id,
-          p_chapter_number: 1,
-          p_kind: "story",
-        },
-      );
-    if (reservationError || !operation) {
-      const { error: cleanupError } = await serviceClient
-        .from("stories")
-        .delete()
-        .eq("id", story.id);
-      if (cleanupError) {
-        console.error("generate-story orphan cleanup failed", {
-          storyId: story.id,
-          error: cleanupError,
-        });
-      }
-      if (reservationError?.code === "KTH02") {
-        return respond({ error: "Insufficient credits" }, 402);
-      }
-      throw reservationError ?? new Error("Generation reservation failed");
-    }
-    if (operation.story_id !== story.id) {
-      const { error: cleanupError } = await serviceClient
-        .from("stories")
-        .delete()
-        .eq("id", story.id);
-      if (cleanupError) {
-        console.error("generate-story duplicate cleanup failed", {
-          storyId: story.id,
-          existingStoryId: operation.story_id,
-          error: cleanupError,
-        });
-      }
-      return respond({
-        error: "Generation request already exists",
-        story_id: operation.story_id,
-        status: operation.status,
-      }, 409);
-    }
     observedOperationId = operation.id;
 
     try {
-      if (characters?.length) {
-        const { error: characterError } = await serviceClient
+      // Persisting the cast is not on the critical path.
+      //
+      // The prompt is built from the request body, not from these rows, so
+      // nothing between here and the model needs them - only the background
+      // media task does, and that starts tens of seconds later. Awaiting the
+      // insert before firing the LLM request put a full round trip in front of
+      // every generation for no reason. It is awaited after the model answers,
+      // so a failure still fails the generation and still refunds the credit.
+      const charactersSettled: PromiseLike<{ error: unknown }> = characters
+          ?.length
+        ? serviceClient
           .from("characters")
           .insert(
             characters.map((c) => ({
@@ -222,9 +222,14 @@ serve(async (req) => {
               appearance: c.appearance,
               is_hero: c.isHero ?? false,
             })),
-          );
-        if (characterError) throw characterError;
-      }
+          )
+          // A rejection nothing is awaiting yet surfaces as an unhandled
+          // promise rejection, which can take the isolate down before the
+          // model has even answered. Fold it into the value instead.
+          .then((r) => ({ error: r.error as unknown }), (error: unknown) => ({
+            error,
+          }))
+        : Promise.resolve({ error: null });
 
       const systemPrompt = buildStorySystemPrompt({
         primaryGenre,
@@ -246,12 +251,21 @@ serve(async (req) => {
         seed,
         characters,
         language,
+        whereAndWhen,
+        moments,
       });
+      mark("prompt_built");
       const result = await generateStoryText(
         systemPrompt,
         userPrompt,
         wordBandFor(storyMode, audienceMode),
       );
+      mark("llm");
+
+      const { error: characterError } = await charactersSettled;
+      if (characterError) throw characterError;
+      mark("characters");
+
       const output = parseStructuredOutput(result.text, "Untitled Story");
       if (!output.chapter_body) {
         throw new Error("Generation returned no story content");
@@ -294,10 +308,65 @@ serve(async (req) => {
       if (completionError || !chapter) {
         throw completionError ?? new Error("Story persistence failed");
       }
+      mark("persist");
+
+      // Chapter 1's art is the story's cover (section 10.4, decisions 38 and
+      // 40), and the cast's portraits are generated once, now, because
+      // Interactive mode has no later moment when the whole cast is known
+      // (decision 20).
+      //
+      // Both run after the response. The user has paid for text and has it;
+      // making them wait out four image requests before reading a word would
+      // be the wrong trade, and the concept card gives the story a face
+      // meanwhile. Nothing below can fail the request - see `media.ts`.
+      //
+      // Imported here rather than at the top of the file: `media.ts` pulls in
+      // `image.ts` and the cover-prompt tables, none of which the text path
+      // touches, so parsing them on a cold isolate delayed the response by work
+      // not needed until this line. By now the chapter is already persisted.
+      //
+      // The import itself is inside the guard, not only what it returns.
+      // `await import()` rejects when module resolution or a remote dependency
+      // fetch fails on a cold isolate, and `media.ts` pulls in `image.ts` and
+      // the cover-prompt tables - the widest dependency graph in this handler.
+      // Unguarded, that rejection reaches the outer catch *after* the chapter
+      // is persisted, and the user loses a generation whose text succeeded.
+      // What the response tells the client about the cover has to match what
+      // was persisted. Claiming 'generating' after scheduling failed would put
+      // the reader on a spinner for work that will never start.
+      let coverStatus: "generating" | "failed" = "generating";
+      try {
+        const media = await import("../_shared/media.ts");
+        media.runInBackground(media.generateStoryMedia({
+          storyId: story.id,
+          userId: user.id,
+          genre: primaryGenre,
+          title: output.title,
+          themes: output.themes,
+          whereAndWhen,
+        }));
+      } catch (mediaError) {
+        // A story without art is a worse story, not a failed one — but the row
+        // must not be left saying 'pending'. The response has already told the
+        // client 'generating', and 'pending' means "not attempted yet", so a
+        // client that re-fetched would wait for work that will never start.
+        // 'failed' is the truth, and it renders the concept card as final,
+        // which decision 39 already treats as a legitimate published look.
+        console.error("generate-story media scheduling failed:", mediaError);
+        coverStatus = "failed";
+        await serviceClient
+          .from("stories")
+          .update({ cover_status: "failed" })
+          .eq("id", story.id);
+      }
 
       return respond({
         story: {
           ...story,
+          // 'generating': in flight on a background task, so the client shows
+          // the concept card until it reads 'ready'. 'failed' when scheduling
+          // itself did not happen — the concept card is then final.
+          cover_status: coverStatus,
           title: output.title,
           word_count: wordCount,
           status: "complete",
@@ -313,6 +382,9 @@ serve(async (req) => {
         chapter,
         balance: operation.balance,
         model: result.model,
+        // Cumulative milliseconds from the start of the handler. `llm` minus
+        // `prompt_built` is the provider chain; everything else is ours.
+        timings: { ...marks, total: Date.now() - t0 },
       });
     } catch (error) {
       console.error("generate-story post-deduction error:", error);

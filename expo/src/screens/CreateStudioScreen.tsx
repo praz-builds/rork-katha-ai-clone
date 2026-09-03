@@ -62,6 +62,10 @@ type DraftCharacter = {
   name: string;
   description: string;
   isHero: boolean;
+  /** Voice, motivation, relationships. Drives the prose, never the portrait. */
+  background?: string;
+  /** Face, build, clothing. Drives the portrait, and detail in the prose. */
+  appearance?: string;
 };
 
 type StudioDraft = {
@@ -74,6 +78,16 @@ type StudioDraft = {
   language: string;
   characters: DraftCharacter[];
   isSeries: boolean;
+  /**
+   * The brief fields the backend now consumes.
+   *
+   * There is no UI producing them yet — the Idea/Shape/Review split and the
+   * moments builder are unbuilt — but the contract is wired end to end, so the
+   * screens that collect them will not also have to plumb them.
+   */
+  whereAndWhen?: string;
+  moments?: string[];
+  chapterLength?: "short" | "standard" | "long";
 };
 
 type ParagraphState = {
@@ -201,11 +215,54 @@ const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
  * short idea as a failure. Nothing here blocks Create; the slot-based
  * brief-strength meter replaces the counter proper.
  */
-function getSeedHint(length: number): string {
-  if (length === 0) return "The more specific your idea, the better the story";
-  if (length < 40) return "Katha will invent most of this. That can be good.";
-  if (length < 150) return "Nice, that's a strong start";
-  return "Great detail. Katha has plenty to work with";
+/**
+ * Brief strength — section 8, replacing the character counter.
+ *
+ * Keyed to slots filled, not to characters typed. The counter measured the one
+ * thing the user should not optimise: length. A 150-character idea is not a
+ * better brief than a 30-character idea plus a setting and a cast, and telling
+ * someone "great detail" for padding teaches them to pad.
+ *
+ * Two properties the counter lacked. It names what to add next, and **Sparse is
+ * framed as a legitimate choice** — a user who wants to type one sentence and
+ * hit Create must never be scolded for it.
+ */
+function getBriefStrength(draft: StudioDraft): {
+  label: string;
+  detail: string;
+  filled: number;
+} {
+  if (!draft.seed.trim()) {
+    return {
+      label: "",
+      detail: "A sentence is enough. Katha takes it from there.",
+      filled: 0,
+    };
+  }
+
+  // Genre is deliberately not counted. It always has a value — the draft opens
+  // on "fantasy" — so including it made every brief with an idea score at least
+  // two, and **Sparse was unreachable**. A slot that is always full cannot
+  // discriminate between briefs, and the meter's whole job is to discriminate.
+  let filled = 1;
+  if (draft.whereAndWhen?.trim()) filled += 1;
+  if (draft.characters.some((c) => c.name.trim())) filled += 1;
+  if (draft.moments?.length) filled += 1;
+
+  if (filled >= 4) {
+    return { label: "Rich", detail: "Katha has plenty to work with.", filled };
+  }
+  if (filled === 3) {
+    return { label: "Strong", detail: "This will sound like yours.", filled };
+  }
+  if (filled === 2) {
+    return { label: "Good", detail: "Enough to write from.", filled };
+  }
+  return {
+    label: "Sparse",
+    detail: "Katha will invent most of this. That can be good.",
+    filled,
+  };
 }
 
 const INITIAL_DRAFT: StudioDraft = {
@@ -216,9 +273,14 @@ const INITIAL_DRAFT: StudioDraft = {
   tropeModules: [],
   seed: "",
   language: "English",
-  characters: [
-    { name: "", description: "", isHero: true },
-  ],
+  // No phantom character.
+  //
+  // This seeded one blank `{ name: "", description: "" }` row, which the client
+  // sent verbatim. `validation.ts` rejects any supplied character without a
+  // name, so every user who did not fill in a cast — the common case, since
+  // characters are optional — got a 400 on the primary path. The cast starts
+  // empty; `addCharacter` creates the first row.
+  characters: [],
   isSeries: false,
 };
 
@@ -388,6 +450,7 @@ export default function CreateStudioScreen({
   // legitimate choice per source-of-truth/STORY_GENERATION_FLOW.md section 2.
   const canGenerate =
     draft.seed.trim().length >= 1 && credits > 0 && !busy;
+  const briefStrength = getBriefStrength(draft);
 
   const wordCount = paragraphs.reduce((acc, p) => {
     return acc + p.text.split(/\s+/).filter(Boolean).length;
@@ -650,26 +713,68 @@ export default function CreateStudioScreen({
     if (!story) return;
     setStep("publishing");
 
-    const updatedChapters = story.chapters.map((ch) => ({ ...ch, isPublished: true }));
+    // The editor writes to React state, not to the server. Publishing has to
+    // carry those edits or it publishes the model's original text and silently
+    // discards everything the user wrote — at the exact moment they committed
+    // to the story. Editing is free and unlimited, so the more care a user
+    // took, the more they used to lose.
+    const edited = saveEditorToStory() ?? story;
 
-    // Bounded publish — timeout after 15s so the UI never hangs
+    // An emptied chapter blocks the publish rather than being filtered out of
+    // it. Filtering would send no `chapters` at all, the server would read that
+    // as "unchanged", and it would publish the original text under a story the
+    // user had just cleared — the same silent stale publish by another door.
+    const emptyChapter = edited.chapters.find(
+      (ch) => !ch.paragraphs.some((p) => p.trim()),
+    );
+    if (emptyChapter) {
+      setStep("review");
+      Alert.alert(
+        "Empty chapter",
+        `"${emptyChapter.title || `Chapter ${emptyChapter.chapterNumber}`}" has no text. Add something to it, or delete it, before publishing.`,
+      );
+      return;
+    }
+
+    const updatedChapters = edited.chapters.map((ch) => ({ ...ch, isPublished: true }));
+
+    // A failed publish is reported, not swallowed.
+    //
+    // This used to discard every failure — timeout, network, server rejection —
+    // and then call `onPublished` with `isPublished: true` on every chapter, so
+    // the user saw a published story while the server held the original text.
+    // Carrying the hand edits made that strictly worse: a swallowed failure now
+    // discards the edits this change exists to preserve, and the local state
+    // hides it. Publishing is not something to be optimistic about.
     try {
       await Promise.race([
-        publishStory(story.id),
+        publishStory(edited.id, {
+          title: storyTitle || edited.title,
+          chapters: edited.chapters.map((ch) => ({
+            id: ch.id,
+            content: ch.paragraphs.filter((p) => p.trim()).join("\n\n"),
+          })),
+        }),
+        // Bounded so the UI never hangs on a stalled request.
         new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000)),
       ]);
     } catch {
-      // Non-blocking — story is saved locally even if publish call fails or times out
+      setStep("review");
+      Alert.alert(
+        "Couldn't publish",
+        "Your story and every edit are still here. Check your connection and try again.",
+      );
+      return;
     }
 
     const publishedStory: Story = {
-      ...story,
-      title: storyTitle || story.title,
+      ...edited,
+      title: storyTitle || edited.title,
       chapters: updatedChapters,
     };
 
     onPublished(publishedStory);
-  }, [story, storyTitle, onPublished]);
+  }, [story, storyTitle, onPublished, saveEditorToStory]);
 
   const handleContinueStory = useCallback(async (isFinale = false) => {
     if (!story || addingChapter) return;
@@ -925,17 +1030,22 @@ export default function CreateStudioScreen({
               />
               <Text style={[
                 styles.seedHint,
-                draft.seed.trim().length > 0 && draft.seed.trim().length < 40 && styles.seedHintWarm,
-                draft.seed.trim().length >= 40 && styles.seedHintReady,
-                // Styling only - both states are usable; neither blocks Create.
+                // Styling only - every state is usable; none blocks Create.
+                briefStrength.filled >= 2 && styles.seedHintWarm,
+                briefStrength.filled >= 3 && styles.seedHintReady,
               ]}>
-                {getSeedHint(draft.seed.trim().length)}
+                {briefStrength.label
+                  ? `${briefStrength.label} — ${briefStrength.detail}`
+                  : briefStrength.detail}
               </Text>
 
               {/* Premise chips */}
               {draft.seed.trim().length < 20 && (
                 <View>
-                  <Text style={styles.chipSectionLabel}>Try a premise</Text>
+                  {/* "Premise" is banned from the interface (section 1,
+                      decision 2). The chips are a good asset; only the label
+                      was wrong. */}
+                  <Text style={styles.chipSectionLabel}>Try one</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.premiseChipScroll}>
                     {GENRE_PREMISE_CHIPS[draft.primaryGenre].map((premise) => (
                       <Pressable
@@ -976,14 +1086,24 @@ export default function CreateStudioScreen({
                       placeholderTextColor={colors.tertiary}
                       style={[styles.characterInput, styles.characterNameInput]}
                     />
-                    {index > 0 && (
-                      <Pressable
-                        onPress={() => removeCharacter(index)}
-                        style={styles.removeCharacterBtn}
-                      >
-                        <X size={16} color={colors.muted} />
-                      </Pressable>
-                    )}
+                    {/* Every row is removable. The `index > 0` guard was
+                        correct while INITIAL_DRAFT seeded row 0; now that the
+                        cast starts empty, row 0 is one the user added, and
+                        leaving it unremovable trapped them — a blank name is
+                        rejected server-side, so a user who added a character
+                        and changed their mind could not generate at all. */}
+                    <Pressable
+                      onPress={() => removeCharacter(index)}
+                      style={styles.removeCharacterBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove character ${index + 1}`}
+                      // The glyph is 16pt; the touch target must not be. 14pt
+                      // of slop on each side brings the effective target to
+                      // 44x44, which is the minimum both platforms specify.
+                      hitSlop={14}
+                    >
+                      <X size={16} color={colors.muted} />
+                    </Pressable>
                   </View>
                   <View style={styles.characterTopRow}>
                     <TextInput

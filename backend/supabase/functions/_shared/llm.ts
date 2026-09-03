@@ -27,12 +27,53 @@ export const GEMINI_MODEL = "gemini-3.1-pro-preview";
  */
 export const OPENROUTER_MODEL = "google/gemini-2.5-flash";
 /**
- * Last-ditch only, behind every model whose identity is known in advance.
+ * The free-tier position: last resort, and empirically thin.
  *
- * Production has seen this router hand a *code* model a prose rewrite, and its
- * free-tier daily caps make it unfit to carry traffic.
+ * This was a single string, `openrouter/free` - a router that picks a free
+ * model at random per request. Production has seen it hand a *code* model a
+ * prose rewrite, and a routed model whose output cap is under
+ * `MAX_OUTPUT_TOKENS` returns `finish_reason: "length"`, which
+ * `openAICompatibleContent` rejects.
+ *
+ * The obvious fix was to name the free models instead, choosing them from
+ * OpenRouter's catalogue by filtering on `supported_parameters` containing
+ * `structured_outputs`. **That metadata is aspirational, not observed.** Every
+ * candidate was run against the real `STORY_OUTPUT_JSON_SCHEMA` with
+ * `strict: true` and a 16,000-token budget on 2026-09-03:
+ *
+ * | model                                  | result                              |
+ * |----------------------------------------|-------------------------------------|
+ * | z-ai/glm-5.2:free                      | 429, repeatedly - never answered    |
+ * | nvidia/nemotron-3-super-120b-a12b:free | `finish_reason: length` after 119s  |
+ * | dots-studio/dots-3-note-preview:free   | `length`, empty content, 108s       |
+ * | minimax/minimax-m3:free                | 200, but ignored the schema         |
+ * | minimax/minimax-m2.7:free              | 200, but ignored the schema         |
+ * | google/gemma-4-*:free                  | 429                                 |
+ * | thinkingmachines/inkling:free          | 403, not available on this account  |
+ * | nvidia/nemotron-3-ultra-550b-a55b:free | passed once (44s), errored once     |
+ * | openrouter/free                        | routed a code model to write prose  |
+ *
+ * The reasoning-model failures share one cause: they emit their chain of
+ * thought into `content`, which both consumes the budget and means the body is
+ * not the JSON the schema demanded.
+ *
+ * So the free tier is kept, but it is decoration rather than depth. The chain's
+ * real redundancy is Gemini -> OpenRouter's *paid* `google/gemini-2.5-flash`
+ * (measured at 10.6s for a schema-valid 520-word chapter) -> the three OpenAI
+ * models. What survives here is the one free model that ever produced valid
+ * output, and the blind router behind it, because at this point the only
+ * remaining alternative is refunding the user's credit.
+ *
+ * **Do not re-add a model from catalogue metadata alone.** Run it against the
+ * real schema first; the table above is what that costs to learn.
  */
-export const OPENROUTER_FREE_MODEL = "openrouter/free";
+export const OPENROUTER_FREE_MODELS: readonly string[] = [
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "openrouter/free",
+];
+
+/** The preferred free model; the rest of the list is fallback. */
+export const OPENROUTER_FREE_MODEL = OPENROUTER_FREE_MODELS[0];
 /**
  * The OpenAI position, in preference order.
  *
@@ -84,6 +125,43 @@ const openRouterKey = () => Deno.env.get("OPENROUTER_API_KEY")?.trim();
 const openaiKey = () =>
   Deno.env.get("OPENAI_STORY_API_KEY")?.trim() ||
   Deno.env.get("OPENAI_API_KEY")?.trim();
+
+/**
+ * Providers to skip entirely, as a comma-separated env value.
+ *
+ * `LLM_DISABLED_PROVIDERS=gemini` takes the Gemini position out of the chain.
+ *
+ * Gemini has hard-failed with `429 RESOURCE_EXHAUSTED` since 2026-08-31 while
+ * holding the first 35% of the deadline. When the 429 comes back fast that
+ * costs only a round trip - measured at a few hundred milliseconds - but a
+ * quota-blocked provider is exactly the one likely to *hang*, and then it burns
+ * up to 42 seconds before the model that actually works is asked anything.
+ *
+ * Config rather than a circuit breaker, for two reasons. Edge Function isolates
+ * share no memory, so an in-process breaker learns nothing that outlives a
+ * single request; and a breaker backed by a table would put a database round
+ * trip on the hot path in order to save latency. A secret costs nothing to
+ * read and is changed without a deploy.
+ *
+ * The cost is that it is manual, and a stale entry silently shortens the chain.
+ * So it is read in exactly one place and the skip is logged on every request,
+ * where it cannot be forgotten quietly.
+ */
+function disabledProviders(): ReadonlySet<string> {
+  const raw = Deno.env.get("LLM_DISABLED_PROVIDERS")?.trim();
+  if (!raw) return new Set();
+  return new Set(
+    raw.split(",").map((name) => name.trim().toLowerCase()).filter(Boolean),
+  );
+}
+
+/** True when this provider is switched off by configuration. */
+export function isProviderDisabled(
+  provider: string,
+  disabled: ReadonlySet<string> = disabledProviders(),
+): boolean {
+  return disabled.has(provider.toLowerCase());
+}
 
 /** Test seam: which credential story generation would use right now. */
 export const openAIKeyForTest = () => openaiKey();
@@ -345,46 +423,57 @@ async function runProviderChain(
     safetyLevel = Math.max(safetyLevel, level);
   };
 
-  const geminiResult = await tryProvider({
-    failures,
-    provider: "gemini",
-    model: GEMINI_MODEL,
-    run: () =>
-      generateGeminiText(
-        GEMINI_MODEL,
-        GEMINI_TIMEOUT_MS,
-        options,
-        systemPrompt,
-        userPrompt,
-        phaseDeadline(PHASE_END_SHARE.gemini),
-        safetyLevel,
-        recordModerationRetry,
-      ).then((text) => requireUsableStoryOutput(text, options)),
-  });
+  const disabled = disabledProviders();
+  if (disabled.size) {
+    console.log(
+      `[llm] providers disabled by config: ${[...disabled].join(", ")}`,
+    );
+  }
+
+  const geminiResult = isProviderDisabled("gemini", disabled)
+    ? null
+    : await tryProvider({
+      failures,
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      run: () =>
+        generateGeminiText(
+          GEMINI_MODEL,
+          GEMINI_TIMEOUT_MS,
+          options,
+          systemPrompt,
+          userPrompt,
+          phaseDeadline(PHASE_END_SHARE.gemini),
+          safetyLevel,
+          recordModerationRetry,
+        ).then((text) => requireUsableStoryOutput(text, options)),
+    });
   if (geminiResult) {
     return { text: geminiResult, model: GEMINI_MODEL };
   }
 
   let openRouterModel = OPENROUTER_MODEL;
-  const openRouterText = await tryProvider({
-    failures,
-    provider: "openrouter",
-    model: OPENROUTER_MODEL,
-    run: async () => {
-      const result = await generateOpenRouterText(
-        OPENROUTER_MODEL,
-        OPENROUTER_TIMEOUT_MS,
-        options,
-        systemPrompt,
-        userPrompt,
-        phaseDeadline(PHASE_END_SHARE.openrouter),
-        safetyLevel,
-        recordModerationRetry,
-      );
-      openRouterModel = result.model;
-      return requireUsableStoryOutput(result.text, options);
-    },
-  });
+  const openRouterText = isProviderDisabled("openrouter", disabled)
+    ? null
+    : await tryProvider({
+      failures,
+      provider: "openrouter",
+      model: OPENROUTER_MODEL,
+      run: async () => {
+        const result = await generateOpenRouterText(
+          OPENROUTER_MODEL,
+          OPENROUTER_TIMEOUT_MS,
+          options,
+          systemPrompt,
+          userPrompt,
+          phaseDeadline(PHASE_END_SHARE.openrouter),
+          safetyLevel,
+          recordModerationRetry,
+        );
+        openRouterModel = result.model;
+        return requireUsableStoryOutput(result.text, options);
+      },
+    });
   if (openRouterText) {
     return { text: openRouterText, model: openRouterModel };
   }
@@ -400,9 +489,12 @@ async function runProviderChain(
   const openAIPhaseEnd = phaseDeadline(PHASE_END_SHARE.openai);
   const openAIPhaseStart = Date.now();
   const openAIWindow = Math.max(0, openAIPhaseEnd - openAIPhaseStart);
-  for (const [index, spec] of OPENAI_MODELS.entries()) {
+  const openAIModels = isProviderDisabled("openai", disabled)
+    ? []
+    : OPENAI_MODELS;
+  for (const [index, spec] of openAIModels.entries()) {
     const modelDeadline = openAIPhaseStart +
-      Math.floor((openAIWindow * (index + 1)) / OPENAI_MODELS.length);
+      Math.floor((openAIWindow * (index + 1)) / openAIModels.length);
     const openAIText = await tryProvider({
       failures,
       provider: "openai",
@@ -424,32 +516,49 @@ async function runProviderChain(
     }
   }
 
-  // Last-ditch only. The free router picks a free model at random per request -
-  // production has seen it route a *code* model to write prose - so it sits
-  // behind every model whose identity is known in advance. It earns its place
-  // solely as a final attempt before the caller has to refund the credit.
-  let openRouterFreeModel = OPENROUTER_FREE_MODEL;
-  const openRouterFreeText = await tryProvider({
-    failures,
-    provider: "openrouter",
-    model: OPENROUTER_FREE_MODEL,
-    run: async () => {
-      const result = await generateOpenRouterText(
-        OPENROUTER_FREE_MODEL,
-        OPENROUTER_TIMEOUT_MS,
-        options,
-        systemPrompt,
-        userPrompt,
-        phaseDeadline(PHASE_END_SHARE.openrouterFree),
-        safetyLevel,
-        recordModerationRetry,
-      );
-      openRouterFreeModel = result.model;
-      return requireUsableStoryOutput(result.text, options);
-    },
-  });
-  if (openRouterFreeText) {
-    return { text: openRouterFreeText, model: openRouterFreeModel };
+  // The free tier, last. Every model whose identity is known in advance and
+  // whose output is paid for has now been tried; what remains is free capacity,
+  // which is still strictly better than refunding the credit.
+  //
+  // The window is split evenly across the list for the same reason the OpenAI
+  // window is: a stalled first entry would otherwise spend the whole slice and
+  // `remainingDuration` would abort the models behind it before `fetch` was
+  // called. Free models are the most likely of all to stall or throttle, so an
+  // even split matters more here than anywhere else in the chain.
+  const freeModels = isProviderDisabled("openrouter", disabled)
+    ? []
+    : OPENROUTER_FREE_MODELS;
+  const freePhaseEnd = phaseDeadline(PHASE_END_SHARE.openrouterFree);
+  const freePhaseStart = Date.now();
+  const freeWindow = Math.max(0, freePhaseEnd - freePhaseStart);
+  for (const [index, freeModel] of freeModels.entries()) {
+    const modelDeadline = freePhaseStart +
+      Math.floor((freeWindow * (index + 1)) / freeModels.length);
+    let resolvedModel = freeModel;
+    const freeText = await tryProvider({
+      failures,
+      provider: "openrouter",
+      model: freeModel,
+      run: async () => {
+        const result = await generateOpenRouterText(
+          freeModel,
+          OPENROUTER_TIMEOUT_MS,
+          options,
+          systemPrompt,
+          userPrompt,
+          modelDeadline,
+          safetyLevel,
+          recordModerationRetry,
+        );
+        // `openrouter/free` reports which model it actually routed to; a named
+        // free model reports itself. Either way telemetry records the truth.
+        resolvedModel = result.model;
+        return requireUsableStoryOutput(result.text, options);
+      },
+    });
+    if (freeText) {
+      return { text: freeText, model: resolvedModel };
+    }
   }
 
   throw new AllProvidersFailedError(failures);

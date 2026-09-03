@@ -367,34 +367,51 @@ async function buildContinueReading(
   if (storiesError) throw storiesError;
   if (!stories?.length) return [];
 
-  // For each story, check if there are chapters the user hasn't read
-  // by comparing total chapters vs user's read count for that story
-  const continueList: unknown[] = [];
-  for (const story of stories) {
-    const storyId = story.id as string;
+  // Two queries for the whole rail, not two per story.
+  //
+  // This was a sequential `for` loop issuing a chapter count and a read count
+  // per story - up to twenty round trips, in series, to decide which three
+  // cards to show. The counts are trivially batchable: fetch both sets scoped
+  // to the story ids already in hand, then tally in memory. The work is the
+  // same; the waiting is not.
+  const ids = stories.map((story) => story.id as string);
 
-    const [chapterCountResult, userReadCountResult] = await Promise.all([
-      serviceClient
-        .from("chapters")
-        .select("id", { count: "exact", head: true })
-        .eq("story_id", storyId)
-        .eq("is_published", true),
-      serviceClient
-        .from("story_reads")
-        .select("id", { count: "exact", head: true })
-        .eq("story_id", storyId)
-        .eq("user_id", userId),
-    ]);
+  const [chapterRows, readRows] = await Promise.all([
+    serviceClient
+      .from("chapters")
+      .select("story_id")
+      .in("story_id", ids)
+      .eq("is_published", true),
+    serviceClient
+      .from("story_reads")
+      .select("story_id")
+      .in("story_id", ids)
+      .eq("user_id", userId),
+  ]);
+  if (chapterRows.error) throw chapterRows.error;
+  if (readRows.error) throw readRows.error;
 
-    const totalChapters = chapterCountResult.count ?? 0;
-    const userReads = userReadCountResult.count ?? 0;
-
-    // If more published chapters than the user has read entries, suggest continuing
-    if (totalChapters > userReads) {
-      continueList.push(story);
-      if (continueList.length >= 3) break;
+  const tally = (rows: { story_id: string }[] | null) => {
+    const counts = new Map<string, number>();
+    for (const row of rows ?? []) {
+      counts.set(row.story_id, (counts.get(row.story_id) ?? 0) + 1);
     }
-  }
+    return counts;
+  };
+  const publishedChapters = tally(
+    chapterRows.data as { story_id: string }[] | null,
+  );
+  const chaptersRead = tally(readRows.data as { story_id: string }[] | null);
+
+  // More published chapters than read entries means there is something left to
+  // continue. Order is preserved from the query above, so the first three
+  // still win, exactly as the loop's early break did.
+  const continueList = stories
+    .filter((story) => {
+      const id = story.id as string;
+      return (publishedChapters.get(id) ?? 0) > (chaptersRead.get(id) ?? 0);
+    })
+    .slice(0, 3);
 
   return flattenAuthor(continueList as Record<string, unknown>[]);
 }

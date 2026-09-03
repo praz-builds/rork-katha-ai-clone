@@ -7,6 +7,90 @@
 
 ---
 
+## 2026-09-03 UTC — Story creation flow to production: deployed, measured, made faster
+
+**Session:** Credentials consolidated, the media/latency/security work built and deployed, migrations 00027-00031 applied to the live project, and the flow verified end to end against production. Builds on #46's contract rather than duplicating it.
+
+### A migration-numbering collision, and how it was resolved
+
+This work started from a branch that predated #45/#46 and independently took migration numbers 00027-00030, **and applied them to the production database.** Main's `00027_story_flow_contracts` and `00028_validate_story_flow_contracts` had never been applied, so those version numbers were already marked done remotely and main's contract migrations would have been silently skipped forever — the widened `generation_operations.kind`, the `(story_id, chapter_number, kind)` reservation index and `planned_chapter_count` would never have existed in the database while every file said they did.
+
+Resolved by taking main's contract as the base, renumbering this work to 00029-00031, repairing the remote history (`migration repair --status reverted 00027 00028 00029 00030`) and re-pushing, which applied all five in order. Migration 00029 carries a guarded cleanup for the duplicate `characters.image_url` the earlier numbering created — it raises rather than dropping if the column holds data — and 00030 explicitly drops the twelve-argument `begin_story_generation` overload, because `create or replace` does not replace a function whose argument types changed; it creates a second one beside it, and a caller with the old shape would still resolve to a definition that writes none of the brief.
+
+**The lesson for `AGENTS.md`'s numbering rule:** reading remote state with `supabase migration list` is not sufficient. A number can be taken by a file already merged to main and not yet applied. Check both.
+
+### Credentials
+
+`backend/.env` is the single local source of truth for backend secrets, mode 600, with a committed `backend/.env.example` documenting the shape. `expo/.env` carries only public `EXPO_PUBLIC_*` values — the Supabase URL, the anon key, and the app environment. Both gitignored; history scanned — no `.env` has ever been committed and no key material appears in any tracked file. Removed two dead duplicates: `app.json`'s `expo.extra.supabaseUrl`/`supabaseAnonKey` (nothing reads them; `src/lib/supabase.ts` reads `process.env`), and the Adapty key in `expo/.env.example`, left from the RevenueCat migration.
+
+### What live testing found that unit tests could not
+
+**The OpenRouter free tier does not work.** `OPENROUTER_FREE_MODELS` was chosen by filtering the catalogue on `supported_parameters` containing `structured_outputs`. Run against the real schema with `strict: true`, that metadata proved aspirational: two models returned `finish_reason: length` after 108-119s emitting reasoning into `content`, two ignored the schema outright, three returned 429, one 403, and `openrouter/free` routed a **code** model to write prose. Only `nvidia/nemotron-3-ultra-550b-a55b:free` ever produced valid output, and it errored on the second attempt. The list is now that model plus the blind router, with the full table in the source so nobody re-adds a model from metadata again.
+
+The recharge's real value is position 2: **`google/gemini-2.5-flash` answered in 10.6s with a schema-valid 520-word chapter**, having returned 402 before. It is the model serving production.
+
+**The OpenRouter image path works, and returns JPEG.** `choices[0].message.images[0].image_url.url` as a data URL was correct, and the cover produced was a clean 2:3 noir portrait with no text. But `gemini-3.1-flash-lite-image` returns **JPEG** where the other two return PNG, and `uploadToStorage` hardcoded `image/png` — it would have stored a file whose declared type was a lie. Now sniffed from magic bytes, with the extension and public URL following the actual format.
+
+**The image chain skipped its own fallbacks.** `safetyLevel` was carried across providers so a rejected prompt would not be re-sent — but uncapped, three rejections from OpenAI pushed it to the maximum and the loop guard then skipped both OpenRouter models *without sending a request*. The whole reason to try a second provider is that its filter is a different filter.
+
+**The replay path returned 500.** `pg_catalog.coalesce(...)` — `coalesce` is a SQL construct, not a function in `pg_catalog`, so it raised `42883`, but only on the branch a first generation never touches. A retry with the same `request_id` failed instead of replaying the chapter it had already paid for.
+
+### Latency: measured, then cut
+
+`generate-story` now returns stage timings, because latency here is not guessable — the isolate runs in-region with the database, so the instinct to optimise DB calls is usually wrong.
+
+| | before | after |
+|---|---|---|
+| Pre-LLM (ours) | 1,419-2,184 ms | **651-944 ms** |
+| Provider chain | 10.7-24.1 s | unchanged |
+| Post-LLM (ours) | 223-537 ms | 228-764 ms |
+
+`begin_story_generation` (00030) collapses three sequential round trips — idempotency select, story insert, credit reservation — into one, and is also the correctness fix: the insert and the deduction share a transaction, so an insufficient-credit request leaves no orphaned `generating` story for a best-effort delete that could itself fail. The character insert now runs concurrently with the LLM request, and `media.ts` is dynamically imported after persistence so a cold isolate does not parse the image stack to serve text.
+
+**The model is ~95% of the wall clock**, roughly proportional to output length at 12-15 ms per word: 780 words takes 13s, 1,968 words takes 25s. Server overhead is now under a second. Cutting the rest is a product decision — `202` plus polling, or an output contract that can stream — not an optimisation. Schema-constrained JSON cannot stream a readable chapter.
+
+**Feed N+1 removed.** `continueReading` issued a chapter count and a read count *per story*, sequentially — up to twenty round trips to choose three cards. Now two batched queries and an in-memory tally. Migration 00031 adds the three indexes matching the feed's actual `ORDER BY` clauses, built `CONCURRENTLY`.
+
+### Correctness and security closed
+
+- **Custom paragraph edits were broken in production.** The client sent `custom_notes`; the function has always read `custom_note`. Every custom edit returned 400 with the user's note sitting unread in the body. Client corrected; server accepts both, because older builds are already on devices.
+- **Prompt injection.** Every user-authored value is wrapped in `<katha:...>` fences, with the delimiter stripped from the value so a user cannot close their own span, and one rule in the system prompt saying what the fence means.
+- **Cover generation had no caller.** `generateCoverImage` was dead code; `cover_image_url` was never written by anything. Chapter 1's art and the cast's portraits now generate on a background task after the response is flushed, with `cover_status`/`cover_started_at` (00029) so the client can tell "not tried" from "in flight" from "failed" — a distinction a null URL cannot make.
+- **Kids-mode genre blocking** widened from `darkRomance` alone to all four genres section 3 removes from the interface.
+- **Request bodies were parsed before any size check.** Now refused on `Content-Length` before reading and on length before `JSON.parse`; `publish-story`'s per-chapter cap drops from 200,000 characters to 60,000.
+- **Publishing discarded every hand edit.** The editor writes to React state and `publishStory` sent only a story id, so the server published the model's original text at the moment the user committed. Publish now carries title and chapter content, persists them before flipping visibility, refuses a chapter id that matches no row, and blocks on an emptied chapter rather than silently publishing stale text.
+- **Gemini can be removed from the chain by configuration** (`LLM_DISABLED_PROVIDERS`). Config rather than a circuit breaker: isolates share no memory, and a table-backed breaker would put a round trip on the hot path to save latency.
+
+### Verified in production
+
+`scripts/smoke-generation-matrix.py` — **55 checks, 0 failures**, against the deployed functions: covers ready, portraits 2/2, kids-mode refusals, chapter lengths stored verbatim, series continuation carrying the world layer, idempotent replay, `google/gemini-2.5-flash` answering. 178 backend and 49 Expo unit tests green. `error_event_summary` shows no new failures from the run.
+
+### CodeRabbit review
+
+Twenty-four findings, all addressed. The ones that were real defects rather than polish:
+
+- **The fence was only half a fence.** The idea and the setting went through `userField`, which delimits; character name, description, background, appearance and each moment went through `fenceUserText` alone, which strips the delimiter and then interpolates the value as bare prompt prose. A background reading `SYSTEM: ignore the output schema` arrived in the same position as the instructions with nothing marking it as data — the exact failure the fence exists to prevent, on the longest free-text fields in the request. The test passed anyway, because it only asserted the delimiter could not be duplicated.
+- **The dynamic import could fail a paid request after the text existed.** `await import("../_shared/media.ts")` sat inside the outer `try`, and it rejects when module resolution or a remote dependency fetch fails on a cold isolate. The comment above it claimed nothing below could fail the request; that was true of `media.ts` internals and false of the import itself.
+- **`NOT VALID` plus `VALIDATE` in one file buys nothing.** `supabase db push` runs each migration inside one transaction, so `ADD CONSTRAINT ... NOT VALID` holds its `ACCESS EXCLUSIVE` lock to commit and the validation runs under it. Split into 00032.
+- **A failed publish still reported success.** The `catch` discarded every failure and execution continued to `onPublished` with `isPublished: true`. Carrying the hand edits made it worse: a swallowed failure now silently discarded the edits the change existed to preserve.
+- **The first character row became unremovable.** The remove button was gated on `index > 0`, correct while `INITIAL_DRAFT` seeded row 0. With an empty cast, row 0 is one the user added — and a blank name is rejected server-side, so a user who added a character and changed their mind could not generate at all. A fix for one 400 introduced another.
+- **`Sparse` was unreachable.** The meter counted genre, which always has a value, so any brief with an idea scored at least Good. A slot that is always full cannot discriminate, which is the meter's whole job.
+- **Partial edits then a conflict.** `publish-story` validated each chapter id inside the write loop, so a bad id at position three returned 409 after positions one and two were persisted. Now the whole set is checked before any of it is written.
+- **`raw.length` counts UTF-16 code units, not bytes**, so a body of multi-byte characters could be several times the limit and pass. Story ideas are routinely non-Latin, which makes that the normal case rather than an adversarial one.
+- **The portrait ladder discarded the only field it had.** A character with an appearance and no description simplified straight to "a person".
+- **`"returned no image"` also matched OpenAI's own error**, which is a malformed response rather than a refusal — it would have simplified a prompt nothing had rejected. Scoped to the OpenRouter message.
+- **The WebP sniff checked only the tail** of the signature, not the `RIFF` container.
+- **The telemetry section never asserted anything.** It printed, so the matrix could exit 0 while the view was unreadable or while the run itself had recorded failures — and the build log would then claim "no new failures" on the strength of a report nobody checked. Now two checks, scoped to the run's own start time.
+
+**The image-provider guideline was changed deliberately, not worked around.** `AGENTS.md` and `backend/COVER_IMAGES.md` said "OpenAI API only. Never use other image providers", which was right while covers were unwired — there was nothing to keep running. Both now name the fallback chain, say why the rule changed, keep Higgsfield and unnamed providers banned, and record that providers disagree on output format.
+
+### Still open
+
+Async generation or streaming; `begin_continuation_generation` (continue-story still derives the next chapter number outside the reservation transaction, and `MAX_SERIES_CHAPTERS = 7` still contradicts the 3/7/15 contract); a stale-reservation sweeper; storage orphans on story deletion; edit allowances counted nowhere; feed and library at scale; and the client create flow, still one screen — the new backend fields have a wired contract and no UI producing them.
+
+
+---
+
 ## 2026-09-02 UTC — Schema and contracts for the story-creation flow (B1)
 
 **Session:** Migrations 00027/00028 and the request contract they support. Every new column is nullable or defaults to today's behaviour, so no existing **read or write path** changes. That is not the same as the migration being unconditionally safe to apply: `stories_planned_chapter_count_check` is restrictive, so 00028 can fail on pre-existing data and requires the check below first.

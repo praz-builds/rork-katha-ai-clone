@@ -156,8 +156,21 @@ export type CreateDraft = {
   tropeModules: TropeModule[];
   seed: string;
   language: string;
-  characters: { name: string; description: string; isHero: boolean }[];
+  characters: {
+    name: string;
+    description: string;
+    /** Voice and motivation. Reaches the story prompt only. */
+    background?: string;
+    /** Physical detail. Reaches the story prompt and the portrait image. */
+    appearance?: string;
+    isHero: boolean;
+  }[];
   isSeries?: boolean;
+  /** World and era — feeds the story prompt and the cover prompt. */
+  whereAndWhen?: string;
+  /** Beats to hit. Clamped server-side to five (ten for a series). */
+  moments?: string[];
+  chapterLength?: "short" | "standard" | "long";
 };
 
 export type Screen =
