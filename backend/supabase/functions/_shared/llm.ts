@@ -433,21 +433,21 @@ async function runProviderChain(
   const geminiResult = isProviderDisabled("gemini", disabled)
     ? null
     : await tryProvider({
-    failures,
-    provider: "gemini",
-    model: GEMINI_MODEL,
-    run: () =>
-      generateGeminiText(
-        GEMINI_MODEL,
-        GEMINI_TIMEOUT_MS,
-        options,
-        systemPrompt,
-        userPrompt,
-        phaseDeadline(PHASE_END_SHARE.gemini),
-        safetyLevel,
-        recordModerationRetry,
-      ).then((text) => requireUsableStoryOutput(text, options)),
-  });
+      failures,
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      run: () =>
+        generateGeminiText(
+          GEMINI_MODEL,
+          GEMINI_TIMEOUT_MS,
+          options,
+          systemPrompt,
+          userPrompt,
+          phaseDeadline(PHASE_END_SHARE.gemini),
+          safetyLevel,
+          recordModerationRetry,
+        ).then((text) => requireUsableStoryOutput(text, options)),
+    });
   if (geminiResult) {
     return { text: geminiResult, model: GEMINI_MODEL };
   }
@@ -456,24 +456,24 @@ async function runProviderChain(
   const openRouterText = isProviderDisabled("openrouter", disabled)
     ? null
     : await tryProvider({
-    failures,
-    provider: "openrouter",
-    model: OPENROUTER_MODEL,
-    run: async () => {
-      const result = await generateOpenRouterText(
-        OPENROUTER_MODEL,
-        OPENROUTER_TIMEOUT_MS,
-        options,
-        systemPrompt,
-        userPrompt,
-        phaseDeadline(PHASE_END_SHARE.openrouter),
-        safetyLevel,
-        recordModerationRetry,
-      );
-      openRouterModel = result.model;
-      return requireUsableStoryOutput(result.text, options);
-    },
-  });
+      failures,
+      provider: "openrouter",
+      model: OPENROUTER_MODEL,
+      run: async () => {
+        const result = await generateOpenRouterText(
+          OPENROUTER_MODEL,
+          OPENROUTER_TIMEOUT_MS,
+          options,
+          systemPrompt,
+          userPrompt,
+          phaseDeadline(PHASE_END_SHARE.openrouter),
+          safetyLevel,
+          recordModerationRetry,
+        );
+        openRouterModel = result.model;
+        return requireUsableStoryOutput(result.text, options);
+      },
+    });
   if (openRouterText) {
     return { text: openRouterText, model: openRouterModel };
   }

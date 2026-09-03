@@ -143,8 +143,7 @@ export async function generateCoverImage(input: {
     bucket: "covers",
     storagePath,
     aspect: "cover",
-    promptFor: (safetyLevel) =>
-      buildCoverPromptForLevel(safetyLevel, input),
+    promptFor: (safetyLevel) => buildCoverPromptForLevel(safetyLevel, input),
   });
 }
 
@@ -516,7 +515,9 @@ async function postJson(
     const payload: unknown = await res.json().catch(() => null);
     if (!res.ok) {
       throw new Error(
-        `${providerLabel} error (${res.status}): ${extractProviderError(payload)}`,
+        `${providerLabel} error (${res.status}): ${
+          extractProviderError(payload)
+        }`,
       );
     }
     return payload;

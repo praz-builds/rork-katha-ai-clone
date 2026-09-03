@@ -23,7 +23,10 @@
  * failures land in `error_events` and in `cover_status`, never in the caller.
  */
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { generateCharacterPortrait, generateCoverImage } from "./image.ts";
 import { logError } from "./errors.ts";
 

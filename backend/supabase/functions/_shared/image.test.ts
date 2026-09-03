@@ -168,7 +168,9 @@ Deno.test("total failure returns null rather than throwing", async () => {
 });
 
 Deno.test("an OpenRouter 200 carrying no image counts as a rejection, not a success", () => {
-  assert(isModerationError("OpenRouter returned no image for x — content policy"));
+  assert(
+    isModerationError("OpenRouter returned no image for x — content policy"),
+  );
   assert(isModerationError("Your request was rejected by our safety system"));
   assert(!isModerationError("quota exceeded"));
   assert(!isModerationError("Storage upload failed: bucket not found"));

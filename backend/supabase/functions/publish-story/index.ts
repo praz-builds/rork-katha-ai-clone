@@ -243,7 +243,8 @@ function parseEdits(
       }
       if (item.content.length > MAX_CHAPTER_CHARS) {
         return {
-          error: `Chapter content must be ${MAX_CHAPTER_CHARS} characters or fewer`,
+          error:
+            `Chapter content must be ${MAX_CHAPTER_CHARS} characters or fewer`,
         };
       }
       chapters.push({ id, content: item.content });
