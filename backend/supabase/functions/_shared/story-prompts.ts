@@ -603,7 +603,7 @@ function buildAudienceModeRules(
   // cannot drift apart.
   const lengthRule = isSeriesChapter
     ? `- **Length:** ${band.min}-${band.max} words. This is a series chapter, so it uses the chapter length, not the standalone story length.`
-    : `- **Length:** ${band.min}-${band.max} words maximum. Shorter is better.`;
+    : `- **Length:** ${band.min}-${band.max} words. Aim for the lower half of that range, but never go under ${band.min}.`;
 
   const endingRule = isOpenChapter
     ? `- **Endings (series chapter):** End the chapter's immediate scene safely. The characters must be out of danger and the reader must feel secure before the chapter closes. The larger story question may stay open, but carry it forward only as a gentle, non-threatening invitation: a friendly curiosity, a plan for tomorrow, a kind mystery, or a small wonder. Never end on peril, threat, betrayal, loss, or distress.

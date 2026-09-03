@@ -28,9 +28,17 @@ Every length instruction the model reads is now rendered from `wordBandFor()`:
 
 Chapter length becomes a user-facing control (Short / Standard / Long) in the create-flow rebuild. With the numbers centralised, that is a change to one function; with four string literals it would have been four chances to ship a prompt that contradicts the validator.
 
+### Two inline findings, both real
+
+**The Kids Mode length rule fought its own minimum.** It read `500-1200 words maximum. Shorter is better.` — an instruction to undershoot, sitting next to a floor of 500. A generation below 0.75x that floor is rejected by `requireUsableStoryOutput()` and burns a provider fallback, so the sentence was buying failed generations. It now reads `500-1200 words. Aim for the lower half of that range, but never go under 500.`, which keeps the brevity Kids Mode wants and the floor the validator enforces.
+
+An existing test pinned the old sentence verbatim. It now asserts the band rather than the wording around it, which is what its name always claimed.
+
+**`AGENTS.md` and `BUILD_LOG.md` both said covers use DALL·E 3.** `_shared/image.ts` requests `gpt-image-1`. Corrected in both.
+
 ### Validation
 
-- 138 Deno tests pass, including four new ones that assert the prompt quotes `wordBandFor()` for every mode combination and that a kids prompt never leaks the adult ceiling.
+- 139 Deno tests pass, including five new ones: four assert the prompt quotes `wordBandFor()` for every mode combination and that a kids prompt never leaks the adult ceiling, and one pins the Kids Mode floor against the instruction that used to contradict it.
 - `deno check` clean across every edge function; `deno fmt --check` clean on the CI file list.
 
 ---

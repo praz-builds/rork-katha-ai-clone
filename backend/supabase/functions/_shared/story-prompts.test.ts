@@ -420,7 +420,9 @@ Deno.test("kids standalone story keeps the 500-1200 range", () => {
     audienceMode: "kids",
     storyMode: "standalone",
   });
-  assert(system.includes("- **Length:** 500-1200 words maximum."));
+  // Asserts the band, not the sentence around it: the wording changed when
+  // "Shorter is better" was removed for telling the model to undershoot.
+  assert(system.includes("- **Length:** 500-1200 words"));
 
   const user = buildUserPrompt({
     primaryGenre: "adventure",
@@ -587,5 +589,26 @@ Deno.test("word band: user prompt quotes the same band as the system prompt", ()
       seed: "A locked room with two doors and one key.",
     }).includes(`(${standalone.min}-${standalone.max} words)`),
     true,
+  );
+});
+
+Deno.test("word band: kids length rule never contradicts its own minimum", () => {
+  // "Shorter is better" next to a minimum told the model to undershoot. Output
+  // below 0.75x the floor is rejected by requireUsableStoryOutput() and burns a
+  // provider fallback, so the instruction has to keep the floor visible.
+  const band = wordBandFor("standalone", "kids");
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "adventure",
+    storyMode: "standalone",
+    audienceMode: "kids",
+  });
+  assert(prompt.includes(`${band.min}-${band.max} words`));
+  assert(
+    !prompt.includes("Shorter is better"),
+    "kids prompt still tells the model to undershoot the band",
+  );
+  assert(
+    prompt.includes(`never go under ${band.min}`),
+    "kids prompt does not restate its floor",
   );
 });

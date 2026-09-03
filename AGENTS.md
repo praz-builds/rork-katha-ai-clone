@@ -94,7 +94,7 @@ Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> OpenAI (`gpt-5
 
 **Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_STORY_API_KEY` falling back to `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
 
-**Set `OPENAI_STORY_API_KEY` to stop stories and covers sharing a blast radius.** `OPENAI_API_KEY` also authenticates DALL·E 3 in `_shared/image.ts`. While it is the only key set, one spend cap, rate limit, revocation or rotation takes down covers *and* stories together — and with Gemini and OpenRouter unavailable, every position that can serve authenticates with it. The code already prefers the dedicated key; setting the secret is the whole change, and leaving it unset preserves current behaviour.
+**Set `OPENAI_STORY_API_KEY` to stop stories and covers sharing a blast radius.** `OPENAI_API_KEY` also authenticates `gpt-image-1` in `_shared/image.ts`. While it is the only key set, one spend cap, rate limit, revocation or rotation takes down covers *and* stories together — and with Gemini and OpenRouter unavailable, every position that can serve authenticates with it. The code already prefers the dedicated key; setting the secret is the whole change, and leaving it unset preserves current behaviour.
 
 **Model IDs:** `gemini-3.1-pro-preview`, `google/gemini-2.5-flash`, `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`, `openrouter/free`.
 
