@@ -93,7 +93,7 @@ The new free-text style field is a direct route to "write exactly like <living a
 
 ### Validation
 
-- 134 Deno tests pass (9 new), `deno check` clean on every edge function, `deno fmt --check` clean.
+- 145 Deno tests pass with main merged in (9 new here, 5 from #43), `deno check` clean on every edge function, `deno fmt --check` clean.
 - Expo typecheck clean, 0 lint errors, 41 Jest tests pass.
 - **Migrations were not applied.** No Supabase credentials were available in this environment, so 00027/00028 are unreviewed against a live database and no production smoke test was run.
 
