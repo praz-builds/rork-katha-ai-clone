@@ -1,6 +1,9 @@
 # Story Generation Flow — source of truth
 
-<!-- markdownlint-disable MD013 -->
+<!-- markdownlint-disable MD013 MD029 -->
+<!-- MD029 is disabled for the whole file: the Decisions list at the foot is one
+     continuous 1-57 sequence broken by sub-headings, and those numbers are
+     referenced from other documents, so they must not be renumbered. -->
 
 > **This file is canonical.** Every field, label, placeholder, ordering rule,
 > mode behavior and post-generation step in Katha's story creation flow is
@@ -150,7 +153,7 @@ authoring is not.*
 
 ### Screen order
 
-```
+```text
 Create  ──▶  1. Idea      ──▶  2. Shape      ──▶  3. Review and start
              (one box)        (correct the       (the spec + the cost)
                                guesses)
@@ -180,7 +183,7 @@ The starter chip heading changes from **TRY A PREMISE** to **TRY ONE**.
 
 ### Screen 2 — Shape
 
-```
+```text
 ┌────────────────────────────────────────────┐
 │  [ For me ] [ For kids ]        ← mode     │
 ├────────────────────────────────────────────┤
@@ -247,7 +250,7 @@ with child profiles would make a lock worth revisiting. Not before.)*
 | Extra chip slot | *(none)* | **Values** — kindness, honesty, courage, patience, sharing |
 | Genre row | All 15 | Filtered: no dark romance, paranormal romance, horror, thriller |
 | Spice | In More options, flag-gated | **Absent from the DOM** |
-| Character *Description* placeholder | *e.g. a tired detective, an ancient dragon* | *e.g. 9 year old boy, a talking dog* |
+| Character *Description* placeholder | *e.g. a tired detective, an ancient dragon* | *e.g. 9-year-old boy, a talking dog* |
 | Moments placeholder | *A rooftop confession in the rain* | *They build a treehouse* |
 | Chapter length default | Standard | Short |
 | Chapters default | 3 | 3 |
@@ -276,7 +279,7 @@ opens a full screen, not an inline row.
 
 ### Layout
 
-```
+```text
 ┌────────────────────────────────────────────┐
 │  ‹     Craft character                     │
 ├────────────────────────────────────────────┤
@@ -343,7 +346,14 @@ Placeholders are re-authored per mode (§3) and per genre where it helps.
 
 ### Portrait, Reimagine, Edit, Delete
 
-- The portrait generates from **Appearance + Description** on first Save.
+- **Save persists the character; it does not generate the portrait.** The whole
+  cast's portraits are generated once, at story creation, before chapter 1 —
+  see §10.2 — for one credit covering the cast rather than one per character.
+  Generating on Save would mean billing, reserving and refunding per character
+  from inside a sheet the user may still abandon, and would break the
+  cross-chapter consistency the single batch exists to guarantee. Until the
+  story is created a character has no portrait, and the sheet shows the
+  placeholder rather than an empty frame.
 - **Reimagine** regenerates it from the current field values. Per
   `CREDITS_AND_PRICING.md` principle 4 and the editing table, the first
   regenerate is **free**; further ones are 1 credit.
@@ -391,8 +401,8 @@ the generation quality improve from the same change.
 a chapter, the model produces a checklist instead of a story, and the user
 attributes the failure to generation quality rather than to their own input.
 
-*For stories above 10 chapters the cap rises to 10, since there is room to
-schedule them. (Inference — validate against output quality before shipping.)*
+*For a 15-chapter story the cap rises to 10, since there is room to schedule
+them. (Inference — validate against output quality before shipping.)*
 
 ### Zero state
 
@@ -456,7 +466,7 @@ field's example in isolation does not help, because the confusion is
 *relational* — users do not misunderstand what a setting is, they misunderstand
 which of their sentences goes where.
 
-```
+```text
 Your idea         Elena inherits her grandmother's house
                   and finds a door that wasn't on the deed.
 
@@ -550,10 +560,15 @@ escape hatch alike.
 | **Standard** | 1,200 – 1,600 | 30 min read |
 | **Long** | 2,000 – 2,600 | 50 min read |
 
-The word figures are shown in the UI against each option — *Standard · ~1,400
-words* — because "standard" alone means nothing to a first-time user, and the
-length choice is the one that most changes what they get. *(Word targets are
-proposed; validate against real generations and correct this table.)*
+These targets are **proposed and unmeasured**, and §14 item 2 forbids quoting
+them in UI copy until B11 has generated against each setting. **The options
+therefore ship unlabelled** — *Short · Standard · Long* and nothing more.
+
+Labelling them is the right end state, because "standard" alone means nothing to
+a first-time user and length is the choice that most changes what they get. But
+a number printed next to a control is read as a promise, and these numbers have
+never been checked against a real generation. B11 measures them; this table is
+corrected from that measurement; the labels appear in the same change.
 
 ### Point of view — removed
 
@@ -591,7 +606,7 @@ that tap to a published story.
 
 ### 10.1 The shape
 
-```
+```text
 Create ·  n ✦
    │
    ├── portraits generated  (1 ✦, once, whole cast)
@@ -637,7 +652,7 @@ Create ·  n ✦
   killed mid-run. It is not a second mode — each chapter is still its own
   request, its own reservation and its own credit.
 - **Each chapter's text is 1 credit**, charged as it is generated, plus 1 for its
-  art where the toggle is on. A story abandoned at chapter 2 of 10 costs what it
+  art where the toggle is on. A story abandoned at chapter 2 of 7 costs what it
   wrote, not what it planned.
 - **Failed generations auto-refund**, per `CREDITS_AND_PRICING.md` principle 4.
 
@@ -710,6 +725,12 @@ Library.
 > [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §2.
 >
 > **This document still does not have the authority to change prices.**
+>
+> **Every number below is historical.** The analysis was written against 3-to-30
+> chapters, a cast of four and a text cost of $0.031. The shipped contract is
+> **3 · 7 · 15 chapters, a cast of 3, and $0.004 text** — see §14 and §15. The
+> reasoning is kept because it is what produced the amendment; the figures are
+> superseded by `CREDITS_AND_PRICING.md` §2 and must not be quoted.
 
 **The root cause is a word.** That file prices a *chapter* at 3 credits — text +
 cover + characters — and it was written when a story was assumed to be roughly
@@ -1023,7 +1044,7 @@ are listed here so a reader who lands mid-document is not misled.
 27. **Moments sit below Characters**, because moments reference characters.
 28. **Chip builder, not a paragraph box.** One chip is one schedulable beat.
 29. **Character names render as insertable tokens.**
-30. **Capped at five** (ten above 10 chapters), visibly.
+30. **Capped at five** (ten for a 15-chapter story), visibly.
 31. **Zero state shows suggestion chips**, not an empty box behind a checkbox.
 32. **Moments apply to both modes** — different suggestions, same field.
 
