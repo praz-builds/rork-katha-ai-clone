@@ -149,7 +149,9 @@ export async function grantCredit(
   });
 
   if (error) {
-    if (isDuplicateCreditOperationError(error)) throw new DuplicateCreditOperationError();
+    if (isDuplicateCreditOperationError(error)) {
+      throw new DuplicateCreditOperationError();
+    }
     throw new Error(`Failed to grant credit: ${error.message}`);
   }
   return data as number;
@@ -170,7 +172,9 @@ export async function refreshSubscriptionGrant(
     p_operation_key: operationKey,
   });
   if (error) {
-    if (isDuplicateCreditOperationError(error)) throw new DuplicateCreditOperationError();
+    if (isDuplicateCreditOperationError(error)) {
+      throw new DuplicateCreditOperationError();
+    }
     throw new Error(`Failed to refresh subscription grant: ${error.message}`);
   }
   return data as number;
@@ -187,7 +191,11 @@ export class DuplicateCreditOperationError extends Error {
 export function isDuplicateCreditOperationError(error: unknown): boolean {
   if (error instanceof DuplicateCreditOperationError) return true;
   if (!error || typeof error !== "object") return false;
-  const candidate = error as { code?: unknown; message?: unknown; details?: unknown };
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+  };
   const message = [candidate.message, candidate.details]
     .filter((value): value is string => typeof value === "string")
     .join(" ");

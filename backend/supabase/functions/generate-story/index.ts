@@ -331,6 +331,10 @@ serve(async (req) => {
       // the cover-prompt tables - the widest dependency graph in this handler.
       // Unguarded, that rejection reaches the outer catch *after* the chapter
       // is persisted, and the user loses a generation whose text succeeded.
+      // What the response tells the client about the cover has to match what
+      // was persisted. Claiming 'generating' after scheduling failed would put
+      // the reader on a spinner for work that will never start.
+      let coverStatus: "generating" | "failed" = "generating";
       try {
         const media = await import("../_shared/media.ts");
         media.runInBackground(media.generateStoryMedia({
@@ -349,6 +353,7 @@ serve(async (req) => {
         // 'failed' is the truth, and it renders the concept card as final,
         // which decision 39 already treats as a legitimate published look.
         console.error("generate-story media scheduling failed:", mediaError);
+        coverStatus = "failed";
         await serviceClient
           .from("stories")
           .update({ cover_status: "failed" })
@@ -358,9 +363,10 @@ serve(async (req) => {
       return respond({
         story: {
           ...story,
-          // 'generating': the cover is in flight on a background task. The
-          // client shows the concept card until this reads 'ready'.
-          cover_status: "generating",
+          // 'generating': in flight on a background task, so the client shows
+          // the concept card until it reads 'ready'. 'failed' when scheduling
+          // itself did not happen — the concept card is then final.
+          cover_status: coverStatus,
           title: output.title,
           word_count: wordCount,
           status: "complete",

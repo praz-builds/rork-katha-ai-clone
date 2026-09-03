@@ -114,7 +114,11 @@ Deno.test("the hero is preferred over the first described character", () => {
 // layer between there and here drops it, the cover silently features whoever
 // happens to be listed first instead of the story's protagonist — a failure
 // with no error and no log.
-Deno.test("isHero survives the whole path into the prompt", () => {
+// Named for what it exercises: `buildCoverPrompt` honouring `isHero`. The path
+// from the database through `media.ts` and `image.ts` is covered separately —
+// this asserts the contract at the end of it, which is where the regression
+// (isHero silently dropped while rebuilding the character objects) surfaced.
+Deno.test("buildCoverPrompt selects the hero over the first described character", () => {
   const prompt = buildCoverPrompt("romance", "T", [], [
     { name: "Sidekick", description: "a nervous archivist" },
     { name: "Hero", description: "a lighthouse keeper", isHero: true },

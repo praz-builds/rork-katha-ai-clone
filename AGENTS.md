@@ -316,8 +316,8 @@ Chapter 1's art **is** the story's cover, and it is generated with chapter 1 rat
 - **Model**: `gpt-image-1`.
 - **Output size**: `1024x1536` portrait (2:3 ratio, native book cover format).
 - **Quality**: `"medium"`.
-- **Response format**: base64 (`b64_json`). Decode to PNG bytes.
-- **Storage**: Supabase Storage `covers/{story_id}/cover.png`, public read.
+- **Response format**: OpenAI returns base64 (`b64_json`); OpenRouter returns a `data:` URL on `choices[0].message.images[0].image_url.url`. Two shapes, two readers — do not reuse one for the other.
+- **Storage**: Supabase Storage `covers/{story_id}/cover.<ext>`, public read, where the extension follows the sniffed format (`png`, `jpg` or `webp`). Character portraits sit at `covers/{story_id}/characters/{character_id}.<ext>`. The public URL is authoritative for the stored path — do not reconstruct it from the requested one.
 
 ### Prompt Construction
 

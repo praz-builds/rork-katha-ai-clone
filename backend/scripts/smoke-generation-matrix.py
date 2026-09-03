@@ -402,6 +402,11 @@ try:
           st == 200 and isinstance(ev, list),
           f"HTTP {st} {str(ev)[:120]}")
 
+    # A non-list response is a failure, not an empty result. Coercing it to []
+    # would make 11.3 pass on an error body — the assertion would report "no
+    # failures" precisely when the query that proves it did not work.
+    check("11.1b telemetry response is a list", isinstance(ev, list),
+          f"got {type(ev).__name__}: {str(ev)[:120]}")
     rows = ev if isinstance(ev, list) else []
     # A row that is not a dict means the view's shape changed under us. Skipping
     # it would let a schema change quietly turn this assertion into a no-op,

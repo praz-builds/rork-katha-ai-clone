@@ -63,7 +63,7 @@ The recharge's real value is position 2: **`google/gemini-2.5-flash` answered in
 
 ### Verified in production
 
-`scripts/smoke-generation-matrix.py` — **54 checks, 0 failures**, against the deployed functions: covers ready, portraits 2/2, kids-mode refusals, chapter lengths stored verbatim, series continuation carrying the world layer, idempotent replay, `google/gemini-2.5-flash` answering. 178 backend and 49 Expo unit tests green. `error_event_summary` shows no new failures from the run.
+`scripts/smoke-generation-matrix.py` — **55 checks, 0 failures**, against the deployed functions: covers ready, portraits 2/2, kids-mode refusals, chapter lengths stored verbatim, series continuation carrying the world layer, idempotent replay, `google/gemini-2.5-flash` answering. 178 backend and 49 Expo unit tests green. `error_event_summary` shows no new failures from the run.
 
 ### CodeRabbit review
 
