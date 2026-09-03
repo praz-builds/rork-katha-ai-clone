@@ -10,9 +10,27 @@
 -- VALIDATE CONSTRAINT is idempotent: revalidating an already-valid constraint
 -- is a no-op.
 --
--- This is expected to succeed trivially. planned_chapter_count was added in
--- 00003 and has never been written by any code path, so every existing row
--- holds NULL, which the constraint admits.
+-- ⚠ PRECONDITION, not a consequence.
+--
+-- The two constraints being validated here are not alike:
+--
+--   generation_operations_kind_check is a WIDENING - it adds 'cover',
+--   'chapter_art' and 'characters' to a set that already held every existing
+--   row's value. Validation cannot fail.
+--
+--   stories_planned_chapter_count_check is RESTRICTING - a column that was a
+--   free integer may now only hold NULL, 3, 7 or 15. Validation CAN fail.
+--
+-- planned_chapter_count was added in migration 00003 and is written by no code
+-- path in this repository, so every row is expected to hold NULL. That
+-- expectation was not verified against the live database. Check it first:
+--
+--   select count(*) from public.stories
+--   where planned_chapter_count is not null
+--     and planned_chapter_count not in (3, 7, 15);
+--
+-- A non-zero result must be reconciled before this migration runs, or it will
+-- abort partway and leave the kind constraint unvalidated.
 
 ALTER TABLE public.stories
   VALIDATE CONSTRAINT stories_planned_chapter_count_check;

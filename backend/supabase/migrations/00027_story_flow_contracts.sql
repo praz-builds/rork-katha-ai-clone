@@ -63,9 +63,10 @@ COMMENT ON COLUMN public.stories.story_values IS
 COMMENT ON COLUMN public.stories.illustrate_chapters IS
   'Whether chapters 2..N get art at 1 credit each. Chapter 1 is compulsory regardless and is not governed by this flag.';
 
--- planned_chapter_count is now a contract, not a free integer. Existing rows may
--- hold anything (the column has never been written), so this is added NOT VALID
--- and validated in 00028 rather than scanning here.
+-- planned_chapter_count is now a contract, not a free integer. Unlike the kind
+-- check below this is a RESTRICTING constraint, so validation can genuinely
+-- fail; it is added NOT VALID here and validated in 00028, which documents the
+-- precondition to check first.
 ALTER TABLE public.stories
   DROP CONSTRAINT IF EXISTS stories_planned_chapter_count_check;
 

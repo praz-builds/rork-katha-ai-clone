@@ -344,7 +344,19 @@ export default function CreateStudioScreen({
   const draftRestoredRef = useRef(false);
   useEffect(() => {
     loadDraft().then((saved) => {
-      if (saved) setDraft(saved as StudioDraft);
+      if (saved) {
+        // A draft written by an older build may hold more characters than the
+        // cap allows - it was 5 before MAX_CHARACTERS came down to 3. Restoring
+        // it verbatim would let the user press Create and take a 400 from the
+        // server, which validates the same cap. Clamp on the way in so the
+        // restored draft is always submittable.
+        const restored = saved as StudioDraft;
+        setDraft(
+          restored.characters.length > MAX_CHARACTERS
+            ? { ...restored, characters: restored.characters.slice(0, MAX_CHARACTERS) }
+            : restored,
+        );
+      }
       draftRestoredRef.current = true;
     });
   }, []);
@@ -403,7 +415,9 @@ export default function CreateStudioScreen({
       tropeModules: draft.tropeModules,
       seed: draft.seed,
       language: draft.language,
-      characters: draft.characters,
+      // Belt and braces with the clamp in loadDraft: validation.ts enforces the
+      // same cap, and a request over it is a 400 rather than a truncation.
+      characters: draft.characters.slice(0, MAX_CHARACTERS),
       isSeries: draft.isSeries,
     };
 

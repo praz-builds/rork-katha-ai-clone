@@ -9,7 +9,24 @@
 
 ## 2026-09-02 UTC — Schema and contracts for the story-creation flow (B1)
 
-**Session:** Migrations 00027/00028 and the request contract they support. No behaviour changes on any existing path: every column is nullable or defaults to today's behaviour, and both widened constraints accept strictly more than they did before.
+**Session:** Migrations 00027/00028 and the request contract they support. Every new column is nullable or defaults to today's behaviour, so no existing path changes.
+
+The two constraints are **not** alike, and the summary previously blurred them:
+
+| Constraint | Direction | Can validation fail? |
+| --- | --- | --- |
+| `generation_operations_kind_check` | **Widening** — adds `cover`, `chapter_art`, `characters` | No. Every existing row satisfies the old, narrower check, so it satisfies the new one. |
+| `stories_planned_chapter_count_check` | **Restricting** — a previously free integer is now `NULL, 3, 7 or 15` | **Yes.** Any existing row holding a non-null value outside that set fails 00028. |
+
+`planned_chapter_count` was added in migration 00003 and is written by no code path in this repository, so every row is expected to hold NULL. **That expectation is unverified** — no Supabase credentials were available here — and it is a precondition of 00028, not a consequence of it. Confirm before applying:
+
+```sql
+select count(*) from public.stories
+where planned_chapter_count is not null
+  and planned_chapter_count not in (3, 7, 15);
+```
+
+A non-zero result must be reconciled before 00028 runs.
 
 ### Every paid image can now reserve an operation
 
