@@ -9,7 +9,7 @@
 
 ## 2026-09-02 UTC — Schema and contracts for the story-creation flow (B1)
 
-**Session:** Migrations 00027/00028 and the request contract they support. Every new column is nullable or defaults to today's behaviour, so no existing path changes.
+**Session:** Migrations 00027/00028 and the request contract they support. Every new column is nullable or defaults to today's behaviour, so no existing **read or write path** changes. That is not the same as the migration being unconditionally safe to apply: `stories_planned_chapter_count_check` is restrictive, so 00028 can fail on pre-existing data and requires the check below first.
 
 The two constraints are **not** alike, and the summary previously blurred them:
 
@@ -75,6 +75,13 @@ The new free-text style field is a direct route to "write exactly like <living a
 
 - **Uncased scripts bypassed the filter entirely.** Han, Kana, Arabic, Hebrew and Devanagari letters have no uppercase, so a `\p{Lu}`-anchored pattern could never match them and "in the style of 村上春樹" passed through untouched. The name token now also accepts a run of `\p{Lo}` ("Letter, other"), which is deliberately narrow: Latin lowercase is `\p{Ll}`, so admitting uncased scripts cannot resurrect the prose bug fixed in the round before.
 - Removing a name from the middle of a list left its separators behind — "dreamlike, like 村上春樹, in short scenes" became "dreamlike, , in short scenes". Runs of separators now collapse to the first.
+
+### Fourth review round
+
+- **The cast cap did not survive a double tap.** `addCharacter` checked `draft.characters.length` from its closure rather than `prev.characters.length` inside the updater, so two taps batched in one frame both read the stale length, both appended, and the cast came out one over the cap — which `validation.ts` then rejects. The check moved inside the updater, and three tests pin it, including one that reproduces the stale-closure behaviour so the regression is described rather than merely prevented.
+- `MAX_CAST_SIZE` now lives in `expo/src/lib/pricing-limits.ts` and both the screen and the tests read it, rather than the number being restated in a comment.
+- **00028 guards its own precondition** instead of only documenting it. A `DO` block counts offending rows first and raises a message naming the column and the count, rather than letting `VALIDATE CONSTRAINT` abort with something generic.
+- The compatibility statement now says no existing **read or write path** changes, which is what is true — it is not a claim that the migration is unconditionally safe to apply.
 
 ### Validation
 

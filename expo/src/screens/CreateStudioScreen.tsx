@@ -41,6 +41,7 @@ import {
   publishStory,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
+import { MAX_CAST_SIZE } from "@/lib/pricing-limits";
 import {
   colors,
   fonts,
@@ -93,11 +94,7 @@ type CreateStudioProps = {
 // Constants
 // ---------------------------------------------------------------------------
 
-// Three, matching MAX_CAST_SIZE in the backend's _shared/types.ts and the cap in
-// source-of-truth/STORY_GENERATION_FLOW.md section 4. Before this, the client
-// allowed 5, validation.ts allowed 10 and the spec said 3 - so a user could
-// build a cast the server would reject.
-const MAX_CHARACTERS = 3;
+const MAX_CHARACTERS = MAX_CAST_SIZE;
 
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },
@@ -763,16 +760,23 @@ export default function CreateStudioScreen({
   // Character management (Setup step)
   // -----------------------------------------------------------------------
 
+  // The cap is checked inside the updater, against prev, not against the
+  // draft captured when this callback was created. Two taps in the same frame
+  // both saw the stale length and both appended, so a rapid double-tap on the
+  // last slot produced a cast one over the cap - which validation.ts then
+  // rejects. Checking prev also lets the dependency array empty out, so the
+  // callback identity stops changing on every character edit.
   const addCharacter = useCallback(() => {
-    if (draft.characters.length >= MAX_CHARACTERS) return;
-    setDraft((prev) => ({
-      ...prev,
-      characters: [
-        ...prev.characters,
-        { name: "", description: "", isHero: false },
-      ],
-    }));
-  }, [draft.characters.length]);
+    setDraft((prev) =>
+      prev.characters.length >= MAX_CHARACTERS ? prev : {
+        ...prev,
+        characters: [
+          ...prev.characters,
+          { name: "", description: "", isHero: false },
+        ],
+      }
+    );
+  }, []);
 
   const removeCharacter = useCallback((index: number) => {
     setDraft((prev) => ({

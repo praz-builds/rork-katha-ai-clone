@@ -32,6 +32,25 @@
 -- A non-zero result must be reconciled before this migration runs, or it will
 -- abort partway and leave the kind constraint unvalidated.
 
+-- Fail loudly and specifically, rather than letting VALIDATE CONSTRAINT abort
+-- with a generic message that does not say which column or how many rows.
+DO $$
+DECLARE
+    v_bad bigint;
+BEGIN
+    SELECT pg_catalog.count(*) INTO v_bad
+    FROM public.stories
+    WHERE planned_chapter_count IS NOT NULL
+      AND planned_chapter_count NOT IN (3, 7, 15);
+
+    IF v_bad > 0 THEN
+        RAISE EXCEPTION
+            'Cannot validate stories_planned_chapter_count_check: % row(s) hold a planned_chapter_count outside (3, 7, 15). Reconcile them first; see migration 00027.',
+            v_bad;
+    END IF;
+END
+$$;
+
 ALTER TABLE public.stories
   VALIDATE CONSTRAINT stories_planned_chapter_count_check;
 
