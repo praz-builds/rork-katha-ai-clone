@@ -267,7 +267,9 @@ async function generateAndStoreCover(
 async function readCastForCover(
   supabase: SupabaseClient,
   storyId: string,
-): Promise<{ name: string; description?: string }[] | undefined> {
+): Promise<
+  { name: string; description?: string; isHero?: boolean }[] | undefined
+> {
   const { data } = await supabase
     .from("characters")
     .select("name, description, is_hero")
@@ -277,5 +279,5 @@ async function readCastForCover(
     name: c.name,
     description: c.description ?? undefined,
     isHero: c.is_hero ?? false,
-  })) as { name: string; description?: string }[];
+  }));
 }

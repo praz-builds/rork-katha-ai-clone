@@ -19,11 +19,50 @@ export function parseRequestId(value: unknown): string | null {
  */
 export const MAX_REQUEST_BYTES = 128 * 1024;
 
-const encoder = new TextEncoder();
+/**
+ * Read a request body, giving up as soon as it exceeds `maxBytes`.
+ *
+ * Counted in UTF-8 bytes, which is what a size limit means. `String.length`
+ * counts UTF-16 code units, so a body of multi-byte characters could be several
+ * times the limit and still pass it — and story ideas are routinely non-Latin,
+ * which makes that the normal case rather than an adversarial one.
+ *
+ * Returns null when the limit is exceeded, so the caller's existing
+ * "malformed body" path handles it with no new branch.
+ */
+async function readBounded(
+  request: Request,
+  maxBytes: number,
+): Promise<string | null> {
+  if (!request.body) return "";
 
-/** UTF-8 byte length, which is what a size limit actually means. */
-function byteLength(value: string): number {
-  return encoder.encode(value).length;
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        // Cancelling tells the peer to stop sending rather than reading a
+        // large body to completion only to discard it.
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(joined);
 }
 
 /**
@@ -45,15 +84,15 @@ export async function readJsonObject(
   if (Number.isFinite(declared) && declared > maxBytes) return null;
 
   try {
-    const raw = await request.text();
-    // A chunked or unlabelled body is only measurable once read. Still cheaper
-    // than parsing it: this rejects before `JSON.parse` builds an object graph.
+    // Read with the limit enforced, not after it.
     //
-    // Measured in bytes, not in `raw.length` - that counts UTF-16 code units,
-    // so a body of multi-byte characters could be several times `maxBytes` and
-    // still pass. Story ideas are routinely non-Latin, which makes this the
-    // normal case rather than an adversarial one.
-    if (byteLength(raw) > maxBytes) return null;
+    // `await request.text()` buffers the entire body first, so a body that
+    // declares no `Content-Length` — a chunked upload — is fully in memory
+    // before anything measures it, and the check afterwards protects nothing.
+    // Reading chunk by chunk and stopping at the limit is what actually bounds
+    // the isolate's memory.
+    const raw = await readBounded(request, maxBytes);
+    if (raw === null) return null;
     const value: unknown = JSON.parse(raw);
     return value && typeof value === "object" && !Array.isArray(value)
       ? value as Record<string, unknown>

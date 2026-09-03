@@ -109,3 +109,16 @@ Deno.test("the hero is preferred over the first described character", () => {
   assert(prompt.includes("a lighthouse keeper"));
   assertEquals(prompt.includes("a nervous archivist"), false);
 });
+
+// `media.ts` reads `is_hero` from the database and maps it to `isHero`. If any
+// layer between there and here drops it, the cover silently features whoever
+// happens to be listed first instead of the story's protagonist — a failure
+// with no error and no log.
+Deno.test("isHero survives the whole path into the prompt", () => {
+  const prompt = buildCoverPrompt("romance", "T", [], [
+    { name: "Sidekick", description: "a nervous archivist" },
+    { name: "Hero", description: "a lighthouse keeper", isHero: true },
+  ]);
+  assert(prompt.includes("a lighthouse keeper"));
+  assert(!prompt.includes("a nervous archivist"));
+});

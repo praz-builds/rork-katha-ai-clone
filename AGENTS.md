@@ -312,7 +312,7 @@ Chapter 1's art **is** the story's cover, and it is generated with chapter 1 rat
 
   **Still banned: Higgsfield, and any provider not named here.** Adding a position is a deliberate change to this rule, not an implementation detail.
 
-  Providers do not agree on format: `gemini-3.1-flash-lite-image` returns JPEG where the others return PNG. Content type is sniffed from magic bytes and the stored extension follows the actual format — never assume PNG.
+  **Providers do not agree on output format, and the same provider need not stay consistent.** During evaluation, `gemini-3.1-flash-lite-image` returned JPEG for a request that `gemini-3.1-flash-image` and `gemini-2.5-flash-image` answered with PNG. Content type is therefore sniffed from magic bytes rather than assumed, the stored extension follows the actual format, and an unrecognised payload is refused rather than stored — it is far likelier to be an error body than a fourth image format. Never hardcode `image/png`.
 - **Model**: `gpt-image-1`.
 - **Output size**: `1024x1536` portrait (2:3 ratio, native book cover format).
 - **Quality**: `"medium"`.

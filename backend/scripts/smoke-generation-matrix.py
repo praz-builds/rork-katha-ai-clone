@@ -402,8 +402,16 @@ try:
           st == 200 and isinstance(ev, list),
           f"HTTP {st} {str(ev)[:120]}")
 
-    during_run = [e for e in ev if isinstance(e, dict)] if isinstance(ev, list) else []
-    check("11.2 this run recorded no failures", not during_run,
+    rows = ev if isinstance(ev, list) else []
+    # A row that is not a dict means the view's shape changed under us. Skipping
+    # it would let a schema change quietly turn this assertion into a no-op,
+    # which is the failure mode the whole section exists to close.
+    malformed = [e for e in rows if not isinstance(e, dict)]
+    check("11.2 telemetry rows have the expected shape", not malformed,
+          f"{len(malformed)} malformed: {str(malformed[:2])[:120]}")
+
+    during_run = [e for e in rows if isinstance(e, dict)]
+    check("11.3 this run recorded no failures", not during_run,
           "; ".join(f"{e.get('bucket')}/{e.get('error_code')}" for e in during_run[:5]))
 
     st2, summary = rest("error_event_summary?select=fingerprint,bucket,error_code,occurrences"

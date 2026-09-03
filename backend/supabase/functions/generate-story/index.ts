@@ -342,10 +342,17 @@ serve(async (req) => {
           whereAndWhen,
         }));
       } catch (mediaError) {
-        // The story stays at cover_status 'pending', which the client renders
-        // as the concept card. A story without art is a worse story, not a
-        // failed one.
+        // A story without art is a worse story, not a failed one — but the row
+        // must not be left saying 'pending'. The response has already told the
+        // client 'generating', and 'pending' means "not attempted yet", so a
+        // client that re-fetched would wait for work that will never start.
+        // 'failed' is the truth, and it renders the concept card as final,
+        // which decision 39 already treats as a legitimate published look.
         console.error("generate-story media scheduling failed:", mediaError);
+        await serviceClient
+          .from("stories")
+          .update({ cover_status: "failed" })
+          .eq("id", story.id);
       }
 
       return respond({

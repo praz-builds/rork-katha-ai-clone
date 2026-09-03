@@ -133,7 +133,7 @@ export async function generateCoverImage(input: {
   genre: string;
   title: string;
   themes: string[];
-  characters?: { name: string; description?: string }[];
+  characters?: { name: string; description?: string; isHero?: boolean }[];
   /** The where-and-when chip. What stops the cover being genre stock art. */
   whereAndWhen?: string;
 }): Promise<ImageResult | null> {
@@ -160,7 +160,7 @@ function buildCoverPromptForLevel(
     genre: string;
     title: string;
     themes: string[];
-    characters?: { name: string; description?: string }[];
+    characters?: { name: string; description?: string; isHero?: boolean }[];
     whereAndWhen?: string;
   },
 ): string {
@@ -201,14 +201,20 @@ function buildCoverPromptForLevel(
  * rather than to a corrupted one.
  */
 function usableCharacters(
-  characters?: { name: string; description?: string }[],
-): { name: string; description: string }[] | undefined {
+  characters?: { name: string; description?: string; isHero?: boolean }[],
+): { name: string; description: string; isHero?: boolean }[] | undefined {
   if (!characters?.length) return undefined;
   const usable = characters
     .filter((c) => typeof c.description === "string" && c.description.trim())
     .map((c) => ({
       name: c.name,
       description: sanitizeForPrompt(c.description as string),
+      // Carried through, not dropped. `media.ts` reads `is_hero` from the
+      // database and maps it to `isHero`; rebuilding the object without it
+      // meant `buildCoverPrompt` could never select the story's actual
+      // protagonist and always fell back to the first described character —
+      // so the cover featured whoever happened to be listed first.
+      isHero: c.isHero,
     }));
   return usable.length > 0 ? usable : undefined;
 }

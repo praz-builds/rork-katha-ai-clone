@@ -1095,6 +1095,12 @@ export default function CreateStudioScreen({
                     <Pressable
                       onPress={() => removeCharacter(index)}
                       style={styles.removeCharacterBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove character ${index + 1}`}
+                      // The glyph is 16pt; the touch target must not be. 14pt
+                      // of slop on each side brings the effective target to
+                      // 44x44, which is the minimum both platforms specify.
+                      hitSlop={14}
                     >
                       <X size={16} color={colors.muted} />
                     </Pressable>
