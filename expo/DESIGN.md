@@ -405,7 +405,7 @@ The paywall receives and must continue to use:
 | `plan` | Annual or weekly selection |
 | `trial` | Annual-only 3-day trial flag; weekly never has a trial |
 
-Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the canonical trial; weekly is available through the additional plan option and has no trial. All prices, grants, trials, and offers are defined only in `CREDITS_AND_PRICING.md` §3. The UI must read price, renewal, trial eligibility, and offer copy from RevenueCat product data — never hardcode these values.
+Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the canonical trial; weekly is available through the additional plan option and has no trial. All prices, grants, trials, and offers are defined only in `../source-of-truth/CREDITS_AND_PRICING.md` §3. The UI must read price, renewal, trial eligibility, and offer copy from RevenueCat product data — never hardcode these values.
 
 Closing the paywall shows a confirmation sheet before the one-time offer. The one-time offer may follow that close flow, but it must not erase the collected persona. Email/OTP is an integration handoff after the paywall or offer action. Supabase should persist the final `onDone` payload. RevenueCat should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
 

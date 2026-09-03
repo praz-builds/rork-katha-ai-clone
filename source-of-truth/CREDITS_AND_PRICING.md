@@ -18,11 +18,15 @@
 
 ## Summary
 
-**One credit = one AI action.** Not one story — one *action*. A chapter is
-assembled from three of them, so a chapter costs **3 credits**:
+**One credit = one AI action.** Not one story — one *action*. A story is a
+sequence of chapters, and **starting one costs 3 credits**:
 
-| Story text | + | Cover | + | Characters | = | **3 credits** |
+| Its cast | + | Chapter 1's words | + | Chapter 1's art *(this is the cover)* | = | **3 credits** |
 |---|---|---|---|---|---|---|
+
+Every chapter after that is **1 credit**, or 2 if you illustrate it. A 3-chapter
+story is 5 credits; a 15-chapter story is 17. You are charged as each chapter is
+written, so a story you abandon costs what it wrote.
 
 Reading is **free and unlimited on every tier, forever**. Audio is **1 credit per
 chapter, unlocked permanently**. Drafting is unlimited by hand and generously
@@ -37,14 +41,18 @@ Two subscription audiences, because the product has two:
 
 The five findings that shape the numbers:
 
-1. **Unbundling the chapter** collapsed a 55× cost spread into a 2× one. Text
-   ($0.031), cover ($0.063) and characters ($0.033) are each within a factor of
-   two of one another, so each is honestly one credit and the whole economy lives
-   in whole numbers with no fractions anywhere.
+1. **Unbundling the chapter is what makes whole-number credits honest.** The
+   three image actions sit within a factor of two of one another — cover
+   $0.063, chapter art $0.042, a cast of three $0.033 — so each is fairly one
+   credit. Text is the outlier at **$0.004**, roughly 16× cheaper than a cover,
+   and it is priced at one credit anyway because a fractional credit is worse
+   than a generous one. Creation cost is images.
 2. **The Writer yearly tier is the binding constraint on everything.** At
-   $49.99/yr for 50 credits/month it nets $0.0708/credit against $0.042 of cost —
-   **40% margin even at full burn.** Every other tier clears 60%+. Any future
-   price or grant change is tested against this row first.
+   $49.99/yr for 50 credits/month it nets **$0.0708/credit** against
+   **$0.0092–$0.0274** of creation cost depending on story shape (§2). Every
+   future price or grant change is tested against this row first. *(§4's tables
+   still compute against the retired $0.0423 basis and therefore understate every
+   margin — §12 item 10.)*
 3. **A 50-credit Writer grant is more profitable than a 100-credit one**, and not
    only because of margin. 50 credits is ~16 chapters/month against a working
    writer's ~63-credit appetite, so overflow demand routes into credit packs at
@@ -100,16 +108,40 @@ subscription to read on Katha.
 
 One credit = one AI action.
 
-**Creating a chapter — 3 credits**
+**Creating a story**
+
+A story runs to a length you choose. You are charged for each AI action as it
+happens, never up front.
+
+> **Planned, not yet shipped.** The 3 / 7 / 15 chapter lengths below are the
+> model this file prices. What ships today is a single AI-chosen short story of
+> 500–1,500 words, continuable to 7 chapters
+> (`MAX_SERIES_CHAPTERS`). The per-action prices are live; the *lengths* are the
+> contract for `STORY_GENERATION_FLOW.md`'s rebuild, and the tables below are
+> pricing examples until it lands.
 
 | | Credits |
 |---|---|
-| Write the chapter | 1 |
-| Generate its cover | 1 |
-| Generate its characters | 1 |
-| **Full chapter** | **3** |
+| Its characters — the whole cast, once | 1 |
+| Write a chapter | 1 each |
+| Chapter 1's art — this becomes the cover | 1 |
+| Art for any other chapter — optional, off by default | 1 each |
 
-You can buy them separately. Text only is 1 credit; add a cover later for 1 more.
+| Your story | Just the words | Every chapter illustrated |
+|---|---|---|
+| 3 chapters | **5** | **7** |
+| 7 chapters | **9** | **15** |
+| 15 chapters | **17** | **31** |
+
+**You pay as each chapter is written**, so a story you stop halfway costs what
+it wrote, not what it planned.
+
+**Bringing your own cover is free, and it replaces chapter 1's art rather than
+sitting on top of it.** Upload before you generate and chapter 1's image is
+never made: starting the story costs **2**, not 3. Upload afterwards and it
+replaces the generated cover — but the credit that made it is not refunded,
+because that generation was delivered. Keeping the free typographic concept card
+is also a legitimate published look, and also costs nothing.
 
 **Listening — 1 credit**
 
@@ -182,10 +214,17 @@ subscribe or not — plans are for creating and listening.
 
 **Text.** `_shared/llm.ts` now chains Gemini 3.1 Pro Preview → OpenRouter
 `google/gemini-2.5-flash` → OpenAI (`gpt-5.6-luna`, `gpt-5-mini`,
-`gpt-4o-mini`) → OpenRouter Free Router ([implementation](backend/supabase/functions/_shared/llm.ts)).
-The existing **~$0.031 per chapter** planning figure (and ~$0.004 per paragraph
-edit) was calculated from the retired Anthropic rate card and must be re-measured
-against the current providers; no replacement cost figure is asserted here.
+`gpt-4o-mini`) → OpenRouter Free Router ([implementation](../backend/supabase/functions/_shared/llm.ts)).
+The **~$0.031 per chapter** planning figure came from the retired Anthropic rate
+card and is **no longer used**. The live figure is **~$0.004 per ~1k-word
+chapter** on `gpt-5.6-luna`, recorded in `_shared/llm.ts` alongside its
+neighbours (`gpt-5-mini` ~$0.006, `gpt-4o-mini` ~$0.002).
+
+> ⚠ **Luna serves everything today only because the two providers ahead of it are
+> billing-blocked** — Gemini `429`, OpenRouter `402`. When that clears, Gemini
+> 3.1 Pro Preview becomes the primary and needs its own measured figure before
+> the margins below are re-asserted. The $0.004 is `llm.ts`'s recorded figure,
+> not a measurement against real spend.
 
 **Images.** `gpt-image-1` ([OpenAI](https://developers.openai.com/api/docs/models/gpt-image-1),
 tiers via [calculator](https://langcopilot.com/gpt-image-1-pricing)):
@@ -195,11 +234,26 @@ tiers via [calculator](https://langcopilot.com/gpt-image-1-pricing)):
 | 1024×1024 | **$0.011** | $0.042 | $0.167 |
 | 1024×1536 | $0.016 | **$0.063** ← covers | $0.250 |
 
-**Covers stay at 1024×1536 medium ($0.063)** — the cover is the hero image, the
-card and the mini thumbnail, so quality is visible everywhere. **Character sets
-render at 1024×1024 low ($0.011 each, $0.033 for a set of three)** — they display
-inline and small; the quality difference will not be perceptible. That 6×
-reduction is what lets a character set be one credit.
+**Three render tiers, and they are constraints rather than defaults.** Changing
+one is a pricing change and returns to this file.
+
+> **Implementation status, stated honestly.** Only the cover tier exists in code
+> today: `_shared/image.ts` requests `gpt-image-1` at 1024×1536 `medium` — and
+> `generateCoverImage()` is **not yet called by any edge function**, so no cover
+> has ever been generated in production. The chapter-art and portrait tiers below
+> are the **contract for the image pipeline still to be built** (bucket B4), not
+> a description of shipped behaviour. Each is to be pinned with a test when that
+> path lands.
+
+| Image | Tier | Cost | Why |
+|---|---|---|---|
+| **Cover** — chapter 1's art | 1024×1536 medium | **$0.063** | The 390×340 hero, the 108×152 card and the 74×96 mini. Quality is visible everywhere. |
+| **Chapter art** — chapters 2–N | 1024×1024 medium | **$0.042** | An inline illustration at ~350pt in a reading column, seen once, in flow. Square suits the placement; it is not a shelf image. |
+| **Character portraits** | 1024×1024 low | **$0.011** | Displayed inline and small. The 6× reduction against the cover tier is what lets a whole cast be one credit. |
+
+A cast is capped at **3 characters**. That is a product bound, not a margin one —
+four portraits still clear the floor on a blended basis — chosen so the cast
+stays legible and matches the set-of-three costing above.
 
 **Audio.** MiniMax `speech-02-hd` via RunPod. Official MiniMax rate **$0.10/1k
 chars** ([MiniMax](https://minimax-ai.chat/pricing/)); third parties $0.05–$0.10/1k
@@ -219,15 +273,36 @@ estimate from published rates. **Measure before enabling narration** (§12).
 
 | Action | Cost | Credits |
 |---|---|---|
-| Chapter text | $0.031 | 1 |
+| Chapter text | $0.004 | 1 |
 | Cover @ 1024×1536 medium | $0.063 | 1 |
+| Chapter art @ 1024×1024 medium | $0.042 | 1 |
 | Character set — 3 @ 1024×1024 low | $0.033 | 1 |
-| **Full chapter** | **$0.127** | **3** |
-| | **→ $0.0423 per credit** | |
 | Audio unlock — cached chapter | **~$0** | 1 |
 | Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
 
-**$0.0423 is the number every margin below is computed against.**
+**A story, not a chapter, is the unit that matters** — the blended cost per
+credit depends on its shape, because the cast and the cover are paid once and
+amortise across every chapter after them.
+
+| Story | Credits | Cost | **Blended $/credit** |
+|---|---|---|---|
+| 3 chapters, words only | 5 | $0.108 | $0.0216 |
+| 7 chapters, words only | 9 | $0.124 | $0.0138 |
+| 15 chapters, words only | 17 | $0.156 | $0.0092 |
+| 3 chapters, illustrated | 7 | $0.192 | $0.0274 |
+| 7 chapters, illustrated | 15 | $0.376 | $0.0251 |
+| 15 chapters, illustrated | 31 | $0.744 | **$0.0240** |
+
+**Creation now costs between $0.0092 and $0.0274 per credit** — text is close to
+free and images are the majority of the cost. Longer stories are cheaper per
+credit, not dearer.
+
+> ⚠ **§4 below is stale.** Every margin in the plan table is still computed
+> against the old **$0.0423**, which descended from the retired Anthropic text
+> cost. Those margins are therefore **understated**, some by 20 points or more.
+> Correcting §4 is its own pass and is listed in §12; nothing in this section
+> depends on it, and no margin below is *overstated*, so the constraint the
+> business is run on remains conservative rather than wrong.
 
 ---
 
@@ -542,7 +617,7 @@ every plan we sell. Daily replenishment is **earned and capped**, never granted.
 
 Onboarding branches on a purpose question and the two paths meet again at the
 offer. Screen-level design is specified in
-[`research/R2-onboarding-conversion.md`](research/R2-onboarding-conversion.md);
+[`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md), the canonical onboarding specification;
 only the money is defined here.
 
 ```
@@ -616,8 +691,9 @@ free and the funnel is the library, not the paywall.
 
 ## 7. The blocked moment
 
-Because a chapter costs 3 and audio costs 1, partial balances are real and
-common. The sheet has to handle them well.
+Because starting a story costs 3, a further chapter 1 or 2, and audio 1,
+partial balances are real and common. The sheet has to handle them well, and it
+has to name the action it is blocking rather than assume a single price.
 
 ```
 User taps a paid action.
@@ -626,7 +702,10 @@ User taps a paid action.
 │     → Proceed. No interruption. No confirmation dialog.
 │
 ├─ balance < cost                    ── NOT-ENOUGH-CREDITS SHEET
-│     Header:  "You have 2 credits. A full chapter needs 3."
+│     Header:  "You have 2 credits. <action> needs <n>."
+│              e.g. "Starting a story needs 3." / "This chapter needs 2."
+│              The action and its cost are BOTH dynamic - never hardcode 3,
+│              which is only ever the story-start price.
 │              (always lead with what they HAVE)
 │     Sub:     "Reading stays free — always."
 │     Footer:  "If a generation fails, your credits come back."
@@ -677,8 +756,12 @@ resentment-generating placement available.
   to their typed premise intact.
 - **After a successful top-up, the pending action fires automatically.** No second
   tap. The user was mid-intent; finish the intent.
-- **Every paid button shows its price**: `Generate chapter · 3 credits`,
-  `Listen · 1 credit`. The blocked moment is anticipated, never sprung.
+- **Every paid button shows its price**, and the price is the price of *that*
+  action in *that* state: `Create · 3 credits` to start a story, or `Create · 2
+  credits` when the user has already uploaded their own cover and chapter 1's
+  art will not be generated; `Continue · 1 credit` for the next chapter, or
+  `Continue · 2 credits` when chapters are illustrated; `Listen · 1 credit`. The
+  blocked moment is anticipated, never sprung.
 - **Insufficient balance on entering Create shows an inline banner, never a
   modal.** The user can still type, still browse, still save.
 
@@ -825,7 +908,7 @@ the abuse.
 | Client | Paywall → one-time offer → welcome sequence | §6 |
 | Client | Cancellation flow must state the exact balance at risk before confirming | §8 |
 | Client | Price label on every paid action | §7 |
-| **Copy** | `expo/App.tsx:953` — *"1 credit creates 1 story or chapter"* is now **wrong** and must reflect 3 credits per chapter | Unbundling |
+| **Copy** | `expo/App.tsx` `CreditsScreen` — the credit explainer still describes the retired bundle (*"one credit each for the text, its cover and its characters"*). It must read: starting a story is 3, each further chapter 1, or 2 illustrated | Unbundling |
 | **RevenueCat** | The 10 SKUs in §3, replacing the current 5 | §3 |
 
 **The single most important implementation note:** prices live in **one
@@ -837,7 +920,7 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 
 | Phase | Contents |
 |---|---|
-| **1 — Launch** | Chapter unbundled at 3 credits; free unlimited reading; free caps on drafting; streak ladder; welcome bonus; lapse warnings; paywall + one-time offer; packs; all 10 SKUs |
+| **1 — Launch** | Story start unbundled at 3 credits, further chapters at 1 (2 illustrated); free unlimited reading; free caps on drafting; streak ladder; welcome bonus; lapse warnings; paywall + one-time offer; packs; all 10 SKUs |
 | **2 — Audio** | Only after RunPod cost is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
 | **3 — v1.1** | Referral with deep-link attribution |
 
@@ -882,9 +965,9 @@ economy is tuned on evidence rather than argued about.
    assumes quality is acceptable at inline display sizes. Generate a dozen and
    look at them before committing.
 3. **Verify Apple's commission tier.** All margin math assumes 15% (Small Business
-   Program). At 30%, Writer yearly nets $0.0583/credit against $0.0423 of cost —
-   margin falls from 40% to 27%. Survivable, unlike the 100-credit grant, but it
-   changes the tuning triggers.
+   Program). At 30%, Writer yearly nets $0.0583/credit. Against the corrected §2
+   cost basis ($0.0092–$0.0274) that is still 53–84%; against the stale $0.0423
+   used throughout §4 it would read as 27%. Recompute when §4 is corrected.
 4. **Decide the non-credit subscriber benefit.** With voice tiers removed, a
    subscription is now purely a credit bundle and survives only on per-credit
    arithmetic that packs constantly nip at. A **priority generation queue** costs
@@ -914,11 +997,27 @@ economy is tuned on evidence rather than argued about.
 8. **`_shared/edge-tts.ts` returns `null`** — an interface with no implementation.
    MiniMax HD is currently the only voice. Since we are not tiering voices (§1),
    this is acceptable at launch but means every narration carries premium cost.
-9. **Re-measure text-generation cost against the current provider chain.** The
-   retained per-chapter planning estimate in §2 used retired Anthropic rates and
-   must not be treated as a current-provider cost measurement.
+9. **Confirm the text-generation cost against real spend.** §2 now carries
+   **$0.004 per chapter** for `gpt-5.6-luna`, which is `_shared/llm.ts`'s recorded
+   figure rather than a measurement against a bill. Luna also serves everything
+   only because Gemini (`429`) and OpenRouter (`402`) are billing-blocked; when
+   that clears, Gemini 3.1 Pro Preview becomes the primary and needs its own
+   figure.
+10. **Recompute §4 against the corrected cost basis.** Every margin in the plan
+    table, the inversion check and the Writer-yearly risk model is computed
+    against **$0.0423**, which descended from the retired Anthropic text cost.
+    Real creation cost is **$0.0092–$0.0274** per credit (§2), so every figure in
+    §4 is understated. Conservative rather than wrong — no margin is overstated —
+    but it is **the largest known inaccuracy in this file** and it makes the
+    "constraint of record" framing read as far tighter than it is.
 
 ---
+
+<!-- markdownlint-disable MD029 -->
+<!-- Scoped to this block only. The list below is one continuous sequence split
+     by sub-headings, so each sub-list starts at 7, 11, 19, 21 and so on. Those
+     numbers are cited by number from AGENTS.md, both build logs and
+     STORY_GENERATION_FLOW.md, so they must not be renumbered for the linter. -->
 
 ## Decisions
 
@@ -927,9 +1026,11 @@ economy is tuned on evidence rather than argued about.
 1. **One credit = one AI action.** Not one story. `credit_ledger.amount` stays
    `integer`. No decimals, no fractions, no second currency, no separate
    consumption meter.
-2. **A chapter costs 3 credits** — 1 text + 1 cover + 1 character set — and the
-   three are **separately purchasable**, so a user with 1 credit can still make
-   progress.
+2. **Starting a story costs 3 credits** — 1 cast + 1 chapter-1 text + 1 chapter-1
+   art, which is the cover. Each further chapter is 1, or 2 illustrated. The
+   actions are **separately purchasable** and charged as they happen, so a user
+   with 1 credit can still make progress and an abandoned story costs only what
+   it wrote.
 3. **Reading is free, unlimited, on every tier, forever.** No caps, no metering,
    no daily pass. A permanent commitment, not a launch promo.
 4. **Audio is 1 credit per chapter, unlocked permanently.** Re-listens,
@@ -946,10 +1047,31 @@ economy is tuned on evidence rather than argued about.
    comment, share, retry after a failed generation.
 8. **Free but capped:** **3 AI redrafts per chapter**, **20 paragraph AI edits per
    chapter**, **1 cover regeneration per paid cover**. Beyond each cap, 1 credit.
-9. **Render settings:** covers at 1024×1536 `medium` ($0.063); character sets at
-   1024×1024 `low` ($0.011 each, $0.033 per set of three).
-10. **Chapter illustrations are removed** as a distinct priced action. The
-    creation flow is exactly text, cover, characters.
+9. **Render settings are constraints, not defaults**, each pinned in code with a
+   test **as each path lands**: covers at 1024×1536 `medium` ($0.063); **chapter
+   art at 1024×1024 `medium` ($0.042)**; character sets at 1024×1024 `low`
+   ($0.011 each, $0.033 for a set of three). A cast is capped at **3**. Only the
+   cover tier exists in code today, and `generateCoverImage()` is called by no
+   edge function — see §2. The other two are the contract for the image
+   pipeline, not a description of shipped behaviour.
+10. **Chapter art is a priced action, and it is the same feature as the cover.**
+    *(Amended 2026-09-02. This decision previously removed chapter illustrations
+    entirely. `STORY_GENERATION_FLOW.md` §10.4 made the product case for
+    reinstating them; **it does not set the price, and nothing there overrides
+    this file.** That document governs the screens, the toggle and when an image
+    is generated; this one governs whether an action costs a credit, how many,
+    and at what render cost. The margin derivation and its conclusions are in
+    §2 and in this decision.)*
+
+    Every chapter may have one image. **Chapter 1's is compulsory and becomes the
+    story's cover**; chapters 2–N are optional at 1 ✦ each behind a More-options
+    toggle that is **off by default**. A story is not a thing with a cover plus
+    pictures — it is a sequence of chapters, the first of which you see on the
+    shelf. The creation flow is therefore text, characters, and chapter art.
+
+    **The attach rate is not a launch dependency.** At the §2 tiers, 100% attach
+    clears the 40% floor at 3, 7 and 15 chapters. It remains worth instrumenting;
+    it does not gate release.
 
 ### Pricing
 
@@ -1046,7 +1168,7 @@ economy is tuned on evidence rather than argued about.
 ### Blocked state
 
 32. **The not-enough-credits sheet** is always headed with what the user *has*
-    (*"You have 2 credits. A full chapter needs 3."*), subhead *"Reading stays
+    (*"You have 2 credits. Starting a story needs 3."*), subhead *"Reading stays
     free — always,"* footer *"If a generation fails, your credits come back."*
     Options in order: **(1) make it with what you have** — the partial-progress
     path, primary and full-width whenever any sub-action is affordable; **(2)** the
@@ -1114,10 +1236,13 @@ economy is tuned on evidence rather than argued about.
     paywall sequence, packs, all SKUs; (2) audio, after cost measurement, catalog
     job first; (3) referral.
 46. **`expo/App.tsx:953` must change.** *"1 credit creates 1 story or chapter"* is
-    now incorrect and must reflect 3 credits per chapter.
+    now incorrect. It must reflect a 3-credit story start, with each further
+    chapter at 1, or 2 when illustrated.
 47. **Launch instrumentation per §11**, with the load-bearing triggers being
     Writer-yearly credit utilization, pack attach rate, and the audio catalog hit
     rate.
 48. **Note, no decision required:** `_shared/image.ts:108` uses `gpt-image-1` at
     1024×1536 `quality: "medium"`, not DALL·E 3 at 1024×1024 as older notes state.
     All costing here uses the code.
+
+<!-- markdownlint-enable MD029 -->

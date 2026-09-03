@@ -133,7 +133,7 @@ Server-side handling is implemented. Dashboard configuration needed.
 
 #### User Setup
 
-- [ ] Create RevenueCat project, configure products (canonical list: `CREDITS_AND_PRICING.md` §3):
+- [ ] Create RevenueCat project, configure products (canonical list: `../source-of-truth/CREDITS_AND_PRICING.md` §3):
   - `ai.katha.sub.reader.weekly` — $4.99, 5 credits
   - `ai.katha.sub.reader.monthly` — $8.99, 20 credits/mo
   - `ai.katha.sub.reader.yearly` — $29.99, 20 credits/mo, 3-day trial
@@ -178,7 +178,7 @@ here is dashboard work, not code — the client and webhook are complete and dep
       `RENEWAL` per year, so without this scheduler annual plans grant once and
       then stop.
 - [ ] **Confirm with App Review that voiding purchased pack credits on subscription
-      lapse is permitted** (`CREDITS_AND_PRICING.md` §12 item 5). Packs are
+      lapse is permitted** (`../source-of-truth/CREDITS_AND_PRICING.md` §12 item 5). Packs are
       consumable IAPs. If it is not permitted, carve packs out of the lapse rule so
       only granted and earned credits expire.
 - [ ] **Ship a development build** — RevenueCat uses native modules, so Expo Go
@@ -206,7 +206,7 @@ here is dashboard work, not code — the client and webhook are complete and dep
 
 ### Rewarded-ad credit path — historical/deferred
 
-Rewarded-ad credits were removed from the economy (`CREDITS_AND_PRICING.md` §5).
+Rewarded-ad credits were removed from the economy (`../source-of-truth/CREDITS_AND_PRICING.md` §5).
 Do not add AdMob packages, config plugins, unit IDs, SSV endpoints, or QA work for
 this deleted credit path. The former SSV checklist is retained only in git history.
 
@@ -221,12 +221,12 @@ this deleted credit path. The former SSV checklist is retained only in git histo
 
 **Decision (2026-09-03):** no ads of any kind ship in the MVP. Reading stays free,
 unlimited and **uninterrupted** — principle 1 and the §7 "Never block reading" rule in
-`CREDITS_AND_PRICING.md` stand unchanged.
+`../source-of-truth/CREDITS_AND_PRICING.md` stand unchanged.
 
 An earlier draft proposed a house-styled full-screen break between chapters on the free
 tier, so that "read without interruptions" could be sold as a paid benefit. **That is
 dropped.** It earned nothing (house-styled, no ad network), so it was friction with no
-revenue attached, and `CREDITS_AND_PRICING.md` §7 already cites the finding that users who
+revenue attached, and `../source-of-truth/CREDITS_AND_PRICING.md` §7 already cites the finding that users who
 convert to remove friction churn faster than users who convert for positive value.
 
 ### The rule that must hold until this phase ships
@@ -245,11 +245,15 @@ convert to remove friction churn faster than users who convert for positive valu
       update. `expo-tracking-transparency` is already a dependency.
 - [ ] Only once ads are live on the free tier, add "read without interruptions" to the
       paid benefit lists and amend principle 1 and the §7 Never list in
-      `CREDITS_AND_PRICING.md` **in the same commit**, so the canonical doc never
+      `../source-of-truth/CREDITS_AND_PRICING.md` **in the same commit**, so the canonical doc never
       contradicts itself.
-- [ ] Rewarded-ad *credits* stay removed regardless. Rewarded video earns roughly a cent
-      per view against $0.0423 of cost for the credit it would buy, so it loses money as a
-      credit source at any plausible eCPM (`CREDITS_AND_PRICING.md` §5).
+- [ ] Rewarded-ad *credits* stay removed. **The margin argument for this is stale and
+      must be re-run before the decision is cited again.** It compared ~$0.006-0.012 of
+      rewarded-video revenue per view against $0.0423 of credit cost; the corrected basis
+      is $0.0092-$0.0274 (`../source-of-truth/CREDITS_AND_PRICING.md` §2), which at the
+      favourable end is no longer clearly a loss. The removal still stands on the grounds
+      in `../source-of-truth/CREDITS_AND_PRICING.md` §12 item 7 - no ads of any kind in the
+      MVP - but it should not be defended on unit economics until they are recomputed.
 
 ---
 
@@ -287,10 +291,17 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] **Velocity anomaly detection:** if user has > 50 reads in the last hour, flag for review
 - [ ] **Session diversity cap:** max 10 crediting reads from same `deviceId` per day
 - [ ] **Per-story daily cap:** max 10 credits earned per story per day
-- [ ] **Dedup:** 1 crediting read per `(userId, storyId)` per day — *reader earnings deferred to v1.2; see `CREDITS_AND_PRICING.md` §5*
+- [ ] **Dedup:** 1 crediting read per `(userId, storyId)` per day — *reader earnings **blocked**, not merely deferred: `reader_earning` is retired under the current economy and may not be reintroduced without amending `../source-of-truth/CREDITS_AND_PRICING.md` first; see `../source-of-truth/CREDITS_AND_PRICING.md` §5*
 - [ ] Insert to `story_reads`, increment `stories.read_count` and `stories.unique_reader_count`
 
 ### Creator Earnings Curve
+
+> ⛔ **BLOCKED, not scheduled.** `reader_earning` is retired under the current
+> economy (`../source-of-truth/CREDITS_AND_PRICING.md` §5). Everything in this
+> section — the curve, pending credits, the confirmation cron, and any grant
+> carrying reason `reader_earning` — may not be implemented until that file is
+> amended to reinstate it. The tables below are retained as the design that
+> would be revived, not as work to pick up.
 
 | Reads | Credits per read | Cumulative credits |
 |-------|-----------------|-------------------|
@@ -399,7 +410,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 ### Cron Jobs
 
 - [ ] **Streak warning** — daily at 8 PM per user's timezone: "Your N-day streak needs saving"
-- [ ] **Lapse warning** — 3 days before subscription expiry, stating the exact balance at risk: "Your N credits expire when your plan ends on the Xth" (`CREDITS_AND_PRICING.md` §8)
+- [ ] **Lapse warning** — 3 days before subscription expiry, stating the exact balance at risk: "Your N credits expire when your plan ends on the Xth" (`../source-of-truth/CREDITS_AND_PRICING.md` §8)
 - [ ] **Weekly digest** — Sunday morning: "Katha's picks for [date]"
 - [ ] **Streak freeze reset** — 1st of each month: reset `freezesAvailable = 2` for Premium users
 

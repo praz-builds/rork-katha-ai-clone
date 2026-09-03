@@ -292,6 +292,12 @@ When `story_mode` is `"series"`:
 
 `MAX_SERIES_CHAPTERS = 7`. Chapter 7 is automatically a finale.
 
+> **Current, not permanent.** `STORY_GENERATION_FLOW.md` §14 item 4 and §15
+> replace this constant with a per-story `planned_chapter_count` of 3, 7 or 15,
+> with `chapter_role: finale` derived from position in the arc rather than from
+> `chapter == 7`. The code still works as described here; the replacement is
+> bucket B3.
+
 Each chapter is 600-900 words. The complete series (7 chapters) is approximately
 4,200-6,300 words.
 

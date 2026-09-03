@@ -10,7 +10,7 @@
 >
 > **⚠ SUPERSEDED IN PART.** Everything in this document about credit prices, plan
 > prices, grants, earning amounts, subscription tiers, or carry-over is obsolete.
-> `CREDITS_AND_PRICING.md` at the repository root is the source of truth for all
+> `../../source-of-truth/CREDITS_AND_PRICING.md` at the repository root is the source of truth for all
 > of it. The sections below that survive are the *mechanisms* — anti-gaming,
 > growth loops, schema deltas, content model — not the numbers.
 
@@ -76,7 +76,7 @@ Cost-per-active-user, LTV models, subsidy ratios, and unit-economics dashboards 
 
 ### Cost per credit (unchanged from Blueprint)
 
-Superseded — see `CREDITS_AND_PRICING.md` §2. Measured cost is **$0.0423 per credit** blended ($0.031 text + $0.063 cover + $0.033 character set = $0.127 per 3-credit chapter), plus ~$0.22 per chapter of fresh audio narration. Any subsidized credit is a direct cost against future ARPU.
+Superseded — see `../../source-of-truth/CREDITS_AND_PRICING.md` §2. Measured cost is **$0.0423 per credit** blended ($0.031 text + $0.063 cover + $0.033 character set = $0.127 per 3-credit chapter), plus ~$0.22 per chapter of fresh audio narration. Any subsidized credit is a direct cost against future ARPU.
 
 ---
 
@@ -126,11 +126,11 @@ Backend addition: `stories.themes TEXT[]` (already effectively covered by `genre
 
 ## 4. Complete credit economy — master table
 
-> **SUPERSEDED. See `CREDITS_AND_PRICING.md` (repository root).**
+> **SUPERSEDED. See `../../source-of-truth/CREDITS_AND_PRICING.md` (repository root).**
 >
 > The earning table, spending table, pricing tiers and free-vs-premium behavior
 > that used to live here are obsolete in every particular. See
-> `CREDITS_AND_PRICING.md` §§1, 3, and 5 for every current number, price, grant,
+> `../../source-of-truth/CREDITS_AND_PRICING.md` §§1, 3, and 5 for every current number, price, grant,
 > SKU, and earning rule. The enduring mechanisms are free reading, one credit per
 > AI action, non-rolling subscription grants, and whole-balance lapse at
 > subscription end; library and unlocked audio remain available.
@@ -185,11 +185,11 @@ Deep-link based. New user installs from a referral link → account is tagged wi
 
 ### 5.4 Streak loop
 
-**Retuned, not removed.** Daily reading activity increments a streak counter; milestones pay **1 credit at day 2, day 5, day 7, then every 7 days** (`CREDITS_AND_PRICING.md` §5). Streak breaks reset to zero and rewards restart at day 2. Dates are computed server-side and each milestone is keyed `streak:{user_id}:{milestone_day}` so replays are structural no-ops. The streak-warning push at 20:00 local time stays.
+**Retuned, not removed.** Daily reading activity increments a streak counter; milestones pay **1 credit at day 2, day 5, day 7, then every 7 days** (`../../source-of-truth/CREDITS_AND_PRICING.md` §5). Streak breaks reset to zero and rewards restart at day 2. Dates are computed server-side and each milestone is keyed `streak:{user_id}:{milestone_day}` so replays are structural no-ops. The streak-warning push at 20:00 local time stays.
 
 ### 5.5 Ad loop (the paying-conversion funnel)
 
-**Removed from the economy.** Rewarded ads lose money as a credit source at any plausible eCPM (`CREDITS_AND_PRICING.md` §5). Retained here only as a record of the integration requirements, should non-rewarded ads ever ship. Historically: a verified rewarded ad granted 1 credit per rolling 24 hours. This cannot be activated until AdMob sends signed SSV callbacks directly to the server and the backend provides user-bound claim nonces, global transaction replay protection, and atomic cooldown/grant enforcement. Client reward callbacks never grant credits.
+**Removed from the economy.** Rewarded ads lose money as a credit source at any plausible eCPM (`../../source-of-truth/CREDITS_AND_PRICING.md` §5). Retained here only as a record of the integration requirements, should non-rewarded ads ever ship. Historically: a verified rewarded ad granted 1 credit per rolling 24 hours. This cannot be activated until AdMob sends signed SSV callbacks directly to the server and the backend provides user-bound claim nonces, global transaction replay protection, and atomic cooldown/grant enforcement. Client reward callbacks never grant credits.
 
 As covered in the Blueprint, this loop **loses money per ad-funded generation** but is intended to build a daily-open habit that drives paid conversion (target: 3-8% of free users).
 
@@ -475,7 +475,7 @@ All push notifications respect per-category opt-out in Settings → Notification
 
 Things this doc leaves unresolved — flag for future decision:
 
-1. **Welcome bonus amount — settled.** It is 3 credits after the paywall and one-time-offer decline path; see `CREDITS_AND_PRICING.md` §5.
+1. **Welcome bonus amount — settled.** It is 3 credits after the paywall and one-time-offer decline path; see `../../source-of-truth/CREDITS_AND_PRICING.md` §5.
 2. **Optional internal cooldown on reader-earned credits** — recommended but optional. Backend team decides based on fraud detection load.
 3. **Social post verification workflow** — manual moderation queue in v1 or automated? Recommend manual for v1 (low volume expected), automate once volume justifies.
 4. **Regeneration on user-initiated retry** — not offered in v1. Consider adding as premium-only feature post-launch.
@@ -491,9 +491,9 @@ For clarity — the following remain as specified in the Blueprint:
 - Tech stack split (Rork for UI, VS Code agent for backend).
 - Supabase Auth (Google + Apple).
 - RevenueCat for billing. **Rewarded-ad credits are historical/deferred and must
-  not be implemented**; see `CREDITS_AND_PRICING.md` §5.
-- Pricing tiers — **superseded, see `CREDITS_AND_PRICING.md` §3.**
-- Cost-per-generation — **superseded, see `CREDITS_AND_PRICING.md` §2** ($0.127 per chapter).
+  not be implemented**; see `../../source-of-truth/CREDITS_AND_PRICING.md` §5.
+- Pricing tiers — **superseded, see `../../source-of-truth/CREDITS_AND_PRICING.md` §3.**
+- Cost-per-generation — **superseded, see `../../source-of-truth/CREDITS_AND_PRICING.md` §2** ($0.127 per chapter).
 - 5-tab bottom nav structure.
 - Append-only credit ledger pattern.
 - RevenueCat webhook verification. AdMob SSV material is historical only and

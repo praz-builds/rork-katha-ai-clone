@@ -7,7 +7,11 @@
 
 ## Repository Map
 
-- `CREDITS_AND_PRICING.md` -- **canonical source of truth for all credits, plan prices, grants, store SKUs, and earn mechanics.** Any pricing or credit question is answered there and nowhere else.
+- `source-of-truth/` -- **the four canonical documents. If any other file in this repository disagrees with one of them, the file there is right and the other is stale -- this file included.** See [`source-of-truth/README.md`](source-of-truth/README.md) for precedence between them.
+  - `CREDITS_AND_PRICING.md` -- every credit price, plan price, grant, store SKU, earn mechanic, render tier and unit cost. Any pricing question is answered there and nowhere else.
+  - `STORY_GENERATION_FLOW.md` -- the create flow: every field, label, ordering rule and post-generation step.
+  - `STORY_PROMPT_SYSTEM.md` -- the prompt architecture (was `backend/prompts/story-generator.md`).
+  - `ONBOARDING_FLOW.md` -- onboarding, both paywalls, the one-time offer, the blocked-credits sheet.
 - `expo/` -- approved and active Expo SDK 54 application.
 - `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
 - `ios-katha-ai-create-stories/` -- preserved Rork-generated iOS reference client.
@@ -19,7 +23,7 @@
 
 - Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding.
 - Read `backend/ROADMAP.md` and `backend/build-log.md` before changing Supabase or generation infrastructure.
-- **Read `CREDITS_AND_PRICING.md` before touching anything that prices, grants, deducts, or displays credits.** It is canonical; never hardcode a price or grant that contradicts it, and never copy its tables into another file.
+- **Read the relevant `source-of-truth/` document before touching what it governs** -- pricing/credits, the create flow, the prompt system, or onboarding. They are canonical; never hardcode a value that contradicts one, and never copy their tables into another file. A change that crosses two of them updates both in the same commit.
 - Run Expo commands from `expo/` and Supabase commands from `backend/`.
 - Treat the iOS and Android folders as reference implementations unless a task explicitly targets native code.
 - Keep frontend and backend contracts in this repository. Do not create another Katha application or backend repository.
@@ -167,7 +171,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has migrations `0
 - Append-only. Never update rows.
 - Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references.
 - Balance = newest ledger row by `created_at`, then `id`.
-- **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`CREDITS_AND_PRICING.md` §5).
+- **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5).
 
 ### Security Gate
 
@@ -221,7 +225,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ## Story Generation System (v5.1)
 
-The generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts`. Shared types in `_shared/types.ts`, validation in `_shared/validation.ts`. The prompt spec is `backend/prompts/story-generator.md`.
+The generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts`. Shared types in `_shared/types.ts`, validation in `_shared/validation.ts`. The prompt spec is `source-of-truth/STORY_PROMPT_SYSTEM.md`.
 
 ### Architecture (v5.1 modular layers)
 
@@ -387,7 +391,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 | EN | Aria | Kai | RunPod (MiniMax) |
 | ES | Elvira | Alvaro | edge-tts (placeholder) |
 
-4 additional EN voices. **No voice tiers** -- every voice is available on every tier including free (`CREDITS_AND_PRICING.md` decision 5).
+4 additional EN voices. **No voice tiers** -- every voice is available on every tier including free (`source-of-truth/CREDITS_AND_PRICING.md` decision 5).
 
 ### Pipeline
 
@@ -396,14 +400,14 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - `generate-audio` edge function accepts `language` in request body; callers must pass it explicitly.
 - Language routing: EN -> RunPod, all others -> edge-tts.
 - Reader shows voice toggle (female/male names from `getDefaultVoices(lang)`).
-- Audio is **1 credit per chapter, unlocked permanently**, on every tier. Re-listens, pause/resume and library re-opens are free forever. See `CREDITS_AND_PRICING.md` §1.
+- Audio is **1 credit per chapter, unlocked permanently**, on every tier. Re-listens, pause/resume and library re-opens are free forever. See `source-of-truth/CREDITS_AND_PRICING.md` §1.
 - Inngest integration for auto-generation on publish is planned but not yet wired.
 
 ## Monetization
 
-> **`CREDITS_AND_PRICING.md` is the source of truth.** The summary below exists so
+> **`source-of-truth/CREDITS_AND_PRICING.md` is the source of truth.** The summary below exists so
 > an agent reading this contract knows the shape of the economy. Every number in
-> it is a copy; if it disagrees with `CREDITS_AND_PRICING.md`, that file wins.
+> it is a copy; if it disagrees with `source-of-truth/CREDITS_AND_PRICING.md`, that file wins.
 > **Do not add pricing tables to this file.**
 
 ### Product Context
@@ -413,11 +417,11 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 ### Key Product Decisions
 
 - **Single currency: Credits.** No coins, no gems, no dual wallets. Backend tracks provenance via `credit_ledger.reason`.
-- **1 credit = 1 AI action**, not 1 story. A chapter is text (1) + cover (1) + characters (1) = **3 credits**, and the three are separately purchasable.
+- **1 credit = 1 AI action**, not 1 story. **Charged today: 1 credit per generation** -- `generate-story` makes exactly one reservation, because neither the cast nor chapter art is built. **Contracted** (`source-of-truth/CREDITS_AND_PRICING.md` §1, not yet shipped): starting a story is 3 -- cast + chapter 1's words + chapter 1's art, which becomes the cover -- then 1 per further chapter, or 2 illustrated. `expo/src/lib/pricing.ts` keeps the two apart; never render a contracted price to a user.
 - **Reading is free, unlimited, on every tier, forever.** No caps, no metering, no daily pass.
 - **Audio is 1 credit per chapter, unlocked permanently.** No voice tiers.
 - **Drafting is free**: unlimited manual editing, 3 free AI redrafts and 20 free paragraph edits per chapter, 1 free cover regeneration per paid cover.
-- **Every story starts as a short story.** AI decides length (500-1500 words). No length picker. Stories become Series when the author adds chapters.
+- **Shipped today:** one AI-chosen short story of 500-1500 words, continuable to `MAX_SERIES_CHAPTERS` (7). **Planned, not yet built** (`source-of-truth/STORY_GENERATION_FLOW.md`): a chosen length of 3, 7 or 15 chapters driving pacing and finale derivation, advanced one Continue at a time, with *Write the rest* from chapter 3. There is no Interactive/Auto-Write mode toggle in either.
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
 - **3-credit welcome bonus**, granted only after the user declines both the paywall and the one-time offer.
@@ -426,28 +430,23 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 ### Plans, packs, and grants
 
 All plan prices, grants, packs, SKUs, trials, and offers are defined only in
-`CREDITS_AND_PRICING.md` §3. Do not duplicate those values here.
+`source-of-truth/CREDITS_AND_PRICING.md` §3. Do not duplicate those values here.
 
 Rules that constrain every future change:
 
-- **Subscription grants do not roll over**, and **credits lapse with the subscription** — when a plan ends the whole balance goes to zero, including earned and pack-purchased credits. What survives is the user's library, their unlocked audio, and free unlimited reading. Lapse must never be silent: 3-day pre-expiry warning stating the exact balance at risk, the same number in the cancellation flow. **Open item: confirm with App Review that voiding purchased pack credits is permitted** (`CREDITS_AND_PRICING.md` §12).
-- **A subscription must always be the best price per credit against any pack it competes with.** Re-run the inversion check in `CREDITS_AND_PRICING.md` §4 whenever a price or grant changes.
+- **Subscription grants do not roll over**, and **credits lapse with the subscription** — when a plan ends the whole balance goes to zero, including earned and pack-purchased credits. What survives is the user's library, their unlocked audio, and free unlimited reading. Lapse must never be silent: 3-day pre-expiry warning stating the exact balance at risk, the same number in the cancellation flow. **Open item: confirm with App Review that voiding purchased pack credits is permitted** (`source-of-truth/CREDITS_AND_PRICING.md` §12).
+- **A subscription must always be the best price per credit against any pack it competes with.** Re-run the inversion check in `source-of-truth/CREDITS_AND_PRICING.md` §4 whenever a price or grant changes.
 - **Writer yearly is the binding constraint** at 40% margin at full burn. Test every pricing change against that row first.
 
-### Free credit methods (summary -- canonical table in `CREDITS_AND_PRICING.md` §5)
+### Free credit methods
 
-| Method | Amount | Limits |
-|--------|--------|--------|
-| Reading streak | 1 credit | Day 2, day 5, day 7, then every 7 days. Self-capping at ~4/month |
-| Welcome bonus | 3 credits | Once per authenticated account, on declining the one-time offer |
-| Referral (referrer) | 10 credits | On invited user's first generation; 3/month, 10 lifetime. v1.1 |
-| Referral (invited) | 5 credits | On own first generation, once. v1.1 |
+> Deliberately not reproduced. `source-of-truth/CREDITS_AND_PRICING.md` §5 is the only place these amounts and limits are written down, and this file's own working rules forbid copying its tables. The mechanics are: a reading streak, a referral, and a one-off welcome bonus.
 
-A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. Steady-state free earning is **~4 credits/month**, 20% of the Reader plan's 20. The ladder is self-capping, so no monthly ceiling is enforced.
+A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. The ladder is self-capping, so no monthly ceiling is enforced.
 
 The failed-generation **auto-refund stays** (`refund_generation_operation`) but is not an earn mechanic and is not on this table.
 
-**Removed from the economy** -- do not reintroduce without amending `CREDITS_AND_PRICING.md`: rewarded-ad credits, comment/feedback rewards, social post rewards, reader earnings, the flat daily app-open credit, premium voice tiers, and the 2x carry-over cap.
+**Removed from the economy** -- do not reintroduce without amending `source-of-truth/CREDITS_AND_PRICING.md`: rewarded-ad credits, comment/feedback rewards, social post rewards, reader earnings, the flat daily app-open credit, premium voice tiers, and the 2x carry-over cap.
 
 **Live defect:** `create_feedback` still grants a credit for a one-character comment, daily, uncapped. Disable before launch.
 
@@ -551,7 +550,9 @@ CodeRabbit reviews `main` pull requests, including drafts and incremental pushes
 
 ## Reference Material
 
-- **Strategic decisions (authoritative):** `backend/references/strategic-decisions.md` -- overrides Blueprint where they conflict.
+> The four canonical documents are in `source-of-truth/` (see the Repository Map). Everything below is secondary and yields to them.
+
+- **Strategic decisions:** `backend/references/strategic-decisions.md` -- overrides Blueprint where they conflict.
 - **Product blueprint:** `backend/references/story-generator-app.md` -- original architecture spec.
 - **Cover images (full reference):** `backend/COVER_IMAGES.md`.
 - **Backend roadmap:** `backend/ROADMAP.md` -- phased execution plan with checklists.
