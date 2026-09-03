@@ -2,6 +2,11 @@ import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initSentry, initPostHog } from "@/lib/analytics";
+import {
+  CREDITS_PER_AUDIO_UNLOCK,
+  CREDITS_PER_GENERATION,
+  formatCredits,
+} from "@/lib/pricing";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { setupAndroidChannel } from "@/lib/notifications";
 import {
@@ -979,7 +984,7 @@ function CreditsScreen({ credits, onBack }: { credits: number; onBack: () => voi
         <View style={styles.creditHero}>
           <Sparkles size={32} color={colors.accent} />
           <Text style={styles.creditHeroTitle}>Credits create stories and chapters</Text>
-          <Text style={styles.creditHeroText}>One credit each for the text, its cover and its characters. Audio is 1 credit per chapter, unlocked forever. Reading is always free.</Text>
+          <Text style={styles.creditHeroText}>{`Writing a chapter costs ${formatCredits(CREDITS_PER_GENERATION)}. Unlocking a chapter's audio costs ${formatCredits(CREDITS_PER_AUDIO_UNLOCK)}, and you can listen again as often as you like, forever. Reading is always free.`}</Text>
         </View>
         <SectionHeader title="History" />
         {ledger.map((entry) => (

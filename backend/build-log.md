@@ -7,6 +7,134 @@
 
 ---
 
+## 2026-09-02 UTC — Schema and contracts for the story-creation flow (B1)
+
+**Session:** Migrations 00027/00028 and the request contract they support. Every new column is nullable or defaults to today's behaviour, so no existing **read or write path** changes. That is not the same as the migration being unconditionally safe to apply: `stories_planned_chapter_count_check` is restrictive, so 00028 can fail on pre-existing data and requires the check below first.
+
+The two constraints are **not** alike, and the summary previously blurred them:
+
+| Constraint | Direction | Can validation fail? |
+| --- | --- | --- |
+| `generation_operations_kind_check` | **Widening** — adds `cover`, `chapter_art`, `characters` | No. Every existing row satisfies the old, narrower check, so it satisfies the new one. |
+| `stories_planned_chapter_count_check` | **Restricting** — a previously free integer is now `NULL, 3, 7 or 15` | **Yes.** Any existing row holding a non-null value outside that set fails 00028. |
+
+`planned_chapter_count` was added in migration 00003 and is written by no code path in this repository, so every row is expected to hold NULL. **That expectation is unverified** — no Supabase credentials were available here — and it is a precondition of 00028, not a consequence of it. Confirm before applying:
+
+```sql
+select count(*) from public.stories
+where planned_chapter_count is not null
+  and planned_chapter_count not in (3, 7, 15);
+```
+
+A non-zero result must be reconciled before 00028 runs.
+
+### Every paid image can now reserve an operation
+
+`generation_operations.kind` was constrained to `('story', 'continuation')`, so a cover, a chapter illustration or a cast had nowhere to record itself and would have been charged outside the idempotency and auto-refund path that makes text generation safe. The constraint now admits `cover`, `chapter_art` and `characters`, and `reserve_generation_operation` accepts them.
+
+The active-reservation index needed widening too. It was `unique(story_id, chapter_number) where status = 'reserved'`, which encodes "one paid action per chapter" — no longer true once a chapter has both text and art. A chapter's text and its own illustration could never be reserved at the same time; the second insert raised `KTH01`. The sequential flow does not hit that today, but the constraint was wrong rather than merely conservative, so it is now `(story_id, chapter_number, kind)`.
+
+### Columns
+
+`chapters.image_url` / `image_prompt`; `characters.portrait_url`; and on `stories`: `where_and_when`, `moments`, `story_values`, `writing_style`, `avoid`, `chapter_length`, `illustrate_chapters`. `planned_chapter_count` already existed from migration 00003, unused, and becomes the planned length — now constrained to 3, 7 or 15.
+
+`story_values` rather than `values` because `values` is reserved in SQL.
+
+### The 40-character seed gate is gone
+
+`validation.ts` rejected any idea under 40 characters. It taught padding rather than structure, and the flow document replaces it with the slot-based brief-strength meter in which a one-line idea is a legitimate choice. One non-whitespace character is the floor; the 1000-character ceiling is unchanged. Removing it from the UI alone would have produced a 400 from the server, so it had to move here first.
+
+### The cast cap was three different numbers
+
+The client allowed 5 (`CreateStudioScreen.tsx`), the server allowed 10 (`validation.ts`), and the spec said 3 — so a user could assemble a cast the server would reject. All three are now 3, from `MAX_CAST_SIZE` in `_shared/types.ts`.
+
+### Writing style is sanitised, not just bounded
+
+The new free-text style field is a direct route to "write exactly like <living author>", which `source-of-truth/STORY_PROMPT_SYSTEM.md` forbids at runtime. Imitation phrasing and the name after it are stripped and the rest of the direction is kept, so "hardboiled, like Raymond Chandler" reaches the prompt as "hardboiled". A regression test covers bare initials — an earlier pattern stopped at "Ursula" and leaked "K Le Guin". The known over-match (a capitalised phrase that is not a person, such as "in the style of Gothic Horror") is documented at the function and accepted: a regex cannot tell the two apart, and losing a little craft direction is the cheaper error. This is defence in depth; the prompt layer states the rule as well.
+
+### Also corrected
+
+`expo/App.tsx`'s credits explainer still described the retired bundle ("one credit each for the text, its cover and its characters"). It now states the story-start price and the per-chapter price.
+
+### CodeRabbit review, addressed
+
+- **The seed gate was only half removed.** `validation.ts` accepted one character but `CreateStudioScreen.tsx` still required 40, so Create stayed disabled for a valid short idea. The client condition and `getSeedHint()` now match the server; the hint encourages rather than counts toward a threshold.
+- **The author-name sanitiser was ASCII-only.** `[A-Z]` and `\w` stop at the first accented character, so "Gabriel García Márquez" leaked most of the name. It now uses `\p{Lu}`/`\p{L}` with the `u` flag, with regression cases for accented and non-Latin names.
+- **Both new constraints are added `NOT VALID` and validated in 00028.** A plain `ADD CONSTRAINT` holds ACCESS EXCLUSIVE for the whole table scan, whether or not that scan can fail. `NOT VALID` skips the scan and holds ACCESS EXCLUSIVE only briefly — it is still an exclusive lock, just not one held for a scan — and 00028's `VALIDATE CONSTRAINT` then does the scan under SHARE UPDATE EXCLUSIVE, which does not block reads or writes. `generation_operations` is on the hot path of every generation, so the difference matters.
+- **The index rebuild cannot use `CONCURRENTLY`** — `supabase db push` wraps each migration in a transaction and concurrent index builds cannot run in one. The brief lock is documented at the statement, with the conditions under which it would need to become an out-of-band rebuild.
+- **Client credit amounts moved out of copy** into `expo/src/lib/pricing.ts`, the single client-side mirror of the per-action costs. It holds no plan prices, grants or SKUs.
+
+### Second review round
+
+- **The credits screen advertised a price the code does not charge.** The canonical document prices a story start at 3 credits — cast, chapter 1's words, chapter 1's art — but `generate-story` makes exactly one reservation, because neither the cast nor chapter art is built yet. `pricing.ts` now separates **charged today** from **contracted**, the contracted values are marked not-yet-charged, and user-facing copy reads only the charged ones.
+- **The sanitiser's `i` flag applied to `\p{Lu}` as well as the trigger**, so an uppercase-letter class matched lowercase and any prose after a trigger word was read as a name: `"like the sea at dusk"` was destroyed. Trigger and name are now two regexes — the trigger case-insensitive, the name not — and three prose-preservation cases are pinned.
+- **The particle list stopped mid-name.** `"Ngũgĩ wa Thiong'o"` left `"wa Thiong'o"` behind because `wa` was not listed. The set now covers the common Romance, Germanic, Arabic, Celtic and Bantu connectives.
+- The style test asserted only that no author name survived, which would have passed on gutted text. It now asserts exact output for every case.
+
+### Third review round
+
+- **Uncased scripts bypassed the filter entirely.** Han, Kana, Arabic, Hebrew and Devanagari letters have no uppercase, so a `\p{Lu}`-anchored pattern could never match them and "in the style of 村上春樹" passed through untouched. The name token now also accepts a run of `\p{Lo}` ("Letter, other"), which is deliberately narrow: Latin lowercase is `\p{Ll}`, so admitting uncased scripts cannot resurrect the prose bug fixed in the round before.
+- Removing a name from the middle of a list left its separators behind — "dreamlike, like 村上春樹, in short scenes" became "dreamlike, , in short scenes". Runs of separators now collapse to the first.
+
+### Fourth review round
+
+- **The cast cap did not survive a double tap.** `addCharacter` checked `draft.characters.length` from its closure rather than `prev.characters.length` inside the updater, so two taps batched in one frame both read the stale length, both appended, and the cast came out one over the cap — which `validation.ts` then rejects. The check moved inside the updater, and three tests pin it, including one that reproduces the stale-closure behaviour so the regression is described rather than merely prevented.
+- `MAX_CAST_SIZE` now lives in `expo/src/lib/pricing-limits.ts` and both the screen and the tests read it, rather than the number being restated in a comment.
+- **00028 guards its own precondition** instead of only documenting it. A `DO` block counts offending rows first and raises a message naming the column and the count, rather than letting `VALIDATE CONSTRAINT` abort with something generic.
+- The compatibility statement now says no existing **read or write path** changes, which is what is true — it is not a claim that the migration is unconditionally safe to apply.
+
+### Fifth review round
+
+- **`loadDraft()` could disable auto-save for a whole mount.** The persisted draft is typed by assertion only, so nothing guarantees `characters` is an array. Reading `.length` off a missing value rejected the promise *before* `draftRestoredRef` was set, which left auto-save off and silently discarded everything the user typed afterwards. `characters` is now normalised, and the ref is set in a `finally` so a single unreadable payload cannot disable saving.
+- **`generation_operations.chapter_number` is `NOT NULL` and must be positive**, but the migration never said what a story-level operation should use. The convention is now documented at the function: `story`, `continuation`, `cover` and `chapter_art` carry the chapter they belong to; `characters` carries 1, the chapter it is generated before. The `(story_id, chapter_number, kind)` index keeps all three chapter-1 reservations distinct.
+- The sanitiser's two regexes are built once at module scope rather than per request. `matchAll` copies the regex internally, so sharing one instance does not mutate `lastIndex` across calls.
+- The 300-character brief-field test only checked that 301 is rejected. Flipping `>` to `>=` would have passed it, so the accept side is now pinned too.
+- The `NOT VALID` lock description was imprecise: `NOT VALID` still takes ACCESS EXCLUSIVE, just briefly and without a scan. Corrected.
+
+### Validation
+
+- 145 Deno tests pass with main merged in (9 new here, 5 from #43), `deno check` clean on every edge function, `deno fmt --check` clean.
+- Expo typecheck clean, 0 lint errors, 41 Jest tests pass.
+- **Migrations were not applied.** No Supabase credentials were available in this environment, so 00027/00028 are unreviewed against a live database and no production smoke test was run.
+
+---
+
+## 2026-09-02 UTC — The prompt reads the word band instead of restating it
+
+**Session:** CodeRabbit review follow-up on the word-band work below. `wordBandFor()` was described as the single source of truth, but `story-prompts.ts` still carried four independent copies of the numbers, so the prompt and the validator could drift apart in exactly the way the helper was introduced to prevent.
+
+### What changed
+
+Every length instruction the model reads is now rendered from `wordBandFor()`:
+
+| Site | Was | Now |
+| --- | --- | --- |
+| `buildBaseRules()` | `500-1500 words` | `${band.min}-${band.max} words` |
+| `buildAudienceModeRules()` (Kids) | `600-900` / `500-1200` | the band for that mode |
+| Continuation rules | `600-900 words` | the series band |
+| `buildUserPrompt()` | three literal ranges | the band for that mode |
+
+`buildStoryPromptBody()` resolves the band once and passes it down, so a single call decides what the whole prompt says. This also removes a live bug: a kids **standalone** prompt previously stated `500-1500` in its Hard Rules and `500-1200` in its Kids Mode block, giving the model two different ceilings in one prompt.
+
+### Why it matters beyond the review
+
+Chapter length becomes a user-facing control (Short / Standard / Long) in the create-flow rebuild. With the numbers centralised, that is a change to one function; with four string literals it would have been four chances to ship a prompt that contradicts the validator.
+
+### Two inline findings, both real
+
+**The Kids Mode length rule fought its own minimum.** It read `500-1200 words maximum. Shorter is better.` — an instruction to undershoot, sitting next to a floor of 500. A generation below 0.75x that floor is rejected by `requireUsableStoryOutput()` and burns a provider fallback, so the sentence was buying failed generations. It now reads `500-1200 words. Aim for the lower half of that range, but never go under 500.`, which keeps the brevity Kids Mode wants and the floor the validator enforces.
+
+An existing test pinned the old sentence verbatim. It now asserts the band rather than the wording around it, which is what its name always claimed.
+
+**`AGENTS.md` and `BUILD_LOG.md` both said covers use DALL·E 3.** `_shared/image.ts` requests `gpt-image-1`. Corrected in both.
+
+### Validation
+
+- 136 Deno tests pass on this branch merged with main, including five new ones: four assert the prompt quotes `wordBandFor()` for every mode combination and that a kids prompt never leaks the adult ceiling, and one pins the Kids Mode floor against the instruction that used to contradict it.
+- `deno check` clean across every edge function; `deno fmt --check` clean on the CI file list.
+
+---
+
 ## 2026-09-02 UTC — A source-of-truth folder, a corrected cost basis, and every story-flow open item closed
 
 **Session:** Documentation only. No code, no schema, no deploy. Bucket B0 of the story-creation rebuild, and the gate for the buckets after it, because everything in the create flow that displays or charges a price reads from these files.
@@ -62,6 +190,36 @@ A new §15 records what the document no longer says, so a reader landing mid-fil
 - **Not run:** the production smoke suites in `backend/scripts/`, which require `SUPABASE_SERVICE_ROLE_KEY`. No credentials were available in this environment, and no generation was exercised against production.
 
 ---
+
+## 2026-09-01 UTC — Closed the two open risks from the provider migration
+
+**Session:** Enforced the chapter word band server-side and split the story-generation credential from the cover credential. Both were carried as known risks out of the Luna work; both are now closed on the code side.
+
+### The word band is enforced, not just requested
+
+`wordBandFor()` in `_shared/types.ts` is the single source of truth — `600-900` for a series chapter whatever the audience, `500-1200` standalone kids, `500-1500` standalone adult. The prompt builder and `requireUsableStoryOutput()` both read it, so the instruction and the check can no longer drift apart.
+
+- The count comes from `chapter_body`, never the model's self-reported `word_count`. A model that ignores the band is not a reliable narrator of how badly it ignored it, and every persistence path counts the body anyway.
+- Outside `wordBandBounds()` — 0.75x floor, 1.25x ceiling — the output is unusable and falls through to the next provider exactly like malformed JSON. The credit is refunded if the whole chain fails, which beats charging for a chapter that breaks reading-time estimates and narration cost downstream.
+- Inside the tolerance but outside the stated band, the drift is logged and the story is kept. The band is a writing instruction, not a contract a model can hit exactly; enforcing it literally would throw away good stories. Production series chapters legitimately land at 905-945 against a 600-900 band.
+- The 2,026-word `gpt-5-mini` chapter that motivated this is now a regression test, alongside the observed production spreads (846-1,353 on the standalone band, 905-945 on the series band) as the must-not-reject cases.
+
+### Story generation has its own credential
+
+`_shared/llm.ts` now reads `OPENAI_STORY_API_KEY` ahead of `OPENAI_API_KEY`; `_shared/image.ts` still reads `OPENAI_API_KEY`. `OPENAI_API_KEY` authenticated both `gpt-image-1` covers and story text, so one spend cap, rate limit, revocation or rotation took down covers and stories together — and with Gemini (`429`) and OpenRouter (`402`) unavailable, every position that can serve authenticates with it.
+
+Setting the secret is now the entire remaining change and no deploy follows it. Leaving it unset preserves current behaviour, so this is safe to land ahead of the key existing.
+
+### Validation
+
+- `deno fmt --check`, `deno check`, **134 deno tests** pass (six new: the band mapping, runaway rejection, the must-not-reject production spreads, series-band narrowing, the no-band path, and credential precedence).
+- Production `smoke-app-surface.py`: **26 / 26**; assertion 5.3 names `gpt-5.6-luna`.
+- Production `smoke-series-generation.py`: **58 / 58**, with the length guard live: 1,237 words standalone, 860 and 869 on the series band. No legitimate generation was rejected.
+
+### Still open, and both are account actions
+
+- Set `OPENAI_STORY_API_KEY` in Supabase secrets.
+- Gemini `429` and OpenRouter `402` remain unresolved, so there is still no provider-level redundancy ahead of OpenAI. Adding OpenRouter credits is the cheapest fix — `google/gemini-2.5-flash` is already pinned and deployed in that position.
 
 ## 2026-08-31 UTC — GPT-5.6 Luna live in the OpenAI position
 

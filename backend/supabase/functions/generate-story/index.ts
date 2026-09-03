@@ -13,7 +13,7 @@ import {
   buildUserPrompt,
 } from "../_shared/story-prompts.ts";
 import { parseStructuredOutput } from "../_shared/story_text.ts";
-import { EMPTY_SERIES_STATE } from "../_shared/types.ts";
+import { EMPTY_SERIES_STATE, wordBandFor } from "../_shared/types.ts";
 import {
   deriveContentRating,
   validateGenerationRequest,
@@ -247,7 +247,11 @@ serve(async (req) => {
         characters,
         language,
       });
-      const result = await generateStoryText(systemPrompt, userPrompt);
+      const result = await generateStoryText(
+        systemPrompt,
+        userPrompt,
+        wordBandFor(storyMode, audienceMode),
+      );
       const output = parseStructuredOutput(result.text, "Untitled Story");
       if (!output.chapter_body) {
         throw new Error("Generation returned no story content");

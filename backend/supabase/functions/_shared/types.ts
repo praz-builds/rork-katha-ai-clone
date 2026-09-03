@@ -298,6 +298,57 @@ export const GENRE_MIGRATION_MAP: Record<string, PrimaryGenre> = {
 };
 
 // ---------------------------------------------------------------------------
+// Story shape: planned length, chapter length, cast size
+// ---------------------------------------------------------------------------
+
+/**
+ * The lengths a story may be planned to.
+ *
+ * This is a planned length, not a batch size: the user still advances one
+ * chapter at a time. It drives pacing and finale derivation, replacing the
+ * fixed `MAX_SERIES_CHAPTERS = 7` in story-prompts.ts.
+ */
+export const PLANNED_CHAPTER_COUNTS = [3, 7, 15] as const;
+
+export type PlannedChapterCount = typeof PLANNED_CHAPTER_COUNTS[number];
+
+export const PLANNED_CHAPTER_COUNT_SET: ReadonlySet<number> = new Set<number>(
+  PLANNED_CHAPTER_COUNTS,
+);
+
+export const DEFAULT_PLANNED_CHAPTER_COUNT: PlannedChapterCount = 3;
+
+export type ChapterLength = "short" | "standard" | "long";
+
+export const CHAPTER_LENGTHS: ReadonlySet<string> = new Set<ChapterLength>([
+  "short",
+  "standard",
+  "long",
+]);
+
+export const DEFAULT_CHAPTER_LENGTH: ChapterLength = "standard";
+
+/**
+ * Maximum characters in a cast, and the number one credit buys.
+ *
+ * Three, not four. A product bound rather than a margin one - four portraits
+ * still clear the floor on the blended basis CREDITS_AND_PRICING.md uses - but
+ * three matches the set-of-three costing in that file and keeps the cast
+ * legible. See source-of-truth/STORY_GENERATION_FLOW.md section 14 item 1.
+ */
+export const MAX_CAST_SIZE = 3;
+
+/**
+ * Maximum beats a user may pin, per source-of-truth/STORY_GENERATION_FLOW.md
+ * section 5. Past roughly five, moments compete for room inside a chapter and
+ * the model returns a checklist instead of a story.
+ */
+export const MAX_MOMENTS = 5;
+
+/** Free-text craft fields are bounded so a prompt cannot be stuffed. */
+export const MAX_BRIEF_FIELD_LENGTH = 300;
+
+// ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
 
@@ -337,6 +388,20 @@ export interface ValidatedGenerationParams {
   characters: CharacterInput[];
   requestId: string;
   language?: string;
+  /** World and era, inferred from the idea and editable as a chip. */
+  whereAndWhen?: string;
+  /** Beats the user pinned. One entry is one schedulable beat. */
+  moments: string[];
+  /** Kids mode only: what the story teaches. */
+  storyValues: string[];
+  /** Free text, sanitised: craft direction, never an author to imitate. */
+  writingStyle?: string;
+  /** Free text: a topic to keep out. */
+  avoid?: string;
+  chapterLength: ChapterLength;
+  plannedChapterCount: PlannedChapterCount;
+  /** Whether chapters 2..N get art. Chapter 1's is compulsory regardless. */
+  illustrateChapters: boolean;
 }
 
 export interface SeriesState {
@@ -362,3 +427,55 @@ export const EMPTY_SERIES_STATE: SeriesState = {
   character_changes: [],
   next_chapter_pressure: "",
 };
+
+/**
+ * The chapter length contract, in one place.
+ *
+ * The prompt states this band and the provider chain enforces it. Before both
+ * read from here the band lived only in prose inside the prompt, nothing checked
+ * the result, and a model that ignored the ceiling reached the database: a
+ * `gpt-5-mini` chapter came back at 2,026 words against a 500-1500 band and was
+ * persisted and charged for. Over-length chapters distort reading-time
+ * estimates, narration cost, and the reader UI.
+ *
+ * A series chapter uses the chapter range whatever the audience; `kids` only
+ * narrows the standalone range.
+ */
+export interface WordBand {
+  min: number;
+  max: number;
+}
+
+export function wordBandFor(
+  storyMode: StoryMode,
+  audienceMode: AudienceMode,
+): WordBand {
+  if (storyMode === "series") return { min: 600, max: 900 };
+  if (audienceMode === "kids") return { min: 500, max: 1200 };
+  return { min: 500, max: 1500 };
+}
+
+/**
+ * How far past the stated band a generation may drift before it is rejected.
+ *
+ * The band is a writing instruction, not a hard contract a model can hit
+ * exactly, so enforcing it literally would throw away good stories. These
+ * bounds catch runaway generation only - the observed 2,026-word failure
+ * against a 1,500 ceiling sits well outside 1.25x, while the natural spread
+ * seen in production (846-1,353 words on a 500-1,500 band, 905-945 on a
+ * 600-900 band) sits comfortably inside.
+ */
+export const WORD_BAND_FLOOR_TOLERANCE = 0.75;
+export const WORD_BAND_CEILING_TOLERANCE = 1.25;
+
+export function wordBandBounds(band: WordBand): WordBand {
+  return {
+    min: Math.floor(band.min * WORD_BAND_FLOOR_TOLERANCE),
+    max: Math.ceil(band.max * WORD_BAND_CEILING_TOLERANCE),
+  };
+}
+
+/** Counted the way every persistence path counts it. */
+export function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
