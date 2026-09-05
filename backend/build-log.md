@@ -64,6 +64,106 @@ Deno tests passed; all Edge Functions typechecked and 67 files passed
 
 ---
 
+## 2026-09-06 UTC — What the streaming numbers actually mean, and what is still not wired
+
+**Session:** No code change. This entry exists because the latency numbers from
+2026-09-05 are the kind that get quoted later without their context, and because
+one honest gap in that entry needs stating plainly.
+
+### The gap first: streaming is built and deployed, and nothing calls it
+
+`generate-story-stream` is live and verified end to end. `generateStoryStreaming()`
+exists in `expo/src/lib/api.ts` and is tested. **No screen calls it.**
+`CreateStudioScreen` imports `generateStory` -- the buffered path -- and that is
+still what every real user gets.
+
+So the 8.8x is a property of the endpoint, measured with `curl`, not something a
+person using the app experiences today. Wiring it into `CreateStudioScreen` and
+`WriterOnboarding` is the remaining work, and it is small: the transport, the
+event protocol and the error handling are done. Nobody should read the previous
+entry as "the app is fast now".
+
+### What 5.6 seconds and 49 seconds mean
+
+The 49 seconds never changed. It is how long the model takes to write a
+1,800-word chapter, and no amount of engineering makes a model write faster.
+
+What changed is **when the first word appears**. Before, the reader watched a
+loader for 49 seconds and the whole chapter arrived at once. Now the first
+sentence appears at 5.6 seconds and the rest arrives as it is written, at
+roughly reading speed.
+
+The reason this matters is not that 5.6 is a smaller number than 49. It is that
+**the reader is no longer idle.** A person reads at about 250 words a minute, so
+1,800 words is around seven minutes of reading. The chapter finishes generating
+about 45 seconds in, long before they reach the end of what is already on screen.
+The remaining 43 seconds of generation happen *underneath* the reading and are
+never experienced as waiting at all.
+
+That is the whole mechanism, and it is worth stating in the negative too: this is
+not a speed optimisation. Total work went slightly **up**, because the streamed
+path makes a second call for metadata. We traded a small amount of total cost for
+the removal of nearly all of the perceived cost.
+
+### Why 49 seconds of nothing is worse than it sounds
+
+Waiting is not linear. A blank screen gives a person no evidence that anything is
+happening, so they supply their own explanation, and after about ten seconds the
+explanation is usually "this is broken". The three things they do next are refresh,
+press the button again, or leave. Two of those cost a credit.
+
+A streaming screen answers the question continuously. The user is not being asked
+to trust that work is happening, they are watching it happen. This is also why
+the loader's progress stages are now driven by real pipeline transitions rather
+than a timer: a bar that moves on a timer is making a claim it cannot support,
+and a user who catches it doing that stops believing the rest of the screen.
+
+### What this technique does and does not transfer to
+
+**It transfers directly to `continue-story` and `edit-story`.** Both are the same
+shape as `generate-story` was: one model call, one long wait, one response.
+Neither streams today. `continue-story` is the bigger win of the two, because a
+reader deep in a series triggers it repeatedly and is even less patient than a
+first-time creator. The work is largely reuse: `_shared/story-stream.ts` already
+carries the SSE parser, the one-way fallback and the two-clock timeout, and the
+client already has the transport. `edit-story` is smaller but nearly free once
+the first is done, and the paragraph editor is a place where waiting is
+especially visible because the user is looking directly at the text being changed.
+
+**It does not transfer to images or audio.** Nothing is produced incrementally
+there. An image provider returns a finished file; there is no first-token
+equivalent and no partial image worth showing. The corresponding technique is
+different and is already partly in place: media is generated on a background task
+after the response, `stories.cover_status` tracks it, and the concept card is a
+legitimate final look while it runs. What is missing is the delivery half. The
+client learns the cover is ready by asking again, and `send-push` exists but is
+wired to nothing, so a user who leaves the screen is never told. That is the real
+media latency work, and it is a notification and subscription problem rather than
+a streaming one.
+
+Audio sits between the two. Narration is generated as a whole file today, but TTS
+can be produced and played in chunks, so a chapter could begin playing seconds
+after the request instead of after the whole file renders. That is a genuine
+streaming opportunity and a larger piece of work than the text paths, because it
+needs the player to consume a stream rather than a URL.
+
+### The engineering summary, for the record
+
+Three things were done, and only the first is a latency change:
+
+1. **The transport changed from request/response to Server-Sent Events**, so
+   tokens reach the client as the model produces them rather than after it
+   finishes.
+2. **The generation was split in two** because a strict JSON schema cannot be
+   streamed usefully. Prose streams as text; the structured fields are recovered
+   by a second call afterwards.
+3. **The failure model was rewritten around a commit boundary.** Once prose has
+   reached the reader, the system can no longer retry, swap providers, or discard
+   the output, so every failure path had to be re-decided for a world where the
+   user has already seen part of the answer.
+
+---
+
 ## 2026-09-05 UTC — Streaming, the shape-story deadline, and a backend security pass
 
 **Session:** The writer-flow tree committed and deployed, `shape-story` diagnosed and fixed, streamed generation built end to end, and a full audit of the 35 migrations and 18 edge functions actioned. Five commits on `codex/create-flow-rebuild`.
