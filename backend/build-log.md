@@ -7,6 +7,67 @@
 
 ---
 
+## 2026-09-06 UTC — Streaming finally reaches a user
+
+**Session:** The Create flow generates through the streamed path and renders
+prose as it arrives. This closes the gap the previous entry flagged.
+
+### What was wrong
+
+Streaming was built, deployed, measured and verified with `curl`, and **no
+screen called it**. `CreateStudioScreen` still imported the buffered
+`generateStory`, so every real user waited the full ~49 seconds in front of a
+loader while the fast path sat unused behind it. The endpoint being fast was
+never the feature.
+
+That is worth recording as a process failure rather than a code one. The work
+was reported as done at the point the last file compiled, and everything
+measurable about it looked finished: the endpoint streamed, the transport parsed
+frames, the API function handed over chunks, the tests passed. **A client that
+collected every chunk and painted once at the end would have satisfied all of
+it.** That is precisely what shipped. The last hop was left to another agent
+because of file ownership, which was a reasonable process decision and a bad
+product one - nobody could use the thing.
+
+### What it does now
+
+All three paths render as they arrive: the first chapter, `Continue`, and
+paragraph edits. `StreamingProse` shows completed paragraphs and the partial
+trailing one, because waiting for a paragraph to close would put the reader back
+in front of a blank screen for most of the generation. It follows the text down
+until the reader scrolls and then stops following - yanking the viewport away
+mid-sentence is worse than letting text arrive below the fold. It does not
+animate a cursor: the text already arrives at a real rate, and a second invented
+rhythm would be the same lie as a timed progress bar.
+
+The loader hands off on the first token with no minimum. Prose at three seconds
+means reading at three seconds.
+
+Failure after prose has appeared keeps the prose. The credit is already
+refunded, so the text stays with the failure stated underneath it and a way off
+the screen. A failed paragraph edit restores the original text - the streamed
+rewrite has been painting over it, so without that the writer is left holding
+half a sentence where their finished one used to be.
+
+### The test that matters
+
+`create-streaming-integration.test.tsx` renders the real screen, releases SSE
+frames one at a time, and asserts the prose is on screen **while the response is
+still open**. Every other test passes whether the screen streams or buffers;
+this one does not. If the screen ever goes back to collecting chunks and
+painting at the end, it fails.
+
+The existing Create contract test mocked `generateStory` and would have gone on
+passing while the user got nothing until the end. It now mocks
+`generateStoryStreaming`, which is the honest assertion.
+
+### Gates
+
+`tsc` clean, `eslint` 0 errors, **223 Jest / 18 suites**, **288 Deno tests**.
+The web bundle builds clean and carries the new component.
+
+---
+
 ## 2026-09-06 UTC — Streaming the reading loop, and the grant that made push a no-op
 
 **Session:** `continue-story` and `edit-story` stream, notifications are wired
