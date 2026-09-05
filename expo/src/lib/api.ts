@@ -92,9 +92,10 @@ export async function inferStoryBrief(
       character,
     ): character is CreateDraft["characters"][number] =>
       Boolean(character) && typeof character === "object" &&
-      typeof (character as { name?: unknown }).name === "string"
+      typeof (character as { name?: unknown }).name === "string" &&
+      (character as { name: string }).name.trim().length > 0
     ).map((character) => ({
-      name: character.name,
+      name: character.name.trim(),
       description: typeof character.description === "string"
         ? character.description
         : "",

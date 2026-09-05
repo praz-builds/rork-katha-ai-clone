@@ -9,8 +9,8 @@ import {
   chapterLengthVerdict,
   chapterTokenBudget,
   parseSseData,
-  StreamCommittedError,
   streamChapterProse,
+  StreamCommittedError,
   trimToParagraph,
 } from "./story-stream.ts";
 import { STORY_OUTPUT_JSON_SCHEMA } from "./story_schema.ts";
@@ -211,8 +211,9 @@ async function withStubbedFetch<T>(
   const original = globalThis.fetch;
   const originalKey = Deno.env.get("OPENROUTER_API_KEY");
   Deno.env.set("OPENROUTER_API_KEY", "test-key");
-  globalThis.fetch = ((url: string | URL | Request, init: RequestInit) =>
-    Promise.resolve(handler(String(url), init ?? {}))) as typeof fetch;
+  globalThis.fetch =
+    ((url: string | URL | Request, init: RequestInit) =>
+      Promise.resolve(handler(String(url), init ?? {}))) as typeof fetch;
   try {
     return await run();
   } finally {
@@ -227,7 +228,7 @@ Deno.test("prose is streamed in order and returned whole", async () => {
   const result = await withStubbedFetch(
     () =>
       sseResponse([
-        ': OPENROUTER PROCESSING',
+        ": OPENROUTER PROCESSING",
         'data: {"choices":[{"delta":{"role":"assistant"}}]}',
         'data: {"model":"meta/muse-spark-1.3","choices":[{"delta":{"content":"The ferry "}}]}',
         'data: {"choices":[{"delta":{"content":"stopped coming."}}]}',
@@ -284,7 +285,9 @@ Deno.test("a provider that fails before the first token falls back silently", as
       seen.push(model);
       // The leader 500s before writing anything. The reader is still on the
       // loader, so swapping providers is invisible and correct.
-      if (seen.length === 1) return new Response("upstream boom", { status: 500 });
+      if (seen.length === 1) {
+        return new Response("upstream boom", { status: 500 });
+      }
       return sseResponse([
         'data: {"choices":[{"delta":{"content":"second provider"}}]}',
         "data: [DONE]",

@@ -309,7 +309,9 @@ async function streamOnce(
 ): Promise<{ text: string; model: string; truncated: boolean }> {
   const apiKey = openRouterKey();
   if (!apiKey) {
-    throw new ProviderNotConfiguredError("OPENROUTER_API_KEY is not configured");
+    throw new ProviderNotConfiguredError(
+      "OPENROUTER_API_KEY is not configured",
+    );
   }
 
   const controller = new AbortController();

@@ -7,6 +7,63 @@
 
 ---
 
+## 2026-09-05 UTC — Create release integration and production smoke
+
+**Session:** Integrated the Create flow, prompt-system v6, story planning,
+streaming generation, guest bootstrap, and the independently completed writer
+onboarding without changing its implementation. Removed trope from the active
+product and runtime contracts; kids Values remains a separate kids-only field.
+
+### Production result
+
+A real browser run from `http://localhost:8090` used the placeholder email/OTP
+handoff, bootstrapped a guest with 3 credits, shaped a detailed adult romance,
+added two character sheets, reviewed the plan, and generated the story through
+the deployed backend. `The Jam and the Lease` completed as operation
+`552cd049-b2d0-40a6-90dd-01ab4bb3cb5a`: one 1,852-word chapter, a ready cover,
+and portraits for Anahita Contractor and Arjun Mehta. The operation persisted as
+`completed` with no error. A blank inferred character returned by one shaping
+response exposed an `Untitled character` card; the client now drops blank names
+and has a regression test.
+
+The first attempt used port 8091, which is intentionally absent from the exact
+CORS allowlist. That production-test failure is persisted as fingerprint
+`2a3d4e128810941ae09a6dac57c2f0d8` (`client.app` /
+`smoke_origin_not_allowlisted`, one occurrence). The shaping telemetry queried
+before release remains `5e60930b2675d2d6d146c232c7c22648` (provider failure,
+four occurrences) and `ba02a878d8d5170b715ac51addcc235a` (unhandled shaping,
+three occurrences); both are diagnosed by the preceding entry.
+
+### Release hardening
+
+- Replaced invalid placeholder values in `pnpm-workspace.yaml`'s install-script
+  allowlist with explicit approvals and restored the audited `uuid` override.
+- Terra security review found no create-flow release vulnerabilities. It did
+  surface a pre-existing high-risk paid narration path: any story owner could
+  repeatedly send arbitrary text to RunPod with no credit or idempotency gate.
+  Fresh narration is now blocked until the canonical one-credit audio-unlock
+  operation exists; already cached narration remains playable.
+- `audio-status` now performs an ownership-checked cached lookup and cannot
+  contact RunPod. An initial fix authorized the chapter before polling, but a
+  Terra re-review correctly rejected it because ownership did not bind the
+  caller-supplied job id to that chapter. Provider polling stays closed until
+  that binding is durable, closing the status/output IDOR rather than masking it.
+- The constrained residual risk is draft prose and character details in
+  AsyncStorage for seven days. Supabase auth tokens use SecureStore on native.
+- `pnpm audit` still reports two high `image-size@2.0.2` parser advisories in
+  Metro's build-only dependency graph. The registry still has no `2.0.3`
+  release, so the documented patched version cannot be installed; Metro only
+  reads repository-controlled assets in this workflow.
+
+### Gates
+
+Expo: TypeScript clean, 210 Jest tests / 16 suites, lint 0 errors (17 existing
+warnings), Expo Doctor 18/18, and production web export passed. Backend: 307
+Deno tests passed; all Edge Functions typechecked and 67 files passed
+`deno fmt --check`. Remote migrations match local through `00041`.
+
+---
+
 ## 2026-09-05 UTC — Streaming, the shape-story deadline, and a backend security pass
 
 **Session:** The writer-flow tree committed and deployed, `shape-story` diagnosed and fixed, streamed generation built end to end, and a full audit of the 35 migrations and 18 edge functions actioned. Five commits on `codex/create-flow-rebuild`.

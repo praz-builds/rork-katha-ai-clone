@@ -210,8 +210,8 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `feedback` | POST | Comments + one-time feedback credit reward | Done |
 | `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
 | `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
-| `generate-audio` | POST | MiniMax Speech 02 HD narration | Accepts `language` in body |
-| `audio-status` | GET | Check audio generation status | Done |
+| `generate-audio` | POST | Cached narration lookup | Fresh RunPod generation is blocked until the durable 1-credit audio unlock exists |
+| `audio-status` | GET | Cached narration lookup | Provider polling is blocked until jobs have a durable chapter binding |
 | `feed` | GET | Feed endpoint | Done |
 | `edit-story` | POST | Paragraph-level AI editing | Done |
 | `publish-story` | POST | Mark story published, trigger cover generation | Done |
