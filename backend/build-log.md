@@ -26,6 +26,8 @@ Every provider aborted mid-flight, the chain exhausted, and the handler's own ca
 
 Onboarding now gets 45s because it is prefetched and warms behind the details, email and code screens; the Create studio gets 30s because the writer is watching it. Verified end to end after deploy: real title, three beats, a cast.
 
+**Fingerprints** (`error_event_summary`, per the observability gate): `5e60930b2675d2d6d146c232c7c22648` (`llm.provider` / `story_shape_failed`, 4 occurrences, first seen 08:09 UTC) is the deadline exhaustion. It predates this session's testing, which is what confirms the failure was live in production rather than an artefact of the smoke runs. `ba02a878d8d5170b715ac51addcc235a` (`generation.story` / `story_shape_unhandled`, 3 occurrences) is the missing-`profiles`-row foreign-key violation described below.
+
 A second, quieter bug surfaced on the way: an authenticated user with no `profiles` row cannot shape at all. `claim_story_shape_request` inserts into a table whose `user_id` references `profiles`, `handle_new_user` was dropped in `00013`, and the resulting foreign-key violation is swallowed into the same `{"shape": null}`. In practice the client always calls `bootstrap-user` first, so it is latent rather than live. It is recorded here rather than fixed, because the fix is the observability change above, not a patch to the RPC.
 
 ### Streaming
