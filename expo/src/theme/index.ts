@@ -1,5 +1,5 @@
 export { colors, spacing, radius, fonts, controls, genreLabels, genreGradients } from './theme';
-export { type, onboardingType, onboardingRamp, ONBOARDING_RAMP_MIN_STEP } from './typography';
+export { type, onboardingType, onboardingRamp } from './typography';
 export { shadows } from './shadows';
 export { motion } from './motion';
 export {
