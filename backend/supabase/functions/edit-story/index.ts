@@ -7,6 +7,10 @@ import {
 } from "../_shared/chapters.ts";
 import { logError } from "../_shared/errors.ts";
 import { AllProvidersFailedError, editParagraph } from "../_shared/llm.ts";
+import {
+  StreamCommittedError,
+  streamChapterProse,
+} from "../_shared/story-stream.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
 const EDIT_SYSTEM_PROMPT =
@@ -215,27 +219,120 @@ serve(async (req) => {
       customNote as string | undefined,
     );
 
+    // Splicing the rewrite back in and saving it is identical whether the text
+    // arrived whole or in chunks, so both transports call this. The
+    // optimistic-concurrency predicate in particular must not be duplicated:
+    // it is the only thing standing between two overlapping edits and a
+    // silently discarded one.
+    const persistRewrite = async (rewritten: string) => {
+      paragraphs[paragraphIndex] = rewritten.trim();
+      const updatedContent = paragraphs.join("\n\n");
+      const wordCount = updatedContent.split(/\s+/).filter(Boolean).length;
+      const { updated } = await updateChapterContentIfUnchanged(
+        serviceClient as unknown as ChapterUpdateClient,
+        { chapterId, previousContent: content, nextContent: updatedContent, wordCount },
+      );
+      if (!updated) return { updated: false as const };
+
+      const { data: allChapters, error: chaptersError } = await serviceClient
+        .from("chapters")
+        .select("word_count")
+        .eq("story_id", storyId);
+      if (!chaptersError && allChapters) {
+        const totalWordCount = allChapters.reduce(
+          (sum: number, c: Record<string, unknown>) =>
+            sum + ((c.word_count as number) ?? 0),
+          0,
+        );
+        await serviceClient
+          .from("stories")
+          .update({ word_count: totalWordCount })
+          .eq("id", storyId);
+      }
+      return { updated: true as const };
+    };
+
+    // --- The streamed transport. ---
+    //
+    // Every rejection this handler can make - auth, ownership, the paragraph
+    // index - has already happened, so only the delivery differs. Editing is
+    // free, which makes the failure model much simpler than generation's:
+    // there is no credit to refund, so a failure after the first token costs
+    // the user nothing but the retry.
+    if (body.stream === true) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          let closed = false;
+          const send = (event: string, data: unknown) => {
+            if (closed) return;
+            controller.enqueue(
+              encoder.encode(
+                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+              ),
+            );
+          };
+          try {
+            send("meta", { paragraph_index: paragraphIndex });
+            const rewrite = await streamChapterProse({
+              systemPrompt: EDIT_SYSTEM_PROMPT,
+              userPrompt,
+              // A paragraph has no word band, and the bandless default is a
+              // whole chapter's budget. This is the edit path's own ceiling.
+              maxTokens: 2_000,
+              onCommit: () => send("stage", { stage: "writing" }),
+              onDelta: (text) => send("delta", { text }),
+            });
+
+            const { updated } = await persistRewrite(rewrite.text);
+            if (!updated) {
+              // The chapter moved under the edit. The rewrite is good, it just
+              // cannot be saved onto a version that no longer exists. The text
+              // stays on screen so the writer can keep it by hand rather than
+              // watching good work disappear.
+              send("error", {
+                error:
+                  "This chapter changed while the edit was being generated. Reload the chapter and try again.",
+                code: "chapter_changed",
+                partial_prose_shown: true,
+              });
+              return;
+            }
+            send("done", {
+              updated_paragraph: paragraphs[paragraphIndex],
+              paragraph_index: paragraphIndex,
+              model: rewrite.model,
+            });
+          } catch (error) {
+            console.error("edit-story stream failed:", error);
+            send("error", {
+              error: "The rewrite could not be finished. Please try again.",
+              partial_prose_shown: error instanceof StreamCommittedError,
+            });
+          } finally {
+            if (!closed) {
+              closed = true;
+              controller.close();
+            }
+          }
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          ...corsHeadersFor(req),
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+
     // Call the LLM
     const result = await editParagraph(EDIT_SYSTEM_PROMPT, userPrompt);
 
-    // Replace the paragraph
-    paragraphs[paragraphIndex] = result.text.trim();
-    const updatedContent = paragraphs.join("\n\n");
-    const wordCount = updatedContent.split(/\s+/).filter(Boolean).length;
-
-    // Update the chapter, but only if nobody else edited it while the LLM was
-    // thinking. The read above and this write are seconds apart and the write
-    // replaces the whole chapter, so two overlapping paragraph edits would
-    // otherwise silently discard one of them.
-    const { updated } = await updateChapterContentIfUnchanged(
-      serviceClient as unknown as ChapterUpdateClient,
-      {
-        chapterId,
-        previousContent: content,
-        nextContent: updatedContent,
-        wordCount,
-      },
-    );
+    const { updated } = await persistRewrite(result.text);
 
     if (!updated) {
       return respond(
@@ -245,24 +342,6 @@ serve(async (req) => {
         },
         409,
       );
-    }
-
-    // Update story word count (sum of all chapters)
-    const { data: allChapters, error: chaptersError } = await serviceClient
-      .from("chapters")
-      .select("word_count")
-      .eq("story_id", storyId);
-
-    if (!chaptersError && allChapters) {
-      const totalWordCount = allChapters.reduce(
-        (sum: number, c: Record<string, unknown>) =>
-          sum + ((c.word_count as number) ?? 0),
-        0,
-      );
-      await serviceClient
-        .from("stories")
-        .update({ word_count: totalWordCount })
-        .eq("id", storyId);
     }
 
     return respond({

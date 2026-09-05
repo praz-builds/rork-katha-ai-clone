@@ -1,16 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import {
-  chapterReadyMessage,
-  chunk,
-  draftWaitingMessage,
-  EXPO_PUSH_BATCH_SIZE,
-  type PushMessage,
-  readExpoReceipts,
-  sendExpoPushBatch,
-  storyReadyMessage,
-} from "../_shared/push.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
 type SendKind = "story_ready" | "chapter_ready" | "draft_waiting";
 
@@ -66,72 +57,21 @@ serve(async (req) => {
       ? body.chapter_number
       : 1;
 
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      serviceRoleKey,
-    );
-    const { data: tokens, error: tokenError } = await serviceClient
-      .from("push_tokens")
-      .select("expo_token")
-      .eq("user_id", body.user_id);
-    if (tokenError) throw tokenError;
-    if (!tokens?.length) return respond({ sent: 0, reason: "no_tokens" });
-
-    const copy = copyFor(kind as SendKind, title, chapterNumber);
-    const messages: PushMessage[] = tokens.map((row) => ({
-      to: row.expo_token as string,
-      ...copy,
-      data: {
-        kind,
-        story_id: typeof body.story_id === "string" ? body.story_id : null,
-        chapter_number: chapterNumber,
-      },
-    }));
-
-    // Ticket ids are not positionally comparable to `messages`: a batch drops
-    // the failures from its ticket list, and there are several batches. Carry
-    // the mapping explicitly rather than reconstructing it from an index.
-    const tokenByTicket = new Map<string, string>();
-    const deadTokens: string[] = [];
-    for (const batch of chunk(messages, EXPO_PUSH_BATCH_SIZE)) {
-      const result = await sendExpoPushBatch(batch);
-      for (const [ticketId, token] of result.ticketTokens) {
-        tokenByTicket.set(ticketId, token);
-      }
-      deadTokens.push(...result.deadTokens);
-    }
-    const ticketIds = [...tokenByTicket.keys()];
-
-    // Receipts, not just tickets. Expo accepts a message and reports later that
-    // APNs or FCM refused it, which is where an uninstalled app actually
-    // surfaces. Skipping this is how a project accumulates dead tokens until it
-    // gets rate limited, and the symptom appears nowhere near the cause.
-    if (ticketIds.length) {
-      try {
-        const { deadTicketIds } = await readExpoReceipts(ticketIds);
-        for (const id of deadTicketIds) {
-          const token = tokenByTicket.get(id);
-          if (token) deadTokens.push(token);
-        }
-      } catch (receiptError) {
-        // A receipt read that fails is a cleanup we retry next send, never a
-        // reason to report the notification as failed. It was delivered.
-        console.warn("send-push receipt read failed:", receiptError);
-      }
-    }
-
-    if (deadTokens.length) {
-      const { error: deleteError } = await serviceClient
-        .from("push_tokens")
-        .delete()
-        .in("expo_token", [...new Set(deadTokens)]);
-      if (deleteError) console.warn("send-push cleanup failed:", deleteError);
-    }
-
-    return respond({
-      sent: ticketIds.length,
-      pruned: new Set(deadTokens).size,
+    // The body of this function lives in `_shared/notify.ts` so a generation
+    // path can fire the same notification in process instead of making an HTTP
+    // call back into this one. This endpoint stays for schedulers and for the
+    // draft-waiting sweep, which have no isolate of their own to run in.
+    const result = await notifyUser({
+      userId: body.user_id,
+      kind: kind as SendKind,
+      storyId: typeof body.story_id === "string" ? body.story_id : null,
+      title,
+      chapterNumber,
     });
+    if (result.reason === "no_tokens") {
+      return respond({ sent: 0, reason: "no_tokens" });
+    }
+    return respond({ sent: result.sent, pruned: result.pruned });
   } catch (error) {
     console.error("send-push error:", error);
     return respond({ error: "Unable to send notification" }, 500);
@@ -158,16 +98,6 @@ async function timingSafeEqualAsync(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
-function copyFor(kind: SendKind, title: string, chapterNumber: number) {
-  switch (kind) {
-    case "chapter_ready":
-      return chapterReadyMessage(title, chapterNumber);
-    case "draft_waiting":
-      return draftWaitingMessage(title, chapterNumber);
-    default:
-      return storyReadyMessage(title);
-  }
-}
 
 function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

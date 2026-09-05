@@ -7,6 +7,102 @@
 
 ---
 
+## 2026-09-06 UTC — Streaming the reading loop, and the grant that made push a no-op
+
+**Session:** `continue-story` and `edit-story` stream, notifications are wired
+to the two moments they exist for, and two small open items closed.
+
+### Streaming the rest of the loop
+
+Measured against production: a streamed continuation puts prose on screen at
+**4.9s against a 31.0s total**, and the persisted chapter matches the streamed
+text word for word. `continue-story` is the more valuable of the two, because a
+reader deep in a series triggers it repeatedly and is less patient each time
+than they were on chapter one.
+
+**Both are a branch inside the existing function rather than a second
+function**, and that is the decision worth recording. `generate-story-stream`
+was written separately because its replay paths made the point of no return hard
+to see. Neither of these has that problem: every rejection they can make happens
+before the model is called. Branching keeps one preparation path, and it let the
+persistence and refund logic become closures both transports call. The
+continuity merge in `continue-story` decides what an absent `series_state` field
+means, and the optimistic-concurrency predicate in `edit-story` is the only
+thing standing between two overlapping edits and a silently discarded one.
+Neither should ever exist twice.
+
+Streaming is opted into per request with `stream: true`, so a client that does
+not ask gets the buffered response byte for byte.
+
+The continuation prompt gained an output mode rather than a second builder. A
+test asserts the JSON and prose prompts differ only after `## Output Format`, so
+a change to the continuation rules, the band or the finale instructions cannot
+reach one path and miss the other.
+
+**A note on robustness that was not the goal.** During testing the *buffered*
+continuation failed twice at the 120s chain deadline while the streamed one
+succeeded on the same story and model. Recorded codes: `timeout` on both
+OpenRouter positions, `429` on all three OpenAI models, partly self-inflicted
+load from a day of testing. But the asymmetry is structural: the buffered path
+gives each OpenRouter model a 30s slice to return a complete 32k-budget
+structured chapter, while the streamed path commits on a first token arriving in
+about 2.4s. Streaming is more tolerant of a slow provider, not only faster to
+first paint.
+
+### Push was wired to nothing, and could not have worked anyway
+
+The onboarding notify screen asks for the single push permission iOS grants per
+install, and no completion path ever sent one. Wiring it surfaced the reason
+nobody had noticed:
+
+**`push_tokens` had no grant for `service_role`.** 00037 locked the table with
+`revoke all ... from public, anon` and granted `authenticated` its own rows, but
+granted the sending role nothing, so `send-push` failed at its first query with
+`42501: permission denied for table push_tokens`. Every call. Nothing had called
+it, so the table looked correct and the function looked finished. Migration
+00042 grants it.
+
+That is the lesson worth keeping: **the bug was invisible from the code and
+obvious from the first real call.** A feature is not done at its last file, it
+is done when something exercises it end to end.
+
+The send moved into `_shared/notify.ts` so a generation path fires it in process
+rather than one edge function calling another over HTTP. `send-push` stays and
+delegates, so token lookup, batching, receipt reading and dead-token pruning
+have one implementation.
+
+A story notifies when its **media task** finishes, not when the chapter is
+persisted: the text has been readable for a while by then, but the cover is what
+makes the row look finished in Library, and that task is the only place that
+knows the whole job is done. A continuation notifies when its chapter lands.
+
+**Consent is read from the OS per request and must be a literal `true`.** A push
+sent to somebody who declined can be neither un-sent nor re-asked. Tests pin
+that `"true"`, `1` and `"yes"` are all refused.
+
+Still unverified: a notification arriving on a real device. That needs an EAS
+build with APNs credentials. Everything up to the Expo call is exercised.
+
+### Two small items closed
+
+The crafting loader's K asked for `fontWeight: 900` on `Baloo2.ttf`, a variable
+font. React Native cannot drive a weight axis, so it rendered at the 400 default
+- and the axis stops at **800**, so 900 was never reachable by any means. A
+static 800 instance is cut from the variable file and bundled as its own family.
+
+`ONBOARDING_FLOW.md` section 9 specified "Here's the shape of it." as the
+blueprint heading; the screen shipped as "Your idea just became a story." The
+spec is corrected to the code rather than the reverse, with the reasoning
+recorded.
+
+### Gates
+
+`tsc` clean, `eslint` 0 errors, **210 Jest / 16 suites**, **288 Deno tests**.
+Migration 00042 applied; `send-push`, `generate-story`, `generate-story-stream`,
+`continue-story` and `edit-story` deployed.
+
+---
+
 ## 2026-09-05 UTC — Create release integration and production smoke
 
 **Session:** Integrated the Create flow, prompt-system v6, story planning,

@@ -127,6 +127,7 @@ serve(async (req) => {
       chapterLength,
       plannedChapterCount,
       illustrateChapters,
+      notifyOnReady,
     } = input;
     const chapterRole: ChapterRole = storyMode === "series"
       ? "series_opening"
@@ -404,6 +405,7 @@ serve(async (req) => {
               title: output.title,
               themes: output.themes,
               whereAndWhen,
+              notifyOnReady,
             }));
           } catch (mediaError) {
             console.error(

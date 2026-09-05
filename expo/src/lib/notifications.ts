@@ -150,3 +150,27 @@ export async function enableNotifications(): Promise<boolean> {
   if (granted) await syncPushToken();
   return granted;
 }
+
+/**
+ * Whether this device has already agreed to be notified.
+ *
+ * Read, never ask. The generation request carries this so the server only
+ * sends a push to somebody who accepted the notify screen: the screen is a soft
+ * pre-prompt, and iOS grants exactly one system prompt per install, so a request
+ * that assumed consent would spend it in the wrong place and could not get it
+ * back.
+ */
+export async function pushPermissionGranted(): Promise<boolean> {
+  if (!Device.isDevice) return false;
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return false;
+  try {
+    const settings = (await Notifications.getPermissionsAsync()) as unknown as {
+      granted: boolean;
+    };
+    return settings.granted === true;
+  } catch {
+    // A permission read that throws is a "no". Guessing "yes" here asks the
+    // server to send a notification the OS will silently drop.
+    return false;
+  }
+}

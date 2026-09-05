@@ -942,6 +942,8 @@ export function buildStoryProsePrompt(params: SystemPromptParams): string {
 export function buildContinuationSystemPrompt(
   params: SystemPromptParams & {
     mode: "chapter" | "finale";
+    /** Which output contract closes the prompt. Defaults to `json`. */
+    output?: "json" | "prose";
   },
 ): string;
 /** @deprecated Use the object-param overload. */
@@ -951,7 +953,21 @@ export function buildContinuationSystemPrompt(
   mode?: "chapter" | "finale",
 ): string;
 export function buildContinuationSystemPrompt(
-  paramsOrGenre: (SystemPromptParams & { mode: "chapter" | "finale" }) | string,
+  paramsOrGenre:
+    | (SystemPromptParams & {
+      mode: "chapter" | "finale";
+      /**
+       * Which output contract closes the prompt.
+       *
+       * `json` is the buffered path's structured object. `prose` is the
+       * streamed path, which cannot use a schema and recovers the structured
+       * fields with a second call afterwards. Everything above the contract is
+       * shared by construction, so a change to the continuation rules, the
+       * band or the finale instructions reaches both.
+       */
+      output?: "json" | "prose";
+    })
+    | string,
   legacyLanguage?: string,
   legacyMode?: "chapter" | "finale",
 ): string {
@@ -995,6 +1011,11 @@ export function buildContinuationSystemPrompt(
     params.audienceMode ?? "adult",
     params.chapterLength ?? DEFAULT_CHAPTER_LENGTH,
   );
+  const outputContract =
+    (typeof paramsOrGenre === "string" ? "json" : params.output ?? "json") ===
+        "prose"
+      ? buildProseOutputContract(continuationBand)
+      : buildOutputSchema();
 
   const sharedRules = `
 
@@ -1022,7 +1043,7 @@ This is the FINAL chapter of the series. You must bring the story to a satisfyin
 3. Every major character arc must land. Characters should be changed by what happened, not simply present for the ending.
 4. The final paragraph should feel earned, not rushed. Give the story room to breathe after the climax.
 5. Loose threads can remain, but the reader must feel that the story they signed up for is complete.
-6. Do NOT introduce new major characters, subplots, or mysteries. This chapter closes doors, it does not open them.${buildOutputSchema()}`;
+6. Do NOT introduce new major characters, subplots, or mysteries. This chapter closes doors, it does not open them.${outputContract}`;
   }
 
   return `${storyPrompt}
@@ -1037,7 +1058,7 @@ This chapter is part of an ongoing series. The story is NOT ending yet:
 3. Do NOT resolve the central conflict. Build toward it, complicate it, but do not close it.
 4. Introduce at least one new question, tension, or piece of information that makes the reader want to continue.
 5. Shift at least one relationship or dynamic permanently. A friendship cracks, a secret is revealed, an alliance forms.
-6. The final line should pull the reader forward, not offer closure.${buildOutputSchema()}`;
+6. The final line should pull the reader forward, not offer closure.${outputContract}`;
 }
 
 /**

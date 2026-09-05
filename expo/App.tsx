@@ -121,6 +121,14 @@ export default function App() {
       BricolageGrotesque: require("./assets/fonts/BricolageGrotesque.ttf"),
       HankenGrotesk: require("./assets/fonts/HankenGrotesk.ttf"),
       Baloo2: require("./assets/fonts/Baloo2.ttf"),
+      // A static 800 instance, cut from the variable Baloo2.ttf.
+      //
+      // React Native cannot drive a variable font's weight axis, so a
+      // `fontWeight` on the variable family silently renders at its 400
+      // default. The loader's K is the one place the brand face is meant to be
+      // heavy, and it was quietly not. Named as its own family because that is
+      // the only way RN can address it.
+      "Baloo2-ExtraBold": require("./assets/fonts/Baloo2-ExtraBold.ttf"),
       Literata: require("./assets/fonts/Literata.ttf"),
       LiterataItalic: require("./assets/fonts/Literata-Italic.ttf"),
       // Inter Tight ships as two STATIC instances, not a variable font. Both
