@@ -102,26 +102,31 @@ Deno.test("backward compat: genre array extracts first element", () => {
   assertEquals(result.primaryGenre, "fantasy");
 });
 
-Deno.test("trope 'werewolf' rejected for mystery", () => {
+Deno.test("secondary genres are retained with primary first", () => {
   const result = validateGenerationRequest(
     validRequest({
       primary_genre: "mystery",
-      trope_modules: ["werewolf"],
+      genres: ["horror", "mystery", "fantasy", "romance"],
     }),
   );
   if ("error" in result) throw new Error(result.error);
-  assertEquals(result.tropeModules.length, 0);
+  assertEquals(result.genres, ["mystery", "horror", "fantasy"]);
 });
 
-Deno.test("trope 'lockedRoom' accepted for mystery", () => {
+Deno.test("new creation rejects Spanish while historical story language remains read-only", () => {
   const result = validateGenerationRequest(
-    validRequest({
-      primary_genre: "mystery",
-      trope_modules: ["lockedRoom"],
-    }),
+    validRequest({ language: "Spanish" }),
+  );
+  if (!("error" in result)) throw new Error("Expected error");
+  assertEquals(result.error, "language must be English or Portuguese");
+});
+
+Deno.test("new creation accepts Portuguese", () => {
+  const result = validateGenerationRequest(
+    validRequest({ language: "Portuguese" }),
   );
   if ("error" in result) throw new Error(result.error);
-  assertEquals(result.tropeModules, ["lockedRoom"]);
+  assertEquals(result.language, "Portuguese");
 });
 
 Deno.test("kids mode strips identity lenses", () => {
@@ -194,6 +199,31 @@ Deno.test("cast cap is 3, not 10", () => {
     validRequest({ characters: cast(4) }),
   );
   assertEquals("error" in tooMany, true);
+});
+
+Deno.test("a non-empty cast is normalized to exactly one lead", () => {
+  const result = validateGenerationRequest(validRequest({
+    characters: [
+      { name: "Minoo", isHero: false },
+      { name: "Rustom", isHero: false },
+      { name: "Asha", isHero: true },
+    ],
+  }));
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.characters.map((character) => character.isHero), [
+    false,
+    false,
+    true,
+  ]);
+
+  const noLead = validateGenerationRequest(validRequest({
+    characters: [{ name: "Minoo" }, { name: "Rustom" }],
+  }));
+  if ("error" in noLead) throw new Error(noLead.error);
+  assertEquals(noLead.characters.map((character) => character.isHero), [
+    true,
+    false,
+  ]);
 });
 
 Deno.test("planned_chapter_count accepts only 3, 7, 15", () => {
@@ -379,4 +409,54 @@ Deno.test("kids mode still accepts the genres it does show", () => {
     if ("error" in result) throw new Error(`${genre}: ${result.error}`);
     assertEquals(result.spiceLevel, "sweet");
   }
+});
+
+// ---------------------------------------------------------------------------
+// The story plan
+// ---------------------------------------------------------------------------
+
+Deno.test("beats default to an empty plan", () => {
+  const result = validateGenerationRequest(validRequest());
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.beats, []);
+});
+
+Deno.test("beats are clamped to the planned chapter count, not rejected", () => {
+  const result = validateGenerationRequest(validRequest({
+    planned_chapter_count: 3,
+    beats: ["one", "two", "three", "four", "five"],
+  }));
+  if ("error" in result) throw new Error(result.error);
+  // A plan longer than the story promises beats no chapter can reach. Clamping
+  // keeps the story generating; rejecting would fail the request over a
+  // preference the user cannot see.
+  assertEquals(result.beats, ["one", "two", "three"]);
+});
+
+Deno.test("a plan shorter than the story is legal", () => {
+  const result = validateGenerationRequest(validRequest({
+    planned_chapter_count: 7,
+    beats: ["one", "two"],
+  }));
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.beats, ["one", "two"]);
+});
+
+Deno.test("beats are trimmed, bounded, and stripped of empties", () => {
+  const result = validateGenerationRequest(validRequest({
+    planned_chapter_count: 15,
+    beats: ["  spaced  ", "", "   ", "x".repeat(500), 42, null],
+  }));
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.beats[0], "spaced");
+  assertEquals(result.beats[1].length, 200);
+  assertEquals(result.beats.length, 2);
+});
+
+Deno.test("a non-array plan is an absent plan", () => {
+  const result = validateGenerationRequest(validRequest({
+    beats: "one, two, three",
+  }));
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.beats, []);
 });

@@ -24,7 +24,7 @@
 > loop — is the contract for the rebuild. Read a statement below as "this is what
 > we are building", never as "this is what the app does".
 >
-> Last revised 2026-09-02. Sentences that are inference rather than shipped
+> Last revised 2026-09-04. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---
@@ -46,7 +46,7 @@ The six decisions that shape this document:
    from the user's sentence and shown as editable chips. Correcting a guess is
    dramatically cheaper than composing an answer, and the corrected values reach
    the prompt identically.
-2. **Inputs are plain questions.** "Premise", "plot", "topic", "setting", "trope"
+2. **Inputs are plain questions.** "Premise", "plot", "topic", "setting"
    and "arc" never appear in the UI — they are craft jargon, and two of them
    collide with what Katha *produces*. See §1.
 3. **Characters are the deepest surface in the product, not a text field.** A
@@ -122,35 +122,18 @@ never a taxonomy problem, it was a naming collision.
 
 ### Banned from the interface
 
-`Premise` · `Plot` · `Topic` · `Setting` · `Arc` · `Trope` · `Seed` · `Prompt`
+`Premise` · `Plot` · `Topic` · `Setting` · `Arc` · `Seed` · `Prompt`
 
-All eight are craft jargon; three of them ship today (`seed`,
+All seven are craft jargon; three of them ship today (`seed`,
 `Try a premise`, `ARC`). They may persist as internal identifiers — the `seed`
 DB column is not worth a migration — but they must never reach a user's eyes.
 
-### On tropes
+### No hidden flavour taxonomy
 
-**There is no trope control in adult mode.** The word is insider vocabulary that
-sounds like homework to everyone who is not already deep in romance fandom, and
-a chip row of them competes with the idea box for the same job.
-
-The **mechanism** survives without the word: `story-prompts.ts` keeps its
-`tropeModules` layer, and inference (§6) populates it silently from the idea
-sentence. A user who writes *"she has to fake-date her brother's best friend"*
-gets `forbiddenLove` and `forcedProximity` in the prompt and never sees either
-term. The confusion was the vocabulary, not the capability.
-
-**Inference may only emit identifiers that exist in the unions.** `PrimaryGenre`
-and `TropeModule` in `_shared/types.ts` are the whole vocabulary — there is no
-`gothic` genre and no `haunted-house` trope — and `validation.ts` silently drops
-anything outside them, and anything the chosen genre does not allow. An
-invented identifier is therefore not an error the user sees; it is a layer that
-quietly does nothing. The examples in this document use real identifiers for
-that reason.
-
-*If we later want them visible, the honest surface is the **feed** — "more like
-this" — not the create flow. Discovery is where a reader wants a taxonomy;
-authoring is not.*
+The idea, genre, world, characters and moments are the complete creative brief.
+Katha does not infer a second, hidden category of plot labels. A request for a
+specific relationship dynamic, creature or mystery structure belongs in the
+idea or a moment, where the creator can see and correct it.
 
 ---
 
@@ -173,15 +156,43 @@ control on it arrives with a value already in it.
 |---|---|
 | **Header** | *What's your story about?* |
 | **Sub** | *A sentence is enough. Katha takes it from there.* |
-| **Input** | Multiline, `n / 1000` counter, no minimum-length gate |
+| **Input** | Multiline, 40-character minimum, `n / 1000` cap |
 | **Below** | **Try one** — horizontal starter chips |
 | **Links** | **See an example** (§7) · **Continue a draft (n)** when drafts exist (§11) |
 | **CTA** | *Continue*, enabled at ≥ 1 non-whitespace character |
 
-**The 40-character gate is removed.** `getSeedHint()` nags at `< 40` and again at
-`< 80`, keyed to character count. Character count teaches padding, not structure.
-It is replaced by the brief-strength meter (§8) on screen 3, where it can be
-acted on.
+**There is a 40-character minimum, and it is not a counter.**
+*(Restored 2026-09-05; this section previously removed the gate outright.)*
+
+The original argument was that `getSeedHint()` nagged at `< 40` and again at
+`< 80`, teaching users to pad a sentence rather than to add structure. That
+argument is correct about a **counter** and wrong about a **floor**. They are
+different things:
+
+- A counter is present at every length, ranks the user against a number, and
+  invites them to optimise it. That is what was removed, and it stays removed.
+- A floor is invisible above 40 characters and only ever fires in the one case
+  where the flow cannot work at all. Below roughly forty characters the shaping
+  call (§6) has nothing to infer a world, a cast or a plan from, so it returns a
+  generic blueprint - and the user reads that generic blueprint as the ceiling
+  of what Katha can do, not as the consequence of six words.
+
+**It is presented as a state, never as a countdown.** A single leading-aligned
+line under the field, in `colors.tertiary`:
+
+> **Add a little more so Katha has something to build on.**
+
+which becomes, at 40 characters, in `colors.success`:
+
+> **Enough to write from.**
+
+No number, no "24 more characters", and no error colour at any point. A short
+idea is unfinished, not wrong. The brief-strength meter (§8) still does the
+teaching on screen 3; this only stops the case that cannot succeed.
+
+`MIN_IDEA_LENGTH` is exported from
+`expo/src/components/create/CreateBriefFlow.tsx` and shared with onboarding, so
+the two flows cannot drift.
 
 The starter chip heading changes from **TRY A PREMISE** to **TRY ONE**.
 `GENRE_PREMISE_CHIPS` is a good asset; only its label was wrong.
@@ -190,7 +201,8 @@ The starter chip heading changes from **TRY A PREMISE** to **TRY ONE**.
 
 ```text
 ┌────────────────────────────────────────────┐
-│  [ For me ] [ For kids ]        ← mode     │
+│  [          For me          ][ For kids ]  │
+│              full-width segmented mode     │
 ├────────────────────────────────────────────┤
 │  GENRE          Mystery ×  Gothic ×  + add │
 │  WHERE AND WHEN A hill town, off-season  ✎ │
@@ -200,7 +212,9 @@ The starter chip heading changes from **TRY A PREMISE** to **TRY ONE**.
 │   │ 🖼 │ Elena Márquez               │     │
 │   │    │ Historical restorer, 34     │     │
 │   └────┴─────────────────────────────┘     │
-│   + Add character              (max 3)     │
+│   ┌────────────────────────────────────┐   │
+│   │  +  Add a character          max 3 │   │
+│   └────────────────────────────────────┘   │
 ├────────────────────────────────────────────┤
 │  ☐  Moments to include                     │
 │     ⌜suggestion chips in the zero state⌟   │
@@ -222,6 +236,12 @@ stays optional.
 **Genre is multi-select and inferred.** `primaryGenre` remains the first
 selection for prompt routing and cover style; additional genres are secondary
 tags.
+
+**Add a character is a full-width action, never an inline text link.** It stays
+visible below the cast cards in both its empty and populated states, with a
+person-add icon and the remaining character limit. The character sheet is the
+highest-investment surface in Create; the entry point must look like a primary
+next step, not a hidden form affordance.
 
 **The `🧒 Kids` / `🏳️‍🌈 LGBTQ+` / `🧛 Vampire` chip row is dissolved.** Three
 different kinds of thing at one visual weight is a category error: Kids is a
@@ -245,10 +265,12 @@ it costs.
 
 ## 3. Kids mode
 
-A **per-draft toggle** in the first position on screen 2. Adult is the default
-for every new draft. No device lock and no PIN at launch — the mode describes the
-story being written, not the person holding the phone. *(Inference: a family plan
-with child profiles would make a lock worth revisiting. Not before.)*
+A **full-width, equal-width segmented control** in the first position on screen
+2: **For me** and **For kids**. It is a mode selector, not a chip row. **For me**
+is the default for every new draft. No device lock and no PIN at launch — the
+mode describes the story being written, not the person holding the phone.
+*(Inference: a family plan with child profiles would make a lock worth revisiting.
+Not before.)*
 
 | Surface | For me | For kids |
 |---|---|---|
@@ -311,20 +333,14 @@ opens a full screen, not an inline row.
 │  │ e.g. Dark hair pinned up, paint on   │  │
 │  │ her hands, her grandmother's coat.   │  │
 │  └──────────────────────────────────────┘  │
+│  Lead character                         ◉   │
 │                                            │
-│              ( Reimagine )                 │
-│                                            │
-│   ┌───────────┐                            │
-│   │           │      ( Edit )              │
-│   │  portrait │                            │
-│   │           │       Delete               │
-│   └───────────┘                            │
 │                                            │
 │              [   Save   ]                  │
 └────────────────────────────────────────────┘
 ```
 
-### The four fields, and why each exists
+### The five fields, and why each exists
 
 | Field | Drives | Prompt destination |
 |---|---|---|
@@ -332,11 +348,16 @@ opens a full screen, not an inline row.
 | **Description** | Who they are in one line — role, species, age | Story prompt, cover prompt |
 | **Background** | Voice, motivation, relationships | Story prompt only |
 | **Appearance** | The portrait, and physical detail in prose | **Character image prompt**, story prompt |
+| **Lead character** | Whose want and point of view anchor the story | Story-engine and chapter-planning layer |
 
-This is a clean four-way split with no overlap, which is exactly why it is worth
-copying: **Appearance exists to drive the image**, Background exists to drive the
-voice, and separating them is what stops the portrait from being generic and the
-prose from being a physical description.
+This is a clean split with no overlap: **Appearance exists to drive the image**,
+Background exists to drive the voice, and **Lead character** makes the narrative
+anchor explicit rather than asking the model to guess from display order.
+
+Exactly one saved character is the lead. The first character is selected by
+default. Choosing another lead immediately clears the previous selection; it is
+not a second role or a portrait setting. The lead designation is free and does
+not change the cast limit or portrait-generation rules.
 
 ### The instructive placeholder
 
@@ -347,7 +368,8 @@ example, occupying zero extra vertical space. Every long placeholder in this
 sheet follows that shape — a category list, then `e.g.`, then a concrete example
 in the app's own voice.
 
-Placeholders are re-authored per mode (§3) and per genre where it helps.
+Placeholders are re-authored per mode (§3) and per genre where it helps. The
+**Lead character** control uses a labelled binary toggle, not a text field.
 
 ### Portrait, Reimagine, Edit, Delete
 
@@ -424,7 +446,6 @@ On **Continue** from screen 1, one cheap, fast structured call returns:
 ```json
 {
   "genres":       ["mystery", "horror"],
-  "tropeModules": ["lockedRoom"],
   "whereAndWhen": "A hill town, off-season, present day",
   "characters": [
     { "name": "Elena Márquez",
@@ -441,7 +462,6 @@ On **Continue** from screen 1, one cheap, fast structured call returns:
 
 - Every value lands as an **editable chip or a pre-filled character sheet**, never
   as committed state.
-- `tropeModules` is **never rendered** (§1). It goes straight to the prompt layer.
 - The call is **free to the user.** It is scaffolding for the ask, not the ask —
   per `CREDITS_AND_PRICING.md` principle 2, a credit buys an AI action the user
   requested.
@@ -523,12 +543,22 @@ Collapsed by default. Identical in both modes except where §3 says otherwise.
 | **Chapter art** | on / off for chapters 2–N — **1 ✦ each** | off |
 | Writing style | Free text — *poetic, Shakespearean, hardboiled* | empty |
 | Spice | Sweet · Steamy · Explicit — **adult only**, flag-gated | Sweet |
-| Language | EN · ES · PT | device locale |
+| Language | English · Portuguese | English |
 | Avoid | Free text — *exclude a topic* | empty |
 | Visibility | Private · Public | Private |
 
+Guests see Public as locked and stay Private. Public publishing unlocks only
+after a real account is linked; the backend enforces the same rule independently
+of the client.
+
 **The cover image toggle is removed.** Chapter 1's art is compulsory and becomes
 the cover — see §10.4. The toggle here governs chapters 2–N only.
+
+**Language is a compact menu-style control, not a chip row.** Create offers only
+**English** and **Portuguese**, with English selected by default. Spanish is not
+an authoring option anywhere in Create. Existing Spanish stories remain readable
+and retain their stored language; that legacy support must not reintroduce Spanish
+to the creation UI.
 
 ### Writing mode — removed
 
@@ -559,21 +589,40 @@ escape hatch alike.
 
 ### Chapter length
 
-| | Words per chapter *(target)* | 3 chapters ≈ |
-|---|---|---|
-| **Short** | 600 – 900 | 15 min read |
-| **Standard** | 1,200 – 1,600 | 30 min read |
-| **Long** | 2,000 – 2,600 | 50 min read |
+| | Words per chapter *(target)* | Per chapter | 3 chapters ≈ |
+|---|---|---|---|
+| **Short** | 600 – 900 | **3 min** | 9 min |
+| **Standard** | 1,200 – 1,600 | **5 min** | 15 min |
+| **Long** | 2,000 – 2,600 | **9 min** | 27 min |
 
-These targets are **proposed and unmeasured**, and §14 item 2 forbids quoting
-them in UI copy until B11 has generated against each setting. **The options
-therefore ship unlabelled** — *Short · Standard · Long* and nothing more.
+**The options ship labelled with minutes, and never with words.**
+*(Revised 2026-09-05; they previously shipped unlabelled.)*
 
-Labelling them is the right end state, because "standard" alone means nothing to
-a first-time user and length is the choice that most changes what they get. But
-a number printed next to a control is read as a promise, and these numbers have
-never been checked against a real generation. B11 measures them; this table is
-corrected from that measurement; the labels appear in the same change.
+Minutes are derived from the word bands at **260 words per minute**, the
+measured mean silent reading rate for adult English fiction across 190 studies
+and 18,573 participants ([Brysbaert 2019](https://biblio.ugent.be/publication/8647789)).
+Non-fiction is slower at 238 wpm because its words are longer. Most adults
+reading fiction fall between 200 and 320 wpm, which is why every figure in the
+interface is hedged with *about*, and why the total is stated as a range the
+user can feel rather than a promise: **About 15 minutes to read, across 3
+chapters.**
+
+Two things follow from §14 item 2, which is still open:
+
+1. **The word bands stay out of the interface.** They are unverified against
+   real generations, and a word count is a number the writer has to convert
+   before it means anything to them. It also invites optimising the one
+   variable that does not make a story better.
+2. **Minutes are safe to show now, and words are not**, because the minute
+   figure is an estimate of the *reader's* experience carrying a hedge, while a
+   word target printed beside a control reads as a contract the generator has
+   never been checked against. When B11 measures the bands, this table is
+   corrected and the minutes are recomputed from it at the same rate.
+
+"Standard" alone means nothing to a first-time user, and length is the choice
+that most changes what they receive. That was always the argument for labelling;
+reading time is the label that carries it without making a promise about output
+we cannot yet keep.
 
 ### Point of view — removed
 
@@ -595,8 +644,8 @@ dressed as a system. The idea sentence already carries it more naturally and mor
 specifically — *"two women fall in love at a wedding they are both catering"*
 tells the model far more than a checkbox does, and inference sets
 `identityLenses` from it for free. And a toggle that asks the user to classify
-*themselves* rather than describe their story is the same disease as the trope
-row: a taxonomy where a sentence would do.
+*themselves* rather than describe their story is a taxonomy where a sentence
+would do.
 
 **The capability stays** — `identityLenses` remains in the request type and the
 prompt layer, populated by inference. Only the control is removed. If it ever
@@ -659,7 +708,20 @@ Create ·  n ✦
 - **Each chapter's text is 1 credit**, charged as it is generated, plus 1 for its
   art where the toggle is on. A story abandoned at chapter 2 of 7 costs what it
   wrote, not what it planned.
-- **Failed generations auto-refund**, per `CREDITS_AND_PRICING.md` principle 4.
+- **What generates it, as of 2026-09-05.** Every generation path — this loop,
+  continuation, the paragraph editor, and the shaping call onboarding makes —
+  leads with OpenRouter `meta/muse-spark-1.3-contributor`, falls back to
+  `meta/muse-spark-1.3`, then Gemini 3.1 Pro Preview, then the three OpenAI
+  models, then the free tier. The contributor tier is the configured default and
+  is **17x cheaper**, but it trains on prompts and completions, so the account's
+  OpenRouter privacy setting currently refuses it with a `404` and the standard
+  tier serves. Enabling it is a data decision that belongs to the product owner:
+  it means users' story ideas and generated prose are retained by the provider
+  for training. Cost basis and both figures:
+  [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §2.
+- **Failed paid actions auto-refund**, per `CREDITS_AND_PRICING.md` principle 4.
+  A failed cast or cover refunds its own credit even when chapter text succeeded;
+  each component refund is durable and idempotent.
 
 ### 10.3 Editing
 
@@ -725,15 +787,18 @@ Library.
 > 10 now prices chapter art, the unit is a story rather than a chapter, and the
 > three render tiers are fixed as constraints. The analysis below is retained as
 > the reasoning that produced that amendment; its *numbers* are superseded by
-> that file, which used a text cost of $0.031 that has since been replaced by
-> $0.004 on `gpt-5.6-luna`. See §14 item 1 and
+> that file, which used a text cost of $0.031. That was replaced by $0.004 on
+> `gpt-5.6-luna`, and on 2026-09-05 by **$0.0160** on `meta/muse-spark-1.3` —
+> the first figure in this file's lineage to include reasoning tokens, which are
+> billed at the completion rate and are the majority of the completion bill.
+> $0.031 and $0.004 are both superseded. See §14 item 1 and
 > [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §2.
 >
 > **This document still does not have the authority to change prices.**
 >
 > **Every number below is historical.** The analysis was written against 3-to-30
 > chapters, a cast of four and a text cost of $0.031. The shipped contract is
-> **3 · 7 · 15 chapters, a cast of 3, and $0.004 text** — see §14 and §15. The
+> **3 · 7 · 15 chapters, a cast of 3, and $0.0160 text** — see §14 and §15. The
 > reasoning is kept because it is what produced the amendment; the figures are
 > superseded by `CREDITS_AND_PRICING.md` §2 and must not be quoted.
 
@@ -860,7 +925,7 @@ derived value.
 | Rename chip heading | `Try a premise` → `Try one` |
 | Dissolve the toggle-chip row | Kids → mode toggle; queer and vampire → silent inference |
 | Add the where-and-when chip | New optional field on `StudioDraft` |
-| **Replace inline characters with the Craft character sheet** | Full screen, 4 fields, portrait, Reimagine / Edit / Delete / Save |
+| **Replace inline characters with the Craft character sheet** | Full screen: Name, Description, Background, Appearance and a single Lead character toggle; Save. Portrait operations appear only after the story's cast has been generated. |
 | Add the moments builder | New `moments: string[]`, capped, below characters |
 | Add character-name tokens | Derived from `draft.characters` |
 | Add the inference call | On Continue from screen 1, non-blocking, silent failure |
@@ -873,16 +938,16 @@ derived value.
 
 | File | Change |
 |---|---|
-| `types.ts` | `whereAndWhen?`, `moments?`, `chapterLength`, `plannedChapterCount`, character `background` / `appearance`. **No `writingMode`** — there is no mode to store |
+| `types.ts` | `whereAndWhen?`, `moments?`, `chapterLength`, `plannedChapterCount`, character `background` / `appearance` / `isHero`. **No `writingMode`** — there is no mode to store |
 | `story-prompts.ts` | Two new layers — world (`whereAndWhen`) and beats (`moments`); character layer consumes background separately from appearance |
 | `cover-prompts.ts` | Consume `whereAndWhen`. This is what stops covers reading as genre stock art |
 | `image.ts` | Character portrait prompt from `appearance` + `description`; separate from the cover path |
-| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3 |
+| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; accept only English or Portuguese from the Create contract |
 
 ### `expo/src/i18n/`
 
-Every label in §1, §4 and §9 is a new key in EN, ES and PT. **`premise`, `plot`,
-`topic`, `setting`, `arc`, `trope` and `seed` must not appear as values in any
+Every label in §1, §4 and §9 is a new key in EN and PT. **`premise`, `plot`,
+`topic`, `setting`, `arc` and `seed` must not appear as values in any
 locale file.** A lint rule enforcing that is cheap and worth adding.
 
 ### Library
@@ -979,7 +1044,7 @@ are listed here so a reader who lands mid-document is not misled.
 | Section | Superseded by |
 |---|---|
 | §9 **Writing mode** — Interactive vs Auto-Write | **Removed.** One flow: read the chapter, optionally steer, tap Continue. A *Write the rest* action appears from chapter 3 with an itemised confirm, a Stop that keeps what it wrote, and resume after a kill. There is no mode to choose and none to switch. |
-| §9 **Chapters: 3 · 7 · 10 · 15 · 30** | **3 · 7 · 15**, default 3. A *planned length* that drives pacing and the finale, not a batch size. `planned_chapter_count` replaces `MAX_SERIES_CHAPTERS`, and `chapter_role: finale` is derived from position in the arc rather than from `chapter == 7`. |
+| §9 **Chapters: 3 · 7 · 10 · 15 · 30** | **3 · 7 · 15**, default 3. A *planned length* that drives pacing and the finale; `chapter_role: finale` is derived from position in the arc. |
 | §4 **Maximum 4 characters** | **Maximum 3.** See item 1(b). |
 | §6 **Inference** and its relationship to onboarding | Onboarding's W1→W2→W3 blueprint is the same surface under other names, and unifying them is **deferred**. The debt is accepted deliberately: the shared `StoryBrief` type is defined once now, consumed only by Create, so later unification is a mapping job rather than a rewrite of a live surface in three locales. |
 
@@ -997,15 +1062,14 @@ are listed here so a reader who lands mid-document is not misled.
 
 1. **Inputs are labeled as second-person questions** — *Your idea · Where and
    when · Who's in it · Moments to include.*
-2. **`Premise`, `Plot`, `Topic`, `Setting`, `Arc`, `Trope`, `Seed` and `Prompt`
+2. **`Premise`, `Plot`, `Topic`, `Setting`, `Arc`, `Seed` and `Prompt`
    are banned from the interface** in all three locales. They may survive as
    internal identifiers.
 3. **Katha's outputs are `Title`, an unlabeled paragraph, and `Chapters`.**
 4. **One word, one meaning.** No word names both an input and an output.
-5. **There is no trope control in adult mode.** The `tropeModules` prompt layer
-   stays and is populated silently by inference. The confusion was the
-   vocabulary, not the capability. If tropes ever become visible, the honest
-   surface is the feed, not the create flow.
+5. **There is no hidden flavour taxonomy.** The visible brief is the whole
+   brief. Specific relationship dynamics, creatures and structures belong in
+   the idea or in Moments to include.
 
 ### Flow
 
@@ -1014,16 +1078,23 @@ are listed here so a reader who lands mid-document is not misled.
 8. **Review and start is retained** as its own screen; never collapsed into a
    single generate tap.
 9. **Cost is shown twice** — balance in the header, price on the button.
-10. **The 40-character gate is removed**, replaced by the slot-based
-    brief-strength meter in which **Sparse is a legitimate choice.**
+10. **The 40-character *counter* is removed; a 40-character *floor* stands.**
+    *(Revised 2026-09-05.)* The counter ranked the user against a number at
+    every length and taught padding. The floor is invisible above 40 characters
+    and fires only where the shaping call cannot work at all. It reads as a
+    state, not a countdown — see §2. The slot-based brief-strength meter still
+    does the teaching, and **Sparse remains a legitimate choice** everywhere
+    above the floor.
+10a. **Chapter length is labelled in minutes, never in words** — 3 · 5 · 9 per
+    chapter, derived at 260 wpm from the bands in §9. See §9's length table.
 11. **Where and when is a chip, not a field** — real and load-bearing, feeding
     both the story prompt and the cover prompt, but never a blank box.
 12. **The `🧒 Kids` / `🏳️‍🌈 LGBTQ+` / `🧛 Vampire` row is dissolved.**
 
 ### Inference
 
-13. **Genre, where-and-when, characters, moments and the hidden trope layer are
-    inferred** from the idea sentence and presented as editable values.
+13. **Genre, where-and-when, characters and moments are inferred** from the
+    idea sentence and presented as editable values.
 14. **The inference call is free.** It is scaffolding, not a generation.
 15. **Inference failure is silent.**
 16. **The character sheet arrives pre-filled.** This is inference's
@@ -1033,8 +1104,9 @@ are listed here so a reader who lands mid-document is not misled.
 ### Characters
 
 17. **Characters get a full-screen `Craft character` sheet**, modeled on Okudu's:
-    Name · Description · Background · Appearance, a portrait, Reimagine, Edit,
-    Delete, Save.
+    Name · Description · Background · Appearance · Lead character, then Save.
+    Portrait actions appear after the whole cast has been generated at story
+    creation; they are not an on-save image-generation flow.
 18. **The placeholder carries the teaching.** Category list, then `e.g.`, then a
     concrete example, in our voice. No separate helper labels.
 19. **Appearance drives the image; Background drives the voice.** Separating them
@@ -1083,7 +1155,7 @@ are listed here so a reader who lands mid-document is not misled.
 37. **The identity lens control is retired, the capability kept.** One value is a
     toggle, not a system; the idea sentence carries it better; and asking a user
     to classify themselves rather than their story is the same disease as the
-    trope row. Revisit if it grows past one value.
+    identity row. Revisit if it grows past one value.
 
 ### After Create
 

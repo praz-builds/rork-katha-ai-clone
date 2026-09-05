@@ -1,4 +1,5 @@
 import { stories } from "@/data/seed";
+import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { GENRES } from "@/types/domain";
 import type {
@@ -23,6 +24,118 @@ export class GenerationRequestError extends Error {
     this.name = "GenerationRequestError";
   }
 }
+
+export type StoryShape = {
+  /** Primary first, then up to two editable secondary genre chips. */
+  genres: Genre[];
+  whereAndWhen?: string;
+  characters: CreateDraft["characters"];
+  suggestedMoments: string[];
+  /**
+   * The ordered chapter plan. It comes back from this same free call rather
+   * than a second one, because the outline is the most persuasive thing on the
+   * blueprint screen and it has to cost nothing.
+   */
+  beats: string[];
+  /** Onboarding variant only: the title the blueprint card carries. */
+  title?: string;
+  /** Onboarding variant only: 120-180 words of real opening. */
+  opening?: string;
+};
+
+/**
+ * Free scaffolding for Screen 2. The server deliberately exposes no error
+ * surface here: an unavailable convenience must never block story creation.
+ */
+export async function inferStoryBrief(
+  idea: string,
+  /**
+   * The onboarding variant widens the schema to include a title and a real
+   * opening. It stays one call: onboarding is budgeted at one model call in
+   * total, so the extra fields are a wider response, never a second request.
+   */
+  variant: "create" | "onboarding" = "create",
+  /**
+   * The shelf the creator picked. Sent so inference shapes to their choice
+   * instead of overruling it: a user who typed a haunted house and then chose
+   * Romance wants a romance back.
+   */
+  genre?: Genre,
+): Promise<StoryShape | null> {
+  if (!isSupabaseConfigured || !idea.trim()) return null;
+
+  try {
+    await bootstrapUser();
+  } catch {
+    return null;
+  }
+
+  const { data, error } = await supabase.functions.invoke("shape-story", {
+    body: { idea, variant, genre },
+  });
+  if (error || !data?.shape || typeof data.shape !== "object") return null;
+
+  const shape = data.shape as Record<string, unknown>;
+  const genres = Array.isArray(shape.genres)
+    ? shape.genres.filter((genre): genre is Genre =>
+      typeof genre === "string" && (GENRES as readonly string[]).includes(genre)
+    )
+    : [];
+  const parsedCharacters = Array.isArray(shape.characters)
+    ? shape.characters.filter((
+      character,
+    ): character is CreateDraft["characters"][number] =>
+      Boolean(character) && typeof character === "object" &&
+      typeof (character as { name?: unknown }).name === "string"
+    ).map((character) => ({
+      name: character.name,
+      description: typeof character.description === "string"
+        ? character.description
+        : "",
+      background: typeof character.background === "string"
+        ? character.background
+        : undefined,
+      appearance: typeof character.appearance === "string"
+        ? character.appearance
+        : undefined,
+      isHero: character.isHero === true,
+    }))
+    : [];
+  const leadIndex = parsedCharacters.findIndex((character) => character.isHero);
+  const characters = parsedCharacters.map((character, index) => ({
+    ...character,
+    isHero: index === (leadIndex >= 0 ? leadIndex : 0),
+  }));
+  const suggestedMoments = Array.isArray(shape.suggestedMoments)
+    ? shape.suggestedMoments.filter((moment): moment is string =>
+      typeof moment === "string"
+    )
+    : [];
+  const beats = Array.isArray(shape.beats)
+    ? shape.beats.filter((beat): beat is string =>
+      typeof beat === "string" && beat.trim().length > 0
+    )
+    : [];
+
+  return {
+    genres,
+    whereAndWhen: typeof shape.whereAndWhen === "string"
+      ? shape.whereAndWhen
+      : undefined,
+    characters,
+    suggestedMoments,
+    beats,
+    title: typeof shape.title === "string" && shape.title.trim()
+      ? shape.title.trim()
+      : undefined,
+    opening: typeof shape.opening === "string" && shape.opening.trim()
+      ? shape.opening.trim()
+      : undefined,
+  };
+}
+
+// Retain the original name for callers that landed before the Create flow.
+export const shapeStoryIdea = inferStoryBrief;
 
 export async function getLibrary(
   query?: { q?: string; genre?: string },
@@ -57,14 +170,23 @@ export async function generateStory(
     return await localGeneratedStory(draft);
   }
 
+  try {
+    await bootstrapUser();
+  } catch {
+    throw new GenerationRequestError(
+      "Unable to set up your story account. Please try again.",
+      false,
+    );
+  }
+
   const { data, error } = await supabase.functions.invoke("generate-story", {
     body: {
       request_id: requestId,
       primary_genre: draft.primaryGenre,
+      genres: draft.genres,
       audience_mode: draft.audienceMode,
       spice_level: draft.spiceLevel,
       identity_lenses: draft.identityLenses,
-      trope_modules: draft.tropeModules,
       topic: draft.seed,
       // Blank rows never leave the device.
       //
@@ -78,7 +200,15 @@ export async function generateStory(
       language: draft.language,
       where_and_when: draft.whereAndWhen,
       moments: draft.moments,
+      // The plan the writer approved on the blueprint screen. Without it the
+      // outline they were shown and the story they receive are unrelated.
+      beats: draft.beats,
+      story_values: draft.storyValues,
+      writing_style: draft.writingStyle,
+      avoid: draft.avoid,
       chapter_length: draft.chapterLength,
+      planned_chapter_count: draft.plannedChapterCount,
+      illustrate_chapters: draft.illustrateChapters,
       // story_mode is the current request contract. The backend still accepts
       // the legacy is_series boolean, but story_mode takes precedence there and
       // is what new callers are expected to send.
@@ -146,16 +276,16 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
   const genre = isGenre(serverPrimaryGenre)
     ? serverPrimaryGenre
     : isGenre(serverGenres[0])
-      ? serverGenres[0]
-      : draft.primaryGenre;
+    ? serverGenres[0]
+    : draft.primaryGenre;
   const themes = Array.isArray(story.themes)
     ? story.themes.filter((value): value is string => typeof value === "string")
     : [];
   const storyMode = isStoryMode(story.story_mode)
     ? story.story_mode
     : draft.isSeries
-      ? "series"
-      : "standalone";
+    ? "series"
+    : "standalone";
 
   return {
     id,
@@ -164,6 +294,15 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
     genre,
     primaryGenre: genre,
     storyMode,
+    plannedChapterCount: isPlannedChapterCount(story.planned_chapter_count)
+      ? story.planned_chapter_count
+      : draft.plannedChapterCount,
+    chapterLength: isChapterLength(story.chapter_length)
+      ? story.chapter_length
+      : draft.chapterLength,
+    beats: Array.isArray(story.beats)
+      ? story.beats.filter((beat): beat is string => typeof beat === "string")
+      : draft.beats,
     seriesState: parseSeriesState(story.series_state),
     audienceMode: story.audience_mode === "kids" ? "kids" : "adult",
     spiceLevel: story.spice_level === "steamy" ? "steamy" : "sweet",
@@ -232,6 +371,16 @@ function isGenre(value: unknown): value is Genre {
 
 function isStoryMode(value: unknown): value is StoryMode {
   return value === "standalone" || value === "series";
+}
+
+function isPlannedChapterCount(value: unknown): value is 3 | 7 | 15 {
+  return value === 3 || value === 7 || value === 15;
+}
+
+function isChapterLength(
+  value: unknown,
+): value is "short" | "standard" | "long" {
+  return value === "short" || value === "standard" || value === "long";
 }
 
 function parseChapterRole(value: unknown, fallback: ChapterRole): ChapterRole {
@@ -329,15 +478,19 @@ function localGeneratedStory(draft: CreateDraft): Promise<Story> {
         storyMode: draft.isSeries ? "series" : "standalone",
         seriesState: draft.isSeries
           ? {
-            central_conflict: "The first chapter opens a larger unresolved problem.",
+            central_conflict:
+              "The first chapter opens a larger unresolved problem.",
             protagonist_want: `${heroName} wants to understand what changed.`,
             relationship_state: "Key relationships are still forming.",
             open_hooks: ["A new question remains unanswered."],
             resolved_hooks: [],
-            promised_payoffs: ["The central mystery will be resolved by the finale."],
+            promised_payoffs: [
+              "The central mystery will be resolved by the finale.",
+            ],
             world_facts: [`The story belongs to ${draft.primaryGenre}.`],
             character_changes: [`${heroName} has stepped into the conflict.`],
-            next_chapter_pressure: "The next chapter should force a harder choice.",
+            next_chapter_pressure:
+              "The next chapter should force a harder choice.",
           }
           : undefined,
         audienceMode: draft.audienceMode,
@@ -361,7 +514,9 @@ function localGeneratedStory(draft: CreateDraft): Promise<Story> {
             chapterNumber: 1,
             chapterRole: draft.isSeries ? "series_opening" : "standalone",
             hookType: draft.isSeries ? "unanswered_question" : "none",
-            hookText: draft.isSeries ? "A question hangs over what comes next." : undefined,
+            hookText: draft.isSeries
+              ? "A question hangs over what comes next."
+              : undefined,
             isPublished: false,
             paragraphs: buildMockParagraphs(heroName, draft),
           },
@@ -395,13 +550,15 @@ function buildMockParagraphs(heroName: string, draft: CreateDraft): string[] {
     ? `Something unexpected happened next. ${heroName} found a path where there should not have been one, narrow and winding, lined with stones that glowed faintly when stepped on. Each stone hummed a different note, and together they made a melody that felt like a greeting. At the end of the path stood a door, small enough that only someone brave and curious would think to open it.`
     : `What followed was not a single event but a series of small shifts, each one rearranging the landscape of what ${heroName} understood. A conversation overheard in passing. A door that had always been locked now standing open. A face in a photograph that should not have been familiar but was, deeply and disturbingly so. The seed of the story was already planted, and it was growing faster than anyone could have predicted.`;
 
-  const middle = `${heroName} considered the options carefully. There were exactly two: move forward into the uncertainty, or step back and pretend none of it had happened. The second option was tempting. It was the safe choice, the one that came with clean hands and undisturbed sleep. But something had shifted inside, a gear catching, a door opening in the mind that could not be closed again. The first choice had already been made, somewhere deep, before the conscious mind caught up.`;
+  const middle =
+    `${heroName} considered the options carefully. There were exactly two: move forward into the uncertainty, or step back and pretend none of it had happened. The second option was tempting. It was the safe choice, the one that came with clean hands and undisturbed sleep. But something had shifted inside, a gear catching, a door opening in the mind that could not be closed again. The first choice had already been made, somewhere deep, before the conscious mind caught up.`;
 
   const tension = isKids
     ? `The challenge was bigger than expected. ${heroName} had to solve three riddles before the sun moved behind the tallest tree. The first riddle was about water. The second was about friendship. The third was about something ${heroName} had almost forgotten, a promise made a long time ago on a rainy afternoon. Remembering it felt like finding a coin in an old coat pocket.`
     : `The tension arrived without announcement, the way real trouble always does. One moment the air was still, the next it was charged, every surface carrying a faint electric hum. ${heroName} could feel it in the space between breaths, in the way shadows moved half a second too late to match their sources. Something was coming to a head, and the only question was whether the resolution would break things or remake them.`;
 
-  const climax = `And then the moment came. It was not dramatic in the way stories usually promise. There was no thunder, no sweeping revelation. Instead there was a small, clear truth, arriving like dawn, undeniable and unhurried. ${heroName} saw it for what it was. The fear did not vanish, but it stepped aside long enough for something else to take its place. A choice was made. It was the kind of choice that changes the shape of a life, not all at once, but one day at a time, in the quiet hours when nobody is watching.`;
+  const climax =
+    `And then the moment came. It was not dramatic in the way stories usually promise. There was no thunder, no sweeping revelation. Instead there was a small, clear truth, arriving like dawn, undeniable and unhurried. ${heroName} saw it for what it was. The fear did not vanish, but it stepped aside long enough for something else to take its place. A choice was made. It was the kind of choice that changes the shape of a life, not all at once, but one day at a time, in the quiet hours when nobody is watching.`;
 
   const resolution = isKids
     ? `When it was over, ${heroName} sat on the warm grass and looked up at a sky painted with colors that had no names. The adventure was not finished, not really. But this chapter of it was, and it ended with a feeling that was hard to put into words. Something like hope, something like courage, something like the first page of a story that was only just beginning.`
@@ -412,19 +569,40 @@ function buildMockParagraphs(heroName: string, draft: CreateDraft): string[] {
 
 /** Genre-aware mock titles for development. In production the LLM generates the title. */
 const MOCK_TITLES: Partial<Record<Genre, string[]>> = {
-  romance: ["The Vanilla Problem", "Letters Never Sent", "That Corner Table", "Almost Midnight"],
-  romantasy: ["The Sword Between Us", "Embers and Oaths", "A Crown of Thorns and Starlight"],
+  romance: [
+    "The Vanilla Problem",
+    "Letters Never Sent",
+    "That Corner Table",
+    "Almost Midnight",
+  ],
+  romantasy: [
+    "The Sword Between Us",
+    "Embers and Oaths",
+    "A Crown of Thorns and Starlight",
+  ],
   darkRomance: ["Debt of Roses", "The Collector's Terms", "No Safe Word"],
-  fantasy: ["The Cartographer's Mistake", "Where Rivers Forget", "A Door Without a Room"],
+  fantasy: [
+    "The Cartographer's Mistake",
+    "Where Rivers Forget",
+    "A Door Without a Room",
+  ],
   scifi: ["The Eleven-Minute Gap", "Deck Nine", "Signal from Nowhere"],
-  thriller: ["The Accountant's Daughter", "Three Rings", "No Forwarding Address"],
+  thriller: [
+    "The Accountant's Daughter",
+    "Three Rings",
+    "No Forwarding Address",
+  ],
   mystery: ["The Last Tenant", "Room 4B", "The Decimal Point"],
   horror: ["Tuesday's Hum", "The Other Orchard", "What the Mirror Kept"],
   contemporary: ["Seven Hours", "The Name in the Diary", "Small Mercies"],
   historical: ["The Silk Code", "A Clockmaker in Vienna", "The Late Letter"],
   adventure: ["The River That Isn't", "Below the Floor", "Compass South"],
   comedy: ["Worst Wizard, Best Job", "The Pageant Incident", "Neighborly"],
-  poetry: ["The Last Payphone", "Weather Reports of Love", "What the Tide Pool Remembers"],
+  poetry: [
+    "The Last Payphone",
+    "Weather Reports of Love",
+    "What the Tide Pool Remembers",
+  ],
 };
 
 function generateMockTitle(genre: Genre): string {
@@ -441,9 +619,19 @@ export async function continueStory(
   requestId: string,
   isFinale?: boolean,
   expectedChapterNum?: number,
+  nextInstruction?: string,
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
     return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
+  }
+
+  try {
+    await bootstrapUser();
+  } catch {
+    throw new GenerationRequestError(
+      "Unable to set up your story account. Please try again.",
+      false,
+    );
   }
 
   const { data, error } = await supabase.functions.invoke("continue-story", {
@@ -451,6 +639,7 @@ export async function continueStory(
       story_id: storyId,
       request_id: requestId,
       is_finale: isFinale ?? false,
+      next_instruction: nextInstruction,
     },
   });
 
@@ -466,10 +655,17 @@ export async function continueStory(
     chapter: {
       id: requiredString(chapter.id, "chapter id"),
       storyId,
-      title: typeof chapter.title === "string" ? chapter.title : `Chapter ${chapter.chapter_number ?? expectedChapterNum ?? 2}`,
+      title: typeof chapter.title === "string"
+        ? chapter.title
+        : `Chapter ${chapter.chapter_number ?? expectedChapterNum ?? 2}`,
       paragraphs: content.split(/\n\s*\n/).filter(Boolean),
-      chapterNumber: typeof chapter.chapter_number === "number" ? chapter.chapter_number : (expectedChapterNum ?? 2),
-      chapterRole: parseChapterRole(chapter.chapter_role, isFinale ? "finale" : "mid_series"),
+      chapterNumber: typeof chapter.chapter_number === "number"
+        ? chapter.chapter_number
+        : (expectedChapterNum ?? 2),
+      chapterRole: parseChapterRole(
+        chapter.chapter_role,
+        isFinale ? "finale" : "mid_series",
+      ),
       firstLine: stringOrUndefined(chapter.first_line),
       previouslySummary: stringOrUndefined(chapter.previously_summary),
       hookType: parseHookType(chapter.hook_type),
@@ -485,7 +681,9 @@ async function localContinueStory(
   isFinale?: boolean,
   chapterNum = 2,
 ): Promise<{ chapter: Chapter; model: string }> {
-  await new Promise((resolve) => setTimeout(resolve, 3000 + Math.random() * 2000));
+  await new Promise((resolve) =>
+    setTimeout(resolve, 3000 + Math.random() * 2000)
+  );
   return {
     chapter: {
       id: `chapter-${Date.now()}`,
@@ -493,7 +691,9 @@ async function localContinueStory(
       title: isFinale ? "The final chapter" : `Chapter ${chapterNum}`,
       chapterRole: isFinale ? "finale" : "mid_series",
       hookType: isFinale ? "none" : "unanswered_question",
-      hookText: isFinale ? undefined : "The next consequence has not arrived yet.",
+      hookText: isFinale
+        ? undefined
+        : "The next consequence has not arrived yet.",
       paragraphs: [
         "The story continued where it left off. The characters moved forward, carrying the weight of earlier decisions into new territory. Nothing felt settled yet, but the shape of things was beginning to emerge.",
         "New complications arrived without warning. A piece of information surfaced that changed the meaning of everything that came before. What had seemed like coincidence now looked deliberate, and the stakes shifted accordingly.",
@@ -513,7 +713,12 @@ async function localContinueStory(
 // Edit paragraph (AI-powered paragraph editing)
 // ---------------------------------------------------------------------------
 
-export type EditInstruction = "rewrite" | "expand" | "shorten" | "change_tone" | "custom";
+export type EditInstruction =
+  | "rewrite"
+  | "expand"
+  | "shorten"
+  | "change_tone"
+  | "custom";
 
 export async function editParagraph(
   storyId: string,
@@ -547,7 +752,9 @@ export async function editParagraph(
   return data.updated_paragraph;
 }
 
-async function localEditParagraph(instruction: EditInstruction): Promise<string> {
+async function localEditParagraph(
+  instruction: EditInstruction,
+): Promise<string> {
   // This is only used when Supabase is not configured. The mock in
   // CreateStudioScreen was the original; this centralizes it.
   await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -574,7 +781,11 @@ async function localEditParagraph(instruction: EditInstruction): Promise<string>
  */
 export async function publishStory(
   storyId: string,
-  edits?: { title?: string; chapters?: { id: string; content: string }[] },
+  edits?: {
+    title?: string;
+    chapters?: { id: string; content: string }[];
+    visibility?: "private" | "public";
+  },
 ): Promise<void> {
   if (!isSupabaseConfigured) {
     // Simulate publish delay (cover image generation takes time)
@@ -582,11 +793,16 @@ export async function publishStory(
     return;
   }
 
+  const user = await bootstrapUser();
+  const visibility = edits?.visibility ??
+    (user?.isAnonymous ? "private" : undefined);
+
   const { error } = await supabase.functions.invoke("publish-story", {
     body: {
       story_id: storyId,
       ...(edits?.title ? { title: edits.title } : {}),
       ...(edits?.chapters?.length ? { chapters: edits.chapters } : {}),
+      ...(visibility ? { visibility } : {}),
     },
   });
 
@@ -603,4 +819,23 @@ export function createGenerationRequestId() {
   return `generation-${Date.now().toString(36)}-${
     Math.random().toString(36).slice(2)
   }`;
+}
+
+/**
+ * Hand this device's Expo push token to the server.
+ *
+ * Fails loudly to its caller and silently to the user: `syncPushToken` decides
+ * that this is never worth an error message, and it is the only caller.
+ */
+export async function registerPushToken(
+  expoToken: string,
+  platform: "ios" | "android",
+  deviceId?: string,
+): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  await bootstrapUser();
+  const { error } = await supabase.functions.invoke("register-push-token", {
+    body: { expo_token: expoToken, platform, device_id: deviceId },
+  });
+  if (error) throw error;
 }

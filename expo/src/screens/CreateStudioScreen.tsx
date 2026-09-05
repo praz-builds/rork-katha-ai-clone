@@ -7,13 +7,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
   Check,
@@ -31,6 +31,7 @@ import {
   CreditPill,
   PrimaryButton,
 } from "@/components/KathaPrimitives";
+import CreateBriefFlow from "@/components/create/CreateBriefFlow";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import {
   continueStory,
@@ -50,7 +51,13 @@ import {
   radius,
   spacing,
 } from "@/theme";
-import type { AudienceMode, CreateDraft, Genre, IdentityLens, SpiceLevel, Story, TropeModule } from "@/types/domain";
+import {
+  GENRE_EMOJI,
+  GENRE_ROW_1,
+  GENRE_ROW_2,
+  GENRE_STARTERS,
+} from "@/lib/genre-content";
+import type { AudienceMode, CreateDraft, Genre, IdentityLens, SpiceLevel, Story } from "@/types/domain";
 
 // ---------------------------------------------------------------------------
 // Local types
@@ -70,12 +77,14 @@ type DraftCharacter = {
 
 type StudioDraft = {
   primaryGenre: Genre;
+  genres?: Genre[];
   audienceMode: AudienceMode;
   spiceLevel: SpiceLevel;
   identityLenses: IdentityLens[];
-  tropeModules: TropeModule[];
   seed: string;
-  language: string;
+  language: CreateDraft["language"];
+  /** Private by default. This is publish intent, never a generation input. */
+  visibility: NonNullable<CreateDraft["visibility"]>;
   characters: DraftCharacter[];
   isSeries: boolean;
   /**
@@ -87,7 +96,12 @@ type StudioDraft = {
    */
   whereAndWhen?: string;
   moments?: string[];
+  storyValues?: string[];
+  writingStyle?: string;
+  avoid?: string;
   chapterLength?: "short" | "standard" | "long";
+  plannedChapterCount?: 3 | 7 | 15;
+  illustrateChapters?: boolean;
 };
 
 type ParagraphState = {
@@ -99,9 +113,18 @@ type ParagraphState = {
 
 type CreateStudioProps = {
   credits: number;
-  onCreditUsed: () => void;
+  isAnonymous?: boolean;
+  onCreditUsed: (amount: number) => void;
   onPublished: (story: Story) => void;
   onBack: () => void;
+  /**
+   * The blueprint a user built during onboarding.
+   *
+   * It arrives as a draft rather than as a story, and the user still presses
+   * Create themselves. Generating on arrival would spend their whole welcome
+   * grant on a story they have not asked for a second time and may never open.
+   */
+  initialDraft?: Partial<StudioDraft>;
 };
 
 // ---------------------------------------------------------------------------
@@ -112,100 +135,10 @@ const MAX_CHARACTERS = MAX_CAST_SIZE;
 
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },
-  { code: "es", label: "Spanish", flag: "🇪🇸" },
+  { code: "pt", label: "Portuguese", flag: "🇵🇹" },
 ] as const;
 
-const GENRE_EMOJI: Record<Genre, string> = {
-  fantasy: "🐉",
-  scifi: "🚀",
-  thriller: "🔪",
-  mystery: "🔍",
-  horror: "👻",
-  contemporary: "☕",
-  historical: "🏛️",
-  adventure: "🧭",
-  comedy: "😂",
-  poetry: "🪶",
-  romance: "💕",
-  romantasy: "✨",
-  darkRomance: "🖤",
-};
 
-/** Split genres into 2 rows for horizontal scroll (Tumblr-style) */
-const GENRE_ROW_1: Genre[] = [
-  "fantasy", "romance", "thriller", "mystery", "horror", "scifi", "comedy",
-];
-const GENRE_ROW_2: Genre[] = [
-  "romantasy", "darkRomance", "contemporary", "historical", "adventure", "poetry",
-];
-
-const GENRE_PREMISE_CHIPS: Record<Genre, string[]> = {
-  romance: [
-    "Two rival bakery owners share a vanilla supplier",
-    "A letter meant for someone else changes everything",
-    "They keep meeting at the same bookshop, different shelves",
-  ],
-  romantasy: [
-    "A healer whose magic fails when she lies falls for a spy",
-    "The crown prince's bodyguard can read his emotions",
-    "Two rival mages share one spell book that only works together",
-  ],
-  darkRomance: [
-    "She inherits a vineyard and the debt collector who comes with it",
-    "A hostage negotiator and the voice on the other end of the line",
-    "They were enemies before the arranged marriage",
-  ],
-  fantasy: [
-    "A mapmaker discovers her ink reveals places that shouldn't exist",
-    "The last dragon lives in a subway tunnel",
-    "A city where memories are currency and hers are stolen",
-  ],
-  scifi: [
-    "The AI therapist starts asking for advice",
-    "A colony ship wakes the wrong passengers",
-    "Time runs backward in one room of the space station",
-  ],
-  thriller: [
-    "A forensic accountant finds her dead father laundered money for 30 years",
-    "The witness protection agent is being followed",
-    "Someone is leaving reviews of crimes before they happen",
-  ],
-  mystery: [
-    "A traveler vanishes from a Marrakech hotel. Her sister follows clues.",
-    "The detective's own alibi doesn't hold up",
-    "Every tenant in the building heard something different that night",
-  ],
-  horror: [
-    "The house was cheap. That should have been a warning.",
-    "A lullaby only one child in the family can hear",
-    "The mirror shows the room as it was twenty years ago",
-  ],
-  contemporary: [
-    "A mother writes letters to the ocean. One day, it writes back.",
-    "Two strangers share a hospital waiting room for seven hours",
-    "She finds her grandmother's diary and a name no one recognizes",
-  ],
-  historical: [
-    "A silk trader's daughter decodes a message hidden in fabric patterns",
-    "The last letter from a soldier arrives fifty years late",
-    "A clockmaker in 1920s Vienna builds a device no one ordered",
-  ],
-  adventure: [
-    "A raft guide finds a map of a river that doesn't exist",
-    "The compass points somewhere below the ocean floor",
-    "A rescue mission into a cave system that keeps changing shape",
-  ],
-  comedy: [
-    "A dog walker accidentally enters a dog into a beauty pageant",
-    "The world's worst wizard gets hired by the king",
-    "Two neighbors compete over the most mundane things imaginable",
-  ],
-  poetry: [
-    "The last payphone in the city, and who calls it",
-    "A love story told through weather reports",
-    "What the tide pool remembers",
-  ],
-};
 
 /**
  * Encouragement, never a gate.
@@ -270,7 +203,6 @@ const INITIAL_DRAFT: StudioDraft = {
   audienceMode: "adult",
   spiceLevel: "sweet",
   identityLenses: [],
-  tropeModules: [],
   seed: "",
   language: "English",
   // No phantom character.
@@ -281,7 +213,11 @@ const INITIAL_DRAFT: StudioDraft = {
   // characters are optional — got a 400 on the primary path. The cast starts
   // empty; `addCharacter` creates the first row.
   characters: [],
-  isSeries: false,
+  isSeries: true,
+  chapterLength: "standard",
+  plannedChapterCount: 3,
+  illustrateChapters: false,
+  visibility: "private",
 };
 
 // ---------------------------------------------------------------------------
@@ -323,12 +259,16 @@ async function localEditParagraph(
 
 export default function CreateStudioScreen({
   credits,
+  isAnonymous = true,
   onCreditUsed,
   onPublished,
   onBack,
+  initialDraft,
 }: CreateStudioProps) {
   const [step, setStep] = useState<StudioStep>("setup");
-  const [draft, setDraft] = useState<StudioDraft>(INITIAL_DRAFT);
+  const [draft, setDraft] = useState<StudioDraft>(() =>
+    initialDraft ? { ...INITIAL_DRAFT, ...initialDraft } : INITIAL_DRAFT
+  );
   const [busy, setBusy] = useState(false);
   const requestIdRef = useRef<string | null>(null);
 
@@ -355,7 +295,7 @@ export default function CreateStudioScreen({
   // Chapter state
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const [addingChapter, setAddingChapter] = useState(false);
-  const MAX_CHAPTERS = 7;
+  const maxChapters = story?.plannedChapterCount ?? draft.plannedChapterCount ?? 3;
 
   // Pulse animation for processing paragraphs
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -402,6 +342,13 @@ export default function CreateStudioScreen({
   // Restore persisted draft on mount
   const draftRestoredRef = useRef(false);
   useEffect(() => {
+    // An onboarding blueprint outranks anything in AsyncStorage: the user built
+    // it seconds ago, and restoring over it would silently discard the whole
+    // reason they finished the flow.
+    if (initialDraft) {
+      draftRestoredRef.current = true;
+      return;
+    }
     loadDraft()
       .then((saved) => {
         if (!saved) return;
@@ -430,6 +377,9 @@ export default function CreateStudioScreen({
         // bad payload disables auto-save until the app restarts.
         draftRestoredRef.current = true;
       });
+    // Runs once. `initialDraft` is fixed for the life of the mount, and a
+    // re-run would restore over whatever the user has typed since.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-save draft on changes (debounced 500ms, blocked until restore completes)
@@ -449,7 +399,7 @@ export default function CreateStudioScreen({
   // is gone: it taught padding rather than structure, and a one-line idea is a
   // legitimate choice per source-of-truth/STORY_GENERATION_FLOW.md section 2.
   const canGenerate =
-    draft.seed.trim().length >= 1 && credits > 0 && !busy;
+    draft.seed.trim().length >= 1 && credits >= 3 && !busy;
   const briefStrength = getBriefStrength(draft);
 
   const wordCount = paragraphs.reduce((acc, p) => {
@@ -466,10 +416,10 @@ export default function CreateStudioScreen({
     if (busy) return;
     if (!canGenerate) {
       Alert.alert(
-        credits > 0 ? "Add a story seed" : "Credits needed",
-        credits > 0
+        credits >= 3 ? "Add a story seed" : "Credits needed",
+        credits >= 3
           ? "Give Katha one clear idea to shape."
-          : "You need 1 credit to generate.",
+          : "You need 3 credits to start a story.",
       );
       return;
     }
@@ -481,16 +431,25 @@ export default function CreateStudioScreen({
 
     const createDraft: CreateDraft = {
       primaryGenre: draft.primaryGenre,
+      genres: draft.genres,
       audienceMode: draft.audienceMode,
       spiceLevel: draft.spiceLevel,
       identityLenses: draft.identityLenses,
-      tropeModules: draft.tropeModules,
       seed: draft.seed,
       language: draft.language,
+      visibility: draft.visibility,
       // Belt and braces with the clamp in loadDraft: validation.ts enforces the
       // same cap, and a request over it is a 400 rather than a truncation.
       characters: draft.characters.slice(0, MAX_CHARACTERS),
       isSeries: draft.isSeries,
+      whereAndWhen: draft.whereAndWhen,
+      moments: draft.moments,
+      storyValues: draft.storyValues,
+      writingStyle: draft.writingStyle,
+      avoid: draft.avoid,
+      chapterLength: draft.chapterLength,
+      plannedChapterCount: draft.plannedChapterCount,
+      illustrateChapters: draft.illustrateChapters,
     };
 
     try {
@@ -499,7 +458,7 @@ export default function CreateStudioScreen({
       if (!firstChapter) {
         throw new Error("Story generation returned no chapter");
       }
-      onCreditUsed();
+      onCreditUsed(3);
       clearDraft();
       setStory(generated);
       setStoryTitle(generated.title);
@@ -527,7 +486,7 @@ export default function CreateStudioScreen({
     } finally {
       setBusy(false);
     }
-  }, [canGenerate, credits, draft]);
+  }, [busy, canGenerate, credits, draft, onCreditUsed]);
 
   // -----------------------------------------------------------------------
   // Step 2: Paragraph AI actions
@@ -617,7 +576,7 @@ export default function CreateStudioScreen({
       setCustomPromptIndex(null);
       setCustomPromptText("");
     },
-    [paragraphs, showUndoToast, activeChapterIndex],
+    [paragraphs, showUndoToast, activeChapterIndex, story],
   );
 
   const deleteParagraph = useCallback(
@@ -736,7 +695,11 @@ export default function CreateStudioScreen({
       return;
     }
 
-    const updatedChapters = edited.chapters.map((ch) => ({ ...ch, isPublished: true }));
+    const shouldPublish = draft.visibility === "public";
+    const updatedChapters = edited.chapters.map((ch) => ({
+      ...ch,
+      isPublished: shouldPublish,
+    }));
 
     // A failed publish is reported, not swallowed.
     //
@@ -750,6 +713,7 @@ export default function CreateStudioScreen({
       await Promise.race([
         publishStory(edited.id, {
           title: storyTitle || edited.title,
+          visibility: draft.visibility,
           chapters: edited.chapters.map((ch) => ({
             id: ch.id,
             content: ch.paragraphs.filter((p) => p.trim()).join("\n\n"),
@@ -761,7 +725,7 @@ export default function CreateStudioScreen({
     } catch {
       setStep("review");
       Alert.alert(
-        "Couldn't publish",
+        shouldPublish ? "Couldn't publish" : "Couldn't save",
         "Your story and every edit are still here. Check your connection and try again.",
       );
       return;
@@ -774,12 +738,15 @@ export default function CreateStudioScreen({
     };
 
     onPublished(publishedStory);
-  }, [story, storyTitle, onPublished, saveEditorToStory]);
+  }, [draft.visibility, story, storyTitle, onPublished, saveEditorToStory]);
 
   const handleContinueStory = useCallback(async (isFinale = false) => {
     if (!story || addingChapter) return;
-    if (story.chapters.length >= MAX_CHAPTERS) {
-      Alert.alert("Series complete", "This story has reached its maximum of 7 chapters.");
+    if (story.chapters.length >= maxChapters) {
+      Alert.alert(
+        "Series complete",
+        `This story has reached its planned ${maxChapters} chapters.`,
+      );
       return;
     }
     if (credits < 1) {
@@ -795,11 +762,11 @@ export default function CreateStudioScreen({
 
     const requestId = createGenerationRequestId();
     const nextChapterNum = savedStory.chapters.length + 1;
-    const shouldFinale = isFinale || nextChapterNum >= MAX_CHAPTERS;
+    const shouldFinale = isFinale || nextChapterNum >= maxChapters;
 
     try {
       const { chapter } = await continueStory(savedStory.id, requestId, shouldFinale, nextChapterNum);
-      onCreditUsed();
+      onCreditUsed(1);
 
       const updatedStory: Story = {
         ...savedStory,
@@ -827,7 +794,7 @@ export default function CreateStudioScreen({
     } finally {
       setAddingChapter(false);
     }
-  }, [story, addingChapter, credits, onCreditUsed, saveEditorToStory]);
+  }, [story, addingChapter, credits, maxChapters, onCreditUsed, saveEditorToStory]);
 
   const switchToChapter = useCallback((index: number) => {
     if (!story || index === activeChapterIndex) return;
@@ -927,6 +894,25 @@ export default function CreateStudioScreen({
 
   if (step === "setup") {
     return (
+      <CreateBriefFlow
+        credits={credits}
+        isAnonymous={isAnonymous}
+        draft={draft}
+        setDraft={setDraft}
+        onGenerate={handleGenerate}
+        onBack={onBack}
+      />
+    );
+  }
+
+  /*
+   * The previous single-page setup renderer is retained below only until the
+   * editor/publish refactor is split out of this legacy screen. CreateBriefFlow
+   * above is the active source of the Idea, Shape, Review, and Craft character
+   * experience.
+   */
+  if (false) {
+    return (
       <SafeAreaView style={styles.flex}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -982,27 +968,21 @@ export default function CreateStudioScreen({
                 </ScrollView>
               </View>
 
-              {/* Mode toggles — single-select: Kids, LGBTQ+, Vampire */}
+              {/* Kids is a per-draft audience mode. */}
               <View style={styles.toggleChipRow}>
                 {([
                   { key: "kids", label: "🧒 Kids" },
-                  { key: "queer", label: "🏳️‍🌈 LGBTQ+" },
-                  { key: "vampire", label: "🧛 Vampire" },
                 ] as const).map((chip) => {
-                  const isActive =
-                    chip.key === "kids" ? draft.audienceMode === "kids" :
-                    chip.key === "queer" ? draft.identityLenses.includes("queer") :
-                    draft.tropeModules.includes("vampire");
+                  const isActive = draft.audienceMode === "kids";
                   return (
                     <Pressable
                       key={chip.key}
                       onPress={() => setDraft((prev) => {
                         // Single-select: deselect all, then toggle the tapped one
-                        const base = { ...prev, audienceMode: "adult" as const, identityLenses: [] as IdentityLens[], tropeModules: [] as TropeModule[] };
+                        const base = { ...prev, audienceMode: "adult" as const, identityLenses: [] };
                         if (isActive) return base; // Deselect
                         if (chip.key === "kids") return { ...base, audienceMode: "kids" as const };
-                        if (chip.key === "queer") return { ...base, identityLenses: ["queer" as const] };
-                        return { ...base, tropeModules: ["vampire" as const] };
+                        return base;
                       })}
                       accessibilityRole="radio"
                       accessibilityState={{ selected: isActive }}
@@ -1015,6 +995,35 @@ export default function CreateStudioScreen({
                   );
                 })}
               </View>
+
+              {draft.audienceMode === "kids" && (
+                <View style={styles.toggleChipRow}>
+                  {(["kindness", "honesty", "courage", "patience", "sharing"] as const).map((value) => {
+                    const selected = draft.storyValues?.includes(value) ?? false;
+                    return (
+                      <Pressable
+                        key={value}
+                        onPress={() => setDraft((prev) => {
+                          const values = prev.storyValues ?? [];
+                          return {
+                            ...prev,
+                            storyValues: selected
+                              ? values.filter((item) => item !== value)
+                              : [...values, value],
+                          };
+                        })}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: selected }}
+                        style={[styles.toggleChip, selected && styles.toggleChipActive]}
+                      >
+                        <Text style={[styles.toggleChipText, selected && styles.toggleChipTextActive]}>
+                          {value}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
 
               {/* Story idea */}
               <Text style={styles.fieldLabel}>Your story idea</Text>
@@ -1047,7 +1056,7 @@ export default function CreateStudioScreen({
                       was wrong. */}
                   <Text style={styles.chipSectionLabel}>Try one</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.premiseChipScroll}>
-                    {GENRE_PREMISE_CHIPS[draft.primaryGenre].map((premise) => (
+                    {GENRE_STARTERS[draft.primaryGenre].map((premise) => (
                       <Pressable
                         key={premise}
                         onPress={() =>
@@ -1214,7 +1223,7 @@ export default function CreateStudioScreen({
       <SafeAreaView style={styles.flex}>
         <GeneratingOverlay
           genre={draft.primaryGenre}
-          mode={addingChapter ? (story && story.chapters.length + 1 >= MAX_CHAPTERS ? "finale" : "chapter") : "story"}
+          mode={addingChapter ? (story && story.chapters.length + 1 >= maxChapters ? "finale" : "chapter") : "story"}
         />
       </SafeAreaView>
     );
@@ -1393,7 +1402,9 @@ export default function CreateStudioScreen({
             <Text style={styles.reviewSecondaryBtnText}>Back to Editor</Text>
           </Pressable>
           <Pressable onPress={handlePublish} style={styles.reviewPublishBtn}>
-            <Text style={styles.reviewPublishBtnText}>Publish</Text>
+            <Text style={styles.reviewPublishBtnText}>
+              {draft.visibility === "public" ? "Publish" : "Save to library"}
+            </Text>
             <Check size={16} color={colors.surface} />
           </Pressable>
         </View>
@@ -1411,7 +1422,7 @@ export default function CreateStudioScreen({
         <View style={styles.publishingContainer}>
           <ActivityIndicator size="large" color={colors.accent} />
           <Text style={styles.publishingTitle}>
-            Publishing your story...
+            {draft.visibility === "public" ? "Publishing your story..." : "Saving your story..."}
           </Text>
           <Text style={styles.publishingSubtitle}>
             Generating cover image and audio
@@ -1513,7 +1524,7 @@ export default function CreateStudioScreen({
                   </Text>
                 </Pressable>
               ))}
-              {story.chapters.length < MAX_CHAPTERS && (
+              {story.chapters.length < maxChapters && (
                 <Pressable
                   onPress={() => handleContinueStory(false)}
                   disabled={addingChapter}

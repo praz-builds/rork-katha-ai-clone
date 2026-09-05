@@ -8,7 +8,10 @@
 >
 > [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) is canonical for prices,
 > credits, trials, grants, and store products. [`STORY_GENERATION_FLOW.md`](STORY_GENERATION_FLOW.md)
-> is canonical for Create vocabulary. Pricing wins on any conflict.
+> is canonical for Create vocabulary. [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) is
+> canonical for visual language: type, colour, elevation, radius, and the
+> control recipes built from them. Pricing wins on any conflict, and
+> `DESIGN_SYSTEM.md` is subordinate to this file on anything behavioural.
 >
 > Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-02.
 > *Inference* marks a decision not yet shipped.
@@ -27,10 +30,22 @@ Read and **A bit of both** start on the reader path. The R4 bridge is the only
 invitation into writing. It self-selects Writer; skipping it reaches Reader.
 There is no cold writer upsell.
 
-Cost discipline is binding: one structured model call worst case, zero best case,
-and no image generation. Starter chips use a precomputed concept library. A typed
-idea receives blueprint, lead, all opening variants, and preview prose in one
-response. Neither path spends user credits.
+Cost discipline is binding: **one structured model call per submitted idea**,
+zero best case, and no image generation. Starter chips use a precomputed concept
+library. A typed idea receives blueprint, lead, all opening variants, and preview
+prose in one response. Neither path spends user credits.
+
+The bound is per submitted idea rather than per flow, and that wording is load
+bearing. The writer's shaping call is fired when the user leaves W1, not when
+they reach the wait, so it warms while they fill in shape, email and code. The
+request needs only the idea and the shelf, both final at that point, and the
+measured call takes about 8 seconds against the current model, which is time the
+user would otherwise spend watching a loader. Two consequences follow and both
+are accepted. A user who returns to W1 and genuinely changes the idea or the
+shelf spends a second call, because the first response no longer describes the
+story they are asking for. And abandoning at W2 now costs one call where it
+previously cost zero. At the current rate a shaping call is about $0.0002, so
+the spend is bounded by how often a person reconsiders one sentence.
 
 The three-screen animated intro in
 [`expo/src/screens/KathaOnboarding.jsx`](../expo/src/screens/KathaOnboarding.jsx)
@@ -49,7 +64,7 @@ begins at **Get started**.
    and when, and a lead, then exposes useful corrections.
 4. **Use Create vocabulary.** The writer rehearsal is Idea / Shape / Review. It
    says **Your idea**, **Where and when**, and **Try one**. It never says
-   Premise, Plot, Setting, Arc, Trope, Seed, or Prompt.
+   Premise, Plot, Setting, Arc, Seed, or Prompt.
 5. **Auth saves an artifact.** A1 comes after the aha and before all purchases
    and grants. It is never permission to continue.
 6. **One source-blind choreography.** Library, model, slow model, and fallback
@@ -119,7 +134,7 @@ S1 PURPOSE: Read / Write / A bit of both
                                                              │
                                             One-time offer, once ever, 2:00
                                                              │
-                        accept → app     decline / expiry → grant 3 credits
+                        accept → app     decline / expiry → grant 10 credits
                                                              │
                                                        WELCOME → app
 ~~~
@@ -381,7 +396,7 @@ waiting. Back restores R4 for bridge entry or S1 direct Write.
 
 W2 is **Shape**. Use only **Title**, unlabeled shaped description, **Who’s in it**,
 **Where and when**, and **Chapters**. Never use Premise, Plot, Setting, Arc,
-Trope, Seed, or Prompt.
+Seed, or Prompt.
 
 | Item | Specification |
 |---|---|
@@ -654,7 +669,7 @@ SKU disable. Client timer is presentation. If unavailable/ineligible/expired,
 skip directly to decline. At zero: disable CTA, **Offer expired**, server-disable,
 then advance after `motion.base`. Dismiss permanently disables identically.
 Purchase uses `ai.katha.sub.reader.yearly.offer` then app. Decline/expiry runs
-idempotent 3-credit welcome grant, then WELCOME. No reshow.
+the idempotent 10-credit welcome grant, then WELCOME. No reshow.
 
 **Instrumentation:** `onboarding_offer_shown { eligibility, expiry_bucket }`;
 `onboarding_offer_purchase_tapped`; `onboarding_offer_purchase_result`;
@@ -741,7 +756,8 @@ W2 spinner/progress/fake work/source tell; random returned concept/counter/cost;
 W3 lock/curtain/early or generic-name fade/faded entitlements; generic A1 art;
 audio-only Reader; Writer without Reader-superset claim; unlimited generation;
 reading-paywall implication; hidden/delayed/confirmation-gated dismiss; any timer
-but OF; second offer; anonymous purchase/grant; raw text in telemetry; or a
+but OF; anonymous purchase; any anonymous grant outside the rate-limited guest
+bootstrap defined in `CREDITS_AND_PRICING.md` §9; raw text in telemetry; or a
 parallel design system.
 
 ---
@@ -808,6 +824,8 @@ error logging contract and contain identifiers/enums only.
 21. **Writer explicitly includes every Reader benefit.**
 22. **Yearly default/trial; weekly visible/no trial; monthly below; dismiss obvious.**
 23. **OF is Reader yearly $19.99 first year, then $29.99, one real 2:00 showing.**
-24. **3 credits follow only authenticated offer decline/expiry.**
+24. **10 credits follow only authenticated offer decline/expiry.** The separate
+    guest bootstrap grant stays at 3 under its own operation key; see
+    `CREDITS_AND_PRICING.md` §6.
 25. **WELCOME has no number or disclaimer.**
 26. **Onboarding costs at most one model call and no image calls.**

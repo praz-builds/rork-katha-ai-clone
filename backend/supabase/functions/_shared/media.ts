@@ -28,10 +28,11 @@ import {
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
 import { generateCharacterPortrait, generateCoverImage } from "./image.ts";
-import { logError } from "./errors.ts";
+import { logError, safeErrorMessage } from "./errors.ts";
 
 export interface StoryMediaInput {
   storyId: string;
+  operationId: string;
   userId: string;
   genre: string;
   title: string;
@@ -93,8 +94,46 @@ export async function generateStoryMedia(
   // concept card as final, and never look again.
   await setCoverStatus(supabase, input.storyId, "generating");
 
-  await generateCastPortraits(supabase, input.storyId, input.userId);
-  await generateAndStoreCover(supabase, input);
+  const castReady = await generateCastPortraits(
+    supabase,
+    input.storyId,
+    input.userId,
+  );
+  if (!castReady) await refundMissingMedia(supabase, input, "cast");
+
+  const coverReady = await generateAndStoreCover(supabase, input);
+  if (!coverReady) await refundMissingMedia(supabase, input, "cover");
+}
+
+async function refundMissingMedia(
+  supabase: SupabaseClient,
+  input: StoryMediaInput,
+  component: "cast" | "cover",
+): Promise<void> {
+  const { error } = await supabase.rpc("refund_story_media_component", {
+    p_operation_id: input.operationId,
+    p_user_id: input.userId,
+    p_component: component,
+  });
+  if (!error) return;
+
+  console.error(
+    `[media] ${component} refund failed for ${input.storyId}:`,
+    safeErrorMessage(error),
+  );
+  await logError({
+    bucket: "credits",
+    severity: "high",
+    source: "runtime",
+    errorCode: "story_media_refund_failed",
+    error,
+    context: {
+      story_id: input.storyId,
+      operation_id: input.operationId,
+      component,
+    },
+    userId: input.userId,
+  });
 }
 
 /**
@@ -163,7 +202,7 @@ async function generateCastPortraits(
   supabase: SupabaseClient,
   storyId: string,
   userId: string,
-): Promise<void> {
+): Promise<boolean> {
   const { data: cast, error } = await supabase
     .from("characters")
     .select("id, name, description, appearance")
@@ -171,9 +210,11 @@ async function generateCastPortraits(
 
   if (error) {
     console.error("[media] could not read cast:", error.message);
-    return;
+    return false;
   }
-  if (!cast?.length) return;
+  if (!cast?.length) return false;
+
+  let readyCount = 0;
 
   // Sequential, not parallel. Four concurrent image requests against one
   // provider is the reliable way to hit a rate limit and lose the whole cast
@@ -192,8 +233,12 @@ async function generateCastPortraits(
         .update({ portrait_url: portrait.url })
         .eq("id", character.id);
       if (updateError) throw updateError;
+      readyCount += 1;
     } catch (error) {
-      console.error(`[media] portrait failed for ${character.id}:`, error);
+      console.error(
+        `[media] portrait failed for ${character.id}:`,
+        safeErrorMessage(error),
+      );
       await logError({
         bucket: "generation.cover",
         severity: "low",
@@ -205,12 +250,13 @@ async function generateCastPortraits(
       });
     }
   }
+  return readyCount === cast.length;
 }
 
 async function generateAndStoreCover(
   supabase: SupabaseClient,
   input: StoryMediaInput,
-): Promise<void> {
+): Promise<boolean> {
   // The row was already claimed in `generateStoryMedia`, before the portraits.
   try {
     const cover = await generateCoverImage({
@@ -236,7 +282,7 @@ async function generateAndStoreCover(
         context: { story_id: input.storyId, genre: input.genre },
         userId: input.userId,
       });
-      return;
+      return false;
     }
 
     await setCoverStatus(supabase, input.storyId, "ready", {
@@ -246,8 +292,12 @@ async function generateAndStoreCover(
     console.log(
       `[media] cover ready for ${input.storyId} via ${cover.provider}/${cover.model}`,
     );
+    return true;
   } catch (error) {
-    console.error(`[media] cover failed for ${input.storyId}:`, error);
+    console.error(
+      `[media] cover failed for ${input.storyId}:`,
+      safeErrorMessage(error),
+    );
     // A storage or database failure leaves the row claimed as 'generating'
     // forever unless it is released here, and a story stuck on a spinner is a
     // worse result than one showing its concept card.
@@ -261,6 +311,7 @@ async function generateAndStoreCover(
       context: { story_id: input.storyId, genre: input.genre },
       userId: input.userId,
     });
+    return false;
   }
 }
 

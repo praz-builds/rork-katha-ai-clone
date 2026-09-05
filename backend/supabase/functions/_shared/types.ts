@@ -1,8 +1,8 @@
 /**
- * Shared types and constants for the v5.1 story taxonomy.
+ * Shared types and constants for the v6 story taxonomy.
  *
  * 15 primary genres (13 in UI, 2 DB-only), audience modes,
- * identity lenses, trope modules, and spice levels.
+ * identity lenses and spice levels.
  */
 
 // ---------------------------------------------------------------------------
@@ -60,6 +60,9 @@ export const UI_GENRES: ReadonlySet<string> = new Set<PrimaryGenre>([
   "comedy",
   "poetry",
 ]);
+
+/** A shaped brief can offer a primary shelf plus two editable secondary tags. */
+export const MAX_STORY_GENRES = 3;
 
 // ---------------------------------------------------------------------------
 // Audience Mode
@@ -145,35 +148,6 @@ export const SPICE_LEVELS: ReadonlySet<string> = new Set<SpiceLevel>([
 ]);
 
 // ---------------------------------------------------------------------------
-// Trope Module
-// ---------------------------------------------------------------------------
-
-export type TropeModule =
-  | "werewolf"
-  | "vampire"
-  | "enemiesToLovers"
-  | "secondChance"
-  | "forcedProximity"
-  | "smallTown"
-  | "fatedMates"
-  | "forbiddenLove"
-  | "lockedRoom"
-  | "secretIdentity";
-
-export const TROPE_MODULES: ReadonlySet<string> = new Set<TropeModule>([
-  "werewolf",
-  "vampire",
-  "enemiesToLovers",
-  "secondChance",
-  "forcedProximity",
-  "smallTown",
-  "fatedMates",
-  "forbiddenLove",
-  "lockedRoom",
-  "secretIdentity",
-]);
-
-// ---------------------------------------------------------------------------
 // Genre-aware defaults and constraints
 // ---------------------------------------------------------------------------
 
@@ -213,72 +187,6 @@ export const GENRE_ALLOWED_SPICE: Record<string, ReadonlySet<string>> = {
   poetry: new Set(["sweet"]),
 };
 
-export const GENRE_ALLOWED_TROPES: Record<string, ReadonlySet<string>> = {
-  romance: new Set([
-    "enemiesToLovers",
-    "secondChance",
-    "forcedProximity",
-    "smallTown",
-    "forbiddenLove",
-  ]),
-  romantasy: new Set([
-    "enemiesToLovers",
-    "fatedMates",
-    "forbiddenLove",
-    "forcedProximity",
-  ]),
-  darkRomance: new Set([
-    "enemiesToLovers",
-    "forcedProximity",
-    "forbiddenLove",
-    "fatedMates",
-  ]),
-  cozyFantasy: new Set(["smallTown", "secondChance", "forcedProximity"]),
-  paranormalRomance: new Set([
-    "werewolf",
-    "vampire",
-    "fatedMates",
-    "forbiddenLove",
-    "enemiesToLovers",
-  ]),
-  fantasy: new Set([
-    "fatedMates",
-    "forbiddenLove",
-    "secretIdentity",
-    "enemiesToLovers",
-  ]),
-  scifi: new Set(["secretIdentity", "forcedProximity", "forbiddenLove"]),
-  thriller: new Set(["lockedRoom", "secretIdentity", "enemiesToLovers"]),
-  mystery: new Set(["lockedRoom", "secretIdentity"]),
-  horror: new Set(["lockedRoom", "secretIdentity", "forcedProximity"]),
-  contemporary: new Set([
-    "enemiesToLovers",
-    "secondChance",
-    "forcedProximity",
-    "smallTown",
-    "forbiddenLove",
-  ]),
-  historical: new Set([
-    "forbiddenLove",
-    "secretIdentity",
-    "enemiesToLovers",
-    "forcedProximity",
-  ]),
-  adventure: new Set([
-    "enemiesToLovers",
-    "forcedProximity",
-    "secretIdentity",
-    "fatedMates",
-  ]),
-  comedy: new Set([
-    "enemiesToLovers",
-    "forcedProximity",
-    "smallTown",
-    "secretIdentity",
-  ]),
-  poetry: new Set([]),
-};
-
 // ---------------------------------------------------------------------------
 // Genre migration map (old genre names -> new primary genre)
 // ---------------------------------------------------------------------------
@@ -305,8 +213,7 @@ export const GENRE_MIGRATION_MAP: Record<string, PrimaryGenre> = {
  * The lengths a story may be planned to.
  *
  * This is a planned length, not a batch size: the user still advances one
- * chapter at a time. It drives pacing and finale derivation, replacing the
- * fixed `MAX_SERIES_CHAPTERS = 7` in story-prompts.ts.
+ * chapter at a time. It drives pacing and finale derivation.
  */
 export const PLANNED_CHAPTER_COUNTS = [3, 7, 15] as const;
 
@@ -348,6 +255,20 @@ export const MAX_MOMENTS = 5;
 /** Free-text craft fields are bounded so a prompt cannot be stuffed. */
 export const MAX_BRIEF_FIELD_LENGTH = 300;
 
+/**
+ * The story plan: one beat per planned chapter, shown on the blueprint screen
+ * before the user pays and then used as the brief for each chapter.
+ *
+ * Distinct from `moments`. A moment is unordered and the model schedules it
+ * wherever the pacing allows; a beat is positional and owns exactly one
+ * chapter. Bounded by the largest planned length so a plan can never promise a
+ * beat that no chapter reaches.
+ */
+export const MAX_PLAN_BEATS = 15;
+
+/** A single beat is a line, not a chapter. */
+export const MAX_BEAT_LENGTH = 200;
+
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
@@ -379,10 +300,11 @@ export interface StoryGenerationOutput {
 
 export interface ValidatedGenerationParams {
   primaryGenre: PrimaryGenre;
+  /** Primary first; the rest are creator-visible secondary genre tags. */
+  genres: PrimaryGenre[];
   storyMode: StoryMode;
   audienceMode: AudienceMode;
   identityLenses: IdentityLens[];
-  tropeModules: TropeModule[];
   spiceLevel: SpiceLevel;
   seed: string;
   characters: CharacterInput[];
@@ -392,6 +314,12 @@ export interface ValidatedGenerationParams {
   whereAndWhen?: string;
   /** Beats the user pinned. One entry is one schedulable beat. */
   moments: string[];
+  /**
+   * The ordered chapter plan. Beat N briefs chapter N; the remainder is
+   * forward context. Empty means no plan was made and the model paces itself,
+   * which is how every story generated before the blueprint existed behaves.
+   */
+  beats: string[];
   /** Kids mode only: what the story teaches. */
   storyValues: string[];
   /** Free text, sanitised: craft direction, never an author to imitate. */
@@ -438,8 +366,8 @@ export const EMPTY_SERIES_STATE: SeriesState = {
  * persisted and charged for. Over-length chapters distort reading-time
  * estimates, narration cost, and the reader UI.
  *
- * A series chapter uses the chapter range whatever the audience; `kids` only
- * narrows the standalone range.
+ * The selected chapter length controls every generated chapter. Audience mode
+ * changes safety and voice, not the amount of prose a creator selected.
  */
 export interface WordBand {
   min: number;
@@ -449,10 +377,18 @@ export interface WordBand {
 export function wordBandFor(
   storyMode: StoryMode,
   audienceMode: AudienceMode,
+  chapterLength: ChapterLength = DEFAULT_CHAPTER_LENGTH,
 ): WordBand {
-  if (storyMode === "series") return { min: 600, max: 900 };
-  if (audienceMode === "kids") return { min: 500, max: 1200 };
-  return { min: 500, max: 1500 };
+  void storyMode;
+  void audienceMode;
+  switch (chapterLength) {
+    case "short":
+      return { min: 600, max: 900 };
+    case "long":
+      return { min: 2000, max: 2600 };
+    default:
+      return { min: 1200, max: 1600 };
+  }
 }
 
 /**

@@ -16,11 +16,11 @@ import React, { useState } from 'react';
 import KathaOnboarding from './KathaOnboarding';
 import KathaOnboardingFlowV2 from './KathaOnboardingFlowV2';
 
-export default function KathaOnboardingComplete({ onDone = () => {}, onSignIn = () => {} }) {
+export default function KathaOnboardingComplete({ onDone = () => {}, onSignIn = () => {}, onWriterPath = null }) {
   const [phase, setPhase] = useState('intro');
 
   if (phase === 'intro') {
     return <KathaOnboarding onFinish={() => setPhase('flow')} onSignIn={onSignIn} />;
   }
-  return <KathaOnboardingFlowV2 onDone={onDone} />;
+  return <KathaOnboardingFlowV2 onDone={onDone} onWriterPath={onWriterPath} />;
 }

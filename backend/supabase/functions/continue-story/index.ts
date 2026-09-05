@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import { logError } from "../_shared/errors.ts";
+import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
@@ -12,8 +12,9 @@ import {
 } from "../_shared/operations.ts";
 import {
   buildContinuationSystemPrompt,
+  buildUserPrompt,
   formatSeriesStateBlock,
-  MAX_SERIES_CHAPTERS,
+  userField,
 } from "../_shared/story-prompts.ts";
 import {
   isEmptySeriesState,
@@ -24,9 +25,11 @@ import {
 } from "../_shared/story_text.ts";
 import {
   type AudienceMode,
+  type ChapterLength,
+  type CharacterInput,
   type IdentityLens,
+  type PlannedChapterCount,
   type SpiceLevel,
-  type TropeModule,
   wordBandFor,
 } from "../_shared/types.ts";
 
@@ -130,13 +133,40 @@ serve(async (req) => {
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, audience_mode, identity_lenses, trope_modules, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when",
+        "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count",
       )
       .eq("id", story_id)
       .single();
 
     if (storyError || !story || story.author_id !== user.id) {
       return respond({ error: "Story not found" }, 404);
+    }
+
+    // Character sheets are part of the durable brief. Re-load them for every
+    // continuation so later chapters retain the cast's voice, motivations, and
+    // physical detail instead of relying only on recent prose excerpts.
+    const { data: castRows, error: castError } = await serviceClient
+      .from("characters")
+      .select("name, description, background, appearance, is_hero")
+      .eq("story_id", story_id)
+      .order("name", { ascending: true });
+    if (castError) throw castError;
+    const characters: CharacterInput[] = (castRows ?? []).map((character) => ({
+      name: character.name,
+      description: character.description ?? undefined,
+      background: character.background ?? undefined,
+      appearance: character.appearance ?? undefined,
+      isHero: character.is_hero === true,
+    }));
+
+    const nextInstruction = typeof body.next_instruction === "string"
+      ? body.next_instruction.trim()
+      : "";
+    if (nextInstruction.length > 300) {
+      return respond(
+        { error: "next_instruction must be 300 characters or fewer" },
+        400,
+      );
     }
 
     // Keep prompt context bounded while deriving the next chapter from latest.
@@ -155,10 +185,14 @@ serve(async (req) => {
 
     const nextChapterNum = chapters[0].chapter_number + 1;
 
-    if (nextChapterNum > MAX_SERIES_CHAPTERS) {
+    const plannedChapterCount =
+      ([3, 7, 15].includes(story.planned_chapter_count)
+        ? story.planned_chapter_count
+        : 3) as PlannedChapterCount;
+    if (nextChapterNum > plannedChapterCount) {
       return respond({
         error:
-          `Series limit reached. Stories can have at most ${MAX_SERIES_CHAPTERS} chapters.`,
+          `Series limit reached. This story is planned for ${plannedChapterCount} chapters.`,
       }, 400);
     }
 
@@ -204,6 +238,11 @@ serve(async (req) => {
       (Array.isArray(story.genre)
         ? story.genre[0] ?? "contemporary"
         : (story.genre ?? "contemporary"));
+    const genres = Array.isArray(story.genre)
+      ? story.genre.filter((genre): genre is string =>
+        typeof genre === "string"
+      )
+      : [primaryGenre];
     const storyLanguage = typeof story.language === "string"
       ? story.language
       : undefined;
@@ -211,14 +250,11 @@ serve(async (req) => {
     const identityLenses = (Array.isArray(story.identity_lenses)
       ? story.identity_lenses
       : []) as IdentityLens[];
-    const tropeModules = (Array.isArray(story.trope_modules)
-      ? story.trope_modules
-      : []) as TropeModule[];
     const rawSpice = story.spice_level ?? "sweet";
     const spiceLevel =
       (rawSpice === "explicit" ? "steamy" : rawSpice) as SpiceLevel;
     const isFinale = body.is_finale === true ||
-      nextChapterNum >= MAX_SERIES_CHAPTERS;
+      nextChapterNum >= plannedChapterCount;
     const chapterMode = isFinale ? "finale" : "chapter";
     const chapterRole = isFinale ? "finale" : "mid_series";
     const seriesState = parseSeriesState(story.series_state);
@@ -239,7 +275,10 @@ serve(async (req) => {
           .eq("chapter_number", 1)
           .maybeSingle();
       if (firstChapterError) {
-        console.error("chapter 1 context fetch failed", firstChapterError);
+        console.error(
+          "chapter 1 context fetch failed",
+          safeErrorMessage(firstChapterError),
+        );
       } else if (firstChapter) {
         earliestContext = `\n\nChapter 1 callback context:\n${
           summarizeChapterForPrompt(firstChapter)
@@ -251,11 +290,12 @@ serve(async (req) => {
       primaryGenre,
       audienceMode,
       identityLenses,
-      tropeModules,
       spiceLevel,
       language: storyLanguage,
       mode: chapterMode,
       seriesState,
+      chapterLength: (story.chapter_length ?? "standard") as ChapterLength,
+      plannedChapterCount,
     });
     const finaleNote = isFinale
       ? " This is the FINAL chapter. Bring the story to a satisfying close."
@@ -263,13 +303,44 @@ serve(async (req) => {
     // The world layer travels with every chapter, not just the first. Without
     // it a chapter-7 continuation has only the prose window above to infer the
     // setting from, and a series drifts out of its own world by degrees.
-    const settingNote = story.where_and_when
-      ? `\nSetting - world and era: ${story.where_and_when}`
-      : "";
+    const storyValues = Array.isArray(story.story_values)
+      ? story.story_values
+      : [];
+    const moments = Array.isArray(story.moments) ? story.moments : [];
+    // The plan the writer approved on the blueprint screen. A story created
+    // before the plan existed has none, and pacing falls back to the model.
+    const beats = Array.isArray(story.beats) ? story.beats : [];
+    const writingStyle = typeof story.writing_style === "string"
+      ? story.writing_style
+      : undefined;
+    const avoid = typeof story.avoid === "string" ? story.avoid : undefined;
+    const chapterLength = (story.chapter_length ?? "standard") as ChapterLength;
+    const briefPrompt = buildUserPrompt({
+      primaryGenre,
+      genres,
+      audienceMode,
+      spiceLevel,
+      storyMode: "series",
+      chapterRole,
+      seed: story.topic ?? "",
+      whereAndWhen: story.where_and_when ?? undefined,
+      moments,
+      beats,
+      chapterNumber: nextChapterNum,
+      storyValues,
+      writingStyle,
+      avoid,
+      continuationInstruction: nextInstruction || undefined,
+      chapterLength,
+      plannedChapterCount,
+      characters,
+    });
     const userPrompt =
-      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\nTitle: ${story.title}\nGenre: ${primaryGenre}${settingNote}\n${
-        formatSeriesStateBlock(seriesState)
-      }\n\nPrevious chapters:\n${previousText}${earliestContext}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
+      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\n${
+        userField("story-title", story.title)
+      }\n${briefPrompt}\n${formatSeriesStateBlock(seriesState)}\n\n${
+        userField("previous-chapters", `${previousText}${earliestContext}`)
+      }\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
 
     try {
       // A continuation is always a series chapter, so it uses the chapter band
@@ -277,7 +348,7 @@ serve(async (req) => {
       const result = await generateStoryText(
         systemPrompt,
         userPrompt,
-        wordBandFor("series", audienceMode),
+        wordBandFor("series", audienceMode, chapterLength),
       );
       const output = parseStructuredOutput(
         result.text,
@@ -350,7 +421,10 @@ serve(async (req) => {
 
       return respond({ chapter, model: result.model });
     } catch (error) {
-      console.error("continue-story post-deduction error:", error);
+      console.error(
+        "continue-story post-deduction error:",
+        safeErrorMessage(error),
+      );
       const { data: refund, error: refundError } = await serviceClient.rpc(
         "refund_generation_operation",
         {
@@ -397,7 +471,10 @@ serve(async (req) => {
       await Promise.allSettled(telemetry);
 
       if (refundError) {
-        console.error("continue-story refund pending:", refundError);
+        console.error(
+          "continue-story refund pending:",
+          safeErrorMessage(refundError),
+        );
         return respond({
           error: "Generation failed. Refund is pending retry.",
           operation_id: operation.id,
@@ -415,7 +492,7 @@ serve(async (req) => {
       );
     }
   } catch (error) {
-    console.error("continue-story error:", error);
+    console.error("continue-story error:", safeErrorMessage(error));
     await logError({
       bucket: "generation.story",
       severity: "high",

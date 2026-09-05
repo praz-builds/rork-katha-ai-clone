@@ -5,13 +5,18 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  postcss: 8.5.23
-  uuid: 11.1.1
+  '@expo/plist>@xmldom/xmldom': 0.8.15
+  plist>@xmldom/xmldom: 0.9.12
+  '@expo/metro-config>postcss': 8.5.23
+  xcode>uuid: 11.1.1
 
 importers:
 
   .:
     dependencies:
+      '@babel/runtime':
+        specifier: ^7.29.7
+        version: 7.29.7
       '@expo/vector-icons':
         specifier: ^15.0.3
         version: 15.1.1(expo-font@14.0.12(expo@54.0.37)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)
@@ -60,6 +65,9 @@ importers:
       expo-notifications:
         specifier: ^0.32.17
         version: 0.32.17(expo@54.0.37)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)(typescript@5.9.3)
+      expo-secure-store:
+        specifier: ~15.0.8
+        version: 15.0.8(expo@54.0.37)
       expo-splash-screen:
         specifier: ^31.0.13
         version: 31.0.13(expo@54.0.37)(supports-color@8.1.1)(typescript@5.9.3)
@@ -130,12 +138,15 @@ importers:
       '@types/react':
         specifier: ~19.1.10
         version: 19.1.17
+      babel-preset-expo:
+        specifier: ~54.0.12
+        version: 54.0.12(@babel/core@7.29.7(supports-color@8.1.1))(@babel/runtime@7.29.7)(expo@54.0.37)(react-refresh@0.14.2)(supports-color@8.1.1)
       eslint:
         specifier: ^9.39.5
         version: 9.39.5(supports-color@8.1.1)
       eslint-config-expo:
-        specifier: ^57.0.1
-        version: 57.0.2(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)
+        specifier: ^10.0.0
+        version: 10.0.0(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)
       expo-doctor:
         specifier: ^1.20.2
         version: 1.20.2
@@ -143,8 +154,8 @@ importers:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@26.2.0)(supports-color@8.1.1)
       jest-expo:
-        specifier: ^57.0.4
-        version: 57.0.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1))(expo@54.0.37)(jest@29.7.0(@types/node@26.2.0)(supports-color@8.1.1))(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)
+        specifier: ^54.0.18
+        version: 54.0.18(@babel/core@7.29.7(supports-color@8.1.1))(expo@54.0.37)(jest@29.7.0(@types/node@26.2.0)(supports-color@8.1.1))(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -1413,19 +1424,9 @@ packages:
     resolution: {integrity: sha512-hORRlNBj+ReNMLo9jme3yQ6JQf4GZpVEBLxmTXGGlIL78MAezDZr5/uq9dwElSbcGmLEgeiax6e174Fie6qPLg==}
     engines: {node: '>= 20.19.4'}
 
-  '@react-native/jest-preset@0.86.3':
-    resolution: {integrity: sha512-oMmBwXUpTgJvGlcXQQPuiQLykoM8jsWYp6RwdJ2NWyIWzJcGp1rmSr3XV7istoIcUt0wdOVLtQs0A0nDm9ND+A==}
-    engines: {node: '>= 20.19.4'}
-    peerDependencies:
-      react: ^19.2.3
-
   '@react-native/js-polyfills@0.81.5':
     resolution: {integrity: sha512-fB7M1CMOCIUudTRuj7kzxIBTVw2KXnsgbQ6+4cbqSxo8NmRRhA0Ul4ZUzZj3rFd3VznTL4Brmocv1oiN0bWZ8w==}
     engines: {node: '>= 20.19.4'}
-
-  '@react-native/js-polyfills@0.86.3':
-    resolution: {integrity: sha512-eYIJ0es967+tePBFQDnl/gidVFxLns3fnbiK6rxscQrGodvuUO6hwxpQnfNynJ8MjbbndImXihXjcnJdc7SzJg==}
-    engines: {node: ^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0}
 
   '@react-native/js-polyfills@0.87.0':
     resolution: {integrity: sha512-iwX3S/6XnR/TkOIk6Cz+FjeToDM/a4M1Cz/o1tfDakULjhKMI/UBtta1DsJgeg5c4WIJjkD4c8XlAJEb8pWOtg==}
@@ -1909,15 +1910,13 @@ packages:
     peerDependencies:
       '@urql/core': ^5.0.0
 
-  '@xmldom/xmldom@0.8.14':
-    resolution: {integrity: sha512-T4EDRUBVZYRldYApjEJiU0e1stYWaRAX7CuSnKzrpwdZKo53zGV8/pqfzV6FfwNl9YThD2OumQYvqtvjvgG7aQ==}
+  '@xmldom/xmldom@0.8.15':
+    resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
     engines: {node: '>=10.0.0'}
-    deprecated: this version has critical issues, please update to the latest version
 
-  '@xmldom/xmldom@0.9.11':
-    resolution: {integrity: sha512-tW8bcK3hsG0/uqSnNz6TK4BkcuZSezoU7DlnYssILmZDktPnSHHuDJJFM0AJv+13gz2r0iGdrj6qqKeUnxXEDg==}
+  '@xmldom/xmldom@0.9.12':
+    resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
     engines: {node: '>=14.6'}
-    deprecated: this version has critical issues, please update to the latest version
 
   abab@2.0.6:
     resolution: {integrity: sha512-j2afSsaIENvHZN2B8GOpF566vZ5WVk5opAiMTvWgaQT8DkbOqsTfvNAvHoRGU2zzP8cPoqys+xHTRDWW8L+/BA==}
@@ -2672,8 +2671,8 @@ packages:
     engines: {node: '>=6.0'}
     hasBin: true
 
-  eslint-config-expo@57.0.2:
-    resolution: {integrity: sha512-dOWkx+MWclLVnYpPPBzas4sfnPaAjk+fe/dbvJSzbWtHUR4fGGaTT/lTcOpxqhwRIlTKKBUYGKude0tcTBsZHg==}
+  eslint-config-expo@10.0.0:
+    resolution: {integrity: sha512-/XC/DvniUWTzU7Ypb/cLDhDD4DXqEio4lug1ObD/oQ9Hcx3OVOR8Mkp4u6U4iGoZSJyIQmIk3WVHe/P1NYUXKw==}
     peerDependencies:
       eslint: '>=8.10'
 
@@ -2730,11 +2729,11 @@ packages:
       '@typescript-eslint/parser':
         optional: true
 
-  eslint-plugin-react-hooks@7.1.1:
-    resolution: {integrity: sha512-f2I7Gw6JbvCexzIInuSbZpfdQ44D7iqdWX01FKLvrPgqxoE7oMj8clOfto8U6vYiz4yd5oKu39rRSVOe1zRu0g==}
-    engines: {node: '>=18'}
+  eslint-plugin-react-hooks@5.2.0:
+    resolution: {integrity: sha512-+f15FfK64YQwZdJNELETdn5ibXEUQmW1DZL6KXhNnc2heoy/sg9VJJeT7n8TlMWouzWqSWavFkIhHyIbIAEapg==}
+    engines: {node: '>=10'}
     peerDependencies:
-      eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0
+      eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0
 
   eslint-plugin-react@7.37.5:
     resolution: {integrity: sha512-Qteup0SqU15kdocexFNAJMvCJEfa2xUKNV4CC1xsVMrIIqEy3SQ/rqyxCWNzfrd3/ldy6HMlD2e0JDVpDg2qIA==}
@@ -2942,6 +2941,11 @@ packages:
       expo: '*'
       react: '*'
       react-native: '*'
+
+  expo-secure-store@15.0.8:
+    resolution: {integrity: sha512-lHnzvRajBu4u+P99+0GEMijQMFCOYpWRO4dWsXSuMt77+THPIGjzNvVKrGSl6mMrLsfVaKL8BpwYZLGlgA+zAw==}
+    peerDependencies:
+      expo: '*'
 
   expo-server@1.0.7:
     resolution: {integrity: sha512-mcmyML3oXcqFUXUxtdtCL1O00ztNI2v76d+MdniXRUgHNxIcHZ05zo+DqBaOOT6LQnPk4vA4YHqQl7iGUfRb3g==}
@@ -3213,9 +3217,6 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hermes-estree@0.25.1:
-    resolution: {integrity: sha512-0wUoCcLp+5Ev5pDW2OriHC2MJCbwLwuRx+gAqMTOkGKJJiBCLjtrvy4PWUGn6MIVefecRpzoOZ/UV6iGdOr+Cw==}
-
   hermes-estree@0.29.1:
     resolution: {integrity: sha512-jl+x31n4/w+wEqm0I2r4CMimukLbLQEYpisys5oCre611CI5fc9TxhqkBBCJ1edDG4Kza0f7CgNz8xVMLZQOmQ==}
 
@@ -3224,9 +3225,6 @@ packages:
 
   hermes-estree@0.36.1:
     resolution: {integrity: sha512-guv1nQ6IJ7S83NRFPWc3SA7IBZrdNC9kapwOq6uXvF4wP+sDCgjzQbKPCoyYmoyZRzztF/n/c36l/rccCZSiCw==}
-
-  hermes-parser@0.25.1:
-    resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
   hermes-parser@0.29.1:
     resolution: {integrity: sha512-xBHWmUtRC5e/UL0tI7Ivt2riA/YBq9+SiYFU7C1oBa/j2jYGlIF9043oak1F47ihuDIxQ5nbsKueYJDRY02UgA==}
@@ -3598,17 +3596,14 @@ packages:
     resolution: {integrity: sha512-DOSwCRqXirTOyheM+4d5YZOrWcdu0LNZ87ewUoywbcb2XR4wKgqiG8vNeYwhjFMbEkfju7wx2GYH0P2gevGvFw==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
 
-  jest-expo@57.0.5:
-    resolution: {integrity: sha512-U08fwjaDBwnnbKnZcOA0WQbHfKqOWTCGku+IdCaekrLZmfbbZr3P1WqEsXHo6ntidQ3DmW+TT6G1aOp+ChYfKA==}
+  jest-expo@54.0.18:
+    resolution: {integrity: sha512-couPPatkifK3v0WZW7zu1HZW5HyxY+1cY69LKHPawwbZTuIvf5wk4SYHtoUrGa/nAM2jW/YiXDLWfociEHJPvw==}
     hasBin: true
     peerDependencies:
-      '@react-native/jest-preset': ^0.86.3
       expo: '*'
       react-native: '*'
       react-server-dom-webpack: ~19.0.4 || ~19.1.5 || ~19.2.4
     peerDependenciesMeta:
-      expo:
-        optional: true
       react-server-dom-webpack:
         optional: true
 
@@ -4668,10 +4663,10 @@ packages:
     resolution: {integrity: sha512-jCvmsr+1IUSMUyzOkRcvnVbX3ZYC6g9TDrDbFuFmRDq7PD4yaGbLKNQL6k2jnArV8hjYxh7hVhAZB6s9HDGpZA==}
     engines: {node: '>=0.10.0'}
 
-  react-test-renderer@19.2.3:
-    resolution: {integrity: sha512-TMR1LnSFiWZMJkCgNf5ATSvAheTT2NvKIwiVwdBPHxjBI7n/JbWd4gaZ16DVd9foAXdvDz+sB5yxZTwMjPRxpw==}
+  react-test-renderer@19.1.0:
+    resolution: {integrity: sha512-jXkSl3CpvPYEF+p/eGDLB4sPoDX8pKkYvRl9+rR8HxLY0X04vW7hCm1/0zHoUSjPZ3bDa+wXWNTDVIw/R8aDVw==}
     peerDependencies:
-      react: ^19.2.3
+      react: ^19.1.0
 
   react@19.1.0:
     resolution: {integrity: sha512-FS+XFBNvn3GTAWq26joslQgWNoFu08F4kl0J4CgdNKADkdSGXQyTCnKteIAJy96Br6YbpEU1LSzV5dYtjMkMDg==}
@@ -5265,6 +5260,11 @@ packages:
     resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
     hasBin: true
 
+  uuid@3.4.0:
+    resolution: {integrity: sha512-HjSDRw6gZE5JMggctHBcjVak08+KEVhSIiDzFnT9S9aegmp85S/bReBVTb4QTFaRNptJ9kuYaNhnbNEOkbKb/A==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+    hasBin: true
+
   v8-to-istanbul@9.3.0:
     resolution: {integrity: sha512-kiGUalWN+rgBJ/1OHZsBtU4rXZOfj/7rKQxULKlIzwzQSvMJUUNgPwJEEh7gU6xEVxC0ahoOBvN2YI8GH6FNgA==}
     engines: {node: '>=10.12.0'}
@@ -5484,15 +5484,6 @@ packages:
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
-
-  zod-validation-error@4.0.2:
-    resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
-
-  zod@4.5.4:
-    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
 snapshots:
 
@@ -6472,7 +6463,7 @@ snapshots:
     dependencies:
       '@expo/ngrok-bin': 2.3.42
       got: 11.8.6
-      uuid: 11.1.1
+      uuid: 3.4.0
       yaml: 1.10.3
 
   '@expo/osascript@2.7.1':
@@ -6490,7 +6481,7 @@ snapshots:
 
   '@expo/plist@0.4.9':
     dependencies:
-      '@xmldom/xmldom': 0.8.14
+      '@xmldom/xmldom': 0.8.15
       base64-js: 1.5.1
       xmlbuilder: 15.1.1
 
@@ -7333,21 +7324,7 @@ snapshots:
 
   '@react-native/gradle-plugin@0.81.5': {}
 
-  '@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)':
-    dependencies:
-      '@jest/create-cache-key-function': 29.7.0
-      '@react-native/js-polyfills': 0.86.3
-      babel-jest: 29.7.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
-      jest-environment-node: 29.7.0
-      react: 19.1.0
-      regenerator-runtime: 0.13.11
-    transitivePeerDependencies:
-      - '@babel/core'
-      - supports-color
-
   '@react-native/js-polyfills@0.81.5': {}
-
-  '@react-native/js-polyfills@0.86.3': {}
 
   '@react-native/js-polyfills@0.87.0':
     optional: true
@@ -7836,9 +7813,9 @@ snapshots:
       '@urql/core': 5.2.0
       wonka: 6.3.6
 
-  '@xmldom/xmldom@0.8.14': {}
+  '@xmldom/xmldom@0.8.15': {}
 
-  '@xmldom/xmldom@0.9.11': {}
+  '@xmldom/xmldom@0.9.12': {}
 
   abab@2.0.6: {}
 
@@ -8742,7 +8719,7 @@ snapshots:
     optionalDependencies:
       source-map: 0.6.1
 
-  eslint-config-expo@57.0.2(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3):
+  eslint-config-expo@10.0.0(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3):
     dependencies:
       '@typescript-eslint/eslint-plugin': 8.68.0(@typescript-eslint/parser@8.68.0(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3))(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)
       '@typescript-eslint/parser': 8.68.0(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)
@@ -8751,7 +8728,7 @@ snapshots:
       eslint-plugin-expo: 1.1.0(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)
       eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.68.0(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)
       eslint-plugin-react: 7.37.5(eslint@9.39.5(supports-color@8.1.1))
-      eslint-plugin-react-hooks: 7.1.1(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1)
+      eslint-plugin-react-hooks: 5.2.0(eslint@9.39.5(supports-color@8.1.1))
       globals: 16.5.0
     transitivePeerDependencies:
       - eslint-import-resolver-webpack
@@ -8831,16 +8808,9 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  eslint-plugin-react-hooks@7.1.1(eslint@9.39.5(supports-color@8.1.1))(supports-color@8.1.1):
+  eslint-plugin-react-hooks@5.2.0(eslint@9.39.5(supports-color@8.1.1)):
     dependencies:
-      '@babel/core': 7.29.7(supports-color@8.1.1)
-      '@babel/parser': 7.29.8
       eslint: 9.39.5(supports-color@8.1.1)
-      hermes-parser: 0.25.1
-      zod: 4.5.4
-      zod-validation-error: 4.0.2(zod@4.5.4)
-    transitivePeerDependencies:
-      - supports-color
 
   eslint-plugin-react@7.37.5(eslint@9.39.5(supports-color@8.1.1)):
     dependencies:
@@ -9107,6 +9077,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
       - typescript
+
+  expo-secure-store@15.0.8(expo@54.0.37):
+    dependencies:
+      expo: 54.0.37(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@56.0.6)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)(typescript@5.9.3)
 
   expo-server@1.0.7: {}
 
@@ -9454,18 +9428,12 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hermes-estree@0.25.1: {}
-
   hermes-estree@0.29.1: {}
 
   hermes-estree@0.32.0: {}
 
   hermes-estree@0.36.1:
     optional: true
-
-  hermes-parser@0.25.1:
-    dependencies:
-      hermes-estree: 0.25.1
 
   hermes-parser@0.29.1:
     dependencies:
@@ -9927,12 +9895,14 @@ snapshots:
       jest-mock: 29.7.0
       jest-util: 29.7.0
 
-  jest-expo@57.0.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1))(expo@54.0.37)(jest@29.7.0(@types/node@26.2.0)(supports-color@8.1.1))(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1):
+  jest-expo@54.0.18(@babel/core@7.29.7(supports-color@8.1.1))(expo@54.0.37)(jest@29.7.0(@types/node@26.2.0)(supports-color@8.1.1))(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1):
     dependencies:
+      '@expo/config': 12.0.14(supports-color@8.1.1)
+      '@expo/json-file': 10.2.0
       '@jest/create-cache-key-function': 29.7.0
       '@jest/globals': 29.7.0(supports-color@8.1.1)
-      '@react-native/jest-preset': 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)
       babel-jest: 29.7.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
+      expo: 54.0.37(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@56.0.6)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)(typescript@5.9.3)
       jest-environment-jsdom: 29.7.0(supports-color@8.1.1)
       jest-snapshot: 29.7.0(supports-color@8.1.1)
       jest-watch-select-projects: 2.0.0
@@ -9940,11 +9910,9 @@ snapshots:
       json5: 2.2.3
       lodash: 4.18.1
       react-native: 0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1)
-      react-test-renderer: 19.2.3(react@19.1.0)
+      react-test-renderer: 19.1.0(react@19.1.0)
       server-only: 0.0.1
       stacktrace-js: 2.0.2
-    optionalDependencies:
-      expo: 54.0.37(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@56.0.6)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.87.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)(supports-color@8.1.1)(typescript@5.9.3)
     transitivePeerDependencies:
       - '@babel/core'
       - bufferutil
@@ -11054,7 +11022,7 @@ snapshots:
 
   plist@3.1.1:
     dependencies:
-      '@xmldom/xmldom': 0.9.11
+      '@xmldom/xmldom': 0.9.12
       base64-js: 1.5.1
       xmlbuilder: 15.1.1
 
@@ -11352,11 +11320,11 @@ snapshots:
 
   react-refresh@0.14.2: {}
 
-  react-test-renderer@19.2.3(react@19.1.0):
+  react-test-renderer@19.1.0(react@19.1.0):
     dependencies:
       react: 19.1.0
       react-is: 19.2.8
-      scheduler: 0.27.0
+      scheduler: 0.26.0
 
   react@19.1.0: {}
 
@@ -12023,6 +11991,8 @@ snapshots:
 
   uuid@11.1.1: {}
 
+  uuid@3.4.0: {}
+
   v8-to-istanbul@9.3.0:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
@@ -12229,9 +12199,3 @@ snapshots:
       yargs-parser: 21.1.1
 
   yocto-queue@0.1.0: {}
-
-  zod-validation-error@4.0.2(zod@4.5.4):
-    dependencies:
-      zod: 4.5.4
-
-  zod@4.5.4: {}

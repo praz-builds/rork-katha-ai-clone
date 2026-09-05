@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import { logError } from "../_shared/errors.ts";
+import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
@@ -70,9 +70,9 @@ serve(async (req) => {
     }
     const {
       primaryGenre,
+      genres,
       audienceMode,
       identityLenses,
-      tropeModules,
       spiceLevel,
       storyMode,
       seed,
@@ -81,6 +81,7 @@ serve(async (req) => {
       language,
       whereAndWhen,
       moments,
+      beats,
       storyValues,
       writingStyle,
       avoid,
@@ -112,12 +113,13 @@ serve(async (req) => {
         p_request_id: requestId,
         p_title: "Generating...",
         p_primary_genre: primaryGenre,
+        p_genres: genres,
         p_audience_mode: audienceMode,
         p_identity_lenses: identityLenses,
-        p_trope_modules: tropeModules,
         p_spice_level: spiceLevel,
         p_story_mode: storyMode,
         p_topic: seed,
+        p_language: language ?? "English",
         p_where_and_when: whereAndWhen ?? null,
         p_chapter_length: chapterLength,
         p_planned_chapter_count: plannedChapterCount,
@@ -126,6 +128,7 @@ serve(async (req) => {
         p_writing_style: writingStyle ?? null,
         p_avoid: avoid ?? null,
         p_illustrate_chapters: illustrateChapters,
+        p_beats: beats,
       },
     );
     mark("begin");
@@ -235,16 +238,17 @@ serve(async (req) => {
         primaryGenre,
         audienceMode,
         identityLenses,
-        tropeModules,
         spiceLevel,
         storyMode,
         chapterRole,
         language,
+        chapterLength,
+        plannedChapterCount,
       });
       const userPrompt = buildUserPrompt({
         primaryGenre,
+        genres,
         audienceMode,
-        tropeModules,
         spiceLevel,
         storyMode,
         chapterRole,
@@ -253,12 +257,21 @@ serve(async (req) => {
         language,
         whereAndWhen,
         moments,
+        beats,
+        // Chapter one always opens the plan, so the beat and the chapter agree
+        // without the caller having to say which is which.
+        chapterNumber: 1,
+        storyValues,
+        writingStyle,
+        avoid,
+        chapterLength,
+        plannedChapterCount,
       });
       mark("prompt_built");
       const result = await generateStoryText(
         systemPrompt,
         userPrompt,
-        wordBandFor(storyMode, audienceMode),
+        wordBandFor(storyMode, audienceMode, chapterLength),
       );
       mark("llm");
 
@@ -339,6 +352,7 @@ serve(async (req) => {
         const media = await import("../_shared/media.ts");
         media.runInBackground(media.generateStoryMedia({
           storyId: story.id,
+          operationId: operation.id,
           userId: user.id,
           genre: primaryGenre,
           title: output.title,
@@ -352,12 +366,42 @@ serve(async (req) => {
         // client that re-fetched would wait for work that will never start.
         // 'failed' is the truth, and it renders the concept card as final,
         // which decision 39 already treats as a legitimate published look.
-        console.error("generate-story media scheduling failed:", mediaError);
+        console.error(
+          "generate-story media scheduling failed:",
+          safeErrorMessage(mediaError),
+        );
         coverStatus = "failed";
         await serviceClient
           .from("stories")
           .update({ cover_status: "failed" })
           .eq("id", story.id);
+        await Promise.all(
+          (["cast", "cover"] as const).map(async (component) => {
+            const { error: refundError } = await serviceClient.rpc(
+              "refund_story_media_component",
+              {
+                p_operation_id: operation.id,
+                p_user_id: user.id,
+                p_component: component,
+              },
+            );
+            if (refundError) {
+              await logError({
+                bucket: "credits",
+                severity: "high",
+                source: "runtime",
+                errorCode: "story_media_refund_failed",
+                error: refundError,
+                context: {
+                  story_id: story.id,
+                  operation_id: operation.id,
+                  component,
+                },
+                userId: user.id,
+              });
+            }
+          }),
+        );
       }
 
       return respond({
@@ -387,7 +431,10 @@ serve(async (req) => {
         timings: { ...marks, total: Date.now() - t0 },
       });
     } catch (error) {
-      console.error("generate-story post-deduction error:", error);
+      console.error(
+        "generate-story post-deduction error:",
+        safeErrorMessage(error),
+      );
       const { data: refund, error: refundError } = await serviceClient.rpc(
         "refund_generation_operation",
         {
@@ -432,7 +479,10 @@ serve(async (req) => {
       await Promise.allSettled(telemetry);
 
       if (refundError) {
-        console.error("generate-story refund pending:", refundError);
+        console.error(
+          "generate-story refund pending:",
+          safeErrorMessage(refundError),
+        );
         return respond({
           error: "Story generation failed. Refund is pending retry.",
           operation_id: operation.id,
@@ -450,7 +500,7 @@ serve(async (req) => {
       );
     }
   } catch (error) {
-    console.error("generate-story error:", error);
+    console.error("generate-story error:", safeErrorMessage(error));
     await logError({
       bucket: "generation.story",
       severity: "high",

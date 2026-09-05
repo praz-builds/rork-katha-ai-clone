@@ -60,8 +60,8 @@ Deno.test("generation operations debit once and compensate failures once", async
       [userId],
     );
     await db.query(
-      `insert into stories(id, author_id, title, genre, length_type, status)
-       values ($1, $2, 'Generating...', array['fantasy'], 'short', 'generating')`,
+      `insert into stories(id, author_id, title, genre, primary_genre, length_type, status)
+       values ($1, $2, 'Generating...', array['fantasy'], 'fantasy', 'short', 'generating')`,
       [storyId, userId],
     );
 
@@ -151,10 +151,10 @@ Deno.test("feedback request replay cannot duplicate a daily reward", async () =>
       readerId,
     ]);
     await db.query(
-      `insert into stories(id, author_id, title, genre, is_public, status)
+      `insert into stories(id, author_id, title, genre, primary_genre, is_public, status)
        values
-         ($1, $3, 'Published story', array['thriller'], true, 'complete'),
-         ($2, $3, 'Other story', array['fantasy'], true, 'complete')`,
+         ($1, $3, 'Published story', array['thriller'], 'thriller', true, 'complete'),
+         ($2, $3, 'Other story', array['fantasy'], 'fantasy', true, 'complete')`,
       [storyId, otherStoryId, authorId],
     );
 
@@ -258,8 +258,8 @@ Deno.test("a completed operation wins a late refund race", async () => {
       [userId],
     );
     await db.query(
-      `insert into stories(id, author_id, title, genre, length_type, status)
-       values ($1, $2, 'Generating...', array['fantasy'], 'short', 'generating')`,
+      `insert into stories(id, author_id, title, genre, primary_genre, length_type, status)
+       values ($1, $2, 'Generating...', array['fantasy'], 'fantasy', 'short', 'generating')`,
       [storyId, userId],
     );
     const reservation = await db.query<{
@@ -369,8 +369,8 @@ Deno.test("application errors expose stable SQLSTATE contracts", async () => {
     );
 
     await db.query(
-      `insert into stories(id, author_id, title, genre, is_public, status)
-       values ($1, $2, 'Published', array['mystery'], true, 'complete')`,
+      `insert into stories(id, author_id, title, genre, primary_genre, is_public, status)
+       values ($1, $2, 'Published', array['mystery'], 'mystery', true, 'complete')`,
       [storyId, authorId],
     );
     await assertSqlState(
@@ -384,8 +384,8 @@ Deno.test("application errors expose stable SQLSTATE contracts", async () => {
     );
 
     await db.query(
-      `insert into stories(id, author_id, title, genre, is_public, status)
-       values ($1, null, 'Community story', array['drama'], true, 'complete')`,
+      `insert into stories(id, author_id, title, genre, primary_genre, is_public, status)
+       values ($1, null, 'Community story', array['drama'], 'contemporary', true, 'complete')`,
       [missingId],
     );
     const ownerlessFeedback = await db.query<{
@@ -403,7 +403,7 @@ Deno.test("application errors expose stable SQLSTATE contracts", async () => {
   }
 });
 
-Deno.test("legacy duplicate credit rows resolve deterministically", async () => {
+Deno.test("bucket migration seeds from the newest legacy balance", async () => {
   const db = await createDatabase();
   const userId = "00000000-0000-4000-8000-000000000051";
 
@@ -423,7 +423,7 @@ Deno.test("legacy duplicate credit rows resolve deterministically", async () => 
       "select grant_credit($1, 10, 'purchase', 'legacy', 'rc:legacy')",
       [userId],
     );
-    assertEquals(result.rows[0].grant_credit, 10);
+    assertEquals(result.rows[0].grant_credit, 20);
   } finally {
     await db.close();
   }

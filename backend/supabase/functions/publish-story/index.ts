@@ -30,6 +30,18 @@ serve(async (req) => {
 
     const storyId = parseUuid(body.story_id);
     if (!storyId) return respond({ error: "Invalid story_id" }, 400);
+    const visibility = body.visibility === undefined
+      ? "public"
+      : body.visibility;
+    if (visibility !== "private" && visibility !== "public") {
+      return respond({ error: "visibility must be private or public" }, 400);
+    }
+    if (user.is_anonymous === true && visibility === "public") {
+      return respond(
+        { error: "Create an account before publishing publicly." },
+        403,
+      );
+    }
 
     // Hand-edited content, saved as part of publishing.
     //
@@ -75,7 +87,7 @@ serve(async (req) => {
       );
     }
 
-    // Already public — idempotent success
+    // A public story is never silently demoted by a stale client retry.
     if (story.is_public) {
       return respond({ published: true, story_id: storyId });
     }
@@ -171,6 +183,13 @@ serve(async (req) => {
         })
         .eq("id", storyId);
       if (storyWordError) throw storyWordError;
+    }
+
+    // Private is a save operation. Edits are durable, but neither chapters nor
+    // the story enter public feeds. Omitting visibility preserves the legacy
+    // public-publish behavior above.
+    if (visibility === "private") {
+      return respond({ saved: true, published: false, story_id: storyId });
     }
 
     // Publish the chapters first. If the story row went public while its

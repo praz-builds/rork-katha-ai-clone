@@ -154,7 +154,7 @@ const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}
 const emailRe = /\S+@\S+\.\S+/;
 
 // ── Root ────────────────────────────────────────────────────────────────────
-export default function KathaOnboardingFlowV2({ onDone = () => {}, initialScreen = 'purpose' }) {
+export default function KathaOnboardingFlowV2({ onDone = () => {}, onWriterPath = null, initialScreen = 'purpose' }) {
   const [screen, setScreen] = useState(initialScreen);
   const [name, setName] = useState('');
   const [genres, setGenres] = useState({});
@@ -178,6 +178,14 @@ export default function KathaOnboardingFlowV2({ onDone = () => {}, initialScreen
   const toggleGenre = (g) => setGenres((prev) => { const n = { ...prev }; n[g] ? delete n[g] : (n[g] = true); return n; });
 
   const next = () => {
+    // The writer path leaves this flow at the branch. Everything after purpose
+    // here - name, genre picker, the two persona questions - is the stale
+    // questionnaire the rebuilt writer flow exists to replace, and running a
+    // user through both is how they end up answering the same thing twice.
+    if (screen === 'purpose' && purpose === 'write' && onWriterPath) {
+      onWriterPath();
+      return;
+    }
     const map = { purpose: 'name', name: 'genres', genres: 'refine', refine: 'moment', moment: 'building' };
     if (map[screen]) setScreen(map[screen]);
   };

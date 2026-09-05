@@ -44,12 +44,15 @@ The five findings that shape the numbers:
 1. **Unbundling the chapter is what makes whole-number credits honest.** The
    three image actions sit within a factor of two of one another — cover
    $0.063, chapter art $0.042, a cast of three $0.033 — so each is fairly one
-   credit. Text is the outlier at **$0.004**, roughly 16× cheaper than a cover,
-   and it is priced at one credit anyway because a fractional credit is worse
-   than a generous one. Creation cost is images.
+   credit. **Text stopped being the outlier on 2026-09-05.** At **$0.0160** on
+   `meta/muse-spark-1.3` it is 3.9× cheaper than a cover rather than 16×, and it
+   is the cheapest of four actions rather than a rounding error against three.
+   It is still one credit. Creation cost is still mostly images, but text is now
+   a real share of it — see §2, and note the figure falls to $0.0009 if the
+   contributor tier is ever unblocked.
 2. **The Writer yearly tier is the binding constraint on everything.** At
    $49.99/yr for 50 credits/month it nets **$0.0708/credit** against
-   **$0.0092–$0.0274** of creation cost depending on story shape (§2). Every
+   **$0.0198–$0.0326** of creation cost depending on story shape (§2). Every
    future price or grant change is tested against this row first. *(§4's tables
    still compute against the retired $0.0423 basis and therefore understate every
    margin — §12 item 10.)*
@@ -113,12 +116,8 @@ One credit = one AI action.
 A story runs to a length you choose. You are charged for each AI action as it
 happens, never up front.
 
-> **Planned, not yet shipped.** The 3 / 7 / 15 chapter lengths below are the
-> model this file prices. What ships today is a single AI-chosen short story of
-> 500–1,500 words, continuable to 7 chapters
-> (`MAX_SERIES_CHAPTERS`). The per-action prices are live; the *lengths* are the
-> contract for `STORY_GENERATION_FLOW.md`'s rebuild, and the tables below are
-> pricing examples until it lands.
+> **Implemented.** The 3 / 7 / 15 chapter lengths and the per-action prices below
+> are the active Create contract.
 
 | | Credits |
 |---|---|
@@ -165,7 +164,10 @@ plan; we don't lock voices behind a tier.
 
 Past those limits, each further AI action is 1 credit.
 
-**If a generation fails, your credits come back automatically.** Every time.
+**If a paid action fails, its credit comes back automatically.** Text failure
+refunds the complete start reservation. After text succeeds, cast and cover are
+tracked independently: either missing component receives its own idempotent
+one-credit refund without discarding the completed chapter. Every time.
 
 ### Where credits come from
 
@@ -175,7 +177,7 @@ Past those limits, each further AI action is 1 credit.
 |---|---|
 | Keep a reading streak | **1** at day 2, day 5, day 7, then every 7 days |
 | Invite a friend who creates something | **10** to you, **5** to them |
-| Welcome bonus | **3**, once |
+| Welcome bonus | **10**, once |
 
 A streak is consecutive days with reading activity. Miss a day and it resets to
 zero — the rewards start again from day 2.
@@ -212,19 +214,52 @@ subscribe or not — plans are for creating and listening.
 
 ## 2. Cost basis
 
-**Text.** `_shared/llm.ts` now chains Gemini 3.1 Pro Preview → OpenRouter
-`google/gemini-2.5-flash` → OpenAI (`gpt-5.6-luna`, `gpt-5-mini`,
-`gpt-4o-mini`) → OpenRouter Free Router ([implementation](../backend/supabase/functions/_shared/llm.ts)).
-The **~$0.031 per chapter** planning figure came from the retired Anthropic rate
-card and is **no longer used**. The live figure is **~$0.004 per ~1k-word
-chapter** on `gpt-5.6-luna`, recorded in `_shared/llm.ts` alongside its
-neighbours (`gpt-5-mini` ~$0.006, `gpt-4o-mini` ~$0.002).
+**Text.** Revised 2026-09-05. `_shared/llm.ts` now chains OpenRouter
+(`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) → Gemini 3.1 Pro
+Preview → OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) → OpenRouter Free
+Router ([implementation](../backend/supabase/functions/_shared/llm.ts)).
 
-> ⚠ **Luna serves everything today only because the two providers ahead of it are
-> billing-blocked** — Gemini `429`, OpenRouter `402`. When that clears, Gemini
-> 3.1 Pro Preview becomes the primary and needs its own measured figure before
-> the margins below are re-asserted. The $0.004 is `llm.ts`'s recorded figure,
-> not a measurement against real spend.
+> **Superseded figures, kept so the history reads.** The **~$0.031 per chapter**
+> planning figure came from the retired Anthropic rate card. It was replaced by
+> **~$0.004 per ~1k-word chapter** on `gpt-5.6-luna`, which held the primary
+> position while Gemini (`429`) and OpenRouter (`402`) were blocked. Both are
+> superseded by the measured Muse Spark figures below and **must not be quoted**.
+
+**Muse Spark is a reasoning model, and that changes how text is costed.** Every
+earlier text figure in this file was a naive prompt-plus-visible-output
+calculation. These models emit reasoning tokens before any visible prose, those
+tokens are billed at the completion rate, and they are the majority of the
+completion bill. Costing text without them understates it by several multiples.
+
+Rates per million tokens:
+
+| Model | Prompt | Completion | Trains on our data |
+|---|---|---|---|
+| `meta/muse-spark-1.3-contributor` | **$0.10** | **$0.20** | **Yes** |
+| `meta/muse-spark-1.3` | $1.20 | $4.20 | No |
+
+**Measured, not estimated.** A live shaping call on 2026-09-05 against
+`meta/muse-spark-1.3` billed **$0.006099** for ~154 prompt tokens and 1,408
+completion tokens, of which **957 were reasoning**. Two-thirds of that call's
+completion bill was thought, not output.
+
+Per ~1k-word chapter, modelling ~2,500 prompt tokens and ~3,100 completion
+tokens (~1,600 visible JSON plus ~1,500 reasoning at effort `low`):
+
+| Model | Prompt | Completion | **Per chapter** |
+|---|---|---|---|
+| `meta/muse-spark-1.3-contributor` | $0.00025 | $0.00062 | **$0.0009** |
+| `meta/muse-spark-1.3` | $0.0030 | $0.0130 | **$0.0160** |
+
+> ⚠ **The contributor tier cannot serve a request today, so the live figure is
+> $0.0160, not $0.0009.** A real call returns `404`: the OpenRouter account's
+> privacy setting blocks endpoints that train on prompts and completions, and the
+> contributor tier does exactly that. Until that setting is changed at
+> https://openrouter.ai/settings/privacy, `meta/muse-spark-1.3` serves every
+> request and **text is 4x more expensive than the $0.004 it replaced, not
+> cheaper.** Enabling the contributor tier is a data decision, not a cost one:
+> it hands users' story ideas and generated prose to the provider for training.
+> Both cost bases are carried below so the decision can be read as a number.
 
 **Images.** `gpt-image-1` ([OpenAI](https://developers.openai.com/api/docs/models/gpt-image-1),
 tiers via [calculator](https://langcopilot.com/gpt-image-1-pricing)):
@@ -273,7 +308,8 @@ estimate from published rates. **Measure before enabling narration** (§12).
 
 | Action | Cost | Credits |
 |---|---|---|
-| Chapter text | $0.004 | 1 |
+| Chapter text — live, `meta/muse-spark-1.3` | $0.0160 | 1 |
+| Chapter text — if the contributor tier is enabled | $0.0009 | 1 |
 | Cover @ 1024×1536 medium | $0.063 | 1 |
 | Chapter art @ 1024×1024 medium | $0.042 | 1 |
 | Character set — 3 @ 1024×1024 low | $0.033 | 1 |
@@ -284,25 +320,53 @@ estimate from published rates. **Measure before enabling narration** (§12).
 credit depends on its shape, because the cast and the cover are paid once and
 amortise across every chapter after them.
 
+**Live basis, `meta/muse-spark-1.3` at $0.0160 per chapter:**
+
 | Story | Credits | Cost | **Blended $/credit** |
 |---|---|---|---|
-| 3 chapters, words only | 5 | $0.108 | $0.0216 |
-| 7 chapters, words only | 9 | $0.124 | $0.0138 |
-| 15 chapters, words only | 17 | $0.156 | $0.0092 |
-| 3 chapters, illustrated | 7 | $0.192 | $0.0274 |
-| 7 chapters, illustrated | 15 | $0.376 | $0.0251 |
-| 15 chapters, illustrated | 31 | $0.744 | **$0.0240** |
+| 3 chapters, words only | 5 | $0.144 | $0.0288 |
+| 7 chapters, words only | 9 | $0.208 | $0.0231 |
+| 15 chapters, words only | 17 | $0.336 | $0.0198 |
+| 3 chapters, illustrated | 7 | $0.228 | **$0.0326** |
+| 7 chapters, illustrated | 15 | $0.460 | $0.0307 |
+| 15 chapters, illustrated | 31 | $0.924 | $0.0298 |
 
-**Creation now costs between $0.0092 and $0.0274 per credit** — text is close to
-free and images are the majority of the cost. Longer stories are cheaper per
-credit, not dearer.
+**If the contributor tier is enabled, $0.0009 per chapter:**
+
+| Story | Credits | Cost | **Blended $/credit** |
+|---|---|---|---|
+| 3 chapters, words only | 5 | $0.0987 | $0.0197 |
+| 7 chapters, words only | 9 | $0.1023 | $0.0114 |
+| 15 chapters, words only | 17 | $0.1095 | **$0.0064** |
+| 3 chapters, illustrated | 7 | $0.1827 | $0.0261 |
+| 7 chapters, illustrated | 15 | $0.3543 | $0.0236 |
+| 15 chapters, illustrated | 31 | $0.6975 | $0.0225 |
+
+**Creation costs between $0.0198 and $0.0326 per credit today**, and would cost
+between $0.0064 and $0.0261 on the contributor tier. The shape of the conclusion
+has not changed — images are still the majority of the cost and longer stories
+are still cheaper per credit, not dearer — but text is no longer close to free.
+On the live basis a 15-chapter words-only story is **71% text**, where under the
+superseded $0.004 figure it was 39%.
+
+> **The superseded range was $0.0092 to $0.0274**, computed against $0.004 text.
+> It is recorded here because §4 and several later sections were written while it
+> was current.
+
+**The §4 margins are still conservative, and that was checked rather than
+assumed.** Every margin below is computed against **$0.0423**. The worst case on
+the live basis is **$0.0326**, which is still under it, so no margin in this file
+is overstated by the new cost basis. The gap has narrowed from 4.6x to 1.3x, so
+the next text-model change is much likelier to break that guarantee than this one
+was, and §4 should be recomputed before the following one.
 
 > ⚠ **§4 below is stale.** Every margin in the plan table is still computed
 > against the old **$0.0423**, which descended from the retired Anthropic text
-> cost. Those margins are therefore **understated**, some by 20 points or more.
-> Correcting §4 is its own pass and is listed in §12; nothing in this section
-> depends on it, and no margin below is *overstated*, so the constraint the
-> business is run on remains conservative rather than wrong.
+> cost. Those margins are therefore **understated**, though by less than they
+> were: the live worst case is now $0.0326 rather than $0.0274, so the cushion
+> is 1.3x rather than 1.5x. Correcting §4 is its own pass and is listed in §12;
+> nothing in this section depends on it, and no margin below is *overstated*, so
+> the constraint the business is run on remains conservative rather than wrong.
 
 ---
 
@@ -516,8 +580,8 @@ fallback for the long tail.
 
 ### Free tier exposure
 
-A maximally engaged free user earns **9 credits in month one** (3 welcome, once +
-6 from streak milestones at days 2, 5, 7, 14, 21, 28) and **4/month in steady
+A maximally engaged free user earns **16 credits in month one** (10 welcome, once
++ 6 from streak milestones at days 2, 5, 7, 14, 21, 28) and **4/month in steady
 state** — $0.17/month if spent on creation, ~$0 if spent on cached audio.
 
 **Four is 20% of the Reader plan's 20**, comfortably inside the principle-7
@@ -541,13 +605,14 @@ users — reading is free and unlimited, so it carries no consumption burden.
 | Source | Credits | Cadence | Cap | `reason` | Ship |
 |---|---|---|---|---|---|
 | **Reading streak** | **1** | day 2, day 5, day 7, then every 7 days | self-capping at ~4/month | `streak` | Launch |
-| **Welcome bonus** | **3** | once, on declining the offer (§6) | once per authenticated account | `welcome` | Launch |
+| **Welcome bonus** | **10** | once, on declining the offer (§6) | once per authenticated account | `welcome` | Launch |
+| **Guest bootstrap** | **3** | once, on first guest bootstrap (§9) | once per anonymous account, 3 per network prefix / 24h | `guest_bootstrap` | Launch |
 | **Referral — referrer** | **10** | on invited user's 1st generation | 3/month, 10 lifetime | `referral` | v1.1 |
 | **Referral — invited** | **5** | on own 1st generation | once | `referral` | v1.1 |
 
 **Steady state for a free user: 4 credits/month.** One full chapter plus an audio
 unlock, or four chapters of audio. Against 20 in the $8.99 Reader plan and 50 in
-the $12.99 Writer plan. Month one pays 9 with the welcome bonus.
+the $12.99 Writer plan. Month one pays 16 with the welcome bonus.
 
 ### The streak ladder
 
@@ -588,6 +653,33 @@ signup, which is the right anti-farm design — it requires a real account doing
 real thing. Caps of 3/month and 10 lifetime for the referrer.
 
 Deferred to v1.1 because it needs deep-link attribution that does not exist yet.
+
+**There is no code field on the paywall, and there never will be.** *(Decided
+2026-09-05.)* Three reasons, in order of weight:
+
+1. **It is a conversion leak.** A "Have a promo code?" field tells every user
+   without one that somebody else is paying less. A measurable share leave the
+   purchase flow to go looking for a code, and on mobile that means leaving to a
+   browser, which is a bounce.
+2. **The referral pays credits, not a discount.** The paywall sells
+   subscriptions. A credit grant does not make a subscription cheaper, so a code
+   entered there has nothing to act on, and putting one there conflates the two.
+3. **Attribution is the mechanism, not redemption.** The payout is already gated
+   on the invited user's first generation, which is what makes it anti-farm. A
+   code typed at purchase time would pay before that gate or duplicate it.
+
+**What ships instead:**
+
+| Layer | Behaviour |
+|---|---|
+| **Primary** | Deferred deep link: `katha.ai/i/{code}` → install → referrer resolved on first launch → attribution stored → both grants fire on the invited user's first generation. No UI in the main path. |
+| **Fallback** | A code field in **Profile**, labelled *Have an invite code?* — never on the paywall, never in onboarding. Deferred deep links fail for a real share of installs: links opened in the WhatsApp or Instagram in-app browser, iOS clipboard permission, Android install-referrer edge cases. Without a recovery path those referrals are lost and the **referrer** blames us, which is what actually breaks the loop. |
+| **The code** | The code and the link are one artifact. 6 to 8 human-typeable characters, no ambiguous glyphs (no `0/O`, `1/l/I`), so the same string works pasted or typed. |
+| **Disclosure** | The invited user learns their balance from the in-app message after WELCOME, per decision 29a. Not on the paywall, not on the welcome screen. |
+
+**The invited bonus reads weaker against a 10-credit welcome than it did against
+3** — a 50% bump rather than a 167% one. Not a launch problem, because referral
+is v1.1, but rebalance the 5 when it actually ships rather than inheriting it.
 
 ### Deliberately removed
 
@@ -659,7 +751,7 @@ before any purchase and before any grant
 │                                          └─ Declines or expires
 │                                                │
 │                                                ↓
-│                                         3 credits granted
+│                                        10 credits granted
 │                                                │
 │                                                ↓
 │                                    WELCOME  "Reading is always free."
@@ -670,13 +762,30 @@ before any purchase and before any grant
 └───────────────────────────────────────────────┴─→  Into the app
 ```
 
-**The welcome bonus is the consolation, not the greeting.** It is granted only on
-the path where the user has declined twice — subscribers do not need it and
-should not be given it. Three credits is exactly one complete chapter: text,
-cover, characters. Combined with free unlimited reading and the streak ladder, a
-free user's first day is one chapter created and as much reading as they want.
+**For named onboarding, the welcome bonus is the consolation, not the greeting.**
+It is granted only after the user has declined twice — subscribers do not need it
+and should not be given it.
 
-**The bonus is 3 for everyone.** There is no reader/writer split on it; the 15/5
+**Ten credits is one complete story start, plus room to keep going.** A start is
+3 — the cast, chapter 1's words, and chapter 1's art, which becomes the cover —
+leaving 7 for further chapters at 1 each, or three further illustrated chapters.
+Combined with free unlimited reading and the streak ladder, a free user's first
+day is a finished, illustrated first chapter and as much reading as they want.
+*(Raised from 3 on 2026-09-05. The Writer-yearly 40%-margin row in §2 has **not**
+yet been re-run against this figure at a range of chapter-art attach rates; that
+is the open item this change carries.)*
+
+**The guest bootstrap stays at 3, and is now a separate grant.** The sign-in-free
+client grants a one-time **3**-credit balance to a server-verified anonymous
+session under §9's rate limit, keyed `guest_bootstrap:{user_id}`. It does not
+follow the welcome bonus up to 10: the named grant is protected by Apple / Google
+/ email, while the guest grant is protected only by a salted network-prefix limit
+of three per 24 hours. At 10 that limit permits 30 credits per network per day
+against an unauthenticated surface, which is a farm, and at 3 it permits 9, which
+is not. A guest who later signs in receives the named welcome bonus as well; the
+two keys are distinct, and that is intended, because they converted.
+
+**The bonus is 10 for everyone.** There is no reader/writer split on it; the 15/5
 split belongs to the *trial* grant (§3), which is a different thing and lands on
 a different path.
 
@@ -853,9 +962,17 @@ no-ops until RevenueCat emits `EXPIRATION`.
 Proportionate to a pre-launch app. Six controls to build, and an explicit list of
 what **not** to build.
 
-1. **Require an authenticated account before any grant.** Apple / Google / email,
-   not anonymous device install. An anonymous device grant is a reinstall vending
-   machine, and this single control kills it.
+1. **Require a server-verified Supabase JWT before any grant.** Named-account
+   grants require Apple / Google / email. The temporary guest bootstrap is the
+   sole exception: it grants 3 credits once per anonymous Supabase user via
+   `guest_bootstrap:{user_id}`, with a server-side, salted network-prefix limit of
+   three guest grants per 24 hours and a shared ceiling of 300 guest grants per
+   UTC day. Only an edge-owned client-address header can establish the network
+   scope; missing or malformed scope fails closed. It stays at 3 while the named
+   welcome bonus is 10, for the reason given in §6. It is not a device-local grant,
+   and guest accounts cannot publish publicly. Anonymous story shaping is also
+   limited to 30 calls per network per 24 hours and 500 calls globally per UTC day,
+   in addition to the six-per-user-per-minute limit.
 2. **`operation_key = 'welcome:{user_id}'`.** The existing unique index on
    `(user_id, operation_key)` then makes a duplicate welcome grant structurally
    impossible rather than merely against policy.
@@ -966,8 +1083,9 @@ economy is tuned on evidence rather than argued about.
    look at them before committing.
 3. **Verify Apple's commission tier.** All margin math assumes 15% (Small Business
    Program). At 30%, Writer yearly nets $0.0583/credit. Against the corrected §2
-   cost basis ($0.0092–$0.0274) that is still 53–84%; against the stale $0.0423
-   used throughout §4 it would read as 27%. Recompute when §4 is corrected.
+   cost basis ($0.0198–$0.0326) that is still **44–66%**; against the stale
+   $0.0423 used throughout §4 it would read as 27%. Recompute when §4 is
+   corrected. *(This read 53–84% against the superseded $0.0092–$0.0274 basis.)*
 4. **Decide the non-credit subscriber benefit.** With voice tiers removed, a
    subscription is now purely a credit bundle and survives only on per-credit
    arithmetic that packs constantly nip at. A **priority generation queue** costs
@@ -997,16 +1115,22 @@ economy is tuned on evidence rather than argued about.
 8. **`_shared/edge-tts.ts` returns `null`** — an interface with no implementation.
    MiniMax HD is currently the only voice. Since we are not tiering voices (§1),
    this is acceptable at launch but means every narration carries premium cost.
-9. **Confirm the text-generation cost against real spend.** §2 now carries
-   **$0.004 per chapter** for `gpt-5.6-luna`, which is `_shared/llm.ts`'s recorded
-   figure rather than a measurement against a bill. Luna also serves everything
-   only because Gemini (`429`) and OpenRouter (`402`) are billing-blocked; when
-   that clears, Gemini 3.1 Pro Preview becomes the primary and needs its own
-   figure.
+9. **Decide the OpenRouter data-policy setting, and confirm the chapter figure
+   against a bill.** §2 now carries **$0.0160 per chapter** on
+   `meta/muse-spark-1.3`, extrapolated from a single **measured** call
+   ($0.006099, 957 reasoning tokens of 1,408 completion tokens) rather than from
+   a rate card. The extrapolation to a full chapter is not itself measured, so a
+   week of real OpenRouter spend divided by chapters generated is still owed.
+   The larger open item is a decision, not a measurement: the configured default
+   `meta/muse-spark-1.3-contributor` is **17x cheaper** and returns `404` today
+   because the account's privacy setting blocks endpoints that train on prompts
+   and completions. Enabling it at https://openrouter.ai/settings/privacy sends
+   users' story ideas and generated prose to the provider for training. That is
+   a product and policy call and it belongs to the product owner.
 10. **Recompute §4 against the corrected cost basis.** Every margin in the plan
     table, the inversion check and the Writer-yearly risk model is computed
     against **$0.0423**, which descended from the retired Anthropic text cost.
-    Real creation cost is **$0.0092–$0.0274** per credit (§2), so every figure in
+    Real creation cost is **$0.0198–$0.0326** per credit (§2), so every figure in
     §4 is understated. Conservative rather than wrong — no margin is overstated —
     but it is **the largest known inaccuracy in this file** and it makes the
     "constraint of record" framing read as far tighter than it is.
@@ -1120,7 +1244,8 @@ economy is tuned on evidence rather than argued about.
     | Source | Credits | Cadence | Cap | Ship |
     |---|---|---|---|---|
     | Reading streak | **1** | day 2, day 5, day 7, then every 7 days | self-capping at ~4/month | Launch |
-    | Welcome bonus | **3** | on declining the one-time offer | once per authenticated account | Launch |
+    | Welcome bonus | **10** | on declining the one-time offer | once per authenticated account | Launch |
+    | Guest bootstrap | **3** | on first guest bootstrap (§9) | once per anonymous account | Launch |
     | Referral — referrer | **10** | on invited user's 1st generation | 3/mo, 10 lifetime | v1.1 |
     | Referral — invited | **5** | on own 1st generation | once | v1.1 |
 
@@ -1129,7 +1254,7 @@ economy is tuned on evidence rather than argued about.
     finished or ≥60s dwell, recorded server-side. Missing a day resets it to zero
     and the rewards restart at day 2.
 23. **Ceiling: steady-state earnable free credits ~4/month**, 20% of the Reader
-    plan's 20 and well inside the 50% principle-7 limit. Month one is 9 including
+    plan's 20 and well inside the 50% principle-7 limit. Month one is 16 including
     the one-time welcome bonus. **The ladder is self-capping; no separate monthly
     ceiling is needed.**
 24. **The flat daily app-open credit is rejected.** Uncapped it pays 30/month —
@@ -1151,19 +1276,21 @@ economy is tuned on evidence rather than argued about.
 ### Onboarding
 
 29. **Sequence: purpose branch → path-specific paywall → decline → one-time
-    offer → decline or expiry → 3 welcome credits → welcome → app.** Readers
+    offer → decline or expiry → 10 welcome credits → welcome → app.** Readers
     reach their paywall after the shelf reveal; writers reach theirs after the
     blueprint and preview. The welcome bonus is a consolation on the decline
-    path, not a greeting; subscribers do not receive it, and it is **3 for
-    everyone** with no reader/writer split.
+    path, not a greeting; subscribers do not receive it, and it is **10 for
+    everyone** with no reader/writer split. The guest bootstrap is a separate
+    3-credit grant under a separate key — §6 and §9.
 29a. **The welcome screen carries no numbers.** It is one shared beat on every
     path, saying only "Welcome to Katha" and "Reading is always free." The
     balance is announced separately by the in-app message system on landing, so
     the screen needs no per-path copy and does not duplicate that message.
 30. **The paywall is skippable at every step**, with a large and obvious dismiss,
     and the one-time offer is shown once ever.
-31. **All grants require an authenticated account** — never an anonymous device
-    install.
+31. **All grants require a server-verified Supabase JWT.** Named-account grants
+    require a named account; the narrowly rate-limited guest bootstrap exception
+    is defined in §9 and cannot publish publicly.
 
 ### Blocked state
 
@@ -1226,7 +1353,8 @@ economy is tuned on evidence rather than argued about.
     extend `deduct_credit`'s reason allowlist, which currently blocks every spend
     path in this document.
 43. **The five anti-abuse controls plus the monitoring query** in §9:
-    authenticated grants; `operation_key = 'welcome:{user_id}'`; server-side streak
+    authenticated grants; `operation_key = 'welcome:{user_id}'` and
+    `'guest_bootstrap:{user_id}'`; server-side streak
     dates with `operation_key = 'streak:{user_id}:{milestone_day}'`; reduced trial grants; referral gating at ≥24h account age with
     3/month and 10 lifetime caps; and one daily query for accounts over 90%
     subsidized grants with more than 15 lifetime grants.
@@ -1235,6 +1363,13 @@ economy is tuned on evidence rather than argued about.
 45. **Three-phase rollout:** (1) unbundled creation, free reading, streak ladder,
     paywall sequence, packs, all SKUs; (2) audio, after cost measurement, catalog
     job first; (3) referral.
+45a. **The welcome bonus is 10, the guest bootstrap is 3, and they are separate
+    grants under separate operation keys** — §6. *(2026-09-05.)* The §2
+    Writer-yearly 40%-margin row has not been re-run against 10 and that is the
+    open item this decision carries; nothing else in this file assumes the old 3.
+45b. **Referral redemption is deep-link attribution, with a code field in Profile
+    as the fallback. No code field on the paywall, ever** — §5 Referral.
+    *(2026-09-05.)*
 46. **`expo/App.tsx:953` must change.** *"1 credit creates 1 story or chapter"* is
     now incorrect. It must reflect a 3-credit story start, with each further
     chapter at 1, or 2 when illustrated.

@@ -1,4 +1,4 @@
-# Story Generator — Prompt System (v5.1 Production Spec)
+# Story Generator — Prompt System (v6 Production Spec)
 
 > Human-readable reference for the next production prompt system in
 > `backend/supabase/functions/_shared/story-prompts.ts`.
@@ -6,6 +6,8 @@
 > The TypeScript implementation is the runtime source of truth. This document is
 > the product and engineering contract for the prompt architecture across
 > Supabase, Expo, cover prompts, and tests.
+>
+> Last revised 2026-09-04.
 
 ## Product Goal
 
@@ -13,18 +15,19 @@ Katha should generate mobile-native fiction that feels written by a strong genre
 writer, not by a generic assistant. The prompt system must optimize for:
 
 - a complete story engine before surface prose
-- reliable genre promise across 15 user-facing genres
-- modular identity, spice, and trope layers
+- reliable genre promise across 15 supported genres
+- modular identity and spice layers
 - safe adult-content handling with account-level gating
 - A Kids mode that cannot inherit adult behavior
 - standalone and series structures with different ending contracts
 - structured output that can be parsed and filtered downstream
 
-## Key v5.1 Decisions
+## Key v6 Decisions
 
-- **15 primary genres (13 in UI).** LGBTQ+ is no longer a primary genre. It becomes an
-  identity lens/toggle that can layer onto any adult genre. cozyFantasy and
-  paranormalRomance exist in the DB constraint but are hidden from the UI.
+- **15 primary genres (13 in the creation UI).** LGBTQ+ is no longer a primary
+  genre. Queer context may be inferred from the visible brief; it is not a
+  creation toggle. cozyFantasy and paranormalRomance exist in the DB constraint
+  but are hidden from the UI.
 - **Kids is an audience mode, not an adult genre peer.** Backend generation uses
   `adult | kids`; any future bedtime UX should map to kids-safe constraints
   unless a separate backend mode is introduced.
@@ -40,9 +43,10 @@ writer, not by a generic assistant. The prompt system must optimize for:
   traits, not living author names or instructions that could imitate a style.
 - **Prompt-only JSON is not enough.** Use API-level structured output/schema
   enforcement where supported, with strict validation fallback.
-- **Series is a story mode, not a genre.** Initial generation can be a complete
-  standalone story or Chapter 1 of a series. Series chapters persist state,
-  hooks, and chapter roles so continuations can build toward a finale.
+- **A Create story is planned, not mode-selected.** The user chooses 3, 7, or 15
+  chapters in More options. New Create stories begin as Chapter 1 and persist
+  state, hooks, and chapter roles toward the planned finale. `standalone` remains
+  backend compatibility for legacy callers, not a creation control.
 - **Every prompt change needs evals.** Genre quality, banned patterns, safety,
   schema validity, series state, and continuation behavior must be tested before
   deployment.
@@ -57,11 +61,10 @@ The runtime prompt builder should assemble layers in this order:
 4. Primary genre module
 5. Audience mode module (`adult`, `kids`)
 6. Identity lens module (`queer`, optional)
-7. Trope module (`werewolf`, `vampire`, `enemiesToLovers`, etc., optional)
-8. Spice module (`sweet`, `steamy`, `explicit`)
-9. Continuation/finale module, when applicable
-10. Language module
-11. Output schema reminder
+7. Spice module (`sweet`, `steamy`, `explicit`)
+8. Continuation/finale module, when applicable
+9. Language module
+10. Output schema reminder
 
 Recommended builder signatures:
 
@@ -88,36 +91,26 @@ type StoryMode = "standalone" | "series";
 type ChapterRole = "standalone" | "series_opening" | "mid_series" | "finale";
 type IdentityLens = "queer";
 type SpiceLevel = "sweet" | "steamy" | "explicit";
-type TropeModule =
-  | "werewolf"
-  | "vampire"
-  | "enemiesToLovers"
-  | "secondChance"
-  | "forcedProximity"
-  | "smallTown"
-  | "fatedMates"
-  | "forbiddenLove"
-  | "lockedRoom"
-  | "secretIdentity";
-
 buildStorySystemPrompt({
   primaryGenre,
   storyMode,
   chapterRole,
   audienceMode,
   identityLenses,
-  tropeModules,
   spiceLevel,
   language,
+  chapterLength,
+  plannedChapterCount,
 });
 
 buildContinuationSystemPrompt({
   primaryGenre,
   audienceMode,
   identityLenses,
-  tropeModules,
   spiceLevel,
   language,
+  chapterLength,
+  plannedChapterCount,
   mode, // "chapter" | "finale"
   seriesState,
 });
@@ -125,7 +118,7 @@ buildContinuationSystemPrompt({
 
 ## User-Facing Taxonomy
 
-These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFantasy` and `paranormalRomance` are valid DB values but are not rendered as creation cards (see Key v5.1 Decisions).
+These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFantasy` and `paranormalRomance` are valid DB values but are not rendered as creation cards (see Key v6 Decisions).
 
 | UI card # | UI Genre | Internal genre | Notes |
 |---|----------|----------------|-------|
@@ -133,7 +126,7 @@ These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFant
 | 2 | Romantasy | `romantasy` | Romance and fantasy arcs have equal weight |
 | 3 | Dark Romance | `darkRomance` | Adult only, steamy default, explicit feature-flagged |
 | - | Cozy Fantasy | `cozyFantasy` | **Backend only, hidden from UI.** Low-stakes warmth, craft, community |
-| - | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Host for Werewolf/Shifter and Vampire trope modules |
+| - | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Supernatural romance |
 | 4 | Fantasy | `fantasy` | Magic, world, cost, wonder |
 | 5 | Sci-Fi | `scifi` | One speculative idea with human consequence |
 | 6 | Thriller | `thriller` | Urgency, threat, ticking clock |
@@ -147,31 +140,34 @@ These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFant
 
 Separate UI controls:
 
-- **Kids mode:** `kids`; force `spiceLevel: "sweet"`.
-- **Queer lens:** optional toggle; maps to `identityLenses: ["queer"]`.
-- **Spice selector:** icon-driven, genre-specific availability.
-- **Trope chips:** genre-specific suggestions such as Vampire, Werewolf/Shifter,
-  Enemies to Lovers, Found Family, Locked Room, Heist.
+- **Audience mode:** full-width segmented `For me | For kids`; Kids forces
+  `spiceLevel: "sweet"`, filters unsuitable genres, and reveals Values.
+- **Values:** Kids-only chips. They are written into the brief as themes to
+  explore through character action, never as a moral lesson.
+- **Spice selector:** adult-only, genre-specific availability. It is absent,
+  rather than set safe, in Kids mode.
+- **Language:** Create offers English and Portuguese only. Spanish remains a
+  legacy read/continuation concern, not a creation selection.
 
 ## Genre and Spice Matrix
 
-| Internal genre | Default spice | Allowed spice | Suggested trope chips |
-|----------------|---------------|---------------|-----------------------|
-| romance | steamy | sweet, steamy, explicit* | enemiesToLovers, secondChance, forcedProximity, smallTown |
-| romantasy | steamy | sweet, steamy, explicit* | enemiesToLovers, chosenOne, foundFamily |
-| darkRomance | steamy | steamy, explicit* | forcedProximity, enemiesToLovers |
-| cozyFantasy | sweet | sweet, steamy | foundFamily, smallTown |
-| paranormalRomance | steamy | sweet, steamy, explicit* | werewolf, vampire, fatedBond |
-| fantasy | sweet | sweet, steamy | chosenOne, foundFamily |
-| scifi | sweet | sweet, steamy | firstContact, timeLoop, heist |
-| thriller | sweet | sweet, steamy | conspiracy, chase, tickingClock |
-| mystery | sweet | sweet, steamy | lockedRoom, amateurSleuth, coldCase |
-| horror | sweet | sweet, steamy | hauntedHouse, bodyHorror, folkHorror |
-| contemporary | sweet | sweet, steamy, explicit* | familyDrama, workplace, secondChance |
-| historical | sweet | sweet, steamy | forbiddenLove, courtIntrigue |
-| adventure | sweet | sweet, steamy | expedition, survival, heist |
-| comedy | sweet | sweet, steamy | mistakenIdentity, workplace, absurdQuest |
-| poetry | sweet | sweet | memory, grief, love, place |
+| Internal genre | Default spice | Allowed spice |
+|----------------|---------------|---------------|
+| romance | steamy | sweet, steamy, explicit* |
+| romantasy | steamy | sweet, steamy, explicit* |
+| darkRomance | steamy | steamy, explicit* |
+| cozyFantasy | sweet | sweet, steamy |
+| paranormalRomance | steamy | sweet, steamy, explicit* |
+| fantasy | sweet | sweet, steamy |
+| scifi | sweet | sweet, steamy |
+| thriller | sweet | sweet, steamy |
+| mystery | sweet | sweet, steamy |
+| horror | sweet | sweet, steamy |
+| contemporary | sweet | sweet, steamy, explicit* |
+| historical | sweet | sweet, steamy |
+| adventure | sweet | sweet, steamy |
+| comedy | sweet | sweet, steamy |
+| poetry | sweet | sweet |
 
 `explicit*` means do not ship in mobile MVP unless product/legal explicitly enables
 it, account gating exists, region gating exists, public-feed exclusion exists, and
@@ -179,7 +175,7 @@ human QA has approved test outputs.
 
 ## Base Safety Rules
 
-These rules override user seed, genre convention, spice level, trope module, and
+These rules override user seed, genre convention, spice level, and
 language.
 
 - No sexual content involving anyone under 18. If the request clearly asks for
@@ -246,24 +242,27 @@ Standalone structure:
 - **Climax and landing, about 20%.** Highest tension or decisive choice, then a
   brief landing. The story must feel complete.
 
-## Word Count Enforcement
+## Chapter Length Enforcement
 
 Word count is a hard rule, not a suggestion.
 
-| Mode | Minimum | Maximum | Enforced by |
-|------|---------|---------|-------------|
-| Standalone (adult) | 500 | 1,500 | Prompt + server validation |
-| Standalone (kids) | 500 | 1,200 | Prompt + server validation |
-| Series chapter | 600 | 900 | Prompt + server validation |
+| Selected length | Target words per chapter | Enforced by |
+|-----------------|--------------------------|-------------|
+| Short | 600 - 900 | Prompt + server validation |
+| Standard | 1,200 - 1,600 | Prompt + server validation |
+| Long | 2,000 - 2,600 | Prompt + server validation |
 
-If the model returns fewer words than the minimum, the server should flag the
-response as degraded and warn the user. Stories below 300 words should be
-rejected and the credit refunded.
+The selected band applies to every chapter regardless of audience mode. The
+server owns the acceptance tolerance and refunds unusable output; the model's
+reported `word_count` is never trusted as the count.
 
 ## Series Chapter Structure
 
-Every initial story starts as a standalone or as Chapter 1 of a series.
-The user chooses "Make it a series" before generation.
+Every story created through the current Create flow starts as Chapter 1 of a
+3-, 7-, or 15-chapter planned series. The user does not choose a global writing
+mode: they can steer an individual continuation with *What happens next?* or
+leave it empty for Katha to decide. `standalone` is retained for backward
+compatibility and is not shown in Create.
 
 The request contract is `story_mode: "standalone" | "series"`, which
 `validateGenerationRequest` maps to the internal `storyMode`. The boolean
@@ -273,33 +272,26 @@ carried by `chapter_role` (`standalone`, `series_opening`, `mid_series`,
 `finale`), which the server derives rather than accepting from the client.
 
 `continue-story` derives `chapter_role: "finale"` when the request sets
-`is_finale: true`, or when the next chapter number reaches `MAX_SERIES_CHAPTERS`
-(7). `is_finale` is therefore a `continue-story` request hint, not a stored
-field: the persisted value is always `chapter_role`.
+`is_finale: true`, or when the next chapter number reaches that story's
+`planned_chapter_count`. `is_finale` is therefore a `continue-story` request
+hint, not a stored field: the persisted value is always `chapter_role`.
 
 When `story_mode` is `"series"`:
 
 - **Chapter 1:** Establish world, protagonist, central want, and the first
   complication. End on an unresolved moment (a question, revelation, or choice).
   Do NOT resolve the central conflict.
-- **Chapters 2-6:** Each chapter advances the plot with at least one irreversible
-  change. End on a cliffhanger or hook. Shift relationships or power dynamics.
-  Introduce new tension or deepen existing threads.
-- **`chapter_role: "finale"` (chapter 7, or an earlier chapter requested with
-  `is_finale: true`):** Resolve the central conflict.
+- **Mid-series chapters:** Each chapter advances the plot with at least one
+  irreversible change. End on a cliffhanger or hook. Shift relationships or
+  power dynamics. Introduce new tension or deepen existing threads.
+- **`chapter_role: "finale"` (the planned final chapter, or an earlier chapter
+  requested with `is_finale: true`):** Resolve the central conflict.
   Callback to a specific detail from Chapter 1. Land every major character arc.
   Loose threads are acceptable if the main story is complete.
 
-`MAX_SERIES_CHAPTERS = 7`. Chapter 7 is automatically a finale.
-
-> **Current, not permanent.** `STORY_GENERATION_FLOW.md` §14 item 4 and §15
-> replace this constant with a per-story `planned_chapter_count` of 3, 7 or 15,
-> with `chapter_role: finale` derived from position in the arc rather than from
-> `chapter == 7`. The code still works as described here; the replacement is
-> bucket B3.
-
-Each chapter is 600-900 words. The complete series (7 chapters) is approximately
-4,200-6,300 words.
+Every series stores a planned length of 3, 7 or 15 chapters. Its final planned
+chapter is automatically a finale. Each chapter uses the selected Short,
+Standard or Long word band, regardless of audience mode.
 
 Continuation structure:
 
@@ -309,7 +301,7 @@ Continuation structure:
 - Advance at least one irreversible plot or relationship change.
 - Mid-series chapters end on a hook.
 - Finale resolves the central tension and calls back to earlier details.
-- `MAX_SERIES_CHAPTERS = 7`; chapter 7 is automatically finale.
+- The planned final chapter is automatically a finale.
 
 ## Anti-Slop Rules
 
@@ -508,26 +500,11 @@ Reader promise: low-stakes warmth in a magical world.
 
 Reader promise: supernatural desire, belonging, and transformation.
 
-- Use trope modules for Werewolf/Shifter or Vampire when selected.
 - Supernatural rules should be consistent but not overexplained.
 - The romance is central.
 - Bodily awareness, scent, hunger, danger, secrecy, and belonging can carry
   tension.
 - No supernatural bond as an excuse for one-sided consent.
-
-Werewolf/Shifter trope:
-
-- Fated bond can be instant, but mutual desire must remain legible.
-- Pack hierarchy matters.
-- Transformation is a real scene.
-- Intimacy occurs only in human form.
-
-Vampire trope:
-
-- Immortality has cost.
-- Blood is sensory and symbolic, not incidental.
-- Feeding scenes are charged but bounded by selected spice level.
-- The vampire's age changes their memory, power, loneliness, and ethics.
 
 ### Fantasy
 
@@ -714,15 +691,7 @@ Standalone:
     "next_chapter_pressure": ""
   },
   "hook_type": "none",
-  "hook_text": "",
-  "primary_genre": "romance",
-  "story_mode": "standalone",
-  "chapter_role": "standalone",
-  "audience_mode": "adult",
-  "identity_lenses": ["queer"],
-  "trope_modules": ["vampire"],
-  "spice_level": "steamy",
-  "content_rating": "sweet|steamy|explicit|kids"
+  "hook_text": ""
 }
 ```
 
@@ -748,15 +717,7 @@ Continuation:
     "next_chapter_pressure": "string"
   },
   "hook_type": "none|revelation|reversal|decision|arrival|betrayal|danger|unanswered_question|emotional_rupture",
-  "hook_text": "string",
-  "primary_genre": "romance",
-  "story_mode": "series",
-  "chapter_role": "series_opening|mid_series|finale",
-  "audience_mode": "adult",
-  "identity_lenses": ["queer"],
-  "trope_modules": ["vampire"],
-  "spice_level": "steamy",
-  "content_rating": "sweet|steamy|explicit|kids"
+  "hook_text": "string"
 }
 ```
 
@@ -770,7 +731,8 @@ Field rules:
   for every series chapter.
 - `hook_type` and `hook_text`: `none`/empty for standalone and finale; required
   for series opening and mid-series chapters.
-- `content_rating`: derived server-side too; never trust model output alone.
+- Taxonomy, audience, ratings and chapter roles are server-derived metadata and
+  are not model-output fields.
 
 ## Backend Contract
 
@@ -780,13 +742,37 @@ Required request fields:
 - `primary_genre`: single supported genre
 - `story_mode`: optional, `standalone | series`; legacy `is_series: true` maps
   to `series`
-- `seed`: 40-character minimum
-- `characters`: optional (pre-filled placeholder in UI)
-- `language`: optional, normalized supported language
+- `seed`: one non-whitespace character minimum, 1,000-character maximum
+- `characters`: optional, maximum three. Each character carries `name`,
+  `description`, `background`, `appearance`, and `isHero`; when a cast is
+  present, exactly one character is the lead. Appearance feeds the character
+  portrait prompt, Background feeds voice and motivation, and the lead anchors
+  the story engine.
+- `language`: optional `English | Portuguese`; Create defaults to `English`. Do not accept Spanish
+  from new Create submissions. Existing Spanish stories retain their stored
+  language for reading and continuation compatibility.
 - `audience_mode`: defaults to `adult`
 - `identity_lenses`: optional, currently only `queer`
-- `trope_modules`: optional, genre-allowed list
 - `spice_level`: optional, defaults by genre and account permissions
+- `where_and_when`, `moments`, `writing_style` and `avoid`: optional bounded
+  brief fields; every free-text value is fenced as untrusted data
+- `story_values`: optional and meaningful only in Kids mode; the model explores
+  them through action rather than delivering a lesson
+- `chapter_length`: `short | standard | long`, selecting 600-900,
+  1,200-1,600 or 2,000-2,600 words respectively
+- `planned_chapter_count`: `3 | 7 | 15`; it drives continuation pacing and the
+  automatic finale
+- `illustrate_chapters`: optional boolean for chapter art after Chapter 1;
+  Chapter 1 art remains compulsory and is the cover
+- `visibility`: `private | public`, default `private`; publication handling uses
+  it, but it is not a prose instruction
+
+The creation UI is exactly three screens: **Idea -> Shape -> Review and start**.
+The only required free-text value is the idea. Shape holds the full-width
+audience segmented control, inferred/editable genre and world, a dedicated
+full-screen Craft character editor, moments, and collapsed More options. Review
+shows the assembled brief and the price before the first paid action. There is no
+global `writing_mode` request field: steering is per continuation chapter.
 
 Validation should reject:
 
@@ -833,23 +819,17 @@ The VS Code agent should inspect and update these areas together:
 - cover image docs in `backend/COVER_IMAGES.md`
 - strategic decision docs if taxonomy or adult gating changes
 
-## Known Current Mismatches to Resolve
+## Current Implementation Boundary
 
-- `stories.genre` is currently `text[]`, while the product decision says
-  single-select. v5.1 wants `primary_genre text` plus optional arrays for
-  `identity_lenses`, `trope_modules`, and generated `themes`.
-- `generate-story` currently accepts one to three genre strings. v5.1 wants one
-  primary genre plus separate modular fields.
-- Expo currently exposes 19 genre keys, including `lgbtq`, `motivational`,
-  `spirituality`, `kids`, and `bedtime`. v5.1 wants 15 adult genre cards plus
-  separate Kids/Bedtime and queer controls.
-- Cover prompts currently key only by old genre names. They need mappings for
-  `darkRomance`, `cozyFantasy`, and `paranormalRomance`, plus trope-aware
-  overlays for Vampire/Werewolf.
-- Feed/library filtering currently assumes `genre` array containment. It needs a
-  migration path to `primary_genre` and content-rating filters.
-- Generated output is currently parsed from plain text. v5.1 wants structured
-  JSON output with strict validation and fallback parsing only if needed.
+- `stories.primary_genre` is the routing genre. `stories.genre` retains the
+  reviewed primary-first list for shelf tags and compatibility.
+- `generate-story` accepts the primary genre plus up to two reviewed secondary
+  genres, while every prompt module routes from the primary value.
+- Expo exposes the 13 creation genres and models Kids as an audience mode.
+- Strict provider schemas are the primary output contract. Plain-text parsing is
+  retained only as a defensive compatibility fallback.
+- `shape-story` is free scaffolding, authenticated and rate-limited. Its failure
+  is silent in Create and never blocks manual completion of Shape.
 
 ## QA and Evals
 
@@ -873,7 +853,7 @@ Before deploying:
   - safety boundary handling
 - Run cheap-model QA first because fallback models must obey the architecture.
 
-## Sources Checked for v5.1 Direction
+## Sources Checked for v6 Direction
 
 - Apple App Review Guidelines and November 2025 creator-content update: creator
   apps must let users identify content exceeding age rating and restrict access
