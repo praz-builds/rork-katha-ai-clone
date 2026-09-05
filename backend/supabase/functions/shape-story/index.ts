@@ -18,6 +18,50 @@ import {
   STORY_SHAPE_SYSTEM_PROMPT,
 } from "../_shared/story-shape.ts";
 
+/**
+ * The shaping call's budget, and why it is not the library default.
+ *
+ * `generateFastStructuredText` defaults to an 8s deadline, and this call site
+ * used to take it. That default is what made `shape-story` return
+ * `{"shape": null}` in production for every request: the call is simply slower
+ * than 8 seconds, and the deadline is split before it is spent. 60% goes to
+ * OpenRouter (`FAST_OPENROUTER_SHARE`), divided again across the two models in
+ * `OPENROUTER_MODELS`, so the leader actually got ~2.4s of an 8s budget while
+ * needing four times that. Every provider aborted, the chain exhausted, and the
+ * handler's own catch answered `null` - which onboarding renders as a title
+ * derived from the user's own sentence. It looked like a missing deploy. It was
+ * a deadline.
+ *
+ * Measured against the live model on 2026-09-05, `meta/muse-spark-1.3-contributor`
+ * with `reasoning: { effort: "minimal" }` and a strict schema:
+ *
+ * | variant             | observed                       |
+ * |---------------------|--------------------------------|
+ * | onboarding (n=4)    | 8.2s, 9.2s, 11.4s, 33.6s       |
+ * | create studio (n=4) | 5.7s, 5.8s, 6.3s, 7.5s         |
+ *
+ * Onboarding is slower because it additionally writes a title and 120-180 words
+ * of real opening prose. The 33.6s outlier is why the deadline is a multiple of
+ * the median rather than a snug fit: this is a cap that only a hung provider
+ * should ever reach, not a target.
+ *
+ * The two variants get different budgets because the user is in a different
+ * place. Onboarding prefetches this call when the writer leaves the idea screen
+ * and warms it through the details, email and code screens, so a long tail costs
+ * the user nothing; the crafting loader holds until it lands. The Create studio
+ * has no such cover - the writer is watching - so it is capped tighter and is
+ * the faster variant anyway.
+ *
+ * Token budgets are raised off the 900 default for the same reason. OpenRouter
+ * floors its own budget at `OPENROUTER_MIN_OUTPUT_TOKENS`, so 900 never bound
+ * the leader, but it does bind the OpenAI fallback, and the onboarding response
+ * measured ~2,500 characters of JSON including the opening prose.
+ */
+const ONBOARDING_SHAPE_DEADLINE_MS = 45_000;
+const SHAPE_DEADLINE_MS = 30_000;
+const ONBOARDING_SHAPE_MAX_TOKENS = 2_000;
+const SHAPE_MAX_TOKENS = 1_200;
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -78,6 +122,8 @@ serve(async (req) => {
         onboarding ? ONBOARDING_SHAPE_SYSTEM_PROMPT : STORY_SHAPE_SYSTEM_PROMPT,
         buildStoryShapePrompt(idea, genre || undefined),
         onboarding ? ONBOARDING_SHAPE_OUTPUT : STORY_SHAPE_OUTPUT,
+        onboarding ? ONBOARDING_SHAPE_MAX_TOKENS : SHAPE_MAX_TOKENS,
+        onboarding ? ONBOARDING_SHAPE_DEADLINE_MS : SHAPE_DEADLINE_MS,
       );
       return respond({
         shape: parseStoryShape(result.text),
