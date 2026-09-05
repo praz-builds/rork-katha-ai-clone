@@ -157,7 +157,7 @@ Deno.test("deriveContentRating: sweet -> sweet", () => {
   assertEquals(deriveContentRating("adult", "sweet"), "sweet");
 });
 
-Deno.test("the 40-character seed gate is gone: one character is enough", () => {
+Deno.test("server validation keeps the seed floor at one character", () => {
   const result = validateGenerationRequest(validRequest({ topic: "a" }));
   if ("error" in result) throw new Error(result.error);
   assertEquals(result.seed, "a");
@@ -227,6 +227,22 @@ Deno.test("a non-empty cast is normalized to exactly one lead", () => {
     true,
     false,
   ]);
+});
+
+Deno.test("character portrait_url survives validation", () => {
+  const result = validateGenerationRequest(validRequest({
+    characters: [{
+      name: "Praz",
+      description: "A young explorer",
+      appearance: "Dark hair and travel clothes",
+      portrait_url: "https://example.com/portraits/praz.png",
+    }],
+  }));
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(
+    result.characters[0].portraitUrl,
+    "https://example.com/portraits/praz.png",
+  );
 });
 
 Deno.test("planned_chapter_count accepts only 3, 7, 15", () => {

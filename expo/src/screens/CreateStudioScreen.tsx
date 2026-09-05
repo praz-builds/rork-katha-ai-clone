@@ -74,6 +74,8 @@ type DraftCharacter = {
   background?: string;
   /** Face, build, clothing. Drives the portrait, and detail in the prose. */
   appearance?: string;
+  portraitUrl?: string;
+  portraitStatus?: "idle" | "generating" | "ready" | "failed";
 };
 
 type StudioDraft = {

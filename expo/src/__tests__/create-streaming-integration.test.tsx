@@ -15,7 +15,6 @@
 /* eslint-disable import/first */
 import React from "react";
 import { act, fireEvent, render } from "@testing-library/react-native";
-import type { Story } from "@/types/domain";
 
 const mockInferStoryBrief = jest.fn();
 const mockLoadDraft = jest.fn();
@@ -159,14 +158,19 @@ async function renderCreate() {
   );
 }
 
+/**
+ * Main Create is one screen: the idea, the controls, and Create.
+ *
+ * It used to be Idea then Review, and this helper walked both. Keeping the old
+ * two-step walk here would fail on the button that no longer exists and say
+ * nothing about streaming, which is what this file is actually for.
+ */
 async function driveToCreate(view: Awaited<ReturnType<typeof render>>) {
   await fireEvent.changeText(
     view.getByLabelText("Story idea"),
     "A child finds a door in an old library that was not there yesterday.",
   );
-  await fireEvent.press(view.getByRole("button", { name: "Continue" }));
   await view.findByRole("button", { name: "Add a character" });
-  await fireEvent.press(view.getByRole("button", { name: /continue|review/i }));
 }
 
 beforeEach(() => {

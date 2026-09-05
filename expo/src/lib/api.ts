@@ -145,6 +145,72 @@ export async function inferStoryBrief(
 // Retain the original name for callers that landed before the Create flow.
 export const shapeStoryIdea = inferStoryBrief;
 
+export type CharacterImageInput = {
+  requestId: string;
+  name: string;
+  description?: string;
+  appearance?: string;
+};
+
+/**
+ * Separate character-image call used by the Craft character sheet.
+ *
+ * Production backend wiring is expected to expose `generate-character-image`
+ * around `_shared/image.ts`. Until that endpoint is deployed, local/mock mode
+ * returns a stable draft URL so the UI flow can be exercised without starting
+ * story generation early.
+ */
+export async function generateCharacterImage(
+  input: CharacterImageInput,
+): Promise<{ url: string }> {
+  if (!isSupabaseConfigured) {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    return { url: `draft-character://${input.requestId}` };
+  }
+
+  try {
+    await bootstrapUser();
+  } catch {
+    throw new GenerationRequestError(
+      "Unable to set up your story account. Please try again.",
+      false,
+    );
+  }
+
+  const { data, error } = await supabase.functions.invoke(
+    "generate-character-image",
+    {
+      body: {
+        request_id: input.requestId,
+        name: input.name,
+        description: input.description,
+        appearance: input.appearance,
+      },
+    },
+  );
+
+  if (error) {
+    throw new GenerationRequestError(
+      "Could not create the character image. Please try again.",
+      false,
+    );
+  }
+
+  const url = typeof data?.url === "string"
+    ? data.url
+    : typeof data?.image_url === "string"
+    ? data.image_url
+    : "";
+  if (!url) {
+    throw new GenerationRequestError(
+      "Character image returned no image.",
+      false,
+    );
+  }
+
+  return { url };
+}
+
 export async function getLibrary(
   query?: { q?: string; genre?: string },
 ): Promise<LibraryResult> {
@@ -308,7 +374,16 @@ function buildGenerationRequestBody(
       // the primary path. The screen no longer seeds one, and this filter is
       // the second line of defence: a user who taps "add character" and then
       // leaves the row blank must not have their generation refused for it.
-      characters: draft.characters.filter((c) => c.name.trim()),
+      characters: draft.characters
+        .filter((c) => c.name.trim())
+        .map((c) => ({
+          name: c.name,
+          description: c.description,
+          background: c.background,
+          appearance: c.appearance,
+          isHero: c.isHero,
+          portrait_url: c.portraitUrl,
+        })),
       language: draft.language,
       where_and_when: draft.whereAndWhen,
       moments: draft.moments,

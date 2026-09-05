@@ -278,6 +278,7 @@ export interface CharacterInput {
   description?: string;
   background?: string;
   appearance?: string;
+  portraitUrl?: string;
   isHero?: boolean;
 }
 

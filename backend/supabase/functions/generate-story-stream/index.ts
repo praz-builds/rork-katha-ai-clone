@@ -257,6 +257,12 @@ serve(async (req) => {
                   description: c.description,
                   background: c.background,
                   appearance: c.appearance,
+                  // A portrait the writer generated on the brief screen, and
+                  // paid for. Dropping it here silently discards that work and
+                  // the cast is re-rendered from scratch by the media task.
+                  // `generate-story` carries it; this path is newer and did not,
+                  // which is the kind of gap two parallel write paths produce.
+                  portrait_url: c.portraitUrl,
                   is_hero: c.isHero ?? false,
                 })),
               ).then(

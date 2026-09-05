@@ -294,7 +294,7 @@ describe("character payload", () => {
     expect(bodyOf(mockInvoke.mock.calls[0]).characters).toEqual([]);
   });
 
-  it("carries background and appearance through to the request", async () => {
+  it("carries background, appearance, and portrait URL through to the request", async () => {
     mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
     await generateStory(
       {
@@ -304,6 +304,7 @@ describe("character payload", () => {
           description: "a restorer",
           background: "Has not spoken to her mother in six years.",
           appearance: "Dark hair pinned up, paint on her hands.",
+          portraitUrl: "https://example.com/elena.png",
           isHero: true,
         }],
       },
@@ -313,6 +314,7 @@ describe("character payload", () => {
       .characters as Record<string, unknown>[];
     expect(characters[0].background).toContain("six years");
     expect(characters[0].appearance).toContain("Dark hair");
+    expect(characters[0].portrait_url).toBe("https://example.com/elena.png");
   });
 });
 
