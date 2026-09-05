@@ -1354,14 +1354,21 @@ export default function WriterOnboarding(
                   They also now carry the promise the removed blueprint screen
                   used to make in person: the first line is the one that says
                   the chapter list above is editable, later, by hand. */}
+              {/* Two nested groups, not one flat list. The eyebrow sits
+                  `related` from the rows it heads; the rows sit `md` from each
+                  other. Flat, the eyebrow would have been the same distance
+                  from the list as the rows are from one another, which is the
+                  rhythm rule in theme.ts stated backwards. */}
               <View style={styles.entitlements}>
                 <Text style={styles.eyebrow}>YOU CAN ALWAYS</Text>
-                {ENTITLEMENTS.map((line) => (
-                  <View key={line} style={styles.entitlementRow}>
-                    <IconCheck size={16} color={colors.success} />
-                    <Text style={styles.entitlementText}>{line}</Text>
-                  </View>
-                ))}
+                <View style={styles.entitlementRows}>
+                  {ENTITLEMENTS.map((line) => (
+                    <View key={line} style={styles.entitlementRow}>
+                      <IconCheck size={16} color={colors.success} />
+                      <Text style={styles.entitlementText}>{line}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
 
               <Primary label="Save my story" onPress={() => go("paywall")} />
@@ -1733,7 +1740,10 @@ function Paywall({
         month.
       </Text>
 
-      <View style={styles.entitlements}>
+      {/* No eyebrow here, so the block IS the row list: it takes the group's
+          top margin and the rows' own gap, rather than the `related` gap that
+          exists on the preview to hug an eyebrow to its list. */}
+      <View style={[styles.entitlements, styles.entitlementRows]}>
         {[
           "Everything in Reader",
           "Read without interruptions",
@@ -2505,7 +2515,19 @@ const styles = StyleSheet.create({
   },
   previewTagText: { ...onboardingType.sectionHeader, color: colors.sepiaText },
   readerText: { ...type.body, fontFamily: fonts.reader, color: colors.ink },
-  entitlements: { gap: spacing.md, marginTop: spacing.betweenGroups },
+  /**
+   * The entitlement block: the top margin that separates it from what is
+   * above, plus `related`, because on the preview its only two children are
+   * the eyebrow and the list it heads.
+   *
+   * The paywall has no eyebrow, so there the block and the list are the same
+   * thing and it composes both styles to get `md` between its rows. Splitting
+   * the two gaps is what lets one block serve both without either screen
+   * inheriting the other's rhythm.
+   */
+  entitlements: { gap: spacing.related, marginTop: spacing.betweenGroups },
+  /** The rows themselves, `md` apart. One line each, so they need air the eyebrow does not. */
+  entitlementRows: { gap: spacing.md },
   entitlementRow: {
     flexDirection: "row",
     alignItems: "center",
