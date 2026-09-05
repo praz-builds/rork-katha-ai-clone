@@ -85,8 +85,8 @@ The rules:
 |---------|---------|-------------|--------|
 | **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
 | **OpenAI** | Cover images (gpt-image-1) | `OPENAI_API_KEY` in Supabase secrets + `backend/.env` | Set |
-| **Gemini** | Story generation primary (Gemini 3.1 Pro Preview) | `GEMINI_API_KEY` in Supabase secrets | Set, currently quota-blocked (`429 RESOURCE_EXHAUSTED`) |
-| **OpenRouter** | Free-router story generation fallback | `OPENROUTER_API_KEY` in Supabase secrets | Set, currently carrying fallback traffic |
+| **Gemini** | Story generation fallback (Gemini 3.1 Pro Preview) | `GEMINI_API_KEY` in Supabase secrets | Set, currently quota-blocked (`429 RESOURCE_EXHAUSTED`) |
+| **OpenRouter** | Story generation primary (Muse Spark) + free-router last resort | `OPENROUTER_API_KEY` in Supabase secrets | Set, serving all generation |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **RevenueCat** | Subscriptions + credit packs + paywalls | Public SDK key in `expo/src/lib/revenuecat.ts`; webhook secret in Supabase secrets | Pending dashboard setup |
@@ -96,17 +96,23 @@ The rules:
 
 ### LLM Fallback Chain
 
-Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. As of 2026-08-31 both preferred positions are blocked upstream — Gemini returns `429 RESOURCE_EXHAUSTED` and the pinned OpenRouter model returns `402 Insufficient credits` — so OpenAI `gpt-5.6-luna` is the model actually serving generation, with `gpt-5-mini` and `gpt-4o-mini` behind it and `openrouter/free` the last resort.
+OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
+
+**Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` was re-balanced with the reorder — cumulative shares are openrouter 0.5, gemini 0.65, openai 0.93, free 1.0 — because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last.
+
+**The contributor tier is `404` until an account setting changes.** `meta/muse-spark-1.3-contributor` is ~17x cheaper because it trains on prompts and completions, and the OpenRouter account's privacy setting blocks training-tier endpoints: `"Paid model training violation (account settings): 1 endpoint excluded"`. Change it at https://openrouter.ai/settings/privacy — that is a data decision (users' story ideas and generated prose go to the provider for training), and no deploy is involved either way. Until then `meta/muse-spark-1.3` serves; it was measured on 2026-09-05 returning schema-valid JSON in ~11s.
 
 **Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_STORY_API_KEY` falling back to `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
 
 **Set `OPENAI_STORY_API_KEY` to stop stories and covers sharing a blast radius.** `OPENAI_API_KEY` also authenticates `gpt-image-1` in `_shared/image.ts`. While it is the only key set, one spend cap, rate limit, revocation or rotation takes down covers *and* stories together — and with Gemini and OpenRouter unavailable, every position that can serve authenticates with it. The code already prefers the dedicated key; setting the secret is the whole change, and leaving it unset preserves current behaviour.
 
-**Model IDs:** `gemini-3.1-pro-preview`, `google/gemini-2.5-flash`, `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`, `openrouter/free`.
+**Model IDs:** `meta/muse-spark-1.3-contributor`, `meta/muse-spark-1.3`, `gemini-3.1-pro-preview`, `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`, `nvidia/nemotron-3-ultra-550b-a55b:free`, `openrouter/free`. (`google/gemini-2.5-flash` held the OpenRouter position until 2026-09-05.)
 
 **The OpenAI position is an ordered list, not one model.** `OPENAI_MODELS` in `_shared/llm.ts` tries `gpt-5.6-luna`, then `gpt-5-mini`, then `gpt-4o-mini`. Model access is granted per OpenAI **project**, not just per org — granting at org level alone still leaves `403 ... does not have access to model`. `/v1/models` lists models the project cannot call, so it is useless as an access probe; the only reliable check is an actual completion request. Granting access upstream needs no deploy — the 403 stops happening and the better model takes over, which is exactly how Luna went live on 2026-08-31.
 
 **Reasoning models take a different chat-completions contract.** `gpt-5.6-luna` and `gpt-5-mini` require `max_completion_tokens`, reject `max_tokens`, and ignore `temperature`; they also take `reasoning_effort: "low"`, because prose does not benefit from long deliberation and every reasoning token is latency the reader waits through. Reasoning tokens are counted *inside* that budget, so the reasoning path carries 2x headroom over the visible story length — without it a long story is truncated by the budget its own reasoning consumed. `gpt-4o-mini` and the OpenRouter path keep the legacy `max_tokens` + `temperature` shape, because OpenRouter still routes to models that only understand it. The `reasoning` flag on each `OpenAIModelSpec` selects the shape; never assume a new model shares the old one.
+
+**The Muse Spark models reason inside `max_tokens`, and that is how they fail silently.** Measured 2026-09-05: `max_tokens: 1200` with no reasoning control returned HTTP `200`, `finish_reason: "length"`, 1,197 reasoning tokens and an **empty content string**; `max_tokens: 8000` with `reasoning: {effort: "low"}` returned clean JSON on 957 reasoning + 1,408 completion tokens. So `openRouterRequestShape` sends an explicit `reasoning: { effort: "low" }` and floors the budget at `OPENROUTER_MIN_OUTPUT_TOKENS` (8,000) on top of a 2x multiplier — a multiplier alone leaves the paragraph editor at 4,000 and the onboarding shaping call at 1,800, which is the failing row. An empty-content `200` is rejected at the provider boundary by `openAICompatibleContent` and falls through to the next model; it must never be treated as a usable result. Reasoning tokens bill at the completion rate, so cost per call is far above prompt-plus-visible-output.
 
 **Every model whose identity is known in advance is tried before the free router.** `openrouter/free` routes to a random free model per request, so its output cap, latency and prose quality are not repeatable, and free-tier daily caps apply. Production has seen it hand a *code* model a prose rewrite, and a routed model whose output cap is under `max_tokens` returns `finish_reason: "length"`, which the parser rejects. It is the last-ditch attempt before the caller refunds the credit — never a position production leans on.
 
@@ -223,38 +229,36 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `send-notification` | Push via FCM | G |
 | `referral-verify` | Referral fraud checks | H |
 
-## Story Generation System (v5.1)
+## Story Generation System (v6)
 
 The generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts`. Shared types in `_shared/types.ts`, validation in `_shared/validation.ts`. The prompt spec is `source-of-truth/STORY_PROMPT_SYSTEM.md`.
 
-### Architecture (v5.1 modular layers)
+### Architecture (v6 modular layers)
 
-System prompts are assembled from 10 layers:
+System prompts are assembled from 9 layers:
 1. **Base craft + safety** -- anti-slop, show-don't-tell, rhythm, dialogue, formatting, safety rules
 2. **Story engine** -- protagonist, want, obstacle, stakes, irreversible choice, emotional turn, genre payoff, final image
 3. **Primary genre module** -- 15 voice modules with voice/pacing/what-works/what-to-avoid
 4. **Audience mode** -- kids constraints (ages 4-10, 500-1200 words, safe content)
 5. **Identity lens** -- queer lens guidance
-6. **Trope module** -- werewolf/vampire/enemiesToLovers/etc. rules per genre
-7. **Spice module** -- sweet (fade to black), steamy (sensuality on-page), explicit (feature-flagged)
-8. **Continuation/finale** -- mid-series and finale rules
-9. **Language** -- 15 supported languages
-10. **Output schema** -- structured JSON output format
+6. **Spice module** -- sweet (fade to black), steamy (sensuality on-page), explicit (feature-flagged)
+7. **Continuation/finale** -- mid-series and finale rules
+8. **Language** -- 15 supported languages
+9. **Output schema** -- structured JSON output format
 
 API:
-- `buildStorySystemPrompt({ primaryGenre, audienceMode?, identityLenses?, tropeModules?, spiceLevel?, language? })` -- modular system prompt.
+- `buildStorySystemPrompt({ primaryGenre, audienceMode?, identityLenses?, spiceLevel?, language?, chapterLength?, plannedChapterCount? })` -- modular system prompt.
 - `buildContinuationSystemPrompt({ ...above, mode: "chapter" | "finale" })` -- continuation prompt.
-- `buildUserPrompt({ primaryGenre, audienceMode?, tropeModules?, spiceLevel?, seed, characters?, language? })` -- user message.
+- `buildUserPrompt({ primaryGenre, audienceMode?, spiceLevel?, seed, characters?, language?, storyValues?, writingStyle?, avoid?, chapterLength?, plannedChapterCount? })` -- user message.
 - Old 2-arg signatures (`buildStorySystemPrompt(genre, language)`) still work as deprecated wrappers.
 
 ### Taxonomy
 
 - **15 primary genres**: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry.
 - **13 UI genres** (cozyFantasy + paranormalRomance are DB-only, hidden from UI).
-- **2 audience modes**: adult (default), kids (toggle chip in UI).
+- **2 audience modes**: adult (default), kids (full-width segmented control in Shape).
 - **Spice levels**: sweet (default), steamy, explicit (feature-flagged off).
 - **Identity lenses**: queer.
-- **10 trope modules**: werewolf, vampire, enemiesToLovers, secondChance, forcedProximity, smallTown, fatedMates, forbiddenLove, lockedRoom, secretIdentity. Genre-constrained.
 - **Genre migration map**: drama/sliceOfLife/darkAcademia -> contemporary, mythology -> fantasy, kids/bedtime -> adventure, lgbtq/motivational/spirituality -> contemporary.
 
 ### Quality Rules (enforced in every generation)
@@ -277,15 +281,16 @@ LLM returns JSON: `{ title, chapter_title, chapter_body, word_count, themes, fir
 - Rejects darkRomance in kids mode
 - Rejects explicit spice (MVP gate)
 - Clamps spice to genre-allowed set
-- Filters tropes to genre-allowed set
 - Strips identity lenses in kids mode
-- 40-char seed minimum, 1000-char ceiling
+- One non-whitespace-character seed minimum, 1000-char ceiling
 
 `deriveContentRating(audienceMode, spiceLevel)` -> kids/steamy/explicit/sweet (stored on story row).
 
-### Series Limit
+### Series Length
 
-`MAX_SERIES_CHAPTERS = 7`. Enforced in `continue-story` endpoint. Auto-finale at chapter 7. Optional `is_finale` flag for early endings.
+`planned_chapter_count` is 3, 7 or 15. `continue-story` enforces that stored
+limit and automatically treats its final planned chapter as a finale. An
+optional `is_finale` flag can end a series early.
 
 ### Cultural Context
 
@@ -293,10 +298,10 @@ The AI infers cultural context from character names, traits, and story language.
 
 ### Input Requirements
 
-- **Story seed**: 40-character minimum (enforced both client-side and server-side).
-- **Characters**: optional (pre-filled placeholder in UI).
-- **Genre**: required, single-select from 13 UI genres.
-- **Language**: optional, defaults to English. 15 supported languages.
+- **Story idea**: one non-whitespace character minimum, 1000-character ceiling.
+- **Characters**: optional, maximum 3; detailed fields live in the Craft character screen.
+- **Genre**: required primary genre, with up to two editable secondary genre tags.
+- **Language**: new Create submissions support English and Portuguese. Existing stories retain legacy language support.
 
 ## Cover Image System
 
@@ -429,7 +434,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - **Reading is free, unlimited, on every tier, forever.** No caps, no metering, no daily pass.
 - **Audio is 1 credit per chapter, unlocked permanently.** No voice tiers.
 - **Drafting is free**: unlimited manual editing, 3 free AI redrafts and 20 free paragraph edits per chapter, 1 free cover regeneration per paid cover.
-- **Shipped today:** one AI-chosen short story of 500-1500 words, continuable to `MAX_SERIES_CHAPTERS` (7). **Planned, not yet built** (`source-of-truth/STORY_GENERATION_FLOW.md`): a chosen length of 3, 7 or 15 chapters driving pacing and finale derivation, advanced one Continue at a time, with *Write the rest* from chapter 3. There is no Interactive/Auto-Write mode toggle in either.
+- **Shipped today:** generation selects a Short, Standard or Long chapter band and stores a planned length of 3, 7 or 15 chapters. Continuations advance one chapter at a time and derive the finale from that stored length. The broader Create rebuild remains governed by `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
 - **3-credit welcome bonus**, granted only after the user declines both the paywall and the one-time offer.

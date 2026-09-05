@@ -1,5 +1,57 @@
-import { colors, spacing, radius, fonts, genreLabels, genreGradients, type, shadows, motion } from '@/theme';
+import { colors, spacing, radius, fonts, controls, genreLabels, genreGradients, type, onboardingType, onboardingRamp, ONBOARDING_RAMP_MIN_STEP, shadows, motion } from '@/theme';
+import {
+  OPTICAL_SCALE,
+  opticalSize,
+  IconAdd,
+  IconBack,
+  IconCheck,
+  IconCheckCircle,
+  IconChevronDown,
+  IconChevronForward,
+  IconClose,
+  IconRemove,
+} from '@/theme/icons';
 import { GENRES } from '@/types/domain';
+
+/**
+ * Split a CSS box-shadow string into its layers. A naive `.split(',')` is wrong
+ * because every layer contains an `rgba(r, g, b, a)` with its own commas, so
+ * split only on the commas that sit at paren depth zero.
+ */
+function shadowLayers(value: string): string[] {
+  const layers: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of value) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      layers.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) layers.push(current.trim());
+  return layers;
+}
+/**
+ * WCAG relative luminance from a #rrggbb string. Computed, never hardcoded, so
+ * the ground/surface contrast invariant survives a retune of the ramp.
+ */
+function luminance(hex: string): number {
+  const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const [r, g, b] = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * The measured floor for "a white card lifts off the ground without a border".
+ * See the doc comment on `colors` in theme.ts. The old ramp (#FAF7F2 ground)
+ * measured 0.067 and failed this.
+ */
+const GROUND_SURFACE_MIN_DELTA = 0.1;
+
 
 describe('theme tokens', () => {
   describe('colors', () => {
@@ -15,6 +67,67 @@ describe('theme tokens', () => {
         expect(typeof value).toBe('string');
         expect(value.length).toBeGreaterThan(0);
       }
+    });
+
+    it('exposes the onboarding semantic colours as valid hex', () => {
+      // `strong` is icon ink, `track` is the divider hairline. Both are new and
+      // both are referenced by name in DESIGN_SYSTEM.md, so they must exist.
+      for (const key of ['strong', 'track'] as const) {
+        expect(colors).toHaveProperty(key);
+        expect(colors[key]).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      }
+    });
+
+    it('keeps `surface` pure white so a card reads as white on the ground', () => {
+      expect(colors.surface).toBe('#FFFFFF');
+      expect(luminance(colors.surface)).toBe(1);
+    });
+
+    it('separates ground from surface enough that a card lifts without a border', () => {
+      // The whole card treatment rests on this gap. Computed from the hex, so a
+      // future retune of `bg` cannot quietly collapse the contrast again.
+      const delta = luminance(colors.surface) - luminance(colors.bg);
+      expect(delta).toBeGreaterThanOrEqual(GROUND_SURFACE_MIN_DELTA);
+    });
+
+    it('keeps the neutral ramp monotonic, lightest first', () => {
+      // surface2 must stay BELOW bg: it is a recessed inset fill, and if it
+      // crosses the ground it starts reading as a raised card instead.
+      const ramp = ['surface', 'bg', 'surface2', 'track', 'canvas', 'border', 'borderStrong'] as const;
+      const measured = ramp.map((key) => luminance(colors[key]));
+      for (let i = 1; i < measured.length; i += 1) {
+        expect(measured[i - 1]).toBeGreaterThan(measured[i]);
+      }
+    });
+
+    it('keeps a trace of warmth in the ground rather than going neutral grey', () => {
+      // Warmth is carried by R > G > B. A blue-cast ground would turn the sepia
+      // reader into a yellow stain on the next screen.
+      for (const key of ['bg', 'canvas', 'surface2', 'track', 'border', 'borderStrong'] as const) {
+        const [r, g, b] = [1, 3, 5].map((i) => parseInt(colors[key].slice(i, i + 2), 16));
+        expect(r).toBeGreaterThanOrEqual(g);
+        expect(g).toBeGreaterThan(b);
+      }
+    });
+
+    it('leaves the sepia reader tokens untouched by the ramp retune', () => {
+      // The reader ground is designed warm and full-bleed. It is not part of the
+      // neutral ramp and must not drift with it.
+      expect(colors.sepia).toBe('#F4E8D0');
+      expect(colors.sepiaText).toBe('#4A3B2A');
+      expect(colors.sepiaHeading).toBe('#33291f');
+      expect(colors.sepiaBody).toBe('#4a3f35');
+      expect(colors.sepiaMuted).toBe('#8b7d6b');
+      expect(colors.sepiaSecondary).toBe('#6a5c4c');
+      expect(colors.sepiaAccent).toBe('#A64C1C');
+      expect(colors.sepiaButton).toBe('#ec6f2c');
+      expect(colors.sepiaPlaceholder).toBe('#e7dcc6');
+      expect(colors.sepiaToggleTrack).toBe('#e7ddca');
+    });
+
+    it('keeps the accent Katha orange, not the reference green', () => {
+      expect(colors.accent).toBe('#FF6B1A');
+      expect(colors.accentSoft).toBe('#FFEFE2');
     });
 
     it('sepia palette is complete', () => {
@@ -40,6 +153,33 @@ describe('theme tokens', () => {
       expect(spacing).toHaveProperty('lg');
       expect(spacing).toHaveProperty('xl');
       expect(spacing).toHaveProperty('xxl');
+    });
+
+    it('exposes the semantic `related` token, tighter than the inter-element gap', () => {
+      expect(spacing).toHaveProperty('related');
+      expect(typeof spacing.related).toBe('number');
+      // The invariant that gives the token meaning: a group's internal gap must be
+      // visibly tighter than the gap between groups, otherwise grouping disappears.
+      expect(spacing.related).toBeLessThan(spacing.md);
+      // A screen title and the sentence under it are one group and use this
+      // token; the gap below the pair is `spacing.xxl` or larger.
+      expect(spacing.related).toBeLessThan(spacing.xxl);
+    });
+
+    it('exposes `betweenGroups` as the other half of the rhythm, clearly wider than `related`', () => {
+      // `related` alone cannot produce grouping: hierarchy is the CONTRAST
+      // between the gap inside a group and the gap around it. Marginally
+      // larger is not larger - the pair must read as two different distances
+      // at a glance, so the between-groups gap is at least twice the internal
+      // one. Without this a section head sits equidistant between the section
+      // above it and the content below it and stops heading anything.
+      expect(spacing).toHaveProperty('betweenGroups');
+      expect(typeof spacing.betweenGroups).toBe('number');
+      expect(spacing.betweenGroups).toBeGreaterThan(spacing.related);
+      expect(spacing.betweenGroups).toBeGreaterThanOrEqual(spacing.related * 2);
+      // It is drawn from the existing scale, never a new off-grid number.
+      expect(Object.values(spacing)).toContain(spacing.betweenGroups);
+      expect(spacing.betweenGroups % 4).toBe(0);
     });
   });
 
@@ -85,11 +225,186 @@ describe('theme tokens', () => {
     });
   });
 
+  describe('onboarding typography', () => {
+    it('exports the four ramp levels at the specified metrics', () => {
+      expect(onboardingType.title.fontSize).toBe(28);
+      expect(onboardingType.title.lineHeight).toBe(34);
+      expect(onboardingType.sectionHeader.fontSize).toBe(21);
+      expect(onboardingType.sectionHeader.lineHeight).toBe(26);
+      expect(onboardingType.body.fontSize).toBe(16);
+      expect(onboardingType.body.lineHeight).toBe(21);
+      expect(onboardingType.caption.fontSize).toBe(12);
+      expect(onboardingType.caption.lineHeight).toBe(16);
+    });
+
+    it('is one ramp: every level named, in descending order, nothing unlisted', () => {
+      expect([...onboardingRamp]).toEqual(Object.keys(onboardingType));
+    });
+
+    it('steps down strictly, and by at least the stated minimum ratio', () => {
+      // The failure this guards against is a fifth size slipped in between two
+      // levels, or a level nudged until the step is too small to read as a
+      // change of level. The old scale had body at 14.5 against a 16pt field
+      // and eyebrows at 12 under a 22 title; neither gap said anything.
+      expect(ONBOARDING_RAMP_MIN_STEP).toBeGreaterThanOrEqual(1.25);
+      for (let i = 1; i < onboardingRamp.length; i += 1) {
+        const larger = onboardingType[onboardingRamp[i - 1]].fontSize;
+        const smaller = onboardingType[onboardingRamp[i]].fontSize;
+        expect(larger).toBeGreaterThan(smaller);
+        expect(larger / smaller).toBeGreaterThanOrEqual(ONBOARDING_RAMP_MIN_STEP);
+      }
+    });
+
+    it('keeps the title big enough to read as a screen heading at 390pt', () => {
+      // 22 fitted the longest heading in the flow onto one 326pt line by half a
+      // point and did not read as a heading. 28 wraps the two longest headings
+      // to exactly two lines and leaves the short ones on one.
+      expect(onboardingType.title.fontSize).toBeGreaterThanOrEqual(26);
+      expect(onboardingType.title.fontSize).toBeLessThan(type.largeTitle.fontSize);
+    });
+
+    it('carries a line height that moved with the size', () => {
+      // A size changed without its line height is the standard way this ramp
+      // rots. Headings set tight, body and caption looser.
+      for (const level of onboardingRamp) {
+        const { fontSize, lineHeight } = onboardingType[level];
+        expect(lineHeight).toBeGreaterThan(fontSize);
+        expect(lineHeight / fontSize).toBeGreaterThanOrEqual(1.15);
+        expect(lineHeight / fontSize).toBeLessThanOrEqual(1.45);
+      }
+      expect(onboardingType.title.lineHeight / onboardingType.title.fontSize).toBeLessThan(
+        onboardingType.body.lineHeight / onboardingType.body.fontSize,
+      );
+    });
+
+    it('heads a group with something louder than the group, not quieter', () => {
+      // The bug the ramp was retuned to fix: the section eyebrow was 12 while
+      // the body under it was 14.5, so the label heading a group was the
+      // smallest text in it.
+      expect(onboardingType.sectionHeader.fontSize).toBeGreaterThan(onboardingType.body.fontSize);
+      expect(onboardingType.body.fontSize).toBeGreaterThan(onboardingType.caption.fontSize);
+    });
+
+    it('keeps the uppercase section head under the title in cap height', () => {
+      // Uppercase carries more mass than sentence case at the same size, so the
+      // comparison that matters is cap height, not fontSize. Inter Tight:
+      // cap 0.7275em, x-height 0.5459em. The eyebrow's caps land on the title's
+      // x-height, which is a clear second level and not a competing title.
+      const CAP = 0.7275;
+      const X_HEIGHT = 0.5459;
+      const eyebrowCap = onboardingType.sectionHeader.fontSize * CAP;
+      const titleCap = onboardingType.title.fontSize * CAP;
+      expect(eyebrowCap).toBeLessThan(titleCap);
+      expect(eyebrowCap / titleCap).toBeLessThanOrEqual(0.8);
+      expect(eyebrowCap).toBeCloseTo(onboardingType.title.fontSize * X_HEIGHT, 0);
+    });
+
+    it('tracks sentence-case titles negative and uppercase eyebrows positive', () => {
+      // The resolved spec conflict: "negative tracking on every heading" means
+      // sentence-case headings. The section header is the uppercase eyebrow,
+      // where positive tracking is correct and matches ONBOARDING_FLOW.md §1.
+      expect(onboardingType.title.letterSpacing).toBeLessThan(0);
+      expect(onboardingType.sectionHeader.letterSpacing).toBeGreaterThan(0);
+      // Body and caption are neither heading: at or just above zero, never
+      // negative, because tracking in at a small optical size closes counters.
+      expect(onboardingType.body.letterSpacing).toBeGreaterThan(0);
+      expect(onboardingType.caption.letterSpacing).toBeGreaterThanOrEqual(0);
+    });
+
+    it('keeps tracking proportional to size rather than a fixed pixel value', () => {
+      // -0.7 at 22 was -0.032em. The title got bigger without getting looser
+      // because the em-relative tightness was preserved, not the pixel value.
+      const em = (level: 'title' | 'sectionHeader') =>
+        Math.abs(onboardingType[level].letterSpacing) / onboardingType[level].fontSize;
+      expect(em('title')).toBeGreaterThan(0.025);
+      expect(em('title')).toBeLessThan(0.04);
+      expect(em('sectionHeader')).toBeGreaterThan(0.025);
+      expect(em('sectionHeader')).toBeLessThan(0.04);
+    });
+
+    it('reaches semibold by naming the semibold family, not via fontWeight', () => {
+      // Inter Tight is two static instances. fontWeight cannot synthesise 600,
+      // so a semibold token must name the InterTightSemiBold family outright.
+      expect(fonts.tight).toBe('InterTight');
+      expect(fonts.tightSemiBold).toBe('InterTightSemiBold');
+      expect(onboardingType.title.fontFamily).toBe(fonts.tightSemiBold);
+      expect(onboardingType.sectionHeader.fontFamily).toBe(fonts.tightSemiBold);
+      expect(onboardingType.body.fontFamily).toBe(fonts.tight);
+      expect(onboardingType.caption.fontFamily).toBe(fonts.tight);
+      expect(onboardingType.title.fontFamily).not.toBe(fonts.tight);
+      // Stated as a rule over the whole ramp, so a level added later cannot
+      // reach for `fontWeight` and silently render regular.
+      for (const level of onboardingRamp) {
+        const style = onboardingType[level];
+        if (style.fontWeight === '600') {
+          expect(style.fontFamily).toBe(fonts.tightSemiBold);
+        } else {
+          expect(style.fontFamily).toBe(fonts.tight);
+        }
+      }
+    });
+
+    it('leaves the app-wide `type` scale untouched', () => {
+      expect(type.title.fontFamily).toBe(fonts.display);
+      expect(Object.keys(type).length).toBe(7);
+    });
+  });
+
   describe('shadows', () => {
-    it('exports 3 elevation levels', () => {
+    it('exports 3 elevation levels plus the icon-button treatment', () => {
       expect(shadows).toHaveProperty('card');
       expect(shadows).toHaveProperty('raised');
       expect(shadows).toHaveProperty('overlay');
+      expect(shadows).toHaveProperty('iconButton');
+      expect(shadows).toHaveProperty('iconButtonPressed');
+    });
+
+    it('every shadow is layered - depth needs a contact layer and an ambient one', () => {
+      for (const [name, value] of Object.entries(shadows)) {
+        expect(typeof value).toBe('string');
+        expect(shadowLayers(value).length).toBeGreaterThan(1);
+        expect(name).toBeTruthy();
+      }
+    });
+
+    it('the icon button carries an inset highlight so it is not a flat fill', () => {
+      expect(shadows.iconButton).toContain('inset');
+      expect(shadowLayers(shadows.iconButton).filter((l) => l.startsWith('inset')).length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('controls', () => {
+    it('keeps the circular icon button inside the 38-46 range, ascending', () => {
+      expect(controls.iconButtonSm).toBe(38);
+      expect(controls.iconButtonLg).toBe(46);
+      expect(controls.iconButtonSm).toBeLessThan(controls.iconButton);
+      expect(controls.iconButton).toBeLessThan(controls.iconButtonLg);
+    });
+  });
+
+  describe('icons', () => {
+    it('exports a component for every role the onboarding flow needs', () => {
+      const set = {
+        IconBack,
+        IconClose,
+        IconRemove,
+        IconAdd,
+        IconCheck,
+        IconCheckCircle,
+        IconChevronDown,
+        IconChevronForward,
+      };
+      for (const [name, Component] of Object.entries(set)) {
+        expect(typeof Component).toBe('function');
+        expect((Component as { displayName?: string }).displayName).toBe(name);
+      }
+    });
+
+    it('scales a lucide-equivalent size up to match Ionicons optical sizing', () => {
+      expect(OPTICAL_SCALE).toBeGreaterThan(1);
+      expect(opticalSize(16)).toBe(18);
+      expect(opticalSize(14)).toBe(16);
+      expect(Number.isInteger(opticalSize(22))).toBe(true);
     });
   });
 

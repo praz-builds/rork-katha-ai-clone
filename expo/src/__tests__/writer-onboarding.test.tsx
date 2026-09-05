@@ -1,0 +1,1139 @@
+import React from "react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
+import type { ViewStyle } from "react-native";
+
+const mockInferStoryBrief = jest.fn();
+const mockSendEmailCode = jest.fn();
+const mockVerifyEmailCode = jest.fn();
+const mockEnableNotifications = jest.fn();
+
+jest.mock("@/lib/api", () => ({
+  inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
+}));
+
+jest.mock("@/lib/session", () => ({
+  sendEmailCode: (...args: unknown[]) => mockSendEmailCode(...args),
+  verifyEmailCode: (...args: unknown[]) => mockVerifyEmailCode(...args),
+}));
+
+jest.mock("@/lib/notifications", () => ({
+  enableNotifications: () => mockEnableNotifications(),
+}));
+
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
+}));
+
+jest.mock("expo-haptics", () => ({
+  selectionAsync: jest.fn(),
+  impactAsync: jest.fn(),
+  ImpactFeedbackStyle: { Light: "light" },
+}));
+
+// The onboarding flow draws its glyphs through `@/theme`'s named icon set,
+// which is backed by Ionicons. The font is irrelevant to every assertion here,
+// and rendering it pulls a native font module into the test environment.
+jest.mock("@expo/vector-icons", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  return new Proxy({}, { get: () => () => React.createElement(React.Fragment) });
+});
+
+jest.mock("@/components/create/CraftingLoader", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Text } = require("react-native");
+  return {
+    CraftingLoader: () => React.createElement(Text, null, "Crafting"),
+    CRAFTING_STAGES: [],
+  };
+});
+
+/* eslint-disable import/first */
+import WriterOnboarding, {
+  CRAFTING_MIN_MS,
+  STARTER_CARD_GAP,
+  STARTER_CARD_WIDTH,
+  STARTER_RAIL_PEEK,
+} from "@/screens/WriterOnboarding";
+// The starter copy is owned by the content module and gets rewritten there.
+// Asserting against the sentences would make this a test of the copy; keying
+// off the module tests what the screen is supposed to do with it.
+import { GENRE_STARTERS } from "@/lib/genre-content";
+import { colors, onboardingType, spacing } from "@/theme";
+/* eslint-enable import/first */
+
+const SHAPE = {
+  genres: ["mystery"],
+  whereAndWhen: "A hill town, off-season",
+  characters: [
+    {
+      name: "Elena Marquez",
+      description: "Historical restorer, 34",
+      background: "",
+      appearance: "",
+      isHero: true,
+    },
+  ],
+  suggestedMoments: ["She hears her own name through the wall"],
+  beats: [
+    "Elena inherits the house and finds the door",
+    "The letters arrive before they are written",
+    "She answers one, and it answers back",
+  ],
+  title: "The Door That Was Not On The Deed",
+  opening: "The clocks began counting backward.\n\nElena stood in the hall.",
+};
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockInferStoryBrief.mockResolvedValue(SHAPE);
+  mockSendEmailCode.mockResolvedValue(undefined);
+  mockVerifyEmailCode.mockResolvedValue(undefined);
+  mockEnableNotifications.mockResolvedValue(true);
+});
+
+type View = Awaited<ReturnType<typeof render>>;
+
+// The crafting step holds the loader for CRAFTING_MIN_MS before it reveals the
+// blueprint, so every path through this flow now crosses a timer. The timers
+// have to be fake from the moment a screen mounts: switching after the fact
+// leaves a real one running that no amount of `advanceTimersByTime` can reach.
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+/**
+ * Walk past the crafting floor.
+ *
+ * The mocked request has already resolved by the time this runs, so the only
+ * thing left in flight is the hold. Advancing when nothing is pending - a Back
+ * press that returns to an already-built blueprint, or a call that failed and
+ * skipped the hold - is a no-op, which is why every arrival at the blueprint
+ * can go through it.
+ */
+async function settleCraftingHold() {
+  await act(async () => {
+    jest.advanceTimersByTime(CRAFTING_MIN_MS);
+  });
+}
+
+async function renderFlow(onDone = jest.fn()) {
+  // `render` and `fireEvent` are both async in RNTL 14: every call has to be
+  // awaited or the assertion runs against the previous frame.
+  const view = await render(<WriterOnboarding onDone={onDone} />);
+  return { onDone, view };
+}
+
+async function reachDetailsThenFinish(
+  view: View,
+  onDetails: () => Promise<unknown> | unknown,
+) {
+  await fireEvent.changeText(
+    view.getByLabelText("Your idea"),
+    "A woman inherits a boarded-up house and finds letters that arrive early.",
+  );
+  await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+  await view.findByText("The parts you already have in mind.");
+  await onDetails();
+  await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+  await fireEvent.changeText(view.getByLabelText("Email address"), "w@e.com");
+  await fireEvent.press(
+    view.getByRole("button", { name: "Save & continue" }),
+  );
+  await fireEvent.changeText(
+    await view.findByLabelText("Verification code"),
+    "123456",
+  );
+  await fireEvent.press(
+    view.getByRole("button", { name: "Verify and continue" }),
+  );
+  await settleCraftingHold();
+  await view.findByText("Your idea just became a story.");
+  await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+  await fireEvent.press(
+    await view.findByRole("button", { name: "Save my story" }),
+  );
+  await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+  await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+  await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+  await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
+}
+
+async function reachBlueprint(view: View) {
+  await fireEvent.changeText(
+    view.getByLabelText("Your idea"),
+    "A woman inherits a boarded-up house and finds letters that arrive early.",
+  );
+  await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+  await fireEvent.press(await view.findByRole("button", { name: "Find the shape" }));
+  await fireEvent.changeText(view.getByLabelText("Email address"), "w@example.com");
+  await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+  await fireEvent.changeText(
+    await view.findByLabelText("Verification code"),
+    "123456",
+  );
+  await fireEvent.press(view.getByRole("button", { name: "Verify and continue" }));
+  await settleCraftingHold();
+  await view.findByText("Your idea just became a story.");
+}
+
+describe("writer onboarding", () => {
+  it("holds the idea screen until the idea clears the floor", async () => {
+    const { view } = await renderFlow();
+    expect(
+      view.getByRole("button", { name: "Continue" }).props.accessibilityState
+        .disabled,
+    ).toBe(true);
+
+    // Onboarding gets one model call, and that call has to return a title, a
+    // world, a cast, a plan and 150 words of opening. Six words cannot carry
+    // it, and the user reads the generic result as what Katha can do.
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A haunted house.",
+    );
+    // A stateful line, not a countdown. A number ticking down reads as a
+    // hurdle; this says what the idea needs, then confirms it has it.
+    expect(
+      view.getByText("Add a little more so Katha has something to build on."),
+    ).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Continue" }).props.accessibilityState
+        .disabled,
+    ).toBe(true);
+
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters.",
+    );
+    expect(view.getByText("Enough to write from.")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Continue" }).props.accessibilityState
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("turns the idea line over at exactly the floor", async () => {
+    const { view } = await renderFlow();
+    await fireEvent.changeText(view.getByLabelText("Your idea"), "a".repeat(39));
+    expect(
+      view.getByText("Add a little more so Katha has something to build on."),
+    ).toBeTruthy();
+    await fireEvent.changeText(view.getByLabelText("Your idea"), "a".repeat(40));
+    expect(view.getByText("Enough to write from.")).toBeTruthy();
+  });
+
+  it("labels chapter length by reading time, not word count", async () => {
+    const { view } = await renderFlow();
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await view.findByText("The parts you already have in mind.");
+
+    // Minutes are what a reader feels. A word count is a number the writer has
+    // to convert before it means anything.
+    expect(view.getByLabelText("Standard, about 5 minutes a chapter"))
+      .toBeTruthy();
+    expect(view.getByText("About 15 minutes to read, across 3 chapters."))
+      .toBeTruthy();
+
+    await fireEvent.press(view.getByLabelText("Long, about 9 minutes a chapter"));
+    expect(view.getByText("About 27 minutes to read, across 3 chapters."))
+      .toBeTruthy();
+    await fireEvent.press(view.getByLabelText("7 chapters"));
+    expect(view.getByText("About 63 minutes to read, across 7 chapters."))
+      .toBeTruthy();
+  });
+
+  it("takes other instructions through to the draft", async () => {
+    const onDone = jest.fn();
+    const { view } = await renderFlow(onDone);
+    await reachDetailsThenFinish(view, () =>
+      fireEvent.changeText(
+        view.getByLabelText("Other instructions"),
+        "no graphic violence",
+      ));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(onDone.mock.calls[0][0].draft.avoid).toBe("no graphic violence");
+  });
+
+  it("opens on a selected genre and keys the starters to it", async () => {
+    const { view } = await renderFlow();
+    // One chip carrying the current shelf. The other twelve are behind it.
+    expect(view.getByLabelText("Genre, Mystery")).toBeTruthy();
+    expect(view.queryByLabelText("Horror")).toBeNull();
+
+    // A romance starter on a horror shelf teaches the wrong thing about what
+    // to type, and these are what a user with a blank page taps.
+    expect(view.getByLabelText(GENRE_STARTERS.mystery[0])).toBeTruthy();
+
+    await fireEvent.press(view.getByLabelText("Genre, Mystery"));
+    expect(
+      view.getByLabelText("Mystery").props.accessibilityState.selected,
+    ).toBe(true);
+    await fireEvent.press(view.getByLabelText("Horror"));
+
+    // Choosing closes the list, and the chip states the new answer.
+    expect(view.getByLabelText("Genre, Horror")).toBeTruthy();
+    expect(view.queryByLabelText("Mystery")).toBeNull();
+    expect(view.queryByLabelText(GENRE_STARTERS.mystery[0])).toBeNull();
+    expect(view.getByLabelText(GENRE_STARTERS.horror[0])).toBeTruthy();
+  });
+
+  it("leaves the shelf alone when the list is dismissed without a pick", async () => {
+    const { view } = await renderFlow();
+    await fireEvent.press(view.getByLabelText("Genre, Mystery"));
+    expect(view.getByLabelText("Horror")).toBeTruthy();
+
+    // The same tap that opened it shuts it. Backing out of a picker must
+    // never be a way to lose the answer you already had.
+    await fireEvent.press(view.getByLabelText("Genre, Mystery"));
+    expect(view.queryByLabelText("Horror")).toBeNull();
+    expect(view.getByLabelText("Genre, Mystery")).toBeTruthy();
+    expect(view.getByLabelText(GENRE_STARTERS.mystery[0])).toBeTruthy();
+  });
+
+  it("opens the chip on the shelf chosen earlier in onboarding", async () => {
+    const view = await render(
+      <WriterOnboarding onDone={jest.fn()} initialGenre="fantasy" />,
+    );
+    expect(view.getByLabelText("Genre, Fantasy")).toBeTruthy();
+    expect(view.getByLabelText(GENRE_STARTERS.fantasy[0])).toBeTruthy();
+  });
+
+  it("marks the optional sections, and only those", async () => {
+    const { view } = await renderFlow();
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await view.findByText("The parts you already have in mind.");
+
+    // Optionality belongs to the section that is optional. A blanket line over
+    // the whole screen told the user none of it mattered, and was untrue of
+    // the two segmented controls, which always carry a value.
+    expect(view.getByLabelText("Moments, optional")).toBeTruthy();
+    expect(view.getByLabelText("Writing style, optional")).toBeTruthy();
+    expect(view.getByLabelText("Other instructions, optional")).toBeTruthy();
+    expect(view.getByText("CHAPTERS")).toBeTruthy();
+    expect(view.getByText("CHAPTER LENGTH")).toBeTruthy();
+    expect(view.queryByLabelText("Chapters, optional")).toBeNull();
+    expect(view.queryByLabelText("Chapter length, optional")).toBeNull();
+    expect(
+      view.queryByText("All optional. Everything here reaches the story."),
+    ).toBeNull();
+  });
+
+  it("makes exactly one model call, in the onboarding variant", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    // The whole pre-paywall flow is budgeted at one structured call. A second
+    // one here is the failure this test exists to catch.
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+    // The chosen shelf goes with it, so inference shapes to the user's pick
+    // rather than overruling it from the sentence.
+    expect(mockInferStoryBrief).toHaveBeenCalledWith(
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+      "onboarding",
+      "mystery",
+    );
+  });
+
+  it("shows the plan as Chapters and never as an Arc", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    expect(view.getByText("CHAPTERS")).toBeTruthy();
+    expect(view.queryByText(/arc/i)).toBeNull();
+    expect(view.queryByText(/premise/i)).toBeNull();
+  });
+
+  it("lets a beat be edited by hand, free and in place", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    await fireEvent.press(
+      view.getByLabelText(
+        "Chapter 1. Elena inherits the house and finds the door. Tap to edit.",
+      ),
+    );
+    await fireEvent.changeText(view.getByLabelText("Chapter 1"), "She burns it down");
+    await fireEvent.press(view.getByLabelText("Save chapter 1"));
+    expect(view.getByText("She burns it down")).toBeTruthy();
+    // Editing a beat must never cost a call.
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the old beat when an edit is emptied", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    const label =
+      "Chapter 2. The letters arrive before they are written. Tap to edit.";
+    await fireEvent.press(view.getByLabelText(label));
+    await fireEvent.changeText(view.getByLabelText("Chapter 2"), "   ");
+    await fireEvent.press(view.getByLabelText("Save chapter 2"));
+    expect(
+      view.getByText("The letters arrive before they are written"),
+    ).toBeTruthy();
+  });
+
+  it("keeps each edit on its own row when the user switches rows", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    await fireEvent.press(
+      view.getByLabelText(
+        "Chapter 1. Elena inherits the house and finds the door. Tap to edit.",
+      ),
+    );
+    await fireEvent.changeText(view.getByLabelText("Chapter 1"), "Rewritten one");
+    // Tapping straight into another row without saving. The blur handler for
+    // row 1 is the one bound at the last render, so a commit that reads the
+    // open index out of state lands row 1's text on row 2.
+    await fireEvent.press(
+      view.getByLabelText(
+        "Chapter 2. The letters arrive before they are written. Tap to edit.",
+      ),
+    );
+    await fireEvent.changeText(view.getByLabelText("Chapter 2"), "Rewritten two");
+    await fireEvent.press(view.getByLabelText("Save chapter 2"));
+
+    expect(view.getByText("Rewritten one")).toBeTruthy();
+    expect(view.getByText("Rewritten two")).toBeTruthy();
+    expect(view.queryByText("Elena inherits the house and finds the door"))
+      .toBeNull();
+    expect(view.queryByText("The letters arrive before they are written"))
+      .toBeNull();
+  });
+
+  it("does not offer Try another when there is one variant", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    // A typed idea returns one concept, and the control is not rendered rather
+    // than disabled: ONBOARDING_FLOW.md section 9.3.
+    expect(view.queryByRole("button", { name: "Try another shape" })).toBeNull();
+  });
+
+  it("shows entitlements on the preview, never behind the paywall", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await view.findByText("This is the beginning.");
+    expect(
+      view.getByText("Edit every word by hand, as much as you like"),
+    ).toBeTruthy();
+    expect(view.getByText(/3 free AI redrafts/)).toBeTruthy();
+  });
+
+  it("falls through the paywall to the offer, then the notification ask", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
+    await view.findByText("KATHA WRITER");
+    await fireEvent.press(view.getByRole("button", { name: "Not now" }));
+    await view.findByText("ONE-TIME OFFER");
+    await fireEvent.press(view.getByRole("button", { name: "No thanks" }));
+    await view.findByText("Want to know when it's ready?");
+  });
+
+  it("asks for notifications only after the user opts in", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+    await view.findByText("Want to know when it's ready?");
+    // The soft pre-prompt must not have touched the OS dialog on the way here.
+    // iOS grants one system prompt per install, and spending it before this
+    // screen is unrecoverable.
+    expect(mockEnableNotifications).not.toHaveBeenCalled();
+    await fireEvent.press(view.getByRole("button", { name: "Notify me" }));
+    await waitFor(() => expect(mockEnableNotifications).toHaveBeenCalled());
+  });
+
+  it("keeps the chosen shelf when inference disagrees with it", async () => {
+    mockInferStoryBrief.mockResolvedValue({ ...SHAPE, genres: ["romance"] });
+    const onDone = jest.fn();
+    const { view } = await renderFlow(onDone);
+    await fireEvent.press(view.getByLabelText("Genre, Mystery"));
+    await fireEvent.press(view.getByLabelText("Horror"));
+    await reachBlueprint(view);
+    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const result = onDone.mock.calls[0][0];
+    // The one explicit choice on the screen must not be overruled by a guess.
+    expect(result.draft.primaryGenre).toBe("horror");
+    expect(result.draft.genres[0]).toBe("horror");
+    expect(result.draft.genres).toContain("romance");
+  });
+
+  it("sends a typed cast, with the first as the lead", async () => {
+    const onDone = jest.fn();
+    const { view } = await renderFlow(onDone);
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByLabelText("Add a character"));
+    await fireEvent.changeText(view.getByLabelText("Character 1 name"), "Elena");
+    await fireEvent.changeText(
+      view.getByLabelText("Character 1 background"),
+      "Restores old houses. Believes wood remembers.",
+    );
+    await fireEvent.press(view.getByLabelText("Add one more"));
+    await fireEvent.changeText(view.getByLabelText("Character 2 name"), "Mara");
+    // Two is the cap in onboarding, so the add control is gone.
+    expect(view.queryByLabelText("Add one more")).toBeNull();
+
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Find the shape" }));
+    await fireEvent.changeText(view.getByLabelText("Email address"), "w@e.com");
+    await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+    await fireEvent.changeText(
+      await view.findByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Verify and continue" }));
+    await settleCraftingHold();
+  await view.findByText("Your idea just became a story.");
+    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const characters = onDone.mock.calls[0][0].draft.characters;
+    expect(characters).toHaveLength(2);
+    expect(characters[0]).toMatchObject({ name: "Elena", isHero: true });
+    // Background is personality and backstory, which is what drives the voice.
+    expect(characters[0].background).toContain("wood remembers");
+    expect(characters[1]).toMatchObject({ name: "Mara", isHero: false });
+  });
+
+  it("hands the blueprint back as a draft, with the plan intact", async () => {
+    const onDone = jest.fn();
+    const { view } = await renderFlow(onDone);
+    await reachBlueprint(view);
+    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const result = onDone.mock.calls[0][0];
+    expect(result.draft.beats).toEqual(SHAPE.beats);
+    expect(result.draft.primaryGenre).toBe("mystery");
+    expect(result.draft.whereAndWhen).toBe("A hill town, off-season");
+    expect(result.draft.plannedChapterCount).toBe(3);
+    expect(result.subscribed).toBe(false);
+  });
+
+  it("does not re-run auth when the user walks back to change the idea", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    expect(mockSendEmailCode).toHaveBeenCalledTimes(1);
+
+    // Back to the details step, then forward again. Auth is one-way: a
+    // verified address must not be sent a second code, and a signed-in user
+    // must not be put back in front of a sign-in form.
+    await fireEvent.press(view.getByLabelText("Back"));
+    await view.findByText("The parts you already have in mind.");
+    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await settleCraftingHold();
+  await view.findByText("Your idea just became a story.");
+
+    expect(mockSendEmailCode).toHaveBeenCalledTimes(1);
+    expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1);
+  });
+
+
+
+  it("survives a shape call that fails, with no error screen", async () => {
+    mockInferStoryBrief.mockRejectedValue(new Error("provider down"));
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+    // A fallback title, no plan, and no apology. The user asked for none of
+    // this and can act on none of it.
+    expect(view.getByText("Your idea just became a story.")).toBeTruthy();
+    expect(view.queryByText(/could not|failed|error|try again/i)).toBeNull();
+  });
+
+  it("clamps the plan when the planned length shrinks", async () => {
+    mockInferStoryBrief.mockResolvedValue({
+      ...SHAPE,
+      beats: ["one", "two", "three", "four", "five", "six", "seven"],
+    });
+    const onDone = jest.fn();
+    const { view } = await renderFlow(onDone);
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    // 3 is the default, so a seven-beat response must arrive already clamped.
+    await fireEvent.press(await view.findByRole("button", { name: "Find the shape" }));
+    await fireEvent.changeText(view.getByLabelText("Email address"), "w@example.com");
+    await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+    await fireEvent.changeText(
+      await view.findByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Verify and continue" }));
+    await settleCraftingHold();
+  await view.findByText("Your idea just became a story.");
+    expect(view.queryByText("four")).toBeNull();
+    expect(view.getByText("three")).toBeTruthy();
+  });
+});
+
+
+/* ── The "Try one" rail ───────────────────────────────────────────────── */
+
+describe("the Try one rail", () => {
+  // ONBOARDING_FLOW.md fixes the reference frame at 390 x 844. Every number
+  // below is checked against that width rather than against the intent.
+  const SCREEN = 390;
+  const GUTTER = 32; // spacing.xxxl
+
+  it("leaves a slice of the second card on screen at 390pt", async () => {
+    const { view } = await renderFlow();
+    const cards = GENRE_STARTERS.mystery.map((starter) =>
+      StyleSheet.flatten(view.getByLabelText(starter).props.style)
+    );
+    expect(cards).toHaveLength(3);
+    for (const card of cards) {
+      expect(card.width).toBe(STARTER_CARD_WIDTH);
+    }
+
+    // Card one starts on the gutter; card two starts a card and a gap later.
+    const secondCardStartsAt = GUTTER + STARTER_CARD_WIDTH + STARTER_CARD_GAP;
+    const peek = SCREEN - secondCardStartsAt;
+    expect(peek).toBe(STARTER_RAIL_PEEK);
+    // The peek is the only thing on this screen that says the rail scrolls, so
+    // it has to be an unmistakable slice of a card rather than a sliver. A
+    // second card that begins at or past the right gutter (358) shows nothing.
+    expect(secondCardStartsAt).toBeLessThan(SCREEN - GUTTER);
+    expect(peek).toBeGreaterThanOrEqual(56);
+  });
+
+  it("never truncates a starter", async () => {
+    const { view } = await renderFlow();
+    for (const starter of GENRE_STARTERS.mystery) {
+      const card = view.getByLabelText(starter);
+      // A truncated starter teaches nothing about what a usable idea looks
+      // like, which is the entire reason these cards exist.
+      expect(view.getByText(starter).props.numberOfLines).toBeUndefined();
+      expect(card).toBeTruthy();
+    }
+  });
+});
+
+/* ── The details fields ───────────────────────────────────────────────── */
+
+describe("the details fields", () => {
+  async function reachDetails(view: View) {
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await view.findByText("The parts you already have in mind.");
+  }
+
+  it("does not count moments at the user", async () => {
+    const { view } = await renderFlow();
+    await reachDetails(view);
+    // The cap is still five; it is simply never shown. A "0 / 5" turned an
+    // invitation into a quota and told an empty screen it was four short.
+    expect(view.queryByText("0 / 5")).toBeNull();
+    expect(view.queryByText(/\d \/ 5/)).toBeNull();
+
+    await fireEvent.changeText(
+      view.getByLabelText("Add a moment"),
+      "A rooftop confession",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Add moment" }));
+    expect(view.queryByText("1 / 5")).toBeNull();
+  });
+
+  it("gives moments the roomy box and the other two a single line", async () => {
+    const { view } = await renderFlow();
+    await reachDetails(view);
+
+    // A scene is a sentence, so the field that takes scenes is the tall one.
+    expect(view.getByLabelText("Add a moment").props.multiline).toBe(true);
+    // A style note and a constraint are each one line, and a 62pt box asking
+    // for a phrase reads as a field the user failed to finish.
+    expect(view.getByLabelText("Writing style").props.multiline).toBeFalsy();
+    expect(
+      view.getByLabelText("Other instructions").props.multiline,
+    ).toBeFalsy();
+  });
+});
+
+/* ── The email screen ─────────────────────────────────────────────────── */
+
+describe("the email screen", () => {
+  async function reachEmail(view: View) {
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.press(
+      await view.findByRole("button", { name: "Find the shape" }),
+    );
+    await view.findByLabelText("Email address");
+  }
+
+  it("shows what is being saved, and what the address buys", async () => {
+    const { view } = await renderFlow();
+    await reachEmail(view);
+
+    expect(view.getByText("Save your story before we shape it.")).toBeTruthy();
+    expect(view.getByText(/keep your idea and blueprint/)).toBeTruthy();
+    expect(view.getByText("EMAIL")).toBeTruthy();
+    expect(view.getByLabelText("Email address").props.placeholder).toBe(
+      "elena@example.com",
+    );
+    expect(view.getByRole("button", { name: "Save & continue" })).toBeTruthy();
+    expect(
+      view.getByText("By continuing you agree to our Terms and Privacy Policy."),
+    ).toBeTruthy();
+  });
+
+  it("promises the code it actually sends, not the design's magic link", async () => {
+    const { view } = await renderFlow();
+    await reachEmail(view);
+    // session.ts chose a one-time code over a link because a link opens a
+    // browser and drops the user out of the flow. Promising a link here and
+    // then showing a code box on the next screen breaks that promise on the
+    // screen that is asking to be trusted with an address.
+    expect(
+      view.getByText("We’ll send a 6-digit code. No password needed."),
+    ).toBeTruthy();
+    expect(view.queryByText(/magic link/i)).toBeNull();
+  });
+
+  it("reports where the user is in the flow, on both auth screens", async () => {
+    const { view } = await renderFlow();
+    await reachEmail(view);
+    expect(view.getByLabelText("Step 6 of 7")).toBeTruthy();
+
+    await fireEvent.changeText(
+      view.getByLabelText("Email address"),
+      "w@example.com",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+    await view.findByLabelText("Verification code");
+    expect(view.getByLabelText("Step 7 of 7")).toBeTruthy();
+    expect(view.queryByLabelText("Step 6 of 7")).toBeNull();
+  });
+});
+
+
+/* ── The crafting floor ───────────────────────────────────────────────── */
+
+describe("the crafting floor", () => {
+  /**
+   * Idea, details and auth, stopping on the wait rather than walking past it.
+   *
+   * `stopOnWait` is false only for the failed-call test, where there is no wait
+   * to stop on: that is the whole point of it.
+   */
+  async function reachCrafting(view: View, stopOnWait = true) {
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.press(
+      await view.findByRole("button", { name: "Find the shape" }),
+    );
+    await fireEvent.changeText(
+      view.getByLabelText("Email address"),
+      "w@example.com",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+    await fireEvent.changeText(
+      await view.findByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(
+      view.getByRole("button", { name: "Verify and continue" }),
+    );
+    if (stopOnWait) await view.findByText("Crafting");
+    // The request resolves in a microtask, and the hold is only scheduled once
+    // it has. Flush before touching the clock, or the advance below runs
+    // against a timer that does not exist yet.
+    await act(async () => {});
+  }
+
+  it("keeps the wait on screen for the whole floor, then reveals", async () => {
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+
+    // The mocked call returns instantly, so without the floor the loader would
+    // already be gone. A stage the user cannot finish reading is not a stage.
+    await act(async () => {
+      jest.advanceTimersByTime(CRAFTING_MIN_MS - 1);
+    });
+    expect(view.queryByText("Your idea just became a story.")).toBeNull();
+    expect(view.getByText("Crafting")).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    await view.findByText("Your idea just became a story.");
+
+    // The floor is a wait, not a retry. Holding must not have cost a request.
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a floor and not a cap, so a slow call keeps the wait up", async () => {
+    let resolve: (value: unknown) => void = () => {};
+    mockInferStoryBrief.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+
+    // Well past the floor, with the call still out. Nothing here may reveal a
+    // blueprint that does not exist yet.
+    await act(async () => {
+      jest.advanceTimersByTime(CRAFTING_MIN_MS * 3);
+    });
+    expect(view.queryByText("Your idea just became a story.")).toBeNull();
+
+    await act(async () => {
+      resolve(SHAPE);
+    });
+    await view.findByText("Your idea just became a story.");
+  });
+
+  it("is one full pass of the loader, so every stage is read", async () => {
+    // Not a round number somebody liked. `CraftingLoader` runs four stages at
+    // `AUTO_CYCLE_MS` (1250ms), so 5000 is exactly one complete pass: the
+    // fourth stage finishes its turn on the same tick the blueprint arrives.
+    // The old 6000 was half a pass at the old 3s cadence, which left two
+    // stages unread; a floor the user cannot finish reading buys nothing.
+    expect(CRAFTING_MIN_MS).toBe(5000);
+
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+
+    // One millisecond short of the pass. The last stage is still on screen.
+    await act(async () => {
+      jest.advanceTimersByTime(4999);
+    });
+    expect(view.queryByText("Your idea just became a story.")).toBeNull();
+    expect(view.getByText("Crafting")).toBeTruthy();
+
+    // And on the tick the pass completes, not a frame later.
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    await view.findByText("Your idea just became a story.");
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not make a failed call sit through the floor", async () => {
+    mockInferStoryBrief.mockRejectedValue(new Error("provider down"));
+    const { view } = await renderFlow();
+    await reachCrafting(view, false);
+
+    // No advance. The stages describe work on a request that is already over,
+    // and there is nothing at the end of the wait but the user's own sentence
+    // back, so the fallback is shown at once rather than after six seconds of
+    // pretending. `waitFor` advances by at most its own 1s timeout, which is
+    // well under the floor, so this cannot pass by accident.
+    await view.findByText("Your idea just became a story.");
+  });
+
+  it("abandons the reveal when the screen goes away during the hold", async () => {
+    const warn = jest.spyOn(console, "error").mockImplementation(() => {});
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+
+    // The hold is a window several seconds wide, and a user can leave inside
+    // it. Liveness is checked again on the far side of the delay, not only
+    // before it, so nothing is written or navigated from a dead screen.
+    await view.unmount();
+    await act(async () => {
+      jest.advanceTimersByTime(CRAFTING_MIN_MS * 2);
+    });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+/* ── Headings and the header group ────────────────────────────────────── */
+
+describe("the onboarding type scale", () => {
+  function headerGroupOf(view: View, title: string) {
+    const heading = view.getByText(title);
+    // The Text and its sibling sub share one wrapper. `parent` is that wrapper
+    // rather than the scroll container, which is the whole point of the fix.
+    return { heading, group: heading.parent! };
+  }
+
+  it("sets every screen heading on the onboarding scale, not the old one", async () => {
+    const { view } = await renderFlow();
+
+    function expectOnboardingTitle(title: string) {
+      const style = StyleSheet.flatten(view.getByText(title).props.style);
+      // 22/28 Inter Tight SemiBold. The flow used to run `type.largeTitle`
+      // (Bricolage Grotesque at 34) on every screen except the two auth ones,
+      // so five of the seven were still on the pre-onboarding heading and the
+      // product owner was right to say they were seeing the old style.
+      expect(style.fontSize).toBe(onboardingType.title.fontSize);
+      expect(style.fontFamily).toBe(onboardingType.title.fontFamily);
+      expect(style.letterSpacing).toBe(onboardingType.title.letterSpacing);
+    }
+
+    expectOnboardingTitle("What's your story about?");
+
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await view.findByText("The parts you already have in mind.");
+    expectOnboardingTitle("The parts you already have in mind.");
+
+    await fireEvent.press(
+      view.getByRole("button", { name: "Find the shape" }),
+    );
+    await view.findByText("Save your story before we shape it.");
+    expectOnboardingTitle("Save your story before we shape it.");
+
+    await fireEvent.changeText(
+      view.getByLabelText("Email address"),
+      "w@example.com",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+    await view.findByText("Check your inbox");
+    expectOnboardingTitle("Check your inbox");
+
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(
+      view.getByRole("button", { name: "Verify and continue" }),
+    );
+    await settleCraftingHold();
+    await view.findByText("Your idea just became a story.");
+    expectOnboardingTitle("Your idea just became a story.");
+
+    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await view.findByText("This is the beginning.");
+    expectOnboardingTitle("This is the beginning.");
+  });
+
+  it("keeps the sub tied to its heading rather than to the content", async () => {
+    const { view } = await renderFlow();
+    const { group } = headerGroupOf(view, "What's your story about?");
+    const sub = view.getByText(
+      "One good sentence is enough. Katha builds the rest.",
+    );
+
+    // One group: the sub is the second line of the heading, not the first item
+    // of the form. As siblings of the scroll container they sat `spacing.xl`
+    // apart, the same distance as two unrelated sections.
+    expect(sub.parent).toBe(group);
+    expect(StyleSheet.flatten(group.props.style).gap).toBe(spacing.related);
+    expect(spacing.related).toBeLessThan(spacing.xl);
+
+    // And the sub is body copy on the same scale, not `type.body` at 16.
+    expect(StyleSheet.flatten(sub.props.style).fontSize).toBe(
+      onboardingType.body.fontSize,
+    );
+  });
+
+  it("groups the auth screens' headline the same way as every other step", async () => {
+    const { view } = await renderFlow();
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.press(
+      await view.findByRole("button", { name: "Find the shape" }),
+    );
+
+    // The email screen used to set its own headline styles. There is one way
+    // to set a heading now, and the artwork above it is a slot on the same
+    // component rather than a reason to hand-roll the header.
+    const heading = await view.findByText("Save your story before we shape it.");
+    const sub = view.getByText(/keep your idea and blueprint/);
+    expect(sub.parent).toBe(heading.parent);
+    expect(StyleSheet.flatten(heading.parent!.props.style).gap).toBe(
+      spacing.related,
+    );
+  });
+
+  it("names the details screen for what the writer already holds", async () => {
+    const { view } = await renderFlow();
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+
+    // "Anything that has to happen?" was a yes-or-no question about one of the
+    // five things on the screen, and its honest answer is "no".
+    await view.findByText("The parts you already have in mind.");
+    expect(view.queryByText("Anything that has to happen?")).toBeNull();
+    expect(
+      view.getByText(
+        "What you add here reaches the story. What you leave out, Katha decides.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("lands the blueprint reveal as the payoff it is", async () => {
+    const { view } = await renderFlow();
+    await reachBlueprint(view);
+
+    // The reveal is the first time the idea is specific, and it follows a wait
+    // the user sat through. "Here's the shape of it." introduced a diagram.
+    expect(view.getByText("Your idea just became a story.")).toBeTruthy();
+    expect(view.queryByText("Here's the shape of it.")).toBeNull();
+    expect(view.getByText("Change the parts that make it yours.")).toBeTruthy();
+  });
+});
+
+/* ── The details screen's hierarchy ───────────────────────────────────── */
+
+/**
+ * The screen the product owner called out for having "no space/size
+ * hierarchy". Both halves of the cause are asserted here, because fixing
+ * either one alone leaves the screen reading as a flat stack:
+ *
+ *  - SIZE. Every section headed itself with a 12pt uppercase label, which made
+ *    the head the smallest thing in its own section and smaller than the
+ *    helper line beneath it.
+ *  - DISTANCE. One uniform container gap separated the sections, at the same
+ *    order as the gap between a head and its own field, so nothing grouped.
+ */
+describe("the details screen's hierarchy", () => {
+  async function reachDetails(view: View) {
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await view.findByText("The parts you already have in mind.");
+  }
+
+  /** Every section head on the screen, optional ones reached by their label. */
+  function headsOf(view: View) {
+    return [
+      view.getByLabelText("Moments, optional"),
+      view.getByLabelText("Writing style, optional"),
+      view.getByLabelText("Other instructions, optional"),
+      view.getByText("CHAPTERS"),
+      view.getByText("CHAPTER LENGTH"),
+    ];
+  }
+
+  it("sets section heads on the section-head step, never on caption", async () => {
+    const { view } = await renderFlow();
+    await reachDetails(view);
+
+    for (const head of headsOf(view)) {
+      const style = StyleSheet.flatten(head.props.style);
+      expect(style.fontSize).toBe(onboardingType.sectionHeader.fontSize);
+      // The specific regression: `type.caption` at 12 was doing this job.
+      expect(style.fontSize).not.toBe(onboardingType.caption.fontSize);
+      // And the head now outranks everything it heads, which is the whole
+      // point - a group's label cannot be the quietest text in the group.
+      expect(style.fontSize).toBeGreaterThan(onboardingType.body.fontSize);
+    }
+  });
+
+  it("keeps helper lines below the head that introduces them", async () => {
+    const { view } = await renderFlow();
+    await reachDetails(view);
+
+    const helper = view.getByText(
+      "A scene you want in it. Katha places each one where it fits.",
+    );
+    const style = StyleSheet.flatten(helper.props.style);
+    expect(style.fontSize).toBe(onboardingType.body.fontSize);
+    expect(style.color).toBe(colors.muted);
+    // It used to render LARGER than the eyebrow above it.
+    expect(style.fontSize).toBeLessThan(onboardingType.sectionHeader.fontSize);
+  });
+
+  it("keeps the optional marker an aside, not part of the section name", async () => {
+    const { view } = await renderFlow();
+    await reachDetails(view);
+
+    const markers = view.getAllByText("(optional)");
+    expect(markers).toHaveLength(3);
+    for (const marker of markers) {
+      const style = StyleSheet.flatten(marker.props.style);
+      expect(style.fontSize).toBe(onboardingType.caption.fontSize);
+      expect(style.fontSize).toBeLessThan(
+        onboardingType.sectionHeader.fontSize,
+      );
+    }
+  });
+
+  it("puts a section's parts closer together than two sections are", async () => {
+    const { view } = await renderFlow();
+    await reachDetails(view);
+
+    // Inside a section: a head and the control it heads are one thing.
+    const section = view.getByText("CHAPTERS").parent!;
+    expect(StyleSheet.flatten(section.props.style).gap).toBe(spacing.related);
+
+    // Between sections: the gap on whatever encloses them, which is the
+    // scroll view's content container. Walked rather than named, so the test
+    // survives a wrapper being added and still measures the real distance.
+    let node = section.parent;
+    let outerGap: number | string | undefined;
+    while (node) {
+      const { contentContainerStyle } = node.props as {
+        contentContainerStyle?: ViewStyle;
+      };
+      if (contentContainerStyle) {
+        outerGap = StyleSheet.flatten(contentContainerStyle)?.gap;
+        break;
+      }
+      node = node.parent;
+    }
+    // A single uniform gap doing both jobs is what flattened the screen.
+    expect(outerGap).toBe(spacing.betweenGroups);
+
+    // Visibly different, not marginally. theme.ts holds the same floor.
+    expect(spacing.betweenGroups).toBeGreaterThanOrEqual(spacing.related * 2);
+  });
+});

@@ -7,6 +7,43 @@
 
 ---
 
+## 2026-09-05 UTC — Muse Spark as the default generation model, and the reasoning-token trap it brought
+
+**Session:** `meta/muse-spark-1.3-contributor` wired as the configured default across every generation path, the provider chain reordered so OpenRouter leads, phase shares re-balanced, and the cost basis recomputed from measured spend. No deploy, no commit.
+
+### The ordering decision
+
+OpenRouter now leads in code rather than by configuration. The alternative was `LLM_DISABLED_PROVIDERS=gemini`, and it was rejected: disabling Gemini does not demote it, it deletes it, and the requirement was that the fallback chain still exist and still work. Leading in code also means the default takes effect on deploy with no secret to remember, which is the point — walking through onboarding has to produce a real story.
+
+Order is now OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenAI (three models) -> free tier.
+
+`PHASE_END_SHARE` was re-balanced with the reorder, from `gemini 0.35 / openrouter 0.5 / openai 0.9 / free 1.0` to `openrouter 0.5 / gemini 0.65 / openai 0.93 / free 1.0`. These are cumulative, so moving a phase and leaving its share behind hands the new leader the old leader's 15% slice and starves whoever now runs last. The leader takes half because two models share it. Gemini keeps 15%: it has hard-failed with `429` since 2026-08-31 and a quota-blocked provider needs enough time to say so and no more.
+
+`generateFastStructuredText` was the path that would have been missed by assuming one constant covered everything. It is what `shape-story` calls, which is what onboarding calls, and it did not use the chain at all — it went straight to the first non-reasoning OpenAI model with **no fallback**. It now leads with `OPENROUTER_MODEL` and keeps the OpenAI model behind it, with the 8s deadline split 60/40 so a stalled leader cannot abort the fallback before `fetch` is called.
+
+### Two facts from live testing that inverted the brief
+
+**The contributor tier cannot serve a request on this account.** A real call returns `404`: `"Paid model training violation (account settings): 1 endpoint excluded"`. The tier is cheap because it trains on prompts and completions, and the account's OpenRouter privacy setting blocks exactly that. It is wired as the default anyway — the day the setting changes at https://openrouter.ai/settings/privacy the cheaper tier starts winning with no deploy, the same way Luna's entitlement went live. `meta/muse-spark-1.3` sits immediately behind it, so the `404` costs one round trip.
+
+**Both Muse Sparks are reasoning models, and reasoning tokens are counted inside `max_tokens`.** Measured the same day: `max_tokens: 1200` with no reasoning control returned HTTP `200`, `finish_reason: "length"`, 1,197 reasoning tokens and an **empty content string**. That is a success status carrying nothing. `openAICompatibleContent` already rejected it — both on `finish_reason: "length"` and on empty content — so it falls through rather than persisting a blank chapter, which was verified rather than assumed. But a position that always fails is not a position, so `openRouterRequestShape` now sends an explicit `reasoning: { effort: "low" }` and floors the budget at 8,000 tokens on top of a 2x multiplier. The floor is the part that matters: the multiplier alone leaves the paragraph editor at 4,000 and the onboarding shaping call at 1,800, and 1,800 is the failing row.
+
+`OPENROUTER_TIMEOUT_MS` went 30s -> 70s. 30s was set when this position was a fallback running a fast non-reasoning model. As the primary serving a 16,000-token visible budget it is not defensible; at 70s the phase share (60s of the 120s deadline) is the binding constraint, which is where the budget decision belongs.
+
+### Cost basis, recomputed from a measurement rather than a rate card
+
+A live shaping call billed **$0.006099** for ~154 prompt tokens and 1,408 completion tokens, **957 of them reasoning**. Two-thirds of the completion bill was thought. Every earlier text figure in this repo was a naive prompt-plus-visible-output calculation and understated cost by several multiples.
+
+Per ~1k-word chapter: **$0.0160** on `meta/muse-spark-1.3`, **$0.0009** on the contributor tier. The live figure is $0.0160, which is **4x more expensive than the $0.004 it replaces**, not cheaper — the saving is entirely on the tier that is currently blocked. Blended creation cost moves from $0.0092-$0.0274 to **$0.0198-$0.0326** per credit. §4's margins are computed against $0.0423 and are therefore still conservative, but the cushion narrowed from 4.6x to 1.3x; that was checked rather than assumed and is written into `CREDITS_AND_PRICING.md` §2.
+
+### Verification
+
+- `deno check supabase/functions/_shared/llm.ts`: clean. Also clean for `generate-story`, `continue-story`, `edit-story`, `shape-story`.
+- `deno test --allow-env --allow-net supabase/functions/_shared`: **241 passed**, of which `llm.test.ts` is 41 (6 new). New coverage: the default model id and its fallback, phase shares cumulative/ordered/summing to 1 with the leader largest, the budget floor against every caller's `maxTokens`, an end-to-end `404`-by-data-policy fallthrough that asserts the standard tier serves the story, an end-to-end empty-content `200` on the edit path, and `shape-story` leading with the default model.
+- `deno fmt --check` clean on both changed files.
+- No production-level test was run, so no `error_events` entry was required.
+
+---
+
 ## 2026-09-03 UTC — Story creation flow to production: deployed, measured, made faster
 
 **Session:** Credentials consolidated, the media/latency/security work built and deployed, migrations 00027-00031 applied to the live project, and the flow verified end to end against production. Builds on #46's contract rather than duplicating it.
@@ -1485,3 +1522,95 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - No production deployment was performed in this session. The two Supabase secrets
   `REVENUECAT_WEBHOOK_SECRET` and `SUBSCRIPTION_GRANT_CRON_SECRET` are set on
   `iafeuxgoiknncgyjmugd`.
+
+### Story prompt system migration (2026-09-04)
+
+- Removed the retired hidden flavour taxonomy end-to-end: the shared types,
+  validation, prompt assembly, client draft/request contract, generation RPC,
+  persisted `stories` column, continuation reconstruction, and focused tests no
+  longer accept or use it. Migration `00033_remove_trope_modules.sql` drops the
+  column and replaces `begin_story_generation` with its smaller contract.
+- Kept Kids Values separate and made it effective: it is sent only for Kids
+  stories, fenced as untrusted input, and instructs the model to explore values
+  through the story rather than state a lesson. The other stored brief fields
+  (`writing_style`, `avoid`, planned length and chapter length) now affect both
+  initial generation and continuation prompts.
+- `wordBandFor()` now takes the creator's selected Short/Standard/Long length
+  (600-900, 1,200-1,600, or 2,000-2,600 words). The same function supplies the
+  prompt, output validator and continuation path. `planned_chapter_count`
+  (3/7/15) now controls continuation limits and automatic finale derivation.
+- Updated the canonical flow, prompt-system, pricing and onboarding documents,
+  plus the repository contract, to remove stale behavior and make the retained
+  contract explicit. Research notes are in `../report-source.md`.
+- Local verification: 118 focused Deno tests passed and `deno check` passed for
+  changed Edge Function modules. Expo TypeScript passed. The focused Expo Jest
+  contract test could not start because the existing local installation lacks
+  `babel-preset-expo`; dependencies were not modified. No production-level test,
+  deployment, commit, or push was performed, so no `error_events` entry was
+  required.
+
+### Writer onboarding, the story plan, and push (2026-09-05)
+
+**The story plan.** The blueprint screen has always shown the writer an ordered
+outline before they pay, and nothing stored it: chapters were generated one at a
+time with no plan, so the shape a user approved and the story they received were
+unrelated. `stories.beats` (migration `00036`) closes that. The same free
+`shape-story` call now returns the plan alongside everything else,
+`validation.ts` clamps it to the planned chapter count rather than rejecting it,
+and `story-prompts.ts` gained a plan layer where beat N briefs chapter N with the
+remaining beats supplied as forward context. `continue-story` positions itself in
+the plan by chapter number. A typed *What happens next?* outranks the beat, and
+the prompt says so explicitly rather than leaving the precedence to inference.
+
+**It is called Chapters, never Arc.** `STORY_GENERATION_FLOW.md` §1 bans `Arc`
+from the interface, and the design that asked for a "story arc with regenerate"
+was generated from `research/R2-onboarding-conversion.md`, which predates that
+decision. Per-beat regeneration was also refused: it costs a model call per tap
+and a beat rewritten alone stops setting up the one after it. Beats are instead
+editable by hand - free, instant, local - and `Try another` swaps the whole plan
+for the next precomputed variant, rendering only when one exists.
+
+**One call, not two.** Onboarding needs a title and 120-180 words of real opening
+that the Create studio does not. Rather than a second request, `shape-story`
+takes a `variant` and widens its schema. Onboarding stays inside the one-model-call
+budget in `ONBOARDING_FLOW.md` §16.
+
+**The writer path.** `expo/src/screens/WriterOnboarding.tsx` runs idea, details,
+email, crafting, blueprint, preview, paywall, one-time offer, notifications,
+welcome, and hands the result to `CreateStudioScreen` as a pre-filled draft.
+Generation is never automatic on arrival: the user presses `Create · 3 ✦`
+themselves, so a bounce cannot silently spend a whole welcome grant.
+
+**The crafting wait** is ported from an HTML prototype to Reanimated 4 and
+`react-native-svg`, with hex values replaced by theme tokens. Its progress bar is
+driven by real stage transitions and is hidden entirely in the one place where
+there is nothing to measure - a single request whose stages the provider does not
+report. Cycling the stage names there is truthful; a bar measuring them would not
+be.
+
+**Push.** `push_tokens` (migration `00037`), `register-push-token` and
+`send-push`, over Expo Push rather than FCM and APNs directly. Receipts are read
+and dead tokens pruned: acceptance is not delivery, and a sender that ignores
+`DeviceNotRegistered` accumulates dead tokens until the project is throttled. The
+permission ask is a soft pre-prompt, because iOS grants exactly one system dialog
+per install. `POST_NOTIFICATIONS` is declared explicitly in `app.json`.
+
+**Credits.** The welcome bonus is now 10 and the guest bootstrap is a separate
+3-credit grant under `guest_bootstrap:{user_id}`. They diverge deliberately: the
+named grant is protected by Apple / Google / email, the guest grant only by a
+network-prefix limit of three per 24 hours, and three grants of 10 per network
+per day against an unauthenticated surface is a farm. **The §2 Writer-yearly
+40%-margin row has not been re-run against 10** and that is the open item this
+change carries.
+
+**Referral redemption** is deep-link attribution with a code field in Profile as
+the fallback. There is no code field on the paywall and there will not be: it
+tells every user without a code that someone else pays less, and the referral
+pays credits rather than a discount, so a code entered there has nothing to act
+on.
+
+- Local verification: 217 Deno tests pass, `deno check` passes for every edge
+  function, `deno fmt --check` passes for `_shared`. Expo typecheck passes, lint
+  reports 0 errors (19 pre-existing warnings in legacy `.jsx`), and 85 Jest tests
+  pass across 11 suites. No deployment, and no EAS build, so push has not been
+  exercised against real APNs or FCM credentials.
