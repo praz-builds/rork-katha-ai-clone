@@ -1,8 +1,19 @@
+# Which dependencies may run install scripts.
+#
+# pnpm stopped running dependency build scripts unless they are named here, and
+# it exits non-zero when it has skipped any, so `pnpm install --frozen-lockfile`
+# fails in CI until every one of them is answered. `pnpm approve-builds` writes
+# this block for you but leaves the literal string "set this to true or false"
+# as each value, which is not a boolean and approves nothing, so the exit code
+# survives. That stub was sitting in this file and is why CI failed at install.
+#
+# All four are build-time only: native bindings and postinstall codegen. None of
+# them ships code into the app bundle.
 allowBuilds:
-  '@firebase/util': set this to true or false
-  '@sentry/cli': set this to true or false
-  protobufjs: set this to true or false
-  unrs-resolver: set this to true or false
+  '@firebase/util': true
+  '@sentry/cli': true
+  protobufjs: true
+  unrs-resolver: true
 overrides:
   "@expo/plist>@xmldom/xmldom": 0.8.15
   "plist>@xmldom/xmldom": 0.9.12
