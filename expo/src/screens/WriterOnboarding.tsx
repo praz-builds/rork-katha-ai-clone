@@ -746,7 +746,7 @@ export default function WriterOnboarding(
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.sectionHead}>TRY ONE</Text>
+                <Text style={styles.eyebrow}>TRY ONE</Text>
                 {/* Keyed to the chosen shelf, and shown whole. A truncated
                     starter teaches nothing: the point of these is to show what
                     a usable idea looks like on this shelf. There is no
@@ -796,7 +796,7 @@ export default function WriterOnboarding(
                   what the story is about, not an afterthought on a later
                   screen. */}
               <View style={styles.section}>
-                <Text style={styles.sectionHead}>WHO’S IN IT</Text>
+                <Text style={styles.eyebrow}>WHO’S IN IT</Text>
                 {cast.map((member, index) => (
                   <View key={index} style={styles.castCard}>
                     <View style={styles.castHead}>
@@ -911,24 +911,24 @@ export default function WriterOnboarding(
               title="The parts you already have in mind."
               sub="What you add here reaches the story. What you leave out, Katha decides."
             >
-              {/* Five sections, and until this pass they did not read as five
-                  of anything.
+              {/* Five sections, and what makes them read as five is DISTANCE,
+                  not size.
 
-                  Every one of them headed itself with a 12pt uppercase label -
-                  the smallest text in its own section, smaller than the helper
-                  line under it and much smaller than the field under that - so
-                  the head was the last thing the eye found rather than the
-                  first. And the distance from one section to the next was the
-                  container's single uniform gap, which was the same order as
-                  the distance between a head and its own field, so nothing
-                  grouped. One title, then an undifferentiated stack.
+                  This screen has been through both answers. It first headed
+                  every section with a 12pt uppercase label and separated the
+                  sections with the container's single uniform gap - the same
+                  order as the gap between a label and its own field - so
+                  nothing grouped and the screen read as one title over an
+                  undifferentiated stack. The next pass diagnosed that as a
+                  SIZE problem and promoted the labels to 21, which gave the
+                  screen five things that looked like titles and made it worse.
 
-                  Both halves are fixed here rather than one: heads move to
-                  `sectionHead` (21) so they outrank their contents, and the
-                  vertical rhythm becomes `related` (8) inside a section
-                  against `betweenGroups` (24) between them, three times wider.
-                  Size says what a thing is; distance says what it belongs to.
-                  Neither works without the other.
+                  The gap was the real fault and it is the half that stays
+                  fixed: `related` (8) inside a section against
+                  `betweenGroups` (24) between them, three times wider. The
+                  labels are back at 12, told apart from their helper lines by
+                  case, weight, tracking and colour rather than by size. Size
+                  says what a thing is; distance says what it belongs to.
 
                   Optionality is still marked per section, not declared once
                   over the whole screen. A blanket "all optional" told the user
@@ -936,11 +936,11 @@ export default function WriterOnboarding(
                   and chapter length always carry a value. */}
               <View style={styles.section}>
                 <Text
-                  style={styles.sectionHead}
+                  style={styles.eyebrow}
                   accessibilityLabel="Moments, optional"
                 >
                   MOMENTS
-                  <Text style={styles.sectionHeadOptional}> (optional)</Text>
+                  <Text style={styles.eyebrowOptional}> (optional)</Text>
                 </Text>
                 <Text style={styles.helper}>
                   A scene you want in it. Katha places each one where it fits.
@@ -1021,11 +1021,11 @@ export default function WriterOnboarding(
                   gets out of the way. */}
               <View style={styles.section}>
                 <Text
-                  style={styles.sectionHead}
+                  style={styles.eyebrow}
                   accessibilityLabel="Writing style, optional"
                 >
                   WRITING STYLE
-                  <Text style={styles.sectionHeadOptional}> (optional)</Text>
+                  <Text style={styles.eyebrowOptional}> (optional)</Text>
                 </Text>
                 {/* One line, because the answer is one. A 62pt box invited a
                     paragraph and got a phrase, and the empty half read as a
@@ -1044,11 +1044,11 @@ export default function WriterOnboarding(
 
               <View style={styles.section}>
                 <Text
-                  style={styles.sectionHead}
+                  style={styles.eyebrow}
                   accessibilityLabel="Other instructions, optional"
                 >
                   OTHER INSTRUCTIONS
-                  <Text style={styles.sectionHeadOptional}> (optional)</Text>
+                  <Text style={styles.eyebrowOptional}> (optional)</Text>
                 </Text>
                 {/* Single line for the same reason, and shortened to fit one:
                     "respect certain values, exclude a topic" ran past the
@@ -1064,7 +1064,7 @@ export default function WriterOnboarding(
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.sectionHead}>CHAPTERS</Text>
+                <Text style={styles.eyebrow}>CHAPTERS</Text>
                 <View style={styles.segmented} accessibilityRole="radiogroup">
                   {CHAPTER_COUNTS.map((count) => (
                     <Pressable
@@ -1098,7 +1098,7 @@ export default function WriterOnboarding(
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.sectionHead}>CHAPTER LENGTH</Text>
+                <Text style={styles.eyebrow}>CHAPTER LENGTH</Text>
                 <View style={styles.segmented} accessibilityRole="radiogroup">
                   {CHAPTER_LENGTHS.map((option) => (
                     <Pressable
@@ -1165,7 +1165,7 @@ export default function WriterOnboarding(
               sub="We’ll keep your idea and blueprint so you can come back to it anytime, on any device."
             >
               <View style={styles.section}>
-                <Text style={styles.sectionHead}>EMAIL</Text>
+                <Text style={styles.eyebrow}>EMAIL</Text>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
@@ -1224,7 +1224,7 @@ export default function WriterOnboarding(
               sub={`Enter the 6-digit code we sent to ${email.trim()}.`}
             >
               <View style={styles.section}>
-                <Text style={styles.sectionHead}>CODE</Text>
+                <Text style={styles.eyebrow}>CODE</Text>
                 <TextInput
                   value={code}
                   onChangeText={setCode}
@@ -1355,7 +1355,7 @@ export default function WriterOnboarding(
                   used to make in person: the first line is the one that says
                   the chapter list above is editable, later, by hand. */}
               <View style={styles.entitlements}>
-                <Text style={styles.sectionHead}>YOU CAN ALWAYS</Text>
+                <Text style={styles.eyebrow}>YOU CAN ALWAYS</Text>
                 {ENTITLEMENTS.map((line) => (
                   <View key={line} style={styles.entitlementRow}>
                     <IconCheck size={16} color={colors.success} />
@@ -2009,12 +2009,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   /**
-   * The label above a group: MOMENTS, WRITING STYLE, TRY ONE, YOU CAN ALWAYS.
+   * The one uppercase label in the flow: MOMENTS, TRY ONE, CHAPTERS, EMAIL,
+   * YOU CAN ALWAYS, KATHA WRITER, ONE-TIME OFFER.
    *
    * `onboardingType.sectionHeader` straight, with the colour set. 12pt
    * uppercase, semibold family, +1 tracking, tertiary.
    *
-   * WHY IT WENT BACK DOWN FROM 21. The previous pass promoted these on the
+   * WHY IT WENT BACK DOWN FROM 21. A previous pass promoted these on the
    * argument that a label heading a group cannot be the quietest thing in the
    * group. That argument is right about a HEADING and wrong about an EYEBROW,
    * and the details screen is what proved it: five 21pt uppercase heads down
@@ -2028,31 +2029,30 @@ const styles = StyleSheet.create({
    * that is 16pt `ink`. A signpost does not have to be the biggest thing on
    * the road to be read first.
    *
-   * ONE STYLE FOR BOTH LEVELS. `eyebrow` is an alias of this, not a second
-   * treatment. The old split - 21pt page-level heads, 12pt component-level
-   * eyebrows - existed only to keep the promotion from reaching inside cards,
-   * and with the promotion gone there is one uppercase label in the flow.
+   * ONE STYLE, NOT TWO. There used to be a page-level `sectionHead` at 21 and
+   * a component-level `eyebrow` at 12, and the split existed only to stop the
+   * promotion from reaching inside cards. With the promotion gone the two
+   * collapsed to the same five properties, so they collapse to one name here
+   * rather than sitting as a duplicate somebody has to keep in sync.
    */
-  sectionHead: { ...onboardingType.sectionHeader, color: colors.tertiary },
+  eyebrow: { ...onboardingType.sectionHeader, color: colors.tertiary },
   /**
-   * The optional marker, inline inside the section head so it wraps with it.
+   * The optional marker, inline inside an eyebrow so it wraps with it.
    *
-   * Same size as the head it sits in, told apart by family and case: the head
-   * is semibold uppercase, this is regular sentence case. A fifth size for a
-   * two-word aside would be a size nobody could pick out of a lineup, and at
-   * 12pt there is no room below to take one.
+   * Same size as the label it sits in, told apart by family and case: the
+   * label is semibold uppercase, this is regular sentence case. A fifth size
+   * for a two-word aside would be a size nobody could pick out of a lineup,
+   * and at 12pt there is no room below to take one.
    *
-   * The line height is the HEAD's. A nested `Text` shares its parent's line
+   * The line height is the LABEL's. A nested `Text` shares its parent's line
    * box, and handing it a different one is either ignored or, on Android,
    * enough to nudge the whole line.
    */
-  sectionHeadOptional: {
+  eyebrowOptional: {
     ...onboardingType.caption,
     lineHeight: onboardingType.sectionHeader.lineHeight,
     color: colors.tertiary,
   },
-  /** The same uppercase label, named for where it reads as a true eyebrow: above a title, or inside a card. */
-  eyebrow: { ...onboardingType.sectionHeader, color: colors.tertiary },
   /**
    * The illustration well.
    *
