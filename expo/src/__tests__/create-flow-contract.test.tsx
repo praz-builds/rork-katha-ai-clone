@@ -14,11 +14,15 @@ jest.mock("@/lib/api", () => {
   }
 
   return {
-    generateStory: (...args: unknown[]) => mockGenerateStory(...args),
+    // The Create flow generates through the streamed path. The buffered
+    // `generateStory` is still exported for retries, but the screen no longer
+    // calls it, and asserting against it here would pass while the user got
+    // nothing on screen until the very end.
+    generateStoryStreaming: (...args: unknown[]) => mockGenerateStory(...args),
     inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
-    continueStory: jest.fn(),
+    continueStoryStreaming: jest.fn(),
     createGenerationRequestId: () => "create-flow-test-request",
-    editParagraph: jest.fn(),
+    editParagraphStreaming: jest.fn(),
     publishStory: jest.fn(),
     GenerationRequestError: MockGenerationRequestError,
   };
