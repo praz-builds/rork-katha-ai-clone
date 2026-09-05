@@ -182,7 +182,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 - Append-only. Never update rows.
 - Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references.
 - Balance = newest ledger row by `created_at`, then **`ledger_sequence`**, never `id`. UUIDs are not chronological, and `refresh_subscription_grant` writes two rows in one transaction with an identical `created_at`, so ordering by `id` returns one of them at random. `00040` fixed the six functions that still did this, and its test scans every function in `public` and fails on any new one that gets it wrong.
-- **`SELECT ... FOR UPDATE SKIP LOCKED` must never be used in the credit RPCs.** They take `pg_advisory_xact_lock` plus `FOR UPDATE` on a single row keyed by `user_id`, and they must *block* under contention. Skipping would return "no row" and silently drop a deduction or a grant. `SKIP LOCKED` is correct only for independent queue rows, such as the payment backlog drainer.
+- **`SELECT ... FOR UPDATE SKIP LOCKED` must never be used in the credit RPCs.** They take `pg_advisory_xact_lock` plus `FOR UPDATE` on a single row keyed by `user_id`, and they must *block* under contention. Skipping would return "no row" and silently drop a deduction or a grant. `SKIP LOCKED` is correct only for independent queue rows, where skipping a row another worker already holds is the point.
 - **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5).
 
 ### Security Gate
@@ -210,8 +210,8 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `feedback` | POST | Comments + one-time feedback credit reward | Done |
 | `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
 | `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
-| `generate-audio` | POST | MiniMax Speech 02 HD narration | Accepts `language` in body |
-| `audio-status` | GET | Check audio generation status | Done |
+| `generate-audio` | POST | Cached narration lookup | Fresh RunPod generation is blocked until the durable 1-credit audio unlock exists |
+| `audio-status` | GET | Cached narration lookup | Provider polling is blocked until jobs have a durable chapter binding |
 | `feed` | GET | Feed endpoint | Done |
 | `edit-story` | POST | Paragraph-level AI editing | Done |
 | `publish-story` | POST | Mark story published, trigger cover generation | Done |

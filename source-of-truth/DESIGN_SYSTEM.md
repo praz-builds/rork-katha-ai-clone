@@ -215,6 +215,14 @@ hint for the web bundle and is never what produces the weight. If you write a
 new Inter Tight style by hand, name the family. This is the most common way this
 system breaks.
 
+**It is not only Inter Tight.** `Baloo2.ttf` is a *variable* font, and the same
+rule bit it for the same reason: `fontWeight: "900"` on `fonts.brand` rendered
+at 400, because React Native has no weight-axis control either. `fonts.brandHeavy`
+(`Baloo2-ExtraBold`) names the static instance. Note that the axis tops out at
+800, so the 900 that was being asked for was a weight the file does not contain
+at any API. **Whenever a weight looks wrong, check whether the token names a
+family or a `fontWeight` before checking anything else.**
+
 ---
 
 ## 4. Colour

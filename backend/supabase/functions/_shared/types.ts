@@ -331,6 +331,8 @@ export interface ValidatedGenerationParams {
   plannedChapterCount: PlannedChapterCount;
   /** Whether chapters 2..N get art. Chapter 1's is compulsory regardless. */
   illustrateChapters: boolean;
+  /** Whether the author asked to be told when the story is finished. */
+  notifyOnReady: boolean;
 }
 
 export interface SeriesState {

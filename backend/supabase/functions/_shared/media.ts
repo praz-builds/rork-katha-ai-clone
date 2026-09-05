@@ -23,6 +23,7 @@
  * failures land in `error_events` and in `cover_status`, never in the caller.
  */
 
+import { notifyInBackground } from "./notify.ts";
 import {
   createClient,
   SupabaseClient,
@@ -38,6 +39,15 @@ export interface StoryMediaInput {
   title: string;
   themes: string[];
   whereAndWhen?: string;
+  /**
+   * Whether to tell the author the story is finished.
+   *
+   * Off unless the caller asks. The onboarding notify screen is a soft
+   * pre-prompt, so a user who has not accepted it must never receive a push,
+   * and a user still watching the chapter stream does not need one either.
+   * The client decides and passes it through the generation request.
+   */
+  notifyOnReady?: boolean;
 }
 
 /**
@@ -103,6 +113,26 @@ export async function generateStoryMedia(
 
   const coverReady = await generateAndStoreCover(supabase, input);
   if (!coverReady) await refundMissingMedia(supabase, input, "cover");
+
+  // The story is finished here, not when the chapter was persisted.
+  //
+  // This is the moment worth notifying: the text has been readable for a while,
+  // but the cover is what makes the row look finished in Library, and this task
+  // is the only place that knows the whole job is done. A cover that failed
+  // still finishes the story - decision 39 treats the concept card as a
+  // legitimate published look - so the notification does not depend on it.
+  //
+  // Failure here can never reach the story. `notifyInBackground` swallows
+  // everything to a console line: a generated story must not be reported as
+  // failed because a push could not be delivered.
+  if (input.notifyOnReady) {
+    await notifyInBackground({
+      userId: input.userId,
+      kind: "story_ready",
+      storyId: input.storyId,
+      title: input.title,
+    });
+  }
 }
 
 async function refundMissingMedia(

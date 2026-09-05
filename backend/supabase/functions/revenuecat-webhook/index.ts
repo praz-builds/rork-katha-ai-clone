@@ -4,11 +4,11 @@ import {
   constantTimeEquals,
   eventDate,
   isStoreRefundCancellation,
-  type RevenueCatEvent,
-  type RevenueCatWebhookPayload,
-  REVENUECAT_PRODUCT_MAP,
   resolveRevenueCatCredit,
   resolveRevenueCatIdentity,
+  REVENUECAT_PRODUCT_MAP,
+  type RevenueCatEvent,
+  type RevenueCatWebhookPayload,
   settleStoreRefund,
 } from "../_shared/revenuecat.ts";
 import {
@@ -23,7 +23,9 @@ const WEBHOOK_SECRET = Deno.env.get("REVENUECAT_WEBHOOK_SECRET");
 const ALLOW_SANDBOX = Deno.env.get("REVENUECAT_ALLOW_SANDBOX") === "true";
 
 serve(async (req) => {
-  if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
   if (!WEBHOOK_SECRET) {
     console.error("REVENUECAT_WEBHOOK_SECRET is not configured");
     return jsonResponse({ error: "Webhook is not configured" }, 503);
@@ -43,9 +45,13 @@ serve(async (req) => {
     rawBody = await req.text();
     if (!rawBody.trim()) return jsonResponse({ ok: true });
     event = (JSON.parse(rawBody) as RevenueCatWebhookPayload).event;
-    if (!event?.type) return jsonResponse({ ok: true, ignored: "missing event" });
+    if (!event?.type) {
+      return jsonResponse({ ok: true, ignored: "missing event" });
+    }
     if (event.environment?.toUpperCase() === "SANDBOX" && !ALLOW_SANDBOX) {
-      console.warn(`Rejected RevenueCat sandbox event ${event.id ?? "without-id"}`);
+      console.warn(
+        `Rejected RevenueCat sandbox event ${event.id ?? "without-id"}`,
+      );
       return jsonResponse({ ok: true, ignored: "sandbox" });
     }
 
@@ -69,16 +75,23 @@ serve(async (req) => {
           throw new Error("Invalid RevenueCat refund cancellation");
         }
         const settlement = await settleStoreRefund(
-          () => deductCredit(
-            serviceClient,
-            operation.userId,
-            operation.credits,
-            "chargeback",
-            operation.transactionId,
-            `rc:${operation.eventId}`,
-          ),
+          () =>
+            deductCredit(
+              serviceClient,
+              operation.userId,
+              operation.credits,
+              "chargeback",
+              operation.transactionId,
+              `rc:${operation.eventId}`,
+            ),
           operation.subscription
-            ? () => recordSubscription(serviceClient, event as RevenueCatEvent, false, false)
+            ? () =>
+              recordSubscription(
+                serviceClient,
+                event as RevenueCatEvent,
+                false,
+                false,
+              )
             : undefined,
         );
         return jsonResponse(
@@ -149,16 +162,27 @@ serve(async (req) => {
       return jsonResponse({ ok: true, acknowledged: "duplicate" });
     }
     const message = error instanceof Error ? error.message : "Unknown error";
-    if ([
-      "Missing or invalid app_user_id",
-      "Unknown product",
-      "Missing RevenueCat event ID",
-      "Missing transaction identifier",
-      "Subscription received non-renewing purchase event",
-      "Pack received subscription event",
-    ].includes(message)) {
-      const backlogError = await persistPaymentEventBacklog(event, rawBody, message);
-      if (backlogError) console.error("RevenueCat rejected-event backlog failed:", backlogError);
+    if (
+      [
+        "Missing or invalid app_user_id",
+        "Unknown product",
+        "Missing RevenueCat event ID",
+        "Missing transaction identifier",
+        "Subscription received non-renewing purchase event",
+        "Pack received subscription event",
+      ].includes(message)
+    ) {
+      const backlogError = await persistPaymentEventBacklog(
+        event,
+        rawBody,
+        message,
+      );
+      if (backlogError) {
+        console.error(
+          "RevenueCat rejected-event backlog failed:",
+          backlogError,
+        );
+      }
       return jsonResponse({ error: message }, 422);
     }
     console.error("revenuecat-webhook error:", error);
@@ -181,7 +205,10 @@ async function recordSubscription(
 ) {
   const identity = resolveRevenueCatIdentity(event);
   const product = REVENUECAT_PRODUCT_MAP[identity.productId];
-  if (product.kind !== "subscription" || !product.entitlement || !product.tier || !product.interval) {
+  if (
+    product.kind !== "subscription" || !product.entitlement || !product.tier ||
+    !product.interval
+  ) {
     throw new Error("Lifecycle event received for a non-subscription product");
   }
   const { error } = await serviceClient.rpc("record_revenuecat_subscription", {
@@ -197,7 +224,11 @@ async function recordSubscription(
     p_event_id: identity.eventId,
     p_event_at: new Date(event.event_timestamp_ms ?? Date.now()).toISOString(),
   });
-  if (error) throw new Error(`Failed to record RevenueCat subscription: ${error.message}`);
+  if (error) {
+    throw new Error(
+      `Failed to record RevenueCat subscription: ${error.message}`,
+    );
+  }
 }
 
 async function persistPaymentEventBacklog(
@@ -206,18 +237,19 @@ async function persistPaymentEventBacklog(
   message: string,
 ): Promise<string | null> {
   if (!event?.type || !event.id) return "Payment event payload is unavailable";
-  const { error } = await createServiceClient().from("payment_event_backlog").upsert(
-    {
-      provider: "revenuecat",
-      event_id: event.id,
-      event_type: event.type,
-      payload: event,
-      status: "pending",
-      last_error: message,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "provider,event_id", ignoreDuplicates: true },
-  );
+  const { error } = await createServiceClient().from("payment_event_backlog")
+    .upsert(
+      {
+        provider: "revenuecat",
+        event_id: event.id,
+        event_type: event.type,
+        payload: event,
+        status: "pending",
+        last_error: message,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "provider,event_id", ignoreDuplicates: true },
+    );
   return error?.message ?? null;
 }
 

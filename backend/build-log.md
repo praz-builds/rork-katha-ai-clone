@@ -26,6 +26,319 @@
 - Extended backend generation validation and character persistence so `portrait_url` from a pre-generated draft character survives the final story call and lands on `characters.portrait_url`.
 - No production-level backend test or deploy was run in this session, so no `error_events` entry was required.
 - Verification from `expo/`: focused Create/API Jest suites passed (31 tests) and `tsc --noEmit` passed using the bundled Node runtime. Backend `deno check`, `deno test` for validation, and `deno fmt --check` passed for the touched Edge Function/shared files. `pnpm` itself was blocked by the existing ignored-build approval prompt.
+## 2026-09-06 UTC — Streaming finally reaches a user
+
+**Session:** The Create flow generates through the streamed path and renders
+prose as it arrives. This closes the gap the previous entry flagged.
+
+### What was wrong
+
+Streaming was built, deployed, measured and verified with `curl`, and **no
+screen called it**. `CreateStudioScreen` still imported the buffered
+`generateStory`, so every real user waited the full ~49 seconds in front of a
+loader while the fast path sat unused behind it. The endpoint being fast was
+never the feature.
+
+That is worth recording as a process failure rather than a code one. The work
+was reported as done at the point the last file compiled, and everything
+measurable about it looked finished: the endpoint streamed, the transport parsed
+frames, the API function handed over chunks, the tests passed. **A client that
+collected every chunk and painted once at the end would have satisfied all of
+it.** That is precisely what shipped. The last hop was left to another agent
+because of file ownership, which was a reasonable process decision and a bad
+product one - nobody could use the thing.
+
+### What it does now
+
+All three paths render as they arrive: the first chapter, `Continue`, and
+paragraph edits. `StreamingProse` shows completed paragraphs and the partial
+trailing one, because waiting for a paragraph to close would put the reader back
+in front of a blank screen for most of the generation. It follows the text down
+until the reader scrolls and then stops following - yanking the viewport away
+mid-sentence is worse than letting text arrive below the fold. It does not
+animate a cursor: the text already arrives at a real rate, and a second invented
+rhythm would be the same lie as a timed progress bar.
+
+The loader hands off on the first token with no minimum. Prose at three seconds
+means reading at three seconds.
+
+Failure after prose has appeared keeps the prose. The credit is already
+refunded, so the text stays with the failure stated underneath it and a way off
+the screen. A failed paragraph edit restores the original text - the streamed
+rewrite has been painting over it, so without that the writer is left holding
+half a sentence where their finished one used to be.
+
+### The test that matters
+
+`create-streaming-integration.test.tsx` renders the real screen, releases SSE
+frames one at a time, and asserts the prose is on screen **while the response is
+still open**. Every other test passes whether the screen streams or buffers;
+this one does not. If the screen ever goes back to collecting chunks and
+painting at the end, it fails.
+
+The existing Create contract test mocked `generateStory` and would have gone on
+passing while the user got nothing until the end. It now mocks
+`generateStoryStreaming`, which is the honest assertion.
+
+### Gates
+
+`tsc` clean, `eslint` 0 errors, **223 Jest / 18 suites**, **288 Deno tests**.
+The web bundle builds clean and carries the new component.
+
+---
+
+## 2026-09-06 UTC — Streaming the reading loop, and the grant that made push a no-op
+
+**Session:** `continue-story` and `edit-story` stream, notifications are wired
+to the two moments they exist for, and two small open items closed.
+
+### Streaming the rest of the loop
+
+Measured against production: a streamed continuation puts prose on screen at
+**4.9s against a 31.0s total**, and the persisted chapter matches the streamed
+text word for word. `continue-story` is the more valuable of the two, because a
+reader deep in a series triggers it repeatedly and is less patient each time
+than they were on chapter one.
+
+**Both are a branch inside the existing function rather than a second
+function**, and that is the decision worth recording. `generate-story-stream`
+was written separately because its replay paths made the point of no return hard
+to see. Neither of these has that problem: every rejection they can make happens
+before the model is called. Branching keeps one preparation path, and it let the
+persistence and refund logic become closures both transports call. The
+continuity merge in `continue-story` decides what an absent `series_state` field
+means, and the optimistic-concurrency predicate in `edit-story` is the only
+thing standing between two overlapping edits and a silently discarded one.
+Neither should ever exist twice.
+
+Streaming is opted into per request with `stream: true`, so a client that does
+not ask gets the buffered response byte for byte.
+
+The continuation prompt gained an output mode rather than a second builder. A
+test asserts the JSON and prose prompts differ only after `## Output Format`, so
+a change to the continuation rules, the band or the finale instructions cannot
+reach one path and miss the other.
+
+**A note on robustness that was not the goal.** During testing the *buffered*
+continuation failed twice at the 120s chain deadline while the streamed one
+succeeded on the same story and model. Recorded codes: `timeout` on both
+OpenRouter positions, `429` on all three OpenAI models, partly self-inflicted
+load from a day of testing. But the asymmetry is structural: the buffered path
+gives each OpenRouter model a 30s slice to return a complete 32k-budget
+structured chapter, while the streamed path commits on a first token arriving in
+about 2.4s. Streaming is more tolerant of a slow provider, not only faster to
+first paint.
+
+### Push was wired to nothing, and could not have worked anyway
+
+The onboarding notify screen asks for the single push permission iOS grants per
+install, and no completion path ever sent one. Wiring it surfaced the reason
+nobody had noticed:
+
+**`push_tokens` had no grant for `service_role`.** 00037 locked the table with
+`revoke all ... from public, anon` and granted `authenticated` its own rows, but
+granted the sending role nothing, so `send-push` failed at its first query with
+`42501: permission denied for table push_tokens`. Every call. Nothing had called
+it, so the table looked correct and the function looked finished. Migration
+00042 grants it.
+
+That is the lesson worth keeping: **the bug was invisible from the code and
+obvious from the first real call.** A feature is not done at its last file, it
+is done when something exercises it end to end.
+
+The send moved into `_shared/notify.ts` so a generation path fires it in process
+rather than one edge function calling another over HTTP. `send-push` stays and
+delegates, so token lookup, batching, receipt reading and dead-token pruning
+have one implementation.
+
+A story notifies when its **media task** finishes, not when the chapter is
+persisted: the text has been readable for a while by then, but the cover is what
+makes the row look finished in Library, and that task is the only place that
+knows the whole job is done. A continuation notifies when its chapter lands.
+
+**Consent is read from the OS per request and must be a literal `true`.** A push
+sent to somebody who declined can be neither un-sent nor re-asked. Tests pin
+that `"true"`, `1` and `"yes"` are all refused.
+
+Still unverified: a notification arriving on a real device. That needs an EAS
+build with APNs credentials. Everything up to the Expo call is exercised.
+
+### Two small items closed
+
+The crafting loader's K asked for `fontWeight: 900` on `Baloo2.ttf`, a variable
+font. React Native cannot drive a weight axis, so it rendered at the 400 default
+- and the axis stops at **800**, so 900 was never reachable by any means. A
+static 800 instance is cut from the variable file and bundled as its own family.
+
+`ONBOARDING_FLOW.md` section 9 specified "Here's the shape of it." as the
+blueprint heading; the screen shipped as "Your idea just became a story." The
+spec is corrected to the code rather than the reverse, with the reasoning
+recorded.
+
+### Gates
+
+`tsc` clean, `eslint` 0 errors, **210 Jest / 16 suites**, **288 Deno tests**.
+Migration 00042 applied; `send-push`, `generate-story`, `generate-story-stream`,
+`continue-story` and `edit-story` deployed.
+
+---
+
+## 2026-09-05 UTC — Create release integration and production smoke
+
+**Session:** Integrated the Create flow, prompt-system v6, story planning,
+streaming generation, guest bootstrap, and the independently completed writer
+onboarding without changing its implementation. Removed trope from the active
+product and runtime contracts; kids Values remains a separate kids-only field.
+
+### Production result
+
+A real browser run from `http://localhost:8090` used the placeholder email/OTP
+handoff, bootstrapped a guest with 3 credits, shaped a detailed adult romance,
+added two character sheets, reviewed the plan, and generated the story through
+the deployed backend. `The Jam and the Lease` completed as operation
+`552cd049-b2d0-40a6-90dd-01ab4bb3cb5a`: one 1,852-word chapter, a ready cover,
+and portraits for Anahita Contractor and Arjun Mehta. The operation persisted as
+`completed` with no error. A blank inferred character returned by one shaping
+response exposed an `Untitled character` card; the client now drops blank names
+and has a regression test.
+
+The first attempt used port 8091, which is intentionally absent from the exact
+CORS allowlist. That production-test failure is persisted as fingerprint
+`2a3d4e128810941ae09a6dac57c2f0d8` (`client.app` /
+`smoke_origin_not_allowlisted`, one occurrence). The shaping telemetry queried
+before release remains `5e60930b2675d2d6d146c232c7c22648` (provider failure,
+four occurrences) and `ba02a878d8d5170b715ac51addcc235a` (unhandled shaping,
+three occurrences); both are diagnosed by the preceding entry.
+
+### Release hardening
+
+- Replaced invalid placeholder values in `pnpm-workspace.yaml`'s install-script
+  allowlist with explicit approvals and restored the audited `uuid` override.
+- Terra security review found no create-flow release vulnerabilities. It did
+  surface a pre-existing high-risk paid narration path: any story owner could
+  repeatedly send arbitrary text to RunPod with no credit or idempotency gate.
+  Fresh narration is now blocked until the canonical one-credit audio-unlock
+  operation exists; already cached narration remains playable.
+- `audio-status` now performs an ownership-checked cached lookup and cannot
+  contact RunPod. An initial fix authorized the chapter before polling, but a
+  Terra re-review correctly rejected it because ownership did not bind the
+  caller-supplied job id to that chapter. Provider polling stays closed until
+  that binding is durable, closing the status/output IDOR rather than masking it.
+- The constrained residual risk is draft prose and character details in
+  AsyncStorage for seven days. Supabase auth tokens use SecureStore on native.
+- `pnpm audit` still reports two high `image-size@2.0.2` parser advisories in
+  Metro's build-only dependency graph. The registry still has no `2.0.3`
+  release, so the documented patched version cannot be installed; Metro only
+  reads repository-controlled assets in this workflow.
+
+### Gates
+
+Expo: TypeScript clean, 210 Jest tests / 16 suites, lint 0 errors (17 existing
+warnings), Expo Doctor 18/18, and production web export passed. Backend: 307
+Deno tests passed; all Edge Functions typechecked and 67 files passed
+`deno fmt --check`. Remote migrations match local through `00041`.
+
+---
+
+## 2026-09-06 UTC — What the streaming numbers actually mean, and what is still not wired
+
+**Session:** No code change. This entry exists because the latency numbers from
+2026-09-05 are the kind that get quoted later without their context, and because
+one honest gap in that entry needs stating plainly.
+
+### The gap first: streaming is built and deployed, and nothing calls it
+
+`generate-story-stream` is live and verified end to end. `generateStoryStreaming()`
+exists in `expo/src/lib/api.ts` and is tested. **No screen calls it.**
+`CreateStudioScreen` imports `generateStory` -- the buffered path -- and that is
+still what every real user gets.
+
+So the 8.8x is a property of the endpoint, measured with `curl`, not something a
+person using the app experiences today. Wiring it into `CreateStudioScreen` and
+`WriterOnboarding` is the remaining work, and it is small: the transport, the
+event protocol and the error handling are done. Nobody should read the previous
+entry as "the app is fast now".
+
+### What 5.6 seconds and 49 seconds mean
+
+The 49 seconds never changed. It is how long the model takes to write a
+1,800-word chapter, and no amount of engineering makes a model write faster.
+
+What changed is **when the first word appears**. Before, the reader watched a
+loader for 49 seconds and the whole chapter arrived at once. Now the first
+sentence appears at 5.6 seconds and the rest arrives as it is written, at
+roughly reading speed.
+
+The reason this matters is not that 5.6 is a smaller number than 49. It is that
+**the reader is no longer idle.** A person reads at about 250 words a minute, so
+1,800 words is around seven minutes of reading. The chapter finishes generating
+about 45 seconds in, long before they reach the end of what is already on screen.
+The remaining 43 seconds of generation happen *underneath* the reading and are
+never experienced as waiting at all.
+
+That is the whole mechanism, and it is worth stating in the negative too: this is
+not a speed optimisation. Total work went slightly **up**, because the streamed
+path makes a second call for metadata. We traded a small amount of total cost for
+the removal of nearly all of the perceived cost.
+
+### Why 49 seconds of nothing is worse than it sounds
+
+Waiting is not linear. A blank screen gives a person no evidence that anything is
+happening, so they supply their own explanation, and after about ten seconds the
+explanation is usually "this is broken". The three things they do next are refresh,
+press the button again, or leave. Two of those cost a credit.
+
+A streaming screen answers the question continuously. The user is not being asked
+to trust that work is happening, they are watching it happen. This is also why
+the loader's progress stages are now driven by real pipeline transitions rather
+than a timer: a bar that moves on a timer is making a claim it cannot support,
+and a user who catches it doing that stops believing the rest of the screen.
+
+### What this technique does and does not transfer to
+
+**It transfers directly to `continue-story` and `edit-story`.** Both are the same
+shape as `generate-story` was: one model call, one long wait, one response.
+Neither streams today. `continue-story` is the bigger win of the two, because a
+reader deep in a series triggers it repeatedly and is even less patient than a
+first-time creator. The work is largely reuse: `_shared/story-stream.ts` already
+carries the SSE parser, the one-way fallback and the two-clock timeout, and the
+client already has the transport. `edit-story` is smaller but nearly free once
+the first is done, and the paragraph editor is a place where waiting is
+especially visible because the user is looking directly at the text being changed.
+
+**It does not transfer to images or audio.** Nothing is produced incrementally
+there. An image provider returns a finished file; there is no first-token
+equivalent and no partial image worth showing. The corresponding technique is
+different and is already partly in place: media is generated on a background task
+after the response, `stories.cover_status` tracks it, and the concept card is a
+legitimate final look while it runs. What is missing is the delivery half. The
+client learns the cover is ready by asking again, and `send-push` exists but is
+wired to nothing, so a user who leaves the screen is never told. That is the real
+media latency work, and it is a notification and subscription problem rather than
+a streaming one.
+
+Audio sits between the two. Narration is generated as a whole file today, but TTS
+can be produced and played in chunks, so a chapter could begin playing seconds
+after the request instead of after the whole file renders. That is a genuine
+streaming opportunity and a larger piece of work than the text paths, because it
+needs the player to consume a stream rather than a URL.
+
+### The engineering summary, for the record
+
+Three things were done, and only the first is a latency change:
+
+1. **The transport changed from request/response to Server-Sent Events**, so
+   tokens reach the client as the model produces them rather than after it
+   finishes.
+2. **The generation was split in two** because a strict JSON schema cannot be
+   streamed usefully. Prose streams as text; the structured fields are recovered
+   by a second call afterwards.
+3. **The failure model was rewritten around a commit boundary.** Once prose has
+   reached the reader, the system can no longer retry, swap providers, or discard
+   the output, so every failure path had to be re-decided for a world where the
+   user has already seen part of the answer.
+
+---
 
 ## 2026-09-05 UTC — Streaming, the shape-story deadline, and a backend security pass
 
@@ -84,8 +397,6 @@ A full read of every migration and edge function. Real findings, actioned in one
 ### The three Postgres questions that prompted this session
 
 **Object storage: already correct.** No `bytea`, no blobs, no large objects anywhere. All media is in Supabase Storage buckets and Postgres holds only text URLs. One correction to the premise: RunPod is the TTS *generator*, not the store — `audio-status` copies the result into the `audio` bucket. The durable store for audio and images is the same thing.
-
-**`SELECT ... FOR UPDATE SKIP LOCKED`: one real home, and finding it found a gap.** `payment_event_backlog` is written by `revenuecat-webhook` and read by nothing, so a failed billing event is never replayed. Billing is not live yet, so this is closing the gap before it matters. Recorded prominently: `SKIP LOCKED` is **wrong** for the credit RPCs, which lock one row by `user_id` and must block rather than skip.
 
 **Unlogged tables: considered and skipped.** The five rate-limit tables qualify, but it is one tiny row-write per request, so the WAL saving is noise at current volume, and unlogged tables restore *empty* from Supabase's physical backups. Not worth the caveat for a gain nobody would feel.
 

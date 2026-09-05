@@ -9,8 +9,8 @@ import {
   chapterLengthVerdict,
   chapterTokenBudget,
   parseSseData,
-  StreamCommittedError,
   streamChapterProse,
+  StreamCommittedError,
   trimToParagraph,
 } from "./story-stream.ts";
 import { STORY_OUTPUT_JSON_SCHEMA } from "./story_schema.ts";
@@ -211,8 +211,9 @@ async function withStubbedFetch<T>(
   const original = globalThis.fetch;
   const originalKey = Deno.env.get("OPENROUTER_API_KEY");
   Deno.env.set("OPENROUTER_API_KEY", "test-key");
-  globalThis.fetch = ((url: string | URL | Request, init: RequestInit) =>
-    Promise.resolve(handler(String(url), init ?? {}))) as typeof fetch;
+  globalThis.fetch =
+    ((url: string | URL | Request, init: RequestInit) =>
+      Promise.resolve(handler(String(url), init ?? {}))) as typeof fetch;
   try {
     return await run();
   } finally {
@@ -227,7 +228,7 @@ Deno.test("prose is streamed in order and returned whole", async () => {
   const result = await withStubbedFetch(
     () =>
       sseResponse([
-        ': OPENROUTER PROCESSING',
+        ": OPENROUTER PROCESSING",
         'data: {"choices":[{"delta":{"role":"assistant"}}]}',
         'data: {"model":"meta/muse-spark-1.3","choices":[{"delta":{"content":"The ferry "}}]}',
         'data: {"choices":[{"delta":{"content":"stopped coming."}}]}',
@@ -284,7 +285,9 @@ Deno.test("a provider that fails before the first token falls back silently", as
       seen.push(model);
       // The leader 500s before writing anything. The reader is still on the
       // loader, so swapping providers is invisible and correct.
-      if (seen.length === 1) return new Response("upstream boom", { status: 500 });
+      if (seen.length === 1) {
+        return new Response("upstream boom", { status: 500 });
+      }
       return sseResponse([
         'data: {"choices":[{"delta":{"content":"second provider"}}]}',
         "data: [DONE]",
@@ -403,4 +406,77 @@ Deno.test("hitting the output cap trims to a paragraph and reports truncation", 
   );
   assertEquals(result.truncated, true);
   assertEquals(result.text, "Done para.");
+});
+
+// ---------------------------------------------------------------------------
+// The explicit token budget
+//
+// Added when `edit-story` began streaming. A paragraph rewrite has no word
+// band, and without an override it would inherit the bandless chapter default.
+// ---------------------------------------------------------------------------
+
+Deno.test("an explicit maxTokens overrides the band-derived cap", async () => {
+  let sentMaxTokens: unknown;
+  await withStubbedFetch(
+    (_url, init) => {
+      sentMaxTokens = JSON.parse(String(init.body)).max_tokens;
+      return sseResponse([
+        'data: {"choices":[{"delta":{"content":"rewritten"}}]}',
+        "data: [DONE]",
+      ]);
+    },
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        maxTokens: 2_000,
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(sentMaxTokens, 2_000);
+});
+
+Deno.test("without an override the budget still comes from the band", async () => {
+  let sentMaxTokens = 0;
+  const band = { min: 1200, max: 1600 };
+  await withStubbedFetch(
+    (_url, init) => {
+      sentMaxTokens = JSON.parse(String(init.body)).max_tokens as number;
+      return sseResponse([
+        'data: {"choices":[{"delta":{"content":"x"}}]}',
+        "data: [DONE]",
+      ]);
+    },
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        wordBand: band,
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(sentMaxTokens, chapterTokenBudget(band));
+});
+
+Deno.test("the request opts into streaming", async () => {
+  // Without `stream: true` the provider answers with one buffered body and the
+  // reader waits exactly as long as before, silently.
+  let body: Record<string, unknown> = {};
+  await withStubbedFetch(
+    (_url, init) => {
+      body = JSON.parse(String(init.body));
+      return sseResponse([
+        'data: {"choices":[{"delta":{"content":"x"}}]}',
+        "data: [DONE]",
+      ]);
+    },
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(body.stream, true);
+  assertEquals((body.reasoning as Record<string, unknown>)?.effort, "minimal");
 });
