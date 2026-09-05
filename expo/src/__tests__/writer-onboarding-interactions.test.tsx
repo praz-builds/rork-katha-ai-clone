@@ -126,7 +126,7 @@ async function reachDetails(view: View, idea = "A woman inherits a boarded-up ho
   await view.findByText("The parts you already have in mind.");
 }
 
-/** Details -> blueprint, through the email and code screens. */
+/** Details -> preview, through the email and code screens. */
 async function authAndCraft(view: View) {
   await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
   await fireEvent.changeText(
@@ -144,10 +144,10 @@ async function authAndCraft(view: View) {
     view.getByRole("button", { name: "Verify and continue" }),
   );
   await settleCraftingHold();
-  await view.findByText("Your idea just became a story.");
+  await view.findByText(SHAPE.title);
 }
 
-async function reachBlueprint(view: View) {
+async function reachPreview(view: View) {
   await reachDetails(view);
   await authAndCraft(view);
 }
@@ -193,13 +193,14 @@ describe("writer onboarding back navigation", () => {
     ).toBe(true);
   });
 
-  it("does not strand the user in re-authentication when they go back from the blueprint", async () => {
+  it("does not strand the user in re-authentication when they go back from the preview", async () => {
     const { view } = await renderFlow();
-    await reachBlueprint(view);
+    await reachPreview(view);
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
 
-    // Back from the blueprint is the documented way to change the brief, so
-    // the way forward from there must not demand the code again.
+    // Back from the preview is the documented way to change the brief - and
+    // now the only way, with the blueprint screen gone - so the way forward
+    // from there must not demand the code again.
     await fireEvent.press(view.getByRole("button", { name: "Back" }));
     await view.findByText("The parts you already have in mind.");
     await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
@@ -209,42 +210,24 @@ describe("writer onboarding back navigation", () => {
     expect(mockSendEmailCode).toHaveBeenCalledTimes(1);
     expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1);
     await settleCraftingHold();
-  await view.findByText("Your idea just became a story.");
+    await view.findByText(SHAPE.title);
   });
 
-  it("goes back from the preview to the blueprint, and forward again", async () => {
+  it("goes back to the details and forward again with the plan intact", async () => {
     const { view } = await renderFlow();
-    await reachBlueprint(view);
-    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
-    await view.findByText("This is the beginning.");
+    await reachPreview(view);
     await fireEvent.press(view.getByRole("button", { name: "Back" }));
+    await view.findByText("The parts you already have in mind.");
+    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
     await settleCraftingHold();
-  await view.findByText("Your idea just became a story.");
-    // The plan survived the round trip.
+    await view.findByText(SHAPE.title);
+
+    // The plan survived the round trip, and the trip cost nothing: the warm
+    // request is re-used because neither the idea nor the shelf changed.
     expect(
       view.getByText("Elena inherits the house and finds the door"),
     ).toBeTruthy();
-  });
-
-  it("keeps a hand-edited beat when the user leaves the blueprint and comes back", async () => {
-    const { view } = await renderFlow();
-    await reachBlueprint(view);
-    await fireEvent.press(
-      view.getByLabelText(
-        "Chapter 1. Elena inherits the house and finds the door. Tap to edit.",
-      ),
-    );
-    await fireEvent.changeText(
-      view.getByLabelText("Chapter 1"),
-      "She burns it down",
-    );
-    await fireEvent.press(view.getByLabelText("Save chapter 1"));
-
-    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
-    await fireEvent.press(await view.findByRole("button", { name: "Back" }));
-    await settleCraftingHold();
-  await view.findByText("Your idea just became a story.");
-    expect(view.getByText("She burns it down")).toBeTruthy();
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -346,7 +329,7 @@ describe("writer onboarding crafting step", () => {
       resolve(SHAPE);
     });
     await settleCraftingHold();
-  await view.findByText("Your idea just became a story.");
+  await view.findByText(SHAPE.title);
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
   });
 
@@ -420,18 +403,18 @@ describe("writer onboarding crafting step", () => {
       jest.advanceTimersByTime(CRAFTING_MIN_MS - 1);
     });
     expect(view.getByText("Crafting")).toBeTruthy();
-    expect(view.queryByText("Your idea just became a story.")).toBeNull();
+    expect(view.queryByText(SHAPE.title)).toBeNull();
 
     await act(async () => {
       jest.advanceTimersByTime(1);
     });
-    await view.findByText("Your idea just became a story.");
+    await view.findByText(SHAPE.title);
 
     // Warm means reused, not re-fired.
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
   });
 
-  it("never builds the blueprint from an idea the user has since replaced", async () => {
+  it("never builds the story from an idea the user has since replaced", async () => {
     // The title carries the idea it was shaped from, so a stale response is
     // visible rather than merely suspected.
     mockInferStoryBrief.mockImplementation((idea: string) =>
@@ -455,13 +438,11 @@ describe("writer onboarding crafting step", () => {
 
     await authTo(view);
     await settleCraftingHold();
-    await view.findByText("Your idea just became a story.");
-
-    expect(
-      view.getByText(
-        "Shaped from: A lighthouse keeper starts receiving letters addressed to the ship that sank.",
-      ),
-    ).toBeTruthy();
+    // The preview titles itself with the story, so the stale answer would be
+    // visible as the heading rather than merely suspected.
+    await view.findByText(
+      "Shaped from: A lighthouse keeper starts receiving letters addressed to the ship that sank.",
+    );
     expect(view.queryByText(/broken moon/)).toBeNull();
     // A changed idea is a second call, and this is the only user behaviour
     // that buys one. See `startShaping` on the budget.
@@ -485,7 +466,7 @@ describe("writer onboarding crafting step", () => {
 
     await authTo(view);
     await settleCraftingHold();
-    await view.findByText("Your idea just became a story.");
+    await view.findByText(SHAPE.title);
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
   });
 
@@ -517,8 +498,9 @@ describe("writer onboarding crafting step", () => {
     await authTo(view);
     // No advance: a failed call has nothing for the stages to describe, so it
     // skips the floor exactly as it did before it was warmed.
-    await view.findByText("Your idea just became a story.");
-    expect(view.getByText("A woman inherits a")).toBeTruthy();
+    // The fallback title is the first four words of the user's own sentence,
+    // and it is the whole of the failure path's visible difference.
+    await view.findByText("A woman inherits a");
     expect(view.queryByText(/could not|failed|error|try again/i)).toBeNull();
 
     expect(unhandled).not.toHaveBeenCalled();
@@ -631,7 +613,7 @@ describe("writer onboarding email and code", () => {
       view.getByRole("button", { name: "Verify and continue" }),
     );
     await settleCraftingHold();
-  await view.findByText("Your idea just became a story.");
+  await view.findByText(SHAPE.title);
   });
 
   it("does not carry a code error back onto the email screen", async () => {
@@ -696,8 +678,7 @@ describe("one-time offer countdown", () => {
   });
 
   async function reachOffer(view: View) {
-    await reachBlueprint(view);
-    await fireEvent.press(view.getByRole("button", { name: "See the preview" }));
+    await reachPreview(view);
     await fireEvent.press(
       await view.findByRole("button", { name: "Save my story" }),
     );

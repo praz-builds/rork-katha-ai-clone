@@ -14,7 +14,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { CraftingLoader } from "@/components/create/CraftingLoader";
-import { PlanSection } from "@/components/create/PlanSection";
 import { inferStoryBrief } from "@/lib/api";
 import { enableNotifications } from "@/lib/notifications";
 import { sendEmailCode, verifyEmailCode } from "@/lib/session";
@@ -67,10 +66,29 @@ import type { CreateDraft, Genre } from "@/types/domain";
  *
  * ## Screen order
  *
- * Idea, details, email, crafting, blueprint, preview, paywall, offer,
- * notifications, welcome. Auth sits before the crafting wait rather than after
- * the preview, which is a deviation from `ONBOARDING_FLOW.md` section 11 and
- * follows the newer design; the section is due a rewrite against it.
+ * Idea, details, email, crafting, preview, paywall, offer, notifications,
+ * welcome. Auth sits before the crafting wait rather than after the preview,
+ * which is a deviation from `ONBOARDING_FLOW.md` section 11 and follows the
+ * newer design; the section is due a rewrite against it.
+ *
+ * ## Why there is no blueprint screen any more
+ *
+ * There used to be one between the loader and the preview: a card of facts
+ * (concept, where and when, who is in it) over an editable chapter plan, ending
+ * in a "See the preview" button. It was a toll gate. It showed the user a
+ * summary of a story they had not been allowed to read yet, asked them to
+ * approve it, and only then let them see a sentence of prose - so the payoff
+ * they had waited through the loader for was one more screen away, and the one
+ * question it really asked ("is this right?") is unanswerable before you have
+ * read anything.
+ *
+ * The preview screen now carries what was worth keeping from it - the concept
+ * cover, the title, the shelf, and the chapter plan as a numbered list - above
+ * the opening prose, so the facts and the writing arrive together and the next
+ * press is the one that saves the story. Beat editing does not survive the
+ * merge: the plan is shown, not edited, and rewriting lands in the studio,
+ * which is what the entitlements on this screen promise. That is a deliberate
+ * loss of a capability, not an oversight.
  */
 
 type Step =
@@ -79,7 +97,6 @@ type Step =
   | "email"
   | "code"
   | "crafting"
-  | "blueprint"
   | "preview"
   | "paywall"
   | "offer"
@@ -175,19 +192,34 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_MOMENTS = 5;
 
 /**
- * How many dots the progress row draws, and where the auth screens sit in it.
+ * How many dots the progress row draws, and which one is filled on each screen.
  *
- * Seven is the count of steps a user can see and act on: idea, details, email,
- * code, blueprint, preview, and the paywall. Crafting, the offer, the
- * notification ask and the welcome are not in it - the first is a wait, and the
- * rest are after the flow has stopped asking the user to build anything.
+ * SIX, because six is what a user can now see and act on: idea, details, email,
+ * code, preview, paywall. Crafting, the one-time offer, the notification ask
+ * and the welcome are not in it - the first is a wait, and the rest come after
+ * the flow has stopped asking the user to build anything.
  *
- * Only the two auth screens pass these today. The capability is on `StepScroll`
- * so the other five can adopt it without a second implementation.
+ * It was seven, with the auth screens at 6 and 7, and both numbers came off the
+ * approved auth design. They stopped being true twice over when the blueprint
+ * screen was removed: the flow lost a screen, so seven counted one that does
+ * not exist, AND the auth screens are the third and fourth of what remains
+ * rather than the last two. A progress row that lies about both the length of
+ * the journey and the position in it is worse than no progress row, so it is
+ * corrected here rather than deferred to the reader flow. The visible change is
+ * that the filled dot on the email and code screens moves from the end of the
+ * row to the middle, which is where those screens actually are.
+ *
+ * WHY THE IDEA AND DETAILS SCREENS STILL DRAW NO DOTS. Their approved designs
+ * do not have them, and adding a progress row to a screen is a design decision
+ * about that screen, not a consequence of fixing a count. The row therefore
+ * still appears at step 3. That is a real inconsistency and it is deliberate:
+ * making it consistent means either adding dots to two signed-off screens or
+ * removing them from three, and neither is this change's call to make.
  */
-const ONBOARDING_STEPS = 7;
-const EMAIL_STEP = 6;
-const CODE_STEP = 7;
+const ONBOARDING_STEPS = 6;
+const EMAIL_STEP = 3;
+const CODE_STEP = 4;
+const PREVIEW_STEP = 5;
 
 /**
  * The reference frame every measurement in this file is checked against, and
@@ -481,7 +513,7 @@ export default function WriterOnboarding(
       suggestedMoments: resolved?.suggestedMoments ?? [],
     });
     setBeats((resolved?.beats ?? []).slice(0, chapterCount));
-    go("blueprint");
+    go("preview");
   }, [cast, chapterCount, genre, go, seed, startShaping]);
 
   useEffect(() => {
@@ -569,6 +601,28 @@ export default function WriterOnboarding(
 
   const ideaReady = seed.trim().length >= MIN_IDEA_LENGTH;
   const totalMinutes = minutesFor(chapterLength) * chapterCount;
+
+  /**
+   * The byline under the story title on the preview screen.
+   *
+   * The three facts the removed blueprint card used to give a labelled row
+   * each - shelf, world, lead - set as one middot-joined line, because that is
+   * how a reader reads a book's metadata and because three eyebrowed rows for
+   * three short strings was most of what made that screen feel like a form.
+   *
+   * Every part is dropped when it is empty rather than rendered blank: a
+   * failed shape call leaves the title and nothing else, and the line must not
+   * become a row of stranded separators.
+   */
+  const conceptMeta = useMemo(() => {
+    const shelves = (blueprint?.genres?.length ? blueprint.genres : [genre])
+      .map((id) => genreLabels[id] ?? id);
+    return [
+      ...shelves,
+      blueprint?.whereAndWhen,
+      blueprint?.lead?.name,
+    ].filter(Boolean).join(" \u00b7 ");
+  }, [blueprint, genre]);
   const frame = { paddingTop: insets.top, paddingBottom: insets.bottom };
 
   /* ── Render ─────────────────────────────────────────────────────────── */
@@ -712,8 +766,8 @@ export default function WriterOnboarding(
                     the measurement.
 
                     The copy grew to 30-word prompts, so the type drops to
-                    `onboardingType.body` (14.5/18) rather than the card
-                    growing to fit `type.subhead`. */}
+                    `onboardingType.helper` (14.5/18) rather than the card
+                    growing to fit it. */}
                 <View style={styles.starterRailBleed}>
                   <ScrollView
                     horizontal
@@ -1204,83 +1258,85 @@ export default function WriterOnboarding(
               </Pressable>
             </StepScroll>
           )
-          : step === "blueprint"
+          : step === "preview"
           ? (
+            /* The payoff screen, and now the only one between the loader and
+               the ask. It carries the approved design's content in the
+               approved design's order: the story's title, its cover and facts,
+               the chapter plan as a numbered list, the opening prose in a
+               card, and the standing entitlements last. The one departure is
+               the title's position, and the comment on it below says why.
+
+               NO SCREEN HEADING. "This is the beginning." used to sit above
+               all of this, and the design does not have it because it does not
+               need it: the story's own title is the heading of the screen
+               about that story, and a second sentence-case line above it would
+               have been the flow's only screen with two titles. This is the
+               one place `StepScroll`'s `title` is deliberately unused. */
             <StepScroll
               onBack={() => go("details")}
-              /* This is the payoff screen, and "Here's the shape of it." was
-                 an introduction to a diagram. It is also the copy fixed by
-                 ONBOARDING_FLOW.md section 9, so this is a deliberate
-                 deviation and the table there is due a rewrite against it -
-                 the same standing deviation as the auth position in section
-                 11. The heading names the moment the writer waited through the
-                 craft screen for, and credits their idea rather than the tool.
-                 The sub is unchanged and still the section 9 wording: it is
-                 what turns the payoff into an invitation to edit. */
-              title="Your idea just became a story."
-              sub="Change the parts that make it yours."
+              steps={ONBOARDING_STEPS}
+              currentStep={PREVIEW_STEP}
             >
-              <View style={styles.conceptCard}>
-                {/* Each eyebrow hugs what it heads; the card's own gap does
-                    the separating between one fact and the next. */}
-                <View style={styles.section}>
-                  <Text style={styles.eyebrow}>CONCEPT</Text>
-                  <Text style={styles.conceptTitle}>{blueprint?.title}</Text>
-                  {blueprint?.genres?.length
+              {/* The title takes the full column, and the cover sits under it
+                  rather than beside it.
+
+                  The design draws them side by side, which is the book-listing
+                  convention and was the first thing tried. It does not survive
+                  the measurement: a 94pt cover and a `spacing.lg` gap leave
+                  216pt of the 326pt column, and at 28pt Inter Tight that is
+                  about fifteen characters a line, so a four-word title sets in
+                  four ragged lines. The alternative was to shrink the title,
+                  which is a fifth size and the exact move the details screen
+                  was just corrected for.
+
+                  So the arrangement moves and the type stays: one 28pt heading
+                  across the full measure, then cover and facts as a row under
+                  it. Everything the design groups is still grouped, and
+                  nothing on this screen is set at a size the ramp does not
+                  have. */}
+              <Text style={styles.title} accessibilityRole="header">
+                {blueprint?.title}
+              </Text>
+              <View style={styles.conceptRow}>
+                <ConceptCover title={blueprint?.title ?? "Your story"} />
+                <View style={styles.conceptMeta}>
+                  {/* One line, not three eyebrowed rows in a card. The shelf,
+                      the world and the lead were three labelled facts on the
+                      screen this replaces; here they are the byline under a
+                      title, which is where a reader looks for them. */}
+                  {conceptMeta
+                    ? <Text style={styles.conceptByline}>{conceptMeta}</Text>
+                    : null}
+                  {beats.length
                     ? (
-                      <View style={styles.wrapChips}>
-                        {blueprint.genres.map((genre) => (
-                          <View key={genre} style={styles.genreChip}>
-                            <Text style={styles.genreChipText}>
-                              {genreLabels[genre] ?? genre}
+                      <View
+                        style={styles.chapterList}
+                        accessibilityRole="list"
+                      >
+                        {beats.map((beat, index) => (
+                          <View key={`${index}-${beat}`} style={styles.chapterRow}>
+                            {/* Zero-padded and accent-coloured, so the column
+                                of numbers reads as a plan rather than as a
+                                bulleted list of sentences. */}
+                            <Text style={styles.chapterNumber}>
+                              {String(index + 1).padStart(2, "0")}
                             </Text>
+                            <Text style={styles.chapterText}>{beat}</Text>
                           </View>
                         ))}
                       </View>
                     )
                     : null}
                 </View>
-                {blueprint?.whereAndWhen
-                  ? (
-                    <View style={styles.section}>
-                      <Text style={styles.eyebrow}>WHERE AND WHEN</Text>
-                      <Text style={styles.conceptBody}>
-                        {blueprint.whereAndWhen}
-                      </Text>
-                    </View>
-                  )
-                  : null}
-                {blueprint?.lead
-                  ? (
-                    <View style={styles.section}>
-                      <Text style={styles.eyebrow}>WHO’S IN IT</Text>
-                      <Text style={styles.conceptBody}>
-                        {blueprint.lead.name}
-                        {blueprint.lead.description
-                          ? `, ${blueprint.lead.description}`
-                          : ""}
-                      </Text>
-                    </View>
-                  )
-                  : null}
               </View>
 
-              {/* Called Chapters, never Arc. See PlanSection. */}
-              <PlanSection beats={beats} onChange={setBeats} />
-
-              <Primary label="See the preview" onPress={() => go("preview")} />
-            </StepScroll>
-          )
-          : step === "preview"
-          ? (
-            <StepScroll
-              onBack={() => go("blueprint")}
-              title="This is the beginning."
-              sub="You can keep shaping every part of it."
-            >
               {blueprint?.opening
                 ? (
                   <View style={styles.readerSurface}>
+                    <View style={styles.previewTag}>
+                      <Text style={styles.previewTagText}>PREVIEW</Text>
+                    </View>
                     {blueprint.opening.split(/\n{2,}/).map((paragraph, i) => (
                       <Text key={i} style={styles.readerText}>
                         {paragraph.trim()}
@@ -1293,8 +1349,13 @@ export default function WriterOnboarding(
               {/* Entitlements never fade, dim, or move behind the paywall:
                   they are the answer to "am I stuck with this", and hiding
                   them behind the ask is what makes a preview feel like a
-                  trap. ONBOARDING_FLOW.md section 10. */}
+                  trap. ONBOARDING_FLOW.md section 10.
+
+                  They also now carry the promise the removed blueprint screen
+                  used to make in person: the first line is the one that says
+                  the chapter list above is editable, later, by hand. */}
               <View style={styles.entitlements}>
+                <Text style={styles.sectionHead}>YOU CAN ALWAYS</Text>
                 {ENTITLEMENTS.map((line) => (
                   <View key={line} style={styles.entitlementRow}>
                     <IconCheck size={16} color={colors.success} />
@@ -1540,6 +1601,36 @@ function DraftArtwork() {
           <Text style={styles.draftSavedText}>Saved just now</Text>
         </View>
       </View>
+    </View>
+  );
+}
+
+/**
+ * The story's cover, before there is a cover.
+ *
+ * A real cover is a paid, generated image that does not exist yet at this
+ * point in the flow and must not be implied to. This is the placeholder that
+ * stands in its place on the preview screen: a dark portrait card carrying the
+ * word CONCEPT and the story's own title, at the 3:4.4 proportion the story
+ * cards elsewhere in the app use, so the shape a user meets here is the shape
+ * they will meet in their library.
+ *
+ * Drawn from Views and tokens rather than shipped as an asset, for the same
+ * reason `DraftArtwork` is: an image would need a light and a dark variant and
+ * would go stale the first time the card language moves.
+ */
+function ConceptCover({ title }: { title: string }) {
+  return (
+    <View style={styles.cover} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={styles.coverTag}>
+        <Text style={styles.coverTagText}>CONCEPT</Text>
+      </View>
+      {/* Three lines, then ellipsis. The title is already stated in full
+          beside the card; this is the cover's echo of it, not a second
+          reading of it, and a title that grew the card would break the row. */}
+      <Text style={styles.coverTitle} numberOfLines={3}>
+        {title}
+      </Text>
     </View>
   );
 }
@@ -1902,14 +1993,15 @@ const styles = StyleSheet.create({
    * set it: pass `title` to `StepScroll`.
    */
   title: { ...onboardingType.title, color: colors.ink },
-  sub: { ...onboardingType.body, color: colors.muted },
+  /** The line under a screen title. Secondary, so `helper` rather than `body`. See `helper`. */
+  sub: { ...onboardingType.helper, color: colors.muted },
   /** Green check plus secondary text, hugging the field it reassures about. */
   reassurance: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
   },
-  reassuranceText: { ...onboardingType.body, color: colors.muted, flex: 1 },
+  reassuranceText: { ...onboardingType.helper, color: colors.muted, flex: 1 },
   legal: {
     ...type.caption,
     color: colors.tertiary,
@@ -1917,80 +2009,50 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   /**
-   * A PAGE-LEVEL section head: the second level of the screen, under the one
-   * `title`, above one group of controls. MOMENTS, WRITING STYLE, TRY ONE.
+   * The label above a group: MOMENTS, WRITING STYLE, TRY ONE, YOU CAN ALWAYS.
    *
-   * The token straight, at 21/26 with its +0.7 tracking, with nothing
-   * overridden but the colour. This is the fix for the thing the product owner
-   * saw on the details screen: the label that HEADS a section used to be 12pt,
-   * which made it the smallest text in its own section and smaller than the
-   * helper line underneath it. A group's head cannot be the quietest thing in
-   * the group.
+   * `onboardingType.sectionHeader` straight, with the colour set. 12pt
+   * uppercase, semibold family, +1 tracking, tertiary.
    *
-   * WHY THE COLOUR IS `ink` AND NOT `muted`. `muted` was tried first, on the
-   * theory that a colour step would keep five stacked 21pt caps from shouting.
-   * It does not survive the screen: the helper lines under these heads are
-   * `muted` too, so head and helper differed by 5pt and nothing else, and the
-   * head stopped reading as a head at exactly the moment it mattered. The head
-   * is `ink`, the helper is `muted`, and the two are then apart on size,
-   * weight, case AND colour. Against the title the separation is the one
-   * `onboardingType` measures: the head's caps stand 15.3pt against the
-   * title's 20.4pt, three quarters as tall, which is a second level rather
-   * than a rival.
+   * WHY IT WENT BACK DOWN FROM 21. The previous pass promoted these on the
+   * argument that a label heading a group cannot be the quietest thing in the
+   * group. That argument is right about a HEADING and wrong about an EYEBROW,
+   * and the details screen is what proved it: five 21pt uppercase heads down
+   * one scroll gave the screen five things that looked like titles and one
+   * actual title, and the hierarchy the promotion was meant to create is what
+   * it destroyed. One large size per screen. This is not it.
    *
-   * WHY IT STAYS UPPERCASE. `onboardingType`'s +0.7 tracking exists FOR the
-   * uppercase treatment; the token's own doc says a sentence-case head at this
-   * level is the wrong token and should be `title`. Sentence case here would
-   * also give the screen two sentence-case levels seven points apart, which is
-   * harder to tell apart at a glance than case-plus-size is.
+   * WHAT CARRIES IT INSTEAD OF SIZE. Case, weight, tracking and colour, all
+   * four at once and none of them shared with anything near it: the helper
+   * line under it is sentence case, regular, +0.3 and `muted`; the field under
+   * that is 16pt `ink`. A signpost does not have to be the biggest thing on
+   * the road to be read first.
+   *
+   * ONE STYLE FOR BOTH LEVELS. `eyebrow` is an alias of this, not a second
+   * treatment. The old split - 21pt page-level heads, 12pt component-level
+   * eyebrows - existed only to keep the promotion from reaching inside cards,
+   * and with the promotion gone there is one uppercase label in the flow.
    */
-  sectionHead: { ...onboardingType.sectionHeader, color: colors.ink },
+  sectionHead: { ...onboardingType.sectionHeader, color: colors.tertiary },
   /**
    * The optional marker, inline inside the section head so it wraps with it.
    *
-   * `onboardingType.caption`, which is the aside level and is what this is: a
-   * note about the section, not part of the section's name. At a 12pt head an
-   * 11pt marker was a barely-visible step and had to be carried by tracking;
-   * against a 21pt head the 12pt caption is a 1.75x drop and reads as an aside
-   * on sight, so it needs nothing else. Sentence case and unspaced for the
-   * same reason.
+   * Same size as the head it sits in, told apart by family and case: the head
+   * is semibold uppercase, this is regular sentence case. A fifth size for a
+   * two-word aside would be a size nobody could pick out of a lineup, and at
+   * 12pt there is no room below to take one.
    *
-   * The line height is the HEAD's, not the caption's. A nested `Text` shares
-   * its parent's line box, and handing it a shorter one is either ignored or,
-   * on Android, enough to nudge the whole line - so it is set to match rather
-   * than left to chance.
+   * The line height is the HEAD's. A nested `Text` shares its parent's line
+   * box, and handing it a different one is either ignored or, on Android,
+   * enough to nudge the whole line.
    */
   sectionHeadOptional: {
     ...onboardingType.caption,
     lineHeight: onboardingType.sectionHeader.lineHeight,
     color: colors.tertiary,
   },
-  /**
-   * A COMPONENT-LEVEL label: 12pt uppercase, inside a card or above a title.
-   * CONCEPT, WHERE AND WHEN, KATHA WRITER, ONE-TIME OFFER.
-   *
-   * Deliberately NOT `sectionHead`, and this distinction is the judgement in
-   * the rebuild rather than an omission. `sectionHead` is the second level of
-   * a SCREEN. These are neither: they head a single fact inside a card that is
-   * itself one item on the page, or they sit above the title as a true
-   * eyebrow. Promoting them to 21 would put three uppercase heads inside the
-   * blueprint's concept card alongside its 28pt title, and would set the
-   * paywall's eyebrow shouting over the headline it introduces - which is the
-   * over-application the ramp is meant to prevent, not an instance of it.
-   *
-   * The family and the uppercase treatment come from the token; the size stays
-   * at 12. `letterSpacing: 1` on 12px is 0.083em, which is ONBOARDING_FLOW.md
-   * section 1's "0.08em on uppercase eyebrows"; `sectionHeader`'s 0.7px is the
-   * same rule tuned for 21px, and carrying the pixel value down here would
-   * have gutted it.
-   */
-  eyebrow: {
-    ...onboardingType.sectionHeader,
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: 1,
-    color: colors.tertiary,
-  },
+  /** The same uppercase label, named for where it reads as a true eyebrow: above a title, or inside a card. */
+  eyebrow: { ...onboardingType.sectionHeader, color: colors.tertiary },
   /**
    * The illustration well.
    *
@@ -2124,7 +2186,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     minHeight: spacing.huge,
   },
-  helper: { ...onboardingType.body, color: colors.muted },
+  /**
+   * Secondary copy under an eyebrow. `helper` (14.5), never `body` (16).
+   *
+   * At `body` it was the same size as the text the user types into the field
+   * below it, which gave our sentence the same billing as theirs and made the
+   * supporting copy the widest block on the screen. Secondary text is smaller
+   * than the content it supports.
+   */
+  helper: { ...onboardingType.helper, color: colors.muted },
   /** A field's own name, sitting `spacing.related` above it. */
   fieldLabel: { ...type.caption, color: colors.muted },
   castCard: {
@@ -2237,11 +2307,13 @@ const styles = StyleSheet.create({
     boxShadow: shadows.card,
   },
   /**
-   * A step down from `type.subhead`, with the line height tightened from 20 to
-   * 18. At 16/20 a 199-character starter is eight lines in a 272pt card; at
-   * 14.5/18 it is six, and the card stays under half the screen.
+   * `helper`, not `body`, and this is a size the card's geometry decides rather
+   * than a preference. At 16/21 a 199-character starter is eight lines in a
+   * 272pt card and the rail takes over half the screen; at 14.5/18 it is six
+   * and the card sits under it. The measurement was made when this level
+   * existed, lost when the ramp briefly dropped 14.5, and is restored here.
    */
-  starterText: { ...onboardingType.body, color: colors.ink },
+  starterText: { ...onboardingType.helper, color: colors.ink },
   segmentTall: {
     flex: 1,
     alignItems: "center",
@@ -2329,22 +2401,6 @@ const styles = StyleSheet.create({
   },
   addMomentButtonPressed: { backgroundColor: colors.surface2 },
   addMomentText: { ...type.subhead, color: colors.accent },
-  conceptCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    boxShadow: shadows.card,
-    padding: spacing.lg,
-    gap: spacing.lg,
-  },
-  conceptTitle: { ...onboardingType.title, color: colors.ink },
-  conceptBody: { ...onboardingType.body, color: colors.muted },
-  genreChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
-  },
-  genreChipText: { ...type.caption, color: colors.accent },
   /**
    * The one white surface in the flow that carried no elevation at all. On the
    * old ground that was survivable; against a lighter ground and a pure white
@@ -2353,21 +2409,109 @@ const styles = StyleSheet.create({
    * from the story. `shadows.card` because it sits ON the page rather than
    * over it, which is the pairing `radius.xl` already implies.
    */
-  readerSurface: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    boxShadow: shadows.card,
-    padding: spacing.xl,
-    gap: spacing.md,
-  },
-  readerText: { ...type.body, fontFamily: fonts.reader, color: colors.ink },
-  entitlements: { gap: spacing.md, marginTop: spacing.lg },
-  entitlementRow: {
+  /**
+   * Cover and text side by side, the way a book is listed.
+   *
+   * `alignItems: "flex-start"` and not `stretch`: the right column is taller
+   * than the cover as soon as there are three chapters, and stretching the
+   * card to match would turn a 3:4.4 cover into whatever shape the plan
+   * happened to need.
+   */
+  conceptRow: {
     flexDirection: "row",
     alignItems: "flex-start",
+    gap: spacing.lg,
+    /* The row belongs to the title above it, so it sits at `related` rather
+       than at the scroll container's `betweenGroups`. See the spacing rule in
+       theme.ts: the pair of gaps is what does the grouping, not either one. */
+    marginTop: spacing.related - spacing.betweenGroups,
+  },
+  conceptMeta: { flex: 1, gap: spacing.sm },
+  /**
+   * 94 x 139, which is 1:1.48 - the proportion of the mini card in the
+   * library, so this is recognisably the same object seen earlier.
+   */
+  cover: {
+    width: 94,
+    height: 139,
+    borderRadius: radius.md,
+    backgroundColor: colors.sepiaText,
+    padding: spacing.md,
+    justifyContent: "space-between",
+    boxShadow: shadows.raised,
+  },
+  coverTag: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.sepia,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  /** 9, not the eyebrow's 12: the tag has 70pt of card to sit in and CONCEPT is seven caps. */
+  coverTagText: {
+    ...onboardingType.sectionHeader,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 0.7,
+    color: colors.sepiaText,
+  },
+  /** The reader family, because this is standing in for a book cover and not for a UI card. */
+  coverTitle: {
+    ...onboardingType.helper,
+    fontFamily: fonts.tightSemiBold,
+    color: colors.sepia,
+  },
+  /** Shelf, world and lead as one middot-joined line. Secondary, so `helper`. */
+  conceptByline: { ...onboardingType.helper, color: colors.muted },
+  /**
+   * The plan, read-only. It was an editable list on the screen this replaces;
+   * see the block comment at the top of the file for why the editing went and
+   * where it went to.
+   */
+  chapterList: { gap: spacing.related, marginTop: spacing.sm },
+  chapterRow: { flexDirection: "row", gap: spacing.sm },
+  /**
+   * Zero-padded, accent, and set at the body size in the semibold family so
+   * the numbers form a straight column down the left of the plan. Tabular
+   * alignment by fixed width rather than by font feature, because Inter Tight
+   * is registered here without one.
+   */
+  chapterNumber: {
+    ...onboardingType.helper,
+    fontFamily: fonts.tightSemiBold,
+    color: colors.accent,
+    width: 22,
+  },
+  chapterText: { ...onboardingType.helper, color: colors.ink, flex: 1 },
+  readerSurface: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+    marginTop: spacing.betweenGroups,
+    boxShadow: shadows.card,
+  },
+  /**
+   * Right-aligned inside the card, so it labels the card without taking a line
+   * of its own away from the prose. It is the one thing on this screen that
+   * says the text below stops early on purpose.
+   */
+  previewTag: {
+    alignSelf: "flex-end",
+    backgroundColor: colors.sepia,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  previewTagText: { ...onboardingType.sectionHeader, color: colors.sepiaText },
+  readerText: { ...type.body, fontFamily: fonts.reader, color: colors.ink },
+  entitlements: { gap: spacing.md, marginTop: spacing.betweenGroups },
+  entitlementRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
   },
-  entitlementText: { ...type.subhead, color: colors.ink, flex: 1 },
+  entitlementText: { ...onboardingType.helper, color: colors.ink, flex: 1 },
   /**
    * The led plan and the alternative, separated by elevation rather than by a
    * 2px accent ring against a 1px grey one. Depth is the honest signal here:
