@@ -251,15 +251,45 @@ tokens (~1,600 visible JSON plus ~1,500 reasoning at effort `low`):
 | `meta/muse-spark-1.3-contributor` | $0.00025 | $0.00062 | **$0.0009** |
 | `meta/muse-spark-1.3` | $0.0030 | $0.0130 | **$0.0160** |
 
-> ⚠ **The contributor tier cannot serve a request today, so the live figure is
-> $0.0160, not $0.0009.** A real call returns `404`: the OpenRouter account's
-> privacy setting blocks endpoints that train on prompts and completions, and the
-> contributor tier does exactly that. Until that setting is changed at
-> https://openrouter.ai/settings/privacy, `meta/muse-spark-1.3` serves every
-> request and **text is 4x more expensive than the $0.004 it replaced, not
-> cheaper.** Enabling the contributor tier is a data decision, not a cost one:
-> it hands users' story ideas and generated prose to the provider for training.
-> Both cost bases are carried below so the decision can be read as a number.
+> ⚠ **Superseded 2026-09-05: the contributor tier now serves.** This block used
+> to say the tier returned `404` because the OpenRouter account's privacy setting
+> blocked endpoints that train on prompts and completions. That setting has since
+> been changed, and live calls to `meta/muse-spark-1.3-contributor` returned `200`
+> repeatedly on 2026-09-05, including every call in the streaming work. **So the
+> live figure is $0.0009, not $0.0160.**
+>
+> That is a cost win and a standing data decision, and the second half has not
+> changed: the tier is cheap *because* it retains users' story ideas and the
+> prose generated from them for training. It is wired as the default, so this is
+> live behaviour, not a proposal. Reversing it is one constant in `llm.ts` and
+> restores the $0.0160 basis. Both bases are carried here so the trade can be
+> read as a number rather than argued.
+
+**Streaming adds a second text call, and it is not free.** The streamed path
+(`generate-story-stream`) splits generation in two: prose streams as plain text,
+then a second structured call turns the finished prose into title, themes, hook
+and `series_state`. The reason is technical rather than economic and is recorded
+in `AGENTS.md` — a strict JSON schema cannot be streamed usefully — but it
+changes this table.
+
+The second call sends the whole chapter back as its prompt. Modelled on the
+1,824-word chapter measured in production on 2026-09-05 (~2,700 prompt tokens,
+~600 completion including reasoning at effort `minimal`):
+
+| Model | Metadata call | Chapter total (prose + metadata) |
+|---|---|---|
+| `meta/muse-spark-1.3-contributor` | **~$0.0004** | **~$0.0013** |
+| `meta/muse-spark-1.3` | ~$0.0058 | ~$0.0218 |
+
+So streaming costs roughly **45% more per chapter** on the contributor tier and
+**36% more** on the standard one. It buys an 8.8x improvement in perceived
+latency, which is the single largest product effect available for the money, and
+it is still an order of magnitude under the cheapest image in the table below.
+
+> **Open, and the pricing owner's call.** The §4 margin rows have **not** been
+> re-run against this figure. They should be before the streamed path becomes the
+> only path. The cushion was already noted as narrowed on the standard tier, and
+> this widens the gap between the two tiers rather than closing it.
 
 **Images.** `gpt-image-1` ([OpenAI](https://developers.openai.com/api/docs/models/gpt-image-1),
 tiers via [calculator](https://langcopilot.com/gpt-image-1-pricing)):

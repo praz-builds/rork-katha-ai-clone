@@ -713,12 +713,28 @@ Create ·  n ✦
   leads with OpenRouter `meta/muse-spark-1.3-contributor`, falls back to
   `meta/muse-spark-1.3`, then Gemini 3.1 Pro Preview, then the three OpenAI
   models, then the free tier. The contributor tier is the configured default and
-  is **17x cheaper**, but it trains on prompts and completions, so the account's
-  OpenRouter privacy setting currently refuses it with a `404` and the standard
-  tier serves. Enabling it is a data decision that belongs to the product owner:
-  it means users' story ideas and generated prose are retained by the provider
-  for training. Cost basis and both figures:
+  is **17x cheaper**. As of 2026-09-05 it **serves**: the account's OpenRouter
+  privacy setting has been changed, and live calls succeed. That makes the data
+  decision live rather than pending, and it belongs to the product owner: the
+  tier is cheap because users' story ideas and generated prose are retained by
+  the provider for training. Cost basis and both figures:
   [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §2.
+- **Chapter text streams.** `generate-story-stream` delivers prose as it is
+  written, so the reader sees the first sentence at ~5.6s instead of waiting
+  ~49s for the whole chapter. Nothing else about the contract changes: the same
+  credit is reserved before the first byte, the same row is persisted from the
+  server's own buffer, and the same payload is returned at the end. The reader
+  is never shown text that was not saved, and never charged for a chapter that
+  was not delivered. `generate-story` remains for retries, replays and any
+  client that cannot stream.
+
+  Two consequences worth stating in this document rather than only in code.
+  **A failure after the first token cannot fall back to another provider**, so
+  the reader keeps the partial chapter on screen and the credit is refunded --
+  erasing text somebody has already read is the worse outcome. And **the word
+  band is now a prompt instruction that is reported on, not enforced**: it could
+  only be enforced by truncating mid-sentence, which produces a chapter with no
+  ending. See the open item in §10.6.
 - **Failed paid actions auto-refund**, per `CREDITS_AND_PRICING.md` principle 4.
   A failed cast or cover refunds its own credit even when chapter text succeeded;
   each component refund is durable and idempotent.
@@ -831,7 +847,20 @@ users will actually buy, and the number that decides it is the **chapter-art
 attach rate**, which is now the most important unresolved figure in the business
 model. At 100% attach a 30-chapter story is 61 credits; at 0% it is 32.
 
-Three items for the pricing owner:
+Three items for the pricing owner, plus two added 2026-09-05:
+
+4. **Streaming adds a second text call per chapter**, so text is ~45% more
+   expensive on the contributor tier and ~36% on the standard one. The §4 margin
+   rows have not been re-run against it. See
+   [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §2.
+5. **The model overshoots the word band, and the streamed path cannot retry.**
+   Measured across three production runs against a 1,200-1,600 band with the
+   band stated in two separate prompt sections: 2,056, 2,114 and 2,331 words.
+   The tolerated ceiling is 2,000. This matters here rather than only in code
+   because narration is priced per word and reading-time estimates are built on
+   the band, so a chapter 40% over budget is 40% more expensive to narrate than
+   this file assumes. Either the bands move to match the model or the model
+   moves to match the bands; both are decisions, and both land in that file.
 
 1. **Re-run the Writer yearly row** — the binding 40%-margin constraint — against
    this model at a range of assumed attach rates. *(Inference: break-even attach

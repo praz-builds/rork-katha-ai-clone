@@ -7,6 +7,74 @@
 
 ---
 
+## 2026-09-05 UTC — Streaming, the shape-story deadline, and a backend security pass
+
+**Session:** The writer-flow tree committed and deployed, `shape-story` diagnosed and fixed, streamed generation built end to end, and a full audit of the 35 migrations and 18 edge functions actioned. Five commits on `codex/create-flow-rebuild`.
+
+### `shape-story` was never a deploy problem
+
+The handoff recorded `{"shape": null}` in production as an undeployed function. It reproduces on freshly deployed code, so that diagnosis was wrong, and the real cause is worth writing down because it is invisible from the response body: **the call site took the library's 8-second default deadline, and the call takes longer than that.**
+
+The budget is split before it is spent. `FAST_OPENROUTER_SHARE` gives OpenRouter 60%, and that window is divided again across the two models in `OPENROUTER_MODELS`, so the leader got roughly 2.4 seconds. Measured against the live model the same day:
+
+| variant | observed |
+|---|---|
+| onboarding (n=4) | 8.2s, 9.2s, 11.4s, 33.6s |
+| create studio (n=4) | 5.7s, 5.8s, 6.3s, 7.5s |
+
+Every provider aborted mid-flight, the chain exhausted, and the handler's own catch answered `null` — which is also what it answers when the user is rate-limited and when the model genuinely fails. Three different conditions, one response. That is why this took a day to find, and it is the observability lesson worth carrying: `shape: null` should not be the answer to "you are rate-limited", "the provider failed" and "you have no profile row".
+
+Onboarding now gets 45s because it is prefetched and warms behind the details, email and code screens; the Create studio gets 30s because the writer is watching it. Verified end to end after deploy: real title, three beats, a cast.
+
+A second, quieter bug surfaced on the way: an authenticated user with no `profiles` row cannot shape at all. `claim_story_shape_request` inserts into a table whose `user_id` references `profiles`, `handle_new_user` was dropped in `00013`, and the resulting foreign-key violation is swallowed into the same `{"shape": null}`. In practice the client always calls `bootstrap-user` first, so it is latent rather than live. It is recorded here rather than fixed, because the fix is the observability change above, not a patch to the RPC.
+
+### Streaming
+
+The headline. Generation was request/response end to end, so the reader watched a loader for the whole completion. Measured against production: **first prose at 5.6s against a 49.1s total, an 8.8x improvement in the only latency a reader experiences.** Same model, same prompt, same story.
+
+New `_shared/story-stream.ts` and `generate-story-stream/`. `generate-story` is untouched and stays the path for retries, replays and clients that cannot stream. Three design decisions carry the reasoning, and all three are commented in the code:
+
+**The call is split.** `chapter_body` lives inside a strict JSON schema, so streaming it means recovering a string that is still being escaped, in an order the schema does not guarantee. Prose streams as plain text; a second structured call turns the finished prose into title, themes, hook and `series_state`. It runs after the reader is already reading, so it costs perceived latency nothing, and it keeps the field a series cannot be continued without behind a strict schema rather than a partial-JSON parser. The metadata schema is *derived* from `STORY_OUTPUT_JSON_SCHEMA` rather than restated, so the two cannot drift.
+
+**Fallback becomes one-way.** Before the first token a provider is swapped silently. After it, it cannot be, because restarting rewrites text under the reader's eyes. `StreamCommittedError` is that boundary; the credit refunds either way and the prose already shown stays on screen.
+
+**Two clocks, not one.** A stream fails by never starting and by stalling once started, and a single total-response timeout cannot tell those apart: 70s kills nothing, 20s kills every chapter. Time-to-first-token and time-between-chunks are separate.
+
+**The word band could not be enforced by `max_tokens`, and this was tried before it was rejected.** `max_tokens` caps reasoning and content together, so headroom for one is headroom for the other — a 2,000-token reasoning allowance produced a 2,331-word chapter against a 1,200-1,600 band and never hit the cap, because the headroom *was* the overrun. Tightening it produced a 2,114-word chapter that simply stops. A chapter that runs long is flawed; a chapter with no ending is broken. So the cap is now a runaway guard only, the band is stated twice in the prompt, and `chapterLengthVerdict` reports the miss.
+
+**Open item, and it is a real one:** this model wrote 2,056, 2,114 and 2,331 words across three runs against a 1,200-1,600 band, with the band stated in two separate prompt sections. The streamed path cannot retry what has already been read. Either the bands move or the model does, and `CREDITS_AND_PRICING.md` moves with whichever, because narration is priced per word. This also implies the *non-streamed* path may be rejecting these same generations through `requireUsableChapterLength` and refunding — worth measuring before the next change to either.
+
+On the client, neither obvious transport works: `supabase.functions.invoke()` buffers the whole body, and React Native's `fetch` returns a null `response.body`, so streaming code written against the web platform compiles, runs, and silently never streams. Expo SDK 54's `expo/fetch` exposes a real `ReadableStream`, which is why this needed no new dependency. It cannot be loaded under jest-expo, so it is mapped to a stub in `jest.config.js`.
+
+### The audit
+
+A full read of every migration and edge function. Real findings, actioned in one commit:
+
+- **`audio-status` path injection.** `job_id` was interpolated into the RunPod URL with only a truthiness check while its two sibling parameters went through `parseUuid`. The URL parser normalizes dot-segments, so a crafted id reached a different RunPod endpoint carrying our account's API key. Verified blocked in production after deploy.
+- **`generate-audio`** bypassed the 128KB body bound by using `req.json()`, and stringified `voice_id` instead of allowlisting it.
+- **`profiles` had `USING` with no `WITH CHECK`** plus a table-wide UPDATE grant, so a user could rewrite their own row's `id` to another user's and could write the anti-fraud columns. Verified in production: legitimate updates still succeed, id and `referred_by` writes now 403.
+- **`claim_story_shape_request` incremented the global anonymous counter before a check that could still reject**, and `return false` in plpgsql does not roll back. One guest at 30 requests a minute burned 24 of the project's 500 daily slots to serve 6.
+- **Six ledger reads still tie-broke on `id desc`** — a random UUID — when `00026` added `ledger_sequence` for exactly that purpose. `refresh_subscription_grant` writes two rows in one transaction with identical `created_at`, so the balance shown after a renewal was a coin flip. A test now scans every function in `public` and fails on any ledger read using a different tie-breaker.
+- Plus: no index on `characters.story_id`, a `feed` query that could pull ~75,000 rows into an isolate at a deep page, a lost-update race in `edit-story` across its model call, and an IPv6 grant scope that mis-derived the /64 for compressed addresses.
+
+`00016_error_events.sql` was deleted. It was never applied and creates the same objects as `00018`, which shipped and which `00019`-`00025` then evolved; replaying it risked re-adding what those deliberately changed.
+
+### The three Postgres questions that prompted this session
+
+**Object storage: already correct.** No `bytea`, no blobs, no large objects anywhere. All media is in Supabase Storage buckets and Postgres holds only text URLs. One correction to the premise: RunPod is the TTS *generator*, not the store — `audio-status` copies the result into the `audio` bucket. The durable store for audio and images is the same thing.
+
+**`SELECT ... FOR UPDATE SKIP LOCKED`: one real home, and finding it found a gap.** `payment_event_backlog` is written by `revenuecat-webhook` and read by nothing, so a failed billing event is never replayed. Billing is not live yet, so this is closing the gap before it matters. Recorded prominently: `SKIP LOCKED` is **wrong** for the credit RPCs, which lock one row by `user_id` and must block rather than skip.
+
+**Unlogged tables: considered and skipped.** The five rate-limit tables qualify, but it is one tiny row-write per request, so the WAL saving is noise at current volume, and unlogged tables restore *empty* from Supabase's physical backups. Not worth the caveat for a gain nobody would feel.
+
+**On the "1,000-1,200 rps" figure:** Postgres will not be the wall. `anonymous_story_shape_global_limits` and `anonymous_bootstrap_global_limits` are one row per calendar day behind an advisory lock, so every anonymous request in a day serializes through a single row — a hard limit in the low hundreds. Sharding the counter is the fix when it is needed. It is not needed yet.
+
+### Gates
+
+`tsc --noEmit` clean, `eslint` 0 errors (17 pre-existing warnings), **209 Jest tests / 16 suites**, **Deno suite green**. Migrations `00038`-`00041` applied to `iafeuxgoiknncgyjmugd`; `shape-story`, `generate-story-stream`, `audio-status`, `generate-audio`, `edit-story`, `feed`, `bootstrap-user`, `register-push-token` and `send-push` deployed.
+
+---
+
 ## 2026-09-05 UTC — Muse Spark as the default generation model, and the reasoning-token trap it brought
 
 **Session:** `meta/muse-spark-1.3-contributor` wired as the configured default across every generation path, the provider chain reordered so OpenRouter leads, phase shares re-balanced, and the cost basis recomputed from measured spend. No deploy, no commit.

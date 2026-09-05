@@ -153,7 +153,9 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015`, `00017`-`00023`, `00025` and `00026` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00041` applied except the deliberately absent `00016` and `00024`. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+
+`_test.ts` files live alongside the `.sql` in this directory. The CLI skips them by filename pattern, which is why they are safe there, but they are not migrations and must never be numbered as if they were.
 
 ### Key Tables
 
@@ -170,13 +172,17 @@ Schema is in `backend/supabase/migrations/`. Remote production has migrations `0
 | **00023 (Observability retention)** | Detaches `error_events.user_id` from `profiles` so profile deletion cannot mutate, delete, or be blocked by telemetry |
 | **00025 (Observability erasure)** | Nulls `error_events.user_id` on profile deletion, plus on-demand erasure and a 90-day retention backstop (service role only) |
 | **00026 (Subscription credits)** | `credit_balance_buckets`, `credit_chargebacks`, `credit_spend_allocations`, `credit_lapse_operations`, `revenuecat_subscriptions` |
-| **Not yet created** | `device_tokens` (Phase G -- FCM/APNs token storage) |
+| **00034-00036 (Story shape + plan)** | `story_shape_rate_limits`, `anonymous_story_shape_rate_limits`, `anonymous_story_shape_global_limits`, `stories.beats` |
+| **00035 (Guest bootstrap)** | `anonymous_bootstrap_rate_limits`, `anonymous_bootstrap_global_limits` |
+| **00037 (Push)** | `push_tokens` |
+| **00038-00041 (Hardening)** | Profile update policy, shape-claim ordering, ledger tie-breaker, `characters.story_id` index |
 
 ### Credit Ledger Pattern
 
 - Append-only. Never update rows.
 - Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references.
-- Balance = newest ledger row by `created_at`, then `id`.
+- Balance = newest ledger row by `created_at`, then **`ledger_sequence`**, never `id`. UUIDs are not chronological, and `refresh_subscription_grant` writes two rows in one transaction with an identical `created_at`, so ordering by `id` returns one of them at random. `00040` fixed the six functions that still did this, and its test scans every function in `public` and fails on any new one that gets it wrong.
+- **`SELECT ... FOR UPDATE SKIP LOCKED` must never be used in the credit RPCs.** They take `pg_advisory_xact_lock` plus `FOR UPDATE` on a single row keyed by `user_id`, and they must *block* under contention. Skipping would return "no row" and silently drop a deduction or a grant. `SKIP LOCKED` is correct only for independent queue rows, such as the payment backlog drainer.
 - **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5).
 
 ### Security Gate
@@ -193,7 +199,12 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 | Function | Method | Purpose | Notes |
 |----------|--------|---------|-------|
-| `generate-story` | POST | Auth -> reserve credit -> LLM -> persist -> return | Text path done; image/audio Phase B |
+| `generate-story` | POST | Auth -> reserve credit -> LLM -> persist -> return | Buffered path. Kept for retries, replays, and non-streaming clients |
+| `generate-story-stream` | POST | The same contract, delivered as Server-Sent Events | **Preferred path.** First prose at ~5.6s against a ~49s total |
+| `shape-story` | POST | One structured call: title, cast, beats, opening | Onboarding + Create studio; rate-limited per user and per network |
+| `bootstrap-user` | POST | Anonymous profile + welcome grant, rate-limited | Must run before any other authed call: several tables FK to `profiles` |
+| `register-push-token` | POST | Upsert an Expo push token for the caller | Done |
+| `send-push` | POST | Service-role fan-out via Expo, with receipt handling | Not yet wired to a completion path |
 | `continue-story` | POST | Next chapter (author-only), max 7 chapters | Text path done |
 | `library` | GET | Paginated curated feed with genre filter + search | Done |
 | `feedback` | POST | Comments + one-time feedback credit reward | Done |
@@ -209,7 +220,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ### Shared Utilities (`_shared/`)
 
-`revenuecat.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `image.ts`, `llm.ts`, `operations.ts`, `prompts.ts`, `story-prompts.ts`, `story_text.ts`, `uuid.ts` (plus test files).
+`chapters.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `push.ts`, `revenuecat.ts`, `runpod.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
 
 ### TODO Functions by Phase
 
@@ -272,6 +283,21 @@ API:
 ### Structured Output
 
 LLM returns JSON: `{ title, chapter_title, chapter_body, word_count, themes, first_line, previously_summary }`. Parsed by `parseStructuredOutput()` with text-based fallback via `parseGeneratedStoryText()`.
+
+### Streaming (`_shared/story-stream.ts`, `generate-story-stream/`)
+
+The preferred generation path. First prose reaches the reader at ~5.6s against a ~49s total, measured in production: an 8.8x improvement in the only latency a reader experiences. Same model, same prompt, same story.
+
+Rules an agent touching this must not break:
+
+- **Prose streams as plain text; metadata is a separate structured call.** `chapter_body` is a field inside a strict schema, so streaming it means recovering a string that is still being escaped, in an unguaranteed order. Do not try to incrementally parse the JSON. `series_state` in particular must stay behind a strict schema or series continuation breaks.
+- **The metadata schema is derived from `STORY_OUTPUT_JSON_SCHEMA`, never restated.** A field added to one must not be able to go missing from the other.
+- **Fallback is one-way.** A provider may be swapped before the first token and never after, because the reader has already read prose. `StreamCommittedError` marks that boundary. The credit refunds either way and whatever was shown stays on screen.
+- **Two timeouts, not one:** time-to-first-token and time-between-chunks. A single total-response timeout cannot separate "never started" from "stalled", and any value is wrong for one of them.
+- **Do not size `max_tokens` to the word band.** It caps reasoning and content together, so headroom for one is headroom for the other, and it can only ever stop the model mid-word. This was tried and produced a chapter with no ending. The cap is a runaway guard; the band is stated in the prompt and reported by `chapterLengthVerdict`.
+- **Client transport must be `expo/fetch`.** `supabase.functions.invoke()` buffers, and React Native's global `fetch` returns a null `response.body` -- code written against the web streaming API compiles, runs, and silently never streams.
+
+**Known open item:** this model overshoots the word band, writing 2,056-2,331 words against a 1,200-1,600 band with the band stated twice in the prompt. The streamed path cannot retry what has been read. Either the bands move or the model does, and `source-of-truth/CREDITS_AND_PRICING.md` moves with it because narration is priced per word.
 
 ### Validation
 
