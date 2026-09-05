@@ -4,6 +4,7 @@ import type { Story } from "@/types/domain";
 
 const mockGenerateStory = jest.fn();
 const mockInferStoryBrief = jest.fn();
+const mockGenerateCharacterImage = jest.fn();
 const mockLoadDraft = jest.fn();
 const mockSaveDraft = jest.fn();
 const mockClearDraft = jest.fn();
@@ -16,6 +17,7 @@ jest.mock("@/lib/api", () => {
   return {
     generateStory: (...args: unknown[]) => mockGenerateStory(...args),
     inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
+    generateCharacterImage: (...args: unknown[]) => mockGenerateCharacterImage(...args),
     continueStory: jest.fn(),
     createGenerationRequestId: () => "create-flow-test-request",
     editParagraph: jest.fn(),
@@ -100,21 +102,18 @@ async function renderCreate() {
   );
 }
 
-async function continueFromIdea(
+async function fillIdea(
   view: Awaited<ReturnType<typeof render>>,
-  // Clears the 40-character floor, which the studio now shares with
-  // onboarding: below it the shaping call has nothing to infer a world, a cast
-  // or a plan from.
   idea = "A child finds a door in an old library that was not there yesterday.",
 ) {
   await fireEvent.changeText(view.getByLabelText("Story idea"), idea);
-  await fireEvent.press(view.getByRole("button", { name: "Continue" }));
   await view.findByRole("button", { name: "Add a character" });
 }
 
 beforeEach(() => {
   mockGenerateStory.mockReset();
   mockInferStoryBrief.mockReset();
+  mockGenerateCharacterImage.mockReset();
   mockLoadDraft.mockReset().mockResolvedValue(null);
   mockSaveDraft.mockReset();
   mockClearDraft.mockReset();
@@ -124,30 +123,31 @@ beforeEach(() => {
     characters: [],
     suggestedMoments: [],
   });
+  mockGenerateCharacterImage.mockResolvedValue({
+    url: "https://example.com/portrait.png",
+  });
 });
 
 describe("approved Create flow", () => {
-  it("uses an adult/kids segmented control and only reveals Values for kids", async () => {
+  it("uses a compact Kids Mode switch and only reveals Values for kids", async () => {
     const view = await renderCreate();
 
-    await continueFromIdea(view);
-    const adults = view.getByRole("radio", { name: "For adults" });
-    const kids = view.getByRole("radio", { name: "For kids" });
-    expect(adults.props.accessibilityState).toMatchObject({ selected: true });
+    await fillIdea(view);
+    const kidsMode = view.getByRole("switch", { name: "Kids Mode" });
+    expect(kidsMode.props.value).toBe(false);
     expect(view.queryByText("Values")).toBeNull();
 
-    await fireEvent.press(kids);
-    expect(kids.props.accessibilityState).toMatchObject({ selected: true });
+    await fireEvent(kidsMode, "valueChange", true);
     expect(view.getByText("Values")).toBeTruthy();
     expect(view.getByRole("checkbox", { name: "Kindness" })).toBeTruthy();
 
-    await fireEvent.press(adults);
+    await fireEvent(kidsMode, "valueChange", false);
     expect(view.queryByText("Values")).toBeNull();
   });
 
   it("opens the character sheet, keeps the four draft fields, and caps the cast at three", async () => {
     const view = await renderCreate();
-    await continueFromIdea(view);
+    await fillIdea(view);
 
     for (const name of ["Asha", "Rohan", "Minoo"]) {
       await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
@@ -161,7 +161,7 @@ describe("approved Create flow", () => {
       await fireEvent.changeText(view.getByLabelText("Description"), "A determined explorer");
       await fireEvent.changeText(view.getByLabelText("Background"), "Keeps a promise to their family.");
       await fireEvent.changeText(view.getByLabelText("Appearance"), "Curly hair and a red backpack.");
-      await fireEvent.press(view.getByRole("button", { name: "Save character" }));
+      await fireEvent.press(view.getByRole("button", { name: "Save" }));
       await view.findByRole("button", { name: `Edit ${name}` });
     }
 
@@ -170,7 +170,7 @@ describe("approved Create flow", () => {
 
   it("does not expose Spanish in any authoring control", async () => {
     const view = await renderCreate();
-    await continueFromIdea(view);
+    await fillIdea(view);
 
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     await fireEvent.press(view.getByRole("button", { name: "Language" }));
@@ -179,25 +179,39 @@ describe("approved Create flow", () => {
     expect(view.queryByText("Spanish")).toBeNull();
   });
 
-  it("silently falls back to an empty Shape screen when inference fails", async () => {
+  it("keeps the whole generation flow on one screen and does not infer on Continue", async () => {
     mockInferStoryBrief.mockRejectedValueOnce(new Error("inference unavailable"));
     const view = await renderCreate();
 
-    await continueFromIdea(view, "A lighthouse keeper receives a letter from tomorrow.");
+    await fillIdea(view, "A lighthouse keeper receives a letter from tomorrow.");
 
-    expect(mockInferStoryBrief).toHaveBeenCalledWith(
-      "A lighthouse keeper receives a letter from tomorrow.",
-    );
+    expect(mockInferStoryBrief).not.toHaveBeenCalled();
+    expect(view.queryByRole("button", { name: "Continue" })).toBeNull();
+    expect(view.getByRole("button", { name: "Add a character" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "More options" })).toBeTruthy();
     expect(view.queryByText(/inference unavailable/i)).toBeNull();
     expect(view.queryByText(/could not analyze/i)).toBeNull();
+  });
+
+  it("puts audience and genre at the parent level before the prompt and opens genre vertically", async () => {
+    const view = await renderCreate();
+
+    const genre = view.getByRole("button", { name: "Genre" });
+
+    expect(view.getByRole("switch", { name: "Kids Mode" })).toBeTruthy();
+    expect(view.getByLabelText("Story idea")).toBeTruthy();
+
+    await fireEvent.press(genre);
+    expect(view.getByRole("button", { name: "Choose Romance" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Choose Mystery" })).toBeTruthy();
   });
 
   it("sends the reviewed Kids brief and More options to generation", async () => {
     mockGenerateStory.mockResolvedValueOnce(generatedStory);
     const view = await renderCreate();
-    await continueFromIdea(view, "A child follows a map hidden in a library book.");
+    await fillIdea(view, "A child follows a map hidden in a library book.");
 
-    await fireEvent.press(view.getByRole("radio", { name: "For kids" }));
+    await fireEvent(view.getByRole("switch", { name: "Kids Mode" }), "valueChange", true);
     await fireEvent.press(view.getByRole("checkbox", { name: "Kindness" }));
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     await fireEvent.changeText(view.getByLabelText("Writing style"), "Warm, playful, and direct");
@@ -211,9 +225,6 @@ describe("approved Create flow", () => {
     );
     await fireEvent.press(view.getByRole("button", { name: "Language" }));
     await fireEvent.press(view.getByText("Portuguese"));
-    await fireEvent.press(view.getByRole("button", { name: "Review and start" }));
-    await view.findByText("Review and start");
-
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
@@ -227,6 +238,31 @@ describe("approved Create flow", () => {
       chapterLength: "long",
       plannedChapterCount: 7,
       illustrateChapters: true,
+    });
+  });
+
+  it("creates character images separately before the story generation call", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate();
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
+    await fireEvent.changeText(view.getByLabelText("Name"), "Praz");
+    await fireEvent.changeText(view.getByLabelText("Description"), "A young explorer");
+    await fireEvent.changeText(view.getByLabelText("Appearance"), "Dark hair and travel clothes");
+    await fireEvent.press(view.getByRole("button", { name: "Create image" }));
+
+    await waitFor(() => expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(1));
+    expect(mockGenerateStory).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByRole("button", { name: "Save" }));
+    await view.findByText("Image ready");
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+    expect(mockGenerateStory.mock.calls[0][0].characters[0]).toMatchObject({
+      name: "Praz",
+      portraitUrl: "https://example.com/portrait.png",
+      portraitStatus: "ready",
     });
   });
 });

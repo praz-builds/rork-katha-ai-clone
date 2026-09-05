@@ -1,4 +1,4 @@
-import { colors, spacing, radius, fonts, controls, genreLabels, genreGradients, type, onboardingType, onboardingRamp, ONBOARDING_RAMP_MIN_STEP, shadows, motion } from '@/theme';
+import { colors, spacing, radius, fonts, controls, genreLabels, genreGradients, type, onboardingType, onboardingRamp, shadows, motion } from '@/theme';
 import {
   OPTICAL_SCALE,
   opticalSize,
@@ -226,33 +226,57 @@ describe('theme tokens', () => {
   });
 
   describe('onboarding typography', () => {
-    it('exports the four ramp levels at the specified metrics', () => {
+    it('exports the levels at the specified metrics', () => {
       expect(onboardingType.title.fontSize).toBe(28);
       expect(onboardingType.title.lineHeight).toBe(34);
-      expect(onboardingType.sectionHeader.fontSize).toBe(21);
-      expect(onboardingType.sectionHeader.lineHeight).toBe(26);
+      expect(onboardingType.sectionHeader.fontSize).toBe(12);
+      expect(onboardingType.sectionHeader.lineHeight).toBe(16);
       expect(onboardingType.body.fontSize).toBe(16);
       expect(onboardingType.body.lineHeight).toBe(21);
+      expect(onboardingType.helper.fontSize).toBe(14.5);
+      expect(onboardingType.helper.lineHeight).toBe(18);
       expect(onboardingType.caption.fontSize).toBe(12);
       expect(onboardingType.caption.lineHeight).toBe(16);
     });
 
-    it('is one ramp: every level named, in descending order, nothing unlisted', () => {
-      expect([...onboardingRamp]).toEqual(Object.keys(onboardingType));
+    it('names every size level in the ramp, and leaves the eyebrow out of it', () => {
+      // `sectionHeader` is a treatment, not a level: it shares `caption`'s size
+      // and is told apart by case, weight, tracking and colour. Ordering it
+      // against the others would assert a rank it does not hold.
+      expect([...onboardingRamp]).toEqual(['title', 'body', 'helper', 'caption']);
+      const unlisted = Object.keys(onboardingType).filter(
+        (level) => !onboardingRamp.includes(level as (typeof onboardingRamp)[number]),
+      );
+      expect(unlisted).toEqual(['sectionHeader']);
     });
 
-    it('steps down strictly, and by at least the stated minimum ratio', () => {
-      // The failure this guards against is a fifth size slipped in between two
-      // levels, or a level nudged until the step is too small to read as a
-      // change of level. The old scale had body at 14.5 against a 16pt field
-      // and eyebrows at 12 under a 22 title; neither gap said anything.
-      expect(ONBOARDING_RAMP_MIN_STEP).toBeGreaterThanOrEqual(1.25);
+    it('steps down strictly through the size ramp', () => {
       for (let i = 1; i < onboardingRamp.length; i += 1) {
         const larger = onboardingType[onboardingRamp[i - 1]].fontSize;
         const smaller = onboardingType[onboardingRamp[i]].fontSize;
         expect(larger).toBeGreaterThan(smaller);
-        expect(larger / smaller).toBeGreaterThanOrEqual(ONBOARDING_RAMP_MIN_STEP);
       }
+    });
+
+    it('keeps exactly one large size, so a screen has one heading', () => {
+      // The failure this guards against is the one the product owner caught:
+      // section labels promoted to near-title size, five to a screen, until the
+      // actual title stopped reading as the title. Everything that is not the
+      // title sits at or under `body`.
+      for (const level of Object.keys(onboardingType) as (keyof typeof onboardingType)[]) {
+        if (level === 'title') continue;
+        expect(onboardingType[level].fontSize).toBeLessThanOrEqual(
+          onboardingType.body.fontSize,
+        );
+      }
+      expect(onboardingType.title.fontSize / onboardingType.body.fontSize).toBeGreaterThan(1.5);
+    });
+
+    it('sets secondary copy smaller than the content it supports', () => {
+      // A helper line the same size as the text in the field under it gives a
+      // supporting sentence equal billing with the user's own words.
+      expect(onboardingType.helper.fontSize).toBeLessThan(onboardingType.body.fontSize);
+      expect(onboardingType.helper.fontSize).toBeGreaterThan(onboardingType.caption.fontSize);
     });
 
     it('keeps the title big enough to read as a screen heading at 390pt', () => {
@@ -266,7 +290,7 @@ describe('theme tokens', () => {
     it('carries a line height that moved with the size', () => {
       // A size changed without its line height is the standard way this ramp
       // rots. Headings set tight, body and caption looser.
-      for (const level of onboardingRamp) {
+      for (const level of Object.keys(onboardingType) as (keyof typeof onboardingType)[]) {
         const { fontSize, lineHeight } = onboardingType[level];
         expect(lineHeight).toBeGreaterThan(fontSize);
         expect(lineHeight / fontSize).toBeGreaterThanOrEqual(1.15);
@@ -277,49 +301,30 @@ describe('theme tokens', () => {
       );
     });
 
-    it('heads a group with something louder than the group, not quieter', () => {
-      // The bug the ramp was retuned to fix: the section eyebrow was 12 while
-      // the body under it was 14.5, so the label heading a group was the
-      // smallest text in it.
-      expect(onboardingType.sectionHeader.fontSize).toBeGreaterThan(onboardingType.body.fontSize);
-      expect(onboardingType.body.fontSize).toBeGreaterThan(onboardingType.caption.fontSize);
-    });
-
-    it('keeps the uppercase section head under the title in cap height', () => {
-      // Uppercase carries more mass than sentence case at the same size, so the
-      // comparison that matters is cap height, not fontSize. Inter Tight:
-      // cap 0.7275em, x-height 0.5459em. The eyebrow's caps land on the title's
-      // x-height, which is a clear second level and not a competing title.
-      const CAP = 0.7275;
-      const X_HEIGHT = 0.5459;
-      const eyebrowCap = onboardingType.sectionHeader.fontSize * CAP;
-      const titleCap = onboardingType.title.fontSize * CAP;
-      expect(eyebrowCap).toBeLessThan(titleCap);
-      expect(eyebrowCap / titleCap).toBeLessThanOrEqual(0.8);
-      expect(eyebrowCap).toBeCloseTo(onboardingType.title.fontSize * X_HEIGHT, 0);
-    });
-
     it('tracks sentence-case titles negative and uppercase eyebrows positive', () => {
       // The resolved spec conflict: "negative tracking on every heading" means
       // sentence-case headings. The section header is the uppercase eyebrow,
       // where positive tracking is correct and matches ONBOARDING_FLOW.md §1.
       expect(onboardingType.title.letterSpacing).toBeLessThan(0);
       expect(onboardingType.sectionHeader.letterSpacing).toBeGreaterThan(0);
-      // Body and caption are neither heading: at or just above zero, never
+      // Body-weight levels are neither heading: at or just above zero, never
       // negative, because tracking in at a small optical size closes counters.
       expect(onboardingType.body.letterSpacing).toBeGreaterThan(0);
+      expect(onboardingType.helper.letterSpacing).toBeGreaterThan(0);
       expect(onboardingType.caption.letterSpacing).toBeGreaterThanOrEqual(0);
     });
 
-    it('keeps tracking proportional to size rather than a fixed pixel value', () => {
-      // -0.7 at 22 was -0.032em. The title got bigger without getting looser
-      // because the em-relative tightness was preserved, not the pixel value.
-      const em = (level: 'title' | 'sectionHeader') =>
-        Math.abs(onboardingType[level].letterSpacing) / onboardingType[level].fontSize;
-      expect(em('title')).toBeGreaterThan(0.025);
-      expect(em('title')).toBeLessThan(0.04);
-      expect(em('sectionHeader')).toBeGreaterThan(0.025);
-      expect(em('sectionHeader')).toBeLessThan(0.04);
+    it('tracks the eyebrow at the 0.08em the flow spec fixes for uppercase', () => {
+      const em =
+        onboardingType.sectionHeader.letterSpacing / onboardingType.sectionHeader.fontSize;
+      expect(em).toBeGreaterThan(0.07);
+      expect(em).toBeLessThan(0.095);
+      // The title's own tightness is em-relative too: -0.9 at 28 is -0.032em,
+      // the same as the -0.7 at 22 it replaced.
+      const titleEm =
+        Math.abs(onboardingType.title.letterSpacing) / onboardingType.title.fontSize;
+      expect(titleEm).toBeGreaterThan(0.025);
+      expect(titleEm).toBeLessThan(0.04);
     });
 
     it('reaches semibold by naming the semibold family, not via fontWeight', () => {
@@ -330,11 +335,12 @@ describe('theme tokens', () => {
       expect(onboardingType.title.fontFamily).toBe(fonts.tightSemiBold);
       expect(onboardingType.sectionHeader.fontFamily).toBe(fonts.tightSemiBold);
       expect(onboardingType.body.fontFamily).toBe(fonts.tight);
+      expect(onboardingType.helper.fontFamily).toBe(fonts.tight);
       expect(onboardingType.caption.fontFamily).toBe(fonts.tight);
       expect(onboardingType.title.fontFamily).not.toBe(fonts.tight);
       // Stated as a rule over the whole ramp, so a level added later cannot
       // reach for `fontWeight` and silently render regular.
-      for (const level of onboardingRamp) {
+      for (const level of Object.keys(onboardingType) as (keyof typeof onboardingType)[]) {
         const style = onboardingType[level];
         if (style.fontWeight === '600') {
           expect(style.fontFamily).toBe(fonts.tightSemiBold);

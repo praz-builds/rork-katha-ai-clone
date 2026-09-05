@@ -23,7 +23,7 @@
 > [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) is canonical for prices,
 > credits, trials, grants, and store products, and pricing wins on any conflict.
 >
-> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-05.
+> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-06.
 > *Inference* marks a decision not yet shipped.
 
 ---
@@ -93,41 +93,53 @@ unchanged.
 | Token | Size / line height | Family | Tracking | Use for |
 |---|---|---|---|---|
 | `onboardingType.title` | 28 / 34 | `fonts.tightSemiBold` | -0.9 | The one screen title. Sentence case. |
-| `onboardingType.sectionHeader` | 21 / 26 | `fonts.tightSemiBold` | +0.7 | The uppercase section head above a group. |
-| `onboardingType.body` | 16 / 21 | `fonts.tight` | +0.2 | Body copy, supporting lines, day labels, option-card text. |
-| `onboardingType.caption` | 12 / 16 | `fonts.tight` | 0 | Asides: legal lines, counters, the "optional" marker. |
+| `onboardingType.sectionHeader` | 12 / 16 | `fonts.tightSemiBold` | +1 | The uppercase eyebrow above a group. A treatment, not a level. |
+| `onboardingType.body` | 16 / 21 | `fonts.tight` | +0.2 | Content: what the user types, what the story says, option-card text. |
+| `onboardingType.helper` | 14.5 / 18 | `fonts.tight` | +0.3 | Secondary copy: the line under a title or an eyebrow. |
+| `onboardingType.caption` | 12 / 16 | `fonts.tight` | 0 | Asides: legal lines, counters, the "(optional)" marker. |
 
 Rules:
 
-1. One `title` per screen. If a screen appears to need two, it is two screens or
-   the second one is a `sectionHeader`.
-2. `sectionHeader` renders uppercase. If the string is sentence case, the token
-   is wrong; use `title`.
-3. A label that heads a group is `sectionHeader`, never `caption` and never
-   `type.caption`. `caption` is the floor of the ramp, not the eyebrow.
-4. Everything that is not a title, a section head, or an aside is `body`. There
-   is no fifth size. Weight and colour separate a label from its value.
-5. A size never moves without its line height. The pairs in the table above are
-   single values.
+1. **One large size per screen.** `title` is the only size above `body`, and a
+   screen gets one. If a screen appears to need two, it is two screens.
+2. `sectionHeader` renders uppercase, always. If the string is sentence case,
+   the token is wrong.
+3. **Secondary copy is `helper`, never `body`.** A supporting line must be
+   smaller than the text in the field it supports.
+4. `body` is content: the user's own words, the story's words, the text on a
+   control. If our sentence is set at the same size as theirs, it is the wrong
+   token.
+5. A size never moves without its line height. The pairs above are single values.
 6. `fonts.brand` stays wordmark and accent only. `fonts.reader` stays prose only.
 
-### 3.0 The ramp: four levels, one ratio of about 1.3
+### 3.0 The ramp: 28 / 16 / 14.5 / 12, and one eyebrow beside it
 
-**28 / 21 / 16 / 12.** Every adjacent pair is a step of roughly 1.3 (28/21 =
-1.333, 21/16 = 1.313, 16/12 = 1.333), which is a musical fourth. The floor is
-**1.25** and `theme.test.ts` enforces it, so a fifth size cannot be slipped in
-between two levels and no level can be nudged until its step stops reading as a
-change of level.
+The size ramp is **28 / 16 / 14.5 / 12** and `onboardingRamp` names it in that
+order. `sectionHeader` is deliberately **not** in it: it shares `caption`'s size
+and is an eyebrow treatment rather than a rank. `theme.test.ts` asserts both
+facts, including that nothing but `title` is set above `body`.
 
-**What was wrong before.** The scale was 22 title, an unused 19 `sectionHeader`,
-and 14.5 body, and screens reached for `type.caption` at 12 for their section
-eyebrows. So the label that heads a group was the smallest text on the screen
-and smaller than the body copy underneath it, there was a 10pt cliff from title
-to section head with nothing in between, and body at 14.5 sat 1.5pt away from
-the 16pt field text beside it, a difference below the threshold where a size
-change reads as intent. "The parts you already have in mind." read as one
-heading followed by an undifferentiated field of similar-sized text. Both ends
-were wrong, so both ends moved together.
+**The correction this records.** A previous pass promoted the section labels to
+21pt on the argument that a label heading a group cannot be the quietest thing
+in the group, and set supporting copy at `body` (16) so it would not sit 1.5pt
+from the field text beside it. Both moves were wrong on the screen, and the
+details screen is what proved it:
+
+- Five 21pt uppercase heads down one scroll gave the screen five things that
+  looked like titles and one that was one. The hierarchy the promotion was meant
+  to create is what it destroyed. **When everything is a heading, nothing is.**
+- Helper copy at 16 gave our supporting sentence the same billing as the text
+  the user types, and made supporting copy the widest, loudest block on a 390pt
+  screen. A helper line is not content.
+
+**What carries an eyebrow instead of size.** Four signals at once, none of them
+shared with anything near it: uppercase against sentence case, semibold against
+regular, +1 tracking (0.083em) against +0.3, and `colors.tertiary` against
+`colors.muted`. It is read first without being large, which is how a grouped-list
+section header works on iOS. A signpost does not have to be the biggest thing on
+the road. `writer-onboarding.test.tsx` asserts the four-signal separation rather
+than a size relationship, because the size relationship is intentionally
+inverted.
 
 **Why the title is 28.** Measured against the 390pt frame, not estimated.
 Content width is 390 minus two `spacing.xxxl` gutters, so 326pt. Advance widths
@@ -140,32 +152,29 @@ string in the writer flow:
 | 28 | 414pt | Wraps to exactly two lines. "Save your story before we shape it." at 411pt does the same. The short headings stay on one line. Nothing reaches three lines and nothing clips. |
 | 34 | 506pt | The old `type.largeTitle`. Even "What's your story about?" wraps. This is the overcorrection 22 was reacting to. |
 
-**Why the section head is 21.** Uppercase carries more visual mass than sentence
-case at the same nominal size, because every letter is a cap, so the comparison
-that decides this is cap height against the title rather than size against size.
-Inter Tight has a cap height of 0.7275em and an x-height of 0.5459em. An
-uppercase eyebrow at 21 stands 15.3pt tall, and the title's lowercase at 28
-stands 15.3pt tall: **the eyebrow's caps land exactly on the title's x-height**,
-75% of the title's own cap height. That is a clear second level that cannot be
-mistaken for a competing title. This is what the earlier pass could not reach:
-19 under a 22 title put the eyebrow at 86% of the title's caps, which is why 19
-was abandoned and the eyebrows were left at 12. Widening the title is what makes
-the section head usable, which is why the two changes are one change.
+28 is the level that survived the correction above, because the complaint was
+never that the title was too large — it was that everything else had grown to
+meet it.
 
-**Why body is 16.** It is now deliberately the same size as the `type.body`
-field text it sits beside, and colour separates them, which is the rule this
-system already applies to a label and its value. 14.5 next to 16 read as a
-mistake rather than as a step.
+**Why helper is 14.5 and not 15.** It is the size the supplied spec names for
+supporting copy ("Inter Tight 14.5/18px Regular, 0.3px letter spacing"), and it
+is far enough under the 16pt field text to read as a deliberate step once the
+two are also different colours. The earlier objection to 14.5 — that 1.5pt is
+below the threshold where a size change reads as intent — was true of a size
+difference *alone*, and is not true of one carried by colour as well.
 
-**Why caption is 12.** It matches `type.caption`, so a shared component does not
-change size when a surface migrates. It is the aside level and never the eyebrow.
+**Why caption is 12 and shares the eyebrow's size.** They are the same tier of
+the page and are separated by family, case and tracking. A fifth size for a
+two-word aside would be a size nobody could pick out of a lineup, and at 12pt
+there is no room below to take one.
 
-**Line height moves with size.** Headings are set tight, about 1.21 to 1.24,
-because they wrap to two lines and should read as one block. Body and caption
-are set looser, about 1.31 to 1.33, because they are read as paragraphs.
+**Line height moves with size.** Headings are set tight, about 1.21, because
+they wrap to two lines and should read as one block. Body-weight levels are set
+looser, about 1.24 to 1.33, because they are read as paragraphs.
 
 **Size alone is half the answer.** The other half is the spacing rhythm in
-section 8. A ramp with a uniform gap still reads as a flat list.
+section 8. A ramp with a uniform gap still reads as a flat list, and a flat list
+was half of what the details screen was complained about for.
 
 ### 3.1 Conflict resolved: tracking direction
 
@@ -175,22 +184,20 @@ describe two different treatments and the closing line is about sentence case.
 
 Large sentence-case type has too much air between letterforms at its optical
 size, so `title` closes up with -0.9. Uppercase has no ascender or descender
-interlock and jams together, so the section head opens up with +0.7.
+interlock and jams together, so the eyebrow opens up with +1.
 
 **Tracking is proportional to size, not a fixed pixel value.** -0.9 at 28 is
 -0.032em, exactly the em-relative tightness -0.7 carried at 22, so the title got
-bigger without getting looser. +0.7 at 21 is 0.033em, the same rule
-[`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md) section 1 states as "letterSpacing: 0
-except uppercase eyebrows at 0.08em", tuned for a size that is now a section
-head rather than a 12pt label. Carrying a pixel value up or down a ramp silently
-changes the tracking; `theme.test.ts` asserts both heading levels stay inside
-0.025em to 0.04em.
+bigger without getting looser. +1 at 12 is 0.083em, which is
+[`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md) section 1's rule verbatim:
+"letterSpacing: 0 except uppercase eyebrows at 0.08em". Carrying a pixel value
+up or down a ramp silently changes the tracking; `theme.test.ts` asserts the
+title inside 0.025em to 0.04em and the eyebrow inside 0.07em to 0.095em.
 
 Negative on the sentence-case heading, positive on the uppercase one. Neither
-reading was discarded. `body` and `caption` are neither: they sit at or just
-above zero and never go negative, because tracking in at a small optical size
-closes the counters and costs legibility. The negative/positive rule governs the
-two heading levels.
+reading was discarded. `body`, `helper` and `caption` are neither: they sit at
+or just above zero and never go negative, because tracking in at a small optical
+size closes the counters and costs legibility.
 
 ### 3.2 Conflict resolved: `fontWeight` cannot reach semibold
 
@@ -545,10 +552,11 @@ Work down the list. Every item is answerable without asking anyone.
 1. **Import from `@/theme`.** No local constants, no inline hex, no magic
    numbers. If the value you need is missing, add a token here rather than a
    literal there.
-2. **Type.** One `title` per screen, sentence case. Uppercase section heads use
-   `sectionHeader`, never `caption` and never `type.caption`. Asides are
-   `caption`. Everything else is `body`. No fifth size, and a size never moves
-   without its line height. Section 3.0.
+2. **Type.** One `title` per screen, sentence case, and it is the only size
+   above `body`. Uppercase eyebrows use `sectionHeader`. Secondary copy uses
+   `helper` and is never the same size as the field text beside it. The user's
+   words and the story's words are `body`. Asides are `caption`. A size never
+   moves without its line height. Section 3.0.
 3. **Weight.** Any semibold Inter Tight names `fonts.tightSemiBold`. Never rely
    on `fontWeight`.
 4. **Colour.** `ink` for primary text, `muted` for secondary, `strong` for every
@@ -587,13 +595,14 @@ Work down the list. Every item is answerable without asking anyone.
 
 | Conflict | Resolution |
 |---|---|
-| "Negative tracking on every heading" versus `sectionHeader` at +0.6 | Both hold. Negative on sentence-case titles, positive on uppercase eyebrows. Section 3.1. |
+| "Negative tracking on every heading" versus `sectionHeader` at positive tracking | Both hold. Negative on sentence-case titles, positive on uppercase eyebrows. Section 3.1. |
 | Semibold by `fontWeight` versus static font instances | `fontWeight` cannot reach 600 from a static 400 file. Semibold tokens name `fonts.tightSemiBold`. Section 3.2. |
 | "A lighter ground" versus "a wider gap so cards lift" | Both hold, because they measure different things. The ground reads lighter and airier because two thirds of its saturation is gone; its luminance drops so white can separate from it. Section 4.1. |
 | "Cool the ground" versus the warm `sepia*` reader and the genre gradients | Cool by removing saturation, not by adding blue. The ramp keeps a 40 to 48 degree amber hue, so `sepia` stays the saturated member of one family. Section 4.1. |
 | "Apple line icons" versus a web preview | Ionicons outline, not SF Symbols. SF Symbols renders blank on web and Android. Section 7. |
 | "The sub is too far from the heading" versus "do not add tokens" | A title and its sub were never grouped; the `related` / `betweenGroups` pair covers it with no case-specific token. Section 8.1. |
-| "19 is too close to the title" versus "the eyebrow is the quietest text on the screen" | Both were true of a 22 title, and neither is true now. The title widened to 28 and the section head to 21, where its caps land on the title's x-height. Section 3.0. |
+| "The eyebrow must not be the quietest text in its group" versus "these headings are far too big" | The second wins, and the first was the wrong frame. An eyebrow is told apart by case, weight, tracking and colour, not by size; promoting it to 21 gave the details screen five near-titles and destroyed the hierarchy it was meant to build. 12pt eyebrow, 28pt title, nothing in between. Section 3.0. |
+| "Secondary copy at 14.5 sits too close to 16pt field text to read as intent" versus "secondary copy must not be as loud as the field" | The second wins. 1.5pt is below the threshold for a size difference carried by size ALONE; `helper` is also `colors.muted` against `colors.ink`, and two signals clear it. Section 3.0. |
 | "Make the heading bigger" versus "34 was too big" | 28. Measured: 34 wraps even the short headings, 22 fits the longest by half a point, 28 wraps the two longest to exactly two lines. Section 3.0. |
 
 ---
@@ -638,18 +647,21 @@ Work down the list. Every item is answerable without asking anyone.
     `OPTICAL_SCALE` inside the icon components.
 23. **A screen title and the sentence under it are one group at
     `spacing.related`**, with `spacing.betweenGroups` below the pair.
-24. **The onboarding ramp is four levels at a ratio of about 1.3: 28 / 21 / 16 /
-    12**, with a hard floor of 1.25 between adjacent steps. No fifth size.
+24. **The onboarding size ramp is 28 / 16 / 14.5 / 12**, and `title` is the only
+    size above `body`. One large heading per screen.
 25. **The screen title is 28**, chosen by measuring every heading in the flow
     against a 326pt column: 22 fitted the longest by half a point, 34 wrapped
     even the short ones, 28 wraps the two longest to exactly two lines.
-26. **A section head is sized by cap height against the title, not by fontSize
-    against fontSize**, because uppercase carries more mass. At 21 its caps land
-    on the 28pt title's x-height.
-27. **The label that heads a group is never the smallest text in the group.**
-    `sectionHeader` heads, `caption` is the aside floor.
+26. **An eyebrow is a treatment, not a ramp level.** `sectionHeader` is 12pt and
+    deliberately smaller than the copy it heads; it is read first because it is
+    uppercase, semibold, tracked +1 and `colors.tertiary`, four signals at once.
+    Reversed in favour of size once, on the details screen, and reverted.
+27. **Secondary copy is smaller than the content it supports.** `helper` (14.5)
+    under a title or an eyebrow; `body` (16) for the user's own words and the
+    story's. Setting a helper line at `body` gives our sentence equal billing
+    with theirs.
 28. **A size never moves without its line height**, and tracking is held
-    proportional to size (0.032em on the title, 0.033em on the section head)
-    rather than carried as a fixed pixel value.
+    proportional to size (0.032em on the title, 0.083em on the eyebrow) rather
+    than carried as a fixed pixel value.
 29. **`spacing.betweenGroups` is 24, at least three times `spacing.related`**,
     because grouping is the contrast between the two gaps and not either value.

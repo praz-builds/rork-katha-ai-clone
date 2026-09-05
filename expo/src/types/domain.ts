@@ -174,6 +174,10 @@ export type CreateDraft = {
     background?: string;
     /** Physical detail. Reaches the story prompt and the portrait image. */
     appearance?: string;
+    /** Draft portrait generated before the story call, when available. */
+    portraitUrl?: string;
+    /** UI state for the separate character-image call. */
+    portraitStatus?: "idle" | "generating" | "ready" | "failed";
     isHero: boolean;
   }[];
   isSeries?: boolean;

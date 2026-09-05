@@ -216,6 +216,13 @@ export function validateGenerationRequest(
       if (item.isHero !== undefined && typeof item.isHero !== "boolean") {
         return { error: "Character isHero must be boolean" };
       }
+      if (
+        item.portrait_url !== undefined &&
+        (typeof item.portrait_url !== "string" ||
+          item.portrait_url.length > 2000)
+      ) {
+        return { error: "Character portrait_url must be a URL string" };
+      }
       characters.push({
         name: item.name.trim(),
         description: typeof item.description === "string"
@@ -226,6 +233,9 @@ export function validateGenerationRequest(
           : undefined,
         appearance: typeof item.appearance === "string"
           ? item.appearance.trim()
+          : undefined,
+        portraitUrl: typeof item.portrait_url === "string"
+          ? item.portrait_url.trim()
           : undefined,
         isHero: item.isHero === true,
       });

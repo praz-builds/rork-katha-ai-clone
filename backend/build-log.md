@@ -7,6 +7,26 @@
 
 ---
 
+## 2026-09-06 UTC — Main Create single-screen correction
+
+**Session:** Corrected the Expo main Create UI after review: the main story-generation flow is one screen, not Idea → Review. Character craft remains the only separate full-screen surface.
+
+- Backend behavior was not changed in this pass. Character image generation remains a separate request only when the user asks for it, and the paid story call remains the final Create action with the completed draft payload.
+- A later UI density pass changed only Expo-visible hierarchy/copy: Genre left with an icon, Kids Mode as a compact switch, optional Premise as the visible context label, and denser More options.
+- No Supabase functions were deployed and no production-level tests were run, so no `error_events` entry was required.
+- Verification from `expo/`: focused Create/API Jest suites passed (32 tests), `tsc --noEmit` passed, and the web export passed using the bundled Node runtime.
+
+## 2026-09-05 UTC — Create flow hierarchy and character-image contract
+
+**Session:** Main Create was realigned with the new product direction: the two-screen onboarding-style split is not the main creation flow, characters are primary, other controls sit under More options, and character images are a separate call before paid story generation.
+
+- Updated `source-of-truth/STORY_GENERATION_FLOW.md` from Idea → Shape → Review to Idea → Review and start for main Create.
+- Revised the character contract so Craft character supports Create image/Reimagine/Edit/Delete and story generation waits for any character-image request the user started.
+- Added `generate-character-image`, a callable Edge Function that authenticates the user, validates the draft character fields, calls the existing character-portrait image path, and returns a draft portrait URL without starting story generation.
+- Extended backend generation validation and character persistence so `portrait_url` from a pre-generated draft character survives the final story call and lands on `characters.portrait_url`.
+- No production-level backend test or deploy was run in this session, so no `error_events` entry was required.
+- Verification from `expo/`: focused Create/API Jest suites passed (31 tests) and `tsc --noEmit` passed using the bundled Node runtime. Backend `deno check`, `deno test` for validation, and `deno fmt --check` passed for the touched Edge Function/shared files. `pnpm` itself was blocked by the existing ignored-build approval prompt.
+
 ## 2026-09-05 UTC — Streaming, the shape-story deadline, and a backend security pass
 
 **Session:** The writer-flow tree committed and deployed, `shape-story` diagnosed and fixed, streamed generation built end to end, and a full audit of the 35 migrations and 18 edge functions actioned. Five commits on `codex/create-flow-rebuild`.
@@ -1684,3 +1704,21 @@ on.
   reports 0 errors (19 pre-existing warnings in legacy `.jsx`), and 85 Jest tests
   pass across 11 suites. No deployment, and no EAS build, so push has not been
   exercised against real APNs or FCM credentials.
+
+## 2026-09-06: Create Flow Density Follow-Up
+
+- Tightened the Expo Create studio single-screen layout after review feedback:
+  Kids Mode now sits to the left as a native `Switch`, Genre stays on the right
+  as a compact icon chip, and the genre list opens as an overlay instead of
+  pushing the story form down.
+- Removed the large brief-strength block from the form and replaced it with a
+  small strength percentage under the final `Create` CTA.
+- Reworked More Options into one compact family: chapters and chapter length use
+  wrapping chips, Avoid appears before Visibility, Visibility is a native switch,
+  and adult spice controls show three icon slots while keeping the unsupported
+  explicit slot disabled.
+- Verification: `pnpm typecheck` passed, focused Create/API Jest tests passed,
+  and `pnpm exec expo export --platform web --output-dir /tmp/katha-create-flow-export-check`
+  compiled successfully. `pnpm exec expo-doctor` passed 18/18 checks when run
+  with the local Node/npm bin path on `PATH`. No backend code was changed in this
+  pass.

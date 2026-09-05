@@ -223,6 +223,7 @@ serve(async (req) => {
               description: c.description,
               background: c.background,
               appearance: c.appearance,
+              portrait_url: c.portraitUrl,
               is_hero: c.isHero ?? false,
             })),
           )

@@ -256,6 +256,41 @@ export async function generateCharacterPortrait(
   });
 }
 
+/**
+ * Generate a draft character portrait before the story exists.
+ *
+ * The Craft character sheet now has its own image action, so the storage key
+ * cannot depend on a persisted story id or character row yet. The final story
+ * call carries this URL back with the character draft; persistence can attach
+ * it to `characters.portrait_url` when the story row is created.
+ */
+export async function generateDraftCharacterPortrait(
+  userId: string,
+  requestId: string,
+  character: { name: string; description?: string; appearance?: string },
+): Promise<ImageResult | null> {
+  const appearance = sanitizeForPrompt(character.appearance ?? "");
+  const description = sanitizeForPrompt(character.description ?? "");
+  if (!appearance && !description) {
+    console.warn(
+      `[portrait] draft ${requestId} has neither appearance nor description — skipping`,
+    );
+    return null;
+  }
+
+  const storagePath = `draft-characters/${safePathSegment(userId)}/${
+    safePathSegment(requestId)
+  }.png`;
+  return await runImageChain({
+    label: `draft portrait ${requestId}`,
+    bucket: "covers",
+    storagePath,
+    aspect: "portrait",
+    promptFor: (safetyLevel) =>
+      buildPortraitPrompt(appearance, description, safetyLevel),
+  });
+}
+
 function buildPortraitPrompt(
   appearance: string,
   description: string,
@@ -305,6 +340,10 @@ function sanitizeForPrompt(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 400);
+}
+
+function safePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
 }
 
 // ---------------------------------------------------------------------------

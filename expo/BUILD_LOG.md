@@ -2,6 +2,43 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-06: Single-Screen Main Create Flow
+
+### Changed
+
+- Reworked main Create into one scrollable generation screen: Genre, Kids Mode, story idea, starter chips, optional Premise, characters, More options, brief strength, credits, and `Create · 3 credits` all render together.
+- Adjusted hierarchy again after product review: audience mode and Genre now share a compact parent row above the prompt, Genre opens a vertical picker, and Where/when plus Characters follow the starter prompts.
+- Refined the parent row after visual review: Genre now sits left with a per-genre icon, Kids Mode is a compact switch on the right, and the genre picker is a narrow vertical menu rather than a full-width list.
+- Changed the visible secondary context label from Where/when to `Premise` with an optional hint, removed helper copy under `Who's in it`, and tightened More options into a heading-style disclosure.
+- Removed the main-flow `Continue` stage and the pre-story inference call from the Create UI path. The only story-generation call is the final Create action.
+- Moved moments and chapter-plan editing into a lighter inline More options disclosure with writing style, chapters, length, language, visibility, spice, avoid, and chapter art.
+- Kept Craft character as the only separate surface, presented through a native full-screen `Modal` with Create image/Reimagine/Edit/Delete states.
+
+### Verification
+
+- `jest src/__tests__/create-flow-contract.test.tsx src/__tests__/api-generation-contract.test.ts --runInBand`: passing, 32 tests.
+- `tsc --noEmit`: passing.
+- `expo export --platform web --output-dir /tmp/katha-single-create-flow-export-check`: passing.
+- `expo export --platform web --output-dir /tmp/katha-parent-controls-export-check`: passing.
+- `expo export --platform web --output-dir /tmp/katha-create-density-export-check`: passing.
+
+## 2026-09-05: Main Create Flow Hierarchy and Character Image Step
+
+### Changed
+
+- Collapsed the main Create setup from Idea → Shape → Review into Idea → Review and start. The final Create button, brief-strength meter, credits, and More options now live on the same reviewed setup surface.
+- Shortened the Try one starter cards so they show a clipped three-line preview while tapping still inserts the complete prompt into the story idea field.
+- Added Craft character image state: Create image, Creating, Reimagine, Edit, Delete, Image ready, and Image failed. Saving a character returns to Review and start without starting story generation.
+- Added a client `generateCharacterImage` API wrapper for the new `generate-character-image` Edge Function and carried `portrait_url` through the final story-generation payload.
+- Blocked final Create while a saved character image is still generating, so the story-generation call cannot start before requested character image work completes.
+
+### Verification
+
+- `jest src/__tests__/create-flow-contract.test.tsx src/__tests__/api-generation-contract.test.ts --runInBand`: passing, 31 tests.
+- `tsc --noEmit`: passing.
+- `expo export --platform web --output-dir /tmp/katha-create-flow-export-check`: passing.
+- `pnpm` commands were blocked by the existing ignored-build approval prompt, so verification used the bundled Node runtime and local binaries directly.
+
 ## 2026-08-25: Audio Narration System
 
 ### Shipped
@@ -253,3 +290,21 @@
 - Keyboard entry remains on real `TextInput` controls for name, email, OTP, and Other genre. A fresh automated keyboard/browser pass was blocked because Playwright could not install Chromium for this desktop runtime (`mac13` unsupported).
 - Narrow-width browser QA beyond 390 x 844 and physical iOS/Android phone validation remain pending before native release.
 - Release readiness: this revision is not ready for production release until the full post-patch web flow, keyboard behavior, narrow layouts, reduced-motion behavior, and native iOS/Android builds are validated on supported runners/devices.
+
+## 2026-09-06: Create Flow Density Follow-Up
+
+### Changed
+
+- Kept Create as a single story-generation screen with the character editor in a full-screen native modal.
+- Moved Kids Mode to the left of Genre using the platform `Switch`; the label now sits to the right of the toggle.
+- Changed the Genre picker from an in-flow expanding block to an absolute overlay, with per-genre icons retained.
+- Removed the large brief-strength panel and added compact `strength {percent}%` text below the `Create` CTA.
+- Reworked More Options as one compact family: chip rows for chapters and chapter length, consistent field radius, Avoid before Visibility, a native Visibility switch, and icon-based spice chips with the unsupported explicit slot disabled.
+
+### Verification
+
+- `pnpm typecheck`: passing.
+- `pnpm test -- src/__tests__/create-flow-contract.test.tsx src/__tests__/api-generation-contract.test.ts --runInBand`: passing, 32 tests.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-create-flow-export-check`: passing.
+- `pnpm exec expo-doctor`: passing, 18/18 checks, with the local Node/npm bin path on `PATH`.
+- Local dev server is running at `http://localhost:8081/?singleCreateFlow=4`.

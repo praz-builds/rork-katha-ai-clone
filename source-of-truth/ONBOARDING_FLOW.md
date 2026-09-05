@@ -102,6 +102,23 @@ area. The visible Back control begins at S1, is labelled **Back**, and restores
 all state. Do not use progress percentages or numbered steps because path lengths
 differ. Do not autofocus W1 or a chip.
 
+> **SHIPPED DEVIATION: the writer path draws a progress row.** The approved auth
+> design has one, so the email and code screens carry it, and the preview screen
+> does too because its own design does. It is drawn as short rounded bars, never
+> as a number or a percentage: nothing on screen says "3 of 6". The count is
+> **six** — idea, details, email, code, preview, paywall — and it is announced to
+> assistive technology as "Step 3 of 6" because a progressbar role without a
+> position is worse than no role at all.
+>
+> The rule above holds everywhere the length is genuinely variable, which is the
+> reader path. The writer path after the removal of W2 is a fixed six, so the
+> objection it was written against does not apply. If the reader path ever
+> merges into this row, the rule wins and the row goes.
+>
+> The idea and details screens still draw no dots, so the row appears at step 3.
+> That is a known inconsistency, left because adding a progress row to a
+> signed-off screen is a decision about that screen.
+
 *Inference:* retain anonymous state for 24 hours only. It includes IDs,
 selections, idea, shape, concept ID, lead override, and opening choice. Never put
 idea, prose, title, name, or email in analytics. After A1, persist the shelf or
@@ -394,6 +411,29 @@ waiting. Back restores R4 for bridge entry or S1 direct Write.
 
 ## 9. W2: Blueprint and two acts of authorship
 
+> **SHIPPED DEVIATION, 2026-09-06: W2 no longer exists as a screen.** Its
+> content was merged into W3 and the standalone blueprint screen was deleted.
+>
+> W2 was a toll gate. It showed a summary of a story the reader had not been
+> allowed to read yet, asked them to approve it, and put the payoff they had
+> just waited through the crafting loader for one press further away — behind a
+> button reading "See the preview". The one question it really asked, *is this
+> right?*, cannot be answered before you have read a sentence of the thing.
+>
+> What survived the merge, and where it went: the title, the shelf, the world
+> and the lead are the concept block at the top of W3; the chapter plan is a
+> numbered read-only list under them; the **CONCEPT** eyebrow is on the cover
+> placeholder. What did not survive: **beat editing**, and the **Try another**
+> control described below. Both are a deliberate loss, not an oversight. Beats
+> are rewritten in the studio, which is what W3's first entitlement line
+> promises; Try another had no home once the screen it lived on was gone, and
+> §16's one-call budget means its supply was always finite anyway.
+>
+> This section is left standing because its vocabulary rules (Chapters, never
+> Arc or Premise), its instrumentation and its variant semantics are still
+> canonical wherever those facts are rendered. Read it as the specification of
+> the *blueprint content*, not of a screen. §10 is where that content is shown.
+
 W2 is **Shape**. Use only **Title**, unlabeled shaped description, **Who’s in it**,
 **Where and when**, and **Chapters**. Never use Premise, Plot, Setting, Arc,
 Seed, or Prompt.
@@ -497,13 +537,41 @@ ready_latency_bucket, shape, primary_genre }`;
 
 ## 10. W3: Preview
 
+W3 is now the **only** screen between the crafting wait and the paywall, and it
+carries what §9's screen used to carry. Order down the page: the story title,
+then a row of the concept cover beside the shelf/world/lead byline and the
+chapter plan, then the opening prose in a card tagged **PREVIEW**, then the
+entitlements under **YOU CAN ALWAYS**, then the CTA.
+
+**Why the title is above the cover rather than beside it.** The design draws
+them side by side, which is the book-listing convention, and it was built that
+way first. It does not survive measurement: a 94pt cover and a `spacing.lg` gap
+leave 216pt of the 326pt column, and `onboardingType.title` at 28 sets about
+fifteen characters to the line there, so a four-word title breaks into four
+ragged lines. The alternative was a smaller title, which is a fifth size and the
+exact move [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) §3.0 was just corrected for.
+Arrangement moved so type could stay.
+
 | Item | Specification |
 |---|---|
-| Header | **This is the beginning.** |
-| Sub | **You can keep shaping every part of it.** |
+| Header | *None.* The story's own title is the screen's one heading, on `onboardingType.title`. |
+| Byline | Shelf · Where and when · Lead, middot-joined, `onboardingType.helper`, empty parts dropped |
+| Plan | Chapters as `01`, `02`, … in `colors.accent` beside each beat. Read-only. |
 | Prose | Active `preview_body` in real reader surface, `type.reader` |
+| Entitlement head | **YOU CAN ALWAYS** |
 | CTA | **Save my story** |
-| Concept eyebrow | **CONCEPT** |
+| Concept eyebrow | **CONCEPT**, on the cover placeholder |
+
+**Why there is no header.** "This is the beginning." sat above a screen whose
+subject already names itself. Setting both would make this the only screen in
+the flow with two sentence-case headings, against the one-title rule in
+[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) §3. The story's title is the heading.
+
+**The cover is a placeholder, and must read as one.** A real cover is a paid,
+generated image that does not exist at this point in the flow. The placeholder
+is a dark portrait card at the library's own 1:1.48 proportion, carrying the
+word CONCEPT and an echo of the title. It is hidden from assistive technology,
+because everything on it is stated in full beside it.
 
 W3 is **Review**. It is not a locked screen: no lock, curtain, price, paywall
 button, or interruption in prose.
@@ -526,8 +594,13 @@ Below fade, always show full-contrast `colors.surface` entitlement card using
 - **1 free cover retry after a paid cover**
 - **Your stories are yours to save, publish, unpublish, or delete**
 
-Rows never fade, dim, hide, or move behind paywall. Save my story enters A1 with
-`artifact_kind: blueprint`, `paywall_kind: writer`; Back restores identical W2.
+Rows never fade, dim, hide, or move behind paywall. They are the answer to *am I
+stuck with this*, and holding them behind the ask is what turns a preview into a
+trap. Save my story enters A1 with `artifact_kind: blueprint`,
+`paywall_kind: writer`. **Back now returns to W1b (the details screen), not to
+W2**, which no longer exists; the brief, the plan and the verified session all
+survive the round trip, and going forward again re-uses the warm request rather
+than buying a second model call.
 
 **Instrumentation:** `onboarding_preview_shown { shape, opening_id,
 lead_name_changed, visible_word_bucket }`;
