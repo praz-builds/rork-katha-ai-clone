@@ -447,11 +447,18 @@ Seed, or Prompt.
 | Primary CTA | **See the preview** |
 | Secondary | **Try another** |
 
-> **Amended 2026-09-06.** The revealed heading was **Here's the shape of it.**
-> The screen shipped as **Your idea just became a story.** and the code is
-> right: this is the payoff moment of the whole writer path, and "the shape of
-> it" describes a diagram rather than the thing the reader just made. The spec
-> is corrected to match rather than the other way round.
+> **Amended 2026-09-06, then overtaken the same day.** The revealed heading was
+> **Here's the shape of it.** It was corrected here to **Your idea just became
+> a story.** to match what had shipped, on the reasoning that this was the
+> payoff moment of the writer path and "the shape of it" described a diagram
+> rather than the thing the reader had just made.
+>
+> That reasoning was right and it is what removed the screen. If this is the
+> payoff moment, it should not be a summary with a button to go and see the
+> payoff. The heading, the sub and the **See the preview** CTA in the table
+> above no longer render anywhere; the waiting copy still does, on the crafting
+> loader. §10 carries the reveal now, and the story's own title is its heading.
+> The table is kept because the copy is worth knowing was tried.
 
 ### 9.1 Waiting and choreography
 
