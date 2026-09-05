@@ -20,8 +20,21 @@ export type Genre = (typeof GENRES)[number];
 export type AudienceMode = "adult" | "kids";
 export type SpiceLevel = "sweet" | "steamy";
 export type IdentityLens = "queer";
+/** New drafts may be created in these languages. Existing stories keep theirs. */
+export type CreationLanguage = "English" | "Portuguese";
+export const CREATION_LANGUAGES: readonly CreationLanguage[] = [
+  "English",
+  "Portuguese",
+];
+export function normalizeCreationLanguage(value: unknown): CreationLanguage {
+  return value === "Portuguese" ? "Portuguese" : "English";
+}
 export type StoryMode = "standalone" | "series";
-export type ChapterRole = "standalone" | "series_opening" | "mid_series" | "finale";
+export type ChapterRole =
+  | "standalone"
+  | "series_opening"
+  | "mid_series"
+  | "finale";
 export type HookType =
   | "none"
   | "revelation"
@@ -32,18 +45,6 @@ export type HookType =
   | "danger"
   | "unanswered_question"
   | "emotional_rupture";
-export type TropeModule =
-  | "werewolf"
-  | "vampire"
-  | "enemiesToLovers"
-  | "secondChance"
-  | "forcedProximity"
-  | "smallTown"
-  | "fatedMates"
-  | "forbiddenLove"
-  | "lockedRoom"
-  | "secretIdentity";
-
 export type TabKey = "home" | "create" | "library";
 
 export type Author = {
@@ -93,6 +94,13 @@ export type Story = {
   genre: Genre;
   primaryGenre?: Genre;
   storyMode?: StoryMode;
+  plannedChapterCount?: 3 | 7 | 15;
+  chapterLength?: "short" | "standard" | "long";
+  /**
+   * The approved chapter plan. Beat N briefs chapter N, so beat `n + 1` is
+   * what the next chapter's "What happens next?" box pre-fills with.
+   */
+  beats?: string[];
   seriesState?: SeriesState;
   audienceMode?: AudienceMode;
   spiceLevel?: SpiceLevel;
@@ -150,12 +158,15 @@ export type CreditLedgerEntry = {
 
 export type CreateDraft = {
   primaryGenre: Genre;
+  /** Primary first. Extra values are editable secondary shelf tags. */
+  genres?: Genre[];
   audienceMode: AudienceMode;
   spiceLevel: SpiceLevel;
   identityLenses: IdentityLens[];
-  tropeModules: TropeModule[];
   seed: string;
-  language: string;
+  language: CreationLanguage;
+  /** Applied when the reviewed draft is saved or published, never during generation. */
+  visibility?: "private" | "public";
   characters: {
     name: string;
     description: string;
@@ -168,15 +179,29 @@ export type CreateDraft = {
   isSeries?: boolean;
   /** World and era — feeds the story prompt and the cover prompt. */
   whereAndWhen?: string;
-  /** Beats to hit. Clamped server-side to five (ten for a series). */
+  /** Beats to hit. Clamped server-side to five. */
   moments?: string[];
+  /**
+   * The ordered chapter plan shown on the blueprint screen, one line per
+   * chapter. Unlike `moments`, which the model schedules wherever the pacing
+   * allows, beat N is the brief for chapter N. Clamped server-side to the
+   * planned chapter count.
+   */
+  beats?: string[];
+  /** Kids mode only: values explored through the story, never as a lesson. */
+  storyValues?: string[];
+  writingStyle?: string;
+  avoid?: string;
   chapterLength?: "short" | "standard" | "long";
+  plannedChapterCount?: 3 | 7 | 15;
+  illustrateChapters?: boolean;
 };
 
 export type Screen =
   | { name: "tabs" }
   | { name: "intro" }
   | { name: "onboarding" }
+  | { name: "writer-onboarding" }
   | { name: "reader"; storyId: string }
   | { name: "author"; authorId: string }
   | { name: "credits" }

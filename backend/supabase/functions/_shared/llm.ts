@@ -15,17 +15,86 @@ import { parseStructuredOutput } from "./story_text.ts";
 
 export const GEMINI_MODEL = "gemini-3.1-pro-preview";
 /**
- * The second position is a pinned, priced model, not the free router.
+ * The configured default for every generation path, served through OpenRouter.
  *
- * `openrouter/free` picks a free model at random per request, so its output cap,
- * latency and prose quality are not repeatable, and free-tier daily request caps
- * apply. A routed model whose output cap is under `MAX_OUTPUT_TOKENS` returns
- * `finish_reason: "length"`, which `openAICompatibleContent` rejects. Gemini 2.5
- * Flash is pinned here: 65k output tokens, native structured output, and it bills
- * through OpenRouter, so a Google-side quota block on `GEMINI_API_KEY` does not
- * take this position down with it.
+ * One constant, deliberately. Switching the default between the contributor and
+ * the standard tier is a data-policy decision that will be revisited, so it is a
+ * one-line change here rather than a value spread across four functions.
+ *
+ * Catalogue properties, 2026-09-05:
+ *
+ * | property          | value                                              |
+ * |-------------------|----------------------------------------------------|
+ * | context length    | 1,048,576 tokens                                   |
+ * | structured output | `response_format` + `structured_outputs` supported |
+ * | prompt price      | $0.0000001 / token ($0.10 per M)                   |
+ * | completion price  | $0.0000002 / token ($0.20 per M)                   |
+ *
+ * That is ~12x cheaper on input and ~21x cheaper on output than the standard
+ * `meta/muse-spark-1.3` behind it.
+ *
+ * **The contributor tier trains on what it is sent, and this account currently
+ * refuses it.** The `-contributor` suffix is a cost-reduced tier: it is priced
+ * down in exchange for the provider retaining prompts and completions for
+ * training, which here means the user's story idea and the generated prose. A
+ * live request on 2026-09-05 returned `404`, not a completion:
+ *
+ *     0 endpoints out of 1 requested are available matching your guardrail
+ *     restrictions and data policy... Paid model training violation (account
+ *     settings): 1 endpoint excluded
+ *
+ * So the account's OpenRouter privacy setting blocks training-tier endpoints,
+ * and this model cannot serve a single request until that setting is changed at
+ * https://openrouter.ai/settings/privacy. That is the account owner's decision
+ * and no code change reaches it. The model is wired as the default anyway,
+ * because the day the setting changes the cheaper tier simply starts winning -
+ * exactly the way an OpenAI entitlement going live needs no deploy. Until then
+ * `OPENROUTER_MODELS[1]` serves, and `404` is classified `model_not_found`, so
+ * the fallthrough is immediate rather than a stall.
+ *
+ * The position stays pinned to *named, priced* models. `openrouter/free` picks a
+ * free model at random per request, so its output cap, latency and prose quality
+ * are not repeatable, and a routed model whose output cap is under the request
+ * budget returns `finish_reason: "length"`, which `openAICompatibleContent`
+ * rejects. Billing runs through OpenRouter, so a Google-side quota block on
+ * `GEMINI_API_KEY` does not take this position down with it - which is why
+ * Gemini is still behind it rather than removed.
  */
-export const OPENROUTER_MODEL = "google/gemini-2.5-flash";
+export const OPENROUTER_MODEL = "meta/muse-spark-1.3-contributor";
+
+/**
+ * The OpenRouter position, in preference order.
+ *
+ * `meta/muse-spark-1.3` is the same model without the training tier. Measured on
+ * 2026-09-05 against the real strict schema: `200`, `finish_reason: "stop"`,
+ * every requested key present, ~11s. It sits immediately behind the contributor
+ * id so that the `404`-by-data-policy above costs one round trip rather than the
+ * whole flow, and so onboarding produces a real story today.
+ *
+ * **Both are reasoning models, and that is the trap in this position.** Reasoning
+ * tokens are billed and counted inside `max_tokens`, and they are emitted before
+ * any visible content. Measured, same prompt, same day:
+ *
+ * | budget                              | outcome                              |
+ * |-------------------------------------|--------------------------------------|
+ * | `max_tokens: 1200`, no effort sent  | `length`, 1197 reasoning, no content |
+ * | `max_tokens: 8000`, effort `low`    | `stop`, 957 reasoning, valid JSON    |
+ *
+ * The first row is the dangerous one: HTTP `200` carrying an empty string. It is
+ * caught - `openAICompatibleContent` rejects both `finish_reason: "length"` and
+ * empty content as `ProviderMalformedResponseError`, so it falls through to the
+ * next model instead of persisting a blank chapter - but being caught is not the
+ * same as being survivable, because a position that always fails is not a
+ * position. `openRouterRequestShape` therefore sends an explicit
+ * `reasoning: { effort: "low" }` and floors the budget at
+ * `OPENROUTER_MIN_OUTPUT_TOKENS`, so no caller can hand this position a budget
+ * the reasoning alone would consume. The paragraph editor's 2,000-token budget
+ * is exactly such a caller.
+ */
+export const OPENROUTER_MODELS: readonly string[] = [
+  OPENROUTER_MODEL,
+  "meta/muse-spark-1.3",
+];
 /**
  * The free-tier position: last resort, and empirically thin.
  *
@@ -58,11 +127,12 @@ export const OPENROUTER_MODEL = "google/gemini-2.5-flash";
  * not the JSON the schema demanded.
  *
  * So the free tier is kept, but it is decoration rather than depth. The chain's
- * real redundancy is Gemini -> OpenRouter's *paid* `google/gemini-2.5-flash`
- * (measured at 10.6s for a schema-valid 520-word chapter) -> the three OpenAI
- * models. What survives here is the one free model that ever produced valid
- * output, and the blind router behind it, because at this point the only
- * remaining alternative is refunding the user's credit.
+ * real redundancy is the two paid `OPENROUTER_MODELS` -> Gemini -> the three
+ * OpenAI models. (The model measured here at 10.6s for a schema-valid 520-word
+ * chapter was `google/gemini-2.5-flash`, which held the OpenRouter position
+ * until 2026-09-05.) What survives here is the one free model that ever
+ * produced valid output, and the blind router behind it, because at this point
+ * the only remaining alternative is refunding the user's credit.
  *
  * **Do not re-add a model from catalogue metadata alone.** Run it against the
  * real schema first; the table above is what that costs to learn.
@@ -176,7 +246,16 @@ const MAX_OUTPUT_TOKENS = 16_000;
 const EDIT_MAX_OUTPUT_TOKENS = 2_000;
 const EDIT_DEADLINE_MS = 60_000;
 const GEMINI_TIMEOUT_MS = 70_000;
-const OPENROUTER_TIMEOUT_MS = 30_000;
+/**
+ * 30s while OpenRouter was a fallback carrying a fast non-reasoning model. It is
+ * now the primary, running a reasoning model over a 16,000-token visible budget,
+ * and 30s is no longer defensible: the measured 11s was a ~1.4k-token shaping
+ * call, and a full chapter emits roughly an order of magnitude more, reasoning
+ * included. Raised to match `GEMINI_TIMEOUT_MS`, which makes the *phase share*
+ * the binding constraint rather than this number - the point of a per-request
+ * timeout here is to end a hung socket, not to second-guess the phase budget.
+ */
+const OPENROUTER_TIMEOUT_MS = 70_000;
 /** A reasoning model thinks before it writes, so it needs a longer window. */
 const OPENAI_TIMEOUT_MS = 60_000;
 
@@ -189,17 +268,56 @@ const OPENAI_TIMEOUT_MS = 60_000;
 const OPENAI_REASONING_TOKEN_MULTIPLIER = 2;
 
 /**
+ * The Muse Spark models reason inside `max_tokens`, so the OpenRouter budget
+ * carries the same 2x headroom the OpenAI reasoning path does.
+ */
+const OPENROUTER_REASONING_TOKEN_MULTIPLIER = 2;
+
+/**
+ * The floor under any OpenRouter budget, in tokens.
+ *
+ * 8,000 is the measured working value: at `max_tokens: 8000` with effort `low`,
+ * `meta/muse-spark-1.3` spent 957 tokens reasoning and still returned complete
+ * JSON; at 1,200 it spent 1,197 reasoning and returned an empty string with
+ * `finish_reason: "length"`. A multiplier alone does not protect the small
+ * callers - `EDIT_MAX_OUTPUT_TOKENS * 2` is 4,000 and the shaping call's 900 * 2
+ * is 1,800, which is the failing row - so the floor is what keeps a short
+ * request from being answered entirely in thought.
+ */
+const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
+
+/**
  * Cumulative fractions of `deadlineMs` at which each provider phase must end.
  *
  * A provider's moderation retries are bounded only by the shared deadline, so
  * without per-phase caps the first provider can spend the entire budget and
  * every fallback aborts before it sends a request - the chain collapses to one
  * provider in exactly the slow case the fallbacks exist for.
+ *
+ * **Re-balanced 2026-09-05 for the new order.** These are cumulative, so moving
+ * a phase without moving its share silently hands the new leader the old
+ * leader's slice and starves whoever now runs last. Slices, against the 120s
+ * generation deadline:
+ *
+ * | phase          | slice | window | per model                        |
+ * |----------------|-------|--------|----------------------------------|
+ * | openrouter     | 0.50  | 60s    | 30s each across two Muse Sparks  |
+ * | gemini         | 0.15  | 18s    | 18s                              |
+ * | openai         | 0.28  | 33.6s  | 11.2s each across three models   |
+ * | openrouterFree | 0.07  | 8.4s   | 4.2s each                        |
+ *
+ * The leader takes half because it is the only phase expected to succeed and
+ * because two models share it, one of which is `404` by policy today and returns
+ * in a round trip. Gemini keeps a real but small slice: it has hard-failed with
+ * `429` since 2026-08-31, and a quota-blocked provider needs enough time to say
+ * so and no more. The free tier keeps the smallest slice, unchanged in spirit
+ * from when it was 0.1 - it is decoration, and the honest alternative to it is
+ * refunding the credit.
  */
-const PHASE_END_SHARE = {
-  gemini: 0.35,
+export const PHASE_END_SHARE = {
   openrouter: 0.5,
-  openai: 0.9,
+  gemini: 0.65,
+  openai: 0.93,
   openrouterFree: 1,
 } as const;
 
@@ -327,8 +445,9 @@ export function classifyLlmError(
 
 /**
  * Generate story text with a fallback chain:
- * gemini-3.1-pro-preview -> OpenRouter google/gemini-2.5-flash (pinned, priced)
- * -> OpenAI (gpt-5.6-luna, gpt-5-mini, gpt-4o-mini) -> openrouter/free (last).
+ * OpenRouter (meta/muse-spark-1.3-contributor, then meta/muse-spark-1.3) ->
+ * gemini-3.1-pro-preview -> OpenAI (gpt-5.6-luna, gpt-5-mini, gpt-4o-mini) ->
+ * openrouter/free (last).
  *
  * Each phase is additionally capped at a cumulative fraction of `deadlineMs`
  * (`PHASE_END_SHARE`), so one slow provider cannot starve the rest of the chain.
@@ -352,6 +471,92 @@ export function generateStoryText(
 }
 
 /**
+ * A small, strict JSON request. This is the call onboarding makes.
+ *
+ * It used to go straight to the first non-reasoning OpenAI model and had no
+ * fallback at all, which meant the default model was whatever happened to be
+ * cheap enough for a short request rather than the model the product runs on.
+ * `shape-story` is the first generation a new user ever triggers, so it leads
+ * with `OPENROUTER_MODEL` like every other path.
+ *
+ * The window is split rather than shared, and the split is why this is not just
+ * a two-line change: the caller's default deadline is 8s because the user is
+ * watching, so a stalled leader would otherwise abort the fallback before
+ * `fetch` was called and the screen would render with no shape at all. The
+ * leader gets `FAST_OPENROUTER_SHARE`, the OpenAI model gets the rest.
+ */
+const FAST_OPENROUTER_SHARE = 0.6;
+
+export async function generateFastStructuredText(
+  systemPrompt: string,
+  userPrompt: string,
+  structuredOutput: StructuredOutputSpec,
+  maxTokens = 900,
+  deadlineMs = 8_000,
+): Promise<GenerationResult> {
+  const options: ChainOptions = {
+    maxTokens,
+    constrainToStorySchema: false,
+    deadlineMs,
+    structuredOutput,
+  };
+  const start = Date.now();
+  const deadline = start + deadlineMs;
+  const failures: LlmFailure[] = [];
+  const disabled = disabledProviders();
+
+  const openRouterModels = isProviderDisabled("openrouter", disabled)
+    ? []
+    : OPENROUTER_MODELS;
+  const openRouterPhaseEnd = start +
+    Math.floor(deadlineMs * FAST_OPENROUTER_SHARE);
+  const openRouterWindow = Math.max(0, openRouterPhaseEnd - start);
+  for (const [index, model] of openRouterModels.entries()) {
+    const modelDeadline = start +
+      Math.floor((openRouterWindow * (index + 1)) / openRouterModels.length);
+    try {
+      return await generateOpenRouterText(
+        model,
+        OPENROUTER_TIMEOUT_MS,
+        options,
+        systemPrompt,
+        userPrompt,
+        modelDeadline,
+        0,
+        () => undefined,
+      );
+    } catch (error) {
+      console.error(`${model} failed:`, error);
+      failures.push(classifyLlmError(error, "openrouter", model));
+    }
+  }
+
+  const spec = isProviderDisabled("openai", disabled)
+    ? undefined
+    : OPENAI_MODELS.find((model) => !model.reasoning);
+  if (spec) {
+    try {
+      const text = await generateOpenAIText(
+        spec,
+        OPENAI_TIMEOUT_MS,
+        options,
+        systemPrompt,
+        userPrompt,
+        deadline,
+        0,
+        () => undefined,
+      );
+      return { text, model: spec.model };
+    } catch (error) {
+      console.error(`${spec.model} failed:`, error);
+      failures.push(classifyLlmError(error, "openai", spec.model));
+    }
+  }
+
+  throw new AllProvidersFailedError(failures);
+}
+
+/**
  * Rewrite a single paragraph for the Create Studio editor.
  */
 export function editParagraph(
@@ -369,6 +574,8 @@ export interface ChainOptions {
   maxTokens: number;
   constrainToStorySchema: boolean;
   deadlineMs: number;
+  /** API-level strict JSON shape for compact non-story structured requests. */
+  structuredOutput?: StructuredOutputSpec;
   /**
    * The chapter length contract for this request. Omitted for paragraph edits,
    * which have no band. A generation outside its tolerated bounds is treated
@@ -378,24 +585,85 @@ export interface ChainOptions {
   wordBand?: WordBand;
 }
 
+export interface StructuredOutputSpec {
+  name: string;
+  schema: unknown;
+}
+
 export function geminiRequestShape(options: ChainOptions) {
+  const schema = structuredSchemaFor(options);
   return {
     generationConfig: {
       temperature: 0.8,
       topP: 0.95,
       maxOutputTokens: options.maxTokens,
-      ...(options.constrainToStorySchema
+      ...(schema
         ? {
           responseMimeType: "application/json",
-          responseSchema: geminiSchema(STORY_OUTPUT_JSON_SCHEMA),
+          responseSchema: geminiSchema(schema),
         }
         : {}),
     },
   };
 }
 
+/**
+ * The chat-completions contract for the OpenRouter position.
+ *
+ * It keeps `max_tokens` and `temperature` rather than adopting the OpenAI
+ * reasoning shape, because OpenRouter still routes to models that only
+ * understand the legacy pair and normalises per model on its side. What it adds
+ * is OpenRouter's own `reasoning` control and a floored budget, because the
+ * models in `OPENROUTER_MODELS` reason inside `max_tokens`:
+ *
+ * - `reasoning: { effort: "minimal" }` is sent explicitly. Reasoning is
+ *   mandatory on this endpoint: `reasoning: { enabled: false }` is rejected
+ *   with HTTP 400, "Reasoning is mandatory for this endpoint and cannot be
+ *   disabled." So the effort level is the only latency lever there is, and it
+ *   is worth a lot. Measured on the onboarding shaping call, same prompt,
+ *   same 8,000 budget:
+ *
+ *   | reasoning setting     | latency | reasoning tokens | result |
+ *   |-----------------------|---------|------------------|--------|
+ *   | omitted entirely      | 17.2s   | 2,286            | valid  |
+ *   | `max_tokens: 200`     | 16.6s   | 2,629            | valid  |
+ *   | `effort: "low"`       | 11.7s   | 1,161            | valid  |
+ *   | `effort: "minimal"`   | 8.0s    | 632              | valid  |
+ *
+ *   Note the second row: capping reasoning with `max_tokens` does not cap it,
+ *   it makes it worse. Only `effort` moves the number. Prose does not benefit
+ *   from long deliberation and every reasoning token is latency the reader
+ *   waits through, so this sits at the floor the endpoint allows.
+ *
+ *   Left unset entirely, `max_tokens: 1200` produced 1,197 reasoning tokens
+ *   and an empty `content` with HTTP 200, which is why the budget below has a
+ *   floor as well.
+ * - The budget is `maxTokens * 2`, floored at `OPENROUTER_MIN_OUTPUT_TOKENS`, so
+ *   a caller with a small visible budget - the paragraph editor at 2,000, the
+ *   onboarding shaping call at 900 - cannot be answered entirely in thought.
+ *
+ * A model in this position that does *not* reason ignores the extra parameter
+ * and is merely given a larger cap than it needs, which the response's own
+ * `finish_reason` already bounds. The free-tier models below reason and dump
+ * their chain of thought into `content`; an explicit minimal effort is the
+ * only lever this code has over that.
+ */
 export function openRouterRequestShape(options: ChainOptions) {
-  return openAICompatibleRequestShape(options);
+  const responseFormat = structuredResponseFormatFor(options);
+  return {
+    temperature: 0.8,
+    max_tokens: openRouterTokenBudget(options.maxTokens),
+    reasoning: { effort: "minimal" },
+    ...(responseFormat ? { response_format: responseFormat } : {}),
+  };
+}
+
+/** The visible budget plus reasoning headroom, never below the measured floor. */
+export function openRouterTokenBudget(maxTokens: number): number {
+  return Math.max(
+    OPENROUTER_MIN_OUTPUT_TOKENS,
+    maxTokens * OPENROUTER_REASONING_TOKEN_MULTIPLIER,
+  );
 }
 
 export function openAIRequestShape(
@@ -430,6 +698,54 @@ async function runProviderChain(
     );
   }
 
+  // OpenRouter leads. The default model is configured in `OPENROUTER_MODEL` and
+  // the standard tier stands immediately behind it, because the contributor tier
+  // is `404`-by-data-policy on this account until the privacy setting changes -
+  // see the constant. The window is split evenly across the two for the same
+  // reason the OpenAI window is: a stalled first entry must not spend the slice
+  // its own fallback needs.
+  const openRouterModels = isProviderDisabled("openrouter", disabled)
+    ? []
+    : OPENROUTER_MODELS;
+  const openRouterPhaseEnd = phaseDeadline(PHASE_END_SHARE.openrouter);
+  const openRouterPhaseStart = Date.now();
+  const openRouterWindow = Math.max(
+    0,
+    openRouterPhaseEnd - openRouterPhaseStart,
+  );
+  for (const [index, model] of openRouterModels.entries()) {
+    const modelDeadline = openRouterPhaseStart +
+      Math.floor((openRouterWindow * (index + 1)) / openRouterModels.length);
+    let resolvedModel = model;
+    const openRouterText = await tryProvider({
+      failures,
+      provider: "openrouter",
+      model,
+      run: async () => {
+        const result = await generateOpenRouterText(
+          model,
+          OPENROUTER_TIMEOUT_MS,
+          options,
+          systemPrompt,
+          userPrompt,
+          modelDeadline,
+          safetyLevel,
+          recordModerationRetry,
+        );
+        resolvedModel = result.model;
+        return requireUsableStoryOutput(result.text, options);
+      },
+    });
+    if (openRouterText) {
+      return { text: openRouterText, model: resolvedModel };
+    }
+  }
+
+  // Gemini second. It was the primary until 2026-09-05 and is kept as a real
+  // fallback rather than deleted: it bills on a different account entirely, so
+  // an OpenRouter billing or policy failure does not take it down too. It has
+  // hard-failed with `429 RESOURCE_EXHAUSTED` since 2026-08-31, which is why it
+  // is behind the model that actually answers and holds a small slice.
   const geminiResult = isProviderDisabled("gemini", disabled)
     ? null
     : await tryProvider({
@@ -450,32 +766,6 @@ async function runProviderChain(
     });
   if (geminiResult) {
     return { text: geminiResult, model: GEMINI_MODEL };
-  }
-
-  let openRouterModel = OPENROUTER_MODEL;
-  const openRouterText = isProviderDisabled("openrouter", disabled)
-    ? null
-    : await tryProvider({
-      failures,
-      provider: "openrouter",
-      model: OPENROUTER_MODEL,
-      run: async () => {
-        const result = await generateOpenRouterText(
-          OPENROUTER_MODEL,
-          OPENROUTER_TIMEOUT_MS,
-          options,
-          systemPrompt,
-          userPrompt,
-          phaseDeadline(PHASE_END_SHARE.openrouter),
-          safetyLevel,
-          recordModerationRetry,
-        );
-        openRouterModel = result.model;
-        return requireUsableStoryOutput(result.text, options);
-      },
-    });
-  if (openRouterText) {
-    return { text: openRouterText, model: openRouterModel };
   }
 
   // Each OpenAI model records its own failure, so telemetry shows whether the
@@ -763,6 +1053,7 @@ async function generateOpenRouterText(
         systemPrompt,
         userPrompt: moderationSafePrompt(userPrompt, attempt),
         deadline,
+        requestShape: openRouterRequestShape,
         headers: {
           "HTTP-Referer": "https://katha.ai",
           "X-Title": "Katha AI",
@@ -850,6 +1141,12 @@ async function chatCompletionRequest(input: {
   headers?: Record<string, string>;
   /** OpenAI reasoning models take a different chat-completions contract. */
   reasoning?: boolean;
+  /**
+   * Overrides the OpenAI-dialect shaping above. OpenRouter has its own
+   * `reasoning` control and its own budget floor, so it supplies its own shape
+   * rather than inheriting a contract written for api.openai.com.
+   */
+  requestShape?: (options: ChainOptions) => Record<string, unknown>;
 }): Promise<unknown> {
   return await withAbortTimeout(
     remainingDuration(input.deadline, input.timeoutMs),
@@ -868,7 +1165,9 @@ async function chatCompletionRequest(input: {
             { role: "system", content: input.systemPrompt },
             { role: "user", content: input.userPrompt },
           ],
-          ...(input.reasoning
+          ...(input.requestShape
+            ? input.requestShape(input.options)
+            : input.reasoning
             ? openAIReasoningRequestShape(input.options)
             : openAICompatibleRequestShape(input.options)),
         }),
@@ -888,12 +1187,11 @@ async function chatCompletionRequest(input: {
 }
 
 function openAICompatibleRequestShape(options: ChainOptions) {
+  const responseFormat = structuredResponseFormatFor(options);
   return {
     temperature: 0.8,
     max_tokens: options.maxTokens,
-    ...(options.constrainToStorySchema
-      ? { response_format: OPENAI_RESPONSE_FORMAT }
-      : {}),
+    ...(responseFormat ? { response_format: responseFormat } : {}),
   };
 }
 
@@ -907,14 +1205,34 @@ function openAICompatibleRequestShape(options: ChainOptions) {
  * token is latency the reader waits through and budget the story cannot spend.
  */
 function openAIReasoningRequestShape(options: ChainOptions) {
+  const responseFormat = structuredResponseFormatFor(options);
   return {
     max_completion_tokens: options.maxTokens *
       OPENAI_REASONING_TOKEN_MULTIPLIER,
     reasoning_effort: "low",
-    ...(options.constrainToStorySchema
-      ? { response_format: OPENAI_RESPONSE_FORMAT }
-      : {}),
+    ...(responseFormat ? { response_format: responseFormat } : {}),
   };
+}
+
+function structuredSchemaFor(options: ChainOptions): unknown | undefined {
+  if (options.structuredOutput) return options.structuredOutput.schema;
+  return options.constrainToStorySchema ? STORY_OUTPUT_JSON_SCHEMA : undefined;
+}
+
+function structuredResponseFormatFor(
+  options: ChainOptions,
+): unknown | undefined {
+  if (options.structuredOutput) {
+    return {
+      type: "json_schema",
+      json_schema: {
+        name: options.structuredOutput.name,
+        strict: true,
+        schema: options.structuredOutput.schema,
+      },
+    };
+  }
+  return options.constrainToStorySchema ? OPENAI_RESPONSE_FORMAT : undefined;
 }
 
 function moderationSafePrompt(userPrompt: string, attempt: number): string {

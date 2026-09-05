@@ -85,8 +85,8 @@ The rules:
 |---------|---------|-------------|--------|
 | **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
 | **OpenAI** | Cover images (gpt-image-1) | `OPENAI_API_KEY` in Supabase secrets + `backend/.env` | Set |
-| **Gemini** | Story generation primary (Gemini 3.1 Pro Preview) | `GEMINI_API_KEY` in Supabase secrets | Set, currently quota-blocked (`429 RESOURCE_EXHAUSTED`) |
-| **OpenRouter** | Free-router story generation fallback | `OPENROUTER_API_KEY` in Supabase secrets | Set, currently carrying fallback traffic |
+| **Gemini** | Story generation fallback (Gemini 3.1 Pro Preview) | `GEMINI_API_KEY` in Supabase secrets | Set, currently quota-blocked (`429 RESOURCE_EXHAUSTED`) |
+| **OpenRouter** | Story generation primary (Muse Spark) + free-router last resort | `OPENROUTER_API_KEY` in Supabase secrets | Set, serving all generation |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **RevenueCat** | Subscriptions + credit packs + paywalls | Public SDK key in `expo/src/lib/revenuecat.ts`; webhook secret in Supabase secrets | Pending dashboard setup |
@@ -96,17 +96,23 @@ The rules:
 
 ### LLM Fallback Chain
 
-Gemini 3.1 Pro Preview -> OpenRouter `google/gemini-2.5-flash` -> OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies. As of 2026-08-31 both preferred positions are blocked upstream — Gemini returns `429 RESOURCE_EXHAUSTED` and the pinned OpenRouter model returns `402 Insufficient credits` — so OpenAI `gpt-5.6-luna` is the model actually serving generation, with `gpt-5-mini` and `gpt-4o-mini` behind it and `openrouter/free` the last resort.
+OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
+
+**Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` was re-balanced with the reorder — cumulative shares are openrouter 0.5, gemini 0.65, openai 0.93, free 1.0 — because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last.
+
+**The contributor tier is `404` until an account setting changes.** `meta/muse-spark-1.3-contributor` is ~17x cheaper because it trains on prompts and completions, and the OpenRouter account's privacy setting blocks training-tier endpoints: `"Paid model training violation (account settings): 1 endpoint excluded"`. Change it at https://openrouter.ai/settings/privacy — that is a data decision (users' story ideas and generated prose go to the provider for training), and no deploy is involved either way. Until then `meta/muse-spark-1.3` serves; it was measured on 2026-09-05 returning schema-valid JSON in ~11s.
 
 **Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_STORY_API_KEY` falling back to `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
 
 **Set `OPENAI_STORY_API_KEY` to stop stories and covers sharing a blast radius.** `OPENAI_API_KEY` also authenticates `gpt-image-1` in `_shared/image.ts`. While it is the only key set, one spend cap, rate limit, revocation or rotation takes down covers *and* stories together — and with Gemini and OpenRouter unavailable, every position that can serve authenticates with it. The code already prefers the dedicated key; setting the secret is the whole change, and leaving it unset preserves current behaviour.
 
-**Model IDs:** `gemini-3.1-pro-preview`, `google/gemini-2.5-flash`, `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`, `openrouter/free`.
+**Model IDs:** `meta/muse-spark-1.3-contributor`, `meta/muse-spark-1.3`, `gemini-3.1-pro-preview`, `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`, `nvidia/nemotron-3-ultra-550b-a55b:free`, `openrouter/free`. (`google/gemini-2.5-flash` held the OpenRouter position until 2026-09-05.)
 
 **The OpenAI position is an ordered list, not one model.** `OPENAI_MODELS` in `_shared/llm.ts` tries `gpt-5.6-luna`, then `gpt-5-mini`, then `gpt-4o-mini`. Model access is granted per OpenAI **project**, not just per org — granting at org level alone still leaves `403 ... does not have access to model`. `/v1/models` lists models the project cannot call, so it is useless as an access probe; the only reliable check is an actual completion request. Granting access upstream needs no deploy — the 403 stops happening and the better model takes over, which is exactly how Luna went live on 2026-08-31.
 
 **Reasoning models take a different chat-completions contract.** `gpt-5.6-luna` and `gpt-5-mini` require `max_completion_tokens`, reject `max_tokens`, and ignore `temperature`; they also take `reasoning_effort: "low"`, because prose does not benefit from long deliberation and every reasoning token is latency the reader waits through. Reasoning tokens are counted *inside* that budget, so the reasoning path carries 2x headroom over the visible story length — without it a long story is truncated by the budget its own reasoning consumed. `gpt-4o-mini` and the OpenRouter path keep the legacy `max_tokens` + `temperature` shape, because OpenRouter still routes to models that only understand it. The `reasoning` flag on each `OpenAIModelSpec` selects the shape; never assume a new model shares the old one.
+
+**The Muse Spark models reason inside `max_tokens`, and that is how they fail silently.** Measured 2026-09-05: `max_tokens: 1200` with no reasoning control returned HTTP `200`, `finish_reason: "length"`, 1,197 reasoning tokens and an **empty content string**; `max_tokens: 8000` with `reasoning: {effort: "low"}` returned clean JSON on 957 reasoning + 1,408 completion tokens. So `openRouterRequestShape` sends an explicit `reasoning: { effort: "low" }` and floors the budget at `OPENROUTER_MIN_OUTPUT_TOKENS` (8,000) on top of a 2x multiplier — a multiplier alone leaves the paragraph editor at 4,000 and the onboarding shaping call at 1,800, which is the failing row. An empty-content `200` is rejected at the provider boundary by `openAICompatibleContent` and falls through to the next model; it must never be treated as a usable result. Reasoning tokens bill at the completion rate, so cost per call is far above prompt-plus-visible-output.
 
 **Every model whose identity is known in advance is tried before the free router.** `openrouter/free` routes to a random free model per request, so its output cap, latency and prose quality are not repeatable, and free-tier daily caps apply. Production has seen it hand a *code* model a prose rewrite, and a routed model whose output cap is under `max_tokens` returns `finish_reason: "length"`, which the parser rejects. It is the last-ditch attempt before the caller refunds the credit — never a position production leans on.
 
@@ -147,7 +153,9 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has migrations `00001`-`00015`, `00017`-`00023`, `00025` and `00026` applied. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00041` applied except the deliberately absent `00016` and `00024`. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+
+`_test.ts` files live alongside the `.sql` in this directory. The CLI skips them by filename pattern, which is why they are safe there, but they are not migrations and must never be numbered as if they were.
 
 ### Key Tables
 
@@ -164,13 +172,17 @@ Schema is in `backend/supabase/migrations/`. Remote production has migrations `0
 | **00023 (Observability retention)** | Detaches `error_events.user_id` from `profiles` so profile deletion cannot mutate, delete, or be blocked by telemetry |
 | **00025 (Observability erasure)** | Nulls `error_events.user_id` on profile deletion, plus on-demand erasure and a 90-day retention backstop (service role only) |
 | **00026 (Subscription credits)** | `credit_balance_buckets`, `credit_chargebacks`, `credit_spend_allocations`, `credit_lapse_operations`, `revenuecat_subscriptions` |
-| **Not yet created** | `device_tokens` (Phase G -- FCM/APNs token storage) |
+| **00034-00036 (Story shape + plan)** | `story_shape_rate_limits`, `anonymous_story_shape_rate_limits`, `anonymous_story_shape_global_limits`, `stories.beats` |
+| **00035 (Guest bootstrap)** | `anonymous_bootstrap_rate_limits`, `anonymous_bootstrap_global_limits` |
+| **00037 (Push)** | `push_tokens` |
+| **00038-00041 (Hardening)** | Profile update policy, shape-claim ordering, ledger tie-breaker, `characters.story_id` index |
 
 ### Credit Ledger Pattern
 
 - Append-only. Never update rows.
 - Service-only RPCs serialize mutations per user and require a new `operation_key` for idempotency without rewriting historical references.
-- Balance = newest ledger row by `created_at`, then `id`.
+- Balance = newest ledger row by `created_at`, then **`ledger_sequence`**, never `id`. UUIDs are not chronological, and `refresh_subscription_grant` writes two rows in one transaction with an identical `created_at`, so ordering by `id` returns one of them at random. `00040` fixed the six functions that still did this, and its test scans every function in `public` and fails on any new one that gets it wrong.
+- **`SELECT ... FOR UPDATE SKIP LOCKED` must never be used in the credit RPCs.** They take `pg_advisory_xact_lock` plus `FOR UPDATE` on a single row keyed by `user_id`, and they must *block* under contention. Skipping would return "no row" and silently drop a deduction or a grant. `SKIP LOCKED` is correct only for independent queue rows, such as the payment backlog drainer.
 - **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5).
 
 ### Security Gate
@@ -187,14 +199,19 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 | Function | Method | Purpose | Notes |
 |----------|--------|---------|-------|
-| `generate-story` | POST | Auth -> reserve credit -> LLM -> persist -> return | Text path done; image/audio Phase B |
+| `generate-story` | POST | Auth -> reserve credit -> LLM -> persist -> return | Buffered path. Kept for retries, replays, and non-streaming clients |
+| `generate-story-stream` | POST | The same contract, delivered as Server-Sent Events | **Preferred path.** First prose at ~5.6s against a ~49s total |
+| `shape-story` | POST | One structured call: title, cast, beats, opening | Onboarding + Create studio; rate-limited per user and per network |
+| `bootstrap-user` | POST | Anonymous profile + welcome grant, rate-limited | Must run before any other authed call: several tables FK to `profiles` |
+| `register-push-token` | POST | Upsert an Expo push token for the caller | Done |
+| `send-push` | POST | Service-role fan-out via Expo, with receipt handling | Not yet wired to a completion path |
 | `continue-story` | POST | Next chapter (author-only), max 7 chapters | Text path done |
 | `library` | GET | Paginated curated feed with genre filter + search | Done |
 | `feedback` | POST | Comments + one-time feedback credit reward | Done |
 | `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
 | `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
-| `generate-audio` | POST | MiniMax Speech 02 HD narration | Accepts `language` in body |
-| `audio-status` | GET | Check audio generation status | Done |
+| `generate-audio` | POST | Cached narration lookup | Fresh RunPod generation is blocked until the durable 1-credit audio unlock exists |
+| `audio-status` | GET | Cached narration lookup | Provider polling is blocked until jobs have a durable chapter binding |
 | `feed` | GET | Feed endpoint | Done |
 | `edit-story` | POST | Paragraph-level AI editing | Done |
 | `publish-story` | POST | Mark story published, trigger cover generation | Done |
@@ -203,7 +220,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ### Shared Utilities (`_shared/`)
 
-`revenuecat.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `image.ts`, `llm.ts`, `operations.ts`, `prompts.ts`, `story-prompts.ts`, `story_text.ts`, `uuid.ts` (plus test files).
+`chapters.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `push.ts`, `revenuecat.ts`, `runpod.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
 
 ### TODO Functions by Phase
 
@@ -223,38 +240,36 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `send-notification` | Push via FCM | G |
 | `referral-verify` | Referral fraud checks | H |
 
-## Story Generation System (v5.1)
+## Story Generation System (v6)
 
 The generation pipeline lives in `backend/supabase/functions/_shared/story-prompts.ts`. Shared types in `_shared/types.ts`, validation in `_shared/validation.ts`. The prompt spec is `source-of-truth/STORY_PROMPT_SYSTEM.md`.
 
-### Architecture (v5.1 modular layers)
+### Architecture (v6 modular layers)
 
-System prompts are assembled from 10 layers:
+System prompts are assembled from 9 layers:
 1. **Base craft + safety** -- anti-slop, show-don't-tell, rhythm, dialogue, formatting, safety rules
 2. **Story engine** -- protagonist, want, obstacle, stakes, irreversible choice, emotional turn, genre payoff, final image
 3. **Primary genre module** -- 15 voice modules with voice/pacing/what-works/what-to-avoid
 4. **Audience mode** -- kids constraints (ages 4-10, 500-1200 words, safe content)
 5. **Identity lens** -- queer lens guidance
-6. **Trope module** -- werewolf/vampire/enemiesToLovers/etc. rules per genre
-7. **Spice module** -- sweet (fade to black), steamy (sensuality on-page), explicit (feature-flagged)
-8. **Continuation/finale** -- mid-series and finale rules
-9. **Language** -- 15 supported languages
-10. **Output schema** -- structured JSON output format
+6. **Spice module** -- sweet (fade to black), steamy (sensuality on-page), explicit (feature-flagged)
+7. **Continuation/finale** -- mid-series and finale rules
+8. **Language** -- 15 supported languages
+9. **Output schema** -- structured JSON output format
 
 API:
-- `buildStorySystemPrompt({ primaryGenre, audienceMode?, identityLenses?, tropeModules?, spiceLevel?, language? })` -- modular system prompt.
+- `buildStorySystemPrompt({ primaryGenre, audienceMode?, identityLenses?, spiceLevel?, language?, chapterLength?, plannedChapterCount? })` -- modular system prompt.
 - `buildContinuationSystemPrompt({ ...above, mode: "chapter" | "finale" })` -- continuation prompt.
-- `buildUserPrompt({ primaryGenre, audienceMode?, tropeModules?, spiceLevel?, seed, characters?, language? })` -- user message.
+- `buildUserPrompt({ primaryGenre, audienceMode?, spiceLevel?, seed, characters?, language?, storyValues?, writingStyle?, avoid?, chapterLength?, plannedChapterCount? })` -- user message.
 - Old 2-arg signatures (`buildStorySystemPrompt(genre, language)`) still work as deprecated wrappers.
 
 ### Taxonomy
 
 - **15 primary genres**: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry.
 - **13 UI genres** (cozyFantasy + paranormalRomance are DB-only, hidden from UI).
-- **2 audience modes**: adult (default), kids (toggle chip in UI).
+- **2 audience modes**: adult (default), kids (full-width segmented control in Shape).
 - **Spice levels**: sweet (default), steamy, explicit (feature-flagged off).
 - **Identity lenses**: queer.
-- **10 trope modules**: werewolf, vampire, enemiesToLovers, secondChance, forcedProximity, smallTown, fatedMates, forbiddenLove, lockedRoom, secretIdentity. Genre-constrained.
 - **Genre migration map**: drama/sliceOfLife/darkAcademia -> contemporary, mythology -> fantasy, kids/bedtime -> adventure, lgbtq/motivational/spirituality -> contemporary.
 
 ### Quality Rules (enforced in every generation)
@@ -269,6 +284,21 @@ API:
 
 LLM returns JSON: `{ title, chapter_title, chapter_body, word_count, themes, first_line, previously_summary }`. Parsed by `parseStructuredOutput()` with text-based fallback via `parseGeneratedStoryText()`.
 
+### Streaming (`_shared/story-stream.ts`, `generate-story-stream/`)
+
+The preferred generation path. First prose reaches the reader at ~5.6s against a ~49s total, measured in production: an 8.8x improvement in the only latency a reader experiences. Same model, same prompt, same story.
+
+Rules an agent touching this must not break:
+
+- **Prose streams as plain text; metadata is a separate structured call.** `chapter_body` is a field inside a strict schema, so streaming it means recovering a string that is still being escaped, in an unguaranteed order. Do not try to incrementally parse the JSON. `series_state` in particular must stay behind a strict schema or series continuation breaks.
+- **The metadata schema is derived from `STORY_OUTPUT_JSON_SCHEMA`, never restated.** A field added to one must not be able to go missing from the other.
+- **Fallback is one-way.** A provider may be swapped before the first token and never after, because the reader has already read prose. `StreamCommittedError` marks that boundary. The credit refunds either way and whatever was shown stays on screen.
+- **Two timeouts, not one:** time-to-first-token and time-between-chunks. A single total-response timeout cannot separate "never started" from "stalled", and any value is wrong for one of them.
+- **Do not size `max_tokens` to the word band.** It caps reasoning and content together, so headroom for one is headroom for the other, and it can only ever stop the model mid-word. This was tried and produced a chapter with no ending. The cap is a runaway guard; the band is stated in the prompt and reported by `chapterLengthVerdict`.
+- **Client transport must be `expo/fetch`.** `supabase.functions.invoke()` buffers, and React Native's global `fetch` returns a null `response.body` -- code written against the web streaming API compiles, runs, and silently never streams.
+
+**Known open item:** this model overshoots the word band, writing 2,056-2,331 words against a 1,200-1,600 band with the band stated twice in the prompt. The streamed path cannot retry what has been read. Either the bands move or the model does, and `source-of-truth/CREDITS_AND_PRICING.md` moves with it because narration is priced per word.
+
 ### Validation
 
 `validateGenerationRequest()` in `_shared/validation.ts`:
@@ -277,15 +307,16 @@ LLM returns JSON: `{ title, chapter_title, chapter_body, word_count, themes, fir
 - Rejects darkRomance in kids mode
 - Rejects explicit spice (MVP gate)
 - Clamps spice to genre-allowed set
-- Filters tropes to genre-allowed set
 - Strips identity lenses in kids mode
-- 40-char seed minimum, 1000-char ceiling
+- One non-whitespace-character seed minimum, 1000-char ceiling
 
 `deriveContentRating(audienceMode, spiceLevel)` -> kids/steamy/explicit/sweet (stored on story row).
 
-### Series Limit
+### Series Length
 
-`MAX_SERIES_CHAPTERS = 7`. Enforced in `continue-story` endpoint. Auto-finale at chapter 7. Optional `is_finale` flag for early endings.
+`planned_chapter_count` is 3, 7 or 15. `continue-story` enforces that stored
+limit and automatically treats its final planned chapter as a finale. An
+optional `is_finale` flag can end a series early.
 
 ### Cultural Context
 
@@ -293,10 +324,10 @@ The AI infers cultural context from character names, traits, and story language.
 
 ### Input Requirements
 
-- **Story seed**: 40-character minimum (enforced both client-side and server-side).
-- **Characters**: optional (pre-filled placeholder in UI).
-- **Genre**: required, single-select from 13 UI genres.
-- **Language**: optional, defaults to English. 15 supported languages.
+- **Story idea**: one non-whitespace character minimum, 1000-character ceiling.
+- **Characters**: optional, maximum 3; detailed fields live in the Craft character screen.
+- **Genre**: required primary genre, with up to two editable secondary genre tags.
+- **Language**: new Create submissions support English and Portuguese. Existing stories retain legacy language support.
 
 ## Cover Image System
 
@@ -429,7 +460,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - **Reading is free, unlimited, on every tier, forever.** No caps, no metering, no daily pass.
 - **Audio is 1 credit per chapter, unlocked permanently.** No voice tiers.
 - **Drafting is free**: unlimited manual editing, 3 free AI redrafts and 20 free paragraph edits per chapter, 1 free cover regeneration per paid cover.
-- **Shipped today:** one AI-chosen short story of 500-1500 words, continuable to `MAX_SERIES_CHAPTERS` (7). **Planned, not yet built** (`source-of-truth/STORY_GENERATION_FLOW.md`): a chosen length of 3, 7 or 15 chapters driving pacing and finale derivation, advanced one Continue at a time, with *Write the rest* from chapter 3. There is no Interactive/Auto-Write mode toggle in either.
+- **Shipped today:** generation selects a Short, Standard or Long chapter band and stores a planned length of 3, 7 or 15 chapters. Continuations advance one chapter at a time and derive the finale from that stored length. The broader Create rebuild remains governed by `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
 - **3-credit welcome bonus**, granted only after the user declines both the paywall and the one-time offer.

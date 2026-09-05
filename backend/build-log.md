@@ -7,6 +7,170 @@
 
 ---
 
+## 2026-09-05 UTC — Create release integration and production smoke
+
+**Session:** Integrated the Create flow, prompt-system v6, story planning,
+streaming generation, guest bootstrap, and the independently completed writer
+onboarding without changing its implementation. Removed trope from the active
+product and runtime contracts; kids Values remains a separate kids-only field.
+
+### Production result
+
+A real browser run from `http://localhost:8090` used the placeholder email/OTP
+handoff, bootstrapped a guest with 3 credits, shaped a detailed adult romance,
+added two character sheets, reviewed the plan, and generated the story through
+the deployed backend. `The Jam and the Lease` completed as operation
+`552cd049-b2d0-40a6-90dd-01ab4bb3cb5a`: one 1,852-word chapter, a ready cover,
+and portraits for Anahita Contractor and Arjun Mehta. The operation persisted as
+`completed` with no error. A blank inferred character returned by one shaping
+response exposed an `Untitled character` card; the client now drops blank names
+and has a regression test.
+
+The first attempt used port 8091, which is intentionally absent from the exact
+CORS allowlist. That production-test failure is persisted as fingerprint
+`2a3d4e128810941ae09a6dac57c2f0d8` (`client.app` /
+`smoke_origin_not_allowlisted`, one occurrence). The shaping telemetry queried
+before release remains `5e60930b2675d2d6d146c232c7c22648` (provider failure,
+four occurrences) and `ba02a878d8d5170b715ac51addcc235a` (unhandled shaping,
+three occurrences); both are diagnosed by the preceding entry.
+
+### Release hardening
+
+- Replaced invalid placeholder values in `pnpm-workspace.yaml`'s install-script
+  allowlist with explicit approvals and restored the audited `uuid` override.
+- Terra security review found no create-flow release vulnerabilities. It did
+  surface a pre-existing high-risk paid narration path: any story owner could
+  repeatedly send arbitrary text to RunPod with no credit or idempotency gate.
+  Fresh narration is now blocked until the canonical one-credit audio-unlock
+  operation exists; already cached narration remains playable.
+- `audio-status` now performs an ownership-checked cached lookup and cannot
+  contact RunPod. An initial fix authorized the chapter before polling, but a
+  Terra re-review correctly rejected it because ownership did not bind the
+  caller-supplied job id to that chapter. Provider polling stays closed until
+  that binding is durable, closing the status/output IDOR rather than masking it.
+- The constrained residual risk is draft prose and character details in
+  AsyncStorage for seven days. Supabase auth tokens use SecureStore on native.
+- `pnpm audit` still reports two high `image-size@2.0.2` parser advisories in
+  Metro's build-only dependency graph. The registry still has no `2.0.3`
+  release, so the documented patched version cannot be installed; Metro only
+  reads repository-controlled assets in this workflow.
+
+### Gates
+
+Expo: TypeScript clean, 210 Jest tests / 16 suites, lint 0 errors (17 existing
+warnings), Expo Doctor 18/18, and production web export passed. Backend: 307
+Deno tests passed; all Edge Functions typechecked and 67 files passed
+`deno fmt --check`. Remote migrations match local through `00041`.
+
+---
+
+## 2026-09-05 UTC — Streaming, the shape-story deadline, and a backend security pass
+
+**Session:** The writer-flow tree committed and deployed, `shape-story` diagnosed and fixed, streamed generation built end to end, and a full audit of the 35 migrations and 18 edge functions actioned. Five commits on `codex/create-flow-rebuild`.
+
+### `shape-story` was never a deploy problem
+
+The handoff recorded `{"shape": null}` in production as an undeployed function. It reproduces on freshly deployed code, so that diagnosis was wrong, and the real cause is worth writing down because it is invisible from the response body: **the call site took the library's 8-second default deadline, and the call takes longer than that.**
+
+The budget is split before it is spent. `FAST_OPENROUTER_SHARE` gives OpenRouter 60%, and that window is divided again across the two models in `OPENROUTER_MODELS`, so the leader got roughly 2.4 seconds. Measured against the live model the same day:
+
+| variant | observed |
+|---|---|
+| onboarding (n=4) | 8.2s, 9.2s, 11.4s, 33.6s |
+| create studio (n=4) | 5.7s, 5.8s, 6.3s, 7.5s |
+
+Every provider aborted mid-flight, the chain exhausted, and the handler's own catch answered `null` — which is also what it answers when the user is rate-limited and when the model genuinely fails. Three different conditions, one response. That is why this took a day to find, and it is the observability lesson worth carrying: `shape: null` should not be the answer to "you are rate-limited", "the provider failed" and "you have no profile row".
+
+Onboarding now gets 45s because it is prefetched and warms behind the details, email and code screens; the Create studio gets 30s because the writer is watching it. Verified end to end after deploy: real title, three beats, a cast.
+
+**Fingerprints** (`error_event_summary`, per the observability gate): `5e60930b2675d2d6d146c232c7c22648` (`llm.provider` / `story_shape_failed`, 4 occurrences, first seen 08:09 UTC) is the deadline exhaustion. It predates this session's testing, which is what confirms the failure was live in production rather than an artefact of the smoke runs. `ba02a878d8d5170b715ac51addcc235a` (`generation.story` / `story_shape_unhandled`, 3 occurrences) is the missing-`profiles`-row foreign-key violation described below.
+
+A second, quieter bug surfaced on the way: an authenticated user with no `profiles` row cannot shape at all. `claim_story_shape_request` inserts into a table whose `user_id` references `profiles`, `handle_new_user` was dropped in `00013`, and the resulting foreign-key violation is swallowed into the same `{"shape": null}`. In practice the client always calls `bootstrap-user` first, so it is latent rather than live. It is recorded here rather than fixed, because the fix is the observability change above, not a patch to the RPC.
+
+### Streaming
+
+The headline. Generation was request/response end to end, so the reader watched a loader for the whole completion. Measured against production: **first prose at 5.6s against a 49.1s total, an 8.8x improvement in the only latency a reader experiences.** Same model, same prompt, same story.
+
+New `_shared/story-stream.ts` and `generate-story-stream/`. `generate-story` is untouched and stays the path for retries, replays and clients that cannot stream. Three design decisions carry the reasoning, and all three are commented in the code:
+
+**The call is split.** `chapter_body` lives inside a strict JSON schema, so streaming it means recovering a string that is still being escaped, in an order the schema does not guarantee. Prose streams as plain text; a second structured call turns the finished prose into title, themes, hook and `series_state`. It runs after the reader is already reading, so it costs perceived latency nothing, and it keeps the field a series cannot be continued without behind a strict schema rather than a partial-JSON parser. The metadata schema is *derived* from `STORY_OUTPUT_JSON_SCHEMA` rather than restated, so the two cannot drift.
+
+**Fallback becomes one-way.** Before the first token a provider is swapped silently. After it, it cannot be, because restarting rewrites text under the reader's eyes. `StreamCommittedError` is that boundary; the credit refunds either way and the prose already shown stays on screen.
+
+**Two clocks, not one.** A stream fails by never starting and by stalling once started, and a single total-response timeout cannot tell those apart: 70s kills nothing, 20s kills every chapter. Time-to-first-token and time-between-chunks are separate.
+
+**The word band could not be enforced by `max_tokens`, and this was tried before it was rejected.** `max_tokens` caps reasoning and content together, so headroom for one is headroom for the other — a 2,000-token reasoning allowance produced a 2,331-word chapter against a 1,200-1,600 band and never hit the cap, because the headroom *was* the overrun. Tightening it produced a 2,114-word chapter that simply stops. A chapter that runs long is flawed; a chapter with no ending is broken. So the cap is now a runaway guard only, the band is stated twice in the prompt, and `chapterLengthVerdict` reports the miss.
+
+**Open item, and it is a real one:** this model wrote 2,056, 2,114 and 2,331 words across three runs against a 1,200-1,600 band, with the band stated in two separate prompt sections. The streamed path cannot retry what has already been read. Either the bands move or the model does, and `CREDITS_AND_PRICING.md` moves with whichever, because narration is priced per word. This also implies the *non-streamed* path may be rejecting these same generations through `requireUsableChapterLength` and refunding — worth measuring before the next change to either.
+
+On the client, neither obvious transport works: `supabase.functions.invoke()` buffers the whole body, and React Native's `fetch` returns a null `response.body`, so streaming code written against the web platform compiles, runs, and silently never streams. Expo SDK 54's `expo/fetch` exposes a real `ReadableStream`, which is why this needed no new dependency. It cannot be loaded under jest-expo, so it is mapped to a stub in `jest.config.js`.
+
+### The audit
+
+A full read of every migration and edge function. Real findings, actioned in one commit:
+
+- **`audio-status` path injection.** `job_id` was interpolated into the RunPod URL with only a truthiness check while its two sibling parameters went through `parseUuid`. The URL parser normalizes dot-segments, so a crafted id reached a different RunPod endpoint carrying our account's API key. Verified blocked in production after deploy.
+- **`generate-audio`** bypassed the 128KB body bound by using `req.json()`, and stringified `voice_id` instead of allowlisting it.
+- **`profiles` had `USING` with no `WITH CHECK`** plus a table-wide UPDATE grant, so a user could rewrite their own row's `id` to another user's and could write the anti-fraud columns. Verified in production: legitimate updates still succeed, id and `referred_by` writes now 403.
+- **`claim_story_shape_request` incremented the global anonymous counter before a check that could still reject**, and `return false` in plpgsql does not roll back. One guest at 30 requests a minute burned 24 of the project's 500 daily slots to serve 6.
+- **Six ledger reads still tie-broke on `id desc`** — a random UUID — when `00026` added `ledger_sequence` for exactly that purpose. `refresh_subscription_grant` writes two rows in one transaction with identical `created_at`, so the balance shown after a renewal was a coin flip. A test now scans every function in `public` and fails on any ledger read using a different tie-breaker.
+- Plus: no index on `characters.story_id`, a `feed` query that could pull ~75,000 rows into an isolate at a deep page, a lost-update race in `edit-story` across its model call, and an IPv6 grant scope that mis-derived the /64 for compressed addresses.
+
+`00016_error_events.sql` was deleted. It was never applied and creates the same objects as `00018`, which shipped and which `00019`-`00025` then evolved; replaying it risked re-adding what those deliberately changed.
+
+### The three Postgres questions that prompted this session
+
+**Object storage: already correct.** No `bytea`, no blobs, no large objects anywhere. All media is in Supabase Storage buckets and Postgres holds only text URLs. One correction to the premise: RunPod is the TTS *generator*, not the store — `audio-status` copies the result into the `audio` bucket. The durable store for audio and images is the same thing.
+
+**`SELECT ... FOR UPDATE SKIP LOCKED`: one real home, and finding it found a gap.** `payment_event_backlog` is written by `revenuecat-webhook` and read by nothing, so a failed billing event is never replayed. Billing is not live yet, so this is closing the gap before it matters. Recorded prominently: `SKIP LOCKED` is **wrong** for the credit RPCs, which lock one row by `user_id` and must block rather than skip.
+
+**Unlogged tables: considered and skipped.** The five rate-limit tables qualify, but it is one tiny row-write per request, so the WAL saving is noise at current volume, and unlogged tables restore *empty* from Supabase's physical backups. Not worth the caveat for a gain nobody would feel.
+
+**On the "1,000-1,200 rps" figure:** Postgres will not be the wall. `anonymous_story_shape_global_limits` and `anonymous_bootstrap_global_limits` are one row per calendar day behind an advisory lock, so every anonymous request in a day serializes through a single row — a hard limit in the low hundreds. Sharding the counter is the fix when it is needed. It is not needed yet.
+
+### Gates
+
+`tsc --noEmit` clean, `eslint` 0 errors (17 pre-existing warnings), **209 Jest tests / 16 suites**, **Deno suite green**. Migrations `00038`-`00041` applied to `iafeuxgoiknncgyjmugd`; `shape-story`, `generate-story-stream`, `audio-status`, `generate-audio`, `edit-story`, `feed`, `bootstrap-user`, `register-push-token` and `send-push` deployed.
+
+---
+
+## 2026-09-05 UTC — Muse Spark as the default generation model, and the reasoning-token trap it brought
+
+**Session:** `meta/muse-spark-1.3-contributor` wired as the configured default across every generation path, the provider chain reordered so OpenRouter leads, phase shares re-balanced, and the cost basis recomputed from measured spend. No deploy, no commit.
+
+### The ordering decision
+
+OpenRouter now leads in code rather than by configuration. The alternative was `LLM_DISABLED_PROVIDERS=gemini`, and it was rejected: disabling Gemini does not demote it, it deletes it, and the requirement was that the fallback chain still exist and still work. Leading in code also means the default takes effect on deploy with no secret to remember, which is the point — walking through onboarding has to produce a real story.
+
+Order is now OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenAI (three models) -> free tier.
+
+`PHASE_END_SHARE` was re-balanced with the reorder, from `gemini 0.35 / openrouter 0.5 / openai 0.9 / free 1.0` to `openrouter 0.5 / gemini 0.65 / openai 0.93 / free 1.0`. These are cumulative, so moving a phase and leaving its share behind hands the new leader the old leader's 15% slice and starves whoever now runs last. The leader takes half because two models share it. Gemini keeps 15%: it has hard-failed with `429` since 2026-08-31 and a quota-blocked provider needs enough time to say so and no more.
+
+`generateFastStructuredText` was the path that would have been missed by assuming one constant covered everything. It is what `shape-story` calls, which is what onboarding calls, and it did not use the chain at all — it went straight to the first non-reasoning OpenAI model with **no fallback**. It now leads with `OPENROUTER_MODEL` and keeps the OpenAI model behind it, with the 8s deadline split 60/40 so a stalled leader cannot abort the fallback before `fetch` is called.
+
+### Two facts from live testing that inverted the brief
+
+**The contributor tier cannot serve a request on this account.** A real call returns `404`: `"Paid model training violation (account settings): 1 endpoint excluded"`. The tier is cheap because it trains on prompts and completions, and the account's OpenRouter privacy setting blocks exactly that. It is wired as the default anyway — the day the setting changes at https://openrouter.ai/settings/privacy the cheaper tier starts winning with no deploy, the same way Luna's entitlement went live. `meta/muse-spark-1.3` sits immediately behind it, so the `404` costs one round trip.
+
+**Both Muse Sparks are reasoning models, and reasoning tokens are counted inside `max_tokens`.** Measured the same day: `max_tokens: 1200` with no reasoning control returned HTTP `200`, `finish_reason: "length"`, 1,197 reasoning tokens and an **empty content string**. That is a success status carrying nothing. `openAICompatibleContent` already rejected it — both on `finish_reason: "length"` and on empty content — so it falls through rather than persisting a blank chapter, which was verified rather than assumed. But a position that always fails is not a position, so `openRouterRequestShape` now sends an explicit `reasoning: { effort: "low" }` and floors the budget at 8,000 tokens on top of a 2x multiplier. The floor is the part that matters: the multiplier alone leaves the paragraph editor at 4,000 and the onboarding shaping call at 1,800, and 1,800 is the failing row.
+
+`OPENROUTER_TIMEOUT_MS` went 30s -> 70s. 30s was set when this position was a fallback running a fast non-reasoning model. As the primary serving a 16,000-token visible budget it is not defensible; at 70s the phase share (60s of the 120s deadline) is the binding constraint, which is where the budget decision belongs.
+
+### Cost basis, recomputed from a measurement rather than a rate card
+
+A live shaping call billed **$0.006099** for ~154 prompt tokens and 1,408 completion tokens, **957 of them reasoning**. Two-thirds of the completion bill was thought. Every earlier text figure in this repo was a naive prompt-plus-visible-output calculation and understated cost by several multiples.
+
+Per ~1k-word chapter: **$0.0160** on `meta/muse-spark-1.3`, **$0.0009** on the contributor tier. The live figure is $0.0160, which is **4x more expensive than the $0.004 it replaces**, not cheaper — the saving is entirely on the tier that is currently blocked. Blended creation cost moves from $0.0092-$0.0274 to **$0.0198-$0.0326** per credit. §4's margins are computed against $0.0423 and are therefore still conservative, but the cushion narrowed from 4.6x to 1.3x; that was checked rather than assumed and is written into `CREDITS_AND_PRICING.md` §2.
+
+### Verification
+
+- `deno check supabase/functions/_shared/llm.ts`: clean. Also clean for `generate-story`, `continue-story`, `edit-story`, `shape-story`.
+- `deno test --allow-env --allow-net supabase/functions/_shared`: **241 passed**, of which `llm.test.ts` is 41 (6 new). New coverage: the default model id and its fallback, phase shares cumulative/ordered/summing to 1 with the leader largest, the budget floor against every caller's `maxTokens`, an end-to-end `404`-by-data-policy fallthrough that asserts the standard tier serves the story, an end-to-end empty-content `200` on the edit path, and `shape-story` leading with the default model.
+- `deno fmt --check` clean on both changed files.
+- No production-level test was run, so no `error_events` entry was required.
+
+---
+
 ## 2026-09-03 UTC — Story creation flow to production: deployed, measured, made faster
 
 **Session:** Credentials consolidated, the media/latency/security work built and deployed, migrations 00027-00031 applied to the live project, and the flow verified end to end against production. Builds on #46's contract rather than duplicating it.
@@ -1485,3 +1649,95 @@ QA results: 0 banned words, 0 banned phrases, 0 banned names, 0 em dashes, 0 bad
 - No production deployment was performed in this session. The two Supabase secrets
   `REVENUECAT_WEBHOOK_SECRET` and `SUBSCRIPTION_GRANT_CRON_SECRET` are set on
   `iafeuxgoiknncgyjmugd`.
+
+### Story prompt system migration (2026-09-04)
+
+- Removed the retired hidden flavour taxonomy end-to-end: the shared types,
+  validation, prompt assembly, client draft/request contract, generation RPC,
+  persisted `stories` column, continuation reconstruction, and focused tests no
+  longer accept or use it. Migration `00033_remove_trope_modules.sql` drops the
+  column and replaces `begin_story_generation` with its smaller contract.
+- Kept Kids Values separate and made it effective: it is sent only for Kids
+  stories, fenced as untrusted input, and instructs the model to explore values
+  through the story rather than state a lesson. The other stored brief fields
+  (`writing_style`, `avoid`, planned length and chapter length) now affect both
+  initial generation and continuation prompts.
+- `wordBandFor()` now takes the creator's selected Short/Standard/Long length
+  (600-900, 1,200-1,600, or 2,000-2,600 words). The same function supplies the
+  prompt, output validator and continuation path. `planned_chapter_count`
+  (3/7/15) now controls continuation limits and automatic finale derivation.
+- Updated the canonical flow, prompt-system, pricing and onboarding documents,
+  plus the repository contract, to remove stale behavior and make the retained
+  contract explicit. Research notes are in `../report-source.md`.
+- Local verification: 118 focused Deno tests passed and `deno check` passed for
+  changed Edge Function modules. Expo TypeScript passed. The focused Expo Jest
+  contract test could not start because the existing local installation lacks
+  `babel-preset-expo`; dependencies were not modified. No production-level test,
+  deployment, commit, or push was performed, so no `error_events` entry was
+  required.
+
+### Writer onboarding, the story plan, and push (2026-09-05)
+
+**The story plan.** The blueprint screen has always shown the writer an ordered
+outline before they pay, and nothing stored it: chapters were generated one at a
+time with no plan, so the shape a user approved and the story they received were
+unrelated. `stories.beats` (migration `00036`) closes that. The same free
+`shape-story` call now returns the plan alongside everything else,
+`validation.ts` clamps it to the planned chapter count rather than rejecting it,
+and `story-prompts.ts` gained a plan layer where beat N briefs chapter N with the
+remaining beats supplied as forward context. `continue-story` positions itself in
+the plan by chapter number. A typed *What happens next?* outranks the beat, and
+the prompt says so explicitly rather than leaving the precedence to inference.
+
+**It is called Chapters, never Arc.** `STORY_GENERATION_FLOW.md` §1 bans `Arc`
+from the interface, and the design that asked for a "story arc with regenerate"
+was generated from `research/R2-onboarding-conversion.md`, which predates that
+decision. Per-beat regeneration was also refused: it costs a model call per tap
+and a beat rewritten alone stops setting up the one after it. Beats are instead
+editable by hand - free, instant, local - and `Try another` swaps the whole plan
+for the next precomputed variant, rendering only when one exists.
+
+**One call, not two.** Onboarding needs a title and 120-180 words of real opening
+that the Create studio does not. Rather than a second request, `shape-story`
+takes a `variant` and widens its schema. Onboarding stays inside the one-model-call
+budget in `ONBOARDING_FLOW.md` §16.
+
+**The writer path.** `expo/src/screens/WriterOnboarding.tsx` runs idea, details,
+email, crafting, blueprint, preview, paywall, one-time offer, notifications,
+welcome, and hands the result to `CreateStudioScreen` as a pre-filled draft.
+Generation is never automatic on arrival: the user presses `Create · 3 ✦`
+themselves, so a bounce cannot silently spend a whole welcome grant.
+
+**The crafting wait** is ported from an HTML prototype to Reanimated 4 and
+`react-native-svg`, with hex values replaced by theme tokens. Its progress bar is
+driven by real stage transitions and is hidden entirely in the one place where
+there is nothing to measure - a single request whose stages the provider does not
+report. Cycling the stage names there is truthful; a bar measuring them would not
+be.
+
+**Push.** `push_tokens` (migration `00037`), `register-push-token` and
+`send-push`, over Expo Push rather than FCM and APNs directly. Receipts are read
+and dead tokens pruned: acceptance is not delivery, and a sender that ignores
+`DeviceNotRegistered` accumulates dead tokens until the project is throttled. The
+permission ask is a soft pre-prompt, because iOS grants exactly one system dialog
+per install. `POST_NOTIFICATIONS` is declared explicitly in `app.json`.
+
+**Credits.** The welcome bonus is now 10 and the guest bootstrap is a separate
+3-credit grant under `guest_bootstrap:{user_id}`. They diverge deliberately: the
+named grant is protected by Apple / Google / email, the guest grant only by a
+network-prefix limit of three per 24 hours, and three grants of 10 per network
+per day against an unauthenticated surface is a farm. **The §2 Writer-yearly
+40%-margin row has not been re-run against 10** and that is the open item this
+change carries.
+
+**Referral redemption** is deep-link attribution with a code field in Profile as
+the fallback. There is no code field on the paywall and there will not be: it
+tells every user without a code that someone else pays less, and the referral
+pays credits rather than a discount, so a code entered there has nothing to act
+on.
+
+- Local verification: 217 Deno tests pass, `deno check` passes for every edge
+  function, `deno fmt --check` passes for `_shared`. Expo typecheck passes, lint
+  reports 0 errors (19 pre-existing warnings in legacy `.jsx`), and 85 Jest tests
+  pass across 11 suites. No deployment, and no EAS build, so push has not been
+  exercised against real APNs or FCM credentials.

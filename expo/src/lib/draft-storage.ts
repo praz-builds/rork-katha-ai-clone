@@ -1,21 +1,23 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  type CreationLanguage,
+  type CreateDraft,
+  normalizeCreationLanguage,
+} from "@/types/domain";
 
 const DRAFT_KEY = "katha:create:draft";
 const STALE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-interface PersistedDraft {
-  primaryGenre: string;
-  audienceMode: string;
-  spiceLevel: string;
-  identityLenses: string[];
-  tropeModules: string[];
-  seed: string;
-  language: string;
-  characters: { name: string; description: string; isHero: boolean }[];
+type PersistedDraft = CreateDraft & {
+  language: CreationLanguage;
+  isSeries: boolean;
+  visibility: "private" | "public";
   savedAt: number;
-}
+};
 
-export async function saveDraft(draft: Omit<PersistedDraft, "savedAt">): Promise<void> {
+export async function saveDraft(
+  draft: Omit<PersistedDraft, "savedAt">,
+): Promise<void> {
   try {
     const payload: PersistedDraft = { ...draft, savedAt: Date.now() };
     await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
@@ -24,7 +26,9 @@ export async function saveDraft(draft: Omit<PersistedDraft, "savedAt">): Promise
   }
 }
 
-export async function loadDraft(): Promise<Omit<PersistedDraft, "savedAt"> | null> {
+export async function loadDraft(): Promise<
+  Omit<PersistedDraft, "savedAt"> | null
+> {
   try {
     const raw = await AsyncStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
@@ -43,7 +47,21 @@ export async function loadDraft(): Promise<Omit<PersistedDraft, "savedAt"> | nul
       return null;
     }
     const { savedAt: _, ...draft } = parsed;
-    return draft;
+    // Spanish remains readable on existing stories but is no longer a creation
+    // choice. A locally cached legacy draft opens in English rather than
+    // creating an invalid request.
+    const characters = Array.isArray(draft.characters) ? draft.characters : [];
+    const leadIndex = characters.findIndex((character) => character?.isHero === true);
+    return {
+      ...draft,
+      characters: characters.map((character, index) => ({
+        ...character,
+        isHero: index === (leadIndex >= 0 ? leadIndex : 0),
+      })),
+      language: normalizeCreationLanguage(draft.language),
+      isSeries: draft.isSeries !== false,
+      visibility: draft.visibility === "public" ? "public" : "private",
+    };
   } catch {
     return null;
   }

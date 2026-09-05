@@ -1,5 +1,5 @@
 /**
- * Modular story generation prompt system for Katha AI (v5.1).
+ * Modular story generation prompt system for Katha AI (v6).
  *
  * Assembles prompts from layered modules:
  * 1. Base craft + safety rules
@@ -7,11 +7,10 @@
  * 3. Primary genre voice module
  * 4. Audience mode (kids constraints)
  * 5. Identity lens (queer)
- * 6. Trope module rules
- * 7. Spice module rules
- * 8. Continuation/finale
- * 9. Language
- * 10. Output schema reminder
+ * 6. Spice module rules
+ * 7. Continuation/finale
+ * 8. Language
+ * 9. Output schema reminder
  */
 
 import type {
@@ -23,10 +22,14 @@ import type {
   SeriesState,
   SpiceLevel,
   StoryMode,
-  TropeModule,
   WordBand,
 } from "./types.ts";
-import { GENRE_MIGRATION_MAP, wordBandFor } from "./types.ts";
+import {
+  DEFAULT_CHAPTER_LENGTH,
+  DEFAULT_PLANNED_CHAPTER_COUNT,
+  GENRE_MIGRATION_MAP,
+  wordBandFor,
+} from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Banned vocabulary
@@ -351,6 +354,26 @@ The series_state you return is the state AFTER this chapter, not a copy of the s
 - Keep "central_conflict" stable unless this chapter genuinely redefined it.${stateSection}`;
 }
 
+function buildPlannedLengthRules(
+  storyMode: StoryMode | undefined,
+  chapterRole: ChapterRole | undefined,
+  plannedChapterCount: 3 | 7 | 15 | undefined,
+): string {
+  if (storyMode !== "series") return "";
+  const total = plannedChapterCount ?? DEFAULT_PLANNED_CHAPTER_COUNT;
+  const role = chapterRole ?? "series_opening";
+  const position = role === "series_opening"
+    ? "Establish the central pressure and leave meaningful escalation for later chapters."
+    : role === "finale"
+    ? "Resolve the promise of the complete arc; do not create a fresh central conflict."
+    : "Advance the central pressure without spending the final payoff early.";
+  return `
+
+## Planned Series Length
+
+This is a ${total}-chapter story. ${position}`;
+}
+
 /**
  * Fence used to isolate persisted series state from the instruction channel.
  *
@@ -452,7 +475,7 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     whatWorks:
       "Power imbalances that shift. Characters who are wrong for each other and know it. Dialogue as combat. Physical awareness that borders on obsessive. Vulnerability earned through conflict, not given freely.",
     whatToAvoid:
-      "Romanticizing abuse without awareness. One-dimensional 'bad boy' tropes. Consent violations played as romantic. Characters who are cruel without complexity.",
+      "Romanticizing abuse without awareness. One-dimensional 'bad boy' cliches. Consent violations played as romantic. Characters who are cruel without complexity.",
   },
   cozyFantasy: {
     voice:
@@ -657,48 +680,7 @@ Write LGBTQ+ characters and relationships with the same depth, complexity, and n
 }
 
 // ---------------------------------------------------------------------------
-// Layer 6: Trope modules
-// ---------------------------------------------------------------------------
-
-function buildTropeRules(tropes?: string[]): string {
-  if (!tropes?.length) return "";
-  const tropeDescriptions: Record<string, string> = {
-    werewolf:
-      "Include werewolf pack dynamics: alpha hierarchy, territorial instincts, the pull between human reason and wolf nature. The shift should be visceral and sensory. Pack loyalty conflicts with individual desire.",
-    vampire:
-      "Include vampire mythology: the feeding dynamic as intimacy, immortality as isolation, the predator-prey tension between vampire and human. Nighttime settings. The contrast between elegant restraint and raw hunger.",
-    enemiesToLovers:
-      "The leads begin as adversaries with genuine, justified conflict. The attraction builds against their will. Each concession feels like losing ground. The moment they stop fighting it should feel inevitable but earned.",
-    secondChance:
-      "The leads have a shared past and unresolved history. Old wounds resurface through specific memories and callbacks. The tension is between who they were and who they've become. Forgiveness is earned, not given.",
-    forcedProximity:
-      "The leads are stuck together by circumstance (stranded, coworkers, shared space). Physical closeness builds tension. Small domestic details become charged. The inability to escape forces honesty.",
-    smallTown:
-      "The setting is a small community where everyone knows everyone. Gossip travels. Privacy is impossible. The town itself is a character with its own rhythms, traditions, and secrets.",
-    fatedMates:
-      "A supernatural or magical bond draws the leads together. The tension is between destiny and free will. The bond should complicate rather than simplify the relationship. Characters resist or question the bond.",
-    forbiddenLove:
-      "The relationship violates a rule, boundary, or social norm. The stakes of being discovered are real and specific. Secrecy heightens every interaction. The forbidden element should create genuine moral complexity.",
-    lockedRoom:
-      "A closed environment with limited suspects or escape routes. The mystery or threat comes from within the group. Paranoia builds. Everyone has secrets. The solution must be achievable with only the information available inside the locked space.",
-    secretIdentity:
-      "A character hides who they truly are. The dramatic irony between what the reader knows and what other characters know creates tension. The reveal must have consequences that change relationships permanently.",
-  };
-
-  const parts = tropes
-    .filter((t) => tropeDescriptions[t])
-    .map((t) => `- **${t}:** ${tropeDescriptions[t]}`);
-
-  if (!parts.length) return "";
-  return `
-
-## Trope Guidance
-
-${parts.join("\n")}`;
-}
-
-// ---------------------------------------------------------------------------
-// Layer 7: Spice module
+// Layer 6: Spice module
 // ---------------------------------------------------------------------------
 
 function buildSpiceRules(spice?: SpiceLevel): string {
@@ -823,9 +805,6 @@ function normalizeGenre(genre: string): string {
 // Public API: System prompt builders
 // ---------------------------------------------------------------------------
 
-/** Maximum number of chapters in a series. */
-export const MAX_SERIES_CHAPTERS = 7;
-
 interface SystemPromptParams {
   primaryGenre: string;
   storyMode?: StoryMode;
@@ -833,16 +812,17 @@ interface SystemPromptParams {
   seriesState?: SeriesState;
   audienceMode?: AudienceMode;
   identityLenses?: IdentityLens[];
-  tropeModules?: TropeModule[];
   spiceLevel?: SpiceLevel;
   language?: string;
+  chapterLength?: "short" | "standard" | "long";
+  plannedChapterCount?: 3 | 7 | 15;
 }
 
 /**
  * Build a complete system prompt for initial story generation.
  *
- * v5.1 modular assembly: base + engine + genre + audience + identity +
- * trope + spice + language + output schema.
+ * v6 modular assembly: base + engine + genre + audience + identity +
+ * spice + language + output schema.
  */
 export function buildStorySystemPrompt(params: SystemPromptParams): string;
 /** @deprecated Use the object-param overload. */
@@ -876,6 +856,7 @@ function buildStoryPromptBody(params: SystemPromptParams): string {
   const band = wordBandFor(
     params.storyMode ?? "standalone",
     params.audienceMode ?? "adult",
+    params.chapterLength ?? DEFAULT_CHAPTER_LENGTH,
   );
 
   return [
@@ -895,12 +876,64 @@ function buildStoryPromptBody(params: SystemPromptParams): string {
       band,
     ),
     buildIdentityLensRules(params.identityLenses),
-    buildTropeRules(params.tropeModules),
     buildSpiceRules(
       params.audienceMode === "kids" ? "sweet" : params.spiceLevel,
     ),
+    buildPlannedLengthRules(
+      params.storyMode,
+      params.chapterRole,
+      params.plannedChapterCount,
+    ),
     buildLanguageSection(params.language),
   ].join("");
+}
+
+/**
+ * The output contract for the streamed path: prose, and nothing else.
+ *
+ * The JSON contract in `buildOutputSchema` cannot be streamed usefully - the
+ * prose is a value inside an object, so it arrives escaped, a character at a
+ * time, in an order the schema does not guarantee. The streamed path therefore
+ * asks for the chapter alone and recovers the structured fields afterwards with
+ * a second call (`story-stream.ts`).
+ *
+ * The negative instructions are not padding. A model asked for prose after a
+ * prompt body this long will otherwise open with "Here is your chapter:" or
+ * wrap the whole thing in a fence, and on the streamed path that lands in the
+ * reader's view as the first thing they ever see of the story.
+ */
+function buildProseOutputContract(band: WordBand): string {
+  return `
+
+## Output Format (CRITICAL)
+
+Respond with the chapter text and nothing else.
+
+Do not write a title, a chapter heading, a preamble, a summary, or any commentary before or after the prose. Do not wrap the response in markdown fences. Do not return JSON.
+
+Separate paragraphs with a blank line. Begin with the first sentence of the story itself.
+
+Length is a hard requirement, not a target: write between ${band.min} and ${band.max} words. Bring the chapter to a close inside that range rather than running past it.`;
+}
+
+/**
+ * The system prompt for a streamed chapter: the full story prompt, asking for
+ * prose instead of a JSON object.
+ *
+ * Everything above the output contract is shared with the non-streaming path by
+ * construction, so a change to the voice, band, genre or audience rules reaches
+ * both. Only the last section differs, which is the one section that has to.
+ */
+export function buildStoryProsePrompt(params: SystemPromptParams): string {
+  // The same band the body was rendered from, and the same one
+  // `chapterLengthVerdict` measures against, so the prompt, the physical token
+  // cap and the check can never state three different numbers.
+  const band = wordBandFor(
+    params.storyMode ?? "standalone",
+    params.audienceMode ?? "adult",
+    params.chapterLength ?? DEFAULT_CHAPTER_LENGTH,
+  );
+  return buildStoryPromptBody(params) + buildProseOutputContract(band);
 }
 
 /**
@@ -945,9 +978,10 @@ export function buildContinuationSystemPrompt(
       primaryGenre: params.primaryGenre,
       audienceMode: params.audienceMode,
       identityLenses: params.identityLenses,
-      tropeModules: params.tropeModules,
       spiceLevel: params.spiceLevel,
       language: params.language,
+      chapterLength: params.chapterLength,
+      plannedChapterCount: params.plannedChapterCount,
       storyMode: "series",
       chapterRole: params.mode === "finale" ? "finale" : "mid_series",
       seriesState: params.seriesState,
@@ -959,6 +993,7 @@ export function buildContinuationSystemPrompt(
   const continuationBand = wordBandFor(
     "series",
     params.audienceMode ?? "adult",
+    params.chapterLength ?? DEFAULT_CHAPTER_LENGTH,
   );
 
   const sharedRules = `
@@ -1031,7 +1066,7 @@ This chapter is part of an ongoing series. The story is NOT ending yet:
  * already covers.
  */
 export function fenceUserText(value: string): string {
-  return value.replace(/<\/?katha:[a-z-]*>?/gi, "").trim();
+  return value.replace(/<\s*\/?\s*katha\s*:\s*[a-z-]*\s*>?/gi, "").trim();
 }
 
 /** Every label this module fences with, for tests to assert against. */
@@ -1043,23 +1078,91 @@ export const USER_FIELD_LABELS = [
   "background",
   "appearance",
   "moment",
+  "value",
+  "writing-style",
+  "avoid",
+  "next-chapter",
 ] as const;
 
 /** Render one labelled, fenced span of user-authored text. */
-function userField(label: string, value: string): string {
+export function userField(label: string, value: string): string {
   return `<katha:${label}>\n${fenceUserText(value)}\n</katha:${label}>`;
+}
+
+/**
+ * The approved outline, positioned for the chapter being written.
+ *
+ * Beats are writer-authored free text and reach the prompt fenced, like every
+ * other user field. A plan shorter than the story is legal and common: the
+ * tail is simply unbriefed and the model paces it, which is the behaviour every
+ * story generated before the plan existed already has.
+ */
+function buildPlanSection(
+  beats: string[] | undefined,
+  chapterNumber: number | undefined,
+  options: { hasContinuationInstruction: boolean },
+): string[] {
+  const plan = (beats ?? []).map((beat) => beat.trim()).filter(Boolean);
+  if (!plan.length) return [];
+
+  // Chapter numbers are 1-indexed in the product and in this prompt. A missing
+  // or nonsensical value means chapter one rather than an error, because a plan
+  // is worth using even when the caller forgot to say where it is.
+  const index =
+    Number.isInteger(chapterNumber) && (chapterNumber as number) >= 1
+      ? (chapterNumber as number)
+      : 1;
+  const current = plan[index - 1];
+  const upcoming = plan.slice(index);
+
+  const parts: string[] = [];
+  if (current) {
+    parts.push(
+      `The writer approved a plan for this story. This is chapter ${index} of ${plan.length} planned beats, and this chapter must deliver its beat:\n${
+        userField("beat", current)
+      }\nWrite the beat as a scene, not as a summary of it. It is the spine of the chapter, not the whole chapter.`,
+    );
+    // A typed "what happens next" is the writer re-planning in the moment. It
+    // has to outrank the beat or the box would be decorative, and saying so
+    // explicitly is cheaper than hoping the model infers the precedence.
+    if (options.hasContinuationInstruction) {
+      parts.push(
+        "The reader direction above was written after the plan. Where the two disagree, follow the reader direction and carry the beat forward instead of dropping it.",
+      );
+    }
+  } else {
+    parts.push(
+      `This chapter falls past the end of the writer's ${plan.length}-beat plan. Continue from where the story stands and pace it yourself.`,
+    );
+  }
+
+  if (upcoming.length) {
+    parts.push(
+      "Beats still to come. Set them up, do not spend them here:",
+    );
+    for (const beat of upcoming) parts.push(`- ${userField("beat", beat)}`);
+  }
+  return parts;
 }
 
 export function buildUserPrompt(params: {
   primaryGenre: string;
+  genres?: string[];
   whereAndWhen?: string;
   moments?: string[];
+  beats?: string[];
+  chapterNumber?: number;
   storyMode?: StoryMode;
   chapterRole?: ChapterRole;
   seriesState?: SeriesState;
   audienceMode?: AudienceMode;
-  tropeModules?: TropeModule[];
   spiceLevel?: SpiceLevel;
+  storyValues?: string[];
+  writingStyle?: string;
+  avoid?: string;
+  continuationInstruction?: string;
+  chapterLength?: "short" | "standard" | "long";
+  plannedChapterCount?: 3 | 7 | 15;
   seed: string;
   characters?: CharacterInput[];
   language?: string;
@@ -1073,17 +1176,25 @@ export function buildUserPrompt(params: {
 }): string;
 export function buildUserPrompt(params: {
   primaryGenre?: string;
+  genres?: string[];
   genre?: string[];
   audienceMode?: string;
   storyMode?: string;
   chapterRole?: string;
   seriesState?: SeriesState;
-  tropeModules?: string[];
   spiceLevel?: string;
+  storyValues?: string[];
+  writingStyle?: string;
+  avoid?: string;
+  continuationInstruction?: string;
+  chapterLength?: "short" | "standard" | "long";
+  plannedChapterCount?: 3 | 7 | 15;
   seed?: string;
   topic?: string;
   whereAndWhen?: string;
   moments?: string[];
+  beats?: string[];
+  chapterNumber?: number;
   characters?: {
     name: string;
     description?: string;
@@ -1102,12 +1213,12 @@ export function buildUserPrompt(params: {
   // Determine seed
   const seed = params.seed ?? params.topic;
 
-  // A series chapter uses the chapter range regardless of audience; kids only
-  // narrows the standalone range. Both come from wordBandFor(), so the user
-  // prompt states the same numbers as the system prompt and the validator.
+  // Both the user prompt and the system prompt use the selected chapter length,
+  // so the request, provider enforcement, and prose instruction agree.
   const band = wordBandFor(
     params.storyMode === "series" ? "series" : "standalone",
     params.audienceMode === "kids" ? "kids" : "adult",
+    params.chapterLength ?? DEFAULT_CHAPTER_LENGTH,
   );
   const wordRange = `${band.min}-${band.max}`;
 
@@ -1117,6 +1228,16 @@ export function buildUserPrompt(params: {
       : `Write a short story (${wordRange} words).`,
   );
   parts.push(`Genre: ${genreLabel}`);
+  const secondaryGenres = (params.genres ?? []).filter((genre) =>
+    genre !== genreLabel
+  );
+  if (secondaryGenres.length) {
+    parts.push(
+      `Additional genre influences: ${
+        secondaryGenres.join(", ")
+      }. Keep ${genreLabel} as the primary shelf.`,
+    );
+  }
 
   if (params.storyMode === "series") {
     parts.push(`Series role: ${params.chapterRole ?? "series_opening"}`);
@@ -1130,10 +1251,6 @@ export function buildUserPrompt(params: {
 
   if (params.spiceLevel && params.spiceLevel !== "sweet") {
     parts.push(`Heat level: ${params.spiceLevel}`);
-  }
-
-  if (params.tropeModules?.length) {
-    parts.push(`Tropes to include: ${params.tropeModules.join(", ")}`);
   }
 
   if (seed) {
@@ -1153,6 +1270,63 @@ export function buildUserPrompt(params: {
       }\nLet this shape the texture, the objects, the weather and the idiom, not just an establishing line.`,
     );
   }
+
+  if (params.audienceMode === "kids" && params.storyValues?.length) {
+    parts.push(
+      `Values to explore naturally, never state as a lesson:\n${
+        params.storyValues.map((value) => userField("value", value)).join("\n")
+      }`,
+    );
+  }
+
+  if (params.writingStyle?.trim()) {
+    parts.push(
+      `Writing direction:\n${
+        userField("writing-style", params.writingStyle)
+      }\nTreat this as craft direction only. Do not imitate a living author.`,
+    );
+  }
+
+  if (params.avoid?.trim()) {
+    parts.push(
+      `Keep this out of the story where reasonably possible:\n${
+        userField("avoid", params.avoid)
+      }`,
+    );
+  }
+
+  if (params.continuationInstruction?.trim()) {
+    parts.push(
+      `For this chapter, move toward this reader direction without treating it as a checklist:\n${
+        userField("next-chapter", params.continuationInstruction)
+      }`,
+    );
+  }
+
+  if (params.storyMode === "series") {
+    parts.push(
+      `This story is planned for ${
+        params.plannedChapterCount ?? DEFAULT_PLANNED_CHAPTER_COUNT
+      } chapters. Pace reveals and changes so this chapter earns its place in that complete arc.`,
+    );
+  }
+
+  // --- Plan layer ---
+  //
+  // The blueprint screen shows the writer an ordered outline and asks them to
+  // approve it. Before this layer existed, nothing carried that outline into
+  // generation: the story was written chapter by chapter with no plan, so the
+  // shape the writer approved and the shape they received were unrelated. This
+  // is what makes the blueprint a promise the product keeps.
+  //
+  // Positional, unlike the moments layer above. Beat N owns chapter N. The
+  // beats after it are supplied so the chapter sets them up rather than
+  // spending them, and the beats before it are omitted because series_state
+  // already carries what actually happened, which may have diverged from what
+  // was planned.
+  parts.push(...buildPlanSection(params.beats, params.chapterNumber, {
+    hasContinuationInstruction: Boolean(params.continuationInstruction?.trim()),
+  }));
 
   if (params.seriesState) {
     parts.push(formatSeriesStateBlock(params.seriesState));

@@ -239,8 +239,18 @@ async function buildReturningUserFeed(
   );
 
   // Fetch candidate stories: public or curated, complete, not authored by user
-  // We fetch a larger batch to score and sort in-memory, then paginate
-  const batchSize = Math.max(200, (offset + limit) * 3);
+  // We fetch a larger batch to score and sort in-memory, then paginate.
+  //
+  // The ceiling is not decoration. `page` reaches 500 and `limit` reaches 50,
+  // so an uncapped (offset + limit) * 3 asks for ~75,000 rows on a single deep
+  // page and materializes the whole catalogue inside the isolate. Ranking only
+  // ever reads the newest slice anyway, so a deep page returning short is the
+  // correct answer rather than a bug worth spending that memory to avoid.
+  const MAX_CANDIDATE_BATCH = 500;
+  const batchSize = Math.min(
+    MAX_CANDIDATE_BATCH,
+    Math.max(200, (offset + limit) * 3),
+  );
 
   let candidateQuery = serviceClient
     .from("stories")

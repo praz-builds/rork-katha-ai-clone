@@ -1,13 +1,21 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { constantTimeEquals, REVENUECAT_PRODUCT_MAP } from "../_shared/revenuecat.ts";
-import { isDuplicateCreditOperationError, refreshSubscriptionGrant } from "../_shared/credits.ts";
+import {
+  constantTimeEquals,
+  REVENUECAT_PRODUCT_MAP,
+} from "../_shared/revenuecat.ts";
+import {
+  isDuplicateCreditOperationError,
+  refreshSubscriptionGrant,
+} from "../_shared/credits.ts";
 
 const CRON_SECRET = Deno.env.get("SUBSCRIPTION_GRANT_CRON_SECRET");
 const PAGE_SIZE = 250;
 
 serve(async (req) => {
-  if (req.method !== "POST") return response({ error: "Method not allowed" }, 405);
+  if (req.method !== "POST") {
+    return response({ error: "Method not allowed" }, 405);
+  }
   if (!CRON_SECRET) return response({ error: "Cron is not configured" }, 503);
   const authorization = req.headers.get("Authorization") ?? "";
   const suppliedSecret = authorization.startsWith("Bearer ")
@@ -45,7 +53,10 @@ serve(async (req) => {
     scanned += page.length;
     for (const subscription of page) {
       const product = REVENUECAT_PRODUCT_MAP[subscription.product_id];
-      if (!product || product.kind !== "subscription" || product.interval !== "yearly") {
+      if (
+        !product || product.kind !== "subscription" ||
+        product.interval !== "yearly"
+      ) {
         failures.unknown_product = (failures.unknown_product ?? 0) + 1;
         continue;
       }
@@ -71,8 +82,18 @@ serve(async (req) => {
     cursor = page.at(-1)?.user_id ?? null;
     if (!cursor) break;
   }
-  const failed = Object.values(failures).reduce((total, count) => total + count, 0);
-  return response({ ok: true, scanned, refreshed, failed, failure_reasons: failures, month: yearMonth });
+  const failed = Object.values(failures).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  return response({
+    ok: true,
+    scanned,
+    refreshed,
+    failed,
+    failure_reasons: failures,
+    month: yearMonth,
+  });
 });
 
 function response(body: unknown, status = 200): Response {

@@ -1,5 +1,5 @@
 /**
- * Request validation for v5.1 story generation.
+ * Request validation for v6 story generation.
  *
  * Normalizes genres via migration map, enforces genre/spice/audience
  * constraints, and derives server-side content ratings.
@@ -14,14 +14,15 @@ import {
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_ALLOWED_SPICE,
-  GENRE_ALLOWED_TROPES,
   GENRE_DEFAULT_SPICE,
   GENRE_MIGRATION_MAP,
   IDENTITY_LENSES,
   type IdentityLens,
+  MAX_BEAT_LENGTH,
   MAX_BRIEF_FIELD_LENGTH,
   MAX_CAST_SIZE,
   MAX_MOMENTS,
+  MAX_STORY_GENRES,
   PLANNED_CHAPTER_COUNT_SET,
   type PlannedChapterCount,
   PRIMARY_GENRES,
@@ -30,8 +31,6 @@ import {
   type SpiceLevel,
   STORY_MODES,
   type StoryMode,
-  TROPE_MODULES,
-  type TropeModule,
   type ValidatedGenerationParams,
 } from "./types.ts";
 import { parseRequestId } from "./operations.ts";
@@ -47,6 +46,9 @@ export function validateGenerationRequest(
   const body = value as Record<string, unknown>;
 
   // --- Genre ---
+  // `primary_genre` routes the genre and cover modules. `genres` retains the
+  // creator-visible secondary chips, with primary first, for tags and prompt
+  // context. Older clients only send primary_genre or genre and remain valid.
   let rawGenre: string;
   if (typeof body.primary_genre === "string" && body.primary_genre.trim()) {
     rawGenre = body.primary_genre.trim();
@@ -62,6 +64,17 @@ export function validateGenerationRequest(
   }
 
   const primaryGenre = normalizeGenre(rawGenre);
+  const suppliedGenres = Array.isArray(body.genres)
+    ? body.genres
+    : (Array.isArray(body.genre) ? body.genre : []);
+  const genres = [primaryGenre];
+  for (const candidate of suppliedGenres) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+    const genre = normalizeGenre(candidate);
+    if (!genres.includes(genre) && genres.length < MAX_STORY_GENRES) {
+      genres.push(genre);
+    }
+  }
 
   // --- Story Mode ---
   let storyMode: StoryMode = "standalone";
@@ -99,6 +112,18 @@ export function validateGenerationRequest(
       } is not available in kids mode`,
     };
   }
+  if (audienceMode === "kids") {
+    const blockedSecondaryGenre = genres.find((genre) =>
+      KIDS_BLOCKED_GENRES.has(genre)
+    );
+    if (blockedSecondaryGenre) {
+      return {
+        error: `${
+          KIDS_BLOCKED_GENRES.get(blockedSecondaryGenre)
+        } is not available in kids mode`,
+      };
+    }
+  }
 
   // --- Spice Level ---
   let spiceLevel: SpiceLevel;
@@ -132,16 +157,6 @@ export function validateGenerationRequest(
     identityLenses = body.identity_lenses.filter(
       (l: unknown) => typeof l === "string" && IDENTITY_LENSES.has(l),
     ) as IdentityLens[];
-  }
-
-  // --- Trope Modules ---
-  let tropeModules: TropeModule[] = [];
-  if (Array.isArray(body.trope_modules)) {
-    const allowed = GENRE_ALLOWED_TROPES[primaryGenre] ?? new Set();
-    tropeModules = body.trope_modules.filter(
-      (t: unknown) =>
-        typeof t === "string" && TROPE_MODULES.has(t) && allowed.has(t),
-    ) as TropeModule[];
   }
 
   // --- Seed ---
@@ -215,6 +230,13 @@ export function validateGenerationRequest(
         isHero: item.isHero === true,
       });
     }
+    if (characters.length) {
+      const leadIndex = characters.findIndex((character) => character.isHero);
+      const normalizedLeadIndex = leadIndex >= 0 ? leadIndex : 0;
+      characters.forEach((character, index) => {
+        character.isHero = index === normalizedLeadIndex;
+      });
+    }
   }
 
   // --- Request ID ---
@@ -225,7 +247,10 @@ export function validateGenerationRequest(
   let language: string | undefined;
   if (typeof body.language === "string") {
     const raw = body.language.trim();
-    if (raw && raw.length <= 50) {
+    if (raw && !["English", "Portuguese"].includes(raw)) {
+      return { error: "language must be English or Portuguese" };
+    }
+    if (raw) {
       language = raw;
     }
   }
@@ -283,14 +308,23 @@ export function validateGenerationRequest(
     plannedChapterCount = n as PlannedChapterCount;
   }
 
+  // The plan is clamped to the planned length rather than rejected. A plan
+  // longer than the story would promise beats no chapter can reach, and a plan
+  // shorter than it simply leaves the tail unbriefed, which is legal - the
+  // model paces those chapters itself, exactly as it does with no plan at all.
+  const beats = stringList(body.beats, MAX_BEAT_LENGTH).slice(
+    0,
+    plannedChapterCount,
+  );
+
   const illustrateChapters = body.illustrate_chapters === true;
 
   return {
     primaryGenre,
+    genres,
     storyMode,
     audienceMode,
     identityLenses,
-    tropeModules,
     spiceLevel,
     seed,
     characters,
@@ -298,6 +332,7 @@ export function validateGenerationRequest(
     language,
     whereAndWhen,
     moments,
+    beats,
     storyValues,
     writingStyle,
     avoid,
@@ -336,14 +371,17 @@ function optionalText(value: unknown): string | undefined | typeof TOO_LONG {
   return trimmed;
 }
 
-function stringList(value: unknown): string[] {
+function stringList(
+  value: unknown,
+  maxLength = MAX_BRIEF_FIELD_LENGTH,
+): string[] {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];
   for (const item of value) {
     if (typeof item !== "string") continue;
     const trimmed = item.trim();
     if (!trimmed) continue;
-    out.push(trimmed.slice(0, MAX_BRIEF_FIELD_LENGTH));
+    out.push(trimmed.slice(0, maxLength));
   }
   return out;
 }

@@ -29,6 +29,8 @@ export type KathaOnboardingResult = {
 export type KathaOnboardingFlowV2Props = {
   initialScreen?: KathaOnboardingScreen;
   onDone?: (result: KathaOnboardingResult) => void;
+  /** Called instead of advancing when the user selects the writer purpose. */
+  onWriterPath?: () => void;
 };
 
 export default function KathaOnboardingFlowV2(

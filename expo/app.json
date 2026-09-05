@@ -25,7 +25,8 @@
         {
           "username": "katha-ai"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "updates": {
       "url": "https://u.expo.dev/UPDATE_PROJECT_ID",
@@ -40,6 +41,9 @@
     },
     "android": {
       "package": "ai.katha.createstories",
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#FF6B1A"
