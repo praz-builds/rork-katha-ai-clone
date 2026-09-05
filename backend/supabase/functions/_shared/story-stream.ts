@@ -434,6 +434,14 @@ export interface StreamChapterInput {
   userPrompt: string;
   wordBand?: WordBand;
   deadlineMs?: number;
+  /**
+   * Overrides the band-derived output cap.
+   *
+   * A paragraph rewrite has no word band, and letting it fall through to the
+   * bandless default would hand a single paragraph a whole chapter's budget.
+   * Callers with a known, smaller shape pass their own ceiling.
+   */
+  maxTokens?: number;
   /** Called for every chunk of prose, in order. */
   onDelta: (chunk: string) => void;
   /**
@@ -457,7 +465,7 @@ export async function streamChapterProse(
   input: StreamChapterInput,
 ): Promise<StreamedProse> {
   const deadline = Date.now() + (input.deadlineMs ?? STREAM_DEADLINE_MS);
-  const maxTokens = chapterTokenBudget(input.wordBand);
+  const maxTokens = input.maxTokens ?? chapterTokenBudget(input.wordBand);
   const failures: LlmFailure[] = [];
   const disabled = new Set<string>(
     (Deno.env.get("LLM_DISABLED_PROVIDERS") ?? "")

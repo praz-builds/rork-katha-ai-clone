@@ -1,6 +1,7 @@
 import {
   assert,
   assertEquals,
+  assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   buildContinuationSystemPrompt,
@@ -968,4 +969,55 @@ Deno.test("the precedence note is absent when nothing was typed to outrank the b
   });
   assert(prompt.includes("Beat one"));
   assert(!prompt.includes("follow the reader direction"));
+});
+
+// ---------------------------------------------------------------------------
+// The continuation prompt's two output contracts
+//
+// One builder, two endings. Everything above the contract is shared by
+// construction, which is the point: a change to the continuation rules, the
+// band or the finale instructions must reach the streamed path too.
+// ---------------------------------------------------------------------------
+
+Deno.test("a continuation defaults to the JSON contract", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "mystery",
+    mode: "chapter",
+  });
+  assertStringIncludes(prompt, "Respond with a JSON object");
+  assertStringIncludes(prompt, "chapter_body");
+});
+
+Deno.test("a continuation asked for prose gets the prose contract instead", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "mystery",
+    mode: "chapter",
+    output: "prose",
+  });
+  assertStringIncludes(prompt, "Respond with the chapter text and nothing else");
+  // The JSON shape must be absent, not merely deprioritised: a prompt carrying
+  // both contracts is how a streamed chapter arrives wrapped in an object.
+  assertEquals(prompt.includes('"chapter_body"'), false);
+  assertEquals(prompt.includes("Respond with a JSON object"), false);
+});
+
+Deno.test("both contracts sit on the same continuation body", () => {
+  const shared = (output: "json" | "prose") =>
+    buildContinuationSystemPrompt({
+      primaryGenre: "mystery",
+      mode: "finale",
+      output,
+    }).split("## Output Format")[0];
+  assertEquals(shared("json"), shared("prose"));
+});
+
+Deno.test("the prose contract states the band it is held to", () => {
+  const prompt = buildContinuationSystemPrompt({
+    primaryGenre: "mystery",
+    mode: "chapter",
+    output: "prose",
+    chapterLength: "short",
+  });
+  const band = wordBandFor("series", "adult", "short");
+  assertStringIncludes(prompt, `${band.min} and ${band.max} words`);
 });

@@ -407,3 +407,76 @@ Deno.test("hitting the output cap trims to a paragraph and reports truncation", 
   assertEquals(result.truncated, true);
   assertEquals(result.text, "Done para.");
 });
+
+// ---------------------------------------------------------------------------
+// The explicit token budget
+//
+// Added when `edit-story` began streaming. A paragraph rewrite has no word
+// band, and without an override it would inherit the bandless chapter default.
+// ---------------------------------------------------------------------------
+
+Deno.test("an explicit maxTokens overrides the band-derived cap", async () => {
+  let sentMaxTokens: unknown;
+  await withStubbedFetch(
+    (_url, init) => {
+      sentMaxTokens = JSON.parse(String(init.body)).max_tokens;
+      return sseResponse([
+        'data: {"choices":[{"delta":{"content":"rewritten"}}]}',
+        "data: [DONE]",
+      ]);
+    },
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        maxTokens: 2_000,
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(sentMaxTokens, 2_000);
+});
+
+Deno.test("without an override the budget still comes from the band", async () => {
+  let sentMaxTokens = 0;
+  const band = { min: 1200, max: 1600 };
+  await withStubbedFetch(
+    (_url, init) => {
+      sentMaxTokens = JSON.parse(String(init.body)).max_tokens as number;
+      return sseResponse([
+        'data: {"choices":[{"delta":{"content":"x"}}]}',
+        "data: [DONE]",
+      ]);
+    },
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        wordBand: band,
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(sentMaxTokens, chapterTokenBudget(band));
+});
+
+Deno.test("the request opts into streaming", async () => {
+  // Without `stream: true` the provider answers with one buffered body and the
+  // reader waits exactly as long as before, silently.
+  let body: Record<string, unknown> = {};
+  await withStubbedFetch(
+    (_url, init) => {
+      body = JSON.parse(String(init.body));
+      return sseResponse([
+        'data: {"choices":[{"delta":{"content":"x"}}]}',
+        "data: [DONE]",
+      ]);
+    },
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(body.stream, true);
+  assertEquals((body.reasoning as Record<string, unknown>)?.effort, "minimal");
+});

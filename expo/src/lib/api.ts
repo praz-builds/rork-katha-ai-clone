@@ -750,6 +750,175 @@ function generateMockTitle(genre: Genre): string {
 // Continue story (add next chapter)
 // ---------------------------------------------------------------------------
 
+/**
+ * The three streamed calls differ only in their endpoint and their body.
+ *
+ * Auth, header assembly, event dispatch and the "closed without a terminal
+ * event" check are identical, and a second copy of the last one in particular
+ * is how a truncated response quietly becomes a success.
+ */
+async function runStreamedCall(input: {
+  fn: string;
+  body: unknown;
+  onEvent: (event: string, payload: Record<string, unknown>) => void;
+}): Promise<Record<string, unknown>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+  if (!accessToken) {
+    throw new GenerationRequestError("Please sign in to continue.", false);
+  }
+
+  const outcome: {
+    done: Record<string, unknown> | null;
+    failure: { message: string; partial: boolean } | null;
+  } = { done: null, failure: null };
+
+  try {
+    await postEventStream({
+      url: `${SUPABASE_URL}/functions/v1/${input.fn}`,
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
+      body: input.body,
+      onEvent: ({ event, data }) => {
+        const payload = (data ?? {}) as Record<string, unknown>;
+        if (event === "done") outcome.done = payload;
+        else if (event === "error") {
+          outcome.failure = {
+            message: typeof payload.error === "string"
+              ? payload.error
+              : "The request failed.",
+            partial: payload.partial_prose_shown === true,
+          };
+        } else input.onEvent(event, payload);
+      },
+    });
+  } catch (error) {
+    if (error instanceof StreamTransportError) {
+      // `resetRequestId` stays false: the call may already have reserved a
+      // credit before the connection dropped, and reusing the same id is what
+      // lets the replay path hand back the finished work instead of charging
+      // twice.
+      throw new GenerationRequestError(error.message, false);
+    }
+    throw error;
+  }
+
+  if (outcome.failure) {
+    throw new GenerationRequestError(outcome.failure.message, false);
+  }
+  if (!outcome.done) {
+    throw new GenerationRequestError(
+      "The response stopped partway through. Please try again.",
+      false,
+    );
+  }
+  return outcome.done;
+}
+
+export interface StreamedChapterHandlers {
+  onStage?: (stage: string) => void;
+  onDelta: (text: string) => void;
+}
+
+/**
+ * Continue a story, rendering the next chapter as it is written.
+ *
+ * The same contract as `continueStory`, and the same server function behind it
+ * - `continue-story` streams when the request asks it to. This is the bigger of
+ * the two streaming wins in the reading loop: a reader deep in a series
+ * triggers it repeatedly, and is less patient each time than they were on the
+ * first chapter.
+ */
+export async function continueStoryStreaming(
+  storyId: string,
+  requestId: string,
+  handlers: StreamedChapterHandlers,
+  isFinale?: boolean,
+  expectedChapterNum?: number,
+  nextInstruction?: string,
+): Promise<{ chapter: Chapter; model: string }> {
+  if (!isSupabaseConfigured) {
+    return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
+  }
+
+  try {
+    await bootstrapUser();
+  } catch {
+    throw new GenerationRequestError(
+      "Unable to set up your story account. Please try again.",
+      false,
+    );
+  }
+
+  const done = await runStreamedCall({
+    fn: "continue-story",
+    body: {
+      story_id: storyId,
+      request_id: requestId,
+      is_finale: isFinale ?? false,
+      next_instruction: nextInstruction,
+      stream: true,
+    },
+    onEvent: (event, payload) => {
+      if (event === "delta") {
+        const text = payload.text;
+        if (typeof text === "string") handlers.onDelta(text);
+      } else if (event === "stage") {
+        handlers.onStage?.(String(payload.stage ?? ""));
+      }
+    },
+  });
+
+  if (!done.chapter) throw new Error("Continuation returned no chapter");
+  return mapContinuedChapter(done, storyId, expectedChapterNum, isFinale);
+}
+
+/**
+ * Rewrite a paragraph, showing the new text as it is written.
+ *
+ * Editing is free, so a failure part-way through costs the writer nothing but
+ * the retry. It is also the place where waiting is most visible, because the
+ * writer is looking directly at the paragraph being changed.
+ */
+export async function editParagraphStreaming(
+  storyId: string,
+  chapterId: string,
+  paragraphIndex: number,
+  instruction: EditInstruction,
+  handlers: StreamedChapterHandlers,
+  options?: { tone?: string; customNote?: string },
+): Promise<string> {
+  if (!isSupabaseConfigured) {
+    return await localEditParagraph(instruction);
+  }
+
+  const done = await runStreamedCall({
+    fn: "edit-story",
+    body: {
+      story_id: storyId,
+      chapter_id: chapterId,
+      paragraph_index: paragraphIndex,
+      instruction,
+      tone: options?.tone,
+      custom_note: options?.customNote,
+      stream: true,
+    },
+    onEvent: (event, payload) => {
+      if (event === "delta") {
+        const text = payload.text;
+        if (typeof text === "string") handlers.onDelta(text);
+      } else if (event === "stage") {
+        handlers.onStage?.(String(payload.stage ?? ""));
+      }
+    },
+  });
+
+  const updated = done.updated_paragraph;
+  if (typeof updated !== "string") {
+    throw new Error("Could not apply the edit. Please try again.");
+  }
+  return updated;
+}
+
 export async function continueStory(
   storyId: string,
   requestId: string,
@@ -785,6 +954,21 @@ export async function continueStory(
   }
   if (!data?.chapter) throw new Error("Continuation returned no chapter");
 
+  return mapContinuedChapter(data, storyId, expectedChapterNum, isFinale);
+}
+
+/**
+ * Map a continuation response onto a `Chapter`.
+ *
+ * Shared by the buffered and streamed callers, which return the same payload.
+ * Two copies would let the two transports disagree about what a chapter is.
+ */
+function mapContinuedChapter(
+  data: Record<string, unknown>,
+  storyId: string,
+  expectedChapterNum?: number,
+  isFinale?: boolean,
+): { chapter: Chapter; model: string } {
   const chapter = asRecord(data.chapter);
   const content = requiredString(chapter.content, "chapter content");
   return {

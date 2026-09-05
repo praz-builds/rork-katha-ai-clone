@@ -2,7 +2,19 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
-import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
+import {
+  AllProvidersFailedError,
+  generateFastStructuredText,
+  generateStoryText,
+} from "../_shared/llm.ts";
+import {
+  buildChapterMetadataPrompt,
+  CHAPTER_METADATA_OUTPUT,
+  CHAPTER_METADATA_SYSTEM_PROMPT,
+  chapterLengthVerdict,
+  StreamCommittedError,
+  streamChapterProse,
+} from "../_shared/story-stream.ts";
 import {
   errorMessage,
   isStaleReservation,
@@ -335,36 +347,26 @@ serve(async (req) => {
       plannedChapterCount,
       characters,
     });
-    const userPrompt =
+    // Everything above the closing instruction is shared by the two transports.
+    // Only the last line differs, because only the last line is about shape.
+    const continuationBody =
       `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\n${
         userField("story-title", story.title)
       }\n${briefPrompt}\n${formatSeriesStateBlock(seriesState)}\n\n${
         userField("previous-chapters", `${previousText}${earliestContext}`)
-      }\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
+      }`;
+    const userPrompt =
+      `${continuationBody}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
+    const proseUserPrompt =
+      `${continuationBody}\n\nRespond with the chapter text only. No title, no heading, no commentary, no JSON.`;
 
-    try {
-      // A continuation is always a series chapter, so it uses the chapter band
-      // regardless of audience.
-      const result = await generateStoryText(
-        systemPrompt,
-        userPrompt,
-        wordBandFor("series", audienceMode, chapterLength),
-      );
-      const output = parseStructuredOutput(
-        result.text,
-        `Chapter ${nextChapterNum}`,
-      );
-      // A continuation that falls back to the text parser has no hook_type and
-      // no series_state - the placeholders would persist a chapter that ends
-      // nowhere and freezes continuity for the rest of the series, while still
-      // charging a credit. Fail so the refund path runs and the reader can
-      // retry, rather than saving a hollow chapter.
-      if (output.structured === false) {
-        throw new Error(
-          "Continuation returned unparseable structured output; refusing to persist a chapter without hook or series state",
-        );
-      }
-
+    // Persisting a finished continuation is identical whether the prose
+    // arrived in one response or in a thousand chunks, so both paths call this.
+    // The continuity merge below is the part that must not be duplicated: it
+    // decides what an absent field means, and two copies would drift.
+    const persistContinuation = async (
+      output: ReturnType<typeof parseStructuredOutput>,
+    ) => {
       const chapterTitle = output.chapter_title || output.title;
       const content = output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
@@ -419,12 +421,13 @@ serve(async (req) => {
         throw chapterError ?? new Error("Chapter persistence failed");
       }
 
-      return respond({ chapter, model: result.model });
-    } catch (error) {
-      console.error(
-        "continue-story post-deduction error:",
-        safeErrorMessage(error),
-      );
+      return chapter;
+    };
+
+    // One refund path for both transports. A failure after the credit is
+    // reserved must refund and must be recorded the same way regardless of how
+    // the prose was being delivered when it happened.
+    const refundContinuation = async (error: unknown) => {
       const { data: refund, error: refundError } = await serviceClient.rpc(
         "refund_generation_operation",
         {
@@ -469,7 +472,190 @@ serve(async (req) => {
         }),
       ];
       await Promise.allSettled(telemetry);
+      return { refund, refundError };
+    };
 
+    // --- The streamed transport. ---
+    //
+    // This is a branch rather than a second function because every decision
+    // that can reject this request - auth, ownership, the chapter cap, the
+    // credit reservation - has already been made above. Only the delivery of
+    // the model's answer differs, so only that is duplicated, and the
+    // persistence and refund closures are shared with the buffered path.
+    //
+    // Opted into per request. An older client that does not ask keeps the
+    // buffered response byte for byte.
+    if (body.stream === true) {
+      const band = wordBandFor("series", audienceMode, chapterLength);
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          let closed = false;
+          const send = (event: string, data: unknown) => {
+            if (closed) return;
+            controller.enqueue(
+              encoder.encode(
+                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+              ),
+            );
+          };
+          const startedAt = Date.now();
+          try {
+            send("meta", {
+              story_id,
+              operation_id: operation.id,
+              chapter_number: nextChapterNum,
+            });
+            send("stage", { stage: "context" });
+
+            const prose = await streamChapterProse({
+              systemPrompt: buildContinuationSystemPrompt({
+                primaryGenre,
+                audienceMode,
+                identityLenses,
+                spiceLevel,
+                language: storyLanguage,
+                mode: chapterMode,
+                seriesState,
+                chapterLength,
+                plannedChapterCount,
+                output: "prose",
+              }),
+              userPrompt: proseUserPrompt,
+              wordBand: band,
+              onCommit: () => send("stage", { stage: "writing" }),
+              onDelta: (text) => send("delta", { text }),
+            });
+
+            send("stage", { stage: "shaping" });
+
+            // The structured half, recovered after the prose rather than
+            // around it. `series_state` is what lets chapter n+1 exist, so it
+            // stays behind a strict schema instead of a partial-JSON parser.
+            const metadata = await generateFastStructuredText(
+              CHAPTER_METADATA_SYSTEM_PROMPT,
+              buildChapterMetadataPrompt({
+                prose: prose.text,
+                storyMode: "series",
+                seed: story.topic ?? "",
+              }),
+              CHAPTER_METADATA_OUTPUT,
+              2_000,
+              45_000,
+            );
+            const output = parseStructuredOutput(
+              JSON.stringify({
+                ...(JSON.parse(metadata.text) as Record<string, unknown>),
+                chapter_body: prose.text,
+              }),
+              `Chapter ${nextChapterNum}`,
+            );
+
+            const verdict = chapterLengthVerdict(prose.text, band);
+            if (!verdict.usable) {
+              // Recorded, not refused. The reader has already read it, and
+              // taking it back is worse than a chapter that ran long. See the
+              // open item in STORY_GENERATION_FLOW section 10.6.
+              await logError({
+                bucket: "generation.story",
+                severity: "medium",
+                source: "runtime",
+                errorCode: "streamed_chapter_outside_band",
+                error: new Error(
+                  `Streamed continuation ran ${verdict.words} words against a ${band.min}-${band.max} band`,
+                ),
+                context: {
+                  story_id,
+                  operation_id: operation.id,
+                  chapter_number: nextChapterNum,
+                  words: verdict.words,
+                  band_min: band.min,
+                  band_max: band.max,
+                  model: prose.model,
+                },
+                userId: user.id,
+              });
+            }
+
+            const chapter = await persistContinuation(output);
+            send("done", {
+              chapter,
+              model: prose.model,
+              timings: { total: Date.now() - startedAt },
+            });
+          } catch (error) {
+            const committed = error instanceof StreamCommittedError;
+            console.error(
+              "continue-story stream failed:",
+              safeErrorMessage(error),
+            );
+            const { refund, refundError } = await refundContinuation(error);
+            send("error", {
+              error: refundError
+                ? "Generation failed. Refund is pending retry."
+                : refund?.refunded
+                ? "Generation failed. Credit refunded."
+                : "Generation failed.",
+              operation_id: operation.id,
+              // Whatever reached the reader stays on screen. Blanking prose
+              // somebody has read is the worse of the two bad outcomes.
+              partial_prose_shown: committed,
+              refunded: Boolean(refund?.refunded),
+            });
+          } finally {
+            if (!closed) {
+              closed = true;
+              controller.close();
+            }
+          }
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          ...corsHeadersFor(req),
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          // Without this a proxy may buffer the body and hand it over whole,
+          // reintroducing the latency this exists to remove, invisibly.
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+
+    try {
+      // A continuation is always a series chapter, so it uses the chapter band
+      // regardless of audience.
+      const result = await generateStoryText(
+        systemPrompt,
+        userPrompt,
+        wordBandFor("series", audienceMode, chapterLength),
+      );
+      const output = parseStructuredOutput(
+        result.text,
+        `Chapter ${nextChapterNum}`,
+      );
+      // A continuation that falls back to the text parser has no hook_type and
+      // no series_state - the placeholders would persist a chapter that ends
+      // nowhere and freezes continuity for the rest of the series, while still
+      // charging a credit. Fail so the refund path runs and the reader can
+      // retry, rather than saving a hollow chapter.
+      if (output.structured === false) {
+        throw new Error(
+          "Continuation returned unparseable structured output; refusing to persist a chapter without hook or series state",
+        );
+      }
+
+      const chapter = await persistContinuation(output);
+      return respond({ chapter, model: result.model });
+    } catch (error) {
+      console.error(
+        "continue-story post-deduction error:",
+        safeErrorMessage(error),
+      );
+      const { refund, refundError } = await refundContinuation(error);
       if (refundError) {
         console.error(
           "continue-story refund pending:",
