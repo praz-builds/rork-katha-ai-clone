@@ -202,6 +202,16 @@ export const fonts = {
   display: "BricolageGrotesque",
   ui: "HankenGrotesk",
   brand: "Baloo2",
+  /**
+   * The heavy brand face, as its own family.
+   *
+   * `fontWeight` cannot reach it: `Baloo2.ttf` is a variable font and React
+   * Native has no weight-axis control, so asking the base family for 800
+   * renders at 400. This names the static instance directly. Its real maximum
+   * is 800 - the axis stops there - so a request for 900 was always asking for
+   * a weight the font does not contain.
+   */
+  brandHeavy: "Baloo2-ExtraBold",
   reader: "Literata",
   readerItalic: "LiterataItalic",
   /** Inter Tight 400. Onboarding only. */

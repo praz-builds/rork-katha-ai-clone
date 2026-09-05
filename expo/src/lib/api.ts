@@ -1,4 +1,5 @@
 import { stories } from "@/data/seed";
+import { pushPermissionGranted } from "@/lib/notifications";
 import { bootstrapUser } from "@/lib/session";
 import { postEventStream, StreamTransportError } from "@/lib/stream";
 import {
@@ -186,8 +187,9 @@ export async function generateStory(
     );
   }
 
+  const notifyOnReady = await pushPermissionGranted();
   const { data, error } = await supabase.functions.invoke("generate-story", {
-    body: buildGenerationRequestBody(draft, requestId),
+    body: buildGenerationRequestBody(draft, requestId, notifyOnReady),
   });
 
   if (error) {
@@ -242,76 +244,33 @@ export async function generateStoryStreaming(
     );
   }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const accessToken = session?.access_token;
-  if (!accessToken) {
-    throw new GenerationRequestError("Please sign in to create a story.", false);
-  }
+  const notifyOnReady = await pushPermissionGranted();
 
-  // Held on an object rather than in two `let`s: these are only ever assigned
-  // inside the event callback, and control-flow analysis cannot see that, so a
-  // bare `let` narrows to `never` at the checks below.
-  const outcome: {
-    done: unknown;
-    failure: { message: string; partial: boolean } | null;
-  } = { done: null, failure: null };
+  const done = await runStreamedCall({
+    fn: "generate-story-stream",
+    body: buildGenerationRequestBody(draft, requestId, notifyOnReady),
+    onEvent: (event, payload) => {
+      if (event === "delta") {
+        const text = payload.text;
+        if (typeof text === "string") handlers.onDelta(text);
+      } else if (event === "stage") {
+        handlers.onStage?.(String(payload.stage ?? ""));
+      } else if (event === "meta") {
+        handlers.onMeta?.({
+          storyId: String(payload.story_id ?? ""),
+          balance: Number(payload.balance ?? 0),
+        });
+      }
+    },
+  });
 
-  try {
-    await postEventStream({
-      url: `${SUPABASE_URL}/functions/v1/generate-story-stream`,
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: buildGenerationRequestBody(draft, requestId),
-      onEvent: ({ event, data }) => {
-        const payload = (data ?? {}) as Record<string, unknown>;
-        if (event === "meta") {
-          handlers.onMeta?.({
-            storyId: String(payload.story_id ?? ""),
-            balance: Number(payload.balance ?? 0),
-          });
-        } else if (event === "stage") {
-          handlers.onStage?.(String(payload.stage ?? ""));
-        } else if (event === "delta") {
-          const text = payload.text;
-          if (typeof text === "string") handlers.onDelta(text);
-        } else if (event === "done") {
-          outcome.done = payload;
-        } else if (event === "error") {
-          outcome.failure = {
-            message: typeof payload.error === "string"
-              ? payload.error
-              : "Story generation failed.",
-            partial: payload.partial_prose_shown === true,
-          };
-        }
-      },
-    });
-  } catch (error) {
-    // A transport-level failure. `resetRequestId` is false because the request
-    // may have reserved a credit before the connection dropped, and reusing the
-    // same id is what lets the replay path return the finished story instead of
-    // charging twice.
-    if (error instanceof StreamTransportError) {
-      throw new GenerationRequestError(error.message, false);
-    }
-    throw error;
-  }
-
-  if (outcome.failure) {
-    throw new GenerationRequestError(outcome.failure.message, false);
-  }
-  // A stream that closed without a terminal event is a truncated response, not
-  // a success. Treating it as one would drop the story on the floor silently.
-  if (!outcome.done || !(outcome.done as { story?: unknown }).story) {
+  if (!done.story) {
     throw new GenerationRequestError(
       "The story stopped partway through. Please try again.",
       false,
     );
   }
-
-  return mapGeneratedStory(outcome.done, draft);
+  return mapGeneratedStory(done, draft);
 }
 
 /**
@@ -324,9 +283,17 @@ export async function generateStoryStreaming(
  * happened to use. That is a bug nobody would think to look for, so there is
  * one builder rather than two literals.
  */
-function buildGenerationRequestBody(draft: CreateDraft, requestId: string) {
+function buildGenerationRequestBody(
+  draft: CreateDraft,
+  requestId: string,
+  notifyOnReady = false,
+) {
   return {
       request_id: requestId,
+      // Read from the OS, never assumed. The server sends nothing unless this
+      // is a literal true, so a user who declined the notify screen cannot be
+      // notified by a stale client flag.
+      notify_on_ready: notifyOnReady,
       primary_genre: draft.primaryGenre,
       genres: draft.genres,
       audience_mode: draft.audienceMode,
@@ -856,6 +823,7 @@ export async function continueStoryStreaming(
       request_id: requestId,
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
+      notify_on_ready: await pushPermissionGranted(),
       stream: true,
     },
     onEvent: (event, payload) => {
@@ -945,6 +913,7 @@ export async function continueStory(
       request_id: requestId,
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
+      notify_on_ready: await pushPermissionGranted(),
     },
   });
 

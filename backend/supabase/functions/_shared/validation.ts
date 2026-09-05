@@ -318,6 +318,10 @@ export function validateGenerationRequest(
   );
 
   const illustrateChapters = body.illustrate_chapters === true;
+  // Opt-in, and a literal `true` only. The onboarding notify screen is a soft
+  // pre-prompt, so a push must never be sent to somebody who has not accepted
+  // it, and a truthy-ish value is not acceptance.
+  const notifyOnReady = body.notify_on_ready === true;
 
   return {
     primaryGenre,
@@ -339,6 +343,7 @@ export function validateGenerationRequest(
     chapterLength,
     plannedChapterCount,
     illustrateChapters,
+    notifyOnReady,
   };
 }
 

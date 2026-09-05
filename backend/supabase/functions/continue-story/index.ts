@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { notifyInBackground } from "../_shared/notify.ts";
+import { runInBackground } from "../_shared/media.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
   AllProvidersFailedError,
@@ -424,6 +426,23 @@ serve(async (req) => {
       return chapter;
     };
 
+    // Telling the reader their chapter is written.
+    //
+    // Opt-in per request, because the notify screen is a soft pre-prompt and a
+    // reader who is still watching the chapter stream does not need a push. It
+    // can never fail the generation: the chapter is already persisted and paid
+    // for by the time this runs.
+    const notifyChapterReady = (chapter: Record<string, unknown> | null) => {
+      if (body.notify_on_ready !== true || !chapter) return;
+      runInBackground(notifyInBackground({
+        userId: user.id,
+        kind: "chapter_ready",
+        storyId: story_id,
+        title: typeof story.title === "string" ? story.title : "Your story",
+        chapterNumber: nextChapterNum,
+      }));
+    };
+
     // One refund path for both transports. A failure after the credit is
     // reserved must refund and must be recorded the same way regardless of how
     // the prose was being delivered when it happened.
@@ -578,6 +597,7 @@ serve(async (req) => {
             }
 
             const chapter = await persistContinuation(output);
+            notifyChapterReady(chapter);
             send("done", {
               chapter,
               model: prose.model,
@@ -649,6 +669,7 @@ serve(async (req) => {
       }
 
       const chapter = await persistContinuation(output);
+      notifyChapterReady(chapter);
       return respond({ chapter, model: result.model });
     } catch (error) {
       console.error(

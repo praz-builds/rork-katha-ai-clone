@@ -402,10 +402,16 @@ Seed, or Prompt.
 |---|---|
 | Waiting heading | **A story can begin anywhere.** |
 | Waiting sub | **Hold on to the part that feels like yours.** |
-| Revealed heading | **Here’s the shape of it.** |
+| Revealed heading | **Your idea just became a story.** |
 | Revealed sub | **Change the parts that make it yours.** |
 | Primary CTA | **See the preview** |
 | Secondary | **Try another** |
+
+> **Amended 2026-09-06.** The revealed heading was **Here's the shape of it.**
+> The screen shipped as **Your idea just became a story.** and the code is
+> right: this is the payoff moment of the whole writer path, and "the shape of
+> it" describes a diagram rather than the thing the reader just made. The spec
+> is corrected to match rather than the other way round.
 
 ### 9.1 Waiting and choreography
 

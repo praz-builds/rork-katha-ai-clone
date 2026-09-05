@@ -525,12 +525,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   discLetter: {
-    fontFamily: fonts.brand,
-    // The reference sets Baloo 2 at 900. The bundled Baloo2.ttf is a variable
-    // font whose default instance is 400 and React Native cannot select a
-    // weight axis, so this asks the platform for the heaviest face it can
-    // resolve in the family. Bundling a static Baloo2-Black is the real fix.
-    fontWeight: "900",
+    // The static 800 instance, not the variable family plus a `fontWeight`.
+    // The latter cannot work: RN has no weight-axis control, so it rendered at
+    // 400. The axis tops out at 800, so 900 was never reachable either.
+    fontFamily: fonts.brandHeavy,
     fontSize: 41,
     lineHeight: 41, // `line-height: 1`
     color: colors.accent,
