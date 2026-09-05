@@ -889,6 +889,54 @@ function buildStoryPromptBody(params: SystemPromptParams): string {
 }
 
 /**
+ * The output contract for the streamed path: prose, and nothing else.
+ *
+ * The JSON contract in `buildOutputSchema` cannot be streamed usefully - the
+ * prose is a value inside an object, so it arrives escaped, a character at a
+ * time, in an order the schema does not guarantee. The streamed path therefore
+ * asks for the chapter alone and recovers the structured fields afterwards with
+ * a second call (`story-stream.ts`).
+ *
+ * The negative instructions are not padding. A model asked for prose after a
+ * prompt body this long will otherwise open with "Here is your chapter:" or
+ * wrap the whole thing in a fence, and on the streamed path that lands in the
+ * reader's view as the first thing they ever see of the story.
+ */
+function buildProseOutputContract(band: WordBand): string {
+  return `
+
+## Output Format (CRITICAL)
+
+Respond with the chapter text and nothing else.
+
+Do not write a title, a chapter heading, a preamble, a summary, or any commentary before or after the prose. Do not wrap the response in markdown fences. Do not return JSON.
+
+Separate paragraphs with a blank line. Begin with the first sentence of the story itself.
+
+Length is a hard requirement, not a target: write between ${band.min} and ${band.max} words. Bring the chapter to a close inside that range rather than running past it.`;
+}
+
+/**
+ * The system prompt for a streamed chapter: the full story prompt, asking for
+ * prose instead of a JSON object.
+ *
+ * Everything above the output contract is shared with the non-streaming path by
+ * construction, so a change to the voice, band, genre or audience rules reaches
+ * both. Only the last section differs, which is the one section that has to.
+ */
+export function buildStoryProsePrompt(params: SystemPromptParams): string {
+  // The same band the body was rendered from, and the same one
+  // `chapterLengthVerdict` measures against, so the prompt, the physical token
+  // cap and the check can never state three different numbers.
+  const band = wordBandFor(
+    params.storyMode ?? "standalone",
+    params.audienceMode ?? "adult",
+    params.chapterLength ?? DEFAULT_CHAPTER_LENGTH,
+  );
+  return buildStoryPromptBody(params) + buildProseOutputContract(band);
+}
+
+/**
  * Build a system prompt for chapter continuation.
  */
 export function buildContinuationSystemPrompt(

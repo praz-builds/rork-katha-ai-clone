@@ -16,5 +16,7 @@ module.exports = {
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    // See src/__mocks__/expo-fetch.ts: the real module needs the native runtime.
+    '^expo/fetch$': '<rootDir>/src/__mocks__/expo-fetch.ts',
   },
 };
