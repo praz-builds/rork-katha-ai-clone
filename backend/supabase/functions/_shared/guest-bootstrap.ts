@@ -46,14 +46,50 @@ export function anonymousGrantScope(request: Request): string | null {
   }
 
   // A /64 is the conventional household/mobile-network aggregation for IPv6.
-  const ipv6 = forwarded.toLowerCase().match(/^[0-9a-f:]+$/);
-  if (ipv6) {
-    return `ipv6:${
-      forwarded.toLowerCase().split(":").slice(0, 4).join(":")
-    }::/64`;
+  //
+  // Expanded first, because slicing the literal text is only correct for a
+  // fully written address. `2001:db8::1` has four textual segments that are not
+  // its first four hextets, so the raw split hands back the whole address as
+  // the "prefix" and every device behind one /64 gets its own grant budget --
+  // exactly the farming this limit exists to stop.
+  const hextets = expandIpv6(forwarded);
+  if (hextets) {
+    return `ipv6:${hextets.slice(0, 4).join(":")}::/64`;
   }
 
   return null;
+}
+
+/**
+ * Expand an IPv6 address to its eight hextets, lowercased and without leading
+ * zeros. Returns null for anything that is not a plain eight-hextet address,
+ * including IPv4-mapped forms, so an unparseable value fails closed at the
+ * caller rather than producing a scope that groups unrelated networks.
+ */
+export function expandIpv6(address: string): string[] | null {
+  const lower = address.toLowerCase();
+  if (!/^[0-9a-f:]+$/.test(lower)) return null;
+
+  const halves = lower.split("::");
+  if (halves.length > 2) return null;
+
+  let hextets: string[];
+  if (halves.length === 2) {
+    const head = halves[0] === "" ? [] : halves[0].split(":");
+    const tail = halves[1] === "" ? [] : halves[1].split(":");
+    const elided = 8 - head.length - tail.length;
+    // `::` stands for at least one omitted hextet; a fully written address that
+    // also carries `::` is malformed, not merely redundant.
+    if (elided < 1) return null;
+    hextets = [...head, ...Array(elided).fill("0"), ...tail];
+  } else {
+    hextets = lower.split(":");
+  }
+
+  if (hextets.length !== 8) return null;
+  if (!hextets.every((hextet) => /^[0-9a-f]{1,4}$/.test(hextet))) return null;
+
+  return hextets.map((hextet) => hextet.replace(/^0+(?=.)/, ""));
 }
 
 export async function hashAnonymousGrantScope(

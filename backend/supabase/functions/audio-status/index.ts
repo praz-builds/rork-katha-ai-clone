@@ -3,18 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { decode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
 import { parseUuid } from "../_shared/uuid.ts";
-
-const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/minimax-speech-02-hd";
-const VALID_VOICE_IDS = new Set([
-  "aria",
-  "kai",
-  "elvira",
-  "alvaro",
-  "onyx",
-  "nova",
-  "echo",
-  "fable",
-]);
+import { runpodStatusUrl } from "../_shared/runpod.ts";
+import { DEFAULT_VOICE_ID, isValidVoiceId } from "../_shared/voices.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -41,10 +31,15 @@ serve(async (req) => {
     const jobId = url.searchParams.get("job_id");
     const storyId = parseUuid(url.searchParams.get("story_id"));
     const chapterId = parseUuid(url.searchParams.get("chapter_id"));
-    const rawVoiceId = url.searchParams.get("voice_id") ?? "aria";
-    const voiceId = VALID_VOICE_IDS.has(rawVoiceId) ? rawVoiceId : "aria";
+    const rawVoiceId = url.searchParams.get("voice_id") ?? DEFAULT_VOICE_ID;
+    const voiceId = isValidVoiceId(rawVoiceId) ? rawVoiceId : DEFAULT_VOICE_ID;
 
     if (!jobId) return respond({ error: "job_id is required" }, 400);
+    // Reject before the key is attached, not after: the fetch below carries
+    // RUNPOD_API_KEY, so an id that steers the path is a signed request to an
+    // arbitrary RunPod API on our account.
+    const statusUrl = runpodStatusUrl(jobId);
+    if (!statusUrl) return respond({ error: "Invalid job_id" }, 400);
     if (!storyId) return respond({ error: "Invalid story_id" }, 400);
     if (!chapterId) return respond({ error: "Invalid chapter_id" }, 400);
 
@@ -52,7 +47,7 @@ serve(async (req) => {
     if (!runpodApiKey) return respond({ error: "Not configured" }, 503);
 
     // Check RunPod job status
-    const statusResponse = await fetch(`${RUNPOD_ENDPOINT}/status/${jobId}`, {
+    const statusResponse = await fetch(statusUrl, {
       headers: { Authorization: `Bearer ${runpodApiKey}` },
     });
 
@@ -114,7 +109,7 @@ serve(async (req) => {
 
       // Update chapter with the default voice audio URL (aria = female default)
       // Verify chapter belongs to the story and the user owns the story
-      if (audioUrl && chapterId && voiceId === "aria") {
+      if (audioUrl && chapterId && voiceId === DEFAULT_VOICE_ID) {
         const { data: storyRow } = await serviceClient
           .from("stories")
           .select("author_id")

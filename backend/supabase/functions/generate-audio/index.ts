@@ -6,10 +6,10 @@ import {
   EDGE_TTS_VOICES,
   generateWithEdgeTts,
 } from "../_shared/edge-tts.ts";
+import { readJsonObject } from "../_shared/operations.ts";
+import { RUNPOD_ENDPOINT } from "../_shared/runpod.ts";
 import { parseUuid } from "../_shared/uuid.ts";
-
-// MiniMax Speech 02 HD — faithful text-to-speech, public endpoint, no deployment
-const RUNPOD_ENDPOINT = "https://api.runpod.ai/v2/minimax-speech-02-hd";
+import { isValidVoiceId } from "../_shared/voices.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -32,7 +32,12 @@ serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return respond({ error: "Unauthorized" }, 401);
 
-    const body = await req.json();
+    // readJsonObject, not req.json(): the streaming bound is what actually
+    // keeps an unbounded body out of the isolate. Every other function on the
+    // generation path reads its body this way.
+    const body = await readJsonObject(req);
+    if (!body) return respond({ error: "Invalid JSON request body" }, 400);
+
     const story_id = parseUuid(body.story_id);
     const chapter_id = parseUuid(body.chapter_id);
     const text = typeof body.text === "string" ? body.text : "";
@@ -70,8 +75,13 @@ serve(async (req) => {
     // Resolve the default voice pair for this language.
     const defaultPair = DEFAULT_VOICES_BY_LANGUAGE[language] ??
       DEFAULT_VOICES_BY_LANGUAGE["en"];
-    const voiceIds: string[] = body.voice_id
-      ? [String(body.voice_id)]
+    // The voice id becomes a storage path segment and an upstream job
+    // parameter, so it is allowlisted rather than merely stringified.
+    if (body.voice_id != null && !isValidVoiceId(body.voice_id)) {
+      return respond({ error: "Invalid voice_id" }, 400);
+    }
+    const voiceIds: string[] = isValidVoiceId(body.voice_id)
+      ? [body.voice_id]
       : [...defaultPair];
 
     // ─── Route by language ────────────────────────────────────────────────

@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import {
+  type ChapterUpdateClient,
+  updateChapterContentIfUnchanged,
+} from "../_shared/chapters.ts";
 import { logError } from "../_shared/errors.ts";
 import { AllProvidersFailedError, editParagraph } from "../_shared/llm.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
@@ -219,13 +223,29 @@ serve(async (req) => {
     const updatedContent = paragraphs.join("\n\n");
     const wordCount = updatedContent.split(/\s+/).filter(Boolean).length;
 
-    // Update the chapter
-    const { error: updateError } = await serviceClient
-      .from("chapters")
-      .update({ content: updatedContent, word_count: wordCount })
-      .eq("id", chapterId);
+    // Update the chapter, but only if nobody else edited it while the LLM was
+    // thinking. The read above and this write are seconds apart and the write
+    // replaces the whole chapter, so two overlapping paragraph edits would
+    // otherwise silently discard one of them.
+    const { updated } = await updateChapterContentIfUnchanged(
+      serviceClient as unknown as ChapterUpdateClient,
+      {
+        chapterId,
+        previousContent: content,
+        nextContent: updatedContent,
+        wordCount,
+      },
+    );
 
-    if (updateError) throw updateError;
+    if (!updated) {
+      return respond(
+        {
+          error:
+            "This chapter changed while the edit was being generated. Reload the chapter and try again.",
+        },
+        409,
+      );
+    }
 
     // Update story word count (sum of all chapters)
     const { data: allChapters, error: chaptersError } = await serviceClient
