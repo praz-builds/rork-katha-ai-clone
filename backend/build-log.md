@@ -2147,6 +2147,42 @@ is a separate, explicit decision for later.
   `patchedDependencies` plus targeted GHSA ignores because the advisory's
   patched `2.0.3` version is not published on npm.
 
+## 2026-09-06: Writer onboarding consistency and paywall pass
+
+### Changed
+
+- Aligned the writer onboarding flow to the in-app create UI: early screens now
+  show the same progress treatment, section labels use the darker compact
+  heading style, starter prompts use quieter helper-weight text, and the idea
+  strength line is smaller than the prompt box copy.
+- Changed Moments to an icon-only add action and added a help marker beside
+  "Who's in it".
+- Replaced the Chapters and Chapter Length segmented controls with dropdown
+  filter chips in one row, with Chapter Length first.
+- Reworked the preview/paywall handoff: preview continues into a story-specific
+  writer paywall with the concept card, credit explanation, weekly/yearly
+  choices, and "Create my story" CTA. Longer chapter-count selections keep the
+  same teaser pattern instead of requiring a longer generated arc.
+
+### Verification
+
+- `pnpm typecheck` passed from `expo/`.
+- Focused ESLint passed for `WriterOnboarding` and its tests.
+- Focused writer onboarding tests passed: 2 suites, 79 tests.
+- Full Expo Jest suite passed: 24 suites, 264 tests.
+- Web export compiled to
+  `/tmp/katha-writer-onboarding-paywall-export-check`.
+- Backend migration/comments/feed tests passed: 58 tests.
+- `pnpm exec expo-doctor` still passes 15/18 checks; the remaining checks fail
+  because this shell cannot spawn `npm` (`spawn npm ENOENT`).
+- Mandatory security scan completed. No new secrets/auth/injection issues were
+  found in this UI pass. The only high audit findings were the known
+  transitive `image-size` parser advisories through Expo/Metro; they are
+  locally patched with pnpm `patchedDependencies` and the audit ignores are
+  tied to that patch because `image-size@2.0.3` is not published.
+- Local URL `http://localhost:8090/` was opened and returned `200 OK`.
+- No production infrastructure was tested or deployed in this pass.
+
 ## 2026-09-06: The comments function, and blocked authors leave the feed
 
 ### Changed

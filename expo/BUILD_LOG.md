@@ -2,6 +2,41 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-06: Writer onboarding consistency and paywall pass
+
+### Changed
+
+- Brought the writer onboarding prompt, details, preview and paywall screens
+  onto one visual rhythm: shared progress rows, compact dark section headers,
+  quieter starter prompt cards, bolder selected filter chips and slimmer
+  luminous CTAs.
+- Replaced the details screen's old chapter segmented controls with Chapter
+  Length and Chapters dropdown filter chips on a single row.
+- Changed the detail heading to "Shape the Story", the detail CTA to "Create my
+  story", the Moments action to an icon-only add button, and the preview CTA to
+  "Continue".
+- Replaced the raw writer subscription ask with a story-specific preview
+  paywall that shows the concept card, credit math, included creation benefits,
+  weekly/yearly plans, and the final "Create my story" CTA.
+
+### Verification
+
+- `pnpm typecheck` passed.
+- Focused ESLint passed for `WriterOnboarding` and its tests.
+- `pnpm test -- --runInBand src/__tests__/writer-onboarding.test.tsx
+  src/__tests__/writer-onboarding-interactions.test.tsx` passed: 2 suites, 79
+  tests.
+- Full Jest suite passed: 24 suites, 264 tests.
+- `EXPO_NO_DOTENV=1 pnpm exec expo export --platform web --output-dir
+  /tmp/katha-writer-onboarding-paywall-export-check` passed.
+- `pnpm exec expo-doctor` still passes 15/18 checks; the remaining checks fail
+  because this shell cannot spawn `npm` (`spawn npm ENOENT`).
+- `pnpm audit --audit-level high` exits cleanly with the two known
+  `image-size` advisories ignored only after applying the local parser patch;
+  `image-size@2.0.3` is not published, so a direct patched-version upgrade is
+  not available.
+- Local URL `http://localhost:8090/` was opened and returned `200 OK`.
+
 ## 2026-09-06: Single-Screen Main Create Flow
 
 ### Changed

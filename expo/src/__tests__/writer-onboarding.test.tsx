@@ -153,9 +153,9 @@ async function reachDetailsThenFinish(
     "A woman inherits a boarded-up house and finds letters that arrive early.",
   );
   await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-  await view.findByText("The parts you already have in mind.");
+  await view.findByText("Shape the Story");
   await onDetails();
-  await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+  await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
   await fireEvent.changeText(view.getByLabelText("Email address"), "w@e.com");
   await fireEvent.press(
     view.getByRole("button", { name: "Save & continue" }),
@@ -170,10 +170,9 @@ async function reachDetailsThenFinish(
   await settleCraftingHold();
   await view.findByText(SHAPE.title);
   await fireEvent.press(
-    await view.findByRole("button", { name: "Save my story" }),
+    await view.findByRole("button", { name: "Continue" }),
   );
-  await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
-  await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+  await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
   await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
   await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
 }
@@ -196,7 +195,7 @@ async function reachPreviewWithTitle(view: View, title: string) {
     "A woman inherits a boarded-up house and finds letters that arrive early.",
   );
   await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-  await fireEvent.press(await view.findByRole("button", { name: "Find the shape" }));
+  await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
   await fireEvent.changeText(view.getByLabelText("Email address"), "w@example.com");
   await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
   await fireEvent.changeText(
@@ -261,19 +260,21 @@ describe("writer onboarding", () => {
       "A woman inherits a boarded-up house and finds letters that arrive early.",
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
 
     // Minutes are what a reader feels. A word count is a number the writer has
     // to convert before it means anything.
-    expect(view.getByLabelText("Standard, about 5 minutes a chapter"))
+    expect(view.getByLabelText("Chapter length, Standard, about 5 minutes"))
       .toBeTruthy();
     expect(view.getByText("About 15 minutes to read, across 3 chapters."))
       .toBeTruthy();
 
-    await fireEvent.press(view.getByLabelText("Long, about 9 minutes a chapter"));
+    await fireEvent.press(view.getByLabelText("Chapter length, Standard, about 5 minutes"));
+    await fireEvent.press(view.getByText("Long · 9 min"));
     expect(view.getByText("About 27 minutes to read, across 3 chapters."))
       .toBeTruthy();
-    await fireEvent.press(view.getByLabelText("7 chapters"));
+    await fireEvent.press(view.getByLabelText("Chapters, 3 chapters"));
+    await fireEvent.press(view.getByText("7 chapters"));
     expect(view.getByText("About 63 minutes to read, across 7 chapters."))
       .toBeTruthy();
   });
@@ -341,7 +342,7 @@ describe("writer onboarding", () => {
       "A woman inherits a boarded-up house and finds letters that arrive early.",
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
 
     // Optionality belongs to the section that is optional. A blanket line over
     // the whole screen told the user none of it mattered, and was untrue of
@@ -428,7 +429,7 @@ describe("writer onboarding", () => {
     expect(view.queryByText("Your idea just became a story.")).toBeNull();
     expect(view.queryByRole("button", { name: "See the preview" })).toBeNull();
     expect(view.getByText("The clocks began counting backward.")).toBeTruthy();
-    expect(view.getByRole("button", { name: "Save my story" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Continue" })).toBeTruthy();
   });
 
   it("makes the story title the only heading on the preview", async () => {
@@ -450,17 +451,17 @@ describe("writer onboarding", () => {
     await reachPreview(view);
     expect(view.getByText("YOU CAN ALWAYS")).toBeTruthy();
     expect(
-      view.getByText("Edit every word by hand, as much as you like"),
+      view.getByText("Rewrite any line by hand, free and unlimited"),
     ).toBeTruthy();
-    expect(view.getByText(/3 free AI redrafts/)).toBeTruthy();
+    expect(view.getByText(/Ask Katha to redraft/)).toBeTruthy();
   });
 
   it("falls through the paywall to the offer, then the notification ask", async () => {
     const { view } = await renderFlow();
     await reachPreview(view);
-    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
-    await view.findByText("KATHA WRITER");
-    await fireEvent.press(view.getByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Continue" }));
+    await view.findByText("Your story is ready to be created.");
+    await fireEvent.press(view.getByRole("button", { name: "Close" }));
     await view.findByText("ONE-TIME OFFER");
     await fireEvent.press(view.getByRole("button", { name: "No thanks" }));
     await view.findByText("Want to know when it's ready?");
@@ -469,8 +470,8 @@ describe("writer onboarding", () => {
   it("asks for notifications only after the user opts in", async () => {
     const { view } = await renderFlow();
     await reachPreview(view);
-    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
-    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Continue" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Close" }));
     await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
     await view.findByText("Want to know when it's ready?");
     // The soft pre-prompt must not have touched the OS dialog on the way here.
@@ -488,9 +489,8 @@ describe("writer onboarding", () => {
     await fireEvent.press(view.getByLabelText("Genre, Mystery"));
     await fireEvent.press(view.getByLabelText("Horror"));
     await reachPreview(view);
-    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
-    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
-    await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Continue" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
     await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
     await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
 
@@ -521,7 +521,7 @@ describe("writer onboarding", () => {
     expect(view.queryByLabelText("Add one more")).toBeNull();
 
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await fireEvent.press(await view.findByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(view.getByLabelText("Email address"), "w@e.com");
     await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
     await fireEvent.changeText(
@@ -530,10 +530,9 @@ describe("writer onboarding", () => {
     );
     await fireEvent.press(view.getByRole("button", { name: "Verify and continue" }));
     await settleCraftingHold();
-  await view.findByText(SHAPE.title);
-    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
-    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
-    await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+    await view.findByText(SHAPE.title);
+    await fireEvent.press(await view.findByRole("button", { name: "Continue" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
     await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
     await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
 
@@ -550,9 +549,8 @@ describe("writer onboarding", () => {
     const onDone = jest.fn();
     const { view } = await renderFlow(onDone);
     await reachPreview(view);
-    await fireEvent.press(await view.findByRole("button", { name: "Save my story" }));
-    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
-    await fireEvent.press(await view.findByRole("button", { name: "No thanks" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Continue" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
     await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
     await fireEvent.press(await view.findByRole("button", { name: "Open Katha" }));
 
@@ -562,7 +560,7 @@ describe("writer onboarding", () => {
     expect(result.draft.primaryGenre).toBe("mystery");
     expect(result.draft.whereAndWhen).toBe("A hill town, off-season");
     expect(result.draft.plannedChapterCount).toBe(3);
-    expect(result.subscribed).toBe(false);
+    expect(result.subscribed).toBe(true);
   });
 
   it("does not re-run auth when the user walks back to change the idea", async () => {
@@ -574,8 +572,8 @@ describe("writer onboarding", () => {
     // verified address must not be sent a second code, and a signed-in user
     // must not be put back in front of a sign-in form.
     await fireEvent.press(view.getByLabelText("Back"));
-    await view.findByText("The parts you already have in mind.");
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await view.findByText("Shape the Story");
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await settleCraftingHold();
   await view.findByText(SHAPE.title);
 
@@ -594,7 +592,7 @@ describe("writer onboarding", () => {
     expect(view.getByText(FALLBACK_TITLE)).toBeTruthy();
     expect(view.queryByText(/could not|failed|error|try again/i)).toBeNull();
     // And the screen still works: the entitlements and the ask are unchanged.
-    expect(view.getByRole("button", { name: "Save my story" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Continue" })).toBeTruthy();
   });
 
   it("clamps the plan when the planned length shrinks", async () => {
@@ -610,7 +608,7 @@ describe("writer onboarding", () => {
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
     // 3 is the default, so a seven-beat response must arrive already clamped.
-    await fireEvent.press(await view.findByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(view.getByLabelText("Email address"), "w@example.com");
     await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
     await fireEvent.changeText(
@@ -676,7 +674,7 @@ describe("the details fields", () => {
       "A woman inherits a boarded-up house and finds letters that arrive early.",
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
   }
 
   it("does not count moments at the user", async () => {
@@ -720,7 +718,7 @@ describe("the email screen", () => {
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
     await fireEvent.press(
-      await view.findByRole("button", { name: "Find the shape" }),
+      await view.findByRole("button", { name: "Create my story" }),
     );
     await view.findByLabelText("Email address");
   }
@@ -796,7 +794,7 @@ describe("the crafting floor", () => {
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
     await fireEvent.press(
-      await view.findByRole("button", { name: "Find the shape" }),
+      await view.findByRole("button", { name: "Create my story" }),
     );
     await fireEvent.changeText(
       view.getByLabelText("Email address"),
@@ -948,11 +946,11 @@ describe("the onboarding type scale", () => {
       "A woman inherits a boarded-up house and finds letters that arrive early.",
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
-    expectOnboardingTitle("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
+    expectOnboardingTitle("Shape the Story");
 
     await fireEvent.press(
-      view.getByRole("button", { name: "Find the shape" }),
+      view.getByRole("button", { name: "Create my story" }),
     );
     await view.findByText("Save your story before we shape it.");
     expectOnboardingTitle("Save your story before we shape it.");
@@ -1009,7 +1007,7 @@ describe("the onboarding type scale", () => {
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
     await fireEvent.press(
-      await view.findByRole("button", { name: "Find the shape" }),
+      await view.findByRole("button", { name: "Create my story" }),
     );
 
     // The email screen used to set its own headline styles. There is one way
@@ -1033,7 +1031,7 @@ describe("the onboarding type scale", () => {
 
     // "Anything that has to happen?" was a yes-or-no question about one of the
     // five things on the screen, and its honest answer is "no".
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
     expect(view.queryByText("Anything that has to happen?")).toBeNull();
     expect(
       view.getByText(
@@ -1082,7 +1080,7 @@ describe("the details screen's hierarchy", () => {
       "A woman inherits a boarded-up house and finds letters that arrive early.",
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
   }
 
   /** Every section head on the screen, optional ones reached by their label. */
@@ -1105,7 +1103,7 @@ describe("the details screen's hierarchy", () => {
       expect(style.fontSize).toBe(onboardingType.sectionHeader.fontSize);
       expect(style.fontFamily).toBe(onboardingType.sectionHeader.fontFamily);
       expect(style.letterSpacing).toBe(onboardingType.sectionHeader.letterSpacing);
-      expect(style.color).toBe(colors.tertiary);
+      expect(style.color).toBe(colors.ink);
     }
   });
 
@@ -1116,7 +1114,7 @@ describe("the details screen's hierarchy", () => {
     // The regression this replaces: section heads promoted to 21pt gave the
     // screen five things that looked like titles and one that was one. Nothing
     // on the screen but the title itself is set above `body`.
-    const title = view.getByText("The parts you already have in mind.");
+    const title = view.getByText("Shape the Story");
     expect(StyleSheet.flatten(title.props.style).fontSize).toBe(
       onboardingType.title.fontSize,
     );
