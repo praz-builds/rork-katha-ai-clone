@@ -187,8 +187,7 @@ export async function generateCoverImage(input: {
  * a character description is by far the likeliest part of a cover prompt to
  * trip a content filter. Level 2 is genre and title only.
  *
- * The *Avoid* exclusion and the regeneration steer are carried at every level,
- * including the last. Each
+ * The *Avoid* exclusion is carried at every level, including the last. Each
  * rung of this ladder exists to get *past* a content filter, so the rung most
  * likely to be reached is the one where an unconstrained cover would be most
  * embarrassing - and unlike the cast or the themes, an exclusion cannot be the
@@ -234,18 +233,19 @@ function buildCoverPromptForLevel(
       variation,
     );
   }
-  // The steer survives to the last rung for the same reason the exclusion does:
-  // a regeneration that simplifies all the way down to genre-and-title and then
-  // drops what the user asked for has re-made the cover they were replacing.
-  return buildCoverPrompt(
-    genre,
-    title,
-    [],
-    undefined,
-    undefined,
-    avoid,
-    variation,
-  );
+  // The last rung drops the steer, and it is the one place the steer must be
+  // dropped. Level 2 exists to be the prompt that *cannot* be refused - it is
+  // what every provider falls back to and what the chain has left when
+  // everything else has been rejected. The steer is the only part of a
+  // regeneration prompt that is per-request caller-supplied text, so leaving it
+  // here means a note crafted to trip a content filter trips every rung of
+  // every provider and the ladder has no floor. Bounded work per attempt is
+  // what makes the per-story attempt ceiling a real bound rather than a
+  // multiplier.
+  //
+  // The exclusion still survives, per the note above: it is a *negative*
+  // constraint, so it cannot be the thing a filter objected to.
+  return buildCoverPrompt(genre, title, [], undefined, undefined, avoid);
 }
 
 /**

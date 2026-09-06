@@ -245,7 +245,6 @@ Deno.test("the stored content type follows the bytes, not the path", async () =>
   );
 });
 
-
 // ---------------------------------------------------------------------------
 // The Avoid exclusion
 // ---------------------------------------------------------------------------
@@ -264,7 +263,10 @@ Deno.test("the Avoid exclusion survives every safety level and every provider", 
       }),
   );
 
-  assert(attempts.length >= 5, `expected a full ladder, saw ${attempts.length}`);
+  assert(
+    attempts.length >= 5,
+    `expected a full ladder, saw ${attempts.length}`,
+  );
   for (const [index, attempt] of attempts.entries()) {
     assert(
       attempt.prompt.includes("Do not depict: graphic violence."),
@@ -280,6 +282,40 @@ Deno.test("the Avoid exclusion survives every safety level and every provider", 
     "level 2 should have dropped the themes clause",
   );
   assert(last.prompt.includes("Do not depict: graphic violence."));
+});
+
+// ---------------------------------------------------------------------------
+// The regeneration steer, and why it is the one thing the last rung drops
+// ---------------------------------------------------------------------------
+
+// The steer is the only per-request caller-supplied text in a cover prompt.
+// Carrying it to level 2 - the rung that exists to be the prompt that cannot be
+// refused - means a note written to trip a content filter trips every rung of
+// every provider, and the ladder has no floor. That turns one request into
+// providers x levels image calls at no cost to the caller, and it is what makes
+// the per-story attempt ceiling a bound rather than a multiplier.
+Deno.test("the regeneration steer is dropped at the last safety level", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCoverImage({
+        ...cover,
+        avoid: "graphic violence",
+        variation: "a red door at dusk",
+      }),
+  );
+
+  const openai = attempts.filter((a) => a.url.includes("api.openai.com"));
+  assert(openai.length === 3, `expected three rungs, saw ${openai.length}`);
+  assert(openai[0].prompt.includes("a red door at dusk"));
+  assert(openai[1].prompt.includes("a red door at dusk"));
+  assert(
+    !openai[2].prompt.includes("a red door at dusk"),
+    "level 2 must be reachable without the caller's own text in it",
+  );
+  // The exclusion is not the steer and still survives: it is a negative
+  // constraint, so it cannot be what a filter objected to.
+  assert(openai[2].prompt.includes("Do not depict: graphic violence."));
 });
 
 Deno.test("no Avoid means no exclusion clause at any level", async () => {

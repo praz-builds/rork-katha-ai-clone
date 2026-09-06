@@ -170,8 +170,11 @@ serve(async (req) => {
       // whether to decrement the balance it is showing, and the next press's
       // price is read from `cover_regen_count` rather than guessed.
       charged: result.charged,
-      provider: result.provider,
-      model: result.model,
+      // True when this request id had already bought this cover and the stored
+      // one was handed back rather than a second one generated.
+      replayed: result.replayed,
+      ...(result.provider ? { provider: result.provider } : {}),
+      ...(result.model ? { model: result.model } : {}),
     });
   } catch (error) {
     console.error("regenerate-cover error:", safeErrorMessage(error));

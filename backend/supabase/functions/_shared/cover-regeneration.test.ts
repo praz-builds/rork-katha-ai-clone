@@ -39,7 +39,9 @@ interface StubOptions {
   claim?: Record<string, unknown>;
   claimError?: unknown;
   reserveError?: unknown;
-  reserveData?: Record<string, unknown>;
+  /** A transport-level rejection, as opposed to an `{ error }` result. */
+  reserveThrows?: unknown;
+  reserveData?: Record<string, unknown> | null;
   refundError?: unknown;
   finishError?: unknown;
   finishData?: Record<string, unknown>;
@@ -73,11 +75,14 @@ function stubClient(options: StubOptions = {}) {
         });
       }
       if (fn === "reserve_generation_operation") {
+        if (options.reserveThrows) {
+          return Promise.reject(options.reserveThrows);
+        }
         if (options.reserveError) {
           return Promise.resolve({ data: null, error: options.reserveError });
         }
         return Promise.resolve({
-          data: options.reserveData ??
+          data: options.reserveData === null ? {} : options.reserveData ??
             { id: "operation-1", status: "reserved", replayed: false },
           error: null,
         });
@@ -486,4 +491,178 @@ Deno.test("an unrecognisable stored prompt degrades to a generic steer", () => {
   const steer = buildVariationSteer(undefined, undefined);
   assert(steer);
   assertStringIncludes(steer, "clearly different");
+});
+
+// ---------------------------------------------------------------------------
+// The spend bound
+// ---------------------------------------------------------------------------
+//
+// The free retry is the hole these guard. Pricing counts *deliveries*, so an
+// attempt that produces no image costs nothing and leaves the next one free -
+// and the caller decides whether an attempt produces an image, because
+// `prompt_note` is free text that reaches the provider. Without a bound on
+// attempts, "regenerate, fail, repeat" is an unmetered image budget on our own
+// API keys, and there is no rate limiting in front of any Edge Function.
+
+Deno.test("a story past its attempt ceiling is refused before any spend", async () => {
+  const { client, rpcCalls } = stubClient({
+    claim: { claimed: false, reason: "attempt_limit" },
+  });
+  let generated = false;
+
+  const result = await regenerateCover({
+    client,
+    ...BASE,
+    generate: () => {
+      generated = true;
+      return Promise.resolve(imageResult());
+    },
+  });
+
+  assert(!result.ok);
+  // 429: nothing failed and nothing is owed. The request is refused for rate.
+  assertEquals(result.status, 429);
+  assertEquals(result.code, "attempt_limit");
+  assertEquals(generated, false, "the ceiling must precede the provider call");
+  // No reservation either - the refusal is the claim itself.
+  assertEquals(rpcNames(rpcCalls), ["claim_cover_regeneration"]);
+});
+
+Deno.test("the idempotency key reaches the claim, not only the reservation", async () => {
+  // The free path never calls `reserve_generation_operation`, which is where
+  // the other paid endpoints get their replay protection. Before this the
+  // request id was validated by the handler and then unused, so a retried free
+  // regeneration ran the whole provider chain again.
+  const { client, rpcCalls } = stubClient();
+  await regenerateCover({
+    client,
+    ...BASE,
+    generate: () => Promise.resolve(imageResult()),
+  });
+
+  const claim = rpcCalls.find((c) => c.fn === "claim_cover_regeneration");
+  assertEquals(claim?.args.p_request_id, "req-1");
+});
+
+Deno.test("a replayed request id returns the cover it already bought", async () => {
+  const { client, rpcCalls } = stubClient({
+    claim: {
+      claimed: false,
+      reason: "replayed",
+      cover_image_url: "https://cdn.test/covers/story-1/cover-r1.png",
+      cover_regen_count: 1,
+    },
+  });
+  let generated = false;
+
+  const result = await regenerateCover({
+    client,
+    ...BASE,
+    generate: () => {
+      generated = true;
+      return Promise.resolve(imageResult());
+    },
+  });
+
+  assert(result.ok);
+  assertEquals(result.replayed, true);
+  assertEquals(result.charged, false);
+  assertEquals(
+    result.coverImageUrl,
+    "https://cdn.test/covers/story-1/cover-r1.png",
+  );
+  assertEquals(generated, false, "a replay must not generate a second cover");
+  // And nothing was claimed, so nothing needs releasing.
+  assertEquals(rpcNames(rpcCalls), ["claim_cover_regeneration"]);
+});
+
+// ---------------------------------------------------------------------------
+// Releasing the claim
+// ---------------------------------------------------------------------------
+
+Deno.test("a reservation that throws still releases the claim", async () => {
+  // The try/catch used to wrap only the provider call, so an RPC that rejected
+  // escaped with the row still reading 'generating'. The reader then watched a
+  // spinner over a cover that already existed, and every further attempt was
+  // refused as in-flight until the ten-minute staleness window expired.
+  const { client, statusWrites } = stubClient({
+    claim: {
+      claimed: true,
+      previous_cover_status: "ready",
+      regen_count: 1,
+      requires_credit: true,
+      title: "T",
+      primary_genre: "mystery",
+      themes: [],
+    },
+    reserveThrows: new Error("connection reset"),
+  });
+
+  let thrown: unknown = null;
+  try {
+    await regenerateCover({
+      client,
+      ...BASE,
+      generate: () => Promise.resolve(imageResult()),
+    });
+  } catch (error) {
+    thrown = error;
+  }
+
+  assert(thrown instanceof Error);
+  assertEquals(statusWrites.length, 1);
+  assertEquals(statusWrites[0].values.cover_status, "ready");
+});
+
+Deno.test("a reservation with no operation id still releases the claim", async () => {
+  const { client, statusWrites } = stubClient({
+    claim: {
+      claimed: true,
+      previous_cover_status: "ready",
+      regen_count: 1,
+      requires_credit: true,
+      title: "T",
+      primary_genre: "mystery",
+      themes: [],
+    },
+    reserveData: null,
+  });
+
+  let thrown: unknown = null;
+  try {
+    await regenerateCover({
+      client,
+      ...BASE,
+      generate: () => Promise.resolve(imageResult()),
+    });
+  } catch (error) {
+    thrown = error;
+  }
+
+  assert(thrown instanceof Error);
+  assertEquals(statusWrites.length, 1);
+  assertEquals(statusWrites[0].values.cover_status, "ready");
+});
+
+Deno.test("a claim RPC that throws leaves nothing to release", async () => {
+  // Symmetry check on the other side of the boundary: if the claim itself
+  // failed, the row was never taken and restoring it would be a write over
+  // whatever state somebody else legitimately holds.
+  const { client, statusWrites } = stubClient({
+    claimError: { message: "database unavailable" },
+  });
+
+  let thrown: unknown = null;
+  try {
+    await regenerateCover({
+      client,
+      ...BASE,
+      generate: () => Promise.resolve(imageResult()),
+    });
+  } catch (error) {
+    thrown = error;
+  }
+
+  assert(thrown);
+  assertEquals(statusWrites.length, 0);
 });

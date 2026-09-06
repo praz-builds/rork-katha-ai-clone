@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   isEmptySeriesState,
   mergeSeriesState,
@@ -8,7 +11,7 @@ import {
   providedSeriesStateKeys,
   verifyDeliveredMoments,
 } from "./story_text.ts";
-import { EMPTY_SERIES_STATE, type SeriesState } from "./types.ts";
+import { EMPTY_SERIES_STATE, MAX_MOMENTS, type SeriesState } from "./types.ts";
 
 Deno.test("parseStructuredOutput: valid JSON parses correctly", () => {
   const json = JSON.stringify({
@@ -302,7 +305,6 @@ Deno.test("parseStructuredOutput: flags whether the structured parse succeeded",
   assertEquals(notJson.structured, false);
 });
 
-
 // ---------------------------------------------------------------------------
 // delivered_moments: append-only, and only ever what the brief asked for
 // ---------------------------------------------------------------------------
@@ -414,7 +416,27 @@ Deno.test("verifyDeliveredMoments drops anything the brief never contained", () 
   assertEquals(verified.delivered_moments, [WARM]);
   // Nothing else about the state is touched.
   assertEquals(verified.central_conflict, "A house that returns letters");
-  assertEquals(verifyDeliveredMoments(stateWith([WARM]), []).delivered_moments, []);
+  assertEquals(
+    verifyDeliveredMoments(stateWith([WARM]), []).delivered_moments,
+    [],
+  );
+});
+
+// The two write paths into `delivered_moments` have to agree about the shape of
+// what they store, not merely about what is allowed into it. The allowlist
+// bounds *which* values can be persisted and says nothing about how many times:
+// a chapter-1 response repeating one permitted moment eight times used to
+// persist eight entries, and every later chapter then rendered that moment
+// eight times in its "already delivered" block. `mergeDeliveredMoments` has
+// always trimmed, deduped and capped; this is the same contract on the path
+// chapter 1 takes.
+Deno.test("verifyDeliveredMoments trims, dedupes and caps like the merge path", () => {
+  const verified = verifyDeliveredMoments(
+    stateWith([WARM, `  ${WARM}  `, WARM, HEARS, WARM, HEARS]),
+    BRIEF,
+  );
+  assertEquals(verified.delivered_moments, [WARM, HEARS]);
+  assert(verified.delivered_moments.length <= MAX_MOMENTS);
 });
 
 // A chapter that reports only what it delivered is not an empty state: keeping

@@ -290,6 +290,14 @@ function mergeDeliveredMoments(
  * than compose its own, which makes an invented entry indistinguishable from a
  * real one to every later chapter that reads the state back. Verifying against
  * the supplied brief is what keeps that channel from being writable.
+ *
+ * Trims, dedupes and caps exactly as `mergeDeliveredMoments` does, and for the
+ * same reason. The allowlist alone bounds what *can* be stored but not how many
+ * times: a chapter-1 response listing one permitted moment eight times used to
+ * persist eight entries, and every later chapter's prompt then rendered that
+ * moment eight times in its "already delivered" block. Bloat rather than
+ * injection, but the two write paths into one column disagreeing about the
+ * shape of its contents is how the next difference between them goes unnoticed.
  */
 export function verifyDeliveredMoments(
   state: SeriesState,
@@ -301,12 +309,15 @@ export function verifyDeliveredMoments(
       .map((moment) => moment.trim())
       .filter(Boolean),
   );
-  return {
-    ...state,
-    delivered_moments: state.delivered_moments.filter((moment) =>
-      allowed.has(moment.trim())
-    ),
-  };
+  const verified: string[] = [];
+  const seen = new Set<string>();
+  for (const moment of state.delivered_moments) {
+    const trimmed = typeof moment === "string" ? moment.trim() : "";
+    if (!trimmed || seen.has(trimmed) || !allowed.has(trimmed)) continue;
+    seen.add(trimmed);
+    verified.push(trimmed);
+  }
+  return { ...state, delivered_moments: verified.slice(0, MAX_MOMENTS) };
 }
 
 /** Keys the model supplied in its `series_state`, for merge intent. */

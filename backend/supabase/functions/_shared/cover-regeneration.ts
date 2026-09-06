@@ -76,8 +76,13 @@ export type RegenerateCoverResult =
     coverRegenCount: number;
     /** True when this regeneration cost a credit. False for the free retry. */
     charged: boolean;
-    provider: string;
-    model: string;
+    /**
+     * True when this request id had already bought this cover and the stored
+     * one was handed back. Nothing was generated and nothing was charged.
+     */
+    replayed: boolean;
+    provider?: string;
+    model?: string;
   }
   | {
     ok: false;
@@ -93,6 +98,7 @@ export type RegenerateCoverFailure =
   | "not_found"
   | "not_owner"
   | "in_flight"
+  | "attempt_limit"
   | "insufficient_credits"
   | "already_reserved"
   | "request_id_spent"
@@ -107,7 +113,14 @@ export async function regenerateCover(
 
   const { data: claimData, error: claimError } = await client.rpc(
     "claim_cover_regeneration",
-    { p_story_id: storyId, p_user_id: userId },
+    {
+      p_story_id: storyId,
+      p_user_id: userId,
+      // The idempotency key reaches the claim, not just the reservation. The
+      // free retry never touches `reserve_generation_operation`, so before this
+      // a replayed free request re-ran the whole provider chain.
+      p_request_id: requestId,
+    },
   );
   if (claimError) throw claimError;
 
@@ -116,17 +129,87 @@ export async function regenerateCover(
     const reason = typeof claim.reason === "string"
       ? claim.reason
       : "not_found";
+    const replayedUrl = optionalString(claim.cover_image_url);
+    if (reason === "replayed" && replayedUrl) {
+      // This request id already bought this cover. Nothing generated, nothing
+      // charged, and the row is untouched - the claim did not take it.
+      return {
+        ok: true,
+        coverImageUrl: replayedUrl,
+        coverRegenCount: numberOr(claim.cover_regen_count, 0),
+        charged: false,
+        replayed: true,
+      };
+    }
     return claimRefusal(reason);
   }
 
   const previousStatus = coverStatusOf(claim.previous_cover_status);
   const requiresCredit = claim.requires_credit === true;
 
-  // Everything past the claim owns the row, so every exit below has to put it
-  // back. `restore` is the single place that happens.
+  // Everything past this line owns the row, so every exit has to put it back.
+  //
+  // `restore` is the single place that happens, and the try/catch below is what
+  // makes "every exit" true. It used to wrap only the provider call, so a
+  // reservation RPC that threw - or a reservation that came back without an
+  // operation id - escaped past the restore with the row still claimed. The
+  // reader then watched a spinner over a cover that already existed and every
+  // further attempt was refused as in-flight until the ten-minute staleness
+  // window expired. That is the exact failure this module's header says it
+  // exists to prevent, reintroduced two functions below the sentence.
+  let released = false;
   const restore = async () => {
+    if (released) return;
+    released = true;
     await setCoverStatus(client, storyId, previousStatus);
   };
+
+  try {
+    return await runClaimedRegeneration({
+      client,
+      storyId,
+      userId,
+      requestId,
+      promptNote: input.promptNote,
+      generate,
+      claim,
+      requiresCredit,
+      restore,
+    });
+  } catch (error) {
+    await restore();
+    throw error;
+  }
+}
+
+/**
+ * Everything that happens while the row is claimed.
+ *
+ * Split out so the caller can wrap the whole of it in one restore, rather than
+ * relying on each exit remembering to. A path added here that forgets is
+ * covered by the catch; a path added beside the claim would not be.
+ */
+async function runClaimedRegeneration(args: {
+  client: CoverRegenerationClient;
+  storyId: string;
+  userId: string;
+  requestId: string;
+  promptNote?: string;
+  generate: CoverImageGenerator;
+  claim: Record<string, unknown>;
+  requiresCredit: boolean;
+  restore: () => Promise<void>;
+}): Promise<RegenerateCoverResult> {
+  const {
+    client,
+    storyId,
+    userId,
+    requestId,
+    generate,
+    claim,
+    requiresCredit,
+    restore,
+  } = args;
 
   let operationId: string | undefined;
   if (requiresCredit) {
@@ -152,7 +235,7 @@ export async function regenerateCover(
       whereAndWhen: optionalString(claim.where_and_when),
       avoid: optionalString(claim.avoid),
       variation: buildVariationSteer(
-        input.promptNote,
+        args.promptNote,
         optionalString(claim.cover_prompt),
       ),
       // A distinct key per attempt. The public cover URL carries no version, so
@@ -218,6 +301,7 @@ export async function regenerateCover(
       numberOr(claim.regen_count, 0) + 1,
     ),
     charged: requiresCredit,
+    replayed: false,
     provider: image.provider,
     model: image.model,
   };
@@ -255,7 +339,11 @@ export function buildVariationSteer(
       : `Make it clearly different from the previous attempt in composition, palette emphasis and focal subject`,
   );
 
-  return parts.join(". ");
+  // Joined with a dash rather than a full stop. The sanitizer at the prompt
+  // boundary collapses every sentence terminator to a comma - which is the
+  // point of it - so composing this with full stops would only mean writing
+  // punctuation for it to rewrite. A dash survives and reads as the pause it is.
+  return parts.join(" - ");
 }
 
 /**
@@ -428,6 +516,18 @@ function claimRefusal(reason: string): Extract<
       status: 404,
       error: "Story not found",
       code: "not_owner",
+    };
+  }
+  if (reason === "attempt_limit") {
+    // 429, not 402 and not 502. Nothing failed and nothing is owed: this story
+    // has simply used its budget of cover attempts, and the honest thing to
+    // say is that the request is being refused for rate, not for money.
+    return {
+      ok: false,
+      status: 429,
+      error:
+        "This story has used its cover attempts. Publish it, or start another.",
+      code: "attempt_limit",
     };
   }
   if (reason === "in_flight") {

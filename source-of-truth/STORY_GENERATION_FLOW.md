@@ -862,7 +862,17 @@ they can bring a real book here.
 >    back to the status it held, not to `failed`. `failed` is the honest answer
 >    for a *first* cover, where the concept card is the fallback; here it would
 >    report a cover the reader can see as missing.
-> 3. **There is no cover step in Create.** This section's model made one
+> 3. **Regeneration is bounded by attempts, not by deliveries.** Point 1 is the
+>    right pricing rule and, on its own, an unmetered image budget: the caller
+>    supplies `prompt_note`, so "make it fail" is a request anyone can send, and
+>    each failure leaves the next attempt free. `stories.cover_attempt_count`
+>    counts every regeneration *started* and the claim is refused past **12 per
+>    story** with a 429 — separate from `cover_regen_count`, which still counts
+>    deliveries and still decides the price. Twelve is roughly an order of
+>    magnitude above plausible use (§13 treats a regeneration rate over 40% as a
+>    prompt problem rather than demand), and past it a caller must buy another
+>    story at 3 ✦ to get another twelve.
+> 4. **There is no cover step in Create.** This section's model made one
 >    unnecessary: chapter 1's art is revealed in the editor as it lands and
 >    confirmed at review. The step that existed showed a gradient card it called
 >    a preview, said the cover would be made at publish, and carried a disabled
@@ -1053,9 +1063,9 @@ derived value.
 | `cover-prompts.ts` | Consume `whereAndWhen`. This is what stops covers reading as genre stock art |
 | `image.ts` | Character portrait prompt from `appearance` + `description`; separate from the cover path |
 | `generate-character-image` | Client-callable portrait endpoint wrapping the character image path. It must not start story generation. |
-| `cover-regeneration.ts` | The claim / price / generate / settle transaction behind Regenerate, kept out of the handler so the paths that cost a credit can be tested. **Migration 00044 is required**: `stories.cover_regen_count` is what makes "1 free retry, then 1 ✦" expressible at all, and `stories.cover_prompt` — which §10.4 assumed existed and did not — is what lets a regeneration vary from the cover it replaces instead of re-sending the request that produced it. Both are server-derived and deliberately outside the owner-update grant of 00015, like `cover_status`. The free-versus-paid decision is returned by `claim_cover_regeneration` under the same advisory lock that claims the row, because reading the count in one round trip and acting on it in the next makes two fast taps two free covers. |
+| `cover-regeneration.ts` | The claim / price / generate / settle transaction behind Regenerate, kept out of the handler so the paths that cost a credit can be tested. **Migration 00044 is required.** `stories.cover_regen_count` is what makes "1 free retry, then 1 ✦" expressible at all; `stories.cover_attempt_count` is what bounds provider spend when the free retry keeps failing; `stories.cover_last_request_id` is what makes the *free* path idempotent, which `reserve_generation_operation` only does for the paid one; and `stories.cover_prompt` — which §10.4 assumed existed and did not — is what lets a regeneration vary from the cover it replaces instead of re-sending the request that produced it. All four are server-derived and deliberately outside the owner-update grant of 00015, like `cover_status`. The price, the ceiling, the replay check and the claim all happen inside `claim_cover_regeneration`, under one advisory lock and one `for update`: reading any of them in one round trip and acting in the next is what makes two fast taps two free covers. |
 | `regenerate-cover` | Client-callable cover endpoint. **POST** re-rolls the cover — reserving `kind = 'cover'` on chapter 1 when a credit is due, refunding it when the image does not arrive. **GET** reports the current cover state, which is how the client learns chapter 1's art landed: it is generated on a background task after the response is flushed, so without a read there is no second moment at which the client could find out. Same shape as `audio-status`. |
-| `cover-prompts.ts` / `image.ts` | A regeneration steer, carried at every rung of the safety ladder beside the *Avoid* exclusion, and a per-attempt storage key. The cover URL carries no version, so overwriting the object would leave every CDN edge serving the picture the writer just paid to replace. |
+| `cover-prompts.ts` / `image.ts` | A regeneration steer, carried beside the *Avoid* exclusion — but **dropped at the last safety rung**, which the exclusion is not. Level 2 exists to be the prompt that cannot be refused; the steer is the only per-request caller-supplied text in a cover prompt, so leaving it there lets a note written to trip a content filter trip every rung of every provider, and one request becomes nine image calls. Free text reaching a provider is also collapsed to a single clause — every `.` `!` `?` `;` `:` becomes a comma — because the value is emitted inside `Do not depict: X.` and a terminator inside X ends our sentence and starts the caller's. Plus a per-attempt storage key. The cover URL carries no version, so overwriting the object would leave every CDN edge serving the picture the writer just paid to replace. |
 | `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; accept only English or Portuguese from the Create contract |
 
 ### `expo/src/i18n/`
