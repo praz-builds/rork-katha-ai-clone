@@ -2250,8 +2250,103 @@ is a separate, explicit decision for later.
 - `deno check` clean on both functions.
 - `comments`: 18 tests passing. `feed`: 4 tests passing. Migrations: 36 passing,
   no regressions. All against PGlite - real Postgres, no network.
-- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
-  00042 remains WRITTEN BUT NOT APPLIED and neither function is deployed.
+- At the time of writing, NOTHING had been run against the live project
+  `iafeuxgoiknncgyjmugd`. SUPERSEDED later the same day: migration 00043 (this
+  migration, renumbered - see the next entry) was applied and both functions
+  deployed. The number in this entry's original text was 00042, which turned
+  out to collide with an already-applied migration; the next entry explains it.
 - Not covered by tests: the HTTP entrypoint itself - CORS, JSON parse failures,
   the `auth.getUser()` flow and action dispatch are covered by inspection only,
   because PGlite speaks Postgres rather than the PostgREST wire protocol.
+
+## 2026-09-06: Comments went live - migration 00043 applied, two functions deployed
+
+### Applied to the live project
+
+- Migration `00043_threaded_comments_moderation.sql` applied to
+  `iafeuxgoiknncgyjmugd` via `supabase db push --linked`.
+- `comments` and `feed` deployed via `supabase functions deploy`.
+
+### Two bugs that only appeared when this was applied for real
+
+- **A migration version collision that would have silently no-opped.** The
+  migration was written as `00042` when `00041` was the highest local file.
+  Merging main then brought in `00042_push_tokens_service_role_grants.sql`,
+  which was ALREADY APPLIED on the live project. Two files shared version
+  00042, so `supabase db push` would have treated the new one as already
+  applied and SKIPPED it - and the functions would then have deployed against
+  tables that do not exist. Caught by reading `supabase migration list` before
+  pushing rather than pushing blind. Renumbered to 00043.
+- **`count: "planned"` returned a planner ESTIMATE, not a count.** A story with
+  no comments reported `total: 1`, so a paging client waits for a comment that
+  is not there. Changed to `count: "exact"`, which is cheap here because a
+  thread is bounded by one story. Redeployed and re-checked: `total: 0`.
+
+Neither is reachable by the test suite. The first needs the live migration
+history; the second needs a real Postgres planner on an unanalyzed table.
+
+### Verified against the live project
+
+- The new tables exist. `comment_votes` and `user_blocks` read back empty.
+- `content_reports` returns **403** to its own reporter - the insert-only RLS
+  working exactly as designed, not a failure.
+- `comments` carries `parent_id`, `depth`, `score`, `deleted_at`.
+- block -> block again -> unblock round-trips: `already_blocked: true` on the
+  second call, `blocked: false` after unblock. Idempotent, no 500.
+- A self-block is rejected with 400; an unauthenticated read is refused with
+  401; an empty comment is refused with 400; commenting on an inaccessible
+  story is refused with 403.
+
+### NOT verified, and worth stating plainly
+
+Posting an actual comment end to end was NOT verified against the live
+project. The `stories` table holds 0 rows and direct inserts are correctly
+denied to `authenticated` - stories are created only through service-role
+functions - so proving the write path needs a real generated story. The write
+path therefore rests on 18 PGlite tests against real Postgres plus the live
+schema check, not on a comment landing on a real story.
+
+Three anonymous guest profiles were created by this testing (each granted the
+standard 3 welcome credits by `bootstrap-user`).
+
+## 2026-09-07: 00044 repairs an applied migration that was edited after the fact
+
+### The problem
+
+`set_comment_vote` was added to `00043` during review of #56 - AFTER 00043 had
+already been applied to the live project. A migration runner keys off the
+version number, so no environment that had already recorded 00043 would ever
+receive the edited file. A freshly created database gets the function; the live
+one does not. Production and a clean checkout had silently diverged.
+
+Confirmed against the live project rather than assumed: calling
+`POST /rest/v1/rpc/set_comment_vote` returns **PGRST202**, "Could not find the
+function public.set_comment_vote in the schema cache".
+
+That matters because the `comments` function on `main` routes voting through
+this RPC. The currently deployed build predates that change, so voting works
+right now - but the next deploy of that function from `main` would have broken
+voting in production while every test stayed green, because the test harness
+builds a fresh database where 00043 does create the function.
+
+### The fix
+
+`00044_set_comment_vote_backfill.sql` replays the function body verbatim from
+00043 under `create or replace`, plus its revoke/grant. It is a no-op on any
+database that already has the function, so it is safe for a fresh checkout and
+corrective for the live project.
+
+Editing an applied migration is what caused this. The fix is a new,
+forward-only migration - never another edit to 00043.
+
+### Verification
+
+- `deno test` over the whole migration chain with 00044 in place: 36 passed,
+  0 failed. Applying 00043 (which creates the function) and then 00044 (which
+  replaces it) is idempotent.
+
+### Ordering that matters operationally
+
+Apply 00044 BEFORE deploying the `comments` function from `main`. In the other
+order there is a window where the deployed code calls a function the database
+does not have.

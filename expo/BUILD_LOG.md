@@ -589,7 +589,22 @@
   end to end, including that the tri-state vote clears to 0.
 - Browser pass at 390x844: 0 clipped nodes; the story page renders hero,
   chapters, metadata and the comment section.
-- NOT done: the `comments` edge function is NOT deployed and migration 00043 is
-  NOT applied, so a configured client currently shows "Comments could not load"
-  and its retry. That is the honest state, not a bug - but comments will not
-  work until both are shipped.
+- SUPERSEDED, same day: this bullet originally recorded that the function was
+  not deployed and the migration not applied. Both shipped a few hours later -
+  see "Comments went live" below for what was applied, what was verified
+  against the live project, and what is still unverified.
+
+## 2026-09-06: Comments went live
+
+The `comments` edge function and migration `00043` shipped to the live
+project, so the comment thread on the story page is now backed by a real
+database rather than local state. Full detail - including the two bugs that
+only surfaced when the migration was applied for real, and what is still
+unverified - is in `backend/build-log.md` under "Comments went live".
+
+What that means for this client: a configured build now reads and writes real
+comments, votes, reports and blocks. The mock thread remains the fallback for
+an unconfigured Supabase, which is what tests and a bare local checkout use.
+
+Still unverified: posting a comment against a REAL story. The live `stories`
+table holds 0 rows, so nothing has actually been commented on end to end.
