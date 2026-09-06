@@ -79,6 +79,7 @@ export function buildThread(
   nowMs: number = Date.now(),
 ): CommentNode[] {
   const byId = new Map<string, CommentNode>();
+  const parentOf = new Map(rows.map((row) => [row.id, row.parentId]));
   for (const row of rows) {
     const createdAtMs = Date.parse(row.createdAt);
     byId.set(row.id, {
@@ -106,7 +107,7 @@ export function buildThread(
     const node = byId.get(row.id);
     if (!node) continue;
     const parent = row.parentId ? byId.get(row.parentId) : undefined;
-    if (parent && !isAncestor(node, parent, byId, rows)) {
+    if (parent && !isAncestor(node, parent, parentOf)) {
       parent.replies.push(node);
     } else {
       roots.push(node);
@@ -119,10 +120,8 @@ export function buildThread(
 function isAncestor(
   node: CommentNode,
   candidate: CommentNode,
-  byId: Map<string, CommentNode>,
-  rows: readonly ServerComment[],
+  parentOf: Map<string, string | null>,
 ): boolean {
-  const parentOf = new Map(rows.map((row) => [row.id, row.parentId]));
   const seen = new Set<string>();
   let cursor: string | null | undefined = candidate.id;
   while (cursor && !seen.has(cursor)) {
@@ -168,6 +167,12 @@ type WireComment = {
   deleted_at: string | null;
 };
 
+function isWireComment(value: unknown): value is WireComment {
+  return Boolean(
+    value && typeof value === "object" && "id" in value && "content" in value,
+  );
+}
+
 export function fromWire(row: WireComment): ServerComment {
   const vote = row.my_vote === 1 || row.my_vote === -1 ? row.my_vote : 0;
   return {
@@ -210,16 +215,21 @@ export async function postComment(
   content: string,
   parentId?: string,
 ): Promise<ServerComment | null> {
-  const data = await invokeComments<{ comment?: WireComment }>("comments", {
-    method: "POST",
-    body: {
-      action: "post",
-      story_id: storyId,
-      parent_id: parentId ?? null,
-      content,
+  const data = await invokeComments<{ comment?: WireComment } | WireComment>(
+    "comments",
+    {
+      method: "POST",
+      body: {
+        action: "post",
+        story_id: storyId,
+        parent_id: parentId ?? null,
+        content,
+      },
     },
-  });
-  return data?.comment ? fromWire(data.comment) : null;
+  );
+  const comment = "comment" in data ? data.comment : data;
+  if (!isWireComment(comment)) return null;
+  return comment ? fromWire(comment) : null;
 }
 
 /** `value` of 0 removes the viewer's vote. */

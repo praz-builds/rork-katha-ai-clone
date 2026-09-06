@@ -6,6 +6,12 @@
 
 ### Changed
 
+- Resolved the PR review's comments/moderation blockers before merge: comment
+  post parsing matches the server response shape, frontend report reasons use
+  the backend enum, comment write/vote failures no longer replace a loaded
+  thread with a load error, repeated vote taps are serialized per comment, and
+  block failures stay on the sheet instead of navigating away as if the block
+  worked.
 - Brought the writer onboarding prompt, details, preview and paywall screens
   onto one visual rhythm: shared progress rows, compact dark section headers,
   quieter starter prompt cards, bolder selected filter chips and slimmer
@@ -26,7 +32,8 @@
 - `pnpm test -- --runInBand src/__tests__/writer-onboarding.test.tsx
   src/__tests__/writer-onboarding-interactions.test.tsx` passed: 2 suites, 79
   tests.
-- Full Jest suite passed: 24 suites, 264 tests.
+- Focused review-fix tests passed: 6 suites, 107 tests.
+- Full Jest suite passed: 25 suites, 268 tests.
 - `EXPO_NO_DOTENV=1 pnpm exec expo export --platform web --output-dir
   /tmp/katha-writer-onboarding-paywall-export-check` passed.
 - `pnpm exec expo-doctor` still passes 15/18 checks; the remaining checks fail

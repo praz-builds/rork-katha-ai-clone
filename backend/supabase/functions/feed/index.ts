@@ -85,6 +85,7 @@ serve(async (req) => {
     if (profileResult.error && profileResult.error.code !== "PGRST116") {
       throw profileResult.error;
     }
+    if (readCountResult.error) throw readCountResult.error;
     if (blockedRowsResult.error) throw blockedRowsResult.error;
     const profile = profileResult.data ??
       { onboarding_purpose: null, preferred_genres: [] };

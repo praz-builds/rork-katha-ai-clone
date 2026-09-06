@@ -185,20 +185,20 @@ export default function StoryDetailScreen({
   /**
    * Blocking persists, then leaves the story.
    *
-   * The navigation happens whether or not the write succeeds. A reader who has
-   * just blocked someone should not be held on that author's page while a
-   * request retries, and the block is re-filed harmlessly if they block again
-   * - the table rejects duplicates.
-   *
    * The feed applies the block on its next fetch; see the `user_blocks` filter
    * in `backend/supabase/functions/feed/index.ts`.
    */
-  const handleBlockAuthor = useCallback(() => {
+  const handleBlockAuthor = useCallback(async () => {
     if (isSupabaseConfigured) {
-      blockAuthor(story.authorId).catch(() => {});
+      try {
+        await blockAuthor(story.authorId);
+      } catch {
+        return false;
+      }
     }
     setActionsOpen(false);
     onBack();
+    return true;
   }, [onBack, story.authorId]);
 
   const handleReportStory = useCallback((reason: ReportReason) => {

@@ -115,6 +115,25 @@ it("sends a new root comment to the server", async () => {
   );
 });
 
+it("keeps a loaded thread visible when a comment write fails", async () => {
+  mockFetchThread.mockResolvedValue([
+    serverRow({ id: "s1", body: "Still visible", authorName: "Ada" }),
+  ]);
+  mockPostComment.mockRejectedValueOnce(new Error("offline"));
+  const view = await render(<CommentThread storyId="story-7" authorName="Zoe" />);
+  await waitFor(() => expect(view.getByText("Still visible")).toBeTruthy());
+
+  await fireEvent.changeText(view.getByPlaceholderText(/Add a comment/i), "new thought");
+  await fireEvent.press(view.getByLabelText(/post comment/i));
+
+  await waitFor(() =>
+    expect(view.getByText("That action did not save. Check your connection and try again."))
+      .toBeTruthy()
+  );
+  expect(view.getByText("Still visible")).toBeTruthy();
+  expect(view.queryByText("Comments could not load")).toBeNull();
+});
+
 it("does not send an empty comment", async () => {
   mockFetchThread.mockResolvedValue([]);
   const view = await render(<CommentThread storyId="story-7" authorName="Zoe" />);
@@ -127,15 +146,23 @@ it("does not send an empty comment", async () => {
 });
 
 it("sends the vote the control lands on, including clearing to 0", async () => {
-  mockFetchThread.mockResolvedValue([
-    serverRow({ id: "s1", body: "vote target", score: 5, myVote: 0 }),
-  ]);
+  mockFetchThread
+    .mockResolvedValueOnce([
+      serverRow({ id: "s1", body: "vote target", score: 5, myVote: 0 }),
+    ])
+    .mockResolvedValueOnce([
+      serverRow({ id: "s1", body: "vote target", score: 6, myVote: 1 }),
+    ])
+    .mockResolvedValueOnce([
+      serverRow({ id: "s1", body: "vote target", score: 5, myVote: 0 }),
+    ]);
   const view = await render(<CommentThread storyId="story-1" authorName="Zoe" />);
   await waitFor(() => expect(view.getByText("vote target")).toBeTruthy());
 
   // none -> up sends +1
   await fireEvent.press(view.getByLabelText(/^Upvote/));
   await waitFor(() => expect(mockVoteOnComment).toHaveBeenLastCalledWith("s1", 1));
+  await waitFor(() => expect(view.getByLabelText("Upvoted")).toBeTruthy());
 
   // up -> pressing up again CLEARS, and must send 0, not +1.
   await fireEvent.press(view.getByLabelText("Upvoted"));
@@ -144,4 +171,25 @@ it("sends the vote the control lands on, including clearing to 0", async () => {
   // none -> down sends -1
   await fireEvent.press(view.getByLabelText(/^Downvote/));
   await waitFor(() => expect(mockVoteOnComment).toHaveBeenLastCalledWith("s1", -1));
+});
+
+it("ignores repeated vote taps while the previous vote is still saving", async () => {
+  let resolveVote!: () => void;
+  mockFetchThread.mockResolvedValue([
+    serverRow({ id: "s1", body: "vote target", score: 5, myVote: 0 }),
+  ]);
+  mockVoteOnComment.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveVote = () => resolve(undefined);
+    }),
+  );
+  const view = await render(<CommentThread storyId="story-1" authorName="Zoe" />);
+  await waitFor(() => expect(view.getByText("vote target")).toBeTruthy());
+
+  await fireEvent.press(view.getByLabelText(/^Upvote/));
+  await fireEvent.press(view.getByLabelText("Upvoted"));
+  expect(mockVoteOnComment).toHaveBeenCalledTimes(1);
+
+  resolveVote();
+  await waitFor(() => expect(mockFetchThread).toHaveBeenCalledTimes(2));
 });

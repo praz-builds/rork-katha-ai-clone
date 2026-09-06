@@ -346,16 +346,18 @@ async function handlePostComment(
   return {
     status: 201,
     body: {
-      id: data.id,
-      parent_id: data.parent_id,
-      depth: data.depth,
-      author_id: data.user_id,
-      author_display_name: profile?.username ?? null,
-      content: data.content,
-      created_at: data.created_at,
-      score: data.score,
-      deleted_at: data.deleted_at,
-      my_vote: 0,
+      comment: {
+        id: data.id,
+        parent_id: data.parent_id,
+        depth: data.depth,
+        author_id: data.user_id,
+        author_display_name: profile?.username ?? null,
+        content: data.content,
+        created_at: data.created_at,
+        score: data.score,
+        deleted_at: data.deleted_at,
+        my_vote: 0,
+      },
     },
   };
 }

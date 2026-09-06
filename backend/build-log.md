@@ -2151,6 +2151,12 @@ is a separate, explicit decision for later.
 
 ### Changed
 
+- Resolved the PR review's comments/moderation blockers before merge: successful
+  comment posts now return `{ comment }`, feed fails closed if the read-count
+  query fails, frontend report reasons use the backend enum, comment write/vote
+  failures no longer replace a loaded thread with a load error, repeated vote
+  taps are serialized per comment, and block failures stay on the sheet instead
+  of navigating away as if the block worked.
 - Aligned the writer onboarding flow to the in-app create UI: early screens now
   show the same progress treatment, section labels use the darker compact
   heading style, starter prompts use quieter helper-weight text, and the idea
@@ -2169,7 +2175,8 @@ is a separate, explicit decision for later.
 - `pnpm typecheck` passed from `expo/`.
 - Focused ESLint passed for `WriterOnboarding` and its tests.
 - Focused writer onboarding tests passed: 2 suites, 79 tests.
-- Full Expo Jest suite passed: 24 suites, 264 tests.
+- Focused review-fix tests passed: 6 suites, 107 tests.
+- Full Expo Jest suite passed: 25 suites, 268 tests.
 - Web export compiled to
   `/tmp/katha-writer-onboarding-paywall-export-check`.
 - Backend migration/comments/feed tests passed: 58 tests.

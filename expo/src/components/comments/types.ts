@@ -18,13 +18,13 @@ export type SortMode = "top" | "new";
 export type ReportReason =
   | "spam"
   | "harassment"
-  | "sexualContentMinors"
+  | "sexual_content"
   | "other";
 
 export const REPORT_REASONS: readonly { id: ReportReason; label: string }[] = [
   { id: "spam", label: "Spam" },
   { id: "harassment", label: "Harassment" },
-  { id: "sexualContentMinors", label: "Sexual content involving minors" },
+  { id: "sexual_content", label: "Sexual content involving minors" },
   { id: "other", label: "Other" },
 ];
 

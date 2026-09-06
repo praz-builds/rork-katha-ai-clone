@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -192,10 +192,13 @@ export default function CommentThread({
   const [tree, setTree] = useState<CommentNode[]>(remote ? [] : MOCK_COMMENTS);
   const [loading, setLoading] = useState(remote);
   const [failed, setFailed] = useState(false);
+  const [writeFailed, setWriteFailed] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("top");
   const [composerText, setComposerText] = useState("");
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
+  const [pendingVotes, setPendingVotes] = useState<Record<string, boolean>>({});
+  const pendingVoteIds = useRef(new Set<string>());
 
   const reload = useCallback(async () => {
     if (!remote) return;
@@ -225,7 +228,12 @@ export default function CommentThread({
     setTree((current) => addRootComment(current, createComment("You", trimmed)));
     setComposerText("");
     if (remote) {
-      postComment(storyId, trimmed).then(reload).catch(() => setFailed(true));
+      postComment(storyId, trimmed)
+        .then(() => {
+          setWriteFailed(false);
+          return reload();
+        })
+        .catch(() => setWriteFailed(true));
     }
   };
 
@@ -246,13 +254,17 @@ export default function CommentThread({
     setReplyTargetId(null);
     setReplyDraft("");
     if (remote) {
-      postComment(storyId, trimmed, parentId).then(reload).catch(() =>
-        setFailed(true)
-      );
+      postComment(storyId, trimmed, parentId)
+        .then(() => {
+          setWriteFailed(false);
+          return reload();
+        })
+        .catch(() => setWriteFailed(true));
     }
   };
 
   const handleVote = (id: string, direction: "up" | "down") => {
+    if (pendingVoteIds.current.has(id) || pendingVotes[id]) return;
     setTree((current) => {
       const next = applyVote(current, id, direction);
       if (remote) {
@@ -266,7 +278,22 @@ export default function CommentThread({
           : node?.voteState === "down"
           ? -1
           : 0;
-        voteOnComment(id, value).catch(() => setFailed(true));
+        pendingVoteIds.current.add(id);
+        setPendingVotes((all) => ({ ...all, [id]: true }));
+        voteOnComment(id, value)
+          .then(() => {
+            setWriteFailed(false);
+            return reload();
+          })
+          .catch(() => setWriteFailed(true))
+          .finally(() => {
+            pendingVoteIds.current.delete(id);
+            setPendingVotes((all) => {
+              const nextPending = { ...all };
+              delete nextPending[id];
+              return nextPending;
+            });
+          });
       }
       return next;
     });
@@ -327,6 +354,12 @@ export default function CommentThread({
           </Pressable>
         </View>
       </View>
+
+      {writeFailed ? (
+        <Text style={styles.writeError}>
+          That action did not save. Check your connection and try again.
+        </Text>
+      ) : null}
 
       {loading ? (
         <View style={styles.emptyState}>
@@ -459,6 +492,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.accent,
     marginTop: spacing.related,
+  },
+  writeError: {
+    ...type.caption,
+    color: colors.accentPressed,
   },
   emptyState: {
     alignItems: "center",

@@ -6,6 +6,7 @@ import { REPORT_REASONS } from "@/components/comments/types";
 import type { ReportReason } from "@/components/comments/types";
 
 type SheetView = "menu" | "reportReasons" | "reportDone" | "blockConfirm" | "blockDone";
+type MaybePromise<T> = T | Promise<T>;
 
 /**
  * Bottom sheet for the two moderation actions available from a story: report
@@ -25,7 +26,7 @@ export default function StoryActionsSheet({
   onClose: () => void;
   storyTitle: string;
   authorName: string;
-  onBlockAuthor: () => void;
+  onBlockAuthor: () => MaybePromise<boolean | void>;
   /**
    * Persist the report. Optional so the sheet still works in isolation and in
    * tests; when absent the sheet shows its confirmation and files nothing.
@@ -34,12 +35,16 @@ export default function StoryActionsSheet({
 }) {
   const [view, setView] = useState<SheetView>("menu");
   const [reason, setReason] = useState<ReportReason | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   // Reset to the top of the sheet every time it is (re)opened.
   useEffect(() => {
     if (visible) {
       setView("menu");
       setReason(null);
+      setBlockBusy(false);
+      setBlockError(null);
     }
   }, [visible]);
 
@@ -47,9 +52,21 @@ export default function StoryActionsSheet({
     onClose();
   };
 
-  const handleConfirmBlock = () => {
-    onBlockAuthor();
-    setView("blockDone");
+  const handleConfirmBlock = async () => {
+    setBlockBusy(true);
+    setBlockError(null);
+    try {
+      const blocked = await onBlockAuthor();
+      if (blocked === false) {
+        setBlockError("That block did not save. Check your connection and try again.");
+        return;
+      }
+      setView("blockDone");
+    } catch {
+      setBlockError("That block did not save. Check your connection and try again.");
+    } finally {
+      setBlockBusy(false);
+    }
   };
 
   const handleSubmitReport = () => {
@@ -174,12 +191,17 @@ export default function StoryActionsSheet({
               </Text>
               <Pressable
                 onPress={handleConfirmBlock}
+                disabled={blockBusy}
                 style={styles.destructiveButton}
                 accessibilityRole="button"
                 accessibilityLabel={`Confirm block ${authorName}`}
+                accessibilityState={{ disabled: blockBusy }}
               >
-                <Text style={styles.destructiveButtonLabel}>Block author</Text>
+                <Text style={styles.destructiveButtonLabel}>
+                  {blockBusy ? "Blocking..." : "Block author"}
+                </Text>
               </Pressable>
+              {blockError ? <Text style={styles.error}>{blockError}</Text> : null}
               <Pressable
                 onPress={() => setView("menu")}
                 style={styles.cancelButton}
@@ -308,6 +330,10 @@ const styles = StyleSheet.create({
     ...type.body,
     fontWeight: "700",
     color: colors.surface,
+  },
+  error: {
+    ...type.caption,
+    color: colors.accentPressed,
   },
   cancelButton: {
     minHeight: 44,
