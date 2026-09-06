@@ -39,6 +39,7 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  Compass,
   Heart,
   Home,
   Lock,
@@ -46,15 +47,13 @@ import {
   Pause,
   Play,
   Plus,
-  Search,
   Send,
   Share2,
   Sparkles,
   Star,
+  User,
 } from "lucide-react-native";
 import {
-  Chip,
-  Cover,
   FocalImage,
   formatNumber,
   PrimaryButton,
@@ -62,10 +61,13 @@ import {
   SectionHeader,
   StoryCard,
 } from "@/components/KathaPrimitives";
-import { authorFor, genres, ledger, stories } from "@/data/seed";
+import { authorFor, ledger, stories } from "@/data/seed";
 import { imageAssets } from "@/data/images";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
+import ExploreScreen from "@/screens/ExploreScreen";
+import StoryDetailScreen from "@/screens/StoryDetailScreen";
+import HomeScreen from "@/screens/HomeScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import WriterOnboarding from "@/screens/WriterOnboarding";
@@ -80,6 +82,35 @@ import {
 } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 import type { KathaOnboardingResult } from "@/screens/KathaOnboardingFlowV2";
+
+/**
+ * Dev-only deep link into a tab, e.g. `localhost:8081/?tab=explore`.
+ *
+ * The app boots to `intro`, so every reload of the web dev server drops you at
+ * the top of onboarding and the tabs are several screens away. That makes
+ * eyeballing a feed change genuinely tedious, and tedious QA is QA that stops
+ * happening. Guarded by `__DEV__` and by the web platform check, so it cannot
+ * exist in a shipped native build, and it only ever selects a tab - it grants
+ * nothing and skips no paid or permission-gated step.
+ */
+const DEV_TAB_KEYS: readonly TabKey[] = [
+  "home",
+  "explore",
+  "create",
+  "library",
+  "profile",
+];
+
+function devInitialTab(): TabKey | null {
+  if (!__DEV__ || Platform.OS !== "web") return null;
+  try {
+    const requested = new URLSearchParams(globalThis.location?.search ?? "")
+      .get("tab");
+    return DEV_TAB_KEYS.find((key) => key === requested) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const GENRE_BY_LABEL = Object.fromEntries(
   Object.entries(genreLabels).map((
@@ -96,8 +127,11 @@ type LibrarySegment = "saved" | "history" | "myStories" | "comments";
 
 export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
-  const [screen, setScreen] = useState<Screen>({ name: "intro" });
-  const [tab, setTab] = useState<TabKey>("home");
+  const bootTab = devInitialTab();
+  const [screen, setScreen] = useState<Screen>(
+    bootTab ? { name: "tabs" } : { name: "intro" },
+  );
+  const [tab, setTab] = useState<TabKey>(bootTab ?? "home");
   const [credits, setCredits] = useState(() => isSupabaseConfigured ? 0 : 3);
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
@@ -173,7 +207,26 @@ export default function App() {
     );
   }
 
-  const openStory = (storyId: string) => setScreen({ name: "reader", storyId });
+  /**
+   * A series gets a landing page; a standalone opens straight into its prose.
+   *
+   * The landing page earns its extra tap only when there is something to land
+   * ON - a chapter list to choose from, a series premise to read before
+   * committing. For a single-chapter story that page would be a wall between
+   * the reader and the one thing they tapped for, so the tap goes where the
+   * intent went.
+   */
+  const isSeries = (story: Story) =>
+    story.storyMode === "series" || story.chapters.length > 1;
+
+  const openStory = (storyId: string) => {
+    const story = allStories.find((item) => item.id === storyId);
+    setScreen(
+      story && isSeries(story)
+        ? { name: "story", storyId }
+        : { name: "reader", storyId },
+    );
+  };
   const finishOnboarding = (result: KathaOnboardingResult) => {
     setOnboarding(result);
     goTabs("home");
@@ -199,8 +252,17 @@ export default function App() {
             generatedStories={generatedStories}
             stories={allStories}
             onStory={openStory}
-            onProfile={() => setScreen({ name: "profile" })}
+            onProfile={() => goTabs("profile")}
             onCreate={() => goTabs("create")}
+            onSeeAll={() => goTabs("explore")}
+          />
+        );
+      case "explore":
+        return (
+          <ExploreScreen
+            stories={allStories}
+            onStory={openStory}
+            onProfile={() => goTabs("profile")}
           />
         );
       case "create":
@@ -226,6 +288,32 @@ export default function App() {
             stories={allStories}
             onStory={openStory}
             onCreate={() => goTabs("create")}
+          />
+        );
+      case "profile":
+        return (
+          <ProfileScreen
+            credits={credits}
+            onBack={() => goTabs("home")}
+            onCredits={() => setScreen({ name: "credits" })}
+            onPaywall={() => setScreen({ name: "paywall" })}
+            onCustomerCenter={() => {
+              revenueCatService
+                .presentCustomerCenter()
+                .then((presented) => {
+                  // Unavailable on web, or the SDK never configured. Send the
+                  // user to the paywall rather than leaving the row doing
+                  // nothing.
+                  if (!presented) setScreen({ name: "paywall" });
+                })
+                .catch((error) => {
+                  Alert.alert(
+                    "Subscription management unavailable",
+                    "Please try again shortly.",
+                  );
+                  console.warn("RevenueCat Customer Center failed:", error);
+                });
+            }}
           />
         );
     }
@@ -271,11 +359,27 @@ export default function App() {
             onDone={finishOnboarding}
           />
         )
+        : screen.name === "story"
+        ? (
+          <StoryDetailScreen
+            story={allStories.find((story) => story.id === screen.storyId) ??
+              allStories[0]}
+            onBack={() => goTabs(tab)}
+            onRead={(chapterIndex) =>
+              setScreen({
+                name: "reader",
+                storyId: screen.storyId,
+                chapterIndex,
+              })}
+            onAuthor={(authorId) => setScreen({ name: "author", authorId })}
+          />
+        )
         : screen.name === "reader"
         ? (
           <ReaderScreen
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
+            initialChapterIndex={screen.chapterIndex ?? 0}
             onBack={() => goTabs(tab)}
           />
         )
@@ -297,31 +401,6 @@ export default function App() {
             onDone={finishOnboarding}
           />
         )
-        : screen.name === "profile"
-        ? (
-          <ProfileScreen
-            credits={credits}
-            onBack={() => goTabs(tab)}
-            onCredits={() => setScreen({ name: "credits" })}
-            onPaywall={() => setScreen({ name: "paywall" })}
-            onCustomerCenter={() => {
-              revenueCatService
-                .presentCustomerCenter()
-                .then((presented) => {
-                  // Unavailable on web, or the SDK never configured. Send the user
-                  // to the paywall rather than leaving the row doing nothing.
-                  if (!presented) setScreen({ name: "paywall" });
-                })
-                .catch((error) => {
-                  Alert.alert(
-                    "Subscription management unavailable",
-                    "Please try again shortly.",
-                  );
-                  console.warn("RevenueCat Customer Center failed:", error);
-                });
-            }}
-          />
-        )
         : (
           <>
             {renderTab()}
@@ -332,220 +411,6 @@ export default function App() {
         )}
       </ScreenScaffold>
     </SafeAreaProvider>
-  );
-}
-
-/* ─────────────────────────────── Home Screen ─────────────────────────────── */
-
-function HomeScreen({
-  credits,
-  generatedStories,
-  stories: allStories,
-  onStory,
-  onProfile,
-  onCreate,
-  preferredGenres = [],
-}: {
-  credits: number;
-  generatedStories: Story[];
-  stories: Story[];
-  onStory: (id: string) => void;
-  onProfile: () => void;
-  onCreate: () => void;
-  preferredGenres?: Genre[];
-}) {
-  const [query, setQuery] = useState("");
-  const [genre, setGenre] = useState<Genre | "all">("all");
-  const featured = allStories.filter((story) => story.isFeatured);
-  const isNewUser = generatedStories.length === 0;
-  const hour = new Date().getHours();
-  const greeting = hour < 12
-    ? "Good morning"
-    : hour < 17
-    ? "Good afternoon"
-    : "Good evening";
-
-  const filtered = allStories.filter((story) => {
-    const q = query.trim().toLowerCase();
-    return (
-      (genre === "all" || story.genre === genre) &&
-      (!q || story.title.toLowerCase().includes(q) ||
-        story.synopsis.toLowerCase().includes(q) ||
-        story.tags.join(" ").toLowerCase().includes(q) ||
-        authorFor(story.authorId).displayName.toLowerCase().includes(q))
-    );
-  });
-
-  const showFiltered = query.trim().length > 0 || genre !== "all";
-
-  // Genres the user picked during onboarding. Falls back for users who skipped it.
-  const onboardingGenres: Genre[] = preferredGenres.length > 0
-    ? preferredGenres
-    : ["adventure", "mystery", "fantasy"];
-  const genreRows = onboardingGenres
-    .map((g) => ({
-      genre: g,
-      stories: allStories.filter((s) => s.genre === g),
-    }))
-    .filter((row) => row.stories.length > 0);
-
-  return (
-    <SafeAreaView style={styles.flex}>
-      <ScrollView
-        contentContainerStyle={styles.withTabs}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header with avatar */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>{greeting}</Text>
-            <Text style={styles.h1}>Stories for you</Text>
-          </View>
-          <Pressable
-            onPress={onProfile}
-            accessibilityLabel="Open profile"
-            accessibilityRole="button"
-            style={styles.avatarButton}
-          >
-            <Image
-              source={require("./assets/icon.png")}
-              style={styles.headerAvatar}
-            />
-            <View style={styles.creditBadge}>
-              <Text style={styles.creditBadgeText}>{credits}</Text>
-            </View>
-          </Pressable>
-        </View>
-
-        {/* Search */}
-        <View style={styles.searchBox}>
-          <Search size={18} color={colors.muted} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search stories, moods, authors"
-            placeholderTextColor={colors.tertiary}
-            style={styles.searchInput}
-          />
-        </View>
-
-        {/* Genre chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}
-        >
-          <Chip
-            label="All"
-            selected={genre === "all"}
-            onPress={() => setGenre("all")}
-          />
-          {genres.slice(0, 10).map((item) => (
-            <Chip
-              key={item}
-              label={genreLabels[item]}
-              selected={genre === item}
-              onPress={() => setGenre(item)}
-            />
-          ))}
-        </ScrollView>
-
-        {showFiltered
-          ? (
-            <View style={styles.stack}>
-              {filtered.map((story) => (
-                <StoryCard
-                  key={story.id}
-                  story={story}
-                  onPress={() => onStory(story.id)}
-                  compact
-                />
-              ))}
-            </View>
-          )
-          : isNewUser
-          ? (
-            <>
-              {/* Primary write CTA */}
-              <View style={styles.writeCTACard}>
-                <Text style={styles.writeCTATitle}>Start your first story</Text>
-                <Text style={styles.writeCTASubtitle}>
-                  Genre, characters, your idea. Katha brings it to life
-                </Text>
-                <View style={styles.writeCTAButtonWrap}>
-                  <PrimaryButton onPress={onCreate}>
-                    Create a story
-                  </PrimaryButton>
-                </View>
-              </View>
-
-              {/* Or pick one to read */}
-              <SectionHeader title="Or pick one to read" />
-              <HorizontalStories stories={featured} onStory={onStory} />
-
-              {/* Genre rows */}
-              {genreRows.map((row) => (
-                <View key={row.genre}>
-                  <SectionHeader title={genreLabels[row.genre]} />
-                  <HorizontalStories stories={row.stories} onStory={onStory} />
-                </View>
-              ))}
-            </>
-          )
-          : (
-            <>
-              {/* Continue reading card */}
-              <Pressable
-                onPress={() => onStory(featured[0].id)}
-                style={styles.continueCard}
-              >
-                <View style={styles.continueCopy}>
-                  <Text style={styles.continueEyebrow}>Continue reading</Text>
-                  <Text style={styles.continueTitle}>{featured[0].title}</Text>
-                  <Text style={styles.continueMeta}>
-                    40% read - Chapter 2 waits
-                  </Text>
-                </View>
-                <Cover story={featured[0]} size="mini" />
-              </Pressable>
-
-              {/* Write another CTA (smaller, accentSoft) */}
-              <Pressable onPress={onCreate} style={styles.writeAnotherBand}>
-                <View style={styles.writeAnotherIcon}>
-                  <Plus size={20} color={colors.accent} />
-                </View>
-                <Text style={styles.writeAnotherText}>Write another story</Text>
-                <ChevronRight size={18} color={colors.accent} />
-              </Pressable>
-
-              {/* Trending */}
-              <SectionHeader title="Trending now" action="See all" />
-              <HorizontalStories stories={featured} onStory={onStory} />
-
-              {/* Genre rows */}
-              {genreRows.map((row) => (
-                <View key={row.genre}>
-                  <SectionHeader title={genreLabels[row.genre]} />
-                  <HorizontalStories stories={row.stories} onStory={onStory} />
-                </View>
-              ))}
-
-              {/* For you */}
-              <SectionHeader title="For you" />
-              <View style={styles.stack}>
-                {allStories.slice(2, 7).map((story) => (
-                  <StoryCard
-                    key={story.id}
-                    story={story}
-                    onPress={() => onStory(story.id)}
-                    compact
-                  />
-                ))}
-              </View>
-            </>
-          )}
-      </ScrollView>
-    </SafeAreaView>
   );
 }
 
@@ -842,9 +707,16 @@ const INITIAL_COMMENTS: ReaderComment[] = [
   },
 ];
 
-function ReaderScreen({ story, onBack }: { story: Story; onBack: () => void }) {
+function ReaderScreen(
+  { story, onBack, initialChapterIndex = 0 }: {
+    story: Story;
+    onBack: () => void;
+    /** Which chapter the story page sent the reader to. */
+    initialChapterIndex?: number;
+  },
+) {
   const author = authorFor(story.authorId);
-  const [chapterIndex, setChapterIndex] = useState(0);
+  const [chapterIndex, setChapterIndex] = useState(initialChapterIndex);
   const chapter = story.chapters[chapterIndex] ?? story.chapters[0];
   const hasMultipleChapters = story.chapters.length > 1;
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
@@ -1479,29 +1351,6 @@ function AuthorScreen({
 
 /* ─────────────────────────────── Shared Components ─────────────────────────────── */
 
-function HorizontalStories(
-  { stories: items, onStory }: {
-    stories: Story[];
-    onStory: (id: string) => void;
-  },
-) {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.horizontalRail}
-    >
-      {items.map((story) => (
-        <StoryCard
-          key={story.id}
-          story={story}
-          onPress={() => onStory(story.id)}
-        />
-      ))}
-    </ScrollView>
-  );
-}
-
 function BottomTabs(
   { selected, onSelect }: { selected: TabKey; onSelect: (tab: TabKey) => void },
 ) {
@@ -1512,8 +1361,10 @@ function BottomTabs(
     raised?: boolean;
   }[] = [
     { key: "home", label: "Home", Icon: Home },
+    { key: "explore", label: "Explore", Icon: Compass },
     { key: "create", label: "", Icon: Plus, raised: true },
     { key: "library", label: "Library", Icon: Bookmark },
+    { key: "profile", label: "You", Icon: User },
   ];
   return (
     <View style={styles.tabBar}>
@@ -1598,136 +1449,16 @@ const styles = StyleSheet.create({
   },
 
   /* ── Avatar in header ── */
-  avatarButton: { position: "relative" },
-  headerAvatar: { width: 40, height: 40, borderRadius: 20 },
-  creditBadge: {
-    position: "absolute",
-    top: -4,
-    right: -6,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  creditBadgeText: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontSize: 10,
-    fontWeight: "900",
-  },
 
   /* ── Write CTA (new user) ── */
-  writeCTACard: {
-    marginHorizontal: spacing.xl,
-    padding: spacing.xl,
-    borderRadius: radius.xl,
-    backgroundColor: colors.ink,
-  },
-  writeCTATitle: {
-    fontFamily: fonts.display,
-    color: colors.surface,
-    fontSize: 24,
-    lineHeight: 28,
-  },
-  writeCTASubtitle: {
-    marginTop: spacing.sm,
-    fontFamily: fonts.ui,
-    color: "rgba(255,255,255,0.7)",
-    fontWeight: "700",
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  writeCTAButtonWrap: { marginTop: spacing.lg },
 
   /* ── Write another (returning user) ── */
-  writeAnotherBand: {
-    margin: spacing.xl,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: "#FFE0C7",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  writeAnotherIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  writeAnotherText: {
-    flex: 1,
-    fontFamily: fonts.display,
-    fontSize: 17,
-    color: colors.ink,
-  },
 
   /* ── Continue reading card ── */
-  continueCard: {
-    marginHorizontal: spacing.xl,
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    backgroundColor: colors.ink,
-    flexDirection: "row",
-    gap: spacing.md,
-    alignItems: "center",
-  },
-  continueCopy: { flex: 1 },
-  continueEyebrow: {
-    fontFamily: fonts.ui,
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  continueTitle: {
-    marginTop: spacing.xs,
-    fontFamily: fonts.display,
-    color: colors.surface,
-    fontSize: 25,
-    lineHeight: 28,
-  },
-  continueMeta: {
-    marginTop: spacing.sm,
-    fontFamily: fonts.ui,
-    color: "rgba(255,255,255,0.7)",
-    fontWeight: "700",
-  },
 
   /* ── Horizontal rail ── */
-  horizontalRail: { paddingHorizontal: spacing.xl, gap: 12 },
 
   /* ── Search & chips ── */
-  searchBox: {
-    marginHorizontal: spacing.xl,
-    height: 52,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontSize: 15,
-  },
-  chipRow: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    gap: spacing.sm,
-  },
   chipRowFlush: { gap: spacing.sm, paddingBottom: spacing.lg },
 
   /* ── Stack ── */

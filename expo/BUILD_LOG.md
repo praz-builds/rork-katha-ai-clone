@@ -2,6 +2,76 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-06: Single-Screen Main Create Flow
+
+### Changed
+
+- Reworked main Create into one scrollable generation screen: Genre, Kids Mode, story idea, starter chips, optional Premise, characters, More options, brief strength, credits, and `Create · 3 credits` all render together.
+- Adjusted hierarchy again after product review: audience mode and Genre now share a compact parent row above the prompt, Genre opens a vertical picker, and Where/when plus Characters follow the starter prompts.
+- Refined the parent row after visual review: Genre now sits left with a per-genre icon, Kids Mode is a compact switch on the right, and the genre picker is a narrow vertical menu rather than a full-width list.
+- Changed the visible secondary context label from Where/when to `Premise` with an optional hint, removed helper copy under `Who's in it`, and tightened More options into a heading-style disclosure.
+- Removed the main-flow `Continue` stage and the pre-story inference call from the Create UI path. The only story-generation call is the final Create action.
+- Moved moments and chapter-plan editing into a lighter inline More options disclosure with writing style, chapters, length, language, visibility, spice, avoid, and chapter art.
+- Kept Craft character as the only separate surface, presented through a native full-screen `Modal` with Create image/Reimagine/Edit/Delete states.
+
+### Verification
+
+- `jest src/__tests__/create-flow-contract.test.tsx src/__tests__/api-generation-contract.test.ts --runInBand`: passing, 32 tests.
+- `tsc --noEmit`: passing.
+- `expo export --platform web --output-dir /tmp/katha-single-create-flow-export-check`: passing.
+- `expo export --platform web --output-dir /tmp/katha-parent-controls-export-check`: passing.
+- `expo export --platform web --output-dir /tmp/katha-create-density-export-check`: passing.
+
+## 2026-09-06: Onboarding/Create Design Consistency Pass
+
+### Changed
+
+- Aligned Create and writer-onboarding section labels to one black uppercase treatment, keeping primary headings separate.
+- Standardized onboarding and Create starter prompt rails to mid-size preview chips.
+- Replaced writer onboarding chapter segmented controls with wrapping chip groups for chapter count and chapter length.
+- Flattened back controls to the same plain leading chevron treatment and normalized primary CTAs to the leaner 56-point style.
+- Updated the legacy onboarding OTP screen to use the same single code field as the writer auth path.
+
+### Verification
+
+- `pnpm typecheck`: passing with bundled Node on `PATH`.
+- `pnpm test -- --runInBand src/__tests__/create-flow-contract.test.tsx src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: passing, 86 tests.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-design-consistency-export-check`: passing.
+- `pnpm exec expo-doctor`: 15/18 checks passed; remaining checks failed because Expo Doctor could not spawn `npm` from this shell.
+- Local preview started at `http://localhost:8090/`.
+
+## 2026-09-06: Writer Onboarding Filter Chip Follow-Up
+
+### Changed
+
+- Lightened writer onboarding starter prompt card text to match Create’s muted prompt previews.
+- Replaced chapter count and chapter length rows with selected filter chips that open dropdown menus for the other options.
+- Updated details-screen section labels to the Create-style black uppercase Hanken treatment.
+- Changed the Moments composer action to an icon-only plus button.
+
+### Verification
+
+- `pnpm typecheck`: passing with bundled Node on `PATH`.
+- `pnpm test -- --runInBand src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: passing, 79 tests.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-onboarding-filter-chip-export-check`: passing.
+
+## 2026-09-05: Main Create Flow Hierarchy and Character Image Step
+
+### Changed
+
+- Collapsed the main Create setup from Idea → Shape → Review into Idea → Review and start. The final Create button, brief-strength meter, credits, and More options now live on the same reviewed setup surface.
+- Shortened the Try one starter cards so they show a clipped three-line preview while tapping still inserts the complete prompt into the story idea field.
+- Added Craft character image state: Create image, Creating, Reimagine, Edit, Delete, Image ready, and Image failed. Saving a character returns to Review and start without starting story generation.
+- Added a client `generateCharacterImage` API wrapper for the new `generate-character-image` Edge Function and carried `portrait_url` through the final story-generation payload.
+- Blocked final Create while a saved character image is still generating, so the story-generation call cannot start before requested character image work completes.
+
+### Verification
+
+- `jest src/__tests__/create-flow-contract.test.tsx src/__tests__/api-generation-contract.test.ts --runInBand`: passing, 31 tests.
+- `tsc --noEmit`: passing.
+- `expo export --platform web --output-dir /tmp/katha-create-flow-export-check`: passing.
+- `pnpm` commands were blocked by the existing ignored-build approval prompt, so verification used the bundled Node runtime and local binaries directly.
+
 ## 2026-08-25: Audio Narration System
 
 ### Shipped
@@ -253,3 +323,181 @@
 - Keyboard entry remains on real `TextInput` controls for name, email, OTP, and Other genre. A fresh automated keyboard/browser pass was blocked because Playwright could not install Chromium for this desktop runtime (`mac13` unsupported).
 - Narrow-width browser QA beyond 390 x 844 and physical iOS/Android phone validation remain pending before native release.
 - Release readiness: this revision is not ready for production release until the full post-patch web flow, keyboard behavior, narrow layouts, reduced-motion behavior, and native iOS/Android builds are validated on supported runners/devices.
+
+## 2026-09-06: Create Flow Density Follow-Up
+
+### Changed
+
+- Kept Create as a single story-generation screen with the character editor in a full-screen native modal.
+- Moved Kids Mode to the left of Genre using the platform `Switch`; the label now sits to the right of the toggle.
+- Changed the Genre picker from an in-flow expanding block to an absolute overlay, with per-genre icons retained.
+- Removed the large brief-strength panel and added compact `strength {percent}%` text below the `Create` CTA.
+- Reworked More Options as one compact family: chip rows for chapters and chapter length, consistent field radius, Avoid before Visibility, a native Visibility switch, and icon-based spice chips with the unsupported explicit slot disabled.
+
+### Verification
+
+- `pnpm typecheck`: passing.
+- `pnpm test -- src/__tests__/create-flow-contract.test.tsx src/__tests__/api-generation-contract.test.ts --runInBand`: passing, 32 tests.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-create-flow-export-check`: passing.
+- `pnpm exec expo-doctor`: passing, 18/18 checks, with the local Node/npm bin path on `PATH`.
+- Local dev server is running at `http://localhost:8081/?singleCreateFlow=4`.
+
+## 2026-09-06: Editorial Home, and Explore as its own tab
+
+### Changed
+
+- Split discovery into two tabs. Home is now purely editorial -- named,
+  horizontally scrolled rows and no filtering UI at all. Explore is the browse
+  surface and absorbs the search field, the genre strip and the filters. Folding
+  both jobs into one screen is what left the old Home carrying a search box, a
+  chip row, rails AND a vertical list at once, with nothing telling a reader
+  which of those was the point of the screen.
+- Added `src/components/feed/StoryFeedCard.tsx`, the single card both surfaces
+  are built from: cover flush to the leading edge, title, two-line synopsis,
+  reads/likes stats, and a decorative circular read chevron. Two variants --
+  `rail` (fixed 300px so the next card peeks past the screen edge) and `list`
+  (full width). The cover bleeds rather than sitting inset: an inset cover puts
+  two radii and a gap between the image and the page and reads as a thumbnail
+  pasted onto a card.
+- Added `src/components/feed/FeedRail.tsx`. A row's name is an uppercase
+  eyebrow, not a title, so it labels the row without out-shouting the story
+  titles inside it.
+- Added `src/screens/HomeScreen.tsx`, extracted from `App.tsx` and rebuilt.
+  Rows come from a pure `buildFeedRows()` helper (Katha Originals, Trending now,
+  Most loved, then one row per onboarding genre) so a later swap to a
+  server-driven section list never touches the JSX.
+- Added `src/screens/ExploreScreen.tsx`: search, genre strip, an inline filter
+  panel (sort + multi-select tags), a comfortable/compact density toggle, and a
+  `FlatList` with an empty state.
+- `TabKey` widened to `home | explore | create | library | profile`; the tab bar
+  renders five slots with Create still raised at the centre. Profile was
+  promoted from a pushed screen to a real tab and its `Screen` union variant
+  removed rather than left dangling.
+- Removed the 214-line in-file `HomeScreen` from `App.tsx` along with the
+  imports and the 20 style keys the deletion orphaned. 34 other style keys in
+  that file were already dead before this change and were deliberately left
+  alone.
+
+### Decisions
+
+- Home borrows the reference's hierarchy and card anatomy only. The palette
+  stays the existing light system: no new colour values, every colour from
+  `colors.*` via the `@/theme` barrel.
+- The author/timestamp line and the per-card overflow menu were dropped from the
+  card by product decision.
+- Explore's second filter axis is `tags`, derived from the passed stories at
+  render time. A length/format axis was specified first and then cut: no seed
+  story sets `chapterLength` and `storyMode` appears zero times, so Short/Long
+  would have been permanently empty options.
+
+### Verification
+
+- `npx tsc --noEmit`: passing, zero errors project-wide.
+- `npx eslint App.tsx src/screens/HomeScreen.tsx src/screens/ExploreScreen.tsx src/components/feed`: clean.
+- `npx jest`: 18 suites, 219 tests passing, including `app-root.test.tsx`, which
+  mounts the whole revised tab tree.
+- New: `src/__tests__/feed-card-contract.test.tsx` (2 tests) pins the card
+  anatomy and that the card is ONE pressable -- the read chevron is decorative
+  and must not announce a second identical action to a screen reader.
+- New: `src/__tests__/explore-screen.test.tsx` (4 tests) drives the real
+  controls. The search test types one character at a time, because a
+  `ListHeaderComponent` whose component type is rebuilt per render remounts the
+  `TextInput` on every keystroke and the field silently drops focus after one
+  character. The sort test asserts rendered ORDER, not presence -- every story
+  is present regardless, so a presence assertion would pass against no sorting
+  at all.
+- Not yet done: no device or browser QA pass on either screen. Explore is also
+  thin against 20 seed stories, and a genre filter cuts that to 1-3 rows; the
+  structure is right but the density will not be until the `feed` edge function
+  is serving real data.
+
+## 2026-09-06: The story landing page, and Reddit-shaped comments
+
+### Changed
+
+- Added `src/screens/StoryDetailScreen.tsx`. Full-bleed 3:4 hero, floating
+  back/overflow controls, title on a gradient scrim, a primary read CTA,
+  reads/likes/saves, share, author card, chapter list, metadata, and the comment
+  thread at the bottom. No top tab bar: the reference groups Details / Story
+  Cards / Comments into tabs and we deliberately do not, because one scroll is
+  cheaper to read than three tabs on a page this short.
+- Routing now branches on series-ness. `storyMode === "series" ||
+  chapters.length > 1` opens the landing page; anything else opens the prose
+  directly. The landing page earns its extra tap only when there is something to
+  land on - a chapter list, a premise worth reading before committing. For a
+  single-chapter story it would be a wall between the reader and the one thing
+  they tapped for.
+- `ReaderScreen` gained `initialChapterIndex`, so a chapter row on the landing
+  page opens that chapter rather than always chapter one.
+- Added the comment thread (`src/components/comments/`): threading, tri-state
+  voting, collapse, inline reply, per-comment report, Top/New sort. Indent caps
+  at depth 3 and deeper chains get a "continue this thread" affordance, because
+  past three levels the text column collapses on a 390px screen.
+- Added `src/components/moderation/StoryActionsSheet.tsx`: report story and
+  block author, both as in-sheet state machines. Deliberately NOT `Alert.alert`
+  - this app renders on web in the dev server, where a native modal dialog
+  blocks the page and the session stops responding.
+- Cover crop unified. The feed card cover was a 116px SQUARE while the reader
+  hero was 3:4, so the same file showed two different pictures. The source art is
+  portrait (seed 360x480, generated 1024x1536), so the card is now 116x155 and
+  Explore's compact row is 56x75. One cover, one crop.
+- Added a dev-only `?tab=` deep link (`__DEV__` and web only) so the web dev
+  server can open a tab directly. The app boots to `intro`, which put the tabs
+  several screens away on every reload.
+
+### Decisions
+
+- The vote control derives its displayed score (`baseScore + voteDelta(state)`)
+  rather than mutating a stored score. That makes an up -> down flip move by
+  exactly 2 with no special-cased arithmetic, which is the case this control is
+  usually written wrong.
+- Blocking an author closes the sheet and leaves the story. There is no applied
+  `user_blocks` table yet, so a block cannot survive a reload and the author's
+  other stories cannot be filtered from the feed. Leaving the reader parked on
+  the page of an author they just blocked was the worse of the two available
+  lies. When the migration lands: persist it, and filter in
+  `backend/supabase/functions/feed/index.ts`.
+
+### Verification
+
+- `npx tsc --noEmit`: passing, zero errors project-wide.
+- `npx eslint`: clean on every file added or touched.
+- `npx jest`: 20 suites, 238 tests passing.
+- New: `story-detail.test.tsx` (4 tests). The load-bearing one asserts a chapter
+  row calls `onRead` with the array INDEX, not the chapter number - an off-by-one
+  there is invisible in a screenshot and only felt while reading.
+- New: `comment-thread.test.tsx` (15 tests), including the up -> down flip
+  moving the score by exactly 2 in both directions, and tree immutability.
+- Served-bundle check against the running dev server confirmed the new code is
+  actually being served, after the discovery that the dev server had been
+  running from a different checkout entirely.
+- NOT done: no visual QA on either screen. The Chrome extension was not
+  connected, so nothing here was verified by looking at a rendered page. Layout
+  and spacing at 390px are unconfirmed.
+- Known gap: comments are local state only. Nothing survives a reload until
+  migration `00042` is applied and an edge function is wired.
+
+## 2026-09-06: Writer Onboarding Preview and Paywall Alignment
+
+- Finished the writer onboarding consistency pass: progress bars now appear on
+  the idea and details screens, the details title is shortened to "Shape the
+  Story", section labels stay on the black compact eyebrow treatment, and the
+  primary details CTA is now "Create my story".
+- Kept chapters and chapter length as filter chips with dropdown menus, placed
+  chapter length first on the same row as chapters, and left longer chapter
+  counts using the existing shaped-beat teaser instead of inventing a separate
+  arc field the generation prompt does not consume.
+- Polished the idea-strength line, starter prompt cards, genre filter chip
+  weight, "Who's in it?" affordance, icon-only moment add button, preview
+  entitlements, and minimal CTA glow.
+- Replaced the raw Writer paywall with the story summary card, benefit list,
+  weekly/yearly plan cards, trial badge, and "Create my story" CTA.
+- Verification: `pnpm typecheck` passed, focused writer-onboarding Jest tests
+  passed, full Expo Jest suite passed (20 suites / 238 tests), and Expo web
+  export compiled. `expo-doctor` still passes 15/18 only because this shell
+  cannot spawn `npm` for its dependency-tree checks (`spawn npm ENOENT`).
+  Local web was opened at `http://localhost:8090/` and checked at 390 x 844.
+  Mandatory security scan completed; it found no new UI/auth issues, and the
+  blocking `image-size` audit advisories are locally patched with pnpm
+  `patchedDependencies` plus targeted GHSA ignores because the advisory's
+  patched `2.0.3` version is not published on npm.

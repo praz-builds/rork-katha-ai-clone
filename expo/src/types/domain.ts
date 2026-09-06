@@ -45,7 +45,14 @@ export type HookType =
   | "danger"
   | "unanswered_question"
   | "emotional_rupture";
-export type TabKey = "home" | "create" | "library";
+/**
+ * The tab bar. `home` is editorial (curated rows, no filters), `explore` is
+ * browse (search, genre strip, filters, one long list). They are deliberately
+ * two tabs: folding browse into home is what left a single screen carrying a
+ * search field, a chip row, rails AND a vertical list at once, with no way to
+ * tell a reader which of those was the point of the screen.
+ */
+export type TabKey = "home" | "explore" | "create" | "library" | "profile";
 
 export type Author = {
   id: string;
@@ -174,6 +181,10 @@ export type CreateDraft = {
     background?: string;
     /** Physical detail. Reaches the story prompt and the portrait image. */
     appearance?: string;
+    /** Draft portrait generated before the story call, when available. */
+    portraitUrl?: string;
+    /** UI state for the separate character-image call. */
+    portraitStatus?: "idle" | "generating" | "ready" | "failed";
     isHero: boolean;
   }[];
   isSeries?: boolean;
@@ -202,8 +213,12 @@ export type Screen =
   | { name: "intro" }
   | { name: "onboarding" }
   | { name: "writer-onboarding" }
-  | { name: "reader"; storyId: string }
+  /**
+   * The story landing page. Series only - see `openStory` in App.tsx for why a
+   * standalone skips it.
+   */
+  | { name: "story"; storyId: string }
+  | { name: "reader"; storyId: string; chapterIndex?: number }
   | { name: "author"; authorId: string }
   | { name: "credits" }
-  | { name: "paywall" }
-  | { name: "profile" };
+  | { name: "paywall" };

@@ -7,6 +7,26 @@
 
 ---
 
+## 2026-09-06 UTC — Main Create single-screen correction
+
+**Session:** Corrected the Expo main Create UI after review: the main story-generation flow is one screen, not Idea → Review. Character craft remains the only separate full-screen surface.
+
+- Backend behavior was not changed in this pass. Character image generation remains a separate request only when the user asks for it, and the paid story call remains the final Create action with the completed draft payload.
+- A later UI density pass changed only Expo-visible hierarchy/copy: Genre left with an icon, Kids Mode as a compact switch, optional Premise as the visible context label, and denser More options.
+- No Supabase functions were deployed and no production-level tests were run, so no `error_events` entry was required.
+- Verification from `expo/`: focused Create/API Jest suites passed (32 tests), `tsc --noEmit` passed, and the web export passed using the bundled Node runtime.
+
+## 2026-09-05 UTC — Create flow hierarchy and character-image contract
+
+**Session:** Main Create was realigned with the new product direction: the two-screen onboarding-style split is not the main creation flow, characters are primary, other controls sit under More options, and character images are a separate call before paid story generation.
+
+- Updated `source-of-truth/STORY_GENERATION_FLOW.md` from Idea → Shape → Review to Idea → Review and start for main Create.
+- Revised the character contract so Craft character supports Create image/Reimagine/Edit/Delete and story generation waits for any character-image request the user started.
+- Added `generate-character-image`, a callable Edge Function that authenticates the user, validates the draft character fields, calls the existing character-portrait image path, and returns a draft portrait URL without starting story generation.
+- Extended backend generation validation and character persistence so `portrait_url` from a pre-generated draft character survives the final story call and lands on `characters.portrait_url`.
+- No production-level backend test or deploy was run in this session, so no `error_events` entry was required.
+- Verification from `expo/`: focused Create/API Jest suites passed (31 tests) and `tsc --noEmit` passed using the bundled Node runtime. Backend `deno check`, `deno test` for validation, and `deno fmt --check` passed for the touched Edge Function/shared files. `pnpm` itself was blocked by the existing ignored-build approval prompt.
+
 ## 2026-09-05 UTC — Streaming, the shape-story deadline, and a backend security pass
 
 **Session:** The writer-flow tree committed and deployed, `shape-story` diagnosed and fixed, streamed generation built end to end, and a full audit of the 35 migrations and 18 edge functions actioned. Five commits on `codex/create-flow-rebuild`.
@@ -1684,3 +1704,135 @@ on.
   reports 0 errors (19 pre-existing warnings in legacy `.jsx`), and 85 Jest tests
   pass across 11 suites. No deployment, and no EAS build, so push has not been
   exercised against real APNs or FCM credentials.
+
+## 2026-09-06: Create Flow Density Follow-Up
+
+- Tightened the Expo Create studio single-screen layout after review feedback:
+  Kids Mode now sits to the left as a native `Switch`, Genre stays on the right
+  as a compact icon chip, and the genre list opens as an overlay instead of
+  pushing the story form down.
+- Removed the large brief-strength block from the form and replaced it with a
+  small strength percentage under the final `Create` CTA.
+- Reworked More Options into one compact family: chapters and chapter length use
+  wrapping chips, Avoid appears before Visibility, Visibility is a native switch,
+  and adult spice controls show three icon slots while keeping the unsupported
+  explicit slot disabled.
+- Verification: `pnpm typecheck` passed, focused Create/API Jest tests passed,
+  and `pnpm exec expo export --platform web --output-dir /tmp/katha-create-flow-export-check`
+  compiled successfully. `pnpm exec expo-doctor` passed 18/18 checks when run
+  with the local Node/npm bin path on `PATH`. No backend code was changed in this
+  pass.
+
+## 2026-09-06: Onboarding/Create Design Consistency Pass
+
+- Aligned the main Create and writer onboarding section headers around one black uppercase treatment, keeping primary screen titles separate.
+- Standardized starter prompt rails to a mid-size preview chip across onboarding and Create, with the full starter still applied when selected.
+- Changed writer onboarding chapter count and chapter length controls from wide segmented bars to wrapping chip groups.
+- Flattened local back controls to a plain leading chevron treatment and normalized primary CTA height/radius to the leaner 56-point button style.
+- Converted the legacy onboarding OTP UI to the same single-field code entry pattern used by the writer sign-in path.
+- Verification: Expo typecheck passed, focused Create/writer-onboarding Jest tests passed, and the web export compiled. `expo-doctor` passed 15/18 checks but the remaining 3 failed because this shell cannot provide `npm` to Expo Doctor's dependency-tree checks.
+
+## 2026-09-06: Writer Onboarding Filter Chip Follow-Up
+
+- Lightened writer onboarding starter prompt card text to match the muted prompt-preview treatment in the main Create flow.
+- Replaced the always-visible chapter and chapter-length chip rows with selected filter chips that expand into option menus.
+- Updated the details-screen section labels to match the Create `Try one` typography: black, uppercase, Hanken, compact, and separate from the primary heading.
+- Changed the Moments composer action to an icon-only plus button.
+- Verification: Expo typecheck passed, focused writer-onboarding Jest tests passed, and web export compiled.
+
+## 2026-09-06: Threaded Comments, Voting, Reporting, and Blocking Schema
+
+**Migration `backend/supabase/migrations/00042_threaded_comments_moderation.sql`
+is written but NOT applied.** No `supabase db push`, `migration up`, or any
+other command touched the live project (`iafeuxgoiknncgyjmugd`). Applying it
+is a separate, explicit decision for later.
+
+- **Threading**: `comments.parent_id` self-references with `on delete
+  cascade`, but that path is reserved for leaf comments and admin/service
+  purges. The primary "delete my comment" path is a soft delete
+  (`deleted_at`), because a real DELETE cascading through `parent_id` would
+  destroy every reply underneath. A `before update` trigger scrubs `content`
+  to `'[deleted]'` the moment `deleted_at` is first set. An earlier draft
+  additionally hid reply-less tombstones from the SELECT policy; that draft
+  does not work, because Postgres requires an UPDATE's *new* row to still
+  satisfy the table's SELECT policy, so a policy that hides a row once
+  `deleted_at` is set makes the very UPDATE that sets it fail with
+  "new row violates row-level security policy" for exactly the comments a
+  leaf-delete needs to hide. Caught by the companion test against a real
+  Postgres, not by inspection. Visibility now never depends on `deleted_at`;
+  only content does.
+- **Depth guard**: `depth smallint` capped at `[0, 7]` (eight nesting levels),
+  maintained by an insert trigger from the parent's stored depth (no
+  recursion needed). `parent_id` is immutable after insert so a stored depth
+  is never invalidated by a later re-parent. The cap exists both as a DoS
+  bound on subtree reads and because eight levels of indent already consumes
+  a large fraction of a phone-width screen in this mobile-first product.
+- **Voting**: `comment_votes` with `primary key (user_id, comment_id)` makes
+  double-voting impossible at the DB level. `comments.score` is a
+  denormalized total maintained by a trigger on vote insert/update/delete, so
+  sorting a thread by score never needs a live `count(*)` join. A similar
+  `reply_count` denormalization avoids a live count for "N replies" UI.
+- **Reporting**: one `content_reports` table, polymorphic over `story_id`
+  and `comment_id` via two nullable real foreign keys plus a CHECK requiring
+  exactly one to be set (not a typeless `target_type`/`target_id` pair, and
+  not two separate tables — moderation needs one queryable, status-tracked
+  queue). Two partial unique indexes make a duplicate report from the same
+  reporter against the same target impossible. The INSERT grant is
+  column-scoped to `(reporter_id, story_id, comment_id, reason, details)` —
+  `status` and `reviewed_at` are excluded from the grant entirely, and there
+  is no SELECT/UPDATE/DELETE policy for `authenticated` at all, so a
+  reporter can file a report but never read it back or influence its
+  moderation status.
+- **Blocking**: `user_blocks` with `primary key (blocker_id, blocked_id)` and
+  a CHECK against self-blocking. Recorded but not yet enforced anywhere:
+  `backend/supabase/functions/feed/index.ts` will need a follow-up change to
+  exclude blocked authors' stories from a viewer's feed. That function was
+  not touched in this pass.
+- **RLS**: every new table has RLS enabled and at least one policy (verified
+  by inspection — a table with RLS on and no policy denies everything, which
+  is the easy mistake to make). Existing `comments` grants were narrowed:
+  INSERT is now column-scoped (excludes `depth`, `score`, `reply_count`,
+  and the unrelated `request_id`/`reward_granted` columns from 00005), and
+  new UPDATE/DELETE grants are scoped to `(content, deleted_at)` and full
+  delete respectively.
+- **Companion test**: `00042_threaded_comments_moderation_test.ts`, in the
+  same PGlite-against-every-migration style as `00038`/`00039`/`00040`.
+  7 tests, all passing: double-vote rejected (23505 on the primary key),
+  self-block and duplicate-block rejected (23514 / 23505), duplicate report
+  rejected (23505) and unreadable back (42501), a reporter cannot smuggle a
+  non-default `status` into an insert (42501), depth capped at 8 levels
+  (P0001 past that), the score trigger's arithmetic across insert/flip/
+  remove, and the tombstone-scrub-not-hide behavior for both a comment with
+  a live reply and a reply-less leaf.
+- Verification: `deno test` over every `*_test.ts` in
+  `backend/supabase/migrations/` — 36 tests pass, including all pre-existing
+  suites (00005 through 00040) with no regressions, confirming the full
+  00001→00042 chain applies cleanly against a fresh Postgres (via PGlite).
+  `deno fmt --check` passes on the new test file. No `deno check`/lint was
+  run against edge functions since none were touched. Nothing was applied to
+  the live Supabase project.
+
+## 2026-09-06: Writer Onboarding Preview and Paywall Alignment
+
+- Finished the writer onboarding consistency pass: progress bars now appear on
+  the idea and details screens, the details title is shortened to "Shape the
+  Story", section labels stay on the black compact eyebrow treatment, and the
+  primary details CTA is now "Create my story".
+- Kept chapters and chapter length as filter chips with dropdown menus, placed
+  chapter length first on the same row as chapters, and left longer chapter
+  counts using the existing shaped-beat teaser instead of inventing a separate
+  arc field the generation prompt does not consume.
+- Polished the idea-strength line, starter prompt cards, genre filter chip
+  weight, "Who's in it?" affordance, icon-only moment add button, preview
+  entitlements, and minimal CTA glow.
+- Replaced the raw Writer paywall with the story summary card, benefit list,
+  weekly/yearly plan cards, trial badge, and "Create my story" CTA.
+- Verification: `pnpm typecheck` passed, focused writer-onboarding Jest tests
+  passed, full Expo Jest suite passed (20 suites / 238 tests), and Expo web
+  export compiled. `expo-doctor` still passes 15/18 only because this shell
+  cannot spawn `npm` for its dependency-tree checks (`spawn npm ENOENT`).
+  Local web was opened at `http://localhost:8090/` and checked at 390 x 844.
+  Mandatory security scan completed; it found no new UI/auth issues, and the
+  blocking `image-size` audit advisories are locally patched with pnpm
+  `patchedDependencies` plus targeted GHSA ignores because the advisory's
+  patched `2.0.3` version is not published on npm.
