@@ -9,6 +9,17 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 
+// The detail screen now persists block/report through @/lib/comments, which
+// pulls the Supabase client - and with it native storage - into this suite.
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  getItem: jest.fn(() => Promise.resolve(null)),
+  setItem: jest.fn(() => Promise.resolve()),
+  removeItem: jest.fn(() => Promise.resolve()),
+}));
+jest.mock("@/lib/supabase", () => ({
+  supabase: { functions: { invoke: jest.fn() } },
+  isSupabaseConfigured: false,
+}));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 jest.mock("lucide-react-native", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

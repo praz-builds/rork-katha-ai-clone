@@ -2,6 +2,48 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-06: Writer onboarding consistency and paywall pass
+
+### Changed
+
+- Resolved the PR review's comments/moderation blockers before merge: comment
+  post parsing matches the server response shape, frontend report reasons use
+  the backend enum, comment write/vote failures no longer replace a loaded
+  thread with a load error, repeated vote taps are serialized per comment, and
+  block failures stay on the sheet instead of navigating away as if the block
+  worked.
+- Brought the writer onboarding prompt, details, preview and paywall screens
+  onto one visual rhythm: shared progress rows, compact dark section headers,
+  quieter starter prompt cards, bolder selected filter chips and slimmer
+  luminous CTAs.
+- Replaced the details screen's old chapter segmented controls with Chapter
+  Length and Chapters dropdown filter chips on a single row.
+- Changed the detail heading to "Shape the Story", the detail CTA to "Create my
+  story", the Moments action to an icon-only add button, and the preview CTA to
+  "Continue".
+- Replaced the raw writer subscription ask with a story-specific preview
+  paywall that shows the concept card, credit math, included creation benefits,
+  weekly/yearly plans, and the final "Create my story" CTA.
+
+### Verification
+
+- `pnpm typecheck` passed.
+- Focused ESLint passed for `WriterOnboarding` and its tests.
+- `pnpm test -- --runInBand src/__tests__/writer-onboarding.test.tsx
+  src/__tests__/writer-onboarding-interactions.test.tsx` passed: 2 suites, 79
+  tests.
+- Focused review-fix tests passed: 6 suites, 107 tests.
+- Full Jest suite passed: 25 suites, 268 tests.
+- `EXPO_NO_DOTENV=1 pnpm exec expo export --platform web --output-dir
+  /tmp/katha-writer-onboarding-paywall-export-check` passed.
+- `pnpm exec expo-doctor` still passes 15/18 checks; the remaining checks fail
+  because this shell cannot spawn `npm` (`spawn npm ENOENT`).
+- `pnpm audit --audit-level high` exits cleanly with the two known
+  `image-size` advisories ignored only after applying the local parser patch;
+  `image-size@2.0.3` is not published, so a direct patched-version upgrade is
+  not available.
+- Local URL `http://localhost:8090/` was opened and returned `200 OK`.
+
 ## 2026-09-06: Single-Screen Main Create Flow
 
 ### Changed
@@ -473,7 +515,7 @@
   connected, so nothing here was verified by looking at a rendered page. Layout
   and spacing at 390px are unconfirmed.
 - Known gap: comments are local state only. Nothing survives a reload until
-  migration `00042` is applied and an edge function is wired.
+  migration `00043` is applied and an edge function is wired.
 
 ## 2026-09-06: Writer Onboarding Preview and Paywall Alignment
 
@@ -499,3 +541,55 @@
   blocking `image-size` audit advisories are locally patched with pnpm
   `patchedDependencies` plus targeted GHSA ignores because the advisory's
   patched `2.0.3` version is not published on npm.
+
+## 2026-09-06: Comments, blocks and reports actually persist
+
+### Changed
+
+- Added `src/lib/comments.ts`, the client half of persistent comments. The
+  server returns a thread FLAT (one row per comment carrying its `parentId`)
+  and the client assembles the tree. A nested payload would force the server to
+  decide the shape of every thread before it knows how the client draws it, and
+  would re-send whole subtrees on every poll; a flat list is cheap to page and
+  lets the client re-sort Top/New without another round trip.
+- `CommentThread` is server-backed when Supabase is configured and keeps its
+  mock as the offline path. Writes are optimistic and then reconciled by
+  refetching, because `comments.score` is maintained by a database trigger and
+  is the only authority on a score.
+- Block and report now persist. Blocking files the block, then leaves the
+  story; the navigation happens whether or not the write succeeds, because a
+  reader who has just blocked someone should not be held on that author's page
+  while a request retries.
+- Added `findNode` to the comment tree helpers.
+
+### Decisions
+
+- `baseScore = server.score - server.myVote`. The server's score ALREADY
+  includes the viewer's own vote, and the UI adds it back at render time via
+  `displayScore`. Without that subtraction every voter sees their own vote
+  counted twice the instant they cast it.
+- A vote sends the state the control LANDS ON, not the direction pressed. The
+  control is tri-state, so pressing up on an already-upvoted comment means
+  "remove my vote" and must send 0; sending +1 there leaves the row set while
+  the UI shows it cleared, and nobody notices until a reload puts the vote back.
+- Orphaned replies are PROMOTED to the root, never dropped. A reply whose
+  parent falls outside the fetched page would otherwise vanish - a real
+  person's words lost to a paging boundary. The worst case of promoting it is a
+  comment that reads slightly out of context.
+- A failed comment load is stated and made retryable, and the composer stays
+  usable. The write path does not depend on the read path.
+
+### Verification
+
+- `npx tsc --noEmit` clean; `npx eslint` clean.
+- `npx jest`: 24 suites, 264 tests passing.
+- New: `comments-client.test.ts` (9 tests) covers the double-counted vote, the
+  dropped orphan, a cycle, tombstones, sorting and relative time.
+- New: `comment-thread-remote.test.tsx` (5 tests) covers the server-backed path
+  end to end, including that the tri-state vote clears to 0.
+- Browser pass at 390x844: 0 clipped nodes; the story page renders hero,
+  chapters, metadata and the comment section.
+- NOT done: the `comments` edge function is NOT deployed and migration 00043 is
+  NOT applied, so a configured client currently shows "Comments could not load"
+  and its retry. That is the honest state, not a bug - but comments will not
+  work until both are shipped.

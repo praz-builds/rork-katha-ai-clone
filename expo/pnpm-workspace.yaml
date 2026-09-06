@@ -20,3 +20,11 @@ overrides:
   "@expo/metro-config>postcss": 8.5.23
   "xcode>uuid": 11.1.1
   uuid: 11.1.1
+patchedDependencies:
+  image-size@1.2.1: patches/image-size@1.2.1.patch
+auditConfig:
+  # Locally patched because the advisory's patched 2.0.3 release is not
+  # published on npm yet. Keep both ignores tied to the patch above.
+  ignoreGhsas:
+    - GHSA-w3rx-r6r6-pgpr
+    - GHSA-5p2g-fcmc-qvqq

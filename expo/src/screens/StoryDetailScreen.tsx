@@ -22,6 +22,9 @@ import {
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { authorFor } from "@/data/seed";
 import CommentThread from "@/components/comments/CommentThread";
+import type { ReportReason } from "@/components/comments/types";
+import { blockAuthor, reportContent } from "@/lib/comments";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
 import { imageAssets } from "@/data/images";
 import {
@@ -180,22 +183,29 @@ export default function StoryDetailScreen({
   const [actionsOpen, setActionsOpen] = useState(false);
   const handleOverflowPress = useCallback(() => setActionsOpen(true), []);
   /**
-   * Blocking leaves the story, which is the one honest effect available today.
+   * Blocking persists, then leaves the story.
    *
-   * There is no applied `user_blocks` table yet - the migration exists but has
-   * not been run - so a block cannot survive a reload, and the author's other
-   * stories cannot be filtered out of the feed. Taking the reader off this page
-   * at least makes the action mean something at the moment they take it.
-   * Holding the reader on the page of an author they just blocked would be the
-   * worse lie of the two.
-   *
-   * When the migration lands: persist the block, and filter blocked authors in
-   * `backend/supabase/functions/feed/index.ts`.
+   * The feed applies the block on its next fetch; see the `user_blocks` filter
+   * in `backend/supabase/functions/feed/index.ts`.
    */
-  const handleBlockAuthor = useCallback(() => {
+  const handleBlockAuthor = useCallback(async () => {
+    if (isSupabaseConfigured) {
+      try {
+        await blockAuthor(story.authorId);
+      } catch {
+        return false;
+      }
+    }
     setActionsOpen(false);
     onBack();
-  }, [onBack]);
+    return true;
+  }, [onBack, story.authorId]);
+
+  const handleReportStory = useCallback((reason: ReportReason) => {
+    if (isSupabaseConfigured) {
+      reportContent({ storyId: story.id }, reason).catch(() => {});
+    }
+  }, [story.id]);
 
   const coverImage = story.coverImage
     ? imageAssets[story.coverImage]
@@ -436,6 +446,7 @@ export default function StoryDetailScreen({
         storyTitle={story.title}
         authorName={author.displayName}
         onBlockAuthor={handleBlockAuthor}
+        onSubmitReport={handleReportStory}
       />
     </View>
   );

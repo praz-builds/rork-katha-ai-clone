@@ -123,12 +123,12 @@ async function renderFlow(onDone = jest.fn()) {
 async function reachDetails(view: View, idea = "A woman inherits a boarded-up house and finds letters that arrive early.") {
   await fireEvent.changeText(view.getByLabelText("Your idea"), idea);
   await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-  await view.findByText("The parts you already have in mind.");
+  await view.findByText("Shape the Story");
 }
 
 /** Details -> preview, through the email and code screens. */
 async function authAndCraft(view: View) {
-  await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+  await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
   await fireEvent.changeText(
     await view.findByLabelText("Email address"),
     "w@example.com",
@@ -164,7 +164,7 @@ describe("writer onboarding back navigation", () => {
       "A city beneath a broken moon, where the tide keeps the time.",
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
   });
 
   it("keeps moments, style and chapter count across a back-and-forward", async () => {
@@ -179,18 +179,20 @@ describe("writer onboarding back navigation", () => {
     // Writing style is a free-text field now, with its examples in the
     // placeholder rather than in a chip row above it.
     await fireEvent.changeText(view.getByLabelText("Writing style"), "Lyrical");
-    await fireEvent.press(view.getByLabelText("7 chapters"));
+    await fireEvent.press(view.getByLabelText("Chapters, 3 chapters"));
+    await fireEvent.press(view.getByText("7 chapters"));
 
     await fireEvent.press(view.getByRole("button", { name: "Back" }));
     await view.findByText("What's your story about?");
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
 
     expect(view.getByLabelText("Remove A rooftop confession")).toBeTruthy();
     expect(view.getByLabelText("Writing style").props.value).toBe("Lyrical");
     expect(
-      view.getByLabelText("7 chapters").props.accessibilityState.selected,
-    ).toBe(true);
+      view.getByLabelText("Chapters, 7 chapters").props.accessibilityState
+        .expanded,
+    ).toBe(false);
   });
 
   it("does not strand the user in re-authentication when they go back from the preview", async () => {
@@ -202,8 +204,8 @@ describe("writer onboarding back navigation", () => {
     // now the only way, with the blueprint screen gone - so the way forward
     // from there must not demand the code again.
     await fireEvent.press(view.getByRole("button", { name: "Back" }));
-    await view.findByText("The parts you already have in mind.");
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await view.findByText("Shape the Story");
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
 
     expect(view.queryByLabelText("Verification code")).toBeNull();
     expect(view.queryByLabelText("Email address")).toBeNull();
@@ -217,8 +219,8 @@ describe("writer onboarding back navigation", () => {
     const { view } = await renderFlow();
     await reachPreview(view);
     await fireEvent.press(view.getByRole("button", { name: "Back" }));
-    await view.findByText("The parts you already have in mind.");
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await view.findByText("Shape the Story");
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await settleCraftingHold();
     await view.findByText(SHAPE.title);
 
@@ -308,7 +310,7 @@ describe("writer onboarding crafting step", () => {
     );
     const { view } = await renderFlow();
     await reachDetails(view);
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -341,7 +343,7 @@ describe("writer onboarding crafting step", () => {
    * actually go.
    */
   async function authTo(view: View, code = "123456") {
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -369,7 +371,7 @@ describe("writer onboarding crafting step", () => {
     expect(mockInferStoryBrief).not.toHaveBeenCalled();
 
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
 
     // On the details screen, with the details screen not submitted and the
     // email screen not seen. The request has the whole of both to run in.
@@ -434,7 +436,7 @@ describe("writer onboarding crafting step", () => {
       "A lighthouse keeper starts receiving letters addressed to the ship that sank.",
     );
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
 
     await authTo(view);
     await settleCraftingHold();
@@ -461,7 +463,7 @@ describe("writer onboarding crafting step", () => {
     await view.findByText("What's your story about?");
     // Same sentence, same shelf, so there is nothing new to ask.
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
-    await view.findByText("The parts you already have in mind.");
+    await view.findByText("Shape the Story");
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
 
     await authTo(view);
@@ -519,7 +521,7 @@ describe("writer onboarding crafting step", () => {
     );
     const { view } = await renderFlow();
     await reachDetails(view);
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -552,7 +554,7 @@ describe("writer onboarding email and code", () => {
     mockSendEmailCode.mockRejectedValue(new Error("smtp down"));
     const { view } = await renderFlow();
     await reachDetails(view);
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -568,7 +570,7 @@ describe("writer onboarding email and code", () => {
     mockSendEmailCode.mockRejectedValueOnce(new Error("smtp down"));
     const { view } = await renderFlow();
     await reachDetails(view);
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -588,7 +590,7 @@ describe("writer onboarding email and code", () => {
     mockVerifyEmailCode.mockRejectedValueOnce(new Error("bad code"));
     const { view } = await renderFlow();
     await reachDetails(view);
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -620,7 +622,7 @@ describe("writer onboarding email and code", () => {
     mockVerifyEmailCode.mockRejectedValue(new Error("bad code"));
     const { view } = await renderFlow();
     await reachDetails(view);
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -647,7 +649,7 @@ describe("writer onboarding email and code", () => {
   it("resends the code without losing the entered address", async () => {
     const { view } = await renderFlow();
     await reachDetails(view);
-    await fireEvent.press(view.getByRole("button", { name: "Find the shape" }));
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
     await fireEvent.changeText(
       await view.findByLabelText("Email address"),
       "w@example.com",
@@ -680,9 +682,9 @@ describe("one-time offer countdown", () => {
   async function reachOffer(view: View) {
     await reachPreview(view);
     await fireEvent.press(
-      await view.findByRole("button", { name: "Save my story" }),
+      await view.findByRole("button", { name: "Continue" }),
     );
-    await fireEvent.press(await view.findByRole("button", { name: "Not now" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Close" }));
     await view.findByText("ONE-TIME OFFER");
   }
 

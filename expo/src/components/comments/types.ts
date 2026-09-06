@@ -18,13 +18,13 @@ export type SortMode = "top" | "new";
 export type ReportReason =
   | "spam"
   | "harassment"
-  | "sexualContentMinors"
+  | "sexual_content"
   | "other";
 
 export const REPORT_REASONS: readonly { id: ReportReason; label: string }[] = [
   { id: "spam", label: "Spam" },
   { id: "harassment", label: "Harassment" },
-  { id: "sexualContentMinors", label: "Sexual content involving minors" },
+  { id: "sexual_content", label: "Sexual content involving minors" },
   { id: "other", label: "Other" },
 ];
 
@@ -121,6 +121,19 @@ export function addRootComment(tree: CommentNode[], comment: CommentNode): Comme
 }
 
 /** Count every reply nested under `node`, at any depth. */
+/** Depth-first lookup by id. Returns undefined when the id is not in the tree. */
+export function findNode(
+  tree: readonly CommentNode[],
+  id: string,
+): CommentNode | undefined {
+  for (const node of tree) {
+    if (node.id === id) return node;
+    const found = findNode(node.replies, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 export function countDescendants(node: CommentNode): number {
   return node.replies.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
 }

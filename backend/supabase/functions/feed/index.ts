@@ -60,25 +60,42 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Fetch profile and read history in parallel
-    const [profileResult, readCountResult] = await Promise.all([
-      serviceClient
-        .from("profiles")
-        .select("onboarding_purpose, preferred_genres")
-        .eq("id", user.id)
-        .single(),
-      serviceClient
-        .from("story_reads")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-    ]);
+    // Fetch profile, read history, and the caller's block list in parallel.
+    // `user_blocks` is keyed (blocker_id, blocked_id) with blocker_id leading
+    // the primary key, so this is a single indexed lookup -- one cheap extra
+    // query, run in parallel so it costs no wall-clock time even for the
+    // overwhelmingly common case where it comes back empty.
+    const [profileResult, readCountResult, blockedRowsResult] = await Promise
+      .all([
+        serviceClient
+          .from("profiles")
+          .select("onboarding_purpose, preferred_genres")
+          .eq("id", user.id)
+          .single(),
+        serviceClient
+          .from("story_reads")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id),
+        serviceClient
+          .from("user_blocks")
+          .select("blocked_id")
+          .eq("blocker_id", user.id),
+      ]);
 
     if (profileResult.error && profileResult.error.code !== "PGRST116") {
       throw profileResult.error;
     }
+    if (readCountResult.error) throw readCountResult.error;
+    if (blockedRowsResult.error) throw blockedRowsResult.error;
     const profile = profileResult.data ??
       { onboarding_purpose: null, preferred_genres: [] };
     const isNewUser = (readCountResult.count ?? 0) === 0;
+    // Authors the caller has blocked. Almost always empty; both feed builders
+    // treat an empty list as "no exclusion clause" so the common case pays
+    // for this array but not for any extra query shape or filtering work.
+    const blockedAuthorIds = (blockedRowsResult.data ?? []).map(
+      (r: Record<string, unknown>) => r.blocked_id as string,
+    );
 
     // Build continue_reading list (stories the user started but have unread chapters)
     const continueReading = await buildContinueReading(serviceClient, user.id);
@@ -87,7 +104,12 @@ serve(async (req) => {
     let total: number;
 
     if (isNewUser) {
-      const result = await buildNewUserFeed(serviceClient, limit, offset);
+      const result = await buildNewUserFeed(
+        serviceClient,
+        limit,
+        offset,
+        blockedAuthorIds,
+      );
       feed = result.feed;
       total = result.total;
     } else {
@@ -97,6 +119,7 @@ serve(async (req) => {
         profile.preferred_genres ?? [],
         limit,
         offset,
+        blockedAuthorIds,
       );
       feed = result.feed;
       total = result.total;
@@ -127,18 +150,34 @@ async function buildNewUserFeed(
   serviceClient: ServiceClient,
   limit: number,
   offset: number,
+  blockedAuthorIds: string[],
 ): Promise<{ feed: unknown[]; total: number }> {
-  // First, get curated stories
+  // First, get curated stories. Blocking is filtered inside the query, not
+  // after: this path pages with a real SQL `.range()`, so a post-fetch
+  // filter would silently short a page (and skip rows on deeper pages) the
+  // moment a blocked author's story falls inside the requested range.
+  // Filtering here also means `count` (and therefore `total`/`pages` in the
+  // response) correctly reflects what the blocker can actually see.
+  let curatedQuery = serviceClient
+    .from("stories")
+    .select(
+      "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(username)",
+      { count: "planned" },
+    )
+    .eq("is_curated", true)
+    .eq("status", "complete")
+    .neq("content_rating", "explicit");
+
+  if (blockedAuthorIds.length > 0) {
+    curatedQuery = curatedQuery.not(
+      "author_id",
+      "in",
+      `(${blockedAuthorIds.join(",")})`,
+    );
+  }
+
   const { data: curated, count: curatedCount, error: curatedError } =
-    await serviceClient
-      .from("stories")
-      .select(
-        "id, title, genre, primary_genre, themes, topic, cover_image_url, read_count, like_count, word_count, created_at, author_id, content_rating, profiles!stories_author_id_fkey(username)",
-        { count: "planned" },
-      )
-      .eq("is_curated", true)
-      .eq("status", "complete")
-      .neq("content_rating", "explicit")
+    await curatedQuery
       .order("like_count", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -178,6 +217,13 @@ async function buildNewUserFeed(
   if (curatedIds.length > 0) {
     fillQuery = fillQuery.not("id", "in", `(${curatedIds.join(",")})`);
   }
+  if (blockedAuthorIds.length > 0) {
+    fillQuery = fillQuery.not(
+      "author_id",
+      "in",
+      `(${blockedAuthorIds.join(",")})`,
+    );
+  }
 
   const { data: publicStories, count: publicCount, error: publicError } =
     await fillQuery;
@@ -205,6 +251,7 @@ async function buildReturningUserFeed(
   preferredGenres: string[],
   limit: number,
   offset: number,
+  blockedAuthorIds: string[],
 ): Promise<{ feed: unknown[]; total: number }> {
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -261,7 +308,26 @@ async function buildReturningUserFeed(
     .or("is_public.eq.true,is_curated.eq.true")
     .eq("status", "complete")
     .neq("author_id", userId)
-    .neq("content_rating", "explicit")
+    .neq("content_rating", "explicit");
+
+  // Excluded here, in the same WHERE clause as the author's own stories,
+  // rather than after the fetch: this query is `.limit(batchSize)`, not
+  // paginated with `.range()`, but the in-memory ranking below slices off of
+  // it, so anything filtered out only after the fetch would eat into
+  // `batchSize` for free (a blocked author's rows would occupy candidate
+  // slots that never reach the ranked list) without the ceiling comment
+  // above accounting for it. Filtering in the query means every row the
+  // batch actually returns is one the caller can see, so `batchSize` doesn't
+  // need to grow to compensate.
+  if (blockedAuthorIds.length > 0) {
+    candidateQuery = candidateQuery.not(
+      "author_id",
+      "in",
+      `(${blockedAuthorIds.join(",")})`,
+    );
+  }
+
+  candidateQuery = candidateQuery
     .order("created_at", { ascending: false })
     .limit(batchSize);
 

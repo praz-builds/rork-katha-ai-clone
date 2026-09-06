@@ -140,7 +140,7 @@ nobody had noticed:
 granted the sending role nothing, so `send-push` failed at its first query with
 `42501: permission denied for table push_tokens`. Every call. Nothing had called
 it, so the table looked correct and the function looked finished. Migration
-00042 grants it.
+00043 grants it.
 
 That is the lesson worth keeping: **the bug was invisible from the code and
 obvious from the first real call.** A feature is not done at its last file, it
@@ -2052,7 +2052,7 @@ on.
 
 ## 2026-09-06: Threaded Comments, Voting, Reporting, and Blocking Schema
 
-**Migration `backend/supabase/migrations/00042_threaded_comments_moderation.sql`
+**Migration `backend/supabase/migrations/00043_threaded_comments_moderation.sql`
 is written but NOT applied.** No `supabase db push`, `migration up`, or any
 other command touched the live project (`iafeuxgoiknncgyjmugd`). Applying it
 is a separate, explicit decision for later.
@@ -2105,7 +2105,7 @@ is a separate, explicit decision for later.
   and the unrelated `request_id`/`reward_granted` columns from 00005), and
   new UPDATE/DELETE grants are scoped to `(content, deleted_at)` and full
   delete respectively.
-- **Companion test**: `00042_threaded_comments_moderation_test.ts`, in the
+- **Companion test**: `00043_threaded_comments_moderation_test.ts`, in the
   same PGlite-against-every-migration style as `00038`/`00039`/`00040`.
   7 tests, all passing: double-vote rejected (23505 on the primary key),
   self-block and duplicate-block rejected (23514 / 23505), duplicate report
@@ -2146,3 +2146,112 @@ is a separate, explicit decision for later.
   blocking `image-size` audit advisories are locally patched with pnpm
   `patchedDependencies` plus targeted GHSA ignores because the advisory's
   patched `2.0.3` version is not published on npm.
+
+## 2026-09-06: Writer onboarding consistency and paywall pass
+
+### Changed
+
+- Resolved the PR review's comments/moderation blockers before merge: successful
+  comment posts now return `{ comment }`, feed fails closed if the read-count
+  query fails, frontend report reasons use the backend enum, comment write/vote
+  failures no longer replace a loaded thread with a load error, repeated vote
+  taps are serialized per comment, and block failures stay on the sheet instead
+  of navigating away as if the block worked.
+- Aligned the writer onboarding flow to the in-app create UI: early screens now
+  show the same progress treatment, section labels use the darker compact
+  heading style, starter prompts use quieter helper-weight text, and the idea
+  strength line is smaller than the prompt box copy.
+- Changed Moments to an icon-only add action and added a help marker beside
+  "Who's in it".
+- Replaced the Chapters and Chapter Length segmented controls with dropdown
+  filter chips in one row, with Chapter Length first.
+- Reworked the preview/paywall handoff: preview continues into a story-specific
+  writer paywall with the concept card, credit explanation, weekly/yearly
+  choices, and "Create my story" CTA. Longer chapter-count selections keep the
+  same teaser pattern instead of requiring a longer generated arc.
+
+### Verification
+
+- `pnpm typecheck` passed from `expo/`.
+- Focused ESLint passed for `WriterOnboarding` and its tests.
+- Focused writer onboarding tests passed: 2 suites, 79 tests.
+- Focused review-fix tests passed: 6 suites, 107 tests.
+- Full Expo Jest suite passed: 25 suites, 268 tests.
+- Web export compiled to
+  `/tmp/katha-writer-onboarding-paywall-export-check`.
+- Backend migration/comments/feed tests passed: 58 tests.
+- `pnpm exec expo-doctor` still passes 15/18 checks; the remaining checks fail
+  because this shell cannot spawn `npm` (`spawn npm ENOENT`).
+- Mandatory security scan completed. No new secrets/auth/injection issues were
+  found in this UI pass. The only high audit findings were the known
+  transitive `image-size` parser advisories through Expo/Metro; they are
+  locally patched with pnpm `patchedDependencies` and the audit ignores are
+  tied to that patch because `image-size@2.0.3` is not published.
+- Local URL `http://localhost:8090/` was opened and returned `200 OK`.
+- No production infrastructure was tested or deployed in this pass.
+
+## 2026-09-06: Comment vote RPC review fix
+
+### Changed
+
+- Added `public.set_comment_vote(comment_id, value)` to migration 00043 and
+  routed the comments Edge Function through it. Cast, change, and clear now
+  happen inside one database call, while the existing vote score trigger
+  remains the only writer of `comments.score`.
+- Updated the comments SQL tests to exercise the RPC path, including clearing
+  a vote back to zero.
+
+### Verification
+
+- `deno check backend/supabase/functions/comments/index.ts
+  backend/supabase/functions/feed/index.ts` passed.
+- `deno test --allow-read --allow-write --allow-env --allow-net
+  backend/supabase/migrations/*_test.ts
+  backend/supabase/functions/comments/index.test.ts
+  backend/supabase/functions/feed/index.test.ts` passed: 59 tests.
+- `pnpm typecheck` passed from `expo/`.
+- Focused ESLint on the touched Expo files passed.
+- `pnpm test --runInBand` passed from `expo/`: 25 suites, 268 tests.
+- `EXPO_NO_DOTENV=1 pnpm exec expo export --platform web --output-dir
+  /tmp/katha-onboarding-final-export-check` passed. Sentry warned about
+  missing organization/project config, which is pre-existing local setup.
+- `pnpm exec expo-doctor` still reports 15/18 checks passing and fails the
+  three local package-manager checks because this shell cannot spawn `npm`.
+- Security gate: secret-pattern scan found only documented placeholders/public
+  config references. `pnpm audit --audit-level high` exited clean with the two
+  known high `image-size` advisories ignored under the local parser patch
+  documented in this session.
+
+## 2026-09-06: The comments function, and blocked authors leave the feed
+
+### Changed
+
+- Added `supabase/functions/comments/index.ts`. One function: `GET` reads a
+  story's thread as flat rows plus the caller's own vote on each; `POST` with
+  an `action` handles post, vote, report, block and unblock. Every call runs on
+  the anon key plus the CALLER'S JWT, so the RLS in migration 00042 is the real
+  security boundary - there is no service-role client in the file to bypass it.
+- Voting is insert-then-catch-23505-then-update rather than an upsert, because
+  00042 grants UPDATE on `value` only; an upsert would need privileges on
+  `user_id` and `comment_id` that are deliberately not granted. The score is
+  owned by a trigger and never adjusted in application code, or it would count
+  twice.
+- Duplicate reports and duplicate blocks return a clean already-done success
+  rather than a 500 from the unique index. Unblock exists: a block a user
+  cannot undo is a trap.
+- `supabase/functions/feed/index.ts` now excludes stories by authors the caller
+  has blocked, in BOTH feed paths, filtered inside the query rather than after
+  the page slice. Filtering after the slice would short-page the blocker and
+  start skipping rows on deeper pages. A caller with no blocks issues a
+  byte-identical query to before, and anonymous callers pay nothing.
+
+### Verification
+
+- `deno check` clean on both functions.
+- `comments`: 18 tests passing. `feed`: 4 tests passing. Migrations: 36 passing,
+  no regressions. All against PGlite - real Postgres, no network.
+- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
+  00042 remains WRITTEN BUT NOT APPLIED and neither function is deployed.
+- Not covered by tests: the HTTP entrypoint itself - CORS, JSON parse failures,
+  the `auth.getUser()` flow and action dispatch are covered by inspection only,
+  because PGlite speaks Postgres rather than the PostgREST wire protocol.

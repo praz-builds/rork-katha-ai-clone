@@ -178,11 +178,10 @@ function minutesFor(length: "short" | "standard" | "long"): number {
 }
 
 const ENTITLEMENTS = [
-  "Edit every word by hand, as much as you like",
-  "3 free AI redrafts for every chapter",
-  "20 free paragraph edits for every chapter",
-  "1 free cover retry after a paid cover",
-  "Your stories are yours to save, publish, unpublish, or delete",
+  "Rewrite any line by hand, free and unlimited",
+  "Ask Katha to redraft a chapter, 3 free per chapter",
+  "Regenerate a cover you paid for, 1 free retry",
+  "Delete it, publish it, or keep it private. Yours.",
 ];
 
 const OFFER_SECONDS = 120;
@@ -217,9 +216,12 @@ const MAX_MOMENTS = 5;
  * removing them from three, and neither is this change's call to make.
  */
 const ONBOARDING_STEPS = 6;
+const IDEA_STEP = 1;
+const DETAILS_STEP = 2;
 const EMAIL_STEP = 3;
 const CODE_STEP = 4;
 const PREVIEW_STEP = 5;
+const PAYWALL_STEP = 6;
 
 /**
  * The reference frame every measurement in this file is checked against, and
@@ -319,6 +321,8 @@ export default function WriterOnboarding(
   const [chapterLength, setChapterLength] = useState<
     "short" | "standard" | "long"
   >("standard");
+  const [chapterCountOpen, setChapterCountOpen] = useState(false);
+  const [chapterLengthOpen, setChapterLengthOpen] = useState(false);
 
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -645,6 +649,8 @@ export default function WriterOnboarding(
           ? (
             <StepScroll
               onBack={onExit}
+              steps={ONBOARDING_STEPS}
+              currentStep={IDEA_STEP}
               title="What's your story about?"
               sub="One good sentence is enough. Katha builds the rest."
             >
@@ -746,7 +752,7 @@ export default function WriterOnboarding(
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.eyebrow}>TRY ONE</Text>
+                <Text style={styles.eyebrowDark}>TRY ONE</Text>
                 {/* Keyed to the chosen shelf, and shown whole. A truncated
                     starter teaches nothing: the point of these is to show what
                     a usable idea looks like on this shelf. There is no
@@ -796,7 +802,15 @@ export default function WriterOnboarding(
                   what the story is about, not an afterthought on a later
                   screen. */}
               <View style={styles.section}>
-                <Text style={styles.eyebrow}>WHO’S IN IT</Text>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.eyebrowDark}>WHO’S IN IT</Text>
+                  <View
+                    accessibilityLabel="Character details are optional"
+                    style={styles.helpDot}
+                  >
+                    <Text style={styles.helpDotText}>?</Text>
+                  </View>
+                </View>
                 {cast.map((member, index) => (
                   <View key={index} style={styles.castCard}>
                     <View style={styles.castHead}>
@@ -901,6 +915,8 @@ export default function WriterOnboarding(
           ? (
             <StepScroll
               onBack={() => go("idea")}
+              steps={ONBOARDING_STEPS}
+              currentStep={DETAILS_STEP}
               /* Not "Anything that has to happen?" any more. That was a
                  yes-or-no question about one of the five things on the screen,
                  and its honest answer is "no" - which told a writer who does
@@ -908,7 +924,7 @@ export default function WriterOnboarding(
                  that was being asked for. This screen's job is to collect what
                  the writer ALREADY holds, so the heading names that and the
                  sub keeps saying what happens to it. */
-              title="The parts you already have in mind."
+              title="Shape the Story"
               sub="What you add here reaches the story. What you leave out, Katha decides."
             >
               {/* Five sections, and what makes them read as five is DISTANCE,
@@ -936,7 +952,7 @@ export default function WriterOnboarding(
                   and chapter length always carry a value. */}
               <View style={styles.section}>
                 <Text
-                  style={styles.eyebrow}
+                  style={styles.eyebrowDark}
                   accessibilityLabel="Moments, optional"
                 >
                   MOMENTS
@@ -1008,7 +1024,6 @@ export default function WriterOnboarding(
                         ]}
                       >
                         <IconAdd size={16} color={colors.accent} />
-                        <Text style={styles.addMomentText}>Add</Text>
                       </Pressable>
                     </View>
                   )
@@ -1021,7 +1036,7 @@ export default function WriterOnboarding(
                   gets out of the way. */}
               <View style={styles.section}>
                 <Text
-                  style={styles.eyebrow}
+                  style={styles.eyebrowDark}
                   accessibilityLabel="Writing style, optional"
                 >
                   WRITING STYLE
@@ -1044,7 +1059,7 @@ export default function WriterOnboarding(
 
               <View style={styles.section}>
                 <Text
-                  style={styles.eyebrow}
+                  style={styles.eyebrowDark}
                   accessibilityLabel="Other instructions, optional"
                 >
                   OTHER INSTRUCTIONS
@@ -1063,78 +1078,130 @@ export default function WriterOnboarding(
                 />
               </View>
 
-              <View style={styles.section}>
-                <Text style={styles.eyebrow}>CHAPTERS</Text>
-                <View style={styles.segmented} accessibilityRole="radiogroup">
-                  {CHAPTER_COUNTS.map((count) => (
-                    <Pressable
-                      key={count}
-                      onPress={() => {
-                        haptic();
-                        setChapterCount(count);
-                        // A plan longer than the story promises beats no chapter
-                        // can reach.
-                        setBeats((all) => all.slice(0, count));
-                      }}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: chapterCount === count }}
-                      accessibilityLabel={`${count} chapters`}
-                      style={[
-                        styles.segment,
-                        chapterCount === count && styles.segmentActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentText,
-                          chapterCount === count && styles.segmentTextActive,
-                        ]}
-                      >
-                        {count}
-                      </Text>
-                    </Pressable>
-                  ))}
+              <View style={styles.lengthCountRow}>
+                <View style={styles.filterGroup}>
+                  <Text style={styles.eyebrowDark}>CHAPTER LENGTH</Text>
+                  <Pressable
+                    onPress={() => {
+                      haptic();
+                      setChapterLengthOpen((open) => !open);
+                      setChapterCountOpen(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: chapterLengthOpen }}
+                    accessibilityLabel={`Chapter length, ${
+                      CHAPTER_LENGTHS.find((option) =>
+                        option.id === chapterLength
+                      )?.label ?? "Standard"
+                    }, about ${minutesFor(chapterLength)} minutes`}
+                    style={styles.filterChip}
+                  >
+                    <Text style={styles.filterChipText}>
+                      {CHAPTER_LENGTHS.find((option) =>
+                        option.id === chapterLength
+                      )?.label ?? "Standard"} · {minutesFor(chapterLength)} min
+                    </Text>
+                    <IconChevronDown size={14} color={colors.accent} />
+                  </Pressable>
+                  {chapterLengthOpen
+                    ? (
+                      <View style={styles.filterMenu} accessibilityRole="menu">
+                        {CHAPTER_LENGTHS.map((option) => (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => {
+                              haptic();
+                              setChapterLength(option.id);
+                              setChapterLengthOpen(false);
+                            }}
+                            accessibilityRole="menuitem"
+                            accessibilityState={{
+                              selected: chapterLength === option.id,
+                            }}
+                            style={[
+                              styles.filterMenuItem,
+                              chapterLength === option.id &&
+                              styles.filterMenuItemActive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.filterMenuText,
+                                chapterLength === option.id &&
+                                styles.filterMenuTextActive,
+                              ]}
+                            >
+                              {option.label} · {option.minutes} min
+                            </Text>
+                            {chapterLength === option.id
+                              ? <IconCheck size={14} color={colors.accent} />
+                              : null}
+                          </Pressable>
+                        ))}
+                      </View>
+                    )
+                    : null}
+                </View>
+
+                <View style={styles.filterGroup}>
+                  <Text style={styles.eyebrowDark}>CHAPTERS</Text>
+                  <Pressable
+                    onPress={() => {
+                      haptic();
+                      setChapterCountOpen((open) => !open);
+                      setChapterLengthOpen(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: chapterCountOpen }}
+                    accessibilityLabel={`Chapters, ${chapterCount} chapters`}
+                    style={styles.filterChip}
+                  >
+                    <Text style={styles.filterChipText}>
+                      {chapterCount} chapters
+                    </Text>
+                    <IconChevronDown size={14} color={colors.accent} />
+                  </Pressable>
+                  {chapterCountOpen
+                    ? (
+                      <View style={styles.filterMenu} accessibilityRole="menu">
+                        {CHAPTER_COUNTS.map((count) => (
+                          <Pressable
+                            key={count}
+                            onPress={() => {
+                              haptic();
+                              setChapterCount(count);
+                              setBeats((all) => all.slice(0, count));
+                              setChapterCountOpen(false);
+                            }}
+                            accessibilityRole="menuitem"
+                            accessibilityState={{ selected: chapterCount === count }}
+                            style={[
+                              styles.filterMenuItem,
+                              chapterCount === count &&
+                              styles.filterMenuItemActive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.filterMenuText,
+                                chapterCount === count &&
+                                styles.filterMenuTextActive,
+                              ]}
+                            >
+                              {count} chapters
+                            </Text>
+                            {chapterCount === count
+                              ? <IconCheck size={14} color={colors.accent} />
+                              : null}
+                          </Pressable>
+                        ))}
+                      </View>
+                    )
+                    : null}
                 </View>
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.eyebrow}>CHAPTER LENGTH</Text>
-                <View style={styles.segmented} accessibilityRole="radiogroup">
-                  {CHAPTER_LENGTHS.map((option) => (
-                    <Pressable
-                      key={option.id}
-                      onPress={() => {
-                        haptic();
-                        setChapterLength(option.id);
-                      }}
-                      accessibilityRole="radio"
-                      accessibilityState={{
-                        selected: chapterLength === option.id,
-                      }}
-                      accessibilityLabel={`${option.label}, about ${option.minutes} minutes a chapter`}
-                      style={[
-                        styles.segmentTall,
-                        chapterLength === option.id && styles.segmentActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentText,
-                          chapterLength === option.id &&
-                          styles.segmentTextActive,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                      <Text style={styles.segmentDetail}>
-                        {option.minutes} min
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {/* The number a reader actually feels. Derived from the word
-                    bands at 260 wpm, the measured silent reading rate for adult
-                    fiction. */}
                 <Text style={styles.helper}>
                   About {totalMinutes} minutes to read, across {chapterCount}{" "}
                   chapters.
@@ -1144,7 +1211,7 @@ export default function WriterOnboarding(
               {/* Auth is one-way. Walking back to change the idea must not
                   send a verified address a second code. */}
               <Primary
-                label="Find the shape"
+                label="Create my story"
                 onPress={() => go(authenticated ? "crafting" : "email")}
               />
             </StepScroll>
@@ -1165,7 +1232,7 @@ export default function WriterOnboarding(
               sub="We’ll keep your idea and blueprint so you can come back to it anytime, on any device."
             >
               <View style={styles.section}>
-                <Text style={styles.eyebrow}>EMAIL</Text>
+                <Text style={styles.eyebrowDark}>EMAIL</Text>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
@@ -1224,7 +1291,7 @@ export default function WriterOnboarding(
               sub={`Enter the 6-digit code we sent to ${email.trim()}.`}
             >
               <View style={styles.section}>
-                <Text style={styles.eyebrow}>CODE</Text>
+                <Text style={styles.eyebrowDark}>CODE</Text>
                 <TextInput
                   value={code}
                   onChangeText={setCode}
@@ -1360,7 +1427,7 @@ export default function WriterOnboarding(
                   from the list as the rows are from one another, which is the
                   rhythm rule in theme.ts stated backwards. */}
               <View style={styles.entitlements}>
-                <Text style={styles.eyebrow}>YOU CAN ALWAYS</Text>
+                <Text style={styles.eyebrowDark}>YOU CAN ALWAYS</Text>
                 <View style={styles.entitlementRows}>
                   {ENTITLEMENTS.map((line) => (
                     <View key={line} style={styles.entitlementRow}>
@@ -1371,14 +1438,14 @@ export default function WriterOnboarding(
                 </View>
               </View>
 
-              <Primary label="Save my story" onPress={() => go("paywall")} />
+              <Primary label="Continue" onPress={() => go("paywall")} />
             </StepScroll>
           )
           : step === "paywall"
           ? (
             <Paywall
               title={blueprint?.title ?? "Your story"}
-              leadName={blueprint?.lead?.name ?? "your lead"}
+              genres={blueprint?.genres?.length ? blueprint.genres : [genre]}
               onSubscribe={() => {
                 setSubscribed(true);
                 go("notify");
@@ -1511,6 +1578,7 @@ function StepScroll({
         {showProgress
           ? <ProgressDots steps={steps!} current={currentStep!} />
           : null}
+        {showProgress ? <View style={styles.iconButton} /> : null}
       </View>
       {art}
       {/* One group, not two siblings. The scroll container's
@@ -1683,89 +1751,96 @@ function Primary({
 
 function Paywall({
   title,
-  leadName,
+  genres,
   onSubscribe,
   onDismiss,
 }: {
   title: string;
-  leadName: string;
+  genres: Genre[];
   onSubscribe: () => void;
   onDismiss: () => void;
 }) {
+  const visibleGenres = genres.slice(0, 2);
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.topBar}>
+      <View style={styles.topBarProgress}>
         <View style={styles.iconButton} />
+        <ProgressDots steps={ONBOARDING_STEPS} current={PAYWALL_STEP} />
         <Pressable
           onPress={onDismiss}
           accessibilityRole="button"
           accessibilityLabel="Close"
           hitSlop={16}
-          style={styles.closeButton}
+          style={styles.closeTile}
         >
-          <IconClose size={22} color={colors.muted} />
+          <IconClose size={20} color={colors.strong} />
         </Pressable>
       </View>
-      {/* Eyebrow, headline and sub are one group here too, for the same
-          reason StepScroll groups its own: they are three parts of one
-          statement, not three sections. */}
+
+      <View style={styles.paywallStoryCard}>
+        <ConceptCover title={title} />
+        <View style={styles.paywallStoryMeta}>
+          <Text style={styles.paywallStoryTitle}>{title}</Text>
+          <View style={styles.paywallPills}>
+            {visibleGenres.map((item) => (
+              <View key={item} style={styles.paywallPill}>
+                <Text style={styles.paywallPillText}>{genreLabels[item]}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+
       <View style={styles.headerGroup}>
-        <Text style={styles.eyebrow}>KATHA WRITER</Text>
         <Text style={styles.title} accessibilityRole="header">
-          “{title}” is ready to become yours.
+          Your story is ready to be created.
         </Text>
         <Text style={styles.sub}>
-          Keep shaping {leadName}’s story, with every Reader benefit included.
+          A full chapter is 3 credits. The text, its cover, its characters.
         </Text>
       </View>
 
-      <View style={styles.planCard}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>3-DAY FREE TRIAL</Text>
-        </View>
-        <Text style={styles.planName}>Writer yearly</Text>
-        <Text style={styles.planPrice}>$49.99 per year</Text>
-        <Text style={styles.planNote}>50 credits every month</Text>
-      </View>
-      <View style={styles.planCardQuiet}>
-        <Text style={styles.planName}>Writer weekly</Text>
-        <Text style={styles.planPrice}>$6.99 per week</Text>
-        <Text style={styles.planNote}>10 credits</Text>
-      </View>
-      <Text style={styles.fineprint}>
-        Prefer monthly? Writer monthly is $12.99 per month with 50 credits every
-        month.
-      </Text>
-
-      {/* No eyebrow here, so the block IS the row list: it takes the group's
-          top margin and the rows' own gap, rather than the `related` gap that
-          exists on the preview to hug an eyebrow to its list. */}
-      <View style={[styles.entitlements, styles.entitlementRows]}>
+      <View style={styles.paywallBenefits}>
         {[
-          "Everything in Reader",
-          "Read without interruptions",
-          "Take stories offline",
-          "Unlock chapter audio and keep it",
-          "50 credits every month on yearly or monthly",
-        ].map((line) => (
-          <View key={line} style={styles.entitlementRow}>
-            <IconCheck size={16} color={colors.success} />
-            <Text style={styles.entitlementText}>{line}</Text>
+          ["📝", "50 credits a month.", "Around 16 full chapters."],
+          ["🎨", "Covers and characters included.", "Every chapter, not an add-on."],
+          ["✏️", "Editing is free.", "Type, rewrite and restructure as much as you want."],
+          ["↩️", "A failed generation refunds itself.", "Every time, automatically."],
+          ["📖", "Reading stays free.", "It always was."],
+        ].map(([icon, lead, body]) => (
+          <View key={lead} style={styles.paywallBenefitRow}>
+            <Text style={styles.paywallBenefitIcon}>{icon}</Text>
+            <Text style={styles.paywallBenefitText}>
+              <Text style={styles.paywallBenefitLead}>{lead}</Text> {body}
+            </Text>
           </View>
         ))}
       </View>
 
-      <Primary label="Start my 3-day free trial" onPress={onSubscribe} />
-      <Pressable
-        onPress={onDismiss}
-        accessibilityRole="button"
-        style={styles.quietButton}
-      >
-        <Text style={styles.quietText}>Not now</Text>
-      </Pressable>
+      <View style={styles.planGrid}>
+        <View style={styles.planCardQuiet}>
+          <Text style={styles.planEyebrow}>WEEKLY</Text>
+          <Text style={styles.planPriceLarge}>$6.99</Text>
+          <Text style={styles.planNote}>10 credits</Text>
+        </View>
+        <View style={styles.planCardSelected}>
+          <View style={styles.trialBadge}>
+            <Text style={styles.trialBadgeText}>3 DAYS FREE</Text>
+          </View>
+          <Text style={styles.planEyebrow}>YEARLY</Text>
+          <Text style={styles.planPriceLarge}>$49.99</Text>
+          <Text style={styles.planNote}>50 credits / mo</Text>
+        </View>
+      </View>
+      <Text style={styles.fineprint}>
+        Or $12.99 monthly for 50 credits.
+      </Text>
+
+      <Primary label="Create my story" onPress={onSubscribe} />
+      <Text style={styles.legal}>Cancel anytime. Trial gives you 15 credits.</Text>
     </ScrollView>
   );
 }
@@ -1928,15 +2003,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface2,
     boxShadow: shadows.card,
   },
+  closeTile: {
+    width: spacing.huge,
+    height: spacing.huge,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface2,
+    boxShadow: shadows.card,
+  },
   progressRow: {
     flex: 1,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: spacing.sm,
-    // The plate is 48 wide on the leading edge only, so the row would centre
-    // 48pt to the right of the screen's centre without this.
-    marginRight: spacing.huge,
   },
   /**
    * `borderStrong`, not `track`. `track` is the divider hairline and is nearly
@@ -2046,6 +2127,27 @@ const styles = StyleSheet.create({
    * rather than sitting as a duplicate somebody has to keep in sync.
    */
   eyebrow: { ...onboardingType.sectionHeader, color: colors.tertiary },
+  eyebrowDark: { ...onboardingType.sectionHeader, color: colors.ink },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  helpDot: {
+    width: 16,
+    height: 16,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  helpDotText: {
+    ...type.caption,
+    color: colors.muted,
+    fontFamily: fonts.ui,
+    fontWeight: "600",
+    lineHeight: 15,
+  },
   /**
    * The optional marker, inline inside an eyebrow so it wraps with it.
    *
@@ -2183,7 +2285,13 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   counter: { ...type.caption, color: colors.tertiary, alignSelf: "flex-end" },
-  ideaState: { ...onboardingType.body, alignSelf: "flex-start" },
+  ideaState: {
+    ...type.caption,
+    fontFamily: fonts.ui,
+    fontWeight: "600",
+    lineHeight: 16,
+    alignSelf: "flex-start",
+  },
   ideaStateWaiting: { color: colors.tertiary },
   ideaStateReady: { color: colors.success },
   freeText: { minHeight: 62, paddingTop: spacing.md, textAlignVertical: "top" },
@@ -2256,7 +2364,11 @@ const styles = StyleSheet.create({
     boxShadow: shadows.card,
     minHeight: spacing.xxxl + spacing.xs,
   },
-  genreChipButtonText: { ...type.subhead, color: colors.accent },
+  genreChipButtonText: {
+    ...type.subhead,
+    color: colors.accent,
+    fontWeight: "700",
+  },
   genrePanel: {
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
@@ -2323,7 +2435,49 @@ const styles = StyleSheet.create({
    * and the card sits under it. The measurement was made when this level
    * existed, lost when the ramp briefly dropped 14.5, and is restored here.
    */
-  starterText: { ...onboardingType.helper, color: colors.ink },
+  starterText: { ...onboardingType.helper, color: colors.muted },
+  lengthCountRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    zIndex: 2,
+  },
+  filterGroup: { flex: 1, gap: spacing.related },
+  filterChip: {
+    minHeight: spacing.huge,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
+    boxShadow: shadows.card,
+  },
+  filterChipText: {
+    ...type.subhead,
+    color: colors.accent,
+    fontWeight: "700",
+  },
+  filterMenu: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xs,
+    boxShadow: shadows.overlay,
+  },
+  filterMenuItem: {
+    minHeight: spacing.huge,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+  },
+  filterMenuItemActive: { backgroundColor: colors.accentSoft },
+  filterMenuText: { ...type.subhead, color: colors.ink },
+  filterMenuTextActive: { color: colors.accent, fontWeight: "700" },
   segmentTall: {
     flex: 1,
     alignItems: "center",
@@ -2403,9 +2557,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
+    width: spacing.huge,
     height: spacing.huge,
-    borderRadius: radius.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
     boxShadow: shadows.card,
   },
@@ -2534,6 +2688,59 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   entitlementText: { ...onboardingType.helper, color: colors.ink, flex: 1 },
+  paywallStoryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    boxShadow: shadows.card,
+  },
+  paywallStoryMeta: { flex: 1, gap: spacing.sm },
+  paywallStoryTitle: {
+    ...onboardingType.body,
+    fontFamily: fonts.tightSemiBold,
+    fontWeight: "600",
+    color: colors.ink,
+  },
+  paywallPills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  paywallPill: {
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  paywallPillText: {
+    ...type.caption,
+    color: colors.ink,
+    fontWeight: "700",
+  },
+  paywallBenefits: { gap: spacing.md },
+  paywallBenefitRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  paywallBenefitIcon: {
+    ...type.subhead,
+    width: spacing.xxl,
+    lineHeight: 22,
+  },
+  paywallBenefitText: {
+    ...onboardingType.helper,
+    color: colors.ink,
+    flex: 1,
+  },
+  paywallBenefitLead: {
+    fontFamily: fonts.tightSemiBold,
+    fontWeight: "600",
+  },
+  planGrid: {
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "stretch",
+  },
   /**
    * The led plan and the alternative, separated by elevation rather than by a
    * 2px accent ring against a 1px grey one. Depth is the honest signal here:
@@ -2553,6 +2760,39 @@ const styles = StyleSheet.create({
     boxShadow: shadows.card,
     padding: spacing.lg,
     gap: spacing.xs,
+    flex: 1,
+  },
+  planCardSelected: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.xl,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    boxShadow: shadows.raised,
+    padding: spacing.lg,
+    gap: spacing.xs,
+    flex: 1,
+  },
+  trialBadge: {
+    alignSelf: "center",
+    marginTop: -spacing.xxxl,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.premium,
+  },
+  trialBadgeText: {
+    ...type.caption,
+    color: colors.surface,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  planEyebrow: { ...onboardingType.sectionHeader, color: colors.tertiary },
+  planPriceLarge: {
+    ...onboardingType.title,
+    fontSize: 30,
+    lineHeight: 36,
+    color: colors.ink,
   },
   badge: {
     alignSelf: "flex-start",
@@ -2589,6 +2829,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
+    boxShadow:
+      "0 1px 2px rgba(255, 107, 26, 0.22), 0 10px 24px rgba(255, 107, 26, 0.18)",
   },
   primaryPill: { borderRadius: radius.pill, height: spacing.huge + spacing.lg },
   primaryPressed: { backgroundColor: colors.accentPressed },
