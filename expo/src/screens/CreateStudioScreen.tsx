@@ -48,11 +48,20 @@ import {
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
 import {
+  clearWriteTheRestRun,
+  loadWriteTheRestRun,
+  saveWriteTheRestRun,
+  type WriteTheRestRun,
+} from "@/lib/write-the-rest-storage";
+import {
+  CHAPTER_ART_CREDITS,
+  CHAPTER_TEXT_CREDITS,
   COVER_POLL_INTERVAL_MS,
   COVER_POLL_MAX_ATTEMPTS,
   MAX_CAST_SIZE,
   MAX_COVER_NOTE_CHARS,
   MAX_NEXT_INSTRUCTION_CHARS,
+  WRITE_THE_REST_MIN_CHAPTERS,
 } from "@/lib/pricing-limits";
 import {
   colors,
@@ -130,6 +139,47 @@ type StudioDraft = {
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
   illustrateChapters?: boolean;
+};
+
+/**
+ * What one trip through the continuation path did.
+ *
+ * The single-chapter Continue button used to be the only caller, so it could
+ * raise its own alerts inline and return nothing. "Write the rest" drives the
+ * same function in a loop and has to *decide* what to do next, which a void
+ * function cannot tell it: a guard that refused before spending anything ends
+ * a run quietly, a failure ends it loudly, and a written chapter is the base
+ * story for the next iteration. Hence a returned value rather than a thrown
+ * error — a throw would collapse those three into one shape and the loop would
+ * have to re-derive the difference from a message string.
+ */
+type ContinueOutcome =
+  /** A chapter was written, persisted and charged. `story` includes it. */
+  | { status: "written"; story: Story }
+  /** A guard refused. Nothing was requested, nothing was spent. */
+  | { status: "blocked"; title: string; message: string }
+  /**
+   * The request failed. The credit is refunded server-side by the existing
+   * single-chapter path. `keptPartial` says whether prose had already reached
+   * the reader, because that decides which screen they are looking at.
+   */
+  | { status: "failed"; message: string; keptPartial: boolean };
+
+/**
+ * A "Write the rest" run in flight, as the UI needs to see it.
+ *
+ * Distinct from `WriteTheRestRun`, which is the persisted intent. This is the
+ * live progress the run bar renders, and it is deliberately not persisted:
+ * `written` and `stopping` are only meaningful inside the process that owns
+ * the loop, and a resumed run recounts from the story it finds.
+ */
+type ActiveRun = {
+  /** Chapter count the run is driving toward. */
+  target: number;
+  /** Chapters this run has written so far. */
+  written: number;
+  /** Stop has been pressed; the in-flight chapter is being allowed to finish. */
+  stopping: boolean;
 };
 
 type ParagraphState = {
@@ -362,6 +412,57 @@ export default function CreateStudioScreen({
   // chapter, never for saying what should be in it.
   const [nextInstruction, setNextInstruction] = useState("");
 
+  // -----------------------------------------------------------------------
+  // "Write the rest" — the same loop, under program control (§10.2)
+  // -----------------------------------------------------------------------
+
+  /**
+   * The re-entrancy guard, and why it is a ref and not the state below.
+   *
+   * A run is the only thing in this screen that can spend a whole balance, so
+   * "start a second one" has to be impossible rather than merely unlikely.
+   * `runActiveRef` is set synchronously in the first statement of the starter,
+   * before any await, so two presses in the same tick cannot both get past it.
+   * A `useState` flag could not do that job: the second press would read the
+   * pre-render value and start a parallel loop, and two loops appending to two
+   * diverging copies of the same story would double-charge and lose chapters.
+   *
+   * `activeRun` is the render-time mirror of it, for disabling controls and
+   * drawing progress. It is never the guard.
+   */
+  const runActiveRef = useRef(false);
+  const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
+  /**
+   * Stop, as a ref for the same reason: the loop reads it between chapters
+   * from inside a closure that was created before the press happened.
+   */
+  const runStopRef = useRef(false);
+  /**
+   * Set when the run is being torn down by an unmount rather than by a
+   * decision, so the teardown leaves the persisted record alone.
+   *
+   * Leaving the Create tab destroys this screen while the loop is mid-await.
+   * The loop cannot be killed from outside — the chapter it is waiting on is
+   * already reserved and already being written — so the unmount asks it to stop
+   * after that chapter, exactly as the Stop button does, and preserves the
+   * record so what remained is still offered on the way back. Clearing it here
+   * would report an interrupted run as a completed one.
+   */
+  const runPreserveRecordRef = useRef(false);
+  /** The itemised confirm. Null means it is closed; nothing is spent while it is open. */
+  const [runConfirmOpen, setRunConfirmOpen] = useState(false);
+  /** What the last run did, said once in the editor rather than as an alert. */
+  const [runNotice, setRunNotice] = useState<string | null>(null);
+  /**
+   * A persisted run that outlived the process that was executing it.
+   *
+   * Loaded once on mount. It is only ever *offered* — resuming spends credits,
+   * so it goes through the same itemised confirm a fresh run does.
+   */
+  const [interruptedRun, setInterruptedRun] = useState<WriteTheRestRun | null>(
+    null,
+  );
+
   // Pulse animation for processing paragraphs
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -401,6 +502,23 @@ export default function CreateStudioScreen({
   useEffect(() => {
     return () => {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
+  }, []);
+
+  /**
+   * A run must not outlive the screen silently.
+   *
+   * Switching tabs unmounts the studio, and the loop would otherwise keep
+   * buying chapters against a tree nobody is looking at. It cannot be
+   * cancelled mid-chapter without abandoning a reservation, so it is asked to
+   * stop after the one in flight — the same semantics as the Stop button — and
+   * the persisted record is kept so the remainder is still offered later.
+   */
+  useEffect(() => {
+    return () => {
+      if (!runActiveRef.current) return;
+      runStopRef.current = true;
+      runPreserveRecordRef.current = true;
     };
   }, []);
 
@@ -445,6 +563,25 @@ export default function CreateStudioScreen({
     // Runs once. `initialDraft` is fixed for the life of the mount, and a
     // re-run would restore over whatever the user has typed since.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Pick up a run the last process did not finish.
+   *
+   * Runs once, alongside the draft restore, and only *reads*. Whether it can be
+   * resumed depends on something this effect cannot know yet — whether the
+   * story it names is the one the studio ends up holding — so the decision is
+   * deferred to the render, which has that answer.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    loadWriteTheRestRun().then((saved) => {
+      if (cancelled || !saved) return;
+      setInterruptedRun(saved);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Auto-save draft on changes (debounced 500ms, blocked until restore completes)
@@ -963,36 +1100,78 @@ export default function CreateStudioScreen({
     onPublished(publishedStory);
   }, [draft.visibility, story, storyTitle, onPublished, saveEditorToStory]);
 
-  const handleContinueStory = useCallback(async (isFinale = false) => {
-    if (!story || addingChapter) return;
-    if (story.chapters.length >= maxChapters) {
-      Alert.alert(
-        "Series complete",
-        `This story has reached its planned ${maxChapters} chapters.`,
-      );
-      return;
-    }
-    if (credits < 1) {
-      Alert.alert("Credits needed", "You need 1 credit to add a chapter.");
-      return;
-    }
+  /**
+   * Write exactly one more chapter. The single continuation path.
+   *
+   * Extracted from `handleContinueStory` so that "Write the rest" can drive it
+   * rather than reimplement it. §10.2 is explicit that the run "is not a second
+   * mode — each chapter is still its own request, its own reservation and its
+   * own credit", and the only way to hold that true in code is for both callers
+   * to be the same code. Everything a continuation has to get right — the
+   * chapter-count guard, the credit guard, the fresh request id per chapter,
+   * the finale flag, the streamed-prose bookkeeping, and above all the
+   * partial-stream rule that keeps text the reader has already seen on screen
+   * — lives here once.
+   *
+   * The three things the caller supplies rather than this function reading from
+   * state, and why each has to be a parameter:
+   *
+   * - **`baseStory`.** Inside a run, chapter N+1 is appended to the story that
+   *   chapter N produced, which the `story` state variable will not hold yet:
+   *   this closure was created before that render. Reading state here would
+   *   append every chapter of a run to the same base and silently lose all but
+   *   the last.
+   * - **`budget`.** Same problem with `credits`, which arrives as a prop from a
+   *   parent that re-renders on its own schedule. A run tracks what it has
+   *   spent and passes the remainder down, so the guard cannot be fooled by a
+   *   balance that has not caught up.
+   * - **`settle`.** A single Continue ends in the editor. A run ends in the
+   *   editor *once*, after its last chapter; settling between chapters would
+   *   flash the editor between every one.
+   */
+  const continueOnce = useCallback(async (options: {
+    baseStory: Story;
+    direction?: string;
+    isFinale?: boolean;
+    budget: number;
+    /** Default true: return to the editor and drop the busy flag when done. */
+    settle?: boolean;
+    /** Default false. Only a caller that actually sent the box may empty it. */
+    clearDirectionOnSuccess?: boolean;
+  }): Promise<ContinueOutcome> => {
+    const {
+      baseStory,
+      direction,
+      isFinale = false,
+      budget,
+      settle = true,
+      clearDirectionOnSuccess = false,
+    } = options;
 
-    // Save current editor state before generating next chapter
-    const savedStory = saveEditorToStory() ?? story;
-
-    // Read the direction once, here, rather than inside the stream callbacks.
-    // The box stays editable while the chapter streams, and a request that
-    // re-read the state later could send text the reader typed *after* they
-    // pressed Continue. Empty collapses to `undefined` so the request omits the
-    // field entirely — an empty string would still render the reader-direction
-    // block in the prompt, telling the model a steer exists when none does.
-    const direction = nextInstruction.trim() || undefined;
+    if (baseStory.chapters.length >= maxChapters) {
+      return {
+        status: "blocked",
+        title: "Series complete",
+        message: `This story has reached its planned ${maxChapters} chapters.`,
+      };
+    }
+    if (budget < CHAPTER_TEXT_CREDITS) {
+      return {
+        status: "blocked",
+        title: "Credits needed",
+        message: "You need 1 credit to add a chapter.",
+      };
+    }
 
     setAddingChapter(true);
     setStep("generating");
 
+    // A fresh id per chapter, never per run. The id is what makes a
+    // reservation idempotent, so reusing one across chapters would make the
+    // server treat chapter 6 as a replay of chapter 5 and hand back the text
+    // the writer already has.
     const requestId = createGenerationRequestId();
-    const nextChapterNum = savedStory.chapters.length + 1;
+    const nextChapterNum = baseStory.chapters.length + 1;
     const shouldFinale = isFinale || nextChapterNum >= maxChapters;
 
     streamedProseRef.current = "";
@@ -1002,7 +1181,7 @@ export default function CreateStudioScreen({
 
     try {
       const { chapter } = await continueStoryStreaming(
-        savedStory.id,
+        baseStory.id,
         requestId,
         {
           onStage: setStreamStage,
@@ -1015,11 +1194,11 @@ export default function CreateStudioScreen({
         nextChapterNum,
         direction,
       );
-      onCreditUsed(1);
+      onCreditUsed(CHAPTER_TEXT_CREDITS);
 
       const updatedStory: Story = {
-        ...savedStory,
-        chapters: [...savedStory.chapters, chapter],
+        ...baseStory,
+        chapters: [...baseStory.chapters, chapter],
       };
       setStory(updatedStory);
 
@@ -1036,32 +1215,267 @@ export default function CreateStudioScreen({
       streamedProseRef.current = "";
       setStreamedProse("");
 
-      // Cleared only on success, and only here. A direction that survived into
-      // the next chapter would keep steering chapters the reader never aimed
-      // it at, with nothing on screen to say so. A failed continuation keeps
-      // the text, because retyping it is the reader paying for our error.
-      setNextInstruction("");
-      setStep("editor");
+      // Cleared only on success, and only for the caller that sent it. A
+      // direction that survived into the next chapter would keep steering
+      // chapters the reader never aimed it at, with nothing on screen to say
+      // so. A failed continuation keeps the text, because retyping it is the
+      // reader paying for our error. A run never sends it at all, so a run
+      // must never empty it either.
+      if (clearDirectionOnSuccess) setNextInstruction("");
+
+      if (settle) {
+        setAddingChapter(false);
+        setStep("editor");
+      }
+      return { status: "written", story: updatedStory };
     } catch (error) {
       const message = error instanceof Error
         ? error.message
         : "Please try again.";
+      setAddingChapter(false);
       // Same rule as the first chapter: prose the reader has already seen stays
       // on screen, and only a failure before that returns them to the editor.
       if (streamedProseRef.current.trim()) {
         setStreamError(message);
-        setAddingChapter(false);
-        return;
+        return { status: "failed", message, keptPartial: true };
       }
       setStep("editor");
-      Alert.alert(
-        "Could not continue story",
-        message,
-      );
-    } finally {
-      setAddingChapter(false);
+      return { status: "failed", message, keptPartial: false };
     }
-  }, [story, addingChapter, credits, maxChapters, nextInstruction, onCreditUsed, saveEditorToStory]);
+  }, [maxChapters, onCreditUsed]);
+
+  const handleContinueStory = useCallback(async (isFinale = false) => {
+    if (!story || addingChapter) return;
+    // A run owns the continuation path while it holds it. The button is
+    // disabled during one, but the tab-strip chip and this handler are reached
+    // from two places, so the guard is here rather than only in the markup.
+    if (runActiveRef.current) return;
+
+    // Save current editor state before generating next chapter
+    const savedStory = saveEditorToStory() ?? story;
+
+    // Read the direction once, here, rather than inside the stream callbacks.
+    // The box stays editable while the chapter streams, and a request that
+    // re-read the state later could send text the reader typed *after* they
+    // pressed Continue. Empty collapses to `undefined` so the request omits the
+    // field entirely — an empty string would still render the reader-direction
+    // block in the prompt, telling the model a steer exists when none does.
+    const direction = nextInstruction.trim() || undefined;
+
+    const outcome = await continueOnce({
+      baseStory: savedStory,
+      direction,
+      isFinale,
+      budget: credits,
+      clearDirectionOnSuccess: true,
+    });
+
+    if (outcome.status === "blocked") {
+      Alert.alert(outcome.title, outcome.message);
+      return;
+    }
+    if (outcome.status === "failed" && !outcome.keptPartial) {
+      Alert.alert("Could not continue story", outcome.message);
+    }
+  }, [story, addingChapter, credits, nextInstruction, continueOnce, saveEditorToStory]);
+
+  // -----------------------------------------------------------------------
+  // "Write the rest": the same loop, driven by the program
+  // -----------------------------------------------------------------------
+
+  /**
+   * What a run would cost, itemised, before anything is spent.
+   *
+   * `CREDITS_AND_PRICING.md` puts two obligations on this. "Every paid button
+   * shows its price" — and a run's price is not one chapter's price, so it has
+   * to be added up rather than implied. And "you pay as each chapter is
+   * written, so a story you stop halfway costs what it wrote, not what it
+   * planned" — which is what makes the *shortfall* case honest rather than a
+   * refusal: a balance that covers four of seven chapters buys four chapters,
+   * and the writer is told that number before they agree to it.
+   *
+   * Text and art are separate lines because §10.2 requires "an itemised confirm
+   * stating text and art separately". A single total would hide which toggle
+   * doubled the bill.
+   */
+  const chaptersWritten = story?.chapters.length ?? 0;
+  const artOn = draft.illustrateChapters === true;
+  const runQuote = (() => {
+    const remaining = Math.max(0, maxChapters - chaptersWritten);
+    const perChapter = CHAPTER_TEXT_CREDITS + (artOn ? CHAPTER_ART_CREDITS : 0);
+    const textCredits = remaining * CHAPTER_TEXT_CREDITS;
+    const artCredits = artOn ? remaining * CHAPTER_ART_CREDITS : 0;
+    const total = textCredits + artCredits;
+    // What the balance actually reaches. Floor, never round: a chapter that is
+    // 90% paid for is a chapter that fails.
+    const affordable = Math.min(remaining, Math.floor(credits / perChapter));
+    return { remaining, perChapter, textCredits, artCredits, total, affordable };
+  })();
+
+  /**
+   * Whether the run control is offered at all.
+   *
+   * Three conditions, all from §10.2 and the shape of the editor. From chapter
+   * 3 onward, because that is where the section puts it. Only while chapters
+   * remain. And only on the last chapter, for the same reason Continue is: an
+   * append offered while the writer is back editing chapter 1 of 7 lands
+   * somewhere they are not looking.
+   */
+  const canOfferWriteTheRest = Boolean(
+    story
+    && activeChapterIndex === chaptersWritten - 1
+    && chaptersWritten >= WRITE_THE_REST_MIN_CHAPTERS
+    && runQuote.remaining > 0,
+  );
+
+  /**
+   * Run the loop.
+   *
+   * `chaptersToWrite` is decided by the confirm sheet, not here, because that
+   * is where the balance was quoted and agreed. Passing it in is what keeps
+   * "start a run the balance cannot finish" impossible by construction rather
+   * than by a check somewhere downstream.
+   *
+   * The loop is sequential and has no retry. §10.2's promise is that each
+   * chapter is its own reservation and its own credit; a retry inside the loop
+   * would turn one failure into two charges for one chapter, and the
+   * single-chapter path already refunds the failed one. So a failure ends the
+   * run, and everything written before it stays written — it is on the server
+   * already.
+   */
+  const startWriteTheRest = useCallback(async (chaptersToWrite: number) => {
+    if (!story || addingChapter) return;
+    // Synchronous, and first. See the comment on `runActiveRef`.
+    if (runActiveRef.current) return;
+    if (chaptersToWrite < 1) return;
+    runActiveRef.current = true;
+    runStopRef.current = false;
+    runPreserveRecordRef.current = false;
+
+    const base = saveEditorToStory() ?? story;
+    const target = Math.min(maxChapters, base.chapters.length + chaptersToWrite);
+
+    setRunNotice(null);
+    setInterruptedRun(null);
+    setActiveRun({ target, written: 0, stopping: false });
+    // Recorded before the first request, so a process killed during chapter 4
+    // leaves evidence that chapters 5 to 7 were still intended.
+    await saveWriteTheRestRun({
+      storyId: base.id,
+      targetChapterCount: target,
+      illustrated: artOn,
+      startedAtChapterCount: base.chapters.length,
+    });
+
+    let current = base;
+    let budget = credits;
+    let written = 0;
+    let ending: "done" | "stopped" | "halted" = "done";
+    let failure: Exclude<ContinueOutcome, { status: "written" }> | null = null;
+
+    while (current.chapters.length < target) {
+      // Checked here as well as after each chapter so a Stop pressed during the
+      // very first request is honoured the moment that chapter lands.
+      if (runStopRef.current) {
+        ending = "stopped";
+        break;
+      }
+
+      const outcome = await continueOnce({
+        baseStory: current,
+        // Deliberately no `direction`. See the note rendered beside the button:
+        // "What happens next?" steers one chapter, and a run has no single
+        // chapter to aim it at.
+        budget,
+        settle: false,
+      });
+
+      if (outcome.status !== "written") {
+        ending = "halted";
+        failure = outcome;
+        break;
+      }
+
+      current = outcome.story;
+      budget -= runQuote.perChapter;
+      written += 1;
+      setActiveRun((prev) => (prev ? { ...prev, written } : prev));
+
+      // Stop keeps every chapter already written and never discards one
+      // mid-flight: the check is *after* the chapter has been persisted and
+      // charged, so the worst case is one more chapter than the writer expected
+      // and never half of one.
+      if (runStopRef.current) {
+        ending = "stopped";
+        break;
+      }
+    }
+
+    runActiveRef.current = false;
+    runStopRef.current = false;
+    setActiveRun(null);
+    // The intent is discharged either way — unless the screen went away under
+    // it, in which case nothing decided anything and the record stands.
+    if (!runPreserveRecordRef.current) await clearWriteTheRestRun();
+
+    const kept = written === 1
+      ? "1 chapter was written and kept."
+      : `${written} chapters were written and kept.`;
+
+    if (ending === "halted" && failure) {
+      const reason = failure.message;
+      // A failure that reached the reader mid-sentence is already on screen in
+      // `StreamingProse` with its own dismiss. Stacking an alert on top of it
+      // would make them acknowledge the same thing twice.
+      if (failure.status === "failed" && failure.keptPartial) {
+        setRunNotice(`The run stopped. ${kept} ${reason}`);
+        return;
+      }
+      setAddingChapter(false);
+      setStep("editor");
+      setRunNotice(`The run stopped. ${kept} ${reason}`);
+      Alert.alert("Write the rest stopped", `${kept}\n\n${reason}`);
+      return;
+    }
+
+    setAddingChapter(false);
+    setStep("editor");
+    setRunNotice(
+      ending === "stopped"
+        ? `Stopped. ${kept} Continue whenever you want the next one.`
+        : null,
+    );
+  }, [
+    story,
+    addingChapter,
+    credits,
+    maxChapters,
+    artOn,
+    runQuote.perChapter,
+    continueOnce,
+    saveEditorToStory,
+  ]);
+
+  /**
+   * Stop.
+   *
+   * It sets a flag and nothing else. Aborting the request in flight would
+   * abandon a chapter the server is already writing and has already reserved
+   * against — the reader would have paid for prose nobody ever sees, which is
+   * the one outcome `CREDITS_AND_PRICING.md` principle 4 exists to prevent. So
+   * the in-flight chapter finishes and persists, and the run halts after it.
+   * The label says exactly that.
+   */
+  const handleStopRun = useCallback(() => {
+    if (!runActiveRef.current) return;
+    runStopRef.current = true;
+    setActiveRun((prev) => (prev ? { ...prev, stopping: true } : prev));
+  }, []);
+
+  const handleDiscardInterruptedRun = useCallback(() => {
+    setInterruptedRun(null);
+    clearWriteTheRestRun();
+  }, []);
 
   const switchToChapter = useCallback((index: number) => {
     if (!story || index === activeChapterIndex) return;
@@ -1488,6 +1902,79 @@ export default function CreateStudioScreen({
   // Render: Generating step (loading overlay)
   // -----------------------------------------------------------------------
 
+  /**
+   * The run bar: progress, and Stop.
+   *
+   * Rendered above whichever generating surface is showing — the loader before
+   * the first token, the streamed prose after it — rather than inside either,
+   * because it belongs to the run and not to the chapter. It is the only place
+   * Stop exists, and Stop has to be reachable for the whole run, which is
+   * precisely the time this screen is showing one of those two things.
+   *
+   * "Chapter 5 of 7" counts the chapter being written now: `chaptersWritten`
+   * is the story as persisted, so the one in flight is the next number up.
+   */
+  const runBar = activeRun ? (
+    <View style={styles.runBar} testID="write-the-rest-run-bar">
+      <View style={styles.runBarBody}>
+        <Text style={styles.runBarProgress}>
+          Chapter {Math.min(activeRun.target, chaptersWritten + 1)} of{" "}
+          {activeRun.target}
+        </Text>
+        <Text style={styles.runBarNote}>
+          {activeRun.stopping
+            ? "Stopping when this chapter is finished. Every chapter already written is kept."
+            : "One chapter at a time, each its own credit. Stop whenever you like."}
+        </Text>
+      </View>
+      <Pressable
+        onPress={handleStopRun}
+        disabled={activeRun.stopping}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: activeRun.stopping }}
+        accessibilityLabel={
+          activeRun.stopping
+            ? "Stopping after this chapter"
+            : "Stop writing the rest"
+        }
+        accessibilityHint="The chapter being written now is finished and kept. Nothing after it is written or charged."
+        style={[styles.runStopBtn, activeRun.stopping && styles.runStopBtnBusy]}
+        testID="write-the-rest-stop"
+      >
+        <Text style={styles.runStopBtnText}>
+          {activeRun.stopping ? "Stopping..." : "Stop"}
+        </Text>
+      </Pressable>
+    </View>
+  ) : null;
+
+  /**
+   * An interrupted run that this screen can actually finish.
+   *
+   * It has to name the story in hand. A record pointing at a different story
+   * must never resume into this one — that would append paid chapters to the
+   * wrong book — and a record whose target this story has already passed has
+   * nothing left to do.
+   *
+   * The studio can only be entered by starting a new story, so a run
+   * interrupted by a process death is offered again on the next visit that
+   * happens to be holding the same story: today that is a tab switch away and
+   * back within the same launch, not a cold start. Making it survive a cold
+   * start needs the studio to be able to *open* an existing story, which is
+   * navigation this change does not own. What survives either way is the part
+   * that costs money: every chapter the run wrote is on the server, paid for
+   * and kept, and nothing further is ever charged without another confirm.
+   */
+  const resumableRun = interruptedRun
+      && story
+      && interruptedRun.storyId === story.id
+      && interruptedRun.targetChapterCount > chaptersWritten
+    ? interruptedRun
+    : null;
+  const resumableRemaining = resumableRun
+    ? Math.min(maxChapters, resumableRun.targetChapterCount) - chaptersWritten
+    : 0;
+
   if (step === "generating") {
     // The handoff. The loader holds only until the first token exists; from
     // that moment the reader is reading their own story instead of watching a
@@ -1497,6 +1984,7 @@ export default function CreateStudioScreen({
     if (streamedProse.length > 0) {
       return (
         <SafeAreaView style={styles.flex}>
+          {runBar}
           <StreamingProse
             testID="streaming-prose"
             text={streamedProse}
@@ -1520,6 +2008,7 @@ export default function CreateStudioScreen({
     }
     return (
       <SafeAreaView style={styles.flex}>
+        {runBar}
         <GeneratingOverlay
           genre={draft.primaryGenre}
           mode={addingChapter ? (story && story.chapters.length + 1 >= maxChapters ? "finale" : "chapter") : "story"}
@@ -2105,6 +2594,100 @@ export default function CreateStudioScreen({
               <Text style={styles.continueNote}>
                 Saying what happens next is free. The credit pays for the chapter.
               </Text>
+
+              {/* Write the rest — the same loop, under program control.
+                *
+                * §10.2: "It is not a second mode — each chapter is still its
+                * own request, its own reservation and its own credit." So it
+                * sits under Continue rather than beside it, as the same action
+                * repeated rather than a different way of writing.
+                *
+                * The note about "What happens next?" is not decoration. A
+                * single typed direction aimed at one chapter must not silently
+                * steer seven, and the alternative — spending it on the run's
+                * first chapter only — makes one chapter of a program-driven
+                * run behave differently from the rest with nothing on screen
+                * to say which. So the run ignores the box, does not consume
+                * it, and says so here. The reader's note is still there for
+                * the next single Continue. */}
+              {canOfferWriteTheRest && (
+                <View style={styles.runOfferBlock}>
+                  <Pressable
+                    onPress={() => setRunConfirmOpen(true)}
+                    disabled={addingChapter || activeRun !== null}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      disabled: addingChapter || activeRun !== null,
+                    }}
+                    accessibilityLabel={`Write the rest, ${runQuote.remaining} chapters, ${runQuote.total} credits`}
+                    accessibilityHint="Shows what the whole run costs before anything is spent."
+                    style={[
+                      styles.runOfferBtn,
+                      (addingChapter || activeRun !== null)
+                        && styles.continueBtnBusy,
+                    ]}
+                    testID="write-the-rest-button"
+                  >
+                    <Text style={styles.runOfferBtnText}>
+                      Write the rest · {runQuote.total} credits
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.continueNote}>
+                    Chapters {chaptersWritten + 1} to {maxChapters}, one at a
+                    time. Stop after any of them and you keep what it wrote.
+                  </Text>
+                  <Text style={styles.continueNote}>
+                    Write the rest does not use What happens next? — that steers
+                    one chapter. Your note stays here for the next Continue.
+                  </Text>
+                </View>
+              )}
+
+              {/* An interrupted run, offered again rather than resumed for
+                * them. Resuming spends credits, so it goes back through the
+                * same itemised confirm a fresh run does. */}
+              {resumableRun && resumableRemaining > 0 && (
+                <View style={styles.runResumeBlock} testID="write-the-rest-resume">
+                  <Text style={styles.runResumeText}>
+                    A Write the rest run stopped before it finished.{" "}
+                    {resumableRemaining === 1
+                      ? "1 chapter"
+                      : `${resumableRemaining} chapters`}{" "}
+                    of it were never written, and nothing was charged for them.
+                  </Text>
+                  <View style={styles.runResumeRow}>
+                    <Pressable
+                      onPress={() => {
+                        setInterruptedRun(null);
+                        setRunConfirmOpen(true);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Resume writing the rest"
+                      style={styles.runResumeBtn}
+                      testID="write-the-rest-resume-button"
+                    >
+                      <Text style={styles.runResumeBtnText}>Resume</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleDiscardInterruptedRun}
+                      accessibilityRole="button"
+                      accessibilityLabel="Discard the interrupted run"
+                      style={styles.runResumeGhostBtn}
+                      testID="write-the-rest-discard-button"
+                    >
+                      <Text style={styles.runResumeGhostText}>Discard</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {/* What the last run did. Said once, here, rather than as an
+                * alert: a Stop the writer chose is not an error to acknowledge. */}
+              {runNotice && (
+                <Text style={styles.runNotice} testID="write-the-rest-notice">
+                  {runNotice}
+                </Text>
+              )}
             </View>
           )}
         </ScrollView>
@@ -2126,6 +2709,125 @@ export default function CreateStudioScreen({
             <ChevronRight size={16} color={colors.surface} />
           </Pressable>
         </View>
+
+        {/* The itemised confirm.
+          *
+          * §10.2 requires "an itemised confirm stating text and art
+          * separately" *before* a run starts, and this is the only place in
+          * the flow that quotes a multi-credit total. Two things it must never
+          * do: imply a price the pricing document does not set — the two per
+          * chapter lines come from `CHAPTER_TEXT_CREDITS` and
+          * `CHAPTER_ART_CREDITS`, not from literals — and start a run the
+          * balance cannot finish. A short balance is not a refusal: "you pay as
+          * each chapter is written" means it buys what it reaches, and the
+          * button then says exactly how many chapters that is. */}
+        {runConfirmOpen && story && (
+          <View style={styles.runSheetScrim} testID="write-the-rest-confirm">
+            <Pressable
+              style={styles.runSheetBackdrop}
+              onPress={() => setRunConfirmOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close without starting a run"
+            />
+            <View
+              style={styles.runSheet}
+              accessibilityViewIsModal
+              accessibilityRole="alert"
+            >
+              <Text style={styles.runSheetTitle}>Write the rest</Text>
+
+              <View style={styles.runSheetRow}>
+                <Text style={styles.runSheetLabel}>
+                  Chapters {chaptersWritten + 1} to {maxChapters}
+                </Text>
+                <Text style={styles.runSheetValue}>
+                  {runQuote.remaining === 1
+                    ? "1 chapter"
+                    : `${runQuote.remaining} chapters`}
+                </Text>
+              </View>
+              <View style={styles.runSheetRow}>
+                <Text style={styles.runSheetLabel}>
+                  Chapter text · {CHAPTER_TEXT_CREDITS} credit each
+                </Text>
+                <Text style={styles.runSheetValue}>
+                  {runQuote.textCredits} credits
+                </Text>
+              </View>
+              <View style={styles.runSheetRow}>
+                <Text style={styles.runSheetLabel}>
+                  {artOn
+                    ? `Chapter art · ${CHAPTER_ART_CREDITS} credit each`
+                    : "Chapter art · off"}
+                </Text>
+                <Text style={styles.runSheetValue}>
+                  {runQuote.artCredits} credits
+                </Text>
+              </View>
+              <View style={[styles.runSheetRow, styles.runSheetTotalRow]}>
+                <Text style={styles.runSheetTotalLabel}>Total</Text>
+                <Text
+                  style={styles.runSheetTotalValue}
+                  testID="write-the-rest-total"
+                >
+                  {runQuote.total} credits
+                </Text>
+              </View>
+
+              {credits < runQuote.total && (
+                <Text
+                  style={styles.runSheetShortfall}
+                  testID="write-the-rest-shortfall"
+                >
+                  {runQuote.affordable > 0
+                    ? `You have ${credits} credits and this run needs ${runQuote.total}. It will write ${runQuote.affordable} of the ${runQuote.remaining} chapters and stop there. You keep every chapter it writes.`
+                    : `You have ${credits} credits, and one more chapter needs ${runQuote.perChapter}. Nothing has been spent.`}
+                </Text>
+              )}
+
+              <Text style={styles.runSheetNote}>
+                Each chapter is its own request and its own credit, charged as
+                it is written. Stop after any of them and the rest costs
+                nothing.
+              </Text>
+              <Text style={styles.runSheetNote}>
+                What happens next? steers a single chapter, so a run does not
+                use it. Your note is left where it is.
+              </Text>
+
+              {runQuote.affordable > 0 && (
+                <Pressable
+                  onPress={() => {
+                    const chapters = runQuote.affordable;
+                    setRunConfirmOpen(false);
+                    startWriteTheRest(chapters);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Write ${runQuote.affordable} chapters for ${runQuote.affordable * runQuote.perChapter} credits`}
+                  style={styles.runSheetConfirmBtn}
+                  testID="write-the-rest-confirm-button"
+                >
+                  <Text style={styles.runSheetConfirmText}>
+                    {runQuote.affordable === 1
+                      ? "Write 1 chapter"
+                      : `Write ${runQuote.affordable} chapters`}
+                    {" · "}
+                    {runQuote.affordable * runQuote.perChapter} credits
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => setRunConfirmOpen(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Not now"
+                style={styles.runSheetCancelBtn}
+                testID="write-the-rest-cancel-button"
+              >
+                <Text style={styles.runSheetCancelText}>Not now</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Undo toast */}
         {undoTarget && (
@@ -2772,6 +3474,241 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     textAlign: "center",
+  },
+
+  // "Write the rest" — the run bar, the offer, the confirm.
+  //
+  // Every colour here is a token. The run bar deliberately uses `surface` on
+  // `border` rather than the accent: it is a status strip that sits above prose
+  // the reader is reading, and an accent band there competes with the text the
+  // whole feature exists to deliver.
+  runBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  runBarBody: {
+    flex: 1,
+    gap: 2,
+  },
+  runBarProgress: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  runBarNote: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  runStopBtn: {
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface2,
+  },
+  runStopBtnBusy: {
+    opacity: 0.6,
+  },
+  runStopBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  runOfferBlock: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  runOfferBtn: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+  },
+  runOfferBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  runResumeBlock: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+  },
+  runResumeText: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  runResumeRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  runResumeBtn: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+  runResumeBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.surface,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  runResumeGhostBtn: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  runResumeGhostText: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  runNotice: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: spacing.sm,
+  },
+  runSheetScrim: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+  },
+  // The dim is its own layer rather than an alpha on the scrim, because
+  // `opacity` on the container would take the sheet down with it. Same
+  // treatment as `StoryActionsSheet`.
+  runSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.ink,
+    opacity: 0.5,
+  },
+  runSheet: {
+    gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  runSheetTitle: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 20,
+    marginBottom: spacing.xs,
+  },
+  runSheetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  runSheetLabel: {
+    flex: 1,
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+  },
+  runSheetValue: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  runSheetTotalRow: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  runSheetTotalLabel: {
+    flex: 1,
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  runSheetTotalValue: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  runSheetShortfall: {
+    fontFamily: fonts.ui,
+    // `heart` is the failure/attention colour every other line in this flow
+    // uses. A short balance is not an error, but it is the one line here the
+    // writer must not skim past.
+    color: colors.heart,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+    marginTop: spacing.xs,
+  },
+  runSheetNote: {
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  runSheetConfirmBtn: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    marginTop: spacing.sm,
+  },
+  runSheetConfirmText: {
+    fontFamily: fonts.ui,
+    color: colors.surface,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  runSheetCancelBtn: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  runSheetCancelText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 14,
   },
 
   // Bottom toolbar

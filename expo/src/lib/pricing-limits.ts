@@ -52,3 +52,33 @@ export const MAX_COVER_NOTE_CHARS = 300;
  */
 export const COVER_POLL_INTERVAL_MS = 6_000;
 export const COVER_POLL_MAX_ATTEMPTS = 40;
+
+/**
+ * What one more chapter costs, itemised.
+ *
+ * These are the two lines of `CREDITS_AND_PRICING.md`'s create table that a
+ * multi-chapter run has to add up in advance: "Write a chapter — 1 each" and
+ * "Art for any other chapter — optional, off by default — 1 each".
+ *
+ * They live here rather than as literals in the studio because "Write the rest"
+ * is the first surface that has to *quote a total before spending anything*.
+ * Every other paid button in the flow prices one action, so a literal `1` next
+ * to it is self-evidently right; a run multiplies the number by up to fourteen
+ * chapters, and a wrong literal there misquotes the writer by an order of
+ * magnitude at the exact moment they are deciding whether to commit.
+ *
+ * Canonical: `source-of-truth/CREDITS_AND_PRICING.md` §"Creating".
+ */
+export const CHAPTER_TEXT_CREDITS = 1;
+export const CHAPTER_ART_CREDITS = 1;
+
+/**
+ * The chapter from which "Write the rest" is offered.
+ *
+ * §10.2: "**Write the rest** appears from chapter 3 onward". The rule is about
+ * consent, not about pacing — by chapter 3 the writer has read two chapters
+ * this model produced and paid for them one at a time, so they know what they
+ * are buying fourteen of. Offering it at chapter 1 would ask somebody to commit
+ * a whole balance to prose they have not seen a line of.
+ */
+export const WRITE_THE_REST_MIN_CHAPTERS = 3;

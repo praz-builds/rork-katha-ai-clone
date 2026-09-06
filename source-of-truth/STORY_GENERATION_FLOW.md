@@ -715,6 +715,54 @@ Create ·  n ✦
   that keeps every chapter already written, and a resume prompt if the app is
   killed mid-run. It is not a second mode — each chapter is still its own
   request, its own reservation and its own credit.
+
+  > **Implemented 2026-09-07.** It is a client-side loop over the existing
+  > `continue-story`, with **no new endpoint** — the sentence above requires each
+  > chapter to be its own request, and a server-side runner would have had to
+  > break that to exist. `CreateStudioScreen` therefore calls one `continueOnce`
+  > function that the single Continue button also calls, so the chapter-count
+  > guard, the credit guard, the per-chapter request id, the finale flag, the
+  > refund path and the partial-stream rule are inherited rather than
+  > reimplemented. Five details this section left open, settled here because the
+  > answers are user-visible:
+  >
+  > 1. **The run does not use "What happens next?", and does not consume it.**
+  >    That box is per-chapter steering. Reusing one typed direction for six
+  >    chapters would steer chapters the reader never aimed it at — the exact
+  >    defect the box's own clear-on-success rule exists to prevent — and
+  >    spending it on only the run's first chapter would make one chapter of a
+  >    program-driven run behave differently from the rest with nothing on
+  >    screen to say which. So a run ignores it, leaves the text where it is for
+  >    the next single Continue, and says both things in the confirm sheet and
+  >    beside the button.
+  > 2. **Stop lets the chapter in flight finish, and keeps it.** Aborting it
+  >    would abandon a reservation the server is already writing against, which
+  >    is a reader paying for prose nobody ever sees. So Stop halts the run
+  >    *after* the current chapter has persisted and charged; the control says
+  >    so. The worst case is one more chapter than expected, never half of one.
+  > 3. **A failure ends the run and is not retried.** The single-chapter path
+  >    already refunds a failed chapter; a retry inside the loop would turn one
+  >    failure into two charges. Everything written before it stays written.
+  > 4. **A short balance is quoted, not sprung.** The confirm itemises chapters,
+  >    text credits and art credits before anything is spent. If the balance
+  >    cannot cover the whole run, the sheet says so and the button offers
+  >    exactly the number of chapters the balance reaches — which is what
+  >    `CREDITS_AND_PRICING.md`'s "you pay as each chapter is written" already
+  >    implies, made explicit rather than discovered halfway through.
+  > 5. **Resume is bounded by what the studio can hold.** The intent — story id,
+  >    target chapter count, whether art was on — is persisted to AsyncStorage
+  >    under `katha:create:write-the-rest`, on the same 7-day expiry as the
+  >    draft, written before the first request and cleared when the run ends by
+  >    completion, Stop or failure. Leaving the Create tab destroys the screen
+  >    mid-run, so the unmount requests the same Stop the button does and
+  >    *keeps* the record. What the record cannot yet do is rebuild the story
+  >    after a cold start: the studio can only be entered by starting a new
+  >    story, so a run interrupted by a process death is re-offered on a later
+  >    visit holding the same story and otherwise expires. Making it survive a
+  >    cold start needs the studio to be able to **open an existing story**,
+  >    which is navigation, not generation. What survives either way is the part
+  >    that costs money: every chapter the run wrote is on the server, paid for,
+  >    and nothing further is charged without another confirm.
 - **Each chapter's text is 1 credit**, charged as it is generated, plus 1 for its
   art where the toggle is on. A story abandoned at chapter 2 of 7 costs what it
   wrote, not what it planned.
