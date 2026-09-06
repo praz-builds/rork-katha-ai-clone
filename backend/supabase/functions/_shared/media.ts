@@ -192,8 +192,24 @@ async function refundMissingMedia(
  */
 export const COVER_GENERATING_STALE_MS = 10 * 60 * 1000;
 
-async function setCoverStatus(
-  supabase: SupabaseClient,
+/**
+ * The narrow slice of the Supabase client `setCoverStatus` needs.
+ *
+ * Structural rather than `SupabaseClient` so the regeneration endpoint - which
+ * has to put the previous status back when a *re*generation misses - can share
+ * this function instead of writing a second one, and so both can be tested
+ * against a stub rather than a live project.
+ */
+export interface CoverStatusClient {
+  from(table: string): {
+    update(values: Record<string, unknown>): {
+      eq(column: string, value: unknown): PromiseLike<{ error: unknown }>;
+    };
+  };
+}
+
+export async function setCoverStatus(
+  supabase: CoverStatusClient,
   storyId: string,
   status: "generating" | "ready" | "failed",
   extra: Record<string, unknown> = {},
@@ -218,7 +234,7 @@ async function setCoverStatus(
   if (error) {
     console.error(
       `[media] cover_status=${status} failed for ${storyId}:`,
-      error.message,
+      safeErrorMessage(error),
     );
     await logError({
       bucket: "generation.cover",

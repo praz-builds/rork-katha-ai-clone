@@ -150,6 +150,31 @@
       "buttonBusyLabel": "Escribiendo el pr\u00f3ximo cap\u00edtulo",
       "addChapterLabel": "A\u00f1adir el pr\u00f3ximo cap\u00edtulo, 1 cr\u00e9dito",
       "freeNote": "Decir qu\u00e9 pasa despu\u00e9s es gratis. El cr\u00e9dito paga el cap\u00edtulo."
+    },
+    "cover": {
+      "conceptTag": "CONCEPTO",
+      "conceptLabel": "Portada conceptual",
+      "imageLabel": "Portada de {{title}}",
+      "thumbLabel": "La portada de tu historia",
+      "generating": "Pintando la ilustraci\u00f3n del cap\u00edtulo uno",
+      "failed": "La portada no lleg\u00f3. Tu tarjeta conceptual es una portada v\u00e1lida, o int\u00e9ntalo de nuevo aqu\u00ed abajo.",
+      "notePlaceholder": "Opcional. Di qu\u00e9 deber\u00eda mostrar esta portada.",
+      "noteLabel": "Nota de portada",
+      "noteHint": "Opcional. Describe qu\u00e9 deber\u00eda mostrar la nueva portada.",
+      "regenerateFree": "Regenerar portada \u00b7 gratis",
+      "regeneratePaid": "Regenerar portada \u00b7 1 cr\u00e9dito",
+      "regenerateBusy": "Regenerando...",
+      "regenerateFreeLabel": "Regenerar la portada, gratis",
+      "regeneratePaidLabel": "Regenerar la portada, 1 cr\u00e9dito",
+      "regenerateBusyLabel": "Regenerando la portada",
+      "hintFree": "Tu primera portada nueva es gratis. Despu\u00e9s cada una cuesta 1 cr\u00e9dito.",
+      "hintPaid": "Ya usaste tu intento gratis. Cada portada nueva cuesta 1 cr\u00e9dito.",
+      "hintKeep": "Quedarte con la tarjeta conceptual no cuesta nada.",
+      "creditsNeededTitle": "Necesitas cr\u00e9ditos",
+      "creditsNeededBody": "Necesitas 1 cr\u00e9dito para regenerar esta portada. La primera fue gratis.",
+      "regenerateError": "No se pudo regenerar la portada. Int\u00e9ntalo de nuevo.",
+      "goesOutGenerated": "Tu portada se publica con la historia",
+      "goesOutConcept": "Tu tarjeta conceptual se publica como portada"
     }
   },
   "genres": {

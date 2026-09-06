@@ -122,9 +122,36 @@ export type Story = {
   isFeatured: boolean;
   language: string;
   coverImage?: ImageName;
+  /**
+   * The generated cover, once there is one.
+   *
+   * Distinct from `coverImage`, which names a bundled asset and only ever
+   * belongs to a seed story. §10.4 makes chapter 1's art the cover, so this is
+   * populated tens of seconds after chapter 1 exists - not at publish - and is
+   * absent for every draft younger than that.
+   */
+  coverImageUrl?: string;
+  /**
+   * Which of "not attempted", "in flight", "ready" and "failed" the cover is.
+   *
+   * A null `coverImageUrl` means all four of those things, and the UI owes the
+   * writer a different answer for each: a spinner for work that is happening,
+   * the concept card for work that never will. Mirrors `stories.cover_status`.
+   */
+  coverStatus?: CoverStatus;
+  /**
+   * Delivered regenerations. 0 means the next one is the free retry.
+   *
+   * Carried so the Regenerate control can state its own price honestly rather
+   * than discovering it in a 402.
+   */
+  coverRegenCount?: number;
   focalX?: number; // 0-1, default 0.5
   focalY?: number; // 0-1, default 0.5
 };
+
+/** Mirrors the `stories_cover_status_check` constraint (migration 00029). */
+export type CoverStatus = "pending" | "generating" | "ready" | "failed";
 
 export type ImageName =
   | "camp-midnight.jpg"

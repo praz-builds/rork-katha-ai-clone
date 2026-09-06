@@ -256,6 +256,23 @@ export function buildCoverPrompt(
    * apply.
    */
   avoid?: string,
+  /**
+   * A regeneration steer: what the user asked for this time, plus what the
+   * previous cover already was.
+   *
+   * `stories.cover_prompt` exists so a regeneration can *vary* from the cover
+   * it is replacing rather than re-send the request that produced it. Both
+   * halves of that are free text going to a third-party provider - one typed by
+   * the user, one assembled by us from a prompt that itself contained user text
+   * - so this is sanitized on the same terms as the exclusion below, and by the
+   * same function.
+   *
+   * It sits after the scene and before `Do not depict`, deliberately. A steer
+   * is a positive instruction and belongs with the subject; the exclusion is a
+   * constraint and keeps the tail, which is the position HEAD moved it to
+   * precisely because it is the one most likely to survive.
+   */
+  variation?: string,
 ): string {
   const safeGenre = normalizeGenre(genre);
   const config = GENRE_PROMPTS[safeGenre];
@@ -296,6 +313,11 @@ export function buildCoverPrompt(
   // provider is covered, including the safety-level fallbacks that rebuild the
   // prompt from these arguments.
   const exclusion = sanitizeExclusion(avoid);
+  // A wider cap than the exclusion's. The steer carries two things - what the
+  // user asked for this time and a summary of what the last cover already was -
+  // and 200 characters truncates the second one away, which is the half that
+  // makes the regeneration different from the cover it replaces.
+  const steer = sanitizeExclusion(variation, 320);
 
   return [
     `Book cover illustration for a ${safeGenre} story.`,
@@ -304,6 +326,7 @@ export function buildCoverPrompt(
     `Composition: ${config.composition}. Subject centered in frame for multi-crop display.`,
     `Mood: ${config.mood}.`,
     `${sceneDescription}${characterNote}.`,
+    ...(steer ? [`${steer}.`] : []),
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
     `Portrait orientation, centered composition, high quality, professional book cover art.`,
@@ -311,7 +334,9 @@ export function buildCoverPrompt(
 }
 
 /**
- * Bound the *Avoid* text before it leaves for a third-party image provider.
+ * Bound free text before it leaves for a third-party image provider.
+ *
+ * Used for both the *Avoid* exclusion and the regeneration steer.
  *
  * This is user free text going to an external API in the same string as our own
  * instructions, so it gets the same treatment the character fields get in
@@ -321,7 +346,7 @@ export function buildCoverPrompt(
  * Returns an empty string when nothing usable survives, and the clause is then
  * omitted rather than emitted empty.
  */
-function sanitizeExclusion(value?: string): string {
+function sanitizeExclusion(value?: string, maxLength = 200): string {
   if (!value) return "";
   return value
     .replace(/[\r\n]+/g, " ")
@@ -330,6 +355,6 @@ function sanitizeExclusion(value?: string): string {
     .trim()
     // A trailing separator would collide with the period this clause ends on.
     .replace(/[.,;:]+$/, "")
-    .slice(0, 200)
+    .slice(0, maxLength)
     .trim();
 }

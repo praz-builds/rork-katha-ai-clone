@@ -114,6 +114,17 @@ export interface ImageResult {
   /** Which provider and model actually produced it — for telemetry. */
   provider: string;
   model: string;
+  /**
+   * The prompt the surviving attempt actually sent.
+   *
+   * Not necessarily the one the caller would have built: the safety ladder
+   * rebuilds the prompt on a moderation rejection, so the image on disk may
+   * have come from level 1 or level 2. Regeneration stores this in
+   * `stories.cover_prompt` and varies from it, and storing the prompt we
+   * *meant* to send instead would tell the next attempt to differ from a cover
+   * that was never made.
+   */
+  prompt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,8 +149,28 @@ export async function generateCoverImage(input: {
   whereAndWhen?: string;
   /** The brief's *Avoid* field. Bounds the art the way it bounds the prose. */
   avoid?: string;
+  /**
+   * A regeneration steer, threaded through to `buildCoverPrompt` at every
+   * safety level so a simplified retry is still a *different* cover.
+   */
+  variation?: string;
+  /**
+   * Distinguishes this attempt's storage key from the cover it replaces.
+   *
+   * The original cover is written to `covers/<story>/cover.png` with
+   * `upsert: true`, and its public URL contains no version. Overwriting those
+   * bytes leaves every CDN edge and every client image cache holding the old
+   * picture behind the URL the row still points at, so the user pays for a
+   * regeneration and keeps seeing the cover they rejected. A distinct key per
+   * regeneration is the whole fix: the row's URL changes, so nothing is cached
+   * under it yet.
+   */
+  storageSuffix?: string;
 }): Promise<ImageResult | null> {
-  const storagePath = `covers/${input.storyId}/cover.png`;
+  const suffix = input.storageSuffix
+    ? `-${input.storageSuffix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32)}`
+    : "";
+  const storagePath = `covers/${input.storyId}/cover${suffix}.png`;
   return await runImageChain({
     label: `cover ${input.storyId}`,
     bucket: "covers",
@@ -156,7 +187,8 @@ export async function generateCoverImage(input: {
  * a character description is by far the likeliest part of a cover prompt to
  * trip a content filter. Level 2 is genre and title only.
  *
- * The *Avoid* exclusion is carried at every level, including the last. Each
+ * The *Avoid* exclusion and the regeneration steer are carried at every level,
+ * including the last. Each
  * rung of this ladder exists to get *past* a content filter, so the rung most
  * likely to be reached is the one where an unconstrained cover would be most
  * embarrassing - and unlike the cast or the themes, an exclusion cannot be the
@@ -171,9 +203,11 @@ function buildCoverPromptForLevel(
     characters?: { name: string; description?: string; isHero?: boolean }[];
     whereAndWhen?: string;
     avoid?: string;
+    variation?: string;
   },
 ): string {
-  const { genre, title, themes, characters, whereAndWhen, avoid } = input;
+  const { genre, title, themes, characters, whereAndWhen, avoid, variation } =
+    input;
   if (safetyLevel === 0) {
     return buildCoverPrompt(
       genre,
@@ -182,6 +216,7 @@ function buildCoverPromptForLevel(
       usableCharacters(characters),
       whereAndWhen,
       avoid,
+      variation,
     );
   }
   if (safetyLevel === 1) {
@@ -196,9 +231,21 @@ function buildCoverPromptForLevel(
       undefined,
       whereAndWhen,
       avoid,
+      variation,
     );
   }
-  return buildCoverPrompt(genre, title, [], undefined, undefined, avoid);
+  // The steer survives to the last rung for the same reason the exclusion does:
+  // a regeneration that simplifies all the way down to genre-and-title and then
+  // drops what the user asked for has re-made the cover they were replacing.
+  return buildCoverPrompt(
+    genre,
+    title,
+    [],
+    undefined,
+    undefined,
+    avoid,
+    variation,
+  );
 }
 
 /**
@@ -409,8 +456,9 @@ async function runImageChain(input: {
         console.log(
           `[image] ${input.label}: ${provider.name}/${provider.model} at safety level ${level}`,
         );
+        const prompt = input.promptFor(level);
         const bytes = await provider.generate(
-          input.promptFor(level),
+          prompt,
           apiKey,
           input.aspect,
           deadline,
@@ -429,6 +477,7 @@ async function runImageChain(input: {
             input.storagePath,
           provider: provider.name,
           model: provider.model,
+          prompt,
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -36,14 +37,23 @@ import GeneratingOverlay from "@/components/GeneratingOverlay";
 import StreamingProse from "@/components/create/StreamingProse";
 import {
   continueStoryStreaming,
+  type CoverState,
   createGenerationRequestId,
   editParagraphStreaming,
+  fetchCoverState,
   generateStoryStreaming,
   GenerationRequestError,
   publishStory,
+  regenerateCover,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
-import { MAX_CAST_SIZE, MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
+import {
+  COVER_POLL_INTERVAL_MS,
+  COVER_POLL_MAX_ATTEMPTS,
+  MAX_CAST_SIZE,
+  MAX_COVER_NOTE_CHARS,
+  MAX_NEXT_INSTRUCTION_CHARS,
+} from "@/lib/pricing-limits";
 import {
   colors,
   fonts,
@@ -64,7 +74,22 @@ import type { AudienceMode, CreateDraft, Genre, IdentityLens, SpiceLevel, Story 
 // Local types
 // ---------------------------------------------------------------------------
 
-type StudioStep = "setup" | "generating" | "editor" | "cover" | "review" | "publishing";
+/**
+ * The steps the studio actually has.
+ *
+ * There used to be a `cover` step between the editor and review, and every
+ * thing on it was untrue: it drew a gradient concept card and called it a
+ * preview of a cover that had in fact already been generated, it said the cover
+ * "will be created when you publish" when `generate-story` schedules it the
+ * moment chapter 1 persists, and its Regenerate button was permanently
+ * disabled next to a prompt box whose contents were never sent anywhere.
+ *
+ * §10.4 settles where the cover belongs: chapter 1's art *is* the cover, so it
+ * is revealed in the editor as soon as it lands and confirmed at review, which
+ * is the step that was always going to show it. A step of its own was a step
+ * about a thing that had already happened.
+ */
+type StudioStep = "setup" | "generating" | "editor" | "review" | "publishing";
 
 type DraftCharacter = {
   name: string;
@@ -308,8 +333,21 @@ export default function CreateStudioScreen({
   } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cover prompt
+  // The cover, which is chapter 1's art (§10.4).
+  //
+  // Held apart from `story` rather than folded into it because it moves on a
+  // different clock: the story object is rewritten on every keystroke in the
+  // editor, and the cover is settled by a background task on the server that
+  // this screen only observes. Seeded from the generation response, advanced by
+  // `fetchCoverState`, replaced outright by a regeneration.
+  const [cover, setCover] = useState<CoverState>({
+    coverStatus: "pending",
+    coverRegenCount: 0,
+  });
+  /** The writer's optional steer for the next cover. Sent, not discarded. */
   const [coverPrompt, setCoverPrompt] = useState("");
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
 
   // Chapter state
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
@@ -515,6 +553,17 @@ export default function CreateStudioScreen({
       onCreditUsed(3);
       clearDraft();
       setStory(generated);
+      // Chapter 1's art is already in flight by the time this response arrives
+      // — `generate-story` schedules it the moment the chapter persists — so
+      // the studio starts watching from here rather than pretending the cover
+      // is a publish-time concern.
+      setCover({
+        coverImageUrl: generated.coverImageUrl,
+        coverStatus: generated.coverStatus ?? "generating",
+        coverRegenCount: generated.coverRegenCount ?? 0,
+      });
+      setCoverPrompt("");
+      setCoverError(null);
       setStoryTitle(generated.title);
       setActiveChapterIndex(0);
       setParagraphs(
@@ -739,25 +788,104 @@ export default function CreateStudioScreen({
   }, [story, activeChapterIndex, paragraphs, storyTitle]);
 
   // -----------------------------------------------------------------------
-  // Step transitions: Editor → Cover → Review → Publish
+  // Step transitions: Editor → Review → Publish
   // -----------------------------------------------------------------------
 
   const handleDoneWriting = useCallback(() => {
     saveEditorToStory();
-    setStep("cover");
-  }, [saveEditorToStory]);
-
-  const handleCoverNext = useCallback(() => {
     setStep("review");
-  }, []);
-
-  const handleBackToCover = useCallback(() => {
-    setStep("cover");
-  }, []);
+  }, [saveEditorToStory]);
 
   const handleBackToEditor = useCallback(() => {
     setStep("editor");
   }, []);
+
+  // -----------------------------------------------------------------------
+  // The cover
+  // -----------------------------------------------------------------------
+
+  /**
+   * Watch for chapter 1's art while the writer is in the studio.
+   *
+   * `generate-story` returns `cover_status: "generating"` and then finishes the
+   * job on a background task, so this screen is handed a promise and no way to
+   * hear it kept. Without this the cover could only ever appear on a later
+   * launch, and the studio would be back to describing a cover it had never
+   * seen — which is the thing §10.4 is a correction to.
+   *
+   * It runs only while there is something to wait for: the effect re-runs when
+   * the status changes and returns immediately once it is no longer
+   * `generating`, which is what tears the interval down. It is bounded so a
+   * server-side claim that died leaves the writer with the concept card rather
+   * than a spinner that never resolves.
+   */
+  useEffect(() => {
+    const storyId = story?.id;
+    if (!storyId) return;
+    if (cover.coverStatus !== "generating") return;
+    if (step !== "editor" && step !== "review") return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const timer = setInterval(async () => {
+      attempts += 1;
+      const next = await fetchCoverState(storyId);
+      if (cancelled) return;
+      if (next) setCover(next);
+      if (attempts >= COVER_POLL_MAX_ATTEMPTS) clearInterval(timer);
+    }, COVER_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [story?.id, cover.coverStatus, step]);
+
+  /** 1 free retry, then 1 credit — `CREDITS_AND_PRICING.md`, §10.4. */
+  const coverRegenCostsCredit = cover.coverRegenCount >= 1;
+
+  const handleRegenerateCover = useCallback(async () => {
+    if (!story || coverBusy) return;
+    if (coverRegenCostsCredit && credits < 1) {
+      Alert.alert(
+        "Credits needed",
+        "You need 1 credit to regenerate this cover. The first one was free.",
+      );
+      return;
+    }
+
+    setCoverBusy(true);
+    setCoverError(null);
+    const note = coverPrompt.trim();
+    // A fresh id every press. A regeneration is not a retry of the last one —
+    // the writer wants a different picture — and the server refuses a request
+    // id that has already bought a cover rather than handing out a second one.
+    const requestId = createGenerationRequestId();
+
+    try {
+      const next = await regenerateCover(story.id, requestId, note || undefined);
+      setCover({
+        coverImageUrl: next.coverImageUrl,
+        coverStatus: next.coverStatus,
+        coverRegenCount: next.coverRegenCount,
+      });
+      // The server says what it charged. Deriving it here from the count would
+      // be a second copy of the pricing rule, and the two would drift.
+      if (next.charged) onCreditUsed(1);
+      // Cleared only on success, for the same reason the continuation box is:
+      // a failed regeneration that also ate what the writer typed charges them
+      // twice for one of our failures.
+      setCoverPrompt("");
+    } catch (error) {
+      setCoverError(
+        error instanceof Error
+          ? error.message
+          : "The cover could not be regenerated. Please try again.",
+      );
+    } finally {
+      setCoverBusy(false);
+    }
+  }, [story, coverBusy, coverRegenCostsCredit, credits, coverPrompt, onCreditUsed]);
 
   // -----------------------------------------------------------------------
   // Step: Publish
@@ -973,6 +1101,9 @@ export default function CreateStudioScreen({
             setParagraphs([]);
             setSelectedIndex(null);
             setStoryTitle("");
+            setCover({ coverStatus: "pending", coverRegenCount: 0 });
+            setCoverPrompt("");
+            setCoverError(null);
           },
         },
       ],
@@ -1398,105 +1529,6 @@ export default function CreateStudioScreen({
   }
 
   // -----------------------------------------------------------------------
-  // Render: Cover preview step
-  // -----------------------------------------------------------------------
-
-  if (step === "cover") {
-    const genre = story?.genre ?? draft.primaryGenre;
-    const gradient = genreGradients[genre];
-    const totalWords = story
-      ? story.chapters.reduce((sum, ch) => sum + ch.paragraphs.join(" ").split(/\s+/).filter(Boolean).length, 0)
-      : wordCount;
-
-    return (
-      <SafeAreaView style={styles.flex}>
-        {/* Header */}
-        <View style={styles.editorHeader}>
-          <Pressable onPress={handleBackToEditor} style={styles.editorBackBtn}>
-            <ArrowLeft size={20} color={colors.ink} />
-            <Text style={styles.editorBackText}>Back</Text>
-          </Pressable>
-          <Text style={styles.editorHeaderTitle}>Cover Preview</Text>
-          <Pressable onPress={handleCoverNext} style={styles.publishHeaderBtn}>
-            <Text style={styles.publishHeaderBtnText}>Next</Text>
-            <ChevronRight size={14} color={colors.surface} />
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.coverScroll}>
-          {/* Cover card with genre gradient */}
-          <View style={styles.coverCardWrap}>
-            <View style={[styles.coverCard, { backgroundColor: gradient[1] }]}>
-              <View style={[styles.coverGradientTop, { backgroundColor: gradient[0] }]} />
-              <View style={styles.coverTextOverlay}>
-                <Text style={styles.coverGenreLabel}>
-                  {genreLabels[genre]}
-                </Text>
-                <Text style={styles.coverTitle}>
-                  {storyTitle || "Untitled"}
-                </Text>
-                {story && story.chapters.length > 1 && (
-                  <Text style={styles.coverChapterCount}>
-                    {story.chapters.length} chapters
-                  </Text>
-                )}
-              </View>
-              <View style={[styles.coverGradientBottom, { backgroundColor: gradient[2] }]} />
-            </View>
-          </View>
-
-          {/* Cover prompt + regenerate */}
-          <View style={styles.coverActions}>
-            <TextInput
-              value={coverPrompt}
-              onChangeText={setCoverPrompt}
-              placeholder="Describe your ideal cover (optional)"
-              placeholderTextColor={colors.tertiary}
-              style={styles.coverPromptInput}
-              multiline
-            />
-            <Pressable
-              style={[styles.regenerateBtn, { opacity: 0.5 }]}
-              disabled
-              accessibilityRole="button"
-              accessibilityLabel="Regenerate cover — available after publishing"
-            >
-              <RefreshCw size={16} color={colors.accent} />
-              <Text style={styles.regenerateBtnText}>Regenerate Cover</Text>
-            </Pressable>
-            <Text style={styles.coverHint}>
-              Cover generation uses your prompt above.{"\n"}
-              A unique AI cover will be created when you publish.
-            </Text>
-          </View>
-
-          {/* Story summary */}
-          <View style={styles.coverSummary}>
-            <View style={styles.coverSummaryRow}>
-              <Text style={styles.coverSummaryLabel}>Title</Text>
-              <Text style={styles.coverSummaryValue}>{storyTitle || "Untitled"}</Text>
-            </View>
-            <View style={styles.coverSummaryRow}>
-              <Text style={styles.coverSummaryLabel}>Genre</Text>
-              <Text style={styles.coverSummaryValue}>{genreLabels[genre]}</Text>
-            </View>
-            <View style={styles.coverSummaryRow}>
-              <Text style={styles.coverSummaryLabel}>Words</Text>
-              <Text style={styles.coverSummaryValue}>{totalWords.toLocaleString()}</Text>
-            </View>
-            {story && story.chapters.length > 1 && (
-              <View style={styles.coverSummaryRow}>
-                <Text style={styles.coverSummaryLabel}>Chapters</Text>
-                <Text style={styles.coverSummaryValue}>{story.chapters.length}</Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // -----------------------------------------------------------------------
   // Render: Publish review step
   // -----------------------------------------------------------------------
 
@@ -1511,7 +1543,7 @@ export default function CreateStudioScreen({
       <SafeAreaView style={styles.flex}>
         {/* Header */}
         <View style={styles.editorHeader}>
-          <Pressable onPress={handleBackToCover} style={styles.editorBackBtn}>
+          <Pressable onPress={handleBackToEditor} style={styles.editorBackBtn}>
             <ArrowLeft size={20} color={colors.ink} />
             <Text style={styles.editorBackText}>Back</Text>
           </Pressable>
@@ -1520,19 +1552,112 @@ export default function CreateStudioScreen({
         </View>
 
         <ScrollView contentContainerStyle={styles.reviewScroll}>
-          {/* Mini cover + title */}
+          {/* The cover, as it actually is.
+            *
+            * §10.4: chapter 1's art *is* the cover, and it was generated when
+            * chapter 1 was. So this shows the real image when there is one and
+            * the free typographic concept card when there is not — and the
+            * concept card is labelled CONCEPT rather than dressed up as a
+            * preview, because keeping it is a legitimate published look and the
+            * writer is entitled to know which of the two they are choosing.
+            *
+            * The three states below are the three the row can actually be in.
+            * A spinner is shown only while the server says work is happening;
+            * a cover that failed says so and offers the retry, rather than
+            * spinning forever over a job nothing is running. */}
           <View style={styles.reviewCard}>
-            <View style={[styles.reviewCoverMini, { backgroundColor: gradient[1] }]}>
-              <Text style={styles.reviewCoverMiniTitle} numberOfLines={2}>
-                {storyTitle || "Untitled"}
-              </Text>
-            </View>
+            {cover.coverImageUrl ? (
+              <Image
+                source={{ uri: cover.coverImageUrl }}
+                style={styles.reviewCoverMini}
+                resizeMode="cover"
+                accessibilityRole="image"
+                accessibilityLabel={`Cover for ${storyTitle || "your story"}`}
+                testID="review-cover-image"
+              />
+            ) : (
+              <View
+                style={[styles.reviewCoverMini, { backgroundColor: gradient[1] }]}
+                accessibilityLabel="Concept cover"
+                testID="review-concept-cover"
+              >
+                <Text style={styles.reviewCoverMiniTitle} numberOfLines={2}>
+                  {storyTitle || "Untitled"}
+                </Text>
+                <Text style={styles.reviewCoverConceptTag}>CONCEPT</Text>
+              </View>
+            )}
             <View style={styles.reviewCardMeta}>
               <Text style={styles.reviewCardTitle}>{storyTitle || "Untitled"}</Text>
               <Text style={styles.reviewCardSubtitle}>
                 {genreLabels[genre]} · {totalWords.toLocaleString()} words
               </Text>
+              {cover.coverStatus === "generating" && !cover.coverImageUrl && (
+                <View style={styles.reviewCoverStatusRow} testID="cover-generating">
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.reviewCoverStatusText}>
+                    Painting chapter one&apos;s art
+                  </Text>
+                </View>
+              )}
+              {cover.coverStatus === "failed" && !cover.coverImageUrl && (
+                <Text style={styles.reviewCoverStatusText} testID="cover-failed">
+                  The cover didn&apos;t come through. Your concept card is a real
+                  cover — or try again below.
+                </Text>
+              )}
             </View>
+          </View>
+
+          {/* Cover controls. Never a permanently disabled button: the price is
+            * stated, the note is sent, and the only thing that turns the
+            * control off is a request already in flight. */}
+          <View style={styles.coverActions}>
+            <TextInput
+              value={coverPrompt}
+              onChangeText={setCoverPrompt}
+              maxLength={MAX_COVER_NOTE_CHARS}
+              placeholder="Optional. Say what this cover should show."
+              placeholderTextColor={colors.tertiary}
+              style={styles.coverPromptInput}
+              multiline
+              accessibilityLabel="Cover note"
+              accessibilityHint="Optional. Describe what the regenerated cover should show."
+              testID="cover-note-input"
+            />
+            <Pressable
+              onPress={handleRegenerateCover}
+              disabled={coverBusy || !story}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: coverBusy, busy: coverBusy }}
+              accessibilityLabel={
+                coverBusy
+                  ? "Regenerating the cover"
+                  : coverRegenCostsCredit
+                    ? "Regenerate the cover, 1 credit"
+                    : "Regenerate the cover, free"
+              }
+              style={[styles.regenerateBtn, coverBusy && styles.regenerateBtnBusy]}
+              testID="regenerate-cover-button"
+            >
+              <RefreshCw size={16} color={colors.accent} />
+              <Text style={styles.regenerateBtnText}>
+                {coverBusy
+                  ? "Regenerating..."
+                  : `Regenerate cover · ${coverRegenCostsCredit ? "1 credit" : "free"}`}
+              </Text>
+            </Pressable>
+            {coverError && (
+              <Text style={styles.coverErrorText} testID="cover-error">
+                {coverError}
+              </Text>
+            )}
+            <Text style={styles.coverHint}>
+              {coverRegenCostsCredit
+                ? "Your free retry is used. Each new cover costs 1 credit."
+                : "Your first new cover is free. After that each one costs 1 credit."}
+              {"\n"}Keeping the concept card costs nothing.
+            </Text>
           </View>
 
           {/* Chapter list (only for series with multiple chapters) */}
@@ -1556,10 +1681,17 @@ export default function CreateStudioScreen({
           {/* What happens next */}
           <View style={styles.reviewInfoCard}>
             <Text style={styles.reviewSectionTitle}>What happens next</Text>
+            {/* The cover is deliberately not on this list any more. It was
+              * generated with chapter 1, and promising it again here was the
+              * same untruth the removed cover step told. */}
             <Text style={styles.reviewInfoText}>
-              {"\u2022"} A unique AI cover image will be generated{"\n"}
+              {"\u2022"} {cover.coverImageUrl
+                ? "Your cover goes out with the story"
+                : "Your concept card goes out as the cover"}{"\n"}
               {"\u2022"} Audio narration will be created in two voices{"\n"}
-              {"\u2022"} Your story will be visible to all readers
+              {"\u2022"} {draft.visibility === "public"
+                ? "Your story will be visible to all readers"
+                : "Your story stays private until you publish it"}
             </Text>
           </View>
         </ScrollView>
@@ -1593,7 +1725,9 @@ export default function CreateStudioScreen({
             {draft.visibility === "public" ? "Publishing your story..." : "Saving your story..."}
           </Text>
           <Text style={styles.publishingSubtitle}>
-            Generating cover image and audio
+            {/* Not "generating cover image" any more. The cover was made with
+              * chapter 1; this step saves the story. */}
+            Saving your chapters and starting narration
           </Text>
         </View>
       </SafeAreaView>
@@ -1634,8 +1768,26 @@ export default function CreateStudioScreen({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Story info card */}
+          {/* Story info card.
+            *
+            * The cover thumbnail appears here the moment chapter 1's art lands
+            * — §10.4 puts the cover with chapter 1, and a writer who has to
+            * reach the review step to find out whether their story has a face
+            * has been kept waiting for information that arrived minutes ago.
+            * Deliberately a thumbnail in a header the writer is already looking
+            * at, and never a modal: this is a reveal, not an interruption to
+            * somebody who is reading. */}
           <View style={styles.storyInfoCard}>
+            {cover.coverImageUrl && (
+              <Image
+                source={{ uri: cover.coverImageUrl }}
+                style={styles.editorCoverThumb}
+                resizeMode="cover"
+                accessibilityRole="image"
+                accessibilityLabel="Your story's cover"
+                testID="editor-cover-thumb"
+              />
+            )}
             {editingTitle ? (
               <TextInput
                 autoFocus
@@ -2730,69 +2882,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Cover preview step
-  coverScroll: {
-    paddingBottom: spacing.huge,
-  },
-  coverCardWrap: {
-    alignItems: "center",
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl,
-  },
-  coverCard: {
-    width: 220,
-    height: 320,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  coverGradientTop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "35%",
-    opacity: 0.7,
-  },
-  coverGradientBottom: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: "25%",
-    opacity: 0.8,
-  },
-  coverTextOverlay: {
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-  },
-  coverGenreLabel: {
-    fontFamily: fonts.ui,
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  coverTitle: {
-    fontFamily: fonts.display,
-    color: "#FFFFFF",
-    fontSize: 22,
-    textAlign: "center",
-    lineHeight: 28,
-  },
-  coverChapterCount: {
-    fontFamily: fonts.ui,
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 12,
-    fontWeight: "600",
-  },
+  // Cover controls (review step)
   coverActions: {
     alignItems: "center",
     gap: spacing.md,
@@ -2838,34 +2928,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 18,
   },
-  coverSummary: {
-    marginTop: spacing.xxl,
-    marginHorizontal: spacing.xl,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.md,
-  },
-  coverSummaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  coverSummaryLabel: {
+  coverErrorText: {
     fontFamily: fonts.ui,
-    color: colors.muted,
+    // `heart` is what every other failure line in the create flow uses
+    // (StreamingProse, the portrait error, the credit warning). There is no
+    // separate danger token and inventing one here would be design drift.
+    color: colors.heart,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
+    textAlign: "center",
   },
-  coverSummaryValue: {
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: "800",
+  regenerateBtnBusy: {
+    opacity: 0.6,
   },
-
   // Review step
   reviewScroll: {
     paddingBottom: 120,
@@ -2882,19 +2957,59 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   reviewCoverMini: {
-    width: 64,
-    height: 88,
+    // Larger than the 64x88 it was. This is now the writer's confirmation of a
+    // real image rather than a decorative chip beside a title, and at 64 wide a
+    // generated cover is unjudgeable. The 3:4 ratio matches the card slot the
+    // story will occupy on the shelf.
+    width: 84,
+    height: 116,
     borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xs,
+    overflow: "hidden",
   },
   reviewCoverMiniTitle: {
     fontFamily: fonts.display,
-    color: "#FFFFFF",
-    fontSize: 10,
+    color: colors.surface,
+    fontSize: 12,
     textAlign: "center",
-    lineHeight: 13,
+    lineHeight: 15,
+  },
+  reviewCoverConceptTag: {
+    // The concept card says what it is. §10.4 makes keeping it a legitimate
+    // published look, which is only a choice if the writer can tell it apart
+    // from a generated cover that has not arrived.
+    marginTop: spacing.xs,
+    fontFamily: fonts.ui,
+    color: colors.surface,
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 1,
+    opacity: 0.75,
+  },
+  reviewCoverStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  reviewCoverStatusText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 17,
+    flexShrink: 1,
+  },
+  editorCoverThumb: {
+    // Small on purpose. This is a reveal inside a header the writer is already
+    // looking at, not a hero: chapter 1's art arriving must not push the prose
+    // they are editing down the screen.
+    width: 44,
+    height: 60,
+    borderRadius: radius.sm,
+    alignSelf: "flex-start",
+    marginBottom: spacing.sm,
   },
   reviewCardMeta: {
     flex: 1,

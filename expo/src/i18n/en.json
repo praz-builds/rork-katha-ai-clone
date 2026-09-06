@@ -150,6 +150,31 @@
       "buttonBusyLabel": "Writing the next chapter",
       "addChapterLabel": "Add the next chapter, 1 credit",
       "freeNote": "Saying what happens next is free. The credit pays for the chapter."
+    },
+    "cover": {
+      "conceptTag": "CONCEPT",
+      "conceptLabel": "Concept cover",
+      "imageLabel": "Cover for {{title}}",
+      "thumbLabel": "Your story's cover",
+      "generating": "Painting chapter one's art",
+      "failed": "The cover didn't come through. Your concept card is a real cover \u2014 or try again below.",
+      "notePlaceholder": "Optional. Say what this cover should show.",
+      "noteLabel": "Cover note",
+      "noteHint": "Optional. Describe what the regenerated cover should show.",
+      "regenerateFree": "Regenerate cover \u00b7 free",
+      "regeneratePaid": "Regenerate cover \u00b7 1 credit",
+      "regenerateBusy": "Regenerating...",
+      "regenerateFreeLabel": "Regenerate the cover, free",
+      "regeneratePaidLabel": "Regenerate the cover, 1 credit",
+      "regenerateBusyLabel": "Regenerating the cover",
+      "hintFree": "Your first new cover is free. After that each one costs 1 credit.",
+      "hintPaid": "Your free retry is used. Each new cover costs 1 credit.",
+      "hintKeep": "Keeping the concept card costs nothing.",
+      "creditsNeededTitle": "Credits needed",
+      "creditsNeededBody": "You need 1 credit to regenerate this cover. The first one was free.",
+      "regenerateError": "The cover could not be regenerated. Please try again.",
+      "goesOutGenerated": "Your cover goes out with the story",
+      "goesOutConcept": "Your concept card goes out as the cover"
     }
   },
   "genres": {
