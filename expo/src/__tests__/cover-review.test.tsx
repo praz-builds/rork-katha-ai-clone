@@ -95,7 +95,10 @@ jest.mock("@/components/KathaPrimitives", () => {
   };
 });
 
-import { COVER_POLL_INTERVAL_MS } from "@/lib/pricing-limits";
+import {
+  COVER_POLL_INTERVAL_MS,
+  COVER_POLL_MAX_ATTEMPTS,
+} from "@/lib/pricing-limits";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 /* eslint-enable import/first */
 
@@ -252,6 +255,48 @@ describe("the review step's cover", () => {
 });
 
 describe("regenerating the cover", () => {
+  it("is off while the first cover is still being painted, and comes back", async () => {
+    // Pressing it in this state is a guaranteed 409 `in_flight`: the server
+    // holds one cover claim per story. Being off here is not the permanently
+    // disabled control §10.4 removed — the watch below resolves the status and
+    // the button returns.
+    jest.useFakeTimers();
+    try {
+      mockFetchCoverState.mockResolvedValue({
+        coverImageUrl: "https://cdn.test/covers/story/cover.png",
+        coverStatus: "ready",
+        coverRegenCount: 0,
+      });
+
+      const view = await renderAtReview({
+        cover_status: "generating",
+        cover_regen_count: 0,
+      });
+
+      const button = view.getByTestId("regenerate-cover-button");
+      expect(button.props.accessibilityState?.disabled).toBe(true);
+      await act(async () => {
+        fireEvent.press(button);
+      });
+      expect(mockRegenerateCover).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(COVER_POLL_INTERVAL_MS + 100);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(
+        view.getByTestId("regenerate-cover-button").props.accessibilityState
+          ?.disabled,
+      ).toBeFalsy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("is never a permanently disabled control", async () => {
     const view = await renderAtReview({
       cover_status: "ready",
@@ -404,6 +449,82 @@ describe("the cover reaches the editor, not only review", () => {
         "11111111-1111-4111-8111-111111111111",
       );
       expect(view.getByTestId("editor-cover-thumb")).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("the cover watch", () => {
+  it("never has two fetches out at once", async () => {
+    // The interval callback is async. Without a guard, a fetch slower than the
+    // 6s interval is re-entered while the first is still out, stacking requests
+    // and spending the attempt budget on answers nobody waited for.
+    jest.useFakeTimers();
+    try {
+      mockFetchCoverState.mockReset().mockImplementation(
+        () => new Promise(() => {}),
+      );
+
+      await renderAtEditor({
+        cover_status: "generating",
+        cover_regen_count: 0,
+      });
+
+      for (let tick = 0; tick < 4; tick += 1) {
+        await act(async () => {
+          jest.advanceTimersByTime(COVER_POLL_INTERVAL_MS + 100);
+        });
+        await act(async () => {
+          await Promise.resolve();
+        });
+      }
+
+      expect(mockFetchCoverState).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("keeps its attempt budget across a move between the editor and review", async () => {
+    // `step` is a dependency of the watch, so the interval is rebuilt on every
+    // editor-review toggle. An attempt counter local to the effect would reset
+    // with it, and a writer flicking between the two screens would poll a dead
+    // job forever.
+    jest.useFakeTimers();
+    try {
+      mockFetchCoverState.mockReset().mockResolvedValue(null);
+
+      const view = await renderAtEditor({
+        cover_status: "generating",
+        cover_regen_count: 0,
+      });
+
+      const half = Math.floor(COVER_POLL_MAX_ATTEMPTS / 2);
+      const advance = async (ticks: number) => {
+        for (let tick = 0; tick < ticks; tick += 1) {
+          await act(async () => {
+            jest.advanceTimersByTime(COVER_POLL_INTERVAL_MS + 100);
+          });
+          await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+          });
+        }
+      };
+
+      await advance(half);
+      expect(mockFetchCoverState).toHaveBeenCalledTimes(half);
+
+      await act(async () => {
+        fireEvent.press(view.getAllByText("Next")[0]);
+      });
+      await view.findByTestId("regenerate-cover-button");
+
+      // The rest of the budget, then well past it. The watch must stop at the
+      // bound rather than start counting again from zero.
+      await advance(COVER_POLL_MAX_ATTEMPTS);
+      expect(mockFetchCoverState).toHaveBeenCalledTimes(COVER_POLL_MAX_ATTEMPTS);
     } finally {
       jest.useRealTimers();
     }

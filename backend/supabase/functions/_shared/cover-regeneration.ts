@@ -39,6 +39,11 @@
  */
 
 import { generateCoverImage, ImageResult } from "./image.ts";
+import {
+  MAX_COVER_STEER_NOTE_LENGTH,
+  MAX_COVER_STEER_VARIATION_LENGTH,
+  sanitizeExclusion,
+} from "./cover-prompts.ts";
 import { CoverStatusClient, setCoverStatus } from "./media.ts";
 import { MAX_BRIEF_FIELD_LENGTH } from "./types.ts";
 
@@ -157,11 +162,28 @@ export async function regenerateCover(
   // further attempt was refused as in-flight until the ten-minute staleness
   // window expired. That is the exact failure this module's header says it
   // exists to prevent, reintroduced two functions below the sentence.
+  //
+  // Releasing also decides whether the attempt this claim counted is given
+  // back. The claim increments `cover_attempt_count` before anything else, on
+  // purpose: an evicted isolate must stay counted. But four paths reach the
+  // claim and then stop without calling a provider - no credits, a reservation
+  // already held, a spent request id, a reservation RPC that throws - and none
+  // of them costs anything to refuse. Charging them against a ceiling that
+  // never resets meant a writer with an empty balance could tap Regenerate
+  // twelve times, reach no provider at all, and then be permanently refused on
+  // that story even after buying credits. `reachedProvider` is the fact that
+  // decides it, and it is set at the single line that calls out.
+  const attempt = { reachedProvider: false };
   let released = false;
   const restore = async () => {
     if (released) return;
     released = true;
-    await setCoverStatus(client, storyId, previousStatus);
+    await releaseCoverClaim(client, {
+      storyId,
+      userId,
+      previousStatus,
+      refundAttempt: !attempt.reachedProvider,
+    });
   };
 
   try {
@@ -175,11 +197,47 @@ export async function regenerateCover(
       claim,
       requiresCredit,
       restore,
+      attempt,
     });
   } catch (error) {
     await restore();
     throw error;
   }
+}
+
+/**
+ * Put a claimed row back, and give the attempt back when nothing was spent.
+ *
+ * One RPC rather than a status write here and a counter write beside it: the
+ * two facts have to move together or a crash between them leaves the ceiling
+ * and the status disagreeing. See `release_cover_claim` in migration 00044.
+ *
+ * A release that fails falls back to the plain status write. The status is the
+ * part a reader can see - a story stuck on 'generating' shows a spinner over a
+ * cover that already exists and refuses every retry as in-flight - and an
+ * attempt that stays counted is a smaller wrong than that.
+ */
+async function releaseCoverClaim(
+  client: CoverRegenerationClient,
+  args: {
+    storyId: string;
+    userId: string;
+    previousStatus: "generating" | "ready" | "failed";
+    refundAttempt: boolean;
+  },
+): Promise<void> {
+  try {
+    const { error } = await client.rpc("release_cover_claim", {
+      p_story_id: args.storyId,
+      p_user_id: args.userId,
+      p_previous_status: args.previousStatus,
+      p_refund_attempt: args.refundAttempt,
+    });
+    if (!error) return;
+  } catch {
+    // Fall through to the status-only path below.
+  }
+  await setCoverStatus(client, args.storyId, args.previousStatus);
 }
 
 /**
@@ -199,6 +257,8 @@ async function runClaimedRegeneration(args: {
   claim: Record<string, unknown>;
   requiresCredit: boolean;
   restore: () => Promise<void>;
+  /** Flipped at the provider call, so a release knows whether to refund. */
+  attempt: { reachedProvider: boolean };
 }): Promise<RegenerateCoverResult> {
   const {
     client,
@@ -227,6 +287,9 @@ async function runClaimedRegeneration(args: {
 
   let image: ImageResult | null = null;
   try {
+    // Past this line the attempt has cost money whatever happens next, so it
+    // stays counted against the ceiling however this call ends.
+    args.attempt.reachedProvider = true;
     image = await generate({
       storyId,
       genre: stringOr(claim.primary_genre, "contemporary"),
@@ -275,6 +338,11 @@ async function runClaimedRegeneration(args: {
       p_operation_id: operationId ?? null,
       p_cover_url: image.url,
       p_cover_prompt: image.prompt,
+      // The replay key, written only here. The claim does not set it, so the
+      // guard it feeds means "this request delivered the cover on the row" and
+      // not "this request was the last to touch it" - a retry after a failed
+      // regeneration re-attempts instead of replaying the old cover as a win.
+      p_request_id: requestId,
     },
   );
   if (finishError) {
@@ -329,14 +397,29 @@ export function buildVariationSteer(
   previousPrompt: string | undefined,
 ): string | undefined {
   const parts: string[] = [];
-  const note = promptNote?.trim();
-  if (note) parts.push(`The writer asks for this cover: ${note}`);
+
+  // Each half is sanitized and capped on its own, before they are joined.
+  //
+  // Capping only the joined string is what a single cap at the prompt boundary
+  // does, and it truncates from the tail: a writer who filled the 300-character
+  // note lost the whole "make it clearly different" clause, so the one
+  // regeneration that carried the most instruction was also the only one with
+  // no instruction to vary. Budgeting here means the boundary cap has nothing
+  // left to cut. See MAX_COVER_STEER_* in `cover-prompts.ts`.
+  const note = sanitizeExclusion(
+    promptNote,
+    MAX_COVER_STEER_NOTE_LENGTH - NOTE_PREFIX.length,
+  );
+  if (note) parts.push(`${NOTE_PREFIX}${note}`);
 
   const previous = describePreviousCover(previousPrompt);
   parts.push(
-    previous
-      ? `Make it clearly different from the previous cover, which was: ${previous}`
-      : `Make it clearly different from the previous attempt in composition, palette emphasis and focal subject`,
+    sanitizeExclusion(
+      previous
+        ? `${VARIATION_PREFIX}${previous}`
+        : "Make it clearly different from the previous attempt in composition, palette emphasis and focal subject",
+      MAX_COVER_STEER_VARIATION_LENGTH,
+    ),
   );
 
   // Joined with a dash rather than a full stop. The sanitizer at the prompt
@@ -345,6 +428,10 @@ export function buildVariationSteer(
   // punctuation for it to rewrite. A dash survives and reads as the pause it is.
   return parts.join(" - ");
 }
+
+const NOTE_PREFIX = "The writer asks for this cover: ";
+const VARIATION_PREFIX =
+  "Make it clearly different from the previous cover, which was: ";
 
 /**
  * Recover the subject of a stored cover prompt, discarding the boilerplate.

@@ -54,23 +54,28 @@ export const COVER_POLL_INTERVAL_MS = 6_000;
 export const COVER_POLL_MAX_ATTEMPTS = 40;
 
 /**
- * What one more chapter costs, itemised.
+ * What one more chapter of text costs.
  *
- * These are the two lines of `CREDITS_AND_PRICING.md`'s create table that a
- * multi-chapter run has to add up in advance: "Write a chapter — 1 each" and
- * "Art for any other chapter — optional, off by default — 1 each".
+ * This is `CREDITS_AND_PRICING.md`'s create-table line "Write a chapter — 1
+ * each", and it lives here rather than as a literal in the studio because
+ * "Write the rest" is the first surface that has to *quote a total before
+ * spending anything*. Every other paid button in the flow prices one action, so
+ * a literal `1` next to it is self-evidently right; a run multiplies the number
+ * by up to fourteen chapters, and a wrong literal there misquotes the writer by
+ * an order of magnitude at the exact moment they are deciding whether to
+ * commit.
  *
- * They live here rather than as literals in the studio because "Write the rest"
- * is the first surface that has to *quote a total before spending anything*.
- * Every other paid button in the flow prices one action, so a literal `1` next
- * to it is self-evidently right; a run multiplies the number by up to fourteen
- * chapters, and a wrong literal there misquotes the writer by an order of
- * magnitude at the exact moment they are deciding whether to commit.
+ * The table's neighbouring line — "Art for any other chapter — optional, off by
+ * default — 1 each" — has no constant here on purpose. Nothing in the codebase
+ * charges for per-chapter art: `chapter_art` is only an enum value on
+ * `generation_operations.kind`, no caller reserves it, and `continue-story`
+ * never reads `illustrate_chapters`. A constant nothing reads is an invitation
+ * to quote a price nothing collects, which is how the run sheet came to refuse
+ * chapters the balance could afford. It comes back when the feature does.
  *
  * Canonical: `source-of-truth/CREDITS_AND_PRICING.md` §"Creating".
  */
 export const CHAPTER_TEXT_CREDITS = 1;
-export const CHAPTER_ART_CREDITS = 1;
 
 /**
  * The chapter from which "Write the rest" is offered.

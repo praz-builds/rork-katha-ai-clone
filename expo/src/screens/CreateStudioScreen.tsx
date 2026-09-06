@@ -48,13 +48,6 @@ import {
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
 import {
-  clearWriteTheRestRun,
-  loadWriteTheRestRun,
-  saveWriteTheRestRun,
-  type WriteTheRestRun,
-} from "@/lib/write-the-rest-storage";
-import {
-  CHAPTER_ART_CREDITS,
   CHAPTER_TEXT_CREDITS,
   COVER_POLL_INTERVAL_MS,
   COVER_POLL_MAX_ATTEMPTS,
@@ -168,10 +161,10 @@ type ContinueOutcome =
 /**
  * A "Write the rest" run in flight, as the UI needs to see it.
  *
- * Distinct from `WriteTheRestRun`, which is the persisted intent. This is the
- * live progress the run bar renders, and it is deliberately not persisted:
- * `written` and `stopping` are only meaningful inside the process that owns
- * the loop, and a resumed run recounts from the story it finds.
+ * Nothing about a run outlives the mount that started it. `written` and
+ * `stopping` are only meaningful inside the process that owns the loop, and
+ * there is deliberately no persisted counterpart — see the note on the unmount
+ * teardown for why resume is not implemented.
  */
 type ActiveRun = {
   /** Chapter count the run is driving toward. */
@@ -398,6 +391,16 @@ export default function CreateStudioScreen({
   const [coverPrompt, setCoverPrompt] = useState("");
   const [coverBusy, setCoverBusy] = useState(false);
   const [coverError, setCoverError] = useState<string | null>(null);
+  /**
+   * How many times the cover watch has asked, across every interval it has had.
+   *
+   * A ref rather than an effect-local counter because the watch is torn down
+   * and rebuilt whenever `step` changes, and the whole point of the bound is
+   * that one image gets a fixed number of asks in total. It is reset when a
+   * *new* image starts being made — a fresh story, or a regeneration — because
+   * that is a different job and deserves its own budget.
+   */
+  const coverPollAttemptsRef = useRef(0);
 
   // Chapter state
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
@@ -437,31 +440,10 @@ export default function CreateStudioScreen({
    * from inside a closure that was created before the press happened.
    */
   const runStopRef = useRef(false);
-  /**
-   * Set when the run is being torn down by an unmount rather than by a
-   * decision, so the teardown leaves the persisted record alone.
-   *
-   * Leaving the Create tab destroys this screen while the loop is mid-await.
-   * The loop cannot be killed from outside — the chapter it is waiting on is
-   * already reserved and already being written — so the unmount asks it to stop
-   * after that chapter, exactly as the Stop button does, and preserves the
-   * record so what remained is still offered on the way back. Clearing it here
-   * would report an interrupted run as a completed one.
-   */
-  const runPreserveRecordRef = useRef(false);
   /** The itemised confirm. Null means it is closed; nothing is spent while it is open. */
   const [runConfirmOpen, setRunConfirmOpen] = useState(false);
   /** What the last run did, said once in the editor rather than as an alert. */
   const [runNotice, setRunNotice] = useState<string | null>(null);
-  /**
-   * A persisted run that outlived the process that was executing it.
-   *
-   * Loaded once on mount. It is only ever *offered* — resuming spends credits,
-   * so it goes through the same itemised confirm a fresh run does.
-   */
-  const [interruptedRun, setInterruptedRun] = useState<WriteTheRestRun | null>(
-    null,
-  );
 
   // Pulse animation for processing paragraphs
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -511,14 +493,26 @@ export default function CreateStudioScreen({
    * Switching tabs unmounts the studio, and the loop would otherwise keep
    * buying chapters against a tree nobody is looking at. It cannot be
    * cancelled mid-chapter without abandoning a reservation, so it is asked to
-   * stop after the one in flight — the same semantics as the Stop button — and
-   * the persisted record is kept so the remainder is still offered later.
+   * stop after the one in flight — the same semantics as the Stop button.
+   *
+   * **What is deliberately not here: resume.** An earlier revision persisted
+   * the run's intent to AsyncStorage so the remainder could be re-offered on
+   * the way back. It could never fire. `story` is only ever set by a generation
+   * inside the current mount — the studio has no way to *open* an existing
+   * story — so after the unmount the screen comes back at `setup` with
+   * `story === null`, and every condition an offer could be gated on is false
+   * forever. Making resume real needs a fetch-by-id and navigation the studio
+   * does not have, so the whole record is gone rather than shipped as a code
+   * path that cannot run. The gap is written down in
+   * `source-of-truth/STORY_GENERATION_FLOW.md` §10.2 instead of being implied
+   * by dead code. What survives either way is the part that costs money: every
+   * chapter the run wrote is on the server, paid for, and nothing further is
+   * ever charged without another confirm.
    */
   useEffect(() => {
     return () => {
       if (!runActiveRef.current) return;
       runStopRef.current = true;
-      runPreserveRecordRef.current = true;
     };
   }, []);
 
@@ -563,25 +557,6 @@ export default function CreateStudioScreen({
     // Runs once. `initialDraft` is fixed for the life of the mount, and a
     // re-run would restore over whatever the user has typed since.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /**
-   * Pick up a run the last process did not finish.
-   *
-   * Runs once, alongside the draft restore, and only *reads*. Whether it can be
-   * resumed depends on something this effect cannot know yet — whether the
-   * story it names is the one the studio ends up holding — so the decision is
-   * deferred to the render, which has that answer.
-   */
-  useEffect(() => {
-    let cancelled = false;
-    loadWriteTheRestRun().then((saved) => {
-      if (cancelled || !saved) return;
-      setInterruptedRun(saved);
-    });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Auto-save draft on changes (debounced 500ms, blocked until restore completes)
@@ -694,6 +669,8 @@ export default function CreateStudioScreen({
       // — `generate-story` schedules it the moment the chapter persists — so
       // the studio starts watching from here rather than pretending the cover
       // is a publish-time concern.
+      // A new story is a new image, so the watch gets its full budget back.
+      coverPollAttemptsRef.current = 0;
       setCover({
         coverImageUrl: generated.coverImageUrl,
         coverStatus: generated.coverStatus ?? "generating",
@@ -955,6 +932,16 @@ export default function CreateStudioScreen({
    * `generating`, which is what tears the interval down. It is bounded so a
    * server-side claim that died leaves the writer with the concept card rather
    * than a spinner that never resolves.
+   *
+   * Two things the bound has to survive to mean anything. `step` is a
+   * dependency — moving between the editor and review re-creates the interval —
+   * so the attempt count lives in a ref rather than in the effect body; a local
+   * `let` would reset to zero on every toggle and a writer flicking between the
+   * two screens would poll a dead job forever. And the callback is `async`, so
+   * a fetch slower than the interval would otherwise be re-entered while the
+   * previous one is still out, stacking requests and burning attempts on
+   * answers nobody waited for. The in-flight flag makes a tick that arrives
+   * during a fetch a no-op instead.
    */
   useEffect(() => {
     const storyId = story?.id;
@@ -963,13 +950,22 @@ export default function CreateStudioScreen({
     if (step !== "editor" && step !== "review") return;
 
     let cancelled = false;
-    let attempts = 0;
+    let inFlight = false;
     const timer = setInterval(async () => {
-      attempts += 1;
-      const next = await fetchCoverState(storyId);
-      if (cancelled) return;
-      if (next) setCover(next);
-      if (attempts >= COVER_POLL_MAX_ATTEMPTS) clearInterval(timer);
+      if (inFlight) return;
+      if (coverPollAttemptsRef.current >= COVER_POLL_MAX_ATTEMPTS) {
+        clearInterval(timer);
+        return;
+      }
+      inFlight = true;
+      coverPollAttemptsRef.current += 1;
+      try {
+        const next = await fetchCoverState(storyId);
+        if (cancelled) return;
+        if (next) setCover(next);
+      } finally {
+        inFlight = false;
+      }
     }, COVER_POLL_INTERVAL_MS);
 
     return () => {
@@ -981,8 +977,23 @@ export default function CreateStudioScreen({
   /** 1 free retry, then 1 credit — `CREDITS_AND_PRICING.md`, §10.4. */
   const coverRegenCostsCredit = cover.coverRegenCount >= 1;
 
+  /**
+   * An image is already being made for this story.
+   *
+   * The server holds one claim per story and answers a second request with a
+   * 409 `in_flight`, so pressing Regenerate while chapter 1's own cover is
+   * still being painted is a guaranteed error dressed up as a button. This is
+   * not the permanently disabled control §10.4 removed: it is off only while
+   * the server says work is happening, and it comes back the moment the status
+   * resolves to `ready` or `failed` — including via the watch above, which is
+   * running for exactly this state.
+   */
+  const coverGenerating = cover.coverStatus === "generating";
+  /** Either reason the control is off, so the label and the guard agree. */
+  const coverActionBusy = coverBusy || coverGenerating;
+
   const handleRegenerateCover = useCallback(async () => {
-    if (!story || coverBusy) return;
+    if (!story || coverActionBusy) return;
     if (coverRegenCostsCredit && credits < 1) {
       Alert.alert(
         "Credits needed",
@@ -993,6 +1004,9 @@ export default function CreateStudioScreen({
 
     setCoverBusy(true);
     setCoverError(null);
+    // A regeneration is a new image, so the watch that will pick it up starts
+    // its bound again rather than inheriting whatever the last one spent.
+    coverPollAttemptsRef.current = 0;
     const note = coverPrompt.trim();
     // A fresh id every press. A regeneration is not a retry of the last one —
     // the writer wants a different picture — and the server refuses a request
@@ -1022,7 +1036,14 @@ export default function CreateStudioScreen({
     } finally {
       setCoverBusy(false);
     }
-  }, [story, coverBusy, coverRegenCostsCredit, credits, coverPrompt, onCreditUsed]);
+  }, [
+    story,
+    coverActionBusy,
+    coverRegenCostsCredit,
+    credits,
+    coverPrompt,
+    onCreditUsed,
+  ]);
 
   // -----------------------------------------------------------------------
   // Step: Publish
@@ -1294,22 +1315,31 @@ export default function CreateStudioScreen({
    * refusal: a balance that covers four of seven chapters buys four chapters,
    * and the writer is told that number before they agree to it.
    *
-   * Text and art are separate lines because §10.2 requires "an itemised confirm
-   * stating text and art separately". A single total would hide which toggle
-   * doubled the bill.
+   * **Why there is no art line, even though §10.2 asks for one.** Per-chapter
+   * art is not implemented anywhere: `chapter_art` exists only as an enum value
+   * on `generation_operations.kind`, nothing ever reserves it,
+   * `reserve_generation_operation` deducts exactly one credit for every kind it
+   * accepts, and `continue-story` never reads `illustrate_chapters`. A run with
+   * the toggle on is therefore charged exactly what a run with it off is
+   * charged. Quoting a second credit per chapter would not merely overstate the
+   * bill, it would *refuse work the balance covers*: 4 credits against 4
+   * remaining chapters quoted at 2 each offers two chapters and calls the other
+   * two unaffordable. So the quote bills what is actually charged — one credit
+   * per chapter — and the itemisation says only that. The divergence from §10.2
+   * is recorded in `source-of-truth/STORY_GENERATION_FLOW.md` rather than
+   * papered over here; when chapter art is really built, the art line and its
+   * price come back with it.
    */
   const chaptersWritten = story?.chapters.length ?? 0;
-  const artOn = draft.illustrateChapters === true;
   const runQuote = (() => {
     const remaining = Math.max(0, maxChapters - chaptersWritten);
-    const perChapter = CHAPTER_TEXT_CREDITS + (artOn ? CHAPTER_ART_CREDITS : 0);
+    const perChapter = CHAPTER_TEXT_CREDITS;
     const textCredits = remaining * CHAPTER_TEXT_CREDITS;
-    const artCredits = artOn ? remaining * CHAPTER_ART_CREDITS : 0;
-    const total = textCredits + artCredits;
+    const total = textCredits;
     // What the balance actually reaches. Floor, never round: a chapter that is
     // 90% paid for is a chapter that fails.
     const affordable = Math.min(remaining, Math.floor(credits / perChapter));
-    return { remaining, perChapter, textCredits, artCredits, total, affordable };
+    return { remaining, perChapter, textCredits, total, affordable };
   })();
 
   /**
@@ -1350,22 +1380,12 @@ export default function CreateStudioScreen({
     if (chaptersToWrite < 1) return;
     runActiveRef.current = true;
     runStopRef.current = false;
-    runPreserveRecordRef.current = false;
 
     const base = saveEditorToStory() ?? story;
     const target = Math.min(maxChapters, base.chapters.length + chaptersToWrite);
 
     setRunNotice(null);
-    setInterruptedRun(null);
     setActiveRun({ target, written: 0, stopping: false });
-    // Recorded before the first request, so a process killed during chapter 4
-    // leaves evidence that chapters 5 to 7 were still intended.
-    await saveWriteTheRestRun({
-      storyId: base.id,
-      targetChapterCount: target,
-      illustrated: artOn,
-      startedAtChapterCount: base.chapters.length,
-    });
 
     let current = base;
     let budget = credits;
@@ -1414,9 +1434,6 @@ export default function CreateStudioScreen({
     runActiveRef.current = false;
     runStopRef.current = false;
     setActiveRun(null);
-    // The intent is discharged either way — unless the screen went away under
-    // it, in which case nothing decided anything and the record stands.
-    if (!runPreserveRecordRef.current) await clearWriteTheRestRun();
 
     const kept = written === 1
       ? "1 chapter was written and kept."
@@ -1450,7 +1467,6 @@ export default function CreateStudioScreen({
     addingChapter,
     credits,
     maxChapters,
-    artOn,
     runQuote.perChapter,
     continueOnce,
     saveEditorToStory,
@@ -1470,11 +1486,6 @@ export default function CreateStudioScreen({
     if (!runActiveRef.current) return;
     runStopRef.current = true;
     setActiveRun((prev) => (prev ? { ...prev, stopping: true } : prev));
-  }, []);
-
-  const handleDiscardInterruptedRun = useCallback(() => {
-    setInterruptedRun(null);
-    clearWriteTheRestRun();
   }, []);
 
   const switchToChapter = useCallback((index: number) => {
@@ -1515,6 +1526,7 @@ export default function CreateStudioScreen({
             setParagraphs([]);
             setSelectedIndex(null);
             setStoryTitle("");
+            coverPollAttemptsRef.current = 0;
             setCover({ coverStatus: "pending", coverRegenCount: 0 });
             setCoverPrompt("");
             setCoverError(null);
@@ -1948,33 +1960,6 @@ export default function CreateStudioScreen({
     </View>
   ) : null;
 
-  /**
-   * An interrupted run that this screen can actually finish.
-   *
-   * It has to name the story in hand. A record pointing at a different story
-   * must never resume into this one — that would append paid chapters to the
-   * wrong book — and a record whose target this story has already passed has
-   * nothing left to do.
-   *
-   * The studio can only be entered by starting a new story, so a run
-   * interrupted by a process death is offered again on the next visit that
-   * happens to be holding the same story: today that is a tab switch away and
-   * back within the same launch, not a cold start. Making it survive a cold
-   * start needs the studio to be able to *open* an existing story, which is
-   * navigation this change does not own. What survives either way is the part
-   * that costs money: every chapter the run wrote is on the server, paid for
-   * and kept, and nothing further is ever charged without another confirm.
-   */
-  const resumableRun = interruptedRun
-      && story
-      && interruptedRun.storyId === story.id
-      && interruptedRun.targetChapterCount > chaptersWritten
-    ? interruptedRun
-    : null;
-  const resumableRemaining = resumableRun
-    ? Math.min(maxChapters, resumableRun.targetChapterCount) - chaptersWritten
-    : 0;
-
   if (step === "generating") {
     // The handoff. The loader holds only until the first token exists; from
     // that moment the reader is reading their own story instead of watching a
@@ -2116,24 +2101,34 @@ export default function CreateStudioScreen({
             />
             <Pressable
               onPress={handleRegenerateCover}
-              disabled={coverBusy || !story}
+              disabled={coverActionBusy || !story}
               accessibilityRole="button"
-              accessibilityState={{ disabled: coverBusy, busy: coverBusy }}
+              accessibilityState={{
+                disabled: coverActionBusy,
+                busy: coverActionBusy,
+              }}
               accessibilityLabel={
                 coverBusy
                   ? "Regenerating the cover"
-                  : coverRegenCostsCredit
-                    ? "Regenerate the cover, 1 credit"
-                    : "Regenerate the cover, free"
+                  : coverGenerating
+                    ? "A cover is already being made"
+                    : coverRegenCostsCredit
+                      ? "Regenerate the cover, 1 credit"
+                      : "Regenerate the cover, free"
               }
-              style={[styles.regenerateBtn, coverBusy && styles.regenerateBtnBusy]}
+              style={[
+                styles.regenerateBtn,
+                coverActionBusy && styles.regenerateBtnBusy,
+              ]}
               testID="regenerate-cover-button"
             >
               <RefreshCw size={16} color={colors.accent} />
               <Text style={styles.regenerateBtnText}>
                 {coverBusy
                   ? "Regenerating..."
-                  : `Regenerate cover · ${coverRegenCostsCredit ? "1 credit" : "free"}`}
+                  : coverGenerating
+                    ? "Painting the first one..."
+                    : `Regenerate cover · ${coverRegenCostsCredit ? "1 credit" : "free"}`}
               </Text>
             </Pressable>
             {coverError && (
@@ -2643,52 +2638,22 @@ export default function CreateStudioScreen({
                 </View>
               )}
 
-              {/* An interrupted run, offered again rather than resumed for
-                * them. Resuming spends credits, so it goes back through the
-                * same itemised confirm a fresh run does. */}
-              {resumableRun && resumableRemaining > 0 && (
-                <View style={styles.runResumeBlock} testID="write-the-rest-resume">
-                  <Text style={styles.runResumeText}>
-                    A Write the rest run stopped before it finished.{" "}
-                    {resumableRemaining === 1
-                      ? "1 chapter"
-                      : `${resumableRemaining} chapters`}{" "}
-                    of it were never written, and nothing was charged for them.
-                  </Text>
-                  <View style={styles.runResumeRow}>
-                    <Pressable
-                      onPress={() => {
-                        setInterruptedRun(null);
-                        setRunConfirmOpen(true);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Resume writing the rest"
-                      style={styles.runResumeBtn}
-                      testID="write-the-rest-resume-button"
-                    >
-                      <Text style={styles.runResumeBtnText}>Resume</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={handleDiscardInterruptedRun}
-                      accessibilityRole="button"
-                      accessibilityLabel="Discard the interrupted run"
-                      style={styles.runResumeGhostBtn}
-                      testID="write-the-rest-discard-button"
-                    >
-                      <Text style={styles.runResumeGhostText}>Discard</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              )}
-
-              {/* What the last run did. Said once, here, rather than as an
-                * alert: a Stop the writer chose is not an error to acknowledge. */}
-              {runNotice && (
-                <Text style={styles.runNotice} testID="write-the-rest-notice">
-                  {runNotice}
-                </Text>
-              )}
             </View>
+          )}
+
+          {/* What the last run did. Said once, here, rather than as an alert:
+            * a Stop the writer chose is not an error to acknowledge.
+            *
+            * Outside the Continue block on purpose. That block hides itself
+            * once the plan is full, and a run that wrote its way to the final
+            * chapter — the ordinary successful ending, and the one that stops
+            * on the last chapter of all — would then have nowhere to say what
+            * it did. The notice belongs to the run, not to Continue, so it
+            * renders whenever there is one. */}
+          {runNotice && (
+            <Text style={styles.runNotice} testID="write-the-rest-notice">
+              {runNotice}
+            </Text>
           )}
         </ScrollView>
 
@@ -2715,10 +2680,10 @@ export default function CreateStudioScreen({
           * §10.2 requires "an itemised confirm stating text and art
           * separately" *before* a run starts, and this is the only place in
           * the flow that quotes a multi-credit total. Two things it must never
-          * do: imply a price the pricing document does not set — the two per
-          * chapter lines come from `CHAPTER_TEXT_CREDITS` and
-          * `CHAPTER_ART_CREDITS`, not from literals — and start a run the
-          * balance cannot finish. A short balance is not a refusal: "you pay as
+          * do: imply a price the pricing document does not set — the per
+          * chapter line comes from `CHAPTER_TEXT_CREDITS`, not from a literal,
+          * and there is no art line because nothing charges for chapter art
+          * (see `runQuote`) — and start a run the balance cannot finish. A short balance is not a refusal: "you pay as
           * each chapter is written" means it buys what it reaches, and the
           * button then says exactly how many chapters that is. */}
         {runConfirmOpen && story && (
@@ -2752,16 +2717,6 @@ export default function CreateStudioScreen({
                 </Text>
                 <Text style={styles.runSheetValue}>
                   {runQuote.textCredits} credits
-                </Text>
-              </View>
-              <View style={styles.runSheetRow}>
-                <Text style={styles.runSheetLabel}>
-                  {artOn
-                    ? `Chapter art · ${CHAPTER_ART_CREDITS} credit each`
-                    : "Chapter art · off"}
-                </Text>
-                <Text style={styles.runSheetValue}>
-                  {runQuote.artCredits} credits
                 </Text>
               </View>
               <View style={[styles.runSheetRow, styles.runSheetTotalRow]}>
@@ -3549,61 +3504,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 15,
   },
-  runResumeBlock: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surface,
-  },
-  runResumeText: {
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  runResumeRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  runResumeBtn: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  runResumeBtnText: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontWeight: "800",
-    fontSize: 14,
-  },
-  runResumeGhostBtn: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-  },
-  runResumeGhostText: {
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontWeight: "700",
-    fontSize: 14,
-  },
+  // Sits on the scroll surface rather than inside the Continue card, so it
+  // carries its own horizontal inset.
   runNotice: {
     fontFamily: fonts.ui,
     color: colors.muted,
     fontSize: 12,
     lineHeight: 18,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
+    marginHorizontal: spacing.lg,
   },
   runSheetScrim: {
     ...StyleSheet.absoluteFillObject,

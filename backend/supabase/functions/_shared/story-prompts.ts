@@ -425,9 +425,9 @@ function formatSeriesState(state: SeriesState): string {
       // so it is the one that can carry a user's delimiter back into the
       // prompt. Stripped here for the same reason `SERIES_STATE_FENCE` strips
       // this block's own delimiter from its payload.
-      delivered_moments: (Array.isArray(state.delivered_moments)
-        ? state.delivered_moments
-        : []).map(fenceUserText),
+      delivered_moments:
+        (Array.isArray(state.delivered_moments) ? state.delivered_moments : [])
+          .map(fenceUserText),
     },
     null,
     2,
@@ -1191,6 +1191,23 @@ export function buildUserPrompt(params: {
   storyValues?: string[];
   writingStyle?: string;
   avoid?: string;
+  /**
+   * Hold the exclusion back so the caller can place it itself.
+   *
+   * The exclusion layer is last in this function because a negative constraint
+   * needs recency. On the continuation path this prompt is not the end of the
+   * message - `buildContinuationUserPrompt` appends the previous-chapters
+   * window after it, which by chapter seven is the largest block in the
+   * request - so "last in the brief" is nowhere near last in the prompt. The
+   * caller sets this and emits `buildExclusionBlock` itself, after that window.
+   */
+  deferExclusion?: boolean;
+  /**
+   * Omit the trailing "respond with JSON" line, for a caller that appends its
+   * own closing instruction. Without this a continuation carried two of them,
+   * and on the prose transport they contradicted each other.
+   */
+  omitClosingInstruction?: boolean;
   continuationInstruction?: string;
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
@@ -1217,6 +1234,8 @@ export function buildUserPrompt(params: {
   storyValues?: string[];
   writingStyle?: string;
   avoid?: string;
+  deferExclusion?: boolean;
+  omitClosingInstruction?: boolean;
   continuationInstruction?: string;
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
@@ -1451,20 +1470,17 @@ export function buildUserPrompt(params: {
     if (params.storyMode === "series" && owed.length) {
       const planned = params.plannedChapterCount ??
         DEFAULT_PLANNED_CHAPTER_COUNT;
-      const index =
-        Number.isInteger(params.chapterNumber) &&
+      const index = Number.isInteger(params.chapterNumber) &&
           (params.chapterNumber as number) >= 1
-          ? (params.chapterNumber as number)
-          : 1;
+        ? (params.chapterNumber as number)
+        : 1;
       const remaining = Math.max(1, planned - index + 1);
       if (remaining <= owed.length) {
         parts.push(
           `Runway: ${remaining} ${
             remaining === 1 ? "chapter remains" : "chapters remain"
           } including this one, and ${owed.length} ${
-            owed.length === 1
-              ? "promised moment is"
-              : "promised moments are"
+            owed.length === 1 ? "promised moment is" : "promised moments are"
           } still owed. Start landing them now. Holding them all for the final chapter is a failure.`,
         );
       }
@@ -1473,26 +1489,158 @@ export function buildUserPrompt(params: {
 
   // --- Exclusion layer ---
   //
-  // Last, and stated as a bound rather than a preference. It used to sit fifth
-  // of a dozen blocks as "keep this out where reasonably possible" - a hedge
-  // the model can trade away against everything asked of it after, and buried
-  // far enough up the prompt that it competed with the brief instead of
-  // constraining it. A negative constraint needs recency and no escape clause.
-  if (params.avoid?.trim()) {
-    parts.push(
-      `This must not appear in the story. It is a constraint, not a preference:\n${
-        userField("avoid", params.avoid)
-      }\nDo not depict it, allude to it, or substitute a renamed version of it.`,
-    );
+  // Last, unless the caller asked for it back so it can be placed later still.
+  // See `buildExclusionBlock`.
+  if (!params.deferExclusion) {
+    const exclusion = buildExclusionBlock(params.avoid);
+    if (exclusion) parts.push(exclusion);
   }
 
   if (params.language && params.language !== "English") {
     parts.push(`Write in ${params.language}.`);
   }
 
-  parts.push(
-    "\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.",
-  );
+  if (!params.omitClosingInstruction) {
+    parts.push(`\n${JSON_CLOSING_INSTRUCTION}`);
+  }
 
   return parts.join("\n");
+}
+
+/** The last line of a prompt that wants structured output. */
+const JSON_CLOSING_INSTRUCTION =
+  "Respond with a JSON object only. No markdown fences. Follow the output schema from your instructions.";
+
+/** The last line of a prompt that wants prose and nothing else. */
+const PROSE_CLOSING_INSTRUCTION =
+  "Respond with the chapter text only. No title, no heading, no commentary, no JSON.";
+
+/**
+ * The *Avoid* field, as a bound rather than a preference.
+ *
+ * A block of its own, and exported, because where it sits is the whole point
+ * of it. It used to be the fifth of a dozen brief sections, phrased as "keep
+ * this out where reasonably possible" - a hedge the model can trade away
+ * against everything asked of it afterwards. A negative constraint needs
+ * recency and no escape clause, so it is emitted last.
+ *
+ * "Last in the brief" and "last in the prompt" are the same thing only for a
+ * first chapter. A continuation wraps the brief in a much larger message, so
+ * `buildContinuationUserPrompt` asks `buildUserPrompt` to hold this back and
+ * emits it after the previous-chapters window instead. Returns "" when there
+ * is nothing to exclude, so the caller can concatenate unconditionally.
+ */
+export function buildExclusionBlock(avoid?: string): string {
+  if (!avoid?.trim()) return "";
+  return `This must not appear in the story. It is a constraint, not a preference:\n${
+    userField("avoid", avoid)
+  }\nDo not depict it, allude to it, or substitute a renamed version of it.`;
+}
+
+/**
+ * Everything `continue-story` sends as the user turn, for both transports.
+ *
+ * ## Why this is here and not in the handler
+ *
+ * It used to be four template literals in `continue-story/index.ts`, and two
+ * bugs lived in the gap between them and `buildUserPrompt`:
+ *
+ *   - `seriesState` was read from the row, put into the *system* prompt, and
+ *     then not passed to `buildUserPrompt`. The delivered-moments partition
+ *     reads `params.seriesState?.delivered_moments`, so it saw an empty set on
+ *     every chapter of every story: the "already delivered, do not repeat"
+ *     block never rendered once in production, and the runway line always
+ *     claimed the whole brief was still owed. `story-prompts.test.ts` handed
+ *     `buildUserPrompt` a `seriesState` directly and was green over it.
+ *   - the exclusion was moved to the tail of the brief for recency, and the
+ *     handler then appended several thousand tokens of previous chapters after
+ *     it, which is the position the move was meant to get it out of.
+ *
+ * Both are the same failure: the assembly was not a thing that could be tested,
+ * so what was tested was a hand-built approximation of it. `seriesState` is
+ * required here rather than optional for exactly that reason - a caller cannot
+ * forget it - and the exclusion is placed by this function rather than by the
+ * caller.
+ */
+export interface ContinuationPromptInput {
+  primaryGenre: string;
+  genres: string[];
+  audienceMode: AudienceMode;
+  spiceLevel: SpiceLevel;
+  chapterRole: ChapterRole;
+  chapterNumber: number;
+  chapterLength: "short" | "standard" | "long";
+  plannedChapterCount: 3 | 7 | 15;
+  seed: string;
+  whereAndWhen?: string;
+  moments: string[];
+  beats: string[];
+  storyValues: string[];
+  writingStyle?: string;
+  avoid?: string;
+  continuationInstruction?: string;
+  characters: CharacterInput[];
+  /**
+   * Continuity carried forward from earlier chapters. Not optional: an absent
+   * one is `parseSeriesState(null)`, which is an empty state, not a missing
+   * argument.
+   */
+  seriesState: SeriesState;
+  title: string;
+  /** The rendered previous-chapters window, already summarized and fenced. */
+  previousChapters: string;
+  isFinale: boolean;
+}
+
+export function buildContinuationUserPrompt(
+  input: ContinuationPromptInput,
+): { jsonPrompt: string; prosePrompt: string } {
+  const finaleNote = input.isFinale
+    ? " This is the FINAL chapter. Bring the story to a satisfying close."
+    : "";
+
+  const brief = buildUserPrompt({
+    primaryGenre: input.primaryGenre,
+    genres: input.genres,
+    audienceMode: input.audienceMode,
+    spiceLevel: input.spiceLevel,
+    storyMode: "series",
+    chapterRole: input.chapterRole,
+    seriesState: input.seriesState,
+    seed: input.seed,
+    whereAndWhen: input.whereAndWhen,
+    moments: input.moments,
+    beats: input.beats,
+    chapterNumber: input.chapterNumber,
+    storyValues: input.storyValues,
+    writingStyle: input.writingStyle,
+    avoid: input.avoid,
+    continuationInstruction: input.continuationInstruction,
+    chapterLength: input.chapterLength,
+    plannedChapterCount: input.plannedChapterCount,
+    characters: input.characters,
+    // Both held back so this function can put them either side of the window
+    // below. The brief is no longer the end of the message.
+    deferExclusion: true,
+    omitClosingInstruction: true,
+  });
+
+  const exclusion = buildExclusionBlock(input.avoid);
+
+  // Everything above the closing instruction is shared by the two transports.
+  // Only the last line differs, because only the last line is about shape.
+  const body =
+    `Continue this story with Chapter ${input.chapterNumber}.${finaleNote}
+
+${userField("story-title", input.title)}
+${brief}
+
+${userField("previous-chapters", input.previousChapters)}${
+      exclusion ? `\n\n${exclusion}` : ""
+    }`;
+
+  return {
+    jsonPrompt: `${body}\n\n${JSON_CLOSING_INSTRUCTION}`,
+    prosePrompt: `${body}\n\n${PROSE_CLOSING_INSTRUCTION}`,
+  };
 }

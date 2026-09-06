@@ -347,6 +347,16 @@ that where a moment names a character from the cast above, it refers to that
 character. This is what links the two without making `moments` a structured
 column.
 
+Both halves of that partition have to be wired for either to work. The
+continuation prompt is assembled by `buildContinuationUserPrompt`
+(`story-prompts.ts`), which takes `series_state` as a **required** argument and
+passes it into the brief itself. It is a single function rather than four
+template literals in `continue-story/index.ts` because when it was the latter,
+the handler read the row's state, gave it to the *system* prompt, and left it
+out of the brief — so `delivered_moments` was empty on every chapter of every
+story, the "already delivered" heading never rendered, and the runway line
+always claimed the entire brief was still owed.
+
 `delivered_moments` is part of the emitted `series_state`, so the model reports
 what it delivered. Every entry must be **copied verbatim** from the supplied
 moments; the merge is append-only and drops anything the brief did not contain,
@@ -360,8 +370,17 @@ way, since it is where the set starts.
 line. It is stated as a bound, not a preference: the text must not appear, it
 must not be alluded to, and it must not be substituted by a renamed version.
 Negative constraints need recency, and a hedge invites the model to trade the
-constraint away against everything asked of it further down the prompt. The
-continuation path shares the builder, so a continuation is bound the same way.
+constraint away against everything asked of it further down the prompt.
+
+"Last" is measured against the whole message, not against the brief. On a
+continuation the brief is only the opening of the user turn: the
+previous-chapters window follows it, and by chapter seven that window is the
+largest block in the request. So `buildUserPrompt` takes `deferExclusion` and
+`buildContinuationUserPrompt` emits `buildExclusionBlock` **after** the window,
+immediately before the single closing instruction — which is also the only
+closing instruction now, rather than the brief's plus the handler's. A first
+chapter is unchanged: nothing follows its brief, so the exclusion stays where
+the builder puts it.
 
 `avoid` also reaches the **cover**. It is threaded from the generation functions
 through `generateStoryMedia` and `generateCoverImage` into `buildCoverPrompt`,
@@ -370,9 +389,13 @@ carried at **every rung of the safety-level fallback ladder**, including the
 genre-and-title-only rung: that ladder exists to get past a content filter, so
 the rung most likely to be reached is the one where an unconstrained cover would
 be worst. The value is sanitized before it leaves for the image provider —
-newlines collapsed, quoting and bracket characters removed, length capped —
-because it is user free text travelling to a third party in the same string as
-our own instructions.
+newlines collapsed, sentence terminators collapsed to commas, quoting and
+bracket characters removed, length capped — because it is user free text
+travelling to a third party in the same string as our own instructions. That
+sanitizer is applied to the two free-text fields that reach a cover prompt,
+`avoid` and the regeneration steer; `title` and `where_and_when` are
+interpolated as written, deliberately, because collapsing punctuation in them
+would turn "Dr. Smith's Door" into "Dr, Smiths Door".
 
 ## Anti-Slop Rules
 

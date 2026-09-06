@@ -1,6 +1,6 @@
 /**
  * "Write the rest" is a loop over the single-chapter path, and these are the
- * five ways that promise can be broken silently.
+ * ways that promise can be broken silently.
  *
  * §10.2: "It is not a second mode — each chapter is still its own request, its
  * own reservation and its own credit." Everything asserted here is a
@@ -8,9 +8,14 @@
  * for one chapter. A run that started without quoting itself would spend a
  * balance the writer never agreed to. A Stop that abandoned the chapter in
  * flight would take a credit for prose nobody sees. A run that reused the
- * reader's one-chapter steer would invisibly aim it at six more. And a run with
- * no persisted trace would leave a killed app looking identical to a finished
- * story.
+ * reader's one-chapter steer would invisibly aim it at six more. And a run
+ * whose quote bills for something nothing charges refuses chapters the writer
+ * can afford.
+ *
+ * There is no resume suite. Resume is not implemented — see the unmount
+ * teardown in `CreateStudioScreen` and §10.2 — and the tests that used to be
+ * here only passed because they generated the story inside the same mount,
+ * which is the one situation the shipped app never reaches.
  */
 
 /* eslint-disable import/first */
@@ -24,9 +29,6 @@ const mockLoadDraft = jest.fn();
 const mockSaveDraft = jest.fn();
 const mockClearDraft = jest.fn();
 const mockExpoFetch = jest.fn();
-const mockSaveRun = jest.fn();
-const mockLoadRun = jest.fn();
-const mockClearRun = jest.fn();
 
 jest.mock("expo/fetch", () => ({
   fetch: (...args: unknown[]) => mockExpoFetch(...args),
@@ -67,12 +69,6 @@ jest.mock("@/lib/draft-storage", () => ({
   loadDraft: () => mockLoadDraft(),
   saveDraft: (...args: unknown[]) => mockSaveDraft(...args),
   clearDraft: () => mockClearDraft(),
-}));
-
-jest.mock("@/lib/write-the-rest-storage", () => ({
-  saveWriteTheRestRun: (...args: unknown[]) => mockSaveRun(...args),
-  loadWriteTheRestRun: () => mockLoadRun(),
-  clearWriteTheRestRun: () => mockClearRun(),
 }));
 
 jest.mock("@/components/GeneratingOverlay", () => () => null);
@@ -224,9 +220,6 @@ beforeEach(() => {
   mockLoadDraft.mockReset().mockResolvedValue(null);
   mockSaveDraft.mockReset();
   mockClearDraft.mockReset();
-  mockSaveRun.mockReset().mockResolvedValue(undefined);
-  mockLoadRun.mockReset().mockResolvedValue(null);
-  mockClearRun.mockReset().mockResolvedValue(undefined);
   jest.spyOn(Alert, "alert").mockImplementation(() => {});
 });
 
@@ -271,7 +264,7 @@ describe("Write the rest — when it is offered", () => {
 });
 
 describe("Write the rest — the itemised confirm", () => {
-  it("states text and art separately and spends nothing while it is open", async () => {
+  it("quotes one credit per chapter and spends nothing while it is open", async () => {
     const { view, onCreditUsed, spendBeforeRun } =
       await renderAtThreeChapters();
 
@@ -281,21 +274,24 @@ describe("Write the rest — the itemised confirm", () => {
 
     const sheet = await view.findByTestId("write-the-rest-confirm");
     expect(sheet).toBeTruthy();
-    // 4 chapters remain of 7; art is off, so the art line is 0 and the total
-    // is the text line. Both lines exist either way — a single total would
-    // hide which toggle doubled the bill.
+    // 4 chapters remain of 7, at the one credit `continue-story` actually
+    // charges for each.
     expect(view.getByText("Chapters 4 to 7")).toBeTruthy();
     expect(view.getByText("Chapter text · 1 credit each")).toBeTruthy();
-    expect(view.getByText("Chapter art · off")).toBeTruthy();
     expect(view.getByTestId("write-the-rest-total").props.children.join(""))
       .toBe("4 credits");
 
     expect(mockContinueStoryStreaming).toHaveBeenCalledTimes(2);
     expect(onCreditUsed).toHaveBeenCalledTimes(spendBeforeRun);
-    expect(mockSaveRun).not.toHaveBeenCalled();
   });
 
-  it("prices the art separately when chapters are illustrated", async () => {
+  it("does not bill for chapter art, because nothing charges for it", async () => {
+    // The regression this exists to stop: `chapter_art` is an enum value on
+    // `generation_operations.kind` and nothing else — no caller reserves it and
+    // `continue-story` never reads `illustrate_chapters` — so an illustrated
+    // run costs exactly what an unillustrated one costs. Quoting 2 credits a
+    // chapter would not only overstate the bill, it would offer half a run the
+    // writer's 8 credits cover in full.
     mockExpoFetch.mockResolvedValue({
       ok: true,
       status: 200,
@@ -304,7 +300,7 @@ describe("Write the rest — the itemised confirm", () => {
     });
     const view = await render(
       <CreateStudioScreen
-        credits={40}
+        credits={8}
         initialDraft={{ plannedChapterCount: 7, illustrateChapters: true }}
         onCreditUsed={jest.fn()}
         onPublished={jest.fn()}
@@ -333,9 +329,13 @@ describe("Write the rest — the itemised confirm", () => {
     });
     await view.findByTestId("write-the-rest-confirm");
 
-    expect(view.getByText("Chapter art · 1 credit each")).toBeTruthy();
+    expect(view.queryByText(/Chapter art/)).toBeNull();
     expect(view.getByTestId("write-the-rest-total").props.children.join(""))
-      .toBe("8 credits");
+      .toBe("4 credits");
+    // The whole remainder is on offer, not half of it, and there is no
+    // shortfall to report.
+    expect(view.queryByTestId("write-the-rest-shortfall")).toBeNull();
+    expect(view.getByLabelText("Write 4 chapters for 4 credits")).toBeTruthy();
   });
 
   it("reports a short balance before any spend, and offers what it covers", async () => {
@@ -357,9 +357,8 @@ describe("Write the rest — the itemised confirm", () => {
     expect(
       view.getByLabelText("Write 3 chapters for 3 credits"),
     ).toBeTruthy();
-    // Nothing has been requested and nothing has been recorded.
+    // Nothing has been requested.
     expect(mockContinueStoryStreaming).toHaveBeenCalledTimes(2);
-    expect(mockSaveRun).not.toHaveBeenCalled();
   });
 
   it("offers no run at all when the balance cannot reach one chapter", async () => {
@@ -394,12 +393,6 @@ describe("Write the rest — the run", () => {
 
     await view.findByTestId("write-the-rest-run-bar");
     expect(view.getByText("Chapter 4 of 7")).toBeTruthy();
-    expect(mockSaveRun).toHaveBeenCalledWith({
-      storyId: "story-1",
-      targetChapterCount: 7,
-      illustrated: false,
-      startedAtChapterCount: 3,
-    });
 
     // Stop while chapter 4 is being written. It must not be abandoned: the
     // reservation is already made and the prose is already being paid for.
@@ -423,7 +416,6 @@ describe("Write the rest — the run", () => {
     );
     // The chapter that was in flight is in the story, not half-saved.
     expect(view.getByText(/Chapter 4 went down further/)).toBeTruthy();
-    expect(mockClearRun).toHaveBeenCalled();
   });
 
   it("writes chapter after chapter to the target, then settles in the editor", async () => {
@@ -563,66 +555,47 @@ describe("Write the rest — the reader's steer", () => {
   });
 });
 
-describe("Write the rest — resuming an interrupted run", () => {
-  it("offers to resume or discard a persisted run for the story in hand", async () => {
-    mockLoadRun.mockResolvedValue({
-      storyId: "story-1",
-      targetChapterCount: 7,
-      illustrated: false,
-      startedAtChapterCount: 3,
-      savedAt: Date.now() - 1000,
-    });
-
+describe("Write the rest — what the run says when it is over", () => {
+  it("reports a run that halted on the final chapter of the plan", async () => {
+    // The notice used to live inside the Continue block, which hides itself
+    // once the plan is full — so the one ending that most needs explaining, the
+    // run that stopped *on* the last chapter, said nothing at all. Here the
+    // Stop is pressed while chapter 7 of 7 is in flight: the chapter lands, the
+    // plan fills, Continue and the run offer both disappear, and the notice is
+    // the only thing left that can account for what happened.
     const { view } = await renderAtThreeChapters();
-
-    const prompt = await view.findByTestId("write-the-rest-resume");
-    expect(prompt).toBeTruthy();
-    expect(
-      view.getByText(/4 chapters of it were never written/),
-    ).toBeTruthy();
-
-    // Resuming goes back through the confirm. It spends credits, so it is
-    // offered, never performed on the writer's behalf.
-    await act(async () => {
-      fireEvent.press(view.getByTestId("write-the-rest-resume-button"));
-    });
-    expect(view.getByTestId("write-the-rest-confirm")).toBeTruthy();
-    expect(mockContinueStoryStreaming).toHaveBeenCalledTimes(2);
-  });
-
-  it("discards the record without writing anything", async () => {
-    mockLoadRun.mockResolvedValue({
-      storyId: "story-1",
-      targetChapterCount: 7,
-      illustrated: false,
-      startedAtChapterCount: 3,
-      savedAt: Date.now() - 1000,
-    });
-
-    const { view } = await renderAtThreeChapters();
-    await view.findByTestId("write-the-rest-resume");
+    const pending = deferContinuations();
 
     await act(async () => {
-      fireEvent.press(view.getByTestId("write-the-rest-discard-button"));
+      fireEvent.press(view.getByTestId("write-the-rest-button"));
+    });
+    await view.findByTestId("write-the-rest-confirm");
+    await act(async () => {
+      fireEvent.press(view.getByTestId("write-the-rest-confirm-button"));
+    });
+    await view.findByTestId("write-the-rest-run-bar");
+
+    for (const n of [4, 5, 6]) {
+      await act(async () => {
+        pending[n - 4].resolve(chapterPayload(n));
+      });
+      await waitFor(() => expect(pending.length).toBe(n - 2));
+    }
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId("write-the-rest-stop"));
+    });
+    await act(async () => {
+      pending[3].resolve(chapterPayload(7));
     });
 
-    expect(view.queryByTestId("write-the-rest-resume")).toBeNull();
-    expect(mockClearRun).toHaveBeenCalled();
-    expect(mockContinueStoryStreaming).toHaveBeenCalledTimes(2);
-  });
-
-  it("ignores a record that belongs to a different story", async () => {
-    mockLoadRun.mockResolvedValue({
-      storyId: "some-other-story",
-      targetChapterCount: 15,
-      illustrated: false,
-      startedAtChapterCount: 3,
-      savedAt: Date.now() - 1000,
-    });
-
-    const { view } = await renderAtThreeChapters();
-
-    // Appending paid chapters to the wrong book is the failure this guards.
-    expect(view.queryByTestId("write-the-rest-resume")).toBeNull();
+    await waitFor(() =>
+      expect(view.queryByTestId("write-the-rest-run-bar")).toBeNull()
+    );
+    expect(view.queryByTestId("continue-chapter-button")).toBeNull();
+    expect(view.queryByTestId("write-the-rest-button")).toBeNull();
+    expect(view.getByTestId("write-the-rest-notice").props.children).toContain(
+      "Stopped. 4 chapters were written and kept. Continue whenever you want the next one.",
+    );
   });
 });

@@ -27,9 +27,10 @@ import {
   buildVariationSteer,
   type CoverRegenerationClient,
   describePreviousCover,
+  MAX_COVER_NOTE_LENGTH,
   regenerateCover,
 } from "./cover-regeneration.ts";
-import { buildCoverPrompt } from "./cover-prompts.ts";
+import { buildCoverPrompt, MAX_COVER_STEER_LENGTH } from "./cover-prompts.ts";
 import type { ImageResult } from "./image.ts";
 
 type RpcCall = { fn: string; args: Record<string, unknown> };
@@ -132,6 +133,17 @@ const BASE = { storyId: "story-1", userId: "user-1", requestId: "req-1" };
 
 function rpcNames(calls: RpcCall[]): string[] {
   return calls.map((call) => call.fn);
+}
+
+/**
+ * The release of a claimed row.
+ *
+ * One RPC rather than a `stories` update, because restoring the status and
+ * giving the attempt back have to happen together - see `release_cover_claim`
+ * in migration 00044.
+ */
+function releaseCall(calls: RpcCall[]): Record<string, unknown> | undefined {
+  return calls.find((call) => call.fn === "release_cover_claim")?.args;
 }
 
 Deno.test("the first regeneration is free and reserves no credit", async () => {
@@ -264,8 +276,13 @@ Deno.test("a paid regeneration that produces no image is refunded", async () => 
 
   // The story kept the cover it already had, so the row has to say 'ready'
   // again. Writing 'failed' here would report an existing cover as missing.
-  assertEquals(statusWrites.length, 1);
-  assertEquals(statusWrites[0].values.cover_status, "ready");
+  const release = releaseCall(rpcCalls);
+  assert(release, "a failed regeneration must release the row it claimed");
+  assertEquals(release.p_previous_status, "ready");
+  // The provider was reached and refused, so the attempt was real spend and
+  // stays counted against the ceiling.
+  assertEquals(release.p_refund_attempt, false);
+  assertEquals(statusWrites.length, 0);
 
   // And nothing recorded a delivery, so the counter did not move.
   assertEquals(
@@ -349,7 +366,7 @@ Deno.test("a refund that itself fails is reported as outstanding", async () => {
 });
 
 Deno.test("insufficient credits refuses before any provider call", async () => {
-  const { client, statusWrites } = stubClient({
+  const { client, rpcCalls } = stubClient({
     claim: {
       claimed: true,
       previous_cover_status: "ready",
@@ -377,7 +394,14 @@ Deno.test("insufficient credits refuses before any provider call", async () => {
   assertEquals(generated, false);
   // The claim it took has to be released, or the story sits on 'generating'
   // and the writer cannot even try again.
-  assertEquals(statusWrites[0]?.values.cover_status, "ready");
+  const release = releaseCall(rpcCalls);
+  assert(release);
+  assertEquals(release.p_previous_status, "ready");
+  // And the attempt has to be given back. This path called no provider and
+  // cost nothing, so charging it against a ceiling that never resets would let
+  // a writer with an empty balance burn all twelve on refusals and stay 429'd
+  // on that story after buying credits.
+  assertEquals(release.p_refund_attempt, true);
 });
 
 Deno.test("a spent request id is refused rather than replayed into a second cover", async () => {
@@ -585,7 +609,7 @@ Deno.test("a reservation that throws still releases the claim", async () => {
   // escaped with the row still reading 'generating'. The reader then watched a
   // spinner over a cover that already existed, and every further attempt was
   // refused as in-flight until the ten-minute staleness window expired.
-  const { client, statusWrites } = stubClient({
+  const { client, rpcCalls, statusWrites } = stubClient({
     claim: {
       claimed: true,
       previous_cover_status: "ready",
@@ -610,12 +634,15 @@ Deno.test("a reservation that throws still releases the claim", async () => {
   }
 
   assert(thrown instanceof Error);
-  assertEquals(statusWrites.length, 1);
-  assertEquals(statusWrites[0].values.cover_status, "ready");
+  const release = releaseCall(rpcCalls);
+  assert(release);
+  assertEquals(release.p_previous_status, "ready");
+  assertEquals(release.p_refund_attempt, true);
+  assertEquals(statusWrites.length, 0);
 });
 
 Deno.test("a reservation with no operation id still releases the claim", async () => {
-  const { client, statusWrites } = stubClient({
+  const { client, rpcCalls, statusWrites } = stubClient({
     claim: {
       claimed: true,
       previous_cover_status: "ready",
@@ -640,8 +667,11 @@ Deno.test("a reservation with no operation id still releases the claim", async (
   }
 
   assert(thrown instanceof Error);
-  assertEquals(statusWrites.length, 1);
-  assertEquals(statusWrites[0].values.cover_status, "ready");
+  const release = releaseCall(rpcCalls);
+  assert(release);
+  assertEquals(release.p_previous_status, "ready");
+  assertEquals(release.p_refund_attempt, true);
+  assertEquals(statusWrites.length, 0);
 });
 
 Deno.test("a claim RPC that throws leaves nothing to release", async () => {
@@ -665,4 +695,156 @@ Deno.test("a claim RPC that throws leaves nothing to release", async () => {
 
   assert(thrown);
   assertEquals(statusWrites.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Which request id owns the cover on the row
+// ---------------------------------------------------------------------------
+//
+// The replay guard has to mean "this request id delivered the cover that is on
+// the row", not "this request id was the last one to claim it". When the claim
+// wrote `cover_last_request_id` those two collapsed into one column, and the
+// case the guard exists for turned into a lie: request R exhausted every
+// provider, the release put `cover_status` back to 'ready' because the story
+// already had a cover, and the retry of R - a dropped response, the exact thing
+// idempotency is for - came back 200 `replayed: true` with the *old* URL. The
+// writer was told their regeneration succeeded while looking at the cover they
+// had asked to replace.
+
+Deno.test("a delivered regeneration records the request id that delivered it", async () => {
+  const { client, rpcCalls } = stubClient();
+  const result = await regenerateCover({
+    client,
+    ...BASE,
+    generate: () => Promise.resolve(imageResult()),
+  });
+
+  assert(result.ok);
+  const finish = rpcCalls.find((c) => c.fn === "finish_cover_regeneration");
+  assertEquals(
+    finish?.args.p_request_id,
+    "req-1",
+    "the replay key is written on delivery, so a replay hands back a cover " +
+      "this id actually produced",
+  );
+});
+
+Deno.test("a failed regeneration records no request id to replay", async () => {
+  const { client, rpcCalls } = stubClient();
+  const result = await regenerateCover({
+    client,
+    ...BASE,
+    generate: () => Promise.resolve(null),
+  });
+
+  assert(!result.ok);
+  // Nothing wrote the key, so the retry of this id reaches the claim with
+  // `cover_last_request_id` still pointing at whatever last succeeded - it
+  // cannot match, and the retry re-attempts instead of replaying.
+  assertEquals(
+    rpcCalls.some((c) => c.fn === "finish_cover_regeneration"),
+    false,
+  );
+  const release = releaseCall(rpcCalls);
+  assert(release);
+  assert(
+    !Object.keys(release).some((key) => key.includes("request_id")),
+    "releasing a failed attempt must not write a replay key either",
+  );
+});
+
+Deno.test("only the delivery writes cover_last_request_id", async () => {
+  // A source check on the migration, because the column is written in SQL and
+  // this is the half of the fix no stubbed client can see.
+  const sql = await Deno.readTextFile(
+    new URL(
+      "../../migrations/00044_cover_regeneration.sql",
+      import.meta.url,
+    ),
+  );
+  const claim = sql.slice(
+    sql.indexOf("create or replace function public.claim_cover_regeneration"),
+    sql.indexOf("create or replace function public.finish_cover_regeneration"),
+  );
+  const finish = sql.slice(
+    sql.indexOf("create or replace function public.finish_cover_regeneration"),
+  );
+  assert(claim.length > 0 && finish.length > 0);
+  // The claim's own UPDATE, not the whole function: the replay guard above it
+  // legitimately *reads* the column.
+  const claimUpdate = claim.slice(claim.indexOf("update public.stories"));
+  assert(claimUpdate.includes("cover_attempt_count = cover_attempt_count + 1"));
+  assert(
+    !claimUpdate.includes("cover_last_request_id ="),
+    "the claim must not write the replay key: a request that then fails would " +
+      "replay the cover it failed to replace",
+  );
+  assertStringIncludes(finish, "cover_last_request_id = coalesce(p_request_id");
+});
+
+Deno.test("the original cover stores the prompt it was made from", async () => {
+  // `stories.cover_prompt` is what `describePreviousCover` reads, and the
+  // *first* regeneration - the free one, the common case - is the one that
+  // reads it before any regeneration has ever written it. `media.ts` discarded
+  // `cover.prompt`, so the column was null for every cover until its second
+  // regeneration and the steer degraded to "make it different" with no idea
+  // what from.
+  const media = await Deno.readTextFile(
+    new URL("./media.ts", import.meta.url),
+  );
+  const ready = media.slice(media.indexOf('"ready", {'));
+  assertStringIncludes(ready.slice(0, 200), "cover_prompt");
+});
+
+// ---------------------------------------------------------------------------
+// The steer's two halves
+// ---------------------------------------------------------------------------
+
+Deno.test("a maximum-length note does not truncate the variation half away", () => {
+  const note = "a".repeat(MAX_COVER_NOTE_LENGTH);
+  const previous = buildCoverPrompt(
+    "mystery",
+    "The Quiet Door",
+    ["doors", "grief"],
+    undefined,
+    "A hill town, off-season",
+  );
+
+  const steer = buildVariationSteer(note, previous);
+  assert(steer);
+  assertStringIncludes(steer, note);
+  // The half that was silently lost: `"The writer asks for this cover, " + 300`
+  // is already past the old 320-character cap, so the writer who said the most
+  // about what they wanted got no instruction to vary at all.
+  assertStringIncludes(steer, "clearly different");
+  assertStringIncludes(steer, "The Quiet Door");
+
+  // And it survives the sanitizer at the prompt boundary, which is where the
+  // truncation actually happened.
+  const prompt = buildCoverPrompt(
+    "mystery",
+    "The Quiet Door",
+    ["doors"],
+    undefined,
+    "A hill town, off-season",
+    "graphic violence",
+    steer,
+  );
+  assertStringIncludes(prompt, note);
+  assertStringIncludes(prompt, "clearly different");
+  assertStringIncludes(prompt, "Do not depict: graphic violence.");
+});
+
+Deno.test("neither half of the steer can crowd the other out", () => {
+  const steer = buildVariationSteer(
+    "b".repeat(MAX_COVER_NOTE_LENGTH * 3),
+    `Inspired by the story ${"c".repeat(2000)} The image must contain NO text`,
+  );
+  assert(steer);
+  assert(
+    steer.length <= MAX_COVER_STEER_LENGTH,
+    `the steer is budgeted to ${MAX_COVER_STEER_LENGTH}, got ${steer.length}`,
+  );
+  assertStringIncludes(steer, "The writer asks for this cover");
+  assertStringIncludes(steer, "clearly different");
 });

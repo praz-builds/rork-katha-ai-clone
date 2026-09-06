@@ -341,8 +341,17 @@ async function generateAndStoreCover(
       return false;
     }
 
+    // The prompt is persisted with the URL, not discarded with the rest of the
+    // result. `stories.cover_prompt` exists so a regeneration can be told to
+    // vary from the cover it is replacing (migration 00044); writing it only in
+    // `finish_cover_regeneration` left it null for every original cover, which
+    // is the one the *first* regeneration - the free one, the common case -
+    // reads. `describePreviousCover` then returned undefined and the steer
+    // degraded to "make it different from the previous attempt", with no idea
+    // what the previous attempt was.
     await setCoverStatus(supabase, input.storyId, "ready", {
       cover_image_url: cover.url,
+      ...(cover.prompt ? { cover_prompt: cover.prompt } : {}),
     });
 
     console.log(

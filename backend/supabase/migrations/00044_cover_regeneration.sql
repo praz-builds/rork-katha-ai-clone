@@ -19,9 +19,11 @@
 --                      number from the one above on purpose -- see the ceiling
 --                      note below.
 --
---   cover_last_request_id  the request id of the most recent claim, so a
---                      retried request that already produced a cover replays it
---                      instead of buying a second one.
+--   cover_last_request_id  the request id that produced the cover currently on
+--                      the row, so a retried request that already delivered one
+--                      replays it instead of buying a second one. Written by
+--                      finish_cover_regeneration only -- see the note on the
+--                      replay guard below for why the claim must not write it.
 --
 --   cover_prompt       the prompt the current cover was actually made from.
 --                      A regeneration that re-sends the prompt that produced
@@ -47,9 +49,9 @@ alter table public.stories
 comment on column public.stories.cover_regen_count is
   'Delivered cover regenerations. 0 means the next regeneration is the free retry; above 0 it costs 1 credit. Incremented only by finish_cover_regeneration, and only on success.';
 comment on column public.stories.cover_attempt_count is
-  'Cover regenerations started, delivered or not. Bounds provider spend per story; see COVER_ATTEMPT_LIMIT in claim_cover_regeneration.';
+  'Cover regenerations that reached a provider, delivered or not. Bounds provider spend per story; see the attempt limit in claim_cover_regeneration. Counted by the claim and given back by release_cover_claim on the paths that provably never reached a provider.';
 comment on column public.stories.cover_last_request_id is
-  'Request id of the most recent claim. Makes the free regeneration path idempotent, which reserve_generation_operation only does for the paid one.';
+  'Request id of the regeneration that produced the cover currently on the row. Set only by finish_cover_regeneration, so the replay guard cannot match a request that failed. Makes the free regeneration path idempotent, which reserve_generation_operation only does for the paid one.';
 comment on column public.stories.cover_prompt is
   'The image prompt the current cover was generated from, so a regeneration can vary from it rather than repeat it. Never user free text.';
 
@@ -148,8 +150,8 @@ begin
         return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'not_owner');
     end if;
 
-    -- The same request id, against a cover that is already sitting there
-    -- finished, is a retry of a call that succeeded -- a dropped response, a
+    -- The same request id, against the cover that request id actually
+    -- delivered, is a retry of a call that succeeded -- a dropped response, a
     -- backgrounded app, a tapped-twice button. Handing back the cover it
     -- already bought is what idempotency means here.
     --
@@ -157,6 +159,16 @@ begin
     -- gave the free path nothing: `request_id` was validated by the handler and
     -- then never used, so a replayed free regeneration ran the whole provider
     -- chain again. This is the half that was missing.
+    --
+    -- What makes this guard mean "this id delivered a cover" rather than "this
+    -- id was merely the last to claim the row" is that only
+    -- finish_cover_regeneration writes cover_last_request_id. The claim below
+    -- used to write it too, and the two facts then collapsed into one column:
+    -- request R exhausted every provider, the caller's restore put cover_status
+    -- back to 'ready' because the story already had a cover, and the retry of R
+    -- -- exactly the dropped-response case this exists for -- matched here and
+    -- returned 200 with the *old* URL. The writer was told the regeneration
+    -- succeeded while looking at the cover they had asked to replace.
     if p_request_id is not null
        and v_story.cover_last_request_id = p_request_id
        and v_story.cover_status = 'ready'
@@ -196,11 +208,22 @@ begin
     -- leave every path that never reaches the exit -- a timeout, an evicted
     -- isolate, a caller that hangs up -- uncounted, which is the only kind of
     -- attempt worth counting twice.
+    --
+    -- Counting first does mean counting some attempts that then turn out never
+    -- to have reached a provider: no credits, a reservation already held, a
+    -- spent request id. Those cost nothing to refuse, so charging them against
+    -- a ceiling that never resets would let a writer with an empty balance burn
+    -- all twelve without a single image being requested, and stay 429'd after
+    -- buying credits. Rather than move the count later, release_cover_claim
+    -- gives it back on exactly those paths -- see the note on that function.
+    --
+    -- cover_last_request_id is deliberately *not* written here. It records
+    -- which request produced the cover on the row, and only a finished
+    -- regeneration knows that.
     update public.stories
     set cover_status = 'generating',
         cover_started_at = pg_catalog.now(),
-        cover_attempt_count = cover_attempt_count + 1,
-        cover_last_request_id = coalesce(p_request_id, cover_last_request_id)
+        cover_attempt_count = cover_attempt_count + 1
     where id = p_story_id;
 
     return pg_catalog.jsonb_build_object(
@@ -252,7 +275,8 @@ create or replace function public.finish_cover_regeneration(
     p_user_id uuid,
     p_operation_id uuid,
     p_cover_url text,
-    p_cover_prompt text
+    p_cover_prompt text,
+    p_request_id text
 ) returns jsonb
 language plpgsql
 security definer
@@ -270,11 +294,15 @@ begin
           and status = 'reserved';
     end if;
 
+    -- cover_last_request_id is written here and nowhere else. This is the only
+    -- moment at which "request R produced the cover now on this row" becomes
+    -- true, and the claim's replay guard reads it as exactly that statement.
     update public.stories
     set cover_image_url = p_cover_url,
         cover_prompt = p_cover_prompt,
         cover_status = 'ready',
-        cover_regen_count = cover_regen_count + 1
+        cover_regen_count = cover_regen_count + 1,
+        cover_last_request_id = coalesce(p_request_id, cover_last_request_id)
     where id = p_story_id
       and author_id = p_user_id
     returning cover_regen_count into v_count;
@@ -291,6 +319,62 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- release_cover_claim
+-- ---------------------------------------------------------------------------
+-- Putting the row back when a claimed regeneration does not deliver.
+--
+-- Two facts have to move together, which is why this is one function and not
+-- an UPDATE in the Edge Function plus a second one beside it:
+--
+--   cover_status  goes back to whatever it was before the claim. Writing
+--                 'failed' would be right for a *first* cover, where the
+--                 concept card is the honest fallback; here it would report a
+--                 cover that exists as missing.
+--
+--   cover_attempt_count  is given back, but only when this attempt provably
+--                 never reached an image provider.
+--
+-- The second one is the whole reason this function exists. The ceiling is a
+-- bound on *spend*, and claim_cover_regeneration's own comment says the attempt
+-- it refuses is "one that would have cost us money". Four paths reach the claim
+-- and then stop before any provider call: KTH02 (no credits), KTH01 (a
+-- reservation already held), a request id already spent, and a reservation RPC
+-- that throws. None of them costs a cent, and counting them meant a writer with
+-- an empty balance could tap Regenerate twelve times, call nothing, and be
+-- permanently 429'd on a story even after buying credits.
+--
+-- The ordering in the claim is still correct and is not being changed: the
+-- count happens before the provider so an evicted isolate or a hung caller
+-- stays counted. This only reverses it where the caller can prove the provider
+-- was never reached, and greatest(...) keeps the column non-negative if a
+-- release is ever replayed.
+create or replace function public.release_cover_claim(
+    p_story_id uuid,
+    p_user_id uuid,
+    p_previous_status text,
+    p_refund_attempt boolean default false
+) returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+    update public.stories
+    set cover_status = case
+            when p_previous_status in ('pending', 'generating', 'ready', 'failed')
+                then p_previous_status
+            else 'failed'
+        end,
+        cover_attempt_count = case
+            when p_refund_attempt then pg_catalog.greatest(0, cover_attempt_count - 1)
+            else cover_attempt_count
+        end
+    where id = p_story_id
+      and author_id = p_user_id;
+end;
+$$;
+
 -- The two-argument signature from this file's first revision is dropped rather
 -- than left beside the new one: two overloads that differ only by a defaulted
 -- argument make every PostgREST call ambiguous, and the old one has no
@@ -298,17 +382,30 @@ $$;
 -- re-runnable on a database that never saw it.
 drop function if exists public.claim_cover_regeneration(uuid, uuid, interval);
 
+-- Same reasoning for finish_cover_regeneration: this revision takes the request
+-- id, and leaving the five-argument version beside it would make every
+-- PostgREST call ambiguous while keeping a signature that writes no replay key.
+drop function if exists public.finish_cover_regeneration(uuid, uuid, uuid, text, text);
+
 revoke all on function public.claim_cover_regeneration(uuid, uuid, text, interval)
     from public, anon, authenticated;
 grant execute on function public.claim_cover_regeneration(uuid, uuid, text, interval)
     to service_role;
 
-revoke all on function public.finish_cover_regeneration(uuid, uuid, uuid, text, text)
+revoke all on function public.finish_cover_regeneration(uuid, uuid, uuid, text, text, text)
     from public, anon, authenticated;
-grant execute on function public.finish_cover_regeneration(uuid, uuid, uuid, text, text)
+grant execute on function public.finish_cover_regeneration(uuid, uuid, uuid, text, text, text)
+    to service_role;
+
+revoke all on function public.release_cover_claim(uuid, uuid, text, boolean)
+    from public, anon, authenticated;
+grant execute on function public.release_cover_claim(uuid, uuid, text, boolean)
     to service_role;
 
 comment on function public.claim_cover_regeneration(uuid, uuid, text, interval) is
   'Verifies ownership, replays a completed request id, refuses past the per-story attempt ceiling or while a claim is in flight, counts the attempt, marks the cover generating, and returns the prompt inputs plus whether this regeneration is the free retry or costs a credit.';
-comment on function public.finish_cover_regeneration(uuid, uuid, uuid, text, text) is
-  'Records a delivered cover regeneration: new URL, new prompt, cover_status ready, the counter that turns the next one into a paid action, and the reservation it settles.';
+comment on function public.finish_cover_regeneration(uuid, uuid, uuid, text, text, text) is
+  'Records a delivered cover regeneration: new URL, new prompt, cover_status ready, the request id that produced it, the counter that turns the next one into a paid action, and the reservation it settles.';
+
+comment on function public.release_cover_claim(uuid, uuid, text, boolean) is
+  'Releases a claimed cover regeneration that did not deliver: restores the previous cover_status and, when the attempt provably never reached an image provider, gives the attempt back to the per-story ceiling.';

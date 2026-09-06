@@ -309,15 +309,20 @@ export function buildCoverPrompt(
     }
   }
 
-  // Sanitized here rather than at the call site so every path into the image
-  // provider is covered, including the safety-level fallbacks that rebuild the
-  // prompt from these arguments.
+  // These two are sanitized here rather than at the call site so every path
+  // into the image provider is covered *for these two fields*, including the
+  // safety-level fallbacks that rebuild the prompt from these arguments. It is
+  // not a claim about the whole prompt: `title` and `whereAndWhen` are
+  // interpolated raw into the scene sentence above, deliberately, because
+  // collapsing punctuation in them would turn "Dr. Smith's Door" into
+  // "Dr, Smiths Door".
   const exclusion = sanitizeExclusion(avoid);
-  // A wider cap than the exclusion's. The steer carries two things - what the
+  // A wider cap than the exclusion's. The steer carries two halves - what the
   // user asked for this time and a summary of what the last cover already was -
-  // and 200 characters truncates the second one away, which is the half that
-  // makes the regeneration different from the cover it replaces.
-  const steer = sanitizeExclusion(variation, 320);
+  // and each is budgeted separately by `buildVariationSteer` so a long note
+  // cannot truncate the variation half away. This cap only has to be wide
+  // enough not to cut an already-budgeted steer.
+  const steer = sanitizeExclusion(variation, MAX_COVER_STEER_LENGTH);
 
   return [
     `Book cover illustration for a ${safeGenre} story.`,
@@ -334,9 +339,36 @@ export function buildCoverPrompt(
 }
 
 /**
+ * How much of a cover prompt the regeneration steer may occupy, in total and
+ * per half.
+ *
+ * The steer is two clauses joined by a dash: what the writer asked for, and a
+ * description of the cover being replaced. A single cap over the joined string
+ * silently drops whichever half comes second, and it was the second half that
+ * went - `"The writer asks for this cover, " + a 300-character note` is already
+ * past 320, so a writer who filled the note field got no variation instruction
+ * at all and the regeneration was free to reproduce the cover they rejected.
+ *
+ * So each half gets a budget it cannot be squeezed out of, and the total is the
+ * sum plus the joiner rather than a number the halves have to fit inside. The
+ * note's budget clears `MAX_BRIEF_FIELD_LENGTH` plus its clause prefix, and the
+ * variation's clears the 180-character description cap plus its own, so neither
+ * is truncated at its documented maximum. 600 characters of steer sits inside
+ * every provider's prompt limit and still leaves the genre, palette and
+ * composition clauses their share of the model's attention.
+ */
+export const MAX_COVER_STEER_NOTE_LENGTH = 340;
+export const MAX_COVER_STEER_VARIATION_LENGTH = 250;
+export const MAX_COVER_STEER_LENGTH = MAX_COVER_STEER_NOTE_LENGTH +
+  MAX_COVER_STEER_VARIATION_LENGTH + 10;
+
+/**
  * Bound free text before it leaves for a third-party image provider.
  *
- * Used for both the *Avoid* exclusion and the regeneration steer.
+ * Used for the two free-text fields that flow into a cover prompt: the *Avoid*
+ * exclusion and the regeneration steer. It is applied to those two and makes no
+ * promise about the rest of the prompt - see the note at the call site about
+ * `title` and `whereAndWhen`.
  *
  * ## What this guarantees, precisely
  *
@@ -367,7 +399,7 @@ export function buildCoverPrompt(
  * composition around it. Returns an empty string when nothing usable survives,
  * and the clause is then omitted rather than emitted empty.
  */
-function sanitizeExclusion(value?: string, maxLength = 200): string {
+export function sanitizeExclusion(value?: string, maxLength = 200): string {
   if (!value) return "";
   return value
     .replace(/[\r\n]+/g, " ")
