@@ -135,7 +135,22 @@
     "tryAgain": "Tente novamente.",
     "noChapter": "A geracao nao retornou nenhum cap\u00edtulo",
     "customPromptPlaceholder": "ex. tornar o personagem mais velho, adicionar mais dialogo...",
-    "apply": "Aplicar"
+    "apply": "Aplicar",
+    "whatHappensNext": {
+      "heading": "O que acontece a seguir?",
+      "placeholder": "Opcional. Deixe em branco e a Katha decide.",
+      "accessibilityLabel": "O que acontece a seguir",
+      "accessibilityHint": "Opcional. Deixe em branco e a Katha decide o que acontece no pr\u00f3ximo cap\u00edtulo.",
+      "charactersLeft": "Faltam {{count}} caracteres",
+      "button": "Continuar",
+      "buttonDirected": "Continuar assim",
+      "buttonFinale": "Escrever o final",
+      "buttonPrice": "{{label}} \u00b7 1 cr\u00e9dito",
+      "buttonBusy": "Escrevendo...",
+      "buttonBusyLabel": "Escrevendo o pr\u00f3ximo cap\u00edtulo",
+      "addChapterLabel": "Adicionar o pr\u00f3ximo cap\u00edtulo, 1 cr\u00e9dito",
+      "freeNote": "Dizer o que acontece a seguir \u00e9 gr\u00e1tis. O cr\u00e9dito paga o cap\u00edtulo."
+    }
   },
   "genres": {
     "adventure": "Aventura",

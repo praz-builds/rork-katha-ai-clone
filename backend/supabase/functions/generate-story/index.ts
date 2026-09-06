@@ -12,7 +12,10 @@ import {
   buildStorySystemPrompt,
   buildUserPrompt,
 } from "../_shared/story-prompts.ts";
-import { parseStructuredOutput } from "../_shared/story_text.ts";
+import {
+  parseStructuredOutput,
+  verifyDeliveredMoments,
+} from "../_shared/story_text.ts";
 import { EMPTY_SERIES_STATE, wordBandFor } from "../_shared/types.ts";
 import {
   deriveContentRating,
@@ -294,6 +297,13 @@ serve(async (req) => {
           "Series opening returned unparseable structured output; refusing to start a series without hook or series state",
         );
       }
+      // Chapter 1 opens the delivered set, so this is where an invented
+      // entry would enter it. Only moments the brief actually asked for
+      // survive into stored state.
+      output.series_state = verifyDeliveredMoments(
+        output.series_state,
+        moments,
+      );
       const wordCount = output.chapter_body.split(/\s+/).length;
       const contentRating = deriveContentRating(audienceMode, spiceLevel);
 
@@ -360,6 +370,7 @@ serve(async (req) => {
           title: output.title,
           themes: output.themes,
           whereAndWhen,
+          avoid,
           notifyOnReady,
         }));
       } catch (mediaError) {

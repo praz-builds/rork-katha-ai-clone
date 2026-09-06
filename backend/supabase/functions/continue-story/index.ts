@@ -382,9 +382,18 @@ serve(async (req) => {
       // Which keys the model actually sent decides whether an empty list means
       // "cleared" or "not mentioned".
       const providedKeys = providedSeriesStateKeys(output.raw_series_state);
+      // `moments` is the allowlist for `delivered_moments`: the model is asked
+      // to echo the brief back, so anything it returns that was never in the
+      // brief is a hallucination and must not become stored state that every
+      // later chapter reads as fact.
       const nextState = isEmptySeriesState(output.series_state)
         ? seriesState
-        : mergeSeriesState(seriesState, output.series_state, providedKeys);
+        : mergeSeriesState(
+          seriesState,
+          output.series_state,
+          providedKeys,
+          moments,
+        );
       // A mid-series chapter must leave its ending hook in open_hooks so later
       // chapters can pay it off. The model sometimes writes a real hook_text
       // and hook_type but forgets to record it in the state. The chapter itself

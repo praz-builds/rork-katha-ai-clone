@@ -40,6 +40,15 @@ export interface StoryMediaInput {
   themes: string[];
   whereAndWhen?: string;
   /**
+   * The brief's *Avoid* field.
+   *
+   * Threaded through for the cover for the same reason `whereAndWhen` is: the
+   * prose and the art are generated from one brief and must not disagree. A
+   * story the reader asked to keep free of graphic violence should not open on
+   * a cover full of it.
+   */
+  avoid?: string;
+  /**
    * Whether to tell the author the story is finished.
    *
    * Off unless the caller asks. The onboarding notify screen is a soft
@@ -295,6 +304,7 @@ async function generateAndStoreCover(
       title: input.title,
       themes: input.themes,
       whereAndWhen: input.whereAndWhen,
+      avoid: input.avoid,
       characters: await readCastForCover(supabase, input.storyId),
     });
 

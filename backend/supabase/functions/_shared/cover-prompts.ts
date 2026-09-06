@@ -246,6 +246,16 @@ export function buildCoverPrompt(
    * genre cover, which is a legitimate result rather than a degraded one.
    */
   whereAndWhen?: string,
+  /**
+   * The brief's *Avoid* field, routed to the art.
+   *
+   * The same free text already bounds the prose. Before it reached here, "no
+   * graphic violence" restrained every paragraph of the story and then the
+   * cover was generated with no knowledge of it - so the one image every reader
+   * sees before opening the story was the one place the constraint did not
+   * apply.
+   */
+  avoid?: string,
 ): string {
   const safeGenre = normalizeGenre(genre);
   const config = GENRE_PROMPTS[safeGenre];
@@ -282,6 +292,11 @@ export function buildCoverPrompt(
     }
   }
 
+  // Sanitized here rather than at the call site so every path into the image
+  // provider is covered, including the safety-level fallbacks that rebuild the
+  // prompt from these arguments.
+  const exclusion = sanitizeExclusion(avoid);
+
   return [
     `Book cover illustration for a ${safeGenre} story.`,
     `Visual style: ${config.style}.`,
@@ -289,7 +304,32 @@ export function buildCoverPrompt(
     `Composition: ${config.composition}. Subject centered in frame for multi-crop display.`,
     `Mood: ${config.mood}.`,
     `${sceneDescription}${characterNote}.`,
+    ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
     `Portrait orientation, centered composition, high quality, professional book cover art.`,
   ].join(" ");
+}
+
+/**
+ * Bound the *Avoid* text before it leaves for a third-party image provider.
+ *
+ * This is user free text going to an external API in the same string as our own
+ * instructions, so it gets the same treatment the character fields get in
+ * `image.ts`: newlines collapsed, quoting and bracket characters removed so the
+ * value cannot read as a new clause or close one, and a hard length cap so a
+ * pasted essay cannot crowd out the genre, palette and composition around it.
+ * Returns an empty string when nothing usable survives, and the clause is then
+ * omitted rather than emitted empty.
+ */
+function sanitizeExclusion(value?: string): string {
+  if (!value) return "";
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/["'`{}[\]<>|\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    // A trailing separator would collide with the period this clause ends on.
+    .replace(/[.,;:]+$/, "")
+    .slice(0, 200)
+    .trim();
 }

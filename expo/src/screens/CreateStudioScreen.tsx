@@ -43,7 +43,7 @@ import {
   publishStory,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
-import { MAX_CAST_SIZE } from "@/lib/pricing-limits";
+import { MAX_CAST_SIZE, MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
 import {
   colors,
   fonts,
@@ -316,6 +316,14 @@ export default function CreateStudioScreen({
   const [addingChapter, setAddingChapter] = useState(false);
   const maxChapters = story?.plannedChapterCount ?? draft.plannedChapterCount ?? 3;
 
+  // The reader's optional steer for the chapter that has not been written yet.
+  //
+  // Blank is the normal case and means Katha decides — the field exists so a
+  // reader who *does* have something in mind is not forced to accept whatever
+  // the plan had queued up. It costs nothing: the credit is charged for the
+  // chapter, never for saying what should be in it.
+  const [nextInstruction, setNextInstruction] = useState("");
+
   // Pulse animation for processing paragraphs
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -426,6 +434,22 @@ export default function CreateStudioScreen({
   }, 0);
 
   const readTimeMin = Math.max(1, Math.round(wordCount / 200));
+
+  // What the Continue button calls itself.
+  //
+  // Three readings of the same action, and the label is the only place the
+  // difference shows: the chapter that closes the planned run is the finale,
+  // a typed direction is being followed rather than invented, and blank is
+  // Katha's own choice. There is still one handler and one request behind all
+  // three — the wording follows the state, it does not create one.
+  const continueIsFinale = story
+    ? story.chapters.length + 1 >= maxChapters
+    : false;
+  const continueLabel = continueIsFinale
+    ? "Write the finale"
+    : nextInstruction.trim()
+      ? "Continue this way"
+      : "Continue";
 
   // -----------------------------------------------------------------------
   // Step 1: Generate draft
@@ -828,6 +852,14 @@ export default function CreateStudioScreen({
     // Save current editor state before generating next chapter
     const savedStory = saveEditorToStory() ?? story;
 
+    // Read the direction once, here, rather than inside the stream callbacks.
+    // The box stays editable while the chapter streams, and a request that
+    // re-read the state later could send text the reader typed *after* they
+    // pressed Continue. Empty collapses to `undefined` so the request omits the
+    // field entirely — an empty string would still render the reader-direction
+    // block in the prompt, telling the model a steer exists when none does.
+    const direction = nextInstruction.trim() || undefined;
+
     setAddingChapter(true);
     setStep("generating");
 
@@ -853,6 +885,7 @@ export default function CreateStudioScreen({
         },
         shouldFinale,
         nextChapterNum,
+        direction,
       );
       onCreditUsed(1);
 
@@ -874,6 +907,12 @@ export default function CreateStudioScreen({
       );
       streamedProseRef.current = "";
       setStreamedProse("");
+
+      // Cleared only on success, and only here. A direction that survived into
+      // the next chapter would keep steering chapters the reader never aimed
+      // it at, with nothing on screen to say so. A failed continuation keeps
+      // the text, because retyping it is the reader paying for our error.
+      setNextInstruction("");
       setStep("editor");
     } catch (error) {
       const message = error instanceof Error
@@ -894,7 +933,7 @@ export default function CreateStudioScreen({
     } finally {
       setAddingChapter(false);
     }
-  }, [story, addingChapter, credits, maxChapters, onCreditUsed, saveEditorToStory]);
+  }, [story, addingChapter, credits, maxChapters, nextInstruction, onCreditUsed, saveEditorToStory]);
 
   const switchToChapter = useCallback((index: number) => {
     if (!story || index === activeChapterIndex) return;
@@ -1657,6 +1696,9 @@ export default function CreateStudioScreen({
                 <Pressable
                   onPress={() => handleContinueStory(false)}
                   disabled={addingChapter}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: addingChapter, busy: addingChapter }}
+                  accessibilityLabel="Add the next chapter, 1 credit"
                   style={styles.chapterTabAdd}
                 >
                   <Plus size={14} color={colors.accent} />
@@ -1845,6 +1887,74 @@ export default function CreateStudioScreen({
               </View>
             ))}
           </View>
+
+          {/* End of chapter: say what happens next, then Continue.
+            *
+            * This sits at the foot of the chapter because that is where a
+            * reader arrives with an opinion about where the story should go.
+            * The tab-strip "+ Add" chip is the same action reached from the
+            * top of the screen; both call `handleContinueStory`, so there is
+            * one continuation path and one set of guards behind it.
+            *
+            * Only the last chapter gets it. Offering Continue while the reader
+            * is back editing chapter 1 of 3 would append to the end of the
+            * story from a position that does not look like the end.
+            *
+            * The copy below is literal English like the rest of this screen,
+            * which has no `useTranslation` yet. Every string here already has
+            * its EN/ES/PT key under `editor.whatHappensNext` so the screen-wide
+            * i18n pass has nothing left to translate when it happens. */}
+          {story
+            && activeChapterIndex === story.chapters.length - 1
+            && story.chapters.length < maxChapters && (
+            <View style={styles.continueBlock}>
+              <Text style={styles.continueHeading}>What happens next?</Text>
+              <TextInput
+                multiline
+                value={nextInstruction}
+                onChangeText={setNextInstruction}
+                maxLength={MAX_NEXT_INSTRUCTION_CHARS}
+                placeholder="Optional. Leave this blank and Katha decides."
+                placeholderTextColor={colors.tertiary}
+                style={styles.continueInput}
+                accessibilityLabel="What happens next"
+                accessibilityHint="Optional. Leave blank and Katha decides what the next chapter does."
+                testID="next-instruction-input"
+              />
+              {/* The counter appears only in the last stretch before the cap.
+                * A permanent countdown reads as a quota on a field most
+                * readers should feel free to leave empty; it earns its place
+                * once the next sentence is the one that gets truncated. */}
+              {nextInstruction.length >= MAX_NEXT_INSTRUCTION_CHARS - 60 && (
+                <Text style={styles.continueCounter}>
+                  {MAX_NEXT_INSTRUCTION_CHARS - nextInstruction.length} characters left
+                </Text>
+              )}
+              <Pressable
+                onPress={() => handleContinueStory(false)}
+                disabled={addingChapter}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: addingChapter, busy: addingChapter }}
+                accessibilityLabel={
+                  addingChapter
+                    ? "Writing the next chapter"
+                    : `${continueLabel}, 1 credit`
+                }
+                style={[
+                  styles.continueBtn,
+                  addingChapter && styles.continueBtnBusy,
+                ]}
+                testID="continue-chapter-button"
+              >
+                <Text style={styles.continueBtnText}>
+                  {addingChapter ? "Writing..." : `${continueLabel} · 1 credit`}
+                </Text>
+              </Pressable>
+              <Text style={styles.continueNote}>
+                Saying what happens next is free. The credit pays for the chapter.
+              </Text>
+            </View>
+          )}
         </ScrollView>
 
         {/* Bottom toolbar */}
@@ -2453,6 +2563,63 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: "800",
     fontSize: 13,
+  },
+
+  // End-of-chapter continuation
+  continueBlock: {
+    marginTop: spacing.xl,
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface2,
+  },
+  continueHeading: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 18,
+  },
+  continueInput: {
+    minHeight: 76,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    color: colors.ink,
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    textAlignVertical: "top",
+  },
+  continueCounter: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: "right",
+  },
+  continueBtn: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+  continueBtnBusy: {
+    opacity: 0.6,
+  },
+  continueBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.surface,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  continueNote: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: "center",
   },
 
   // Bottom toolbar

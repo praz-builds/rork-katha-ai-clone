@@ -135,7 +135,22 @@
     "tryAgain": "Intentalo de nuevo.",
     "noChapter": "La generacion no devolvio ningun cap\u00edtulo",
     "customPromptPlaceholder": "ej. hacer al personaje mayor, agregar mas dialogo...",
-    "apply": "Aplicar"
+    "apply": "Aplicar",
+    "whatHappensNext": {
+      "heading": "\u00bfQu\u00e9 pasa despu\u00e9s?",
+      "placeholder": "Opcional. D\u00e9jalo en blanco y Katha decide.",
+      "accessibilityLabel": "Qu\u00e9 pasa despu\u00e9s",
+      "accessibilityHint": "Opcional. D\u00e9jalo en blanco y Katha decide qu\u00e9 ocurre en el pr\u00f3ximo cap\u00edtulo.",
+      "charactersLeft": "Quedan {{count}} caracteres",
+      "button": "Continuar",
+      "buttonDirected": "Continuar as\u00ed",
+      "buttonFinale": "Escribir el final",
+      "buttonPrice": "{{label}} \u00b7 1 cr\u00e9dito",
+      "buttonBusy": "Escribiendo...",
+      "buttonBusyLabel": "Escribiendo el pr\u00f3ximo cap\u00edtulo",
+      "addChapterLabel": "A\u00f1adir el pr\u00f3ximo cap\u00edtulo, 1 cr\u00e9dito",
+      "freeNote": "Decir qu\u00e9 pasa despu\u00e9s es gratis. El cr\u00e9dito paga el cap\u00edtulo."
+    }
   },
   "genres": {
     "adventure": "Aventura",

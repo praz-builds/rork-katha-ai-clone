@@ -2,6 +2,7 @@ import {
   EMPTY_SERIES_STATE,
   HOOK_TYPES,
   type HookType,
+  MAX_MOMENTS,
   type SeriesState,
   type StoryGenerationOutput,
 } from "./types.ts";
@@ -136,6 +137,7 @@ export function parseSeriesState(value: unknown): SeriesState {
     world_facts: stringList(state.world_facts, 16, 500),
     character_changes: stringList(state.character_changes, 16, 500),
     next_chapter_pressure: stringField(state.next_chapter_pressure, 1000),
+    delivered_moments: stringList(state.delivered_moments, 8, 300),
   };
 }
 
@@ -152,7 +154,8 @@ export function isEmptySeriesState(
     state.resolved_hooks.length === 0 &&
     state.promised_payoffs.length === 0 &&
     state.world_facts.length === 0 &&
-    state.character_changes.length === 0;
+    state.character_changes.length === 0 &&
+    state.delivered_moments.length === 0;
 }
 
 /**
@@ -173,6 +176,18 @@ export function mergeSeriesState(
    * `open_hooks` would silently keep the stale hooks.
    */
   provided?: ReadonlySet<string>,
+  /**
+   * The moments the request supplied, if any.
+   *
+   * `delivered_moments` is the one field where the model is asked to echo user
+   * text back rather than write its own, so it is the one field where a
+   * hallucinated entry would silently become stored state that every later
+   * chapter reads. Passing the supplied list turns the merge into an allowlist:
+   * an entry that does not match a supplied moment is dropped. Omitting the
+   * list keeps the prior set unchanged, because there is nothing to match
+   * against and accepting unverified text would be worse than accepting none.
+   */
+  suppliedMoments?: readonly string[],
 ): SeriesState {
   const sent = (key: string) => !provided || provided.has(key);
   const text = (key: string, a: string, b: string) =>
@@ -225,6 +240,72 @@ export function mergeSeriesState(
     // Pressure is intentionally NOT carried over: a finale clears it on
     // purpose, and a stale pressure is worse than none.
     next_chapter_pressure: next.next_chapter_pressure,
+    // Append-only, and never `replace`. A moment that landed in chapter 2 is a
+    // fact about the story; a chapter 5 response that omits it, empties it, or
+    // fails to parse cannot unmake it, or the model would be re-handed a
+    // moment it has already written.
+    delivered_moments: mergeDeliveredMoments(
+      prior.delivered_moments,
+      next.delivered_moments,
+      suppliedMoments,
+    ),
+  };
+}
+
+/**
+ * Union the moments a chapter reports delivering into the stored set.
+ *
+ * Order is preserved - earliest delivery first - because the prompt lists them
+ * back to the model as what has already landed, and a stable order makes that
+ * block stable across chapters.
+ */
+function mergeDeliveredMoments(
+  prior: readonly string[],
+  next: readonly string[],
+  suppliedMoments?: readonly string[],
+): string[] {
+  const allowed = suppliedMoments
+    ? new Set(suppliedMoments.map((moment) => moment.trim()).filter(Boolean))
+    : undefined;
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const value of [...prior, ...next]) {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    if (!trimmed || seen.has(trimmed)) continue;
+    // The prior set was written by an earlier run of this same allowlist, so it
+    // is trusted; only the model's new claims are checked against the brief.
+    if (!prior.includes(value) && allowed && !allowed.has(trimmed)) continue;
+    seen.add(trimmed);
+    merged.push(trimmed);
+  }
+  return merged.slice(0, MAX_MOMENTS);
+}
+
+/**
+ * Drop any delivered moment the brief never contained.
+ *
+ * Chapter 1 has no prior state to merge against, so its `delivered_moments`
+ * reaches the database exactly as the model wrote it. `delivered_moments` is
+ * the one series_state field where the model is asked to echo user text rather
+ * than compose its own, which makes an invented entry indistinguishable from a
+ * real one to every later chapter that reads the state back. Verifying against
+ * the supplied brief is what keeps that channel from being writable.
+ */
+export function verifyDeliveredMoments(
+  state: SeriesState,
+  suppliedMoments: readonly string[],
+): SeriesState {
+  const allowed = new Set(
+    suppliedMoments
+      .filter((moment): moment is string => typeof moment === "string")
+      .map((moment) => moment.trim())
+      .filter(Boolean),
+  );
+  return {
+    ...state,
+    delivered_moments: state.delivered_moments.filter((moment) =>
+      allowed.has(moment.trim())
+    ),
   };
 }
 

@@ -16,6 +16,8 @@ const realFetch = globalThis.fetch;
 interface Attempt {
   url: string;
   model: string;
+  /** The prompt as the provider received it, however that provider shapes it. */
+  prompt: string;
 }
 
 /** Replace fetch, record every provider call, and answer with `respond`. */
@@ -43,8 +45,18 @@ async function withStubbedProviders(
 
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
-    const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
-    const attempt = { url, model: body.model ?? "" };
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      model?: string;
+      prompt?: string;
+      messages?: { content?: string }[];
+    };
+    // OpenAI takes `prompt`; OpenRouter wraps the same string in a chat
+    // message. Both are read so a prompt assertion covers the whole chain.
+    const attempt = {
+      url,
+      model: body.model ?? "",
+      prompt: body.prompt ?? body.messages?.[0]?.content ?? "",
+    };
     attempts.push(attempt);
     return Promise.resolve(respond(attempt, attempts.length - 1));
   }) as typeof fetch;
@@ -231,4 +243,51 @@ Deno.test("the stored content type follows the bytes, not the path", async () =>
     attempts.length > 1,
     "unrecognised bytes must fall through to the next provider, not be stored",
   );
+});
+
+
+// ---------------------------------------------------------------------------
+// The Avoid exclusion
+// ---------------------------------------------------------------------------
+
+// The ladder exists to get past a content filter, so the rung most likely to be
+// reached is the one where an unconstrained cover would be worst. Dropping the
+// exclusion as a "simplification" would mean the more a story's brief pushed
+// against the filter, the less its own exclusion applied.
+Deno.test("the Avoid exclusion survives every safety level and every provider", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCoverImage({
+        ...cover,
+        avoid: "graphic violence",
+      }),
+  );
+
+  assert(attempts.length >= 5, `expected a full ladder, saw ${attempts.length}`);
+  for (const [index, attempt] of attempts.entries()) {
+    assert(
+      attempt.prompt.includes("Do not depict: graphic violence."),
+      `attempt ${index} (${attempt.model}) lost the exclusion: ${attempt.prompt}`,
+    );
+  }
+  // Level 2 is genre and title only, so this is the rung that proves the
+  // exclusion is carried rather than merely surviving in the cast or themes.
+  const last = attempts.filter((a) => a.url.includes("api.openai.com")).at(-1);
+  assert(last);
+  assert(
+    !last.prompt.includes("themes of"),
+    "level 2 should have dropped the themes clause",
+  );
+  assert(last.prompt.includes("Do not depict: graphic violence."));
+});
+
+Deno.test("no Avoid means no exclusion clause at any level", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () => generateCoverImage(cover),
+  );
+  for (const attempt of attempts) {
+    assert(!attempt.prompt.includes("Do not depict"));
+  }
 });

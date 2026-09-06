@@ -135,7 +135,22 @@
     "tryAgain": "Please try again.",
     "noChapter": "Story generation returned no chapter",
     "customPromptPlaceholder": "e.g. make the character older, add more dialogue...",
-    "apply": "Apply"
+    "apply": "Apply",
+    "whatHappensNext": {
+      "heading": "What happens next?",
+      "placeholder": "Optional. Leave this blank and Katha decides.",
+      "accessibilityLabel": "What happens next",
+      "accessibilityHint": "Optional. Leave blank and Katha decides what the next chapter does.",
+      "charactersLeft": "{{count}} characters left",
+      "button": "Continue",
+      "buttonDirected": "Continue this way",
+      "buttonFinale": "Write the finale",
+      "buttonPrice": "{{label}} \u00b7 1 credit",
+      "buttonBusy": "Writing...",
+      "buttonBusyLabel": "Writing the next chapter",
+      "addChapterLabel": "Add the next chapter, 1 credit",
+      "freeNote": "Saying what happens next is free. The credit pays for the chapter."
+    }
   },
   "genres": {
     "adventure": "Adventure",

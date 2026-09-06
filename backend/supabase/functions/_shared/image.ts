@@ -136,6 +136,8 @@ export async function generateCoverImage(input: {
   characters?: { name: string; description?: string; isHero?: boolean }[];
   /** The where-and-when chip. What stops the cover being genre stock art. */
   whereAndWhen?: string;
+  /** The brief's *Avoid* field. Bounds the art the way it bounds the prose. */
+  avoid?: string;
 }): Promise<ImageResult | null> {
   const storagePath = `covers/${input.storyId}/cover.png`;
   return await runImageChain({
@@ -153,6 +155,12 @@ export async function generateCoverImage(input: {
  * Level 0 is the full prompt. Level 1 drops the cast and trims the themes -
  * a character description is by far the likeliest part of a cover prompt to
  * trip a content filter. Level 2 is genre and title only.
+ *
+ * The *Avoid* exclusion is carried at every level, including the last. Each
+ * rung of this ladder exists to get *past* a content filter, so the rung most
+ * likely to be reached is the one where an unconstrained cover would be most
+ * embarrassing - and unlike the cast or the themes, an exclusion cannot be the
+ * thing the filter objected to.
  */
 function buildCoverPromptForLevel(
   safetyLevel: number,
@@ -162,9 +170,10 @@ function buildCoverPromptForLevel(
     themes: string[];
     characters?: { name: string; description?: string; isHero?: boolean }[];
     whereAndWhen?: string;
+    avoid?: string;
   },
 ): string {
-  const { genre, title, themes, characters, whereAndWhen } = input;
+  const { genre, title, themes, characters, whereAndWhen, avoid } = input;
   if (safetyLevel === 0) {
     return buildCoverPrompt(
       genre,
@@ -172,6 +181,7 @@ function buildCoverPromptForLevel(
       themes,
       usableCharacters(characters),
       whereAndWhen,
+      avoid,
     );
   }
   if (safetyLevel === 1) {
@@ -185,9 +195,10 @@ function buildCoverPromptForLevel(
       themes.slice(0, 2),
       undefined,
       whereAndWhen,
+      avoid,
     );
   }
-  return buildCoverPrompt(genre, title, []);
+  return buildCoverPrompt(genre, title, [], undefined, undefined, avoid);
 }
 
 /**
