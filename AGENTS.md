@@ -60,6 +60,8 @@ What it checks:
 
 If the scan finds CRITICAL or HIGH issues, **fix them before pushing**. MEDIUM and LOW findings should be documented and tracked for follow-up.
 
+Findings from external scanners -- what was fixed, what was dismissed and why -- are recorded in [`SECURITY_TRIAGE.md`](SECURITY_TRIAGE.md). Add to it rather than re-triaging the same advisory next quarter.
+
 To run: use the `security-scan` skill or spawn 3 parallel sub-agents (secrets, injection/auth, deps/mobile/infra) for thorough coverage.
 
 ## Observability Gate (MANDATORY after production testing)

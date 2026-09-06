@@ -20,11 +20,18 @@ overrides:
   "@expo/metro-config>postcss": 8.5.23
   "xcode>uuid": 11.1.1
   uuid: 11.1.1
+# CVE-2025-71329 (JXL) and CVE-2025-71330 (ICNS): image-size 1.2.1 loops forever
+# on a crafted file whose box header declares a zero length, because the parser
+# advances its cursor by that length. metro pins image-size to ^1.0.2 and there
+# is no fixed release to move to -- GitHub records no patched version for either
+# CVE, and 2.0.2, the latest, is still vulnerable -- so both loops are patched
+# in place. image-size is build-time only (metro reads asset dimensions during
+# bundling) and ships nothing into the app.
 patchedDependencies:
   image-size@1.2.1: patches/image-size@1.2.1.patch
 auditConfig:
-  # Locally patched because the advisory's patched 2.0.3 release is not
-  # published on npm yet. Keep both ignores tied to the patch above.
+  # Both advisories stay ignored only for as long as the patch above is in
+  # place; expo/src/__tests__/image-size-patch.test.ts fails if it is dropped.
   ignoreGhsas:
     - GHSA-w3rx-r6r6-pgpr
     - GHSA-5p2g-fcmc-qvqq
