@@ -14,7 +14,7 @@
 // really does exclude a blocked author's stories, really does leave every
 // other viewer's results untouched, and really does not disturb pagination.
 // These tests build the schema the same way
-// `00042_threaded_comments_moderation_test.ts` does (full migration replay
+// `00043_threaded_comments_moderation_test.ts` does (full migration replay
 // under PGlite) and then run the literal SQL that
 // `.eq(...).neq(...).not("author_id", "in", "(...)").order(...).range(...)`
 // compiles down to, parameterized exactly as buildNewUserFeed and

@@ -473,7 +473,7 @@
   connected, so nothing here was verified by looking at a rendered page. Layout
   and spacing at 390px are unconfirmed.
 - Known gap: comments are local state only. Nothing survives a reload until
-  migration `00042` is applied and an edge function is wired.
+  migration `00043` is applied and an edge function is wired.
 
 ## 2026-09-06: Writer Onboarding Preview and Paywall Alignment
 
@@ -547,7 +547,7 @@
   end to end, including that the tri-state vote clears to 0.
 - Browser pass at 390x844: 0 clipped nodes; the story page renders hero,
   chapters, metadata and the comment section.
-- NOT done: the `comments` edge function is NOT deployed and migration 00042 is
+- NOT done: the `comments` edge function is NOT deployed and migration 00043 is
   NOT applied, so a configured client currently shows "Comments could not load"
   and its retry. That is the honest state, not a bug - but comments will not
   work until both are shipped.

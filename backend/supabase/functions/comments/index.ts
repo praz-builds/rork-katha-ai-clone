@@ -208,7 +208,12 @@ async function handleReadThread(
     .from("comments")
     .select(
       "id, parent_id, depth, content, created_at, score, deleted_at, user_id, profiles!comments_user_id_fkey(username)",
-      { count: "planned" },
+      // `exact`, not `planned`: a planner ESTIMATE reported `total: 1` for a
+      // story with no comments at all, because that is what the planner
+      // guesses for an unanalyzed table. A client paging on that waits for a
+      // comment that does not exist. A thread is bounded by one story, so an
+      // exact count is cheap here in a way it would not be on a global table.
+      { count: "exact" },
     )
     .eq("story_id", storyId)
     .order("created_at", { ascending: true })

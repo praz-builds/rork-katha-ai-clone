@@ -132,7 +132,7 @@ Deno.test("pgErrorCode extracts a string .code, and only a string .code", () => 
 // ---------------------------------------------------------------------------
 // Part 2: the SQL-facing behaviour the handlers above are built on, run
 // against PGlite (in-memory Postgres, no network) with every migration
-// applied -- the same harness `00042_threaded_comments_moderation_test.ts`
+// applied -- the same harness `00043_threaded_comments_moderation_test.ts`
 // uses. supabase-js talks to PostgREST over HTTP, which PGlite does not
 // speak, so these tests issue the same statements the handlers issue
 // (insert-then-catch-23505-then-update for a vote, a plain insert for a

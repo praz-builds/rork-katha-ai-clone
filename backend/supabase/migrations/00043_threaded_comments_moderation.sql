@@ -1,4 +1,4 @@
--- Migration 00042: threaded comments, voting, reporting, and author-blocking
+-- Migration 00043: threaded comments, voting, reporting, and author-blocking
 --
 -- 00001 defined `comments` as a flat, unthreaded list: one row per comment,
 -- no parent, no votes, no way to report abuse, no way to stop seeing someone.

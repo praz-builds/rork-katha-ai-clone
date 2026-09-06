@@ -140,7 +140,7 @@ nobody had noticed:
 granted the sending role nothing, so `send-push` failed at its first query with
 `42501: permission denied for table push_tokens`. Every call. Nothing had called
 it, so the table looked correct and the function looked finished. Migration
-00042 grants it.
+00043 grants it.
 
 That is the lesson worth keeping: **the bug was invisible from the code and
 obvious from the first real call.** A feature is not done at its last file, it
@@ -2052,7 +2052,7 @@ on.
 
 ## 2026-09-06: Threaded Comments, Voting, Reporting, and Blocking Schema
 
-**Migration `backend/supabase/migrations/00042_threaded_comments_moderation.sql`
+**Migration `backend/supabase/migrations/00043_threaded_comments_moderation.sql`
 is written but NOT applied.** No `supabase db push`, `migration up`, or any
 other command touched the live project (`iafeuxgoiknncgyjmugd`). Applying it
 is a separate, explicit decision for later.
@@ -2105,7 +2105,7 @@ is a separate, explicit decision for later.
   and the unrelated `request_id`/`reward_granted` columns from 00005), and
   new UPDATE/DELETE grants are scoped to `(content, deleted_at)` and full
   delete respectively.
-- **Companion test**: `00042_threaded_comments_moderation_test.ts`, in the
+- **Companion test**: `00043_threaded_comments_moderation_test.ts`, in the
   same PGlite-against-every-migration style as `00038`/`00039`/`00040`.
   7 tests, all passing: double-vote rejected (23505 on the primary key),
   self-block and duplicate-block rejected (23514 / 23505), duplicate report
