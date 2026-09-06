@@ -121,6 +121,19 @@ export function addRootComment(tree: CommentNode[], comment: CommentNode): Comme
 }
 
 /** Count every reply nested under `node`, at any depth. */
+/** Depth-first lookup by id. Returns undefined when the id is not in the tree. */
+export function findNode(
+  tree: readonly CommentNode[],
+  id: string,
+): CommentNode | undefined {
+  for (const node of tree) {
+    if (node.id === id) return node;
+    const found = findNode(node.replies, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 export function countDescendants(node: CommentNode): number {
   return node.replies.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
 }

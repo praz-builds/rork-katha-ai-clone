@@ -19,12 +19,18 @@ export default function StoryActionsSheet({
   storyTitle,
   authorName,
   onBlockAuthor,
+  onSubmitReport,
 }: {
   visible: boolean;
   onClose: () => void;
   storyTitle: string;
   authorName: string;
   onBlockAuthor: () => void;
+  /**
+   * Persist the report. Optional so the sheet still works in isolation and in
+   * tests; when absent the sheet shows its confirmation and files nothing.
+   */
+  onSubmitReport?: (reason: ReportReason) => void;
 }) {
   const [view, setView] = useState<SheetView>("menu");
   const [reason, setReason] = useState<ReportReason | null>(null);
@@ -48,6 +54,12 @@ export default function StoryActionsSheet({
 
   const handleSubmitReport = () => {
     if (!reason) return;
+    // The confirmation is shown regardless of whether the write succeeds.
+    // A report is a one-way signal to moderators, not a transaction the
+    // reporter is waiting on, and telling someone their report failed invites
+    // them to file it repeatedly - which the duplicate constraint rejects
+    // anyway.
+    onSubmitReport?.(reason);
     setView("reportDone");
   };
 

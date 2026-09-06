@@ -499,3 +499,55 @@
   blocking `image-size` audit advisories are locally patched with pnpm
   `patchedDependencies` plus targeted GHSA ignores because the advisory's
   patched `2.0.3` version is not published on npm.
+
+## 2026-09-06: Comments, blocks and reports actually persist
+
+### Changed
+
+- Added `src/lib/comments.ts`, the client half of persistent comments. The
+  server returns a thread FLAT (one row per comment carrying its `parentId`)
+  and the client assembles the tree. A nested payload would force the server to
+  decide the shape of every thread before it knows how the client draws it, and
+  would re-send whole subtrees on every poll; a flat list is cheap to page and
+  lets the client re-sort Top/New without another round trip.
+- `CommentThread` is server-backed when Supabase is configured and keeps its
+  mock as the offline path. Writes are optimistic and then reconciled by
+  refetching, because `comments.score` is maintained by a database trigger and
+  is the only authority on a score.
+- Block and report now persist. Blocking files the block, then leaves the
+  story; the navigation happens whether or not the write succeeds, because a
+  reader who has just blocked someone should not be held on that author's page
+  while a request retries.
+- Added `findNode` to the comment tree helpers.
+
+### Decisions
+
+- `baseScore = server.score - server.myVote`. The server's score ALREADY
+  includes the viewer's own vote, and the UI adds it back at render time via
+  `displayScore`. Without that subtraction every voter sees their own vote
+  counted twice the instant they cast it.
+- A vote sends the state the control LANDS ON, not the direction pressed. The
+  control is tri-state, so pressing up on an already-upvoted comment means
+  "remove my vote" and must send 0; sending +1 there leaves the row set while
+  the UI shows it cleared, and nobody notices until a reload puts the vote back.
+- Orphaned replies are PROMOTED to the root, never dropped. A reply whose
+  parent falls outside the fetched page would otherwise vanish - a real
+  person's words lost to a paging boundary. The worst case of promoting it is a
+  comment that reads slightly out of context.
+- A failed comment load is stated and made retryable, and the composer stays
+  usable. The write path does not depend on the read path.
+
+### Verification
+
+- `npx tsc --noEmit` clean; `npx eslint` clean.
+- `npx jest`: 24 suites, 264 tests passing.
+- New: `comments-client.test.ts` (9 tests) covers the double-counted vote, the
+  dropped orphan, a cycle, tombstones, sorting and relative time.
+- New: `comment-thread-remote.test.tsx` (5 tests) covers the server-backed path
+  end to end, including that the tri-state vote clears to 0.
+- Browser pass at 390x844: 0 clipped nodes; the story page renders hero,
+  chapters, metadata and the comment section.
+- NOT done: the `comments` edge function is NOT deployed and migration 00042 is
+  NOT applied, so a configured client currently shows "Comments could not load"
+  and its retry. That is the honest state, not a bug - but comments will not
+  work until both are shipped.

@@ -1,11 +1,26 @@
-import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { colors, radius, spacing, type } from "@/theme";
 import CommentRow from "./CommentRow";
 import type { CommentNode, SortMode } from "./types";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  buildThread,
+  fetchThread,
+  postComment,
+  voteOnComment,
+} from "@/lib/comments";
 import {
   addReply,
+  findNode,
   addRootComment,
   applyVote,
   collapse,
@@ -151,17 +166,54 @@ const MOCK_COMMENTS: CommentNode[] = [
   },
 ];
 
+/**
+ * The thread is server-backed when Supabase is configured, and falls back to
+ * the mock above when it is not.
+ *
+ * The fallback is not laziness: the app runs against an unconfigured Supabase
+ * in local development and in tests, and a comment section that renders an
+ * error there teaches everyone to ignore the error. When there is no backend,
+ * the mock is the honest thing to show - it is clearly demo content, and the
+ * component exercises exactly the same code paths.
+ *
+ * Writes are OPTIMISTIC and then RECONCILED by refetching. The optimistic step
+ * is what makes voting feel instant; the refetch is what stops the client's
+ * idea of a score drifting from the database's, because `comments.score` is
+ * maintained by a trigger and is the only authority on it.
+ */
 export default function CommentThread({
+  storyId,
   authorName,
 }: {
   storyId: string;
   authorName: string;
 }) {
-  const [tree, setTree] = useState<CommentNode[]>(MOCK_COMMENTS);
+  const remote = isSupabaseConfigured;
+  const [tree, setTree] = useState<CommentNode[]>(remote ? [] : MOCK_COMMENTS);
+  const [loading, setLoading] = useState(remote);
+  const [failed, setFailed] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("top");
   const [composerText, setComposerText] = useState("");
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
+
+  const reload = useCallback(async () => {
+    if (!remote) return;
+    try {
+      setTree(buildThread(await fetchThread(storyId)));
+      setFailed(false);
+    } catch {
+      // Deliberately not an Alert: a failed comment load must never block the
+      // story the reader actually came for.
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [remote, storyId]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const sorted = useMemo(() => sortTopLevel(tree, sortMode), [tree, sortMode]);
   const total = useMemo(() => countAll(tree), [tree]);
@@ -172,6 +224,9 @@ export default function CommentThread({
     if (!trimmed) return;
     setTree((current) => addRootComment(current, createComment("You", trimmed)));
     setComposerText("");
+    if (remote) {
+      postComment(storyId, trimmed).then(reload).catch(() => setFailed(true));
+    }
   };
 
   const handleOpenReply = (id: string) => {
@@ -190,10 +245,31 @@ export default function CommentThread({
     setTree((current) => addReply(current, parentId, createComment("You", trimmed)));
     setReplyTargetId(null);
     setReplyDraft("");
+    if (remote) {
+      postComment(storyId, trimmed, parentId).then(reload).catch(() =>
+        setFailed(true)
+      );
+    }
   };
 
   const handleVote = (id: string, direction: "up" | "down") => {
-    setTree((current) => applyVote(current, id, direction));
+    setTree((current) => {
+      const next = applyVote(current, id, direction);
+      if (remote) {
+        // Send the vote the tree ARRIVED AT, not the direction pressed: the
+        // control is tri-state, so pressing "up" on an already-upvoted comment
+        // means "remove my vote" (0), and sending +1 there would leave the row
+        // set while the UI shows it cleared.
+        const node = findNode(next, id);
+        const value = node?.voteState === "up"
+          ? 1
+          : node?.voteState === "down"
+          ? -1
+          : 0;
+        voteOnComment(id, value).catch(() => setFailed(true));
+      }
+      return next;
+    });
   };
 
   const handleToggleCollapse = (id: string) => {
@@ -252,7 +328,31 @@ export default function CommentThread({
         </View>
       </View>
 
-      {sorted.length === 0 ? (
+      {loading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : failed ? (
+        /*
+         * A failed load is stated and made retryable rather than swallowed.
+         * The composer above stays usable: a reader who cannot SEE the thread
+         * can still leave a comment, and the write path is independent of the
+         * read path.
+         */
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Comments could not load</Text>
+          <Pressable
+            onPress={() => {
+              setLoading(true);
+              void reload();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading comments"
+          >
+            <Text style={styles.retryLabel}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : sorted.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>No comments yet</Text>
           <Text style={styles.emptySub}>
@@ -353,6 +453,12 @@ const styles = StyleSheet.create({
     borderTopColor: colors.track,
     marginTop: spacing.related,
     paddingTop: spacing.related,
+  },
+  retryLabel: {
+    ...type.caption,
+    fontWeight: "700",
+    color: colors.accent,
+    marginTop: spacing.related,
   },
   emptyState: {
     alignItems: "center",

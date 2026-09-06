@@ -2146,3 +2146,37 @@ is a separate, explicit decision for later.
   blocking `image-size` audit advisories are locally patched with pnpm
   `patchedDependencies` plus targeted GHSA ignores because the advisory's
   patched `2.0.3` version is not published on npm.
+
+## 2026-09-06: The comments function, and blocked authors leave the feed
+
+### Changed
+
+- Added `supabase/functions/comments/index.ts`. One function: `GET` reads a
+  story's thread as flat rows plus the caller's own vote on each; `POST` with
+  an `action` handles post, vote, report, block and unblock. Every call runs on
+  the anon key plus the CALLER'S JWT, so the RLS in migration 00042 is the real
+  security boundary - there is no service-role client in the file to bypass it.
+- Voting is insert-then-catch-23505-then-update rather than an upsert, because
+  00042 grants UPDATE on `value` only; an upsert would need privileges on
+  `user_id` and `comment_id` that are deliberately not granted. The score is
+  owned by a trigger and never adjusted in application code, or it would count
+  twice.
+- Duplicate reports and duplicate blocks return a clean already-done success
+  rather than a 500 from the unique index. Unblock exists: a block a user
+  cannot undo is a trap.
+- `supabase/functions/feed/index.ts` now excludes stories by authors the caller
+  has blocked, in BOTH feed paths, filtered inside the query rather than after
+  the page slice. Filtering after the slice would short-page the blocker and
+  start skipping rows on deeper pages. A caller with no blocks issues a
+  byte-identical query to before, and anonymous callers pay nothing.
+
+### Verification
+
+- `deno check` clean on both functions.
+- `comments`: 18 tests passing. `feed`: 4 tests passing. Migrations: 36 passing,
+  no regressions. All against PGlite - real Postgres, no network.
+- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
+  00042 remains WRITTEN BUT NOT APPLIED and neither function is deployed.
+- Not covered by tests: the HTTP entrypoint itself - CORS, JSON parse failures,
+  the `auth.getUser()` flow and action dispatch are covered by inspection only,
+  because PGlite speaks Postgres rather than the PostgREST wire protocol.

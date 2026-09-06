@@ -1,6 +1,18 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 
+// CommentThread now imports the Supabase client for its server-backed path.
+// Unconfigured in tests, so the component uses its local fallback - but the
+// module graph still pulls in native storage, which must be mocked.
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  getItem: jest.fn(() => Promise.resolve(null)),
+  setItem: jest.fn(() => Promise.resolve()),
+  removeItem: jest.fn(() => Promise.resolve()),
+}));
+jest.mock("@/lib/supabase", () => ({
+  supabase: { functions: { invoke: jest.fn() } },
+  isSupabaseConfigured: false,
+}));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 jest.mock("lucide-react-native", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
