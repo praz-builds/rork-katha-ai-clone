@@ -321,6 +321,58 @@ create trigger comment_votes_apply_score_trigger
     after insert or update of value or delete on public.comment_votes
     for each row execute function public.comment_votes_apply_score();
 
+-- Cast, change, or clear the caller's vote as one database statement boundary.
+-- The Edge Function uses this RPC instead of an insert-then-update sequence so
+-- concurrent taps for the same (user_id, comment_id) pair cannot race between
+-- the failed insert and the fallback update.
+create or replace function public.set_comment_vote(
+    p_comment_id uuid,
+    p_value smallint
+) returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+    v_user_id uuid := auth.uid();
+begin
+    if v_user_id is null then
+        raise exception 'not authenticated' using errcode = '42501';
+    end if;
+
+    if p_value not in (-1, 0, 1) then
+        raise exception 'invalid vote value' using errcode = '22023';
+    end if;
+
+    if not exists (
+        select 1
+        from public.comments c
+        join public.stories s on s.id = c.story_id
+        where c.id = p_comment_id
+          and (
+              s.is_public = true
+              or s.is_curated = true
+              or s.author_id = v_user_id
+          )
+    ) then
+        raise exception 'comment not found' using errcode = '23503';
+    end if;
+
+    if p_value = 0 then
+        delete from public.comment_votes
+        where user_id = v_user_id
+          and comment_id = p_comment_id;
+        return;
+    end if;
+
+    insert into public.comment_votes (user_id, comment_id, value)
+    values (v_user_id, p_comment_id, p_value)
+    on conflict (user_id, comment_id) do update
+    set value = excluded.value
+    where public.comment_votes.value is distinct from excluded.value;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 3. `content_reports` -- polymorphic over story and comment (see decision 3)
 -- ---------------------------------------------------------------------------
@@ -499,6 +551,8 @@ grant delete on public.comments to authenticated;
 revoke all on table public.comment_votes from public, anon;
 grant select, insert, delete on public.comment_votes to authenticated;
 grant update (value) on public.comment_votes to authenticated;
+revoke all on function public.set_comment_vote(uuid, smallint) from public;
+grant execute on function public.set_comment_vote(uuid, smallint) to authenticated;
 
 -- Column-scoped, not table-wide: a table-level INSERT grant would let a
 -- reporter set `status` or `reviewed_at` directly in their own INSERT

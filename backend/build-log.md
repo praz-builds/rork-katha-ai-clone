@@ -2190,6 +2190,38 @@ is a separate, explicit decision for later.
 - Local URL `http://localhost:8090/` was opened and returned `200 OK`.
 - No production infrastructure was tested or deployed in this pass.
 
+## 2026-09-06: Comment vote RPC review fix
+
+### Changed
+
+- Added `public.set_comment_vote(comment_id, value)` to migration 00043 and
+  routed the comments Edge Function through it. Cast, change, and clear now
+  happen inside one database call, while the existing vote score trigger
+  remains the only writer of `comments.score`.
+- Updated the comments SQL tests to exercise the RPC path, including clearing
+  a vote back to zero.
+
+### Verification
+
+- `deno check backend/supabase/functions/comments/index.ts
+  backend/supabase/functions/feed/index.ts` passed.
+- `deno test --allow-read --allow-write --allow-env --allow-net
+  backend/supabase/migrations/*_test.ts
+  backend/supabase/functions/comments/index.test.ts
+  backend/supabase/functions/feed/index.test.ts` passed: 59 tests.
+- `pnpm typecheck` passed from `expo/`.
+- Focused ESLint on the touched Expo files passed.
+- `pnpm test --runInBand` passed from `expo/`: 25 suites, 268 tests.
+- `EXPO_NO_DOTENV=1 pnpm exec expo export --platform web --output-dir
+  /tmp/katha-onboarding-final-export-check` passed. Sentry warned about
+  missing organization/project config, which is pre-existing local setup.
+- `pnpm exec expo-doctor` still reports 15/18 checks passing and fails the
+  three local package-manager checks because this shell cannot spawn `npm`.
+- Security gate: secret-pattern scan found only documented placeholders/public
+  config references. `pnpm audit --audit-level high` exited clean with the two
+  known high `image-size` advisories ignored under the local parser patch
+  documented in this session.
+
 ## 2026-09-06: The comments function, and blocked authors leave the feed
 
 ### Changed

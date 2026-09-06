@@ -366,56 +366,16 @@ async function handlePostComment(
 // Vote
 // ---------------------------------------------------------------------------
 
-/**
- * Insert-then-update-on-conflict, never upsert.
- *
- * `comment_votes` grants authenticated users INSERT (the whole row) and
- * UPDATE of only the `value` column (00042: `grant update (value) on
- * comment_votes to authenticated`). A supabase-js `.upsert()` compiles to
- * `INSERT ... ON CONFLICT DO UPDATE SET` and can include the conflict-key
- * columns themselves in that SET list, which would ask for UPDATE privilege
- * on `user_id`/`comment_id` that was never granted. Doing the two steps by
- * hand keeps every statement inside exactly the privilege it was given: a
- * plain INSERT, or a plain `UPDATE ... SET value = ...`.
- *
- * The (user_id, comment_id) primary key is what makes this idempotent:
- * voting the same way twice is insert-then-23505-then-update-to-the-same-
- * value, and the score trigger only changes `comments.score` when
- * `new.value <> old.value` (00042's `comment_votes_apply_score`), so a
- * same-value update is a true no-op at the score level too.
- */
 async function castVote(
   client: AuthedClient,
-  userId: string,
   commentId: string,
   value: -1 | 0 | 1,
 ): Promise<void> {
-  if (value === 0) {
-    const { error } = await client
-      .from("comment_votes")
-      .delete()
-      .eq("user_id", userId)
-      .eq("comment_id", commentId);
-    if (error) throw error;
-    return;
-  }
-
-  const { error: insertError } = await client
-    .from("comment_votes")
-    .insert({ user_id: userId, comment_id: commentId, value });
-  if (!insertError) return;
-
-  if (pgErrorCode(insertError) === "23505") {
-    const { error: updateError } = await client
-      .from("comment_votes")
-      .update({ value })
-      .eq("user_id", userId)
-      .eq("comment_id", commentId);
-    if (updateError) throw updateError;
-    return;
-  }
-
-  throw insertError;
+  const { error } = await client.rpc("set_comment_vote", {
+    p_comment_id: commentId,
+    p_value: value,
+  });
+  if (error) throw error;
 }
 
 async function handleVote(
@@ -432,7 +392,7 @@ async function handleVote(
   }
 
   try {
-    await castVote(client, userId, commentId, value);
+    await castVote(client, commentId, value);
   } catch (error) {
     if (pgErrorCode(error) === "23503") {
       return { status: 404, error: "Comment not found" };

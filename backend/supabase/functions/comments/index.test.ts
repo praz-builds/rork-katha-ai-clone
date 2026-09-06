@@ -134,12 +134,12 @@ Deno.test("pgErrorCode extracts a string .code, and only a string .code", () => 
 // against PGlite (in-memory Postgres, no network) with every migration
 // applied -- the same harness `00043_threaded_comments_moderation_test.ts`
 // uses. supabase-js talks to PostgREST over HTTP, which PGlite does not
-// speak, so these tests issue the same statements the handlers issue
-// (insert-then-catch-23505-then-update for a vote, a plain insert for a
-// report, the same `not user_id in (...)` shape for blocked-author
-// exclusion) directly against the database, to verify the invariants the
-// handlers rely on actually hold. This is NOT a test of index.ts's HTTP
-// layer (see the report for exactly what that means is uncovered).
+// speak, so these tests issue the same SQL boundary the handlers rely on
+// (the vote RPC, a plain insert for a report, the same `not user_id in (...)`
+// shape for blocked-author exclusion) directly against the database, to
+// verify the invariants the handlers rely on actually hold. This is NOT a
+// test of index.ts's HTTP layer (see the report for exactly what that means
+// is uncovered).
 // ---------------------------------------------------------------------------
 
 const MIGRATIONS_DIR = new URL("../../migrations/", import.meta.url);
@@ -219,26 +219,14 @@ async function insertComment(
   return result.rows[0];
 }
 
-/** Mirrors `castVote()` in index.ts: insert, catch 23505, fall back to update. */
 async function castVoteViaSql(
   db: PGlite,
   userId: string,
   commentId: string,
-  value: -1 | 1,
+  value: -1 | 0 | 1,
 ) {
   await asUser(db, userId);
-  try {
-    await db.query(
-      "insert into comment_votes (user_id, comment_id, value) values ($1, $2, $3)",
-      [userId, commentId, value],
-    );
-  } catch (error) {
-    if ((error as { code?: string }).code !== "23505") throw error;
-    await db.query(
-      "update comment_votes set value = $3 where user_id = $1 and comment_id = $2",
-      [userId, commentId, value],
-    );
-  }
+  await db.query("select set_comment_vote($1, $2)", [commentId, value]);
 }
 
 async function readScore(db: PGlite, commentId: string): Promise<number> {
@@ -310,7 +298,7 @@ Deno.test("voting the same way twice does not double-count the score", async () 
     await castVoteViaSql(db, VOTER, comment.id, 1);
     assertEquals(await readScore(db, comment.id), 1);
 
-    // Same user, same value, again -- this is the insert-23505-update path,
+    // Same user, same value, again -- this is a no-op update inside the RPC,
     // not a second row and not a second +1.
     await castVoteViaSql(db, VOTER, comment.id, 1);
     assertEquals(await readScore(db, comment.id), 1);
@@ -344,6 +332,36 @@ Deno.test("flipping a vote from up to down moves the score by exactly 2", async 
 
     await castVoteViaSql(db, VOTER, comment.id, -1);
     assertEquals(await readScore(db, comment.id), -1);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("clearing a vote removes the row and restores the score", async () => {
+  const db = await createDatabase();
+  try {
+    await createUser(db, AUTHOR);
+    await createUser(db, VOTER);
+    await createStory(db, STORY, AUTHOR);
+    const comment = await insertComment(db, {
+      userId: AUTHOR,
+      storyId: STORY,
+      parentId: null,
+      content: "clear target",
+    });
+
+    await castVoteViaSql(db, VOTER, comment.id, -1);
+    assertEquals(await readScore(db, comment.id), -1);
+
+    await castVoteViaSql(db, VOTER, comment.id, 0);
+    assertEquals(await readScore(db, comment.id), 0);
+
+    await asSuperuser(db);
+    const rowCount = await db.query<{ count: number }>(
+      "select count(*)::int as count from comment_votes where comment_id = $1",
+      [comment.id],
+    );
+    assertEquals(rowCount.rows[0].count, 0);
   } finally {
     await db.close();
   }
