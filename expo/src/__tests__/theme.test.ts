@@ -301,17 +301,12 @@ describe('theme tokens', () => {
       );
     });
 
-    it('tracks sentence-case titles negative and uppercase eyebrows positive', () => {
-      // The resolved spec conflict: "negative tracking on every heading" means
-      // sentence-case headings. The section header is the uppercase eyebrow,
-      // where positive tracking is correct and matches ONBOARDING_FLOW.md §1.
-      expect(onboardingType.title.letterSpacing).toBeLessThan(0);
+    it('keeps visible onboarding text untracked except uppercase eyebrows', () => {
+      expect(onboardingType.title.letterSpacing).toBe(0);
       expect(onboardingType.sectionHeader.letterSpacing).toBeGreaterThan(0);
-      // Body-weight levels are neither heading: at or just above zero, never
-      // negative, because tracking in at a small optical size closes counters.
-      expect(onboardingType.body.letterSpacing).toBeGreaterThan(0);
-      expect(onboardingType.helper.letterSpacing).toBeGreaterThan(0);
-      expect(onboardingType.caption.letterSpacing).toBeGreaterThanOrEqual(0);
+      expect(onboardingType.body.letterSpacing).toBe(0);
+      expect(onboardingType.helper.letterSpacing).toBe(0);
+      expect(onboardingType.caption.letterSpacing).toBe(0);
     });
 
     it('tracks the eyebrow at the 0.08em the flow spec fixes for uppercase', () => {
@@ -319,35 +314,15 @@ describe('theme tokens', () => {
         onboardingType.sectionHeader.letterSpacing / onboardingType.sectionHeader.fontSize;
       expect(em).toBeGreaterThan(0.07);
       expect(em).toBeLessThan(0.095);
-      // The title's own tightness is em-relative too: -0.9 at 28 is -0.032em,
-      // the same as the -0.7 at 22 it replaced.
-      const titleEm =
-        Math.abs(onboardingType.title.letterSpacing) / onboardingType.title.fontSize;
-      expect(titleEm).toBeGreaterThan(0.025);
-      expect(titleEm).toBeLessThan(0.04);
+      expect(onboardingType.title.letterSpacing).toBe(0);
     });
 
-    it('reaches semibold by naming the semibold family, not via fontWeight', () => {
-      // Inter Tight is two static instances. fontWeight cannot synthesise 600,
-      // so a semibold token must name the InterTightSemiBold family outright.
-      expect(fonts.tight).toBe('InterTight');
-      expect(fonts.tightSemiBold).toBe('InterTightSemiBold');
-      expect(onboardingType.title.fontFamily).toBe(fonts.tightSemiBold);
-      expect(onboardingType.sectionHeader.fontFamily).toBe(fonts.tightSemiBold);
-      expect(onboardingType.body.fontFamily).toBe(fonts.tight);
-      expect(onboardingType.helper.fontFamily).toBe(fonts.tight);
-      expect(onboardingType.caption.fontFamily).toBe(fonts.tight);
-      expect(onboardingType.title.fontFamily).not.toBe(fonts.tight);
-      // Stated as a rule over the whole ramp, so a level added later cannot
-      // reach for `fontWeight` and silently render regular.
-      for (const level of Object.keys(onboardingType) as (keyof typeof onboardingType)[]) {
-        const style = onboardingType[level];
-        if (style.fontWeight === '600') {
-          expect(style.fontFamily).toBe(fonts.tightSemiBold);
-        } else {
-          expect(style.fontFamily).toBe(fonts.tight);
-        }
-      }
+    it('uses display for titles and Hanken for onboarding UI/body text', () => {
+      expect(onboardingType.title.fontFamily).toBe(fonts.display);
+      expect(onboardingType.sectionHeader.fontFamily).toBe(fonts.ui);
+      expect(onboardingType.body.fontFamily).toBe(fonts.ui);
+      expect(onboardingType.helper.fontFamily).toBe(fonts.ui);
+      expect(onboardingType.caption.fontFamily).toBe(fonts.ui);
     });
 
     it('leaves the app-wide `type` scale untouched', () => {

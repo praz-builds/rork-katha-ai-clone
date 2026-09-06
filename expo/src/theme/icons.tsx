@@ -101,7 +101,7 @@ export const IconClose = icon("IconClose", "close-outline", 22);
 export const IconRemove = icon("IconRemove", "close", 14);
 
 /** Add: the plus on "add a moment" and "add a character" affordances. */
-export const IconAdd = icon("IconAdd", "add-outline", 18);
+export const IconAdd = icon("IconAdd", "add", 18);
 
 /**
  * Affirmative check: a selected option, a satisfied requirement, a success row.
@@ -134,3 +134,8 @@ export const IconChevronForward = icon(
   "chevron-forward-outline",
   16,
 );
+
+export const IconPencil = icon("IconPencil", "pencil-outline", 18);
+export const IconRefresh = icon("IconRefresh", "refresh-outline", 18);
+export const IconPalette = icon("IconPalette", "color-palette-outline", 18);
+export const IconTrash = icon("IconTrash", "trash-outline", 18);

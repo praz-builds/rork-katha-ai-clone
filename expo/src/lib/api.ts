@@ -33,6 +33,13 @@ export class GenerationRequestError extends Error {
   }
 }
 
+export class StoryShapeRequestError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = "StoryShapeRequestError";
+  }
+}
+
 export type StoryShape = {
   /** Primary first, then up to two editable secondary genre chips. */
   genres: Genre[];
@@ -51,6 +58,15 @@ export type StoryShape = {
   opening?: string;
 };
 
+export type StoryShapeBrief = {
+  characters?: CreateDraft["characters"];
+  moments?: string[];
+  writingStyle?: string;
+  avoid?: string;
+  chapterLength?: CreateDraft["chapterLength"];
+  plannedChapterCount?: CreateDraft["plannedChapterCount"];
+};
+
 /**
  * Free scaffolding for Screen 2. The server deliberately exposes no error
  * surface here: an unavailable convenience must never block story creation.
@@ -67,21 +83,49 @@ export async function inferStoryBrief(
    * The shelf the creator picked. Sent so inference shapes to their choice
    * instead of overruling it: a user who typed a haunted house and then chose
    * Romance wants a romance back.
-   */
+  */
   genre?: Genre,
+  brief?: StoryShapeBrief,
+  options: { throwOnError?: boolean } = {},
 ): Promise<StoryShape | null> {
-  if (!isSupabaseConfigured || !idea.trim()) return null;
+  const fail = (message: string, retryable: boolean) => {
+    if (options.throwOnError) {
+      throw new StoryShapeRequestError(message, retryable);
+    }
+    return null;
+  };
+
+  if (!isSupabaseConfigured || !idea.trim()) {
+    return fail("Story shaping is not configured.", false);
+  }
 
   try {
     await bootstrapUser();
   } catch {
-    return null;
+    return fail("Unable to set up your story account. Please try again.", true);
   }
 
   const { data, error } = await supabase.functions.invoke("shape-story", {
-    body: { idea, variant, genre },
+    body: {
+      idea,
+      variant,
+      genre,
+      characters: brief?.characters,
+      moments: brief?.moments,
+      writing_style: brief?.writingStyle,
+      avoid: brief?.avoid,
+      chapter_length: brief?.chapterLength,
+      planned_chapter_count: brief?.plannedChapterCount,
+    },
   });
-  if (error || !data?.shape || typeof data.shape !== "object") return null;
+  if (error) {
+    const message = error.message || "Story shaping failed.";
+    const retryable = !/(rate|limit|quota|429|too many)/i.test(message);
+    return fail(message, retryable);
+  }
+  if (!data?.shape || typeof data.shape !== "object") {
+    return fail("Story shaping returned an empty response.", false);
+  }
 
   const shape = data.shape as Record<string, unknown>;
   const genres = Array.isArray(shape.genres)
@@ -141,6 +185,24 @@ export async function inferStoryBrief(
       ? shape.opening.trim()
       : undefined,
   };
+}
+
+export async function inferOnboardingStoryBrief(
+  idea: string,
+  genre?: Genre,
+  brief?: StoryShapeBrief,
+): Promise<StoryShape> {
+  const shape = await inferStoryBrief(
+    idea,
+    "onboarding",
+    genre,
+    brief,
+    { throwOnError: true },
+  );
+  if (!shape) {
+    throw new StoryShapeRequestError("Story shaping returned an empty response.", false);
+  }
+  return shape;
 }
 
 // Retain the original name for callers that landed before the Create flow.

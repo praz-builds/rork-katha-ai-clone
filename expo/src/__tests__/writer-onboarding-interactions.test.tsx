@@ -5,9 +5,17 @@ const mockInferStoryBrief = jest.fn();
 const mockSendEmailCode = jest.fn();
 const mockVerifyEmailCode = jest.fn();
 const mockEnableNotifications = jest.fn();
+class MockStoryShapeRequestError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = "StoryShapeRequestError";
+  }
+}
 
 jest.mock("@/lib/api", () => ({
   inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
+  inferOnboardingStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
+  StoryShapeRequestError: MockStoryShapeRequestError,
 }));
 
 jest.mock("@/lib/session", () => ({
@@ -50,9 +58,7 @@ jest.mock("@/components/create/CraftingLoader", () => {
 });
 
 /* eslint-disable import/first */
-import WriterOnboarding, {
-  CRAFTING_MIN_MS,
-} from "@/screens/WriterOnboarding";
+import WriterOnboarding from "@/screens/WriterOnboarding";
 import { PlanSection, WritingStyleChips } from "@/components/create/PlanSection";
 /* eslint-enable import/first */
 
@@ -88,10 +94,6 @@ beforeEach(() => {
 
 type View = Awaited<ReturnType<typeof render>>;
 
-// The crafting step holds the loader for CRAFTING_MIN_MS before it reveals the
-// blueprint, so every path through this flow now crosses a timer. The timers
-// have to be fake from the moment a screen mounts: switching after the fact
-// leaves a real one running that no amount of `advanceTimersByTime` can reach.
 beforeEach(() => {
   jest.useFakeTimers();
 });
@@ -99,19 +101,8 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-/**
- * Walk past the crafting floor.
- *
- * The mocked request has already resolved by the time this runs, so the only
- * thing left in flight is the hold. Advancing when nothing is pending - a Back
- * press that returns to an already-built blueprint, or a call that failed and
- * skipped the hold - is a no-op, which is why every arrival at the blueprint
- * can go through it.
- */
 async function settleCraftingHold() {
-  await act(async () => {
-    jest.advanceTimersByTime(CRAFTING_MIN_MS);
-  });
+  await act(async () => {});
 }
 
 async function renderFlow(onDone = jest.fn()) {
@@ -360,60 +351,35 @@ describe("writer onboarding crafting step", () => {
     );
   }
 
-  it("starts the request when the user leaves the idea step, not when they reach the wait", async () => {
+  it("starts the request after auth with the full details brief", async () => {
     const { view } = await renderFlow();
-    // Nothing has been asked for while the sentence is still being typed: the
-    // trigger is the step, not the keystroke.
     await fireEvent.changeText(
       view.getByLabelText("Your idea"),
-      "A woman inherits a boarded-up house and finds letters that arrive early.",
+      "Nikita inherits a boarded-up house and finds letters that arrive early.",
     );
+    await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
+    await fireEvent.changeText(view.getByLabelText("Character 1 name"), "Nikita");
     expect(mockInferStoryBrief).not.toHaveBeenCalled();
 
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
     await view.findByText("Shape the Story");
-
-    // On the details screen, with the details screen not submitted and the
-    // email screen not seen. The request has the whole of both to run in.
-    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
-    expect(mockInferStoryBrief).toHaveBeenCalledWith(
-      "A woman inherits a boarded-up house and finds letters that arrive early.",
-      "onboarding",
-      "mystery",
-    );
-  });
-
-  it("still holds the full floor on a warm request, and does not repeat it", async () => {
-    const { view } = await renderFlow();
-    await reachDetails(view);
-    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
-
-    // Half a minute of the user filling in details and typing a code, which
-    // is the time the warming exists to spend. The request resolved somewhere
-    // inside it.
-    await act(async () => {
-      jest.advanceTimersByTime(30_000);
-    });
+    await fireEvent.changeText(view.getByLabelText("Add a moment"), "She finds a sealed room");
+    await fireEvent.press(view.getByRole("button", { name: "Add moment" }));
+    expect(mockInferStoryBrief).not.toHaveBeenCalled();
 
     await authTo(view);
-    await view.findByText("Crafting");
-
-    // The floor runs from the arrival at the wait, not from the fire. Timed
-    // from the fire it would have been spent twenty-five seconds ago and the
-    // loader would be a single frame, which is the bug this asserts against.
-    await act(async () => {
-      jest.advanceTimersByTime(CRAFTING_MIN_MS - 1);
-    });
-    expect(view.getByText("Crafting")).toBeTruthy();
-    expect(view.queryByText(SHAPE.title)).toBeNull();
-
-    await act(async () => {
-      jest.advanceTimersByTime(1);
-    });
     await view.findByText(SHAPE.title);
-
-    // Warm means reused, not re-fired.
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+    expect(mockInferStoryBrief).toHaveBeenCalledWith(
+      "Nikita inherits a boarded-up house and finds letters that arrive early.",
+      "mystery",
+      expect.objectContaining({
+        characters: [expect.objectContaining({ name: "Nikita", isHero: true })],
+        moments: ["She finds a sealed room"],
+        plannedChapterCount: 3,
+        chapterLength: "standard",
+      }),
+    );
   });
 
   it("never builds the story from an idea the user has since replaced", async () => {
@@ -425,7 +391,7 @@ describe("writer onboarding crafting step", () => {
 
     const { view } = await renderFlow();
     await reachDetails(view, "A city beneath a broken moon, where the tide keeps the time.");
-    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+    expect(mockInferStoryBrief).not.toHaveBeenCalled();
 
     // Back to the idea, and a different story entirely. The warm request is
     // now an answer to a question nobody is asking.
@@ -446,25 +412,22 @@ describe("writer onboarding crafting step", () => {
       "Shaped from: A lighthouse keeper starts receiving letters addressed to the ship that sank.",
     );
     expect(view.queryByText(/broken moon/)).toBeNull();
-    // A changed idea is a second call, and this is the only user behaviour
-    // that buys one. See `startShaping` on the budget.
-    expect(mockInferStoryBrief).toHaveBeenCalledTimes(2);
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
     expect(mockInferStoryBrief).toHaveBeenLastCalledWith(
       "A lighthouse keeper starts receiving letters addressed to the ship that sank.",
-      "onboarding",
       "mystery",
+      expect.any(Object),
     );
   });
 
-  it("re-uses the warm request when the user goes back and changes nothing", async () => {
+  it("re-uses the same completed request when the user retries an unchanged brief", async () => {
     const { view } = await renderFlow();
     await reachDetails(view);
     await fireEvent.press(view.getByRole("button", { name: "Back" }));
     await view.findByText("What's your story about?");
-    // Same sentence, same shelf, so there is nothing new to ask.
     await fireEvent.press(view.getByRole("button", { name: "Continue" }));
     await view.findByText("Shape the Story");
-    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+    expect(mockInferStoryBrief).not.toHaveBeenCalled();
 
     await authTo(view);
     await settleCraftingHold();
@@ -472,7 +435,7 @@ describe("writer onboarding crafting step", () => {
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
   });
 
-  it("does not warn on a warm request that rejects, and still shows the fallback", async () => {
+  it("does not warn when a request rejects and shows retry", async () => {
     const warn = jest.spyOn(console, "error").mockImplementation(() => {});
     const unhandled = jest.fn();
     // React Native's ambient `process` is typed down to `env` alone, so the
@@ -487,23 +450,9 @@ describe("writer onboarding crafting step", () => {
 
     const { view } = await renderFlow();
     await reachDetails(view);
-
-    // The rejection lands here, three screens away from anything that awaits
-    // it. Without a handler attached at the fire this is an unhandled
-    // rejection: a warning in development and a crash in a release build.
-    await act(async () => {
-      jest.advanceTimersByTime(30_000);
-    });
-    expect(unhandled).not.toHaveBeenCalled();
-    expect(warn).not.toHaveBeenCalled();
-
     await authTo(view);
-    // No advance: a failed call has nothing for the stages to describe, so it
-    // skips the floor exactly as it did before it was warmed.
-    // The fallback title is the first four words of the user's own sentence,
-    // and it is the whole of the failure path's visible difference.
-    await view.findByText("A woman inherits a");
-    expect(view.queryByText(/could not|failed|error|try again/i)).toBeNull();
+    await view.findByText("Preview needs one more try");
+    expect(view.getByRole("button", { name: "Try again" })).toBeTruthy();
 
     expect(unhandled).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();

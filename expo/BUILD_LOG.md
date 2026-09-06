@@ -593,3 +593,56 @@
   NOT applied, so a configured client currently shows "Comments could not load"
   and its retry. That is the honest state, not a bug - but comments will not
   work until both are shipped.
+## 2026-09-07: Writer onboarding design-system cleanup and backend-status shaping
+
+### Changed
+
+- Reworked `WriterOnboarding` so onboarding shaping starts after the full writer brief is known, not from the idea screen. The request now carries typed characters, moments, writing style, avoid text, chapter length, and planned chapter count.
+- Removed the fixed client crafting floor. The loader now stays up for the actual shape request and failed shaping lands on a retry screen that preserves the idea and details.
+- Standardized writer onboarding top bars, primary CTAs, form fields, OTP cells, filter chips, and small plus CTAs on shared theme tokens.
+- Tightened the preview: chapter plan renders as a teaser with single-line rows, the opening is shorter, and the ownership/benefit rows use named onboarding icons.
+- Aligned the legacy onboarding/sign-in OTP and field/button recipes with the same visual geometry.
+- Updated theme tests and writer onboarding interaction tests for the new backend-status flow and Hanken-based onboarding body typography.
+
+### Verification
+
+- `pnpm typecheck` clean with Node from the bundled Codex runtime in PATH.
+- `pnpm test -- --runTestsByPath src/__tests__/theme.test.ts src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx src/__tests__/api-generation-contract.test.ts`: 4 suites, 144 tests passing. The Expo notifications SDK warning still appears from the existing test import.
+- `pnpm exec expo-doctor`: 18/18 checks passing when run with `/Users/mac16/.nvm/versions/node/v22.23.0/bin` in PATH. The bundled Codex Node runtime lacks `npm`, which makes Expo Doctor's npm-spawning checks fail.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-check` compiled the web bundle.
+- Not pushed to GitHub per product-review instruction.
+
+## 2026-09-07: Onboarding writer branch and filter-chip overlay polish
+
+### Changed
+
+- Reordered shared onboarding to ask name first, then genre interests, then the
+  Reading/Writing/Both purpose question.
+- Added the broader genre-interest picker with emoji chips and a stable mapping
+  from the first selected create-compatible genre into the writer story flow's
+  initial genre chip.
+- Routed Writing users through the two writer setup screens before story
+  creation: `What do you want to write?` and `What usually stops you?`.
+- Changed writer chapter length/count filter menus to absolute overlays so
+  opening a menu no longer stretches the section or moves nearby content.
+- Updated the onboarding and design-system docs for the new branch contract and
+  filter-chip behavior.
+- Resolved CodeAnt PR feedback by preserving writer setup context past the
+  shared onboarding branch, labelling the actual OTP text input, surfacing
+  retryability from shape-story failures, and evicting failed warm shape
+  requests so Retry performs a real new request.
+
+### Verification
+
+- `pnpm test -- --runTestsByPath src/__tests__/katha-onboarding-flow.test.jsx src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: 3 suites, 79 tests passing. The existing React Native `SafeAreaView` deprecation warning still appears in the new onboarding test.
+- `pnpm typecheck` clean.
+- `pnpm lint` exits with 0 errors and the existing warning set.
+- `pnpm exec jest --runInBand`: 27 suites, 270 tests passing.
+- `pnpm exec expo-doctor`: 18/18 checks passing with local Node 22 in PATH.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-check` compiled the web bundle.
+- `deno test --allow-env --allow-net supabase/functions/_shared/story-shape.test.ts`: 17 tests passing.
+- `deno check supabase/functions/shape-story/index.ts` clean.
+- Mandatory security scan completed before push: no new hardcoded secrets,
+  injection sinks, auth regressions, or PII logging were found in the changed
+  surfaces. `pnpm audit` reports 2 high vulnerabilities, both ignored by the
+  existing patched advisory policy.

@@ -92,11 +92,11 @@ unchanged.
 
 | Token | Size / line height | Family | Tracking | Use for |
 |---|---|---|---|---|
-| `onboardingType.title` | 28 / 34 | `fonts.tightSemiBold` | -0.9 | The one screen title. Sentence case. |
-| `onboardingType.sectionHeader` | 12 / 16 | `fonts.tightSemiBold` | +1 | The uppercase eyebrow above a group. A treatment, not a level. |
-| `onboardingType.body` | 16 / 21 | `fonts.tight` | +0.2 | Content: what the user types, what the story says, option-card text. |
-| `onboardingType.helper` | 14.5 / 18 | `fonts.tight` | +0.3 | Secondary copy: the line under a title or an eyebrow. |
-| `onboardingType.caption` | 12 / 16 | `fonts.tight` | 0 | Asides: legal lines, counters, the "(optional)" marker. |
+| `onboardingType.title` | 28 / 34 | `fonts.display` | 0 | The one screen title. Sentence case. |
+| `onboardingType.sectionHeader` | 12 / 16 | `fonts.ui` | +1 | The uppercase eyebrow above a group. A treatment, not a level. |
+| `onboardingType.body` | 16 / 21 | `fonts.ui` | 0 | Content: what the user types, option-card text, body UI copy. |
+| `onboardingType.helper` | 14.5 / 18 | `fonts.ui` | 0 | Secondary copy: the line under a title or an eyebrow. |
+| `onboardingType.caption` | 12 / 16 | `fonts.ui` | 0 | Asides: legal lines, counters, the "(optional)" marker. |
 
 Rules:
 
@@ -362,7 +362,10 @@ a grey smudge instead of as depth.
 | Token | Value | Use for |
 |---|---|---|
 | `shadows.card` | `0 1px 1px rgba(15,14,12,.06), 0 2px 6px rgba(15,14,12,.04)` | Flat surfaces that sit on the page: rows, list cards. |
-| `shadows.raised` | `0 1px 2px rgba(15,14,12,.08), 0 6px 16px rgba(15,14,12,.08)` | Lifted surfaces: option cards, selected states, primary CTA. |
+| `shadows.raised` | `0 1px 2px rgba(15,14,12,.08), 0 6px 16px rgba(15,14,12,.08)` | Lifted surfaces: option cards and selected states. |
+| `shadows.primaryCta` | `0 1px 2px rgba(255,107,26,.24), 0 12px 26px rgba(255,107,26,.22)` | Full-width primary text CTA. |
+| `shadows.formField` | `0 1px 1px rgba(15,14,12,.05), 0 5px 14px rgba(15,14,12,.06)` | Text fields, prompt boxes, OTP cells. |
+| `shadows.iconCta` | `0 1px 1px rgba(15,14,12,.05), 0 5px 14px rgba(255,107,26,.10)` | Small accent icon CTA, such as the moment add button. |
 | `shadows.overlay` | `0 2px 4px rgba(15,14,12,.10), 0 12px 32px rgba(15,14,12,.16)` | Floats over content: sheets, popovers, toasts, modals. |
 | `shadows.iconButton` | 4 layers, 2 of them `inset` | The circular icon button. See section 6. |
 | `shadows.iconButtonPressed` | 3 layers, 2 of them `inset` | Its pressed state. |
@@ -381,7 +384,8 @@ maps onto the existing scale and no near-duplicate values were added:
 | Lifted, carries `raised` or `overlay` (the 18 end) | 18 | `radius.lg` |
 | Panels and sheets | 24 | `radius.xl` |
 | Sub-component detail | 8 | `radius.sm` |
-| Chips and the full-width CTA | 999 | `radius.pill` |
+| Chips | 999 | `radius.pill` |
+| Full-width primary text CTA | 20 | `controls.primaryCtaRadius` |
 
 The rule: deeper shadow, larger radius.
 
@@ -403,9 +407,32 @@ existing five-value scale is a rule an engineer can apply without looking it up.
 ## 6. The circular icon button
 
 This rule is about **icon buttons** only: the 38 to 46px circular single-glyph
-controls such as Back and Close. The full-width primary CTA is not one of these.
-It stays a pill at `spacing.huge + spacing.sm` with `radius.lg` and a flat
-`colors.accent` fill, per `ONBOARDING_FLOW.md` section 1.
+controls such as Back and Close. The full-width primary text CTA is not one of
+these.
+
+### Text CTAs, Fields, And OTP
+
+| Token | Value | Use for |
+|---|---:|---|
+| `controls.primaryCtaHeight` | 64 | Full-width primary text CTAs. |
+| `controls.primaryCtaRadius` | 20 | Full-width primary text CTAs. |
+| `controls.formFieldMinHeight` | 58 | Single-line form fields. |
+| `controls.formFieldRadius` | 18 | Form fields and prompt boxes. |
+| `controls.otpCellHeight` | 58 | Individual OTP cells. |
+| `controls.otpCellRadius` | 14 | Individual OTP cells. |
+
+Recipes:
+
+- Primary text CTA: `height: controls.primaryCtaHeight`,
+  `borderRadius: controls.primaryCtaRadius`, `backgroundColor: colors.accent`,
+  `boxShadow: shadows.primaryCta`, Hanken 700 label.
+- Text field: `minHeight: controls.formFieldMinHeight`,
+  `borderRadius: controls.formFieldRadius`, `backgroundColor: colors.surface`,
+  `boxShadow: shadows.formField`, Hanken body text.
+- OTP: six equal cells using the OTP tokens over one invisible numeric
+  `TextInput`. Never use one large visible code field.
+- Small accent icon CTA: accent-soft surface, `shadows.iconCta`, named icon
+  component. Use the heavier `IconAdd` glyph for plus-only add controls.
 
 | Token | Value | Use for |
 |---|---|---|
@@ -435,6 +462,26 @@ drop shadow.
 
 ---
 
+## 6A. Filter Chips
+
+Use filter chips for compact option sets where the current value is visible and
+the other values are secondary: genre, chapter length, and chapter count.
+
+Recipe:
+
+- Closed chip: `controls.formFieldMinHeight` hit target, `radius.pill`,
+  `colors.accentSoft`, `shadows.card`, Hanken semibold text in `colors.accent`.
+- The selected value is bold enough to scan. Use the down chevron from
+  `IconChevronDown` at 14.
+- Open menu: `colors.surface`, `radius.lg`, `shadows.overlay`, one row per
+  option, selected row in `colors.accentSoft` with `IconCheck`.
+- Menus are overlays anchored to the chip. They must not participate in normal
+  layout and must not push helper text, CTAs, or adjacent filter groups down.
+- Two filter chips in the same row close each other; only one menu is open at a
+  time.
+
+---
+
 ## 7. Iconography
 
 **Icons are Ionicons outline, from `@expo/vector-icons`.**
@@ -457,11 +504,15 @@ says so at its definition in `icons.tsx`:
 | `IconBack` | `chevron-back-outline` | A chevron, not `arrow-back-outline`. Apple's back affordance is a chevron; the arrow reads as undo beside a title. |
 | `IconClose` | `close-outline` | Default. |
 | `IconRemove` | `close` | **Not outline.** At 14pt in a chip, `close-outline` is a hairline that disappears against a tint, and it is a destructive control. |
-| `IconAdd` | `add-outline` | Default. |
+| `IconAdd` | `add` | **Not outline.** Plus-only CTAs need the heavier line to read as an intentional control at small size. |
 | `IconCheck` | `checkmark` | **Not outline.** Ionicons draws both as the same open path; only `checkmark` carries enough stroke to register as a state at 16pt. |
 | `IconCheckCircle` | `checkmark-circle-outline` | Default. |
 | `IconChevronDown` | `chevron-down-outline` | Default. |
 | `IconChevronForward` | `chevron-forward-outline` | Default. |
+| `IconPencil` | `pencil-outline` | Editing/rewriting benefit rows. |
+| `IconRefresh` | `refresh-outline` | Retry, redraw, refund, or regeneration benefit rows. |
+| `IconPalette` | `color-palette-outline` | Cover/art benefit rows. |
+| `IconTrash` | `trash-outline` | Delete/private/publish ownership benefit rows. |
 
 **Optical sizing.** Ionicons and lucide do not agree on what a 16pt icon is.
 Lucide draws on a 24-unit box with a 2-unit margin, so the mark fills about 83%

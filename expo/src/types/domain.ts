@@ -235,11 +235,23 @@ export type CreateDraft = {
   illustrateChapters?: boolean;
 };
 
+export type WriterEntryContext = {
+  name?: string;
+  genreInterests?: string[];
+  otherGenre?: string;
+  format?: string;
+  blocker?: string;
+};
+
 export type Screen =
   | { name: "tabs" }
   | { name: "intro" }
   | { name: "onboarding" }
-  | { name: "writer-onboarding" }
+  | {
+    name: "writer-onboarding";
+    initialGenre?: Genre;
+    entryContext?: WriterEntryContext;
+  }
   /**
    * The story landing page. Series only - see `openStory` in App.tsx for why a
    * standalone skips it.

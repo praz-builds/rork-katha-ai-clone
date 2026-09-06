@@ -2,8 +2,8 @@
  * KathaOnboardingComplete.jsx  —  Expo / React Native
  * The ENTIRE onboarding, one entrypoint:
  *   Animated intro (Create → Publish → Read + Sign In)
- *     → Purpose → Name → Genres → Persona questions → Building →
- *       Notifications → Paywall → Email/OTP → Success
+ *     → Name → Genres → Purpose → Persona questions → Building or writer path
+ *     → Notifications → Paywall → Email/OTP → Success
  *
  * Composer over KathaOnboarding.jsx (intro) + KathaOnboardingFlowV2.jsx (flow).
  * See DESIGN.md for the approved flow and visual specification.

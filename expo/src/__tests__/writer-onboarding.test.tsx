@@ -12,9 +12,17 @@ const mockInferStoryBrief = jest.fn();
 const mockSendEmailCode = jest.fn();
 const mockVerifyEmailCode = jest.fn();
 const mockEnableNotifications = jest.fn();
+class MockStoryShapeRequestError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = "StoryShapeRequestError";
+  }
+}
 
 jest.mock("@/lib/api", () => ({
   inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
+  inferOnboardingStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
+  StoryShapeRequestError: MockStoryShapeRequestError,
 }));
 
 jest.mock("@/lib/session", () => ({
@@ -58,7 +66,6 @@ jest.mock("@/components/create/CraftingLoader", () => {
 
 /* eslint-disable import/first */
 import WriterOnboarding, {
-  CRAFTING_MIN_MS,
   STARTER_CARD_GAP,
   STARTER_CARD_WIDTH,
   STARTER_RAIL_PEEK,
@@ -92,15 +99,6 @@ const SHAPE = {
   opening: "The clocks began counting backward.\n\nElena stood in the hall.",
 };
 
-/**
- * What the preview screen titles itself with when the shape call fails.
- *
- * `fallbackTitle` takes the first four words of the seed. It is the whole of
- * the failure path's user-visible difference: no apology, no retry, just the
- * user's own sentence handed back as a working title.
- */
-const FALLBACK_TITLE = "A woman inherits a";
-
 beforeEach(() => {
   jest.clearAllMocks();
   mockInferStoryBrief.mockResolvedValue(SHAPE);
@@ -111,10 +109,6 @@ beforeEach(() => {
 
 type View = Awaited<ReturnType<typeof render>>;
 
-// The crafting step holds the loader for CRAFTING_MIN_MS before it reveals the
-// blueprint, so every path through this flow now crosses a timer. The timers
-// have to be fake from the moment a screen mounts: switching after the fact
-// leaves a real one running that no amount of `advanceTimersByTime` can reach.
 beforeEach(() => {
   jest.useFakeTimers();
 });
@@ -122,19 +116,8 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-/**
- * Walk past the crafting floor.
- *
- * The mocked request has already resolved by the time this runs, so the only
- * thing left in flight is the hold. Advancing when nothing is pending - a Back
- * press that returns to an already-built blueprint, or a call that failed and
- * skipped the hold - is a no-op, which is why every arrival at the blueprint
- * can go through it.
- */
 async function settleCraftingHold() {
-  await act(async () => {
-    jest.advanceTimersByTime(CRAFTING_MIN_MS);
-  });
+  await act(async () => {});
 }
 
 async function renderFlow(onDone = jest.fn()) {
@@ -369,8 +352,11 @@ describe("writer onboarding", () => {
     // rather than overruling it from the sentence.
     expect(mockInferStoryBrief).toHaveBeenCalledWith(
       "A woman inherits a boarded-up house and finds letters that arrive early.",
-      "onboarding",
       "mystery",
+      expect.objectContaining({
+        chapterLength: "standard",
+        plannedChapterCount: 3,
+      }),
     );
   });
 
@@ -583,16 +569,21 @@ describe("writer onboarding", () => {
 
 
 
-  it("survives a shape call that fails, with no error screen", async () => {
+  it("shows retry when the shape call fails", async () => {
     mockInferStoryBrief.mockRejectedValue(new Error("provider down"));
     const { view } = await renderFlow();
-    await reachPreviewWithTitle(view, FALLBACK_TITLE);
-    // A fallback title, no plan, and no apology. The user asked for none of
-    // this and can act on none of it.
-    expect(view.getByText(FALLBACK_TITLE)).toBeTruthy();
-    expect(view.queryByText(/could not|failed|error|try again/i)).toBeNull();
-    // And the screen still works: the entitlements and the ask are unchanged.
-    expect(view.getByRole("button", { name: "Continue" })).toBeTruthy();
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "A woman inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Create my story" }));
+    await fireEvent.changeText(view.getByLabelText("Email address"), "w@example.com");
+    await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+    await fireEvent.changeText(await view.findByLabelText("Verification code"), "123456");
+    await fireEvent.press(view.getByRole("button", { name: "Verify and continue" }));
+    await view.findByText("Preview needs one more try");
+    expect(view.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
   it("clamps the plan when the planned length shrinks", async () => {
@@ -778,16 +769,10 @@ describe("the email screen", () => {
 });
 
 
-/* ── The crafting floor ───────────────────────────────────────────────── */
+/* ── Backend-coordinated crafting ─────────────────────────────────────── */
 
-describe("the crafting floor", () => {
-  /**
-   * Idea, details and auth, stopping on the wait rather than walking past it.
-   *
-   * `stopOnWait` is false only for the failed-call test, where there is no wait
-   * to stop on: that is the whole point of it.
-   */
-  async function reachCrafting(view: View, stopOnWait = true) {
+describe("backend-coordinated crafting", () => {
+  async function reachCrafting(view: View) {
     await fireEvent.changeText(
       view.getByLabelText("Your idea"),
       "A woman inherits a boarded-up house and finds letters that arrive early.",
@@ -808,35 +793,16 @@ describe("the crafting floor", () => {
     await fireEvent.press(
       view.getByRole("button", { name: "Verify and continue" }),
     );
-    if (stopOnWait) await view.findByText("Crafting");
-    // The request resolves in a microtask, and the hold is only scheduled once
-    // it has. Flush before touching the clock, or the advance below runs
-    // against a timer that does not exist yet.
-    await act(async () => {});
   }
 
-  it("keeps the wait on screen for the whole floor, then reveals", async () => {
+  it("reveals when the backend shape request resolves", async () => {
     const { view } = await renderFlow();
     await reachCrafting(view);
-
-    // The mocked call returns instantly, so without the floor the loader would
-    // already be gone. A stage the user cannot finish reading is not a stage.
-    await act(async () => {
-      jest.advanceTimersByTime(CRAFTING_MIN_MS - 1);
-    });
-    expect(view.queryByText(SHAPE.title)).toBeNull();
-    expect(view.getByText("Crafting")).toBeTruthy();
-
-    await act(async () => {
-      jest.advanceTimersByTime(1);
-    });
     await view.findByText(SHAPE.title);
-
-    // The floor is a wait, not a retry. Holding must not have cost a request.
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
   });
 
-  it("is a floor and not a cap, so a slow call keeps the wait up", async () => {
+  it("keeps the wait up while the backend request is still in flight", async () => {
     let resolve: (value: unknown) => void = () => {};
     mockInferStoryBrief.mockReturnValue(
       new Promise((r) => {
@@ -845,13 +811,13 @@ describe("the crafting floor", () => {
     );
     const { view } = await renderFlow();
     await reachCrafting(view);
+    await view.findByText("Crafting");
 
-    // Well past the floor, with the call still out. Nothing here may reveal a
-    // blueprint that does not exist yet.
     await act(async () => {
-      jest.advanceTimersByTime(CRAFTING_MIN_MS * 3);
+      jest.advanceTimersByTime(30_000);
     });
     expect(view.queryByText(SHAPE.title)).toBeNull();
+    expect(view.getByText("Crafting")).toBeTruthy();
 
     await act(async () => {
       resolve(SHAPE);
@@ -859,57 +825,92 @@ describe("the crafting floor", () => {
     await view.findByText(SHAPE.title);
   });
 
-  it("is one full pass of the loader, so every stage is read", async () => {
-    // Not a round number somebody liked. `CraftingLoader` runs four stages at
-    // `AUTO_CYCLE_MS` (1250ms), so 5000 is exactly one complete pass: the
-    // fourth stage finishes its turn on the same tick the blueprint arrives.
-    // The old 6000 was half a pass at the old 3s cadence, which left two
-    // stages unread; a floor the user cannot finish reading buys nothing.
-    expect(CRAFTING_MIN_MS).toBe(5000);
-
+  it("sends the full details brief to the shape call", async () => {
     const { view } = await renderFlow();
-    await reachCrafting(view);
-
-    // One millisecond short of the pass. The last stage is still on screen.
-    await act(async () => {
-      jest.advanceTimersByTime(4999);
-    });
-    expect(view.queryByText(SHAPE.title)).toBeNull();
-    expect(view.getByText("Crafting")).toBeTruthy();
-
-    // And on the tick the pass completes, not a frame later.
-    await act(async () => {
-      jest.advanceTimersByTime(1);
-    });
+    await fireEvent.changeText(
+      view.getByLabelText("Your idea"),
+      "Nikita inherits a boarded-up house and finds letters that arrive early.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
+    await fireEvent.changeText(view.getByLabelText("Character 1 name"), "Nikita");
+    await fireEvent.changeText(
+      view.getByLabelText("Character 1 background"),
+      "A careful architect who distrusts old family stories.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Continue" }));
+    await view.findByText("Shape the Story");
+    await fireEvent.changeText(view.getByLabelText("Add a moment"), "She opens the sealed nursery");
+    await fireEvent.press(view.getByRole("button", { name: "Add moment" }));
+    await fireEvent.changeText(view.getByLabelText("Writing style"), "quiet gothic");
+    await fireEvent.changeText(view.getByLabelText("Other instructions"), "avoid gore");
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
+    await fireEvent.changeText(await view.findByLabelText("Email address"), "w@example.com");
+    await fireEvent.press(view.getByRole("button", { name: "Save & continue" }));
+    await fireEvent.changeText(await view.findByLabelText("Verification code"), "123456");
+    await fireEvent.press(view.getByRole("button", { name: "Verify and continue" }));
     await view.findByText(SHAPE.title);
-    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+
+    expect(mockInferStoryBrief).toHaveBeenCalledWith(
+      expect.stringContaining("Nikita inherits"),
+      "mystery",
+      expect.objectContaining({
+        characters: [
+          expect.objectContaining({ name: "Nikita", isHero: true }),
+        ],
+        moments: ["She opens the sealed nursery"],
+        writingStyle: "quiet gothic",
+        avoid: "avoid gore",
+        chapterLength: "standard",
+        plannedChapterCount: 3,
+      }),
+    );
   });
 
-  it("does not make a failed call sit through the floor", async () => {
+  it("shows a retry screen when shaping fails", async () => {
     mockInferStoryBrief.mockRejectedValue(new Error("provider down"));
     const { view } = await renderFlow();
-    await reachCrafting(view, false);
+    await reachCrafting(view);
 
-    // No advance. The stages describe work on a request that is already over,
-    // and there is nothing at the end of the wait but the user's own sentence
-    // back, so the fallback is shown at once rather than after six seconds of
-    // pretending. `waitFor` advances by at most its own 1s timeout, which is
-    // well under the floor, so this cannot pass by accident.
-    await view.findByText(FALLBACK_TITLE);
+    await view.findByText("Preview needs one more try");
+    expect(view.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
-  it("abandons the reveal when the screen goes away during the hold", async () => {
-    const warn = jest.spyOn(console, "error").mockImplementation(() => {});
+  it("starts a fresh shape request after a failed retryable request", async () => {
+    mockInferStoryBrief
+      .mockRejectedValueOnce(new Error("provider down"))
+      .mockResolvedValueOnce(SHAPE);
     const { view } = await renderFlow();
     await reachCrafting(view);
 
-    // The hold is a window several seconds wide, and a user can leave inside
-    // it. Liveness is checked again on the far side of the delay, not only
-    // before it, so nothing is written or navigated from a dead screen.
+    await view.findByText("Preview needs one more try");
+    await fireEvent.press(view.getByRole("button", { name: "Try again" }));
+
+    await view.findByText(SHAPE.title);
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not present retry as useful after a non-retryable shape failure", async () => {
+    mockInferStoryBrief.mockRejectedValue(
+      new MockStoryShapeRequestError("Daily limit reached.", false),
+    );
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+
+    await view.findByText("Daily limit reached.");
+    expect(view.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(view.getByRole("button", { name: "Back to details" })).toBeTruthy();
+  });
+
+  it("abandons the reveal when the screen goes away during the request", async () => {
+    const warn = jest.spyOn(console, "error").mockImplementation(() => {});
+    mockInferStoryBrief.mockReturnValue(
+      new Promise(() => {}),
+    );
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+    await view.findByText("Crafting");
     await view.unmount();
-    await act(async () => {
-      jest.advanceTimersByTime(CRAFTING_MIN_MS * 2);
-    });
+    await act(async () => {});
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -1160,7 +1161,6 @@ describe("the details screen's hierarchy", () => {
       ).props.style,
     );
     expect(head.fontSize).toBeLessThan(helper.fontSize);
-    expect(head.fontFamily).not.toBe(helper.fontFamily);
     expect(head.letterSpacing).toBeGreaterThan(helper.letterSpacing!);
     expect(head.color).not.toBe(helper.color);
   });
@@ -1177,7 +1177,7 @@ describe("the details screen's hierarchy", () => {
       // 12pt there is no room below to take a fifth size.
       expect(style.fontSize).toBe(onboardingType.caption.fontSize);
       expect(style.fontFamily).toBe(onboardingType.caption.fontFamily);
-      expect(style.fontFamily).not.toBe(onboardingType.sectionHeader.fontFamily);
+      expect(style.fontWeight).not.toBe(onboardingType.sectionHeader.fontWeight);
     }
   });
 

@@ -44,8 +44,7 @@ export const type = {
  * Onboarding type scale.
  *
  * SCOPE: the onboarding flow only. Every other surface keeps the `type` export
- * above until this is rolled out deliberately. See
- * `source-of-truth/DESIGN_SYSTEM.md` for the migration boundary.
+ * above until this is rolled out deliberately.
  *
  * ## The ramp: 28 / 16 / 14.5 / 12, plus one eyebrow that is not a ramp step
  *
@@ -87,12 +86,11 @@ export const type = {
  * the page - and is separated from it by family, case and tracking rather than
  * by a fifth size nobody could pick out of a lineup.
  *
- * SEMIBOLD IS A FAMILY, NOT A WEIGHT. Inter Tight is registered as two static
- * instances (`InterTight` = 400, `InterTightSemiBold` = 600). React Native
- * cannot synthesise 600 from the 400 file, so `fontWeight: '600'` on
- * `fonts.tight` silently renders regular on iOS. `title` and `sectionHeader`
- * therefore name `fonts.tightSemiBold` directly. `fontWeight` is carried only
- * as a hint for the web bundle.
+ * BODY IS THE PRODUCT UI FACE. The onboarding experiment briefly used Inter
+ * Tight for body and inputs while the rest of the app used Hanken Grotesk.
+ * That is what made the prompt card, free-text box, OTP, and app UI read as
+ * different products. Onboarding now uses Hanken for every body/input/metadata
+ * level and reserves Bricolage for the one screen title.
  *
  * TRACKING. Negative on the sentence-case heading, because large sentence-case
  * type has too much air between letters at its optical size (-0.9 at 28 is
@@ -113,9 +111,9 @@ export const onboardingType = {
   title: {
     fontSize: 28,
     lineHeight: 34,
-    fontFamily: fonts.tightSemiBold,
-    fontWeight: '600' as const,
-    letterSpacing: -0.9,
+    fontFamily: fonts.display,
+    fontWeight: '800' as const,
+    letterSpacing: 0,
   },
   /**
    * The uppercase eyebrow above a group. 12/16, semibold family, +1 (0.083em).
@@ -127,31 +125,31 @@ export const onboardingType = {
   sectionHeader: {
     fontSize: 12,
     lineHeight: 16,
-    fontFamily: fonts.tightSemiBold,
-    fontWeight: '600' as const,
+    fontFamily: fonts.ui,
+    fontWeight: '800' as const,
     letterSpacing: 1,
   },
   /** Content: what the user types, what the story says, option-card text. 16/21, regular family. */
   body: {
     fontSize: 16,
     lineHeight: 21,
-    fontFamily: fonts.tight,
+    fontFamily: fonts.ui,
     fontWeight: '400' as const,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
   },
   /** Secondary copy: the line under a title or an eyebrow. 14.5/18, regular family. Always smaller than `body`. */
   helper: {
     fontSize: 14.5,
     lineHeight: 18,
-    fontFamily: fonts.tight,
-    fontWeight: '400' as const,
-    letterSpacing: 0.3,
+    fontFamily: fonts.ui,
+    fontWeight: '500' as const,
+    letterSpacing: 0,
   },
   /** Asides: legal lines, counters, "(optional)" markers. 12/16, regular family. */
   caption: {
     fontSize: 12,
     lineHeight: 16,
-    fontFamily: fonts.tight,
+    fontFamily: fonts.ui,
     fontWeight: '400' as const,
     letterSpacing: 0,
   },
