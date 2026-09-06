@@ -33,11 +33,12 @@ import {
 } from "@/components/KathaPrimitives";
 import CreateBriefFlow from "@/components/create/CreateBriefFlow";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
+import StreamingProse from "@/components/create/StreamingProse";
 import {
-  continueStory,
+  continueStoryStreaming,
   createGenerationRequestId,
-  editParagraph,
-  generateStory,
+  editParagraphStreaming,
+  generateStoryStreaming,
   GenerationRequestError,
   publishStory,
 } from "@/lib/api";
@@ -73,6 +74,8 @@ type DraftCharacter = {
   background?: string;
   /** Face, build, clothing. Drives the portrait, and detail in the prose. */
   appearance?: string;
+  portraitUrl?: string;
+  portraitStatus?: "idle" | "generating" | "ready" | "failed";
 };
 
 type StudioDraft = {
@@ -266,6 +269,22 @@ export default function CreateStudioScreen({
   initialDraft,
 }: CreateStudioProps) {
   const [step, setStep] = useState<StudioStep>("setup");
+  // The prose arriving from the server, and what it is doing.
+  //
+  // Held as one string rather than a paragraph array because chunks arrive
+  // mid-word and mid-paragraph; splitting is a render concern, not a state one.
+  const [streamedProse, setStreamedProse] = useState("");
+  // The same text as `streamedProse`, readable synchronously.
+  //
+  // The error handler runs in a closure created before any chunk arrived, so it
+  // sees the initial state value and cannot tell "failed before the reader saw
+  // anything" from "failed halfway through their story" - which are two
+  // different screens. The ref is what it reads instead.
+  const streamedProseRef = useRef("");
+  const [streamStage, setStreamStage] = useState<string>("context");
+  // Set only when generation failed after prose had already been shown. The
+  // text stays on screen; erasing what somebody has read is the worse outcome.
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [draft, setDraft] = useState<StudioDraft>(() =>
     initialDraft ? { ...INITIAL_DRAFT, ...initialDraft } : INITIAL_DRAFT
   );
@@ -452,8 +471,19 @@ export default function CreateStudioScreen({
       illustrateChapters: draft.illustrateChapters,
     };
 
+    streamedProseRef.current = "";
+    setStreamedProse("");
+    setStreamStage("context");
+    setStreamError(null);
+
     try {
-      const generated = await generateStory(createDraft, requestId);
+      const generated = await generateStoryStreaming(createDraft, requestId, {
+        onStage: setStreamStage,
+        onDelta: (chunk) => {
+          streamedProseRef.current += chunk;
+          setStreamedProse(streamedProseRef.current);
+        },
+      });
       const firstChapter = generated.chapters[0];
       if (!firstChapter) {
         throw new Error("Story generation returned no chapter");
@@ -470,6 +500,8 @@ export default function CreateStudioScreen({
           isProcessing: false,
         })),
       );
+      streamedProseRef.current = "";
+      setStreamedProse("");
       setStep("editor");
     } catch (error) {
       if (
@@ -478,11 +510,19 @@ export default function CreateStudioScreen({
       ) {
         requestIdRef.current = null;
       }
-      setStep("setup");
-      Alert.alert(
-        "Could not create story",
-        error instanceof Error ? error.message : "Please try again.",
-      );
+      const message = error instanceof Error
+        ? error.message
+        : "Please try again.";
+      // A failure before any prose arrived is an ordinary error: back to setup
+      // with an alert. A failure after it is not, because the reader is looking
+      // at part of their story. Keep them on the text, say what happened
+      // underneath it, and let them decide - the credit is already refunded.
+      if (streamedProseRef.current.trim()) {
+        setStreamError(message);
+      } else {
+        setStep("setup");
+        Alert.alert("Could not create story", message);
+      }
     } finally {
       setBusy(false);
     }
@@ -534,11 +574,32 @@ export default function CreateStudioScreen({
         const chapter = story?.chapters[editChapterIndex];
         let result: string;
         if (story && chapter) {
-          result = await editParagraph(
+          // The rewrite replaces the paragraph as it is written, in place.
+          //
+          // This is the edit path's whole point: the writer is looking directly
+          // at the sentence being changed, so a spinner over it is the most
+          // conspicuous wait in the product. `partial` accumulates outside
+          // React for the same reason the chapter stream does - chunks arrive
+          // faster than a render.
+          let partial = "";
+          result = await editParagraphStreaming(
             story.id,
             chapter.id,
             index,
             instruction as "rewrite" | "expand" | "shorten" | "custom",
+            {
+              onDelta: (chunk) => {
+                partial += chunk;
+                // A chapter switch mid-edit must not paint one chapter's text
+                // onto another's paragraph.
+                if (editChapterIndex !== activeChapterIndex) return;
+                setParagraphs((prev) =>
+                  prev.map((p, i) =>
+                    i === index ? { ...p, text: partial } : p,
+                  ),
+                );
+              },
+            },
             { customNote: instruction === "custom" ? customNote : undefined },
           );
           if (!result) {
@@ -564,9 +625,19 @@ export default function CreateStudioScreen({
         showUndoToast(index, previousText);
       } catch {
         if (editChapterIndex !== activeChapterIndex) return;
+        // Put the original paragraph back.
+        //
+        // The streamed rewrite has been painting over this paragraph as it
+        // arrived, so a failure would otherwise leave the writer holding half a
+        // sentence where their finished one used to be. Nothing was saved -
+        // the server only persists a completed rewrite - so restoring the text
+        // it started from is both correct and what the writer expects. Editing
+        // is free, so the retry costs them nothing.
         setParagraphs((prev) =>
           prev.map((p, i) =>
-            i === index ? { ...p, isProcessing: false } : p,
+            i === index
+              ? { ...p, text: previousText, isProcessing: false }
+              : p,
           ),
         );
         Alert.alert("Edit failed", "Could not apply the edit. Please try again.");
@@ -764,8 +835,25 @@ export default function CreateStudioScreen({
     const nextChapterNum = savedStory.chapters.length + 1;
     const shouldFinale = isFinale || nextChapterNum >= maxChapters;
 
+    streamedProseRef.current = "";
+    setStreamedProse("");
+    setStreamStage("context");
+    setStreamError(null);
+
     try {
-      const { chapter } = await continueStory(savedStory.id, requestId, shouldFinale, nextChapterNum);
+      const { chapter } = await continueStoryStreaming(
+        savedStory.id,
+        requestId,
+        {
+          onStage: setStreamStage,
+          onDelta: (chunk) => {
+            streamedProseRef.current += chunk;
+            setStreamedProse(streamedProseRef.current);
+          },
+        },
+        shouldFinale,
+        nextChapterNum,
+      );
       onCreditUsed(1);
 
       const updatedStory: Story = {
@@ -784,12 +872,24 @@ export default function CreateStudioScreen({
           isProcessing: false,
         })),
       );
+      streamedProseRef.current = "";
+      setStreamedProse("");
       setStep("editor");
     } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Please try again.";
+      // Same rule as the first chapter: prose the reader has already seen stays
+      // on screen, and only a failure before that returns them to the editor.
+      if (streamedProseRef.current.trim()) {
+        setStreamError(message);
+        setAddingChapter(false);
+        return;
+      }
       setStep("editor");
       Alert.alert(
         "Could not continue story",
-        error instanceof Error ? error.message : "Please try again.",
+        message,
       );
     } finally {
       setAddingChapter(false);
@@ -1219,6 +1319,35 @@ export default function CreateStudioScreen({
   // -----------------------------------------------------------------------
 
   if (step === "generating") {
+    // The handoff. The loader holds only until the first token exists; from
+    // that moment the reader is reading their own story instead of watching a
+    // placeholder, which is the entire point of the streamed path. There is
+    // deliberately no minimum time on this: if prose arrives at three seconds,
+    // the reader starts at three seconds.
+    if (streamedProse.length > 0) {
+      return (
+        <SafeAreaView style={styles.flex}>
+          <StreamingProse
+            testID="streaming-prose"
+            text={streamedProse}
+            stage={streamStage}
+            title={addingChapter ? undefined : storyTitle || undefined}
+            errorMessage={streamError}
+            dismissLabel={addingChapter ? "Back to editor" : "Start over"}
+            onDismissError={() => {
+              streamedProseRef.current = "";
+              setStreamedProse("");
+              setStreamError(null);
+              // A failed continuation still has a story to go back to; a failed
+              // first chapter does not, so it returns to the brief the writer
+              // filled in rather than to an empty editor.
+              setStep(addingChapter ? "editor" : "setup");
+              setAddingChapter(false);
+            }}
+          />
+        </SafeAreaView>
+      );
+    }
     return (
       <SafeAreaView style={styles.flex}>
         <GeneratingOverlay

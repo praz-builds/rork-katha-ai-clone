@@ -180,6 +180,21 @@ describe("continueStory request contract", () => {
 });
 
 describe("shapeStoryIdea", () => {
+  it("drops blank inferred character rows", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: {
+        shape: {
+          genres: ["romance"],
+          characters: [{ name: "   ", description: "A placeholder" }],
+        },
+      },
+      error: null,
+    });
+
+    const shape = await shapeStoryIdea("Two strangers meet in a market.");
+    expect(shape?.characters).toEqual([]);
+  });
+
   it("returns a usable shape from the free endpoint", async () => {
     mockInvoke.mockResolvedValue({
       data: {
@@ -279,7 +294,7 @@ describe("character payload", () => {
     expect(bodyOf(mockInvoke.mock.calls[0]).characters).toEqual([]);
   });
 
-  it("carries background and appearance through to the request", async () => {
+  it("carries background, appearance, and portrait URL through to the request", async () => {
     mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
     await generateStory(
       {
@@ -289,6 +304,7 @@ describe("character payload", () => {
           description: "a restorer",
           background: "Has not spoken to her mother in six years.",
           appearance: "Dark hair pinned up, paint on her hands.",
+          portraitUrl: "https://example.com/elena.png",
           isHero: true,
         }],
       },
@@ -298,6 +314,7 @@ describe("character payload", () => {
       .characters as Record<string, unknown>[];
     expect(characters[0].background).toContain("six years");
     expect(characters[0].appearance).toContain("Dark hair");
+    expect(characters[0].portrait_url).toBe("https://example.com/elena.png");
   });
 });
 

@@ -40,7 +40,10 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
-import { AllProvidersFailedError, generateFastStructuredText } from "../_shared/llm.ts";
+import {
+  AllProvidersFailedError,
+  generateFastStructuredText,
+} from "../_shared/llm.ts";
 import { errorMessage, readJsonObject } from "../_shared/operations.ts";
 import {
   buildStoryProsePrompt,
@@ -51,8 +54,8 @@ import {
   CHAPTER_METADATA_OUTPUT,
   CHAPTER_METADATA_SYSTEM_PROMPT,
   chapterLengthVerdict,
-  StreamCommittedError,
   streamChapterProse,
+  StreamCommittedError,
 } from "../_shared/story-stream.ts";
 import { parseStructuredOutput } from "../_shared/story_text.ts";
 import type { ChapterRole } from "../_shared/types.ts";
@@ -124,6 +127,7 @@ serve(async (req) => {
       chapterLength,
       plannedChapterCount,
       illustrateChapters,
+      notifyOnReady,
     } = input;
     const chapterRole: ChapterRole = storyMode === "series"
       ? "series_opening"
@@ -165,7 +169,10 @@ serve(async (req) => {
         return jsonResponse({ error: "Insufficient credits" }, 402);
       }
       if (beginError?.code === "KTH01") {
-        return jsonResponse({ error: "Generation is already in progress." }, 409);
+        return jsonResponse(
+          { error: "Generation is already in progress." },
+          409,
+        );
       }
       throw beginError ?? new Error("Generation could not be started");
     }
@@ -217,7 +224,9 @@ serve(async (req) => {
         const send = (event: string, data: unknown) => {
           if (closed) return;
           controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+            encoder.encode(
+              `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+            ),
           );
         };
         const close = () => {
@@ -248,6 +257,12 @@ serve(async (req) => {
                   description: c.description,
                   background: c.background,
                   appearance: c.appearance,
+                  // A portrait the writer generated on the brief screen, and
+                  // paid for. Dropping it here silently discards that work and
+                  // the cast is re-rendered from scratch by the media task.
+                  // `generate-story` carries it; this path is newer and did not,
+                  // which is the kind of gap two parallel write paths produce.
+                  portrait_url: c.portraitUrl,
                   is_hero: c.isHero ?? false,
                 })),
               ).then(
@@ -396,6 +411,7 @@ serve(async (req) => {
               title: output.title,
               themes: output.themes,
               whereAndWhen,
+              notifyOnReady,
             }));
           } catch (mediaError) {
             console.error(

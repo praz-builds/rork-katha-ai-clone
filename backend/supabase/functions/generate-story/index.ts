@@ -88,6 +88,7 @@ serve(async (req) => {
       chapterLength,
       plannedChapterCount,
       illustrateChapters,
+      notifyOnReady,
     } = input;
     const chapterRole = storyMode === "series"
       ? "series_opening"
@@ -223,6 +224,7 @@ serve(async (req) => {
               description: c.description,
               background: c.background,
               appearance: c.appearance,
+              portrait_url: c.portraitUrl,
               is_hero: c.isHero ?? false,
             })),
           )
@@ -358,6 +360,7 @@ serve(async (req) => {
           title: output.title,
           themes: output.themes,
           whereAndWhen,
+          notifyOnReady,
         }));
       } catch (mediaError) {
         // A story without art is a worse story, not a failed one — but the row

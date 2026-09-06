@@ -54,7 +54,6 @@
 - `pnpm typecheck`: passing with bundled Node on `PATH`.
 - `pnpm test -- --runInBand src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: passing, 79 tests.
 - `pnpm exec expo export --platform web --output-dir /tmp/katha-onboarding-filter-chip-export-check`: passing.
-
 ## 2026-09-05: Main Create Flow Hierarchy and Character Image Step
 
 ### Changed
@@ -341,7 +340,6 @@
 - `pnpm exec expo export --platform web --output-dir /tmp/katha-create-flow-export-check`: passing.
 - `pnpm exec expo-doctor`: passing, 18/18 checks, with the local Node/npm bin path on `PATH`.
 - Local dev server is running at `http://localhost:8081/?singleCreateFlow=4`.
-
 ## 2026-09-06: Editorial Home, and Explore as its own tab
 
 ### Changed

@@ -16,15 +16,12 @@
 > cost. §10.6 identifies where this document requires that file to be amended;
 > until it is, that file wins.
 >
-> **This document is a specification, not a description of shipped behaviour.**
-> Almost none of it exists in code yet. What ships today is a single AI-chosen
-> short story of 500-1,500 words, continuable to 7 chapters, from the setup
-> screen in `CreateStudioScreen.tsx`. Everything here — the three screens, the
-> Craft character sheet, moments, chapter art, the planned length, the Continue
-> loop — is the contract for the rebuild. Read a statement below as "this is what
-> we are building", never as "this is what the app does".
+> **This document is a specification, not a description of every shipped detail.**
+> The main Create flow is one setup screen plus the full-screen Craft character
+> modal. Onboarding may use its own two-step preview, but main Create does not
+> have a separate Shape or Review screen.
 >
-> Last revised 2026-09-04. Sentences that are inference rather than shipped
+> Last revised 2026-09-06. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---
@@ -42,13 +39,14 @@ mechanic and throw away the taxonomy.
 
 The six decisions that shape this document:
 
-1. **One required text field, not five.** Genre and where-and-when are *inferred*
-   from the user's sentence and shown as editable chips. Correcting a guess is
-   dramatically cheaper than composing an answer, and the corrected values reach
+1. **One required text field, not five.** Genre, optional Premise, characters and
+   moments are structured controls around the idea. Correcting a value is
+   dramatically cheaper than composing a form, and the corrected values reach
    the prompt identically.
-2. **Inputs are plain questions.** "Premise", "plot", "topic", "setting"
+2. **Inputs are plain questions.** "Plot", "topic", "setting"
    and "arc" never appear in the UI — they are craft jargon, and two of them
-   collide with what Katha *produces*. See §1.
+   collide with what Katha *produces*. **Premise** is now the optional secondary
+   context field, not the required story idea. See §1.
 3. **Characters are the deepest surface in the product, not a text field.** A
    full-screen *Craft character* sheet with Description / Background /
    Appearance, a generated portrait, and Reimagine. Modeled directly on Okudu's,
@@ -78,7 +76,7 @@ future field should be added without passing all seven.
    Characters → voice and portraits. Moments → pacing. Four slots, four prompt
    layers, zero overlap.
 3. **Label fields by what the user does, never by what a writer calls it.** "Your
-   idea", not "Premise". "Who's in it", not "Dramatis personae".
+   idea", not "Prompt". "Who's in it", not "Dramatis personae".
 4. **One word, one meaning, across the whole app.** A word that names a user input
    may never also name a Katha output.
 5. **Never show an empty field with no way in.** Every input has either
@@ -107,7 +105,7 @@ never a taxonomy problem, it was a naming collision.
 | **Your idea** | What happens | Free text, required, the only one |
 | **Genre** | Shelf | Chips, inferred, editable |
 | **Values** *(kids only)* | What the story teaches | Chips |
-| **Where and when** | World and era | Chip, inferred, editable, never a required field |
+| **Premise** | Optional extra context, including world and era | Inline field, editable, never required |
 | **Who's in it** | Characters | Full-screen sheets — §4 |
 | **Moments to include** | Beats to hit | Chip builder, opt-in — §5 |
 | **More options** | Craft controls | Collapsed section — §9 |
@@ -122,7 +120,7 @@ never a taxonomy problem, it was a naming collision.
 
 ### Banned from the interface
 
-`Premise` · `Plot` · `Topic` · `Setting` · `Arc` · `Seed` · `Prompt`
+`Plot` · `Topic` · `Setting` · `Arc` · `Seed` · `Prompt`
 
 All seven are craft jargon; three of them ship today (`seed`,
 `Try a premise`, `ARC`). They may persist as internal identifiers — the `seed`
@@ -142,24 +140,35 @@ idea or a moment, where the creator can see and correct it.
 ### Screen order
 
 ```text
-Create  ──▶  1. Idea      ──▶  2. Shape      ──▶  3. Review and start
-             (one box)        (correct the       (the spec + the cost)
-                               guesses)
+Create  ──▶  1. Idea      ──▶  2. Review and start
+             (one box)        (correct the guesses,
+                               craft characters,
+                               see the cost)
 ```
 
-Screen 1 is deliberately almost empty. Screen 2 holds the density, and every
-control on it arrives with a value already in it.
+The main Create surface is one scrollable screen. Genre and Kids Mode sit in one
+parent row at the top, then the user's idea, starter prompts, optional Premise,
+Values for kids, and Characters. All lower-priority craft controls sit inside
+**More options**. The only second surface in main Create is the
+full-screen Craft character modal opened by **Add a character**.
 
-### Screen 1 — Idea
+The older Idea → Shape → Review pattern is retired for the main Create flow. A
+two-step preview belongs to onboarding only, where the product needs a lightweight
+first-run path before the user reaches the full Create surface.
+
+### Create screen
 
 | | |
 |---|---|
+| **Parent row** | Selected Genre chip with icon + compact **Kids Mode** switch |
 | **Header** | *What's your story about?* |
 | **Sub** | *A sentence is enough. Katha takes it from there.* |
 | **Input** | Multiline, 40-character minimum, `n / 1000` cap |
 | **Below** | **Try one** — horizontal starter chips |
+| **Core controls** | Premise optional, Values for kids, Who's in it |
+| **More options** | Inline disclosure. Moments, chapter plan, chapters, chapter length, chapter art, writing style, spice, language, visibility, avoid |
 | **Links** | **See an example** (§7) · **Continue a draft (n)** when drafts exist (§11) |
-| **CTA** | *Continue*, enabled at ≥ 1 non-whitespace character |
+| **CTA** | *Create · n ✦*, enabled at ≥ 40 characters, enough credits, and no pending character image |
 
 **There is a 40-character minimum, and it is not a counter.**
 *(Restored 2026-09-05; this section previously removed the gate outright.)*
@@ -173,9 +182,9 @@ different things:
   invites them to optimise it. That is what was removed, and it stays removed.
 - A floor is invisible above 40 characters and only ever fires in the one case
   where the flow cannot work at all. Below roughly forty characters the shaping
-  call (§6) has nothing to infer a world, a cast or a plan from, so it returns a
-  generic blueprint - and the user reads that generic blueprint as the ceiling
-  of what Katha can do, not as the consequence of six words.
+  story call has too little useful context, so it returns a generic opening -
+  and the user reads that generic opening as the ceiling of what Katha can do,
+  not as the consequence of six words.
 
 **It is presented as a state, never as a countdown.** A single leading-aligned
 line under the field, in `colors.tertiary`:
@@ -188,7 +197,7 @@ which becomes, at 40 characters, in `colors.success`:
 
 No number, no "24 more characters", and no error colour at any point. A short
 idea is unfinished, not wrong. The brief-strength meter (§8) still does the
-teaching on screen 3; this only stops the case that cannot succeed.
+teaching lower on the same screen; this only stops the case that cannot succeed.
 
 `MIN_IDEA_LENGTH` is exported from
 `expo/src/components/create/CreateBriefFlow.tsx` and shared with onboarding, so
@@ -197,15 +206,17 @@ the two flows cannot drift.
 The starter chip heading changes from **TRY A PREMISE** to **TRY ONE**.
 `GENRE_PREMISE_CHIPS` is a good asset; only its label was wrong.
 
-### Screen 2 — Shape
-
 ```text
 ┌────────────────────────────────────────────┐
-│  [          For me          ][ For kids ]  │
-│              full-width segmented mode     │
+│ [ 🔍 Mystery       ▾ ]        Kids Mode  ○ │
+│   compact vertical picker                   │
 ├────────────────────────────────────────────┤
-│  GENRE          Mystery ×  Gothic ×  + add │
-│  WHERE AND WHEN A hill town, off-season  ✎ │
+│  WHAT IS YOUR STORY ABOUT?                 │
+│  [ Your idea text area                    ]│
+│  TRY ONE  [starter chip] [starter chip]    │
+├────────────────────────────────────────────┤
+│  PREMISE                         optional  │
+│  A hill town, off-season                ✎  │
 ├────────────────────────────────────────────┤
 │  WHO'S IN IT                               │
 │   ┌────┬─────────────────────────────┐     │
@@ -216,22 +227,23 @@ The starter chip heading changes from **TRY A PREMISE** to **TRY ONE**.
 │   │  +  Add a character          max 3 │   │
 │   └────────────────────────────────────┘   │
 ├────────────────────────────────────────────┤
-│  ☐  Moments to include                     │
-│     ⌜suggestion chips in the zero state⌟   │
+│  More options                           ▾  │
+│    Moments, chapters, length, style, art   │
 ├────────────────────────────────────────────┤
-│  ▸ More options                            │
-├────────────────────────────────────────────┤
-│              Review  ›                     │
+│              Create · n ✦                  │
 └────────────────────────────────────────────┘
 ```
 
-**Where and when is a chip, not a field.** This is the resolution of the
-Setting/Topic question. It is real and load-bearing — two words of world change
-more of the output than twenty words of plot, and it feeds `cover-prompts.ts` as
-well as the story prompt — but it does not deserve a blank text box, because the
-user has almost always already implied it. Katha extracts it, shows it, the user
-taps to edit. If extraction finds nothing the chip reads *+ Where and when?* and
-stays optional.
+**This single screen is setup, shaping, and review.** There is no separate
+"Shape" screen and no separate read-only review screen in main Create. The user
+types the idea, corrects fields, adds or edits characters, expands More options
+if they care, then taps Create from the same surface.
+
+**Premise is optional.** This is the resolution of the Setting/Topic question.
+It absorbs extra context such as world, era, constraint, or mood without asking
+the user to classify it. Internally it can continue to feed the same prompt and
+cover-art context as `whereAndWhen`; externally it reads as optional support for
+the required idea, not as another required form step.
 
 **Genre is multi-select and inferred.** `primaryGenre` remains the first
 selection for prompt routing and cover style; additional genres are secondary
@@ -249,30 +261,22 @@ different kinds of thing at one visual weight is a category error: Kids is a
 becomes the mode toggle, vampire folds into silent inference (§1), and the
 identity lens is retired (§9).
 
-### Screen 3 — Review and start
-
-Retained as its own screen even though it costs a tap. It is not friction, it is
-the conversion mechanic: the user sees the thing they assembled, *then* sees what
-it costs.
-
-- The full spec, read-only, each row tappable to jump back.
-- The **brief-strength meter** (§8).
-- Balance in the header, price on the button — cost stated twice, per
-  `CREDITS_AND_PRICING.md` decision 33.
-- Primary CTA: **Create · n ✦**, itemized on tap.
+The **brief-strength meter** (§8) lives above the Create button on this same
+screen. Balance stays in the header, and the button carries the price per
+`CREDITS_AND_PRICING.md` decision 33.
 
 ---
 
 ## 3. Kids mode
 
-A **full-width, equal-width segmented control** in the first position on screen
-2: **For me** and **For kids**. It is a mode selector, not a chip row. **For me**
-is the default for every new draft. No device lock and no PIN at launch — the
+A compact **Kids Mode** switch sits in the parent row beside Genre. It is a mode
+selector, not a chip row. Adult mode is the default for every new draft and does
+not need its own label on the surface. No device lock and no PIN at launch — the
 mode describes the story being written, not the person holding the phone.
 *(Inference: a family plan with child profiles would make a lock worth revisiting.
 Not before.)*
 
-| Surface | For me | For kids |
+| Surface | Adult default | Kids Mode |
 |---|---|---|
 | Extra chip slot | *(none)* | **Values** — kindness, honesty, courage, patience, sharing |
 | Genre row | All 15 | Filtered: no dark romance, paranormal romance, horror, thriller |
@@ -283,10 +287,10 @@ Not before.)*
 | Chapters default | 3 | 3 |
 | Cover style | Genre-native | Warm, illustrative |
 
-**Everything else is identical** — same screens, same order, same character
-sheet, same moments builder, same More options, same review screen, same
-component tree. Kids mode is a copy-and-filter layer over one flow. Anything
-requiring a fork in the component tree is a signal the change is wrong.
+**Everything else is identical** — same screen, same order, same character
+modal, same More options, same component tree. Kids mode is a copy-and-filter
+layer over one flow. Anything requiring a fork in the component tree is a signal
+the change is wrong.
 
 **Why removal, not defaulting.** Principle 7. A parent who opens More options and
 finds a spice selector set to "sweet" has learned that the adult product is one
@@ -373,23 +377,21 @@ Placeholders are re-authored per mode (§3) and per genre where it helps. The
 
 ### Portrait, Reimagine, Edit, Delete
 
-- **Save persists the character; it does not generate the portrait.** The whole
-  cast's portraits are generated once, at story creation, before chapter 1 —
-  see §10.2 — for one credit covering the cast rather than one per character.
-  Generating on Save would mean billing, reserving and refunding per character
-  from inside a sheet the user may still abandon, and would break the
-  cross-chapter consistency the single batch exists to guarantee. Until the
-  story is created a character has no portrait, and the sheet shows the
-  placeholder rather than an empty frame.
+- **Create image generates the portrait from the current fields before the
+  story call.** The Craft character sheet is a two-state flow: first the fields,
+  then the portrait review. The user can save the character without an image,
+  but if they tap Create image, that image request is its own backend call and
+  the paid story generation call does not start from inside the sheet.
 - **Reimagine** regenerates it from the current field values. Per
   `CREDITS_AND_PRICING.md` principle 4 and the editing table, the first
   regenerate is **free**; further ones are 1 credit.
 - **Edit** re-opens the fields. **Delete** removes the character and its portrait.
 - Aspect ratio is portrait, full-body, on a plain ground — matching the reference
   and matching what the reader UI needs for a character strip.
-- **Portraits are generated once, at story creation, before chapter 1.** They must
-  stay visually consistent across every chapter, and once the loop starts there is
-  no later moment where the whole cast is known at once.
+- **Story generation waits for the character-image step the user started.** A
+  user who never asks for a character image may still create the story; a user
+  who taps Create image sees that call finish or fail before the final story
+  call begins.
 
 ### Limits
 
@@ -441,7 +443,13 @@ box asks for work before showing what the work is.
 
 ## 6. Infer, don't ask
 
-On **Continue** from screen 1, one cheap, fast structured call returns:
+Inference is optional scaffolding, not a navigation step. Main Create must not
+depend on a **Continue** button or a pre-story backend call. If we add inference
+inside Create later, it must be silent, cancellable, and must only prefill
+editable fields on the same screen; the paid story request remains the single
+story-generation call.
+
+The optional inference shape is:
 
 ```json
 {
@@ -465,15 +473,15 @@ On **Continue** from screen 1, one cheap, fast structured call returns:
 - The call is **free to the user.** It is scaffolding for the ask, not the ask —
   per `CREDITS_AND_PRICING.md` principle 2, a credit buys an AI action the user
   requested.
-- **Failure is silent.** On timeout or malformed output, screen 2 renders with
-  empty chips and suggestion sets. The user is never shown an error for a
-  convenience they did not request.
+- **Failure is silent.** On timeout or malformed output, the same Create screen
+  remains usable with empty chips and suggestion sets. The user is never shown
+  an error for a convenience they did not request.
 
 **Why this beats a form.** The information reaching the prompt is identical. What
 changes is the user's job: correcting guesses instead of composing answers.
 Correction is faster, has no blank-page cost, and teaches the taxonomy by
-demonstration — a user who sees *"A hill town, off-season"* in the where-and-when
-chip has learned what that field is for, permanently, without reading a label.
+demonstration — a user who sees *"A hill town, off-season"* in optional Premise
+has learned what that field can carry, permanently, without reading a paragraph.
 
 Pre-filling the character sheet is the highest-leverage instance of this. A user
 faced with four empty boxes labeled Description / Background / Appearance will
@@ -485,8 +493,8 @@ richer than the one they would have written from empty.
 
 ## 7. See an example
 
-A text link below the idea box on screen 1 and below the moments builder on
-screen 2. **It shows every slot filled at once, genre-matched.** Showing one
+A text link below the idea box on the Create screen. **It shows every slot filled
+at once, genre-matched.** Showing one
 field's example in isolation does not help, because the confusion is
 *relational* — users do not misunderstand what a setting is, they misunderstand
 which of their sentences goes where.
@@ -496,7 +504,7 @@ Your idea         Elena inherits her grandmother's house
                   and finds a door that wasn't on the deed.
 
 Genre             Mystery · Gothic
-Where and when    A hill town, off-season, present day
+Premise           A hill town, off-season, present day
 Who's in it       Elena Márquez — historical restorer, 34
 Moments           She hears her own name through the wall
                   The door is warm to the touch
@@ -512,14 +520,14 @@ the create moment. One static example per genre. Never generated.
 
 ## 8. The brief-strength meter
 
-Replaces `getSeedHint()`. Lives on screen 3. Keyed to **slots filled**, not
+Replaces `getSeedHint()`. Lives on the Create screen. Keyed to **slots filled**, not
 character count.
 
 | Filled | Reads |
 |---|---|
 | Idea only | **Sparse** — *Katha will invent most of this. That can be good.* |
 | + genre | **Good** — *Enough to write from.* |
-| + where-and-when, characters | **Strong** — *This will sound like yours.* |
+| + premise, characters | **Strong** — *This will sound like yours.* |
 | + moments | **Rich** — *Katha has plenty to work with.* |
 
 Two properties the character counter lacked: it teaches structure rather than
@@ -663,7 +671,7 @@ that tap to a published story.
 ```text
 Create ·  n ✦
    │
-   ├── portraits generated  (1 ✦, once, whole cast)
+   ├── any requested character portraits complete first
    │
    ├── chapter 1 text (1 ✦)  +  chapter 1 art (1 ✦) ── becomes the cover
    │
@@ -692,9 +700,11 @@ Create ·  n ✦
 > **Revised 2026-09-02 (§15).** This section previously described Auto-Write and
 > Interactive as two flows the user chooses between. There is one flow.
 
-- **Portraits first, always.** Before chapter 1, from the cast defined in §4.
-  They must be consistent across every chapter, and there is no later moment when
-  the whole cast is known at once.
+- **Character images first when requested.** The main Create button never fires
+  the paid story call while a Craft character image request is still running.
+  Character images are their own backend call, prompted from Appearance first
+  and Description second. The resulting portrait URL rides along with the draft
+  and is attached to the character when the story is persisted.
 - **One chapter at a time.** Each chapter ends in the story view with a
   **Continue** button carrying its own price. Above it sits an optional *What
   happens next?* box with suggested continuations inferred from what just
@@ -909,8 +919,9 @@ not lose a story someone bought.
   one line.
 - Sorted by last-edited, above published stories.
 
-**In the create flow.** Screen 1 shows a link under the idea box whenever drafts
-exist: **Continue a draft (2)**. It opens a sheet listing them, newest first,
+**In the create flow.** The Create screen shows a link under the idea box
+whenever drafts exist: **Continue a draft (2)**. It opens a sheet listing them,
+newest first,
 each row tappable straight back to where the user stopped. This is the second
 entry point — a user who opens Create intending to resume should not have to go
 to Library to find their way back.
@@ -919,9 +930,10 @@ to Library to find their way back.
 
 ### Resume behavior
 
-Tapping a draft returns the user to **exactly the screen they left**: screen 1, 2
-or 3 for an `idea`, the story view at the next unwritten chapter for a
-`drafting`, the publish sheet for a `complete`. Never to the top of the flow.
+Tapping a draft returns the user to **exactly the state they left**: the Create
+screen and its modal/options state for an `idea`, the story view at the next
+unwritten chapter for a `drafting`, the publish sheet for a `complete`. Never to
+the top of the flow.
 
 ### Deletion
 
@@ -949,18 +961,19 @@ derived value.
 
 | Change | Detail |
 |---|---|
-| Split setup into two screens | Idea, then Shape |
-| Remove the 40-char gate | `getSeedHint` deleted; `canGenerate` requires ≥ 1 char |
+| Main setup has one screen | Genre, Kids Mode, Your idea, optional Premise, characters, More options, brief strength, and Create all live on one scrollable surface. Onboarding owns any separate two-step preview flow. |
+| Keep the 40-character floor without a counter | `canGenerate` requires enough idea text to infer from, but no visible countdown appears |
 | Rename chip heading | `Try a premise` → `Try one` |
+| Shrink starter chips | The card shows a clipped three-line preview, and tapping still inserts the full starter text into Your idea |
 | Dissolve the toggle-chip row | Kids → mode toggle; queer and vampire → silent inference |
-| Add the where-and-when chip | New optional field on `StudioDraft` |
-| **Replace inline characters with the Craft character sheet** | Full screen: Name, Description, Background, Appearance and a single Lead character toggle; Save. Portrait operations appear only after the story's cast has been generated. |
-| Add the moments builder | New `moments: string[]`, capped, below characters |
+| Add optional Premise | New visible label for the optional `whereAndWhen` context in `StudioDraft` |
+| **Replace inline characters with the Craft character sheet** | Full screen: Name, Description, Background, Appearance, Create image/Reimagine/Edit/Delete, and a single Lead character toggle; Save. The image action is separate from the story call. |
+| Add the moments builder | New `moments: string[]`, capped, inside More options |
 | Add character-name tokens | Derived from `draft.characters` |
-| Add the inference call | On Continue from screen 1, non-blocking, silent failure |
+| Keep pre-story inference optional | No main-flow Continue call. Any later inference must silently prefill editable fields on the same screen |
 | Add See-an-example | Static, one per genre, with **Use this** |
-| Replace the hint with the meter | Slot-based, on screen 3 |
-| Add `Continue a draft (n)` | Screen 1, when drafts exist |
+| Replace the hint with the meter | Slot-based, on the same Create screen |
+| Add `Continue a draft (n)` | Create screen, when drafts exist |
 | More options | Chapters 3/7/15, chapter length, chapter art for 2–N. **No writing mode** — §15 |
 
 ### `backend/supabase/functions/_shared/`
@@ -971,6 +984,7 @@ derived value.
 | `story-prompts.ts` | Two new layers — world (`whereAndWhen`) and beats (`moments`); character layer consumes background separately from appearance |
 | `cover-prompts.ts` | Consume `whereAndWhen`. This is what stops covers reading as genre stock art |
 | `image.ts` | Character portrait prompt from `appearance` + `description`; separate from the cover path |
+| `generate-character-image` | Client-callable portrait endpoint wrapping the character image path. It must not start story generation. |
 | `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; accept only English or Portuguese from the Create contract |
 
 ### `expo/src/i18n/`
@@ -989,11 +1003,11 @@ Draft cards, the Draft badge, chapter progress, sort-by-last-edited.
 
 | Metric | Why it is here |
 |---|---|
-| Screen-1 → screen-2 continue rate | The one required field's real cost |
+| Create readiness rate | The one required field's real cost |
 | Inference acceptance rate, per chip type | A chip corrected >50% of the time is a bad guess, not a bad field |
 | Craft-character completion — fields filled per character | Tests whether Background and Appearance earn their boxes |
 | Reimagine rate per character | High means the portrait prompt is wrong, not that users are fussy |
-| Moments attach rate, adult vs kids | Decides whether moments graduate onto screen 1 |
+| Moments attach rate, adult vs kids | Decides whether moments should leave More options |
 | **Continue-tap drop-off by chapter**, and *Write the rest* usage | Says whether the per-chapter loop is engagement or friction, and at which chapter people stop steering |
 | Share of Continues with an empty *What happens next?* box | If it dominates, steering is friction wearing a hat and the box should shrink |
 | **Chapter-art attach rate** | The most important unresolved figure in the business model — §10.6 |
@@ -1089,11 +1103,12 @@ are listed here so a reader who lands mid-document is not misled.
 
 ### Vocabulary
 
-1. **Inputs are labeled as second-person questions** — *Your idea · Where and
-   when · Who's in it · Moments to include.*
-2. **`Premise`, `Plot`, `Topic`, `Setting`, `Arc`, `Seed` and `Prompt`
+1. **Inputs are labeled as plain user-facing controls** — *Your idea · Premise ·
+   Who's in it · Moments to include.*
+2. **`Plot`, `Topic`, `Setting`, `Arc`, `Seed` and `Prompt`
    are banned from the interface** in all three locales. They may survive as
-   internal identifiers.
+   internal identifiers. `Premise` is allowed only as the optional secondary
+   context field, not as the required idea field.
 3. **Katha's outputs are `Title`, an unlabeled paragraph, and `Chapters`.**
 4. **One word, one meaning.** No word names both an input and an output.
 5. **There is no hidden flavour taxonomy.** The visible brief is the whole
@@ -1102,10 +1117,10 @@ are listed here so a reader who lands mid-document is not misled.
 
 ### Flow
 
-6. **Three screens: Idea → Shape → Review and start.**
+6. **One Create screen plus the Craft character modal.** Onboarding may have its
+   own two-step preview, but main Create does not.
 7. **One required free-text field, ever.**
-8. **Review and start is retained** as its own screen; never collapsed into a
-   single generate tap.
+8. **There is one story generation CTA** on the Create screen.
 9. **Cost is shown twice** — balance in the header, price on the button.
 10. **The 40-character *counter* is removed; a 40-character *floor* stands.**
     *(Revised 2026-09-05.)* The counter ranked the user against a number at
@@ -1116,15 +1131,16 @@ are listed here so a reader who lands mid-document is not misled.
     above the floor.
 10a. **Chapter length is labelled in minutes, never in words** — 3 · 5 · 9 per
     chapter, derived at 260 wpm from the bands in §9. See §9's length table.
-11. **Where and when is a chip, not a field** — real and load-bearing, feeding
-    both the story prompt and the cover prompt, but never a blank box.
+11. **Premise is optional** — real and load-bearing, feeding both the story
+    prompt and the cover prompt, but never required.
 12. **The `🧒 Kids` / `🏳️‍🌈 LGBTQ+` / `🧛 Vampire` row is dissolved.**
 
 ### Inference
 
-13. **Genre, where-and-when, characters and moments are inferred** from the
-    idea sentence and presented as editable values.
-14. **The inference call is free.** It is scaffolding, not a generation.
+13. **Any future inference stays on the same Create screen** and presents values
+    as editable state.
+14. **The inference call, if enabled, is free.** It is scaffolding, not a
+    generation.
 15. **Inference failure is silent.**
 16. **The character sheet arrives pre-filled.** This is inference's
     highest-leverage instance: four empty boxes get one lazy line, four
@@ -1210,9 +1226,9 @@ are listed here so a reader who lands mid-document is not misled.
     a story someone bought is the worst failure in this document.
 46. **Drafts appear in Library** with a concept cover, a Draft badge and chapter
     progress, sorted by last-edited above published stories.
-47. **Screen 1 carries a `Continue a draft (n)` link** — the second entry point,
+47. **The Create screen carries a `Continue a draft (n)` link** — the second entry point,
     so resuming does not require a trip to Library.
-48. **Resume returns to the exact screen the user left**, never the top of the
+48. **Resume returns to the exact state the user left**, never the top of the
     flow.
 49. **Drafts never appear in the feed, in search, or on a profile.**
 50. **Deleting a paid draft warns that credits are not refunded.**

@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   deriveContentRating,
   validateGenerationRequest,
@@ -154,7 +157,7 @@ Deno.test("deriveContentRating: sweet -> sweet", () => {
   assertEquals(deriveContentRating("adult", "sweet"), "sweet");
 });
 
-Deno.test("the 40-character seed gate is gone: one character is enough", () => {
+Deno.test("server validation keeps the seed floor at one character", () => {
   const result = validateGenerationRequest(validRequest({ topic: "a" }));
   if ("error" in result) throw new Error(result.error);
   assertEquals(result.seed, "a");
@@ -224,6 +227,22 @@ Deno.test("a non-empty cast is normalized to exactly one lead", () => {
     true,
     false,
   ]);
+});
+
+Deno.test("character portrait_url survives validation", () => {
+  const result = validateGenerationRequest(validRequest({
+    characters: [{
+      name: "Praz",
+      description: "A young explorer",
+      appearance: "Dark hair and travel clothes",
+      portrait_url: "https://example.com/portraits/praz.png",
+    }],
+  }));
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(
+    result.characters[0].portraitUrl,
+    "https://example.com/portraits/praz.png",
+  );
 });
 
 Deno.test("planned_chapter_count accepts only 3, 7, 15", () => {
@@ -459,4 +478,43 @@ Deno.test("a non-array plan is an absent plan", () => {
   }));
   if ("error" in result) throw new Error(result.error);
   assertEquals(result.beats, []);
+});
+
+// ---------------------------------------------------------------------------
+// Notification consent
+//
+// iOS grants exactly one system prompt per install, and the onboarding notify
+// screen is a soft pre-prompt spending it deliberately. A push sent to someone
+// who did not accept is unrecoverable: it cannot be un-sent, and the permission
+// cannot be asked for again.
+// ---------------------------------------------------------------------------
+
+Deno.test("notification consent defaults to off", () => {
+  const result = validateGenerationRequest(validRequest());
+  assert(!("error" in result));
+  assertEquals(result.notifyOnReady, false);
+});
+
+Deno.test("notification consent requires a literal true", () => {
+  for (const value of ["true", 1, "yes", {}, [], "on"]) {
+    const result = validateGenerationRequest({
+      ...validRequest(),
+      notify_on_ready: value,
+    });
+    assert(!("error" in result));
+    assertEquals(
+      result.notifyOnReady,
+      false,
+      `${JSON.stringify(value)} is not consent`,
+    );
+  }
+});
+
+Deno.test("an accepted prompt is carried through", () => {
+  const result = validateGenerationRequest({
+    ...validRequest(),
+    notify_on_ready: true,
+  });
+  assert(!("error" in result));
+  assertEquals(result.notifyOnReady, true);
 });
