@@ -42,6 +42,26 @@ const nodeExecPath = (globalThis as unknown as { process: { execPath: string } }
 
 const PARSE_TIMEOUT_MS = 10_000;
 
+/**
+ * image-size is a transitive dependency of metro, so pnpm does not link it at
+ * the app root -- plain Node cannot resolve it from here. Jest's resolver can,
+ * because it reads pnpm's hoisted directory, and that is what runs this file.
+ * The distinction matters when it breaks: without this guard a resolution
+ * failure would surface as the child process exiting non-zero, which reads as
+ * "the patch is gone" rather than "the module moved".
+ */
+function resolveImageSize(): string {
+  try {
+    return nodeRequire.resolve('image-size');
+  } catch {
+    throw new Error(
+      'Could not resolve image-size. It is a transitive metro dependency, so ' +
+        'this usually means pnpm hoisting changed rather than that the CVE ' +
+        'patch was lost -- check pnpm-workspace.yaml before assuming the worst.',
+    );
+  }
+}
+
 /** An ICNS file whose first image header declares a length of zero. */
 const ICNS_SCRIPT = `
   const buf = Buffer.alloc(64);
@@ -78,7 +98,7 @@ const JXL_SCRIPT = `
  */
 function parseTerminates(buildBuffer: string): boolean {
   const source = `
-    const { imageSize } = require(${JSON.stringify(nodeRequire.resolve('image-size'))});
+    const { imageSize } = require(${JSON.stringify(resolveImageSize())});
     const build = () => { ${buildBuffer} };
     try { imageSize(build()); } catch {}
     process.exit(0);

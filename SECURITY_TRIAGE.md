@@ -86,7 +86,12 @@ exactly this reason.
 So both loops are patched in place. `expo/patches/image-size@1.2.1.patch` adds a
 zero-length break to each, wired up through `patchedDependencies` in
 `expo/pnpm-workspace.yaml` — that is where pnpm 11 reads its settings from, not
-the `pnpm` block in `package.json`.
+the `pnpm` block in `package.json`. Two `auditConfig.ignoreGhsas` entries sit
+alongside it so `pnpm audit` stays quiet; they are only honest for as long as
+the patch is applied, which is what the test below enforces.
+
+The patch itself landed in #56, from parallel work on the same hotlist. This
+entry keeps the reasoning, the measurements and the regression test.
 
 **Exposure, honestly stated.** This is a build-time dependency. Metro calls
 `image-size` to measure asset dimensions while bundling; nothing from it ships
