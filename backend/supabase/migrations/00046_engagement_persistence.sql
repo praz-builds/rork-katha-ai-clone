@@ -5,45 +5,52 @@
 
 -- Replace the early broad read policies with own-row policies. Public counts
 -- live on `stories`; raw relationship rows are user-private.
+--
+-- READ ONLY, DELIBERATELY. These four tables get a select policy and nothing
+-- else, and no insert/update/delete grant reaches `authenticated`.
+--
+-- An earlier draft of this migration also gave each table own-row insert and
+-- delete policies, which reads as the safe, obvious thing to do. It is not: a
+-- client holding an ordinary user JWT could then insert straight into
+-- `story_likes`, and the row would exist while `stories.like_count` never
+-- moved. The counter would be permanently wrong, with no error anywhere, and
+-- the whole point of this migration is that the row and the counter move in one
+-- transaction or neither moves.
+--
+-- So every write goes through the `toggle_*` and `record_*` RPCs below, which
+-- are `security definer`, are granted to `service_role` only, and maintain the
+-- counter in the same transaction as the row. Service role bypasses RLS, so the
+-- endpoints keep working; a direct client write has nowhere to land.
 drop policy if exists "Users can view story follows" on public.story_followers;
 drop policy if exists "Users can follow stories" on public.story_followers;
 drop policy if exists "Users can unfollow stories" on public.story_followers;
 create policy "Users can view own story follows"
     on public.story_followers for select using (auth.uid() = user_id);
-create policy "Users can follow stories"
-    on public.story_followers for insert with check (auth.uid() = user_id);
-create policy "Users can unfollow stories"
-    on public.story_followers for delete using (auth.uid() = user_id);
 
 drop policy if exists "Users can view user follows" on public.user_followers;
 drop policy if exists "Users can follow users" on public.user_followers;
 drop policy if exists "Users can unfollow users" on public.user_followers;
 create policy "Users can view own author follows"
     on public.user_followers for select using (auth.uid() = follower_id);
-create policy "Users can follow users"
-    on public.user_followers for insert with check (auth.uid() = follower_id);
-create policy "Users can unfollow users"
-    on public.user_followers for delete using (auth.uid() = follower_id);
 
 drop policy if exists "Users can view own bookmarks" on public.bookmarks;
 drop policy if exists "Users can bookmark" on public.bookmarks;
 drop policy if exists "Users can unbookmark" on public.bookmarks;
 create policy "Users can view own bookmarks"
     on public.bookmarks for select using (auth.uid() = user_id);
-create policy "Users can bookmark"
-    on public.bookmarks for insert with check (auth.uid() = user_id);
-create policy "Users can unbookmark"
-    on public.bookmarks for delete using (auth.uid() = user_id);
 
 drop policy if exists "Users can view likes" on public.story_likes;
 drop policy if exists "Users can like" on public.story_likes;
 drop policy if exists "Users can unlike" on public.story_likes;
 create policy "Users can view own likes"
     on public.story_likes for select using (auth.uid() = user_id);
-create policy "Users can like"
-    on public.story_likes for insert with check (auth.uid() = user_id);
-create policy "Users can unlike"
-    on public.story_likes for delete using (auth.uid() = user_id);
+
+-- Belt as well as braces: even if a future migration adds a permissive policy
+-- by accident, the privilege is not there to use.
+revoke insert, update, delete on public.story_likes from authenticated, anon;
+revoke insert, update, delete on public.bookmarks from authenticated, anon;
+revoke insert, update, delete on public.story_followers from authenticated, anon;
+revoke insert, update, delete on public.user_followers from authenticated, anon;
 
 create index if not exists idx_story_reads_user_chapter_recent
     on public.story_reads(user_id, chapter_id, read_at desc);
