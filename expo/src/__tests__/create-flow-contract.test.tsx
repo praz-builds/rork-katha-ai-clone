@@ -174,14 +174,17 @@ describe("approved Create flow", () => {
     expect(view.queryByRole("button", { name: "Add a character" })).toBeNull();
   });
 
-  it("does not expose Spanish in any authoring control", async () => {
+  it("offers English only in the Language control, and never Spanish or Portuguese", async () => {
     const view = await renderCreate();
     await fillIdea(view);
 
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
-    await fireEvent.press(view.getByRole("button", { name: "Language" }));
-    expect(view.getAllByText("English").length).toBeGreaterThan(0);
-    expect(view.getByText("Portuguese")).toBeTruthy();
+    const language = view.getByRole("button", { name: "Language" });
+    expect(language.props.accessibilityValue).toEqual({ text: "English" });
+
+    await fireEvent.press(language);
+    expect(view.getByRole("button", { name: "English" })).toBeTruthy();
+    expect(view.queryByText("Portuguese")).toBeNull();
     expect(view.queryByText("Spanish")).toBeNull();
   });
 
@@ -222,15 +225,17 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     await fireEvent.changeText(view.getByLabelText("Writing style"), "Warm, playful, and direct");
     await fireEvent.changeText(view.getByLabelText("Avoid"), "scary imagery");
+    await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
     await fireEvent.press(view.getByRole("button", { name: "7 chapters" }));
+    await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
     await fireEvent(
       view.getByRole("switch", { name: "Chapter art" }),
       "valueChange",
       true,
     );
-    await fireEvent.press(view.getByRole("button", { name: "Language" }));
-    await fireEvent.press(view.getByText("Portuguese"));
+    // Language now offers English only -- see the dedicated Language test --
+    // so it is left untouched here rather than switched to Portuguese.
     // The setup screen's Create button opens the pre-generation review screen;
     // its own Create button is the one that actually fires generation.
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
@@ -241,7 +246,7 @@ describe("approved Create flow", () => {
     expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
       audienceMode: "kids",
       spiceLevel: "sweet",
-      language: "Portuguese",
+      language: "English",
       storyValues: ["kindness"],
       writingStyle: "Warm, playful, and direct",
       avoid: "scary imagery",
@@ -285,6 +290,13 @@ describe("approved Create flow", () => {
       />,
     );
 
+    // The setup screen's Create button opens the pre-generation review screen
+    // (see "sends the reviewed Kids brief..." below); this pre-existing test
+    // predated that screen and only ever pressed Create once, so it never
+    // actually reached generation. Fixed as part of this task's baseline
+    // measurement, not the dropdown work itself.
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
@@ -329,6 +341,7 @@ describe("approved Create flow", () => {
       await fillIdea(view);
 
       await fireEvent.press(view.getByRole("button", { name: "More options" }));
+      await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
       await fireEvent.press(
         view.getByRole("button", { name: `${count} chapters` }),
       );
@@ -352,6 +365,7 @@ describe("approved Create flow", () => {
 
       await fireEvent.press(view.getByRole("button", { name: "More options" }));
       const label = length.charAt(0).toUpperCase() + length.slice(1);
+      await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
       await fireEvent.press(view.getByRole("button", { name: label }));
       await fireEvent.press(view.getByRole("button", { name: /create/i }));
       await view.findByText("Here is what Katha will write");
@@ -455,7 +469,9 @@ describe("approved Create flow", () => {
       view.getByLabelText("Writing style"),
       "Lyrical, present tense",
     );
+    await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
     await fireEvent.press(view.getByRole("button", { name: "15 chapters" }));
+    await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
     const visibilitySwitch = view.getByRole("switch", {
       name: "Public visibility",
@@ -484,14 +500,15 @@ describe("approved Create flow", () => {
     expect(
       view.getByRole("switch", { name: "Public visibility" }).props.value,
     ).toBe(true);
+    // The Chapters and Chapter length dropdowns reset to closed on this fresh
+    // mount, so their options are not in the tree -- the committed value is
+    // read from the closed trigger's announced value instead.
     expect(
-      view.getByRole("button", { name: "15 chapters" }).props.accessibilityState
-        .selected,
-    ).toBe(true);
+      view.getByRole("button", { name: "Chapters" }).props.accessibilityValue,
+    ).toEqual({ text: "15" });
     expect(
-      view.getByRole("button", { name: "Long" }).props.accessibilityState
-        .selected,
-    ).toBe(true);
+      view.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
+    ).toEqual({ text: "Long" });
     expect(view.getByLabelText("Writing style").props.value).toBe(
       "Lyrical, present tense",
     );
@@ -559,13 +576,11 @@ describe("draft restoration across a remount", () => {
       "no graphic violence",
     );
     expect(
-      second.getByRole("button", { name: "15 chapters" }).props
-        .accessibilityState.selected,
-    ).toBe(true);
+      second.getByRole("button", { name: "Chapters" }).props.accessibilityValue,
+    ).toEqual({ text: "15" });
     expect(
-      second.getByRole("button", { name: "Long" }).props.accessibilityState
-        .selected,
-    ).toBe(true);
+      second.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
+    ).toEqual({ text: "Long" });
 
     await fireEvent.press(second.getByRole("button", { name: "Edit Iris" }));
     expect(second.getByLabelText("Background").props.value).toBe(
