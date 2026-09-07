@@ -266,6 +266,189 @@ Deno.test("unknown genre maps to contemporary", () => {
   assertEquals(result.primaryGenre, "contemporary");
 });
 
+// ---------------------------------------------------------------------------
+// v7 taxonomy (2026-09-08): four new genres, seven removed from the UI
+// ---------------------------------------------------------------------------
+
+// The documented replacement for each genre the product owner removed from
+// the creation UI. `contemporary` -> `sliceOfLife`, `poetry` -> `folktale`,
+// romantasy/darkRomance/paranormalRomance -> `romance`, `cozyFantasy` ->
+// `fantasy`, `thriller` -> `mystery`. See GENRE_MIGRATION_MAP's contract
+// comment in types.ts.
+const REMOVED_GENRE_REPLACEMENTS: Record<string, string> = {
+  romantasy: "romance",
+  darkRomance: "romance",
+  paranormalRomance: "romance",
+  cozyFantasy: "fantasy",
+  poetry: "folktale",
+  thriller: "mystery",
+  contemporary: "sliceOfLife",
+};
+
+Deno.test("every removed genre still validates and normalises to its documented replacement", () => {
+  for (
+    const [removed, replacement] of Object.entries(REMOVED_GENRE_REPLACEMENTS)
+  ) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: removed }),
+    );
+    if ("error" in result) {
+      throw new Error(`${removed} was rejected: ${result.error}`);
+    }
+    assertEquals(
+      result.primaryGenre,
+      replacement,
+      `${removed} normalised to ${result.primaryGenre}, expected ${replacement}`,
+    );
+  }
+});
+
+Deno.test("a removed genre normalises the same way as a secondary genre", () => {
+  const result = validateGenerationRequest(
+    validRequest({
+      primary_genre: "fantasy",
+      genres: ["fantasy", "thriller", "cozyFantasy"],
+    }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  // thriller -> mystery, cozyFantasy -> fantasy (already present, so it is
+  // not duplicated).
+  assertEquals(result.genres, ["fantasy", "mystery"]);
+});
+
+Deno.test("the four new v7 genres validate as themselves, unmigrated", () => {
+  for (
+    const genre of ["educational", "fanfiction", "folktale", "sliceOfLife"]
+  ) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: genre }),
+    );
+    if ("error" in result) throw new Error(`${genre}: ${result.error}`);
+    assertEquals(result.primaryGenre, genre);
+  }
+});
+
+// darkRomance, paranormalRomance and thriller all migrate away from their own
+// identity for a NEW submission (see the table above), which would make the
+// kids-mode block on them unreachable if it ran on the migrated value. It
+// runs on the raw, pre-migration string instead, so this safety gate survives
+// the taxonomy change untouched.
+Deno.test("kids mode still refuses a removed genre by its own raw name, not its replacement", () => {
+  for (const genre of ["darkRomance", "paranormalRomance", "thriller"]) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: genre, audience_mode: "kids" }),
+    );
+    if (!("error" in result)) {
+      throw new Error(`${genre} was accepted in kids mode`);
+    }
+  }
+});
+
+// A removed genre reaching validation is exactly the "old client, a retry, a
+// stored draft" scenario the task calls out — it must never throw or 500.
+Deno.test("every removed genre is accepted without error in adult mode", () => {
+  for (const genre of Object.keys(REMOVED_GENRE_REPLACEMENTS)) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: genre }),
+    );
+    if ("error" in result) {
+      throw new Error(`${genre} raised an error instead of normalising`);
+    }
+  }
+});
+
+Deno.test("folktale (poetry's replacement) allows only sweet, matching poetry's old register", () => {
+  const result = validateGenerationRequest(
+    validRequest({ primary_genre: "folktale", spice_level: "steamy" }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.spiceLevel, "sweet");
+});
+
+// ---------------------------------------------------------------------------
+// Spice leaves the product surface: an absent spice_level is a first-class,
+// safe path, not merely tolerated. (spice inference from prose is a
+// follow-up, not implemented here.)
+// ---------------------------------------------------------------------------
+
+Deno.test("omitting spice_level entirely succeeds and defaults to sweet for a sweet-default genre", () => {
+  const result = validateGenerationRequest(
+    validRequest({ primary_genre: "fantasy" }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.spiceLevel, "sweet");
+});
+
+Deno.test("omitting spice_level succeeds and defaults per genre for a steamy-default genre", () => {
+  const result = validateGenerationRequest(
+    validRequest({ primary_genre: "romance" }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.spiceLevel, "steamy");
+});
+
+Deno.test("omitting spice_level on every one of the 19 genres never errors", () => {
+  const allGenres = [
+    "romance",
+    "romantasy",
+    "darkRomance",
+    "cozyFantasy",
+    "paranormalRomance",
+    "fantasy",
+    "scifi",
+    "thriller",
+    "mystery",
+    "horror",
+    "contemporary",
+    "historical",
+    "adventure",
+    "comedy",
+    "poetry",
+    "educational",
+    "fanfiction",
+    "folktale",
+    "sliceOfLife",
+  ];
+  for (const genre of allGenres) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: genre }),
+    );
+    if ("error" in result) {
+      throw new Error(`${genre} without spice_level errored: ${result.error}`);
+    }
+    assert(
+      SPICE_LEVELS.has(result.spiceLevel),
+      `${genre} produced a non-live spice level: ${result.spiceLevel}`,
+    );
+  }
+});
+
+// Kids mode already forced sweet before this bucket; this pins that the v7
+// genre and spice changes did not disturb it.
+Deno.test("kids mode still forces sweet even when spice_level is explicitly requested steamy", () => {
+  const result = validateGenerationRequest(
+    validRequest({
+      primary_genre: "adventure",
+      audience_mode: "kids",
+      spice_level: "steamy",
+    }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.spiceLevel, "sweet");
+});
+
+Deno.test("kids mode forces sweet on the new v7 genres too", () => {
+  for (
+    const genre of ["educational", "fanfiction", "folktale", "sliceOfLife"]
+  ) {
+    const result = validateGenerationRequest(
+      validRequest({ primary_genre: genre, audience_mode: "kids" }),
+    );
+    if ("error" in result) throw new Error(`${genre}: ${result.error}`);
+    assertEquals(result.spiceLevel, "sweet");
+  }
+});
+
 Deno.test("case-insensitive genre match", () => {
   const result = validateGenerationRequest(
     validRequest({ primary_genre: "FANTASY" }),

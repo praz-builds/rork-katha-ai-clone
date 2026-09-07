@@ -2650,3 +2650,124 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
   `seed-voice-previews`, plus the shared modules) are deployed. No production-
   level test ran, so no `public.error_events` rows were written this session.
 - Not committed. Changes are left in the working tree per instructions.
+
+## 2026-09-08 UTC — The v7 genre taxonomy: four new genres, seven quietly retired from the UI, and spice off the surface
+
+### Changed
+
+- **Taxonomy.** `_shared/types.ts` `PrimaryGenre` grows from 15 to 19 members:
+  `educational`, `fanfiction`, `folktale`, `sliceOfLife` are new. Per product
+  decision, the creation UI now shows exactly 12 genres in this order --
+  Adventure, Comedy, Educational, Fanfiction, Folktale, Historical, Sci-Fi,
+  Fantasy, Mystery, Horror, Slice of Life, Romance (Romance deliberately last)
+  -- captured as `UI_GENRE_ORDER`. `UI_GENRES` (the membership set) drops
+  `romantasy`, `darkRomance`, `paranormalRomance`, `cozyFantasy`, `poetry`,
+  `thriller`, `contemporary`. None of the seven were removed from
+  `PRIMARY_GENRES`, the check constraint, or `GENRE_VOICES` / `GENRE_PROMPTS` --
+  they follow the precedent this repo already set for `cozyFantasy` and
+  `paranormalRomance` before today: DB-valid, UI-hidden. A story already
+  written in one keeps reading, continuing and rendering in that genre's own
+  voice module forever.
+- **The migration map is now the enforcement point, not a passthrough.**
+  `GENRE_MIGRATION_MAP` gained seven entries for NEW submissions only: `thriller`
+  -> `mystery`, `contemporary` -> `sliceOfLife`, `poetry` -> `folktale`,
+  `romantasy`/`darkRomance`/`paranormalRomance` -> `romance`, `cozyFantasy` ->
+  `fantasy`. `validation.ts`'s `normalizeGenre` had to change precedence to make
+  this work: it now checks the migration map *before* the already-valid-genre
+  shortcut, because all seven removed genres are still members of
+  `PRIMARY_GENRES` and the old precedence (exact match wins) would have let
+  every one of them pass straight through unmigrated. The two stale
+  `sliceOfLife`/`sliceoflife` -> `contemporary` migration-map entries were
+  deleted, since `sliceOfLife` is now a real genre and redirecting it would make
+  the new genre unreachable. Same fix applied to the `sliceoflife` alias inside
+  `cover-prompts.ts`'s own, separate `normalizeGenre`.
+- **Kids-mode blocking had to be decoupled from the migration on purpose.**
+  `darkRomance`, `paranormalRomance` and `thriller` are exactly the genres the
+  new migration redirects away from their own identity, so the pre-existing
+  kids-mode safety check (which ran on the *migrated* `primaryGenre`) would
+  have gone silently unreachable -- a kids-mode request for `darkRomance` would
+  have quietly become a sweet romance story instead of being refused. Added
+  `kidsBlockedLabel()`, which checks the RAW pre-migration genre string
+  (primary and secondary) instead, so an explicit ask for a genre the kids
+  interface never offered is still rejected, not softened. This is what keeps
+  the pre-existing `darkRomance rejected in kids mode` test passing unchanged.
+- **Four new genre voice modules** in `story-prompts.ts`'s `GENRE_VOICES`, same
+  shape as the existing 15 (voice/pacing/whatWorks/whatToAvoid), matched for
+  length and specificity. `educational` in particular states its own guardrail
+  in-module ("if it reads like a worksheet with a plot bolted on, it has
+  failed") rather than relying on the universal anti-slop rules by omission --
+  the existing show-don't-tell and anti-lecture rules still govern every genre,
+  but a genre whose whole premise risks becoming a lesson needed the reminder
+  stated where the model reads it.
+- **Four new cover prompt configs** in `cover-prompts.ts`'s `GENRE_PROMPTS`
+  (style/palette/composition/mood/characterApproach). Exported
+  `hasCoverPromptConfig()` so a test can assert no genre in the full taxonomy --
+  removed-from-UI genres included, since an existing story's cover can still
+  regenerate -- is missing one.
+- **Spice leaves the product surface.** No code change was needed for the
+  omitted-`spice_level` path -- `validateGenerationRequest` already defaulted
+  it per genre (`GENRE_DEFAULT_SPICE[primaryGenre] ?? "sweet"`) and never
+  rejected its absence -- but this session pins that behaviour with tests
+  across all 19 genres and documents it as a deliberate, permanent contract
+  rather than an accident of the existing code path. Spice inference from the
+  story idea's own prose is a stated follow-up, not implemented here.
+- **Migration `00049_genre_taxonomy_v7.sql`.** Widens
+  `stories_primary_genre_check` to the 19-value set. Drops and re-adds the
+  constraint (`NOT VALID` then `VALIDATE`), following `00014`'s precedent for
+  this exact constraint. A widened CHECK constraint can never fail `VALIDATE`
+  against existing data, so add-and-validate in one migration is safe here.
+  Does not touch `spice_level` or `content_rating`, which are unaffected by a
+  genre change. Migrations `00045`-`00048` were left untouched per instructions.
+- `story-shape.ts`'s hardcoded genre list (fed to the free shaping LLM call) now
+  renders from `UI_GENRE_ORDER` instead of a stale literal string, so shaping
+  never suggests a shelf the creator cannot see or edit into, and this list
+  cannot drift from the taxonomy again.
+- `source-of-truth/STORY_PROMPT_SYSTEM.md` and `AGENTS.md`'s Taxonomy section
+  updated in the same session: genre counts, the UI table split into "shown"
+  and "removed, still valid" halves, the spice-and-genre matrix, four new
+  Genre Modules subsections, the migration map, and the spice-off-the-surface
+  decision. `AGENTS.md`'s Cover Image System genre-config table also gained the
+  three genres it was missing (the fourth, `sliceOfLife`, already had a stale
+  but strikingly on-target row from an earlier draft of this same idea).
+
+### What this does not do
+
+- No spice inference from prose. `spiceLevel` stays exactly where it was in the
+  contract, the prompt system, and stored rows; only its required-ness changed
+  (it already wasn't required, and now that is documented and tested as
+  intentional rather than incidental).
+- No UI change. `expo/` was explicitly out of scope for this session and was
+  not touched; the sibling client-side bucket is responsible for the actual
+  12-card creation shelf, its labels, and its icons.
+- No data migration or backfill. Every existing story keeps its stored genre
+  value exactly as it was; nothing was UPDATEd.
+
+### Verification
+
+Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
+`export PATH="/Users/mac16/.deno/bin:$PATH"`:
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  **571 passed, 0 failed** (measured baseline before this session: 544 --
+  the task brief's stated baseline of 476 does not match this worktree, which
+  already carries the entity-grounding, phrase-pillar and voice-library
+  buckets merged into `integration/all`; 544 is the real number this session
+  started from and is reported instead of the brief's stale figure).
+- `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  **78 passed, 0 failed** (measured baseline before this session: 74, same
+  caveat as above against the brief's stated 66). The 4 new tests are all in
+  `00049_genre_taxonomy_v7_test.ts`, run against real Postgres via PGlite --
+  each new genre plus each removed-from-UI genre inserts cleanly, an
+  unaffected genre still inserts cleanly, and a genre outside the full
+  taxonomy still gets `23514` (check_violation).
+- `deno check` and `deno fmt --check` clean on every file this session touched
+  or added (11 TypeScript/SQL files: `types.ts`, `types.test.ts` (new),
+  `validation.ts`, `validation.test.ts`, `story-prompts.ts`,
+  `story-prompts.test.ts`, `cover-prompts.ts`, `cover-prompts.test.ts`,
+  `story-shape.ts`, `00049_genre_taxonomy_v7.sql` (new),
+  `00049_genre_taxonomy_v7_test.ts` (new)).
+- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
+  `00049` is written but not applied there, and no function was deployed. No
+  production-level test ran, so no `public.error_events` rows were written
+  this session.
+- Not committed. Changes are left in the working tree per instructions.

@@ -192,6 +192,46 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
     mood: "calm, soothing, magical",
     characterApproach: "scene",
   },
+  educational: {
+    style:
+      "clean editorial illustration, crisp linework, bright confident color blocking, infographic-adjacent but story-first",
+    palette:
+      "chalkboard teal, warm marigold, cream paper white, pencil graphite",
+    composition:
+      "a character mid-activity with one clear symbolic object of the skill or fact in frame, open notebook or map texture in the background",
+    mood: "curious, capable, bright",
+    characterApproach: "scene",
+  },
+  fanfiction: {
+    style:
+      "vibrant fan-art illustration, dynamic pose, glossy modern digital-painting finish, poster-quality energy",
+    palette:
+      "saturated duotone accent colors, deep contrast background, one bold highlight hue",
+    composition:
+      "two figures in charged proximity or a single figure in a dramatic hero pose, tight dynamic framing",
+    mood: "devoted, electric, larger than life",
+    characterApproach: "portrait",
+  },
+  folktale: {
+    style:
+      "woodcut-inspired folk illustration, bold flat shapes, textured paper grain, hand-printed quality",
+    palette:
+      "burnt umber, mustard gold, forest green, faded indigo, cream background",
+    composition:
+      "a single symbolic creature or object at the center (a fox, a lantern, a river), decorative border patterning",
+    mood: "timeless, warm, wise",
+    characterApproach: "silhouette",
+  },
+  sliceOfLife: {
+    style:
+      "warm cozy illustration, gentle watercolor texture, soft natural light, quietly observational",
+    palette:
+      "warm caramel, soft sage, dusty rose, muted cream, gentle afternoon gold",
+    composition:
+      "an ordinary domestic or street scene caught mid-moment, generous negative space, one small telling detail in focus",
+    mood: "gentle, grounded, quietly warm",
+    characterApproach: "scene",
+  },
 };
 
 /**
@@ -204,10 +244,15 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
 function normalizeGenre(genre: string): string {
   if (Object.prototype.hasOwnProperty.call(GENRE_PROMPTS, genre)) return genre;
 
-  // Alias map for deprecated genres
+  // Alias map for deprecated genres that never had their own cover config.
+  //
+  // `sliceoflife` is deliberately absent: `sliceOfLife` is a real genre with
+  // its own entry in GENRE_PROMPTS as of v7, and the case-insensitive loop
+  // below resolves a lowercase or differently-cased request to it. Aliasing it
+  // here would make that entry unreachable for any caller that doesn't send
+  // the exact camelCase spelling.
   const aliases: Record<string, string> = {
     drama: "contemporary",
-    sliceoflife: "contemporary",
     darkacademia: "contemporary",
     mythology: "fantasy",
     lgbtq: "contemporary",
@@ -226,6 +271,18 @@ function normalizeGenre(genre: string): string {
     if (key.toLowerCase() === lower) return key;
   }
   return "contemporary";
+}
+
+/**
+ * Whether a genre has its own dedicated cover prompt config.
+ *
+ * Exported for tests only: `story-prompts.test.ts`/`cover-prompts.test.ts`
+ * pin that every `PRIMARY_GENRE` (including the removed-from-UI ones, which
+ * still need a cover when an existing story's chapter art regenerates) has a
+ * real entry here rather than silently falling back to `contemporary`'s look.
+ */
+export function hasCoverPromptConfig(genre: string): boolean {
+  return Object.prototype.hasOwnProperty.call(GENRE_PROMPTS, genre);
 }
 
 export function buildCoverPrompt(
