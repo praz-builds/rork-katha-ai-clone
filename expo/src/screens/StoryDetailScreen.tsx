@@ -342,7 +342,12 @@ export default function StoryDetailScreen({
     }
   }, [story.id]);
 
-  const coverImage = story.coverImage
+  // The generated cover first, the bundled seed asset second. See the note in
+  // ReaderScreen: reading only `coverImage` meant a story the user generated
+  // showed its art in the studio and lost it everywhere else.
+  const coverImage = story.coverImageUrl
+    ? { uri: story.coverImageUrl }
+    : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;
   const focalX = story.focalX ?? 0.5;

@@ -206,3 +206,55 @@ it("renders the real content rating and omits absent flags", async () => {
   expect(view.getAllByText("sweet").length).toBeGreaterThan(0);
   expect(view.queryByText("Kids")).toBeNull();
 });
+
+/**
+ * A generated cover must survive leaving the create studio.
+ *
+ * This screen and the reader both read only `story.coverImage`, which names a
+ * BUNDLED asset and, by its own documentation in `domain.ts`, "only ever
+ * belongs to a seed story". `coverImageUrl` -- the cover actually generated for
+ * this story -- was ignored by both, and only the create studio read it.
+ *
+ * So a writer watched their cover appear during creation and then found the
+ * genre gradient in its place the moment they opened their own story. Nothing
+ * errored: the art was simply never asked for.
+ */
+describe("the generated cover", () => {
+  const GENERATED = "https://example.test/covers/story/cover.png";
+
+  /**
+   * Every image URI in the rendered tree.
+   *
+   * Read off the serialized tree rather than a query helper: RNTL 14 dropped
+   * `UNSAFE_queryAllByProps`, and what this test actually cares about is
+   * whether the URL reached the tree at all, not which node holds it.
+   */
+  const uris = (view: Awaited<ReturnType<typeof renderDetail>>): string =>
+    JSON.stringify(view.toJSON());
+
+  it("is rendered when the story has one", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      coverImageUrl: GENERATED,
+    } as Story);
+    await waitFor(() => expect(uris(view)).toContain(GENERATED));
+  });
+
+  it("is preferred over a bundled seed asset", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      coverImage: undefined,
+      coverImageUrl: GENERATED,
+    } as Story);
+    await waitFor(() => expect(uris(view)).toContain(GENERATED));
+  });
+
+  it("is absent, without crashing, when the story has no cover at all", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      coverImage: undefined,
+      coverImageUrl: undefined,
+    } as Story);
+    await waitFor(() => expect(uris(view)).not.toContain(GENERATED));
+  });
+});

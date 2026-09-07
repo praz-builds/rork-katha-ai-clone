@@ -285,6 +285,8 @@ describe("approved Create flow", () => {
       />,
     );
 
+    // Two presses: the first opens the review stage, the second commits it.
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
