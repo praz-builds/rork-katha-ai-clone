@@ -39,7 +39,9 @@ export type ReaderChromeProps = {
   onSearchPrevious: () => void;
   onPageChange: (pageIndex: number) => void;
   onHistory?: () => void;
+  /** Author-only. Omit entirely for a reader who does not own the story - the control is not rendered at all. */
   onEdit?: () => void;
+  /** Author-only. Omit entirely for a reader who does not own the story - the control is not rendered at all. */
   onReimagine?: () => void;
   onPreferences: () => void;
   onChapters: () => void;
@@ -89,8 +91,8 @@ export function ReaderChrome({
   onSearchPrevious,
   onPageChange,
   onHistory = () => {},
-  onEdit = () => {},
-  onReimagine = () => {},
+  onEdit,
+  onReimagine,
   onPreferences,
   onChapters,
   onListen,
@@ -119,10 +121,15 @@ export function ReaderChrome({
     transform: [{ translateY: reducedMotion ? 0 : (1 - progress.get()) * 28 }],
   }));
 
+  // Edit and Reimagine are author-only: a reader who does not own the story
+  // is handed `undefined` for both, and the buttons must not render at all
+  // rather than render disabled or inert.
   const rowOne: ChromeAction[] = [
     { label: "History", icon: History, onPress: onHistory },
-    { label: "Edit", icon: Pencil, onPress: onEdit },
-    { label: "Reimagine", icon: Sparkles, onPress: onReimagine },
+    ...(onEdit ? [{ label: "Edit", icon: Pencil, onPress: onEdit }] : []),
+    ...(onReimagine
+      ? [{ label: "Reimagine", icon: Sparkles, onPress: onReimagine }]
+      : []),
   ];
   const rowTwo: ChromeAction[] = [
     { label: "Preferences", icon: SlidersHorizontal, onPress: onPreferences },

@@ -44,3 +44,10 @@ it("invokes extension controls exactly once per press", async () => {
   expect(onReimagine).toHaveBeenCalledTimes(1);
   expect(onMusic).toHaveBeenCalledTimes(1);
 });
+
+it("does not render Edit or Reimagine when their handlers are omitted", async () => {
+  const view = await render(<ReaderChrome {...props()} />);
+
+  expect(view.queryByLabelText("Edit")).toBeNull();
+  expect(view.queryByLabelText("Reimagine")).toBeNull();
+});
