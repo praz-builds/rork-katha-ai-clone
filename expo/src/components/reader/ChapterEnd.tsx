@@ -33,6 +33,13 @@ export type ContinuationOption = {
 type SuggestionStatus = "loading" | "ready" | "unavailable";
 type SubmitPhase = "idle" | "submitting" | "success" | "error";
 
+/**
+ * What `continue-story` falls back to when a story has no usable
+ * `planned_chapter_count`. Kept in step with the backend deliberately: if the
+ * client assumes more, it offers a continuation the server will refuse.
+ */
+const DEFAULT_PLANNED_CHAPTER_COUNT = 3;
+
 const UNAVAILABLE_REASON = {
   insufficient:
     "This story doesn't have enough detail yet to suggest a direction.",
@@ -163,9 +170,18 @@ export default function ChapterEnd({
   // branch the series from the middle of it - the reader already has a
   // "Chapters" list for moving forward through what exists.
   const isLatestChapter = chapter.chapterNumber >= latestChapterNumber;
+  // Mirror the server's own default rather than treating "unknown" as
+  // "unlimited". `continue-story` resolves a missing or unrecognised
+  // `planned_chapter_count` to 3 and refuses anything past it, so a story
+  // without one was being offered a continuation the server would reject --
+  // the client promising something the backend had already decided against.
+  const effectivePlannedCount =
+    plannedChapterCount === 3 || plannedChapterCount === 7 ||
+      plannedChapterCount === 15
+      ? plannedChapterCount
+      : DEFAULT_PLANNED_CHAPTER_COUNT;
   const seriesComplete = !isSeries
-    || (typeof plannedChapterCount === "number"
-      && chapter.chapterNumber >= plannedChapterCount);
+    || chapter.chapterNumber >= effectivePlannedCount;
 
   const [status, setStatus] = useState<SuggestionStatus>("loading");
   const [options, setOptions] = useState<ContinuationOption[]>([]);

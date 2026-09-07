@@ -318,3 +318,43 @@ describe("ReaderScreen renderChapterEnd wiring", () => {
     expect(lastCallChapter.id).toBe(longChapter.id);
   });
 });
+
+// Two findings from review.
+//
+// A story with no `plannedChapterCount` was offered a continuation forever,
+// while `continue-story` resolves a missing count to 3 and refuses anything
+// past it -- the client promising what the backend had already decided against.
+//
+// And the production caller omitted `onChapterReady`, so a successful
+// continuation showed a confirmation and went nowhere: the chapter was never
+// added to app state, so it could not be read. A "What's next?" that produces
+// a chapter you cannot reach is worse than no button at all.
+describe("agreeing with the server about where a series ends", () => {
+  it("treats a story with no planned count as finished at the server's default", async () => {
+    const story = makeStory({ plannedChapterCount: undefined });
+    const third = makeChapter({ id: "chapter-3", chapterNumber: 3 });
+    story.chapters = [...story.chapters, third];
+
+    const view = await render(
+      <ChapterEnd story={story} chapter={third} continueChapter={jest.fn()} />,
+    );
+
+    await waitFor(() =>
+      expect(view.queryByTestId("chapter-end-option-0")).toBeNull()
+    );
+  });
+
+  it("still offers a continuation before that default is reached", async () => {
+    const story = makeStory({ plannedChapterCount: undefined });
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={jest.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.getByTestId("chapter-end-option-0")).toBeTruthy()
+    );
+  });
+});
