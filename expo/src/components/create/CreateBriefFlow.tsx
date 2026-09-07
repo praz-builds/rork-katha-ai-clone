@@ -47,7 +47,7 @@ export type StudioCreateDraft = Omit<CreateDraft, "visibility"> & {
   visibility: "private" | "public";
 };
 
-type CreateStage = "main" | "character";
+type CreateStage = "main" | "character" | "review";
 
 type Props = {
   credits: number;
@@ -147,6 +147,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   const maxMoments = 5;
   const strength = briefStrength(draft);
   const isCharacter = stage === "character";
+  const isReview = stage === "review";
 
   useEffect(() => {
     if (reduceMotion || stage === "character") return;
@@ -264,30 +265,58 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
     select();
   }, [select, setDraft]);
 
+  /**
+   * The structured review screen, per source-of-truth/STORY_GENERATION_FLOW.md
+   * section 2's own admission that main Create is otherwise "setup, shaping,
+   * and review" on one surface: everything the user is about to spend credits
+   * on is restated here before the paid generation call fires, and Back
+   * returns to the same `main` stage with the same `draft` state untouched.
+   */
+  const goToReview = useCallback(() => {
+    confirm();
+    setStage("review");
+  }, [confirm]);
+
+  const backToMain = useCallback(() => {
+    select();
+    setStage("main");
+  }, [select]);
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <Animated.View style={[styles.flex, { opacity: fade }]}>
-          <StorySetupScreen
-            draft={draft}
-            allowedGenres={allowedGenres}
-            maxMoments={maxMoments}
-            moreOptionsOpen={moreOptionsOpen}
-            momentInput={momentInput}
-            onBack={onBack}
-            onSetDraft={setDraft}
-            onAudience={chooseAudience}
-            onAddCharacter={startCharacter}
-            onEditCharacter={startCharacter}
-            onAddMoment={addMoment}
-            onMomentInput={setMomentInput}
-            onToggleOptions={() => { select(); setMoreOptionsOpen((open) => !open); }}
-            isAnonymous={isAnonymous}
-            strength={strength}
-            credits={credits}
-            onCreate={onGenerate}
-            onSelect={select}
-          />
+          {isReview ? (
+            <ReviewScreen
+              draft={draft}
+              strength={strength}
+              credits={credits}
+              isAnonymous={isAnonymous}
+              onBack={backToMain}
+              onCreate={onGenerate}
+            />
+          ) : (
+            <StorySetupScreen
+              draft={draft}
+              allowedGenres={allowedGenres}
+              maxMoments={maxMoments}
+              moreOptionsOpen={moreOptionsOpen}
+              momentInput={momentInput}
+              onBack={onBack}
+              onSetDraft={setDraft}
+              onAudience={chooseAudience}
+              onAddCharacter={startCharacter}
+              onEditCharacter={startCharacter}
+              onAddMoment={addMoment}
+              onMomentInput={setMomentInput}
+              onToggleOptions={() => { select(); setMoreOptionsOpen((open) => !open); }}
+              isAnonymous={isAnonymous}
+              strength={strength}
+              credits={credits}
+              onCreate={goToReview}
+              onSelect={select}
+            />
+          )}
         </Animated.View>
       </KeyboardAvoidingView>
       <Modal animationType="slide" presentationStyle="fullScreen" visible={isCharacter} onRequestClose={() => setStage("main")}>
@@ -437,6 +466,125 @@ function StorySetupScreen({
       <Pressable disabled={!ideaReady || !hasCredits || hasPendingCharacterImage} onPress={onCreate} accessibilityRole="button" accessibilityState={{ disabled: !ideaReady || !hasCredits || hasPendingCharacterImage }} style={[styles.primaryCta, (!ideaReady || !hasCredits || hasPendingCharacterImage) && styles.primaryCtaDisabled]}><Text style={styles.primaryCtaText}>Create · 3 credits</Text><Sparkles size={18} color={colors.surface} /></Pressable>
       <Text style={styles.ctaStrength}>strength {Math.min(100, strength.slots * 25)}% · {strength.label.toLowerCase()}</Text>
     </ScrollView>
+  );
+}
+
+/**
+ * Structured review before the paid generation call.
+ *
+ * Restates every choice the setup screen collected — idea, genre, cast,
+ * chapters, length, style, visibility — as a plain label/value list, and
+ * nothing here is editable. Back returns to the same `main` stage with the
+ * same draft, so "changing something" means going back and using the control
+ * that already owns that field, not a second copy of it.
+ */
+function ReviewScreen({
+  draft,
+  strength,
+  credits,
+  isAnonymous,
+  onBack,
+  onCreate,
+}: {
+  draft: StudioCreateDraft;
+  strength: ReturnType<typeof briefStrength>;
+  credits: number;
+  isAnonymous: boolean;
+  onBack: () => void;
+  onCreate: () => void;
+}) {
+  const hasCredits = credits >= 3;
+  const hasPendingCharacterImage = draft.characters.some(
+    (character) => character.portraitStatus === "generating",
+  );
+  const chapterLength = draft.chapterLength ?? (draft.audienceMode === "kids" ? "short" : "standard");
+  const chapterLengthLabel = chapterLength.charAt(0).toUpperCase() + chapterLength.slice(1);
+  const chapterMinutes = CHAPTER_LENGTHS.find((item) => item.id === chapterLength)?.minutes;
+  const plannedChapterCount = draft.plannedChapterCount ?? 3;
+  const visibilityLabel = isAnonymous
+    ? "Private — sign in to publish"
+    : draft.visibility === "public" ? "Public" : "Private";
+  const charactersValue = draft.characters.length
+    ? draft.characters
+        .map((character) => `${character.name.trim() || "Untitled"}${character.isHero ? " (Lead)" : ""}`)
+        .join(", ")
+    : "None added";
+  const disabled = !hasCredits || hasPendingCharacterImage;
+
+  return (
+    <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <View style={styles.topBar}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back to edit" onPress={onBack} hitSlop={2} style={styles.iconButton}>
+          <ArrowLeft size={20} color={colors.ink} />
+        </Pressable>
+        <CreditPill credits={credits} />
+      </View>
+      <View style={styles.reviewHero}>
+        <Text style={styles.eyebrow}>Review and create</Text>
+        <Text style={styles.title}>Here is what Katha will write</Text>
+        <Text style={styles.subtitle}>Check every choice below. Go back to change anything before generating.</Text>
+      </View>
+      <View style={styles.strengthCard}>
+        <View style={styles.strengthHead}>
+          <Text style={styles.strengthLabel}>{strength.label}</Text>
+          <Text style={styles.strengthSlots}>{strength.slots} of 4 filled</Text>
+        </View>
+        <Text style={styles.strengthDetail}>{strength.detail}</Text>
+      </View>
+      <View style={styles.reviewCard}>
+        <ReviewRow label="Your idea" value={draft.seed.trim() || "Not written yet"} />
+        <ReviewRow
+          label="Genre"
+          value={`${GENRE_EMOJI[draft.primaryGenre]} ${genreLabels[draft.primaryGenre]}${draft.audienceMode === "kids" ? " · Kids mode" : ""}`}
+        />
+        <ReviewRow label="Premise" value={draft.whereAndWhen?.trim() || "Not set"} />
+        <ReviewRow label="Who's in it" value={charactersValue} />
+        <ReviewRow
+          label="Moments to include"
+          value={draft.moments?.length ? draft.moments.join(" · ") : "None added"}
+        />
+        <ReviewRow label="Chapters" value={String(plannedChapterCount)} />
+        <ReviewRow
+          label="Chapter length"
+          value={chapterMinutes ? `${chapterLengthLabel} · about ${chapterMinutes} min each` : chapterLengthLabel}
+        />
+        <ReviewRow
+          label="Chapter art"
+          value={draft.illustrateChapters ? "On for chapters 2 and later" : "Off"}
+        />
+        <ReviewRow label="Writing style" value={draft.writingStyle?.trim() || "Not set"} />
+        {draft.audienceMode === "adult" ? (
+          <ReviewRow label="Spice" value={draft.spiceLevel === "steamy" ? "Steamy" : "Sweet"} />
+        ) : null}
+        <ReviewRow label="Language" value={draft.language} />
+        <ReviewRow label="Avoid" value={draft.avoid?.trim() || "Nothing excluded"} />
+        <ReviewRow label="Visibility" value={visibilityLabel} />
+      </View>
+      {!hasCredits ? <Text style={styles.creditWarning}>You need 3 credits to start this story.</Text> : null}
+      {hasPendingCharacterImage ? <Text style={styles.creditWarning}>Wait for character images to finish before creating the story.</Text> : null}
+      <Pressable
+        disabled={disabled}
+        onPress={onCreate}
+        accessibilityRole="button"
+        accessibilityLabel="Create your story"
+        accessibilityState={{ disabled }}
+        style={[styles.primaryCta, disabled && styles.primaryCtaDisabled]}
+      >
+        <Text style={styles.primaryCtaText}>Create · 3 credits</Text>
+        <Sparkles size={18} color={colors.surface} />
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.reviewRow}>
+      <View style={styles.reviewCopy}>
+        <Text style={styles.reviewLabel}>{label}</Text>
+        <Text style={styles.reviewValue}>{value}</Text>
+      </View>
+    </View>
   );
 }
 

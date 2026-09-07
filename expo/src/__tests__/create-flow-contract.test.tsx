@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import type { Story } from "@/types/domain";
 
 const mockGenerateStory = jest.fn();
@@ -96,10 +96,11 @@ const generatedStory: Story = {
   language: "English",
 };
 
-async function renderCreate() {
+async function renderCreate(options: { isAnonymous?: boolean } = {}) {
   return await render(
     <CreateStudioScreen
       credits={12}
+      isAnonymous={options.isAnonymous ?? true}
       onCreditUsed={jest.fn()}
       onPublished={jest.fn()}
       onBack={jest.fn()}
@@ -230,6 +231,10 @@ describe("approved Create flow", () => {
     );
     await fireEvent.press(view.getByRole("button", { name: "Language" }));
     await fireEvent.press(view.getByText("Portuguese"));
+    // The setup screen's Create button opens the pre-generation review screen;
+    // its own Create button is the one that actually fires generation.
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
@@ -263,11 +268,268 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "Save" }));
     await view.findByText("Image ready");
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
     expect(mockGenerateStory.mock.calls[0][0].characters[0]).toMatchObject({
       name: "Praz",
       portraitUrl: "https://example.com/portrait.png",
       portraitStatus: "ready",
     });
+  });
+
+  it.each([3, 7, 15] as const)(
+    "sends a planned chapter count of %d to the generation payload",
+    async (count) => {
+      mockGenerateStory.mockResolvedValueOnce(generatedStory);
+      const view = await renderCreate();
+      await fillIdea(view);
+
+      await fireEvent.press(view.getByRole("button", { name: "More options" }));
+      await fireEvent.press(
+        view.getByRole("button", { name: `${count} chapters` }),
+      );
+      await fireEvent.press(view.getByRole("button", { name: /create/i }));
+      await view.findByText("Here is what Katha will write");
+      await fireEvent.press(view.getByRole("button", { name: /create/i }));
+      await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+      expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+        plannedChapterCount: count,
+      });
+    },
+  );
+
+  it.each(["short", "standard", "long"] as const)(
+    "sends a chapter length of %s to the generation payload",
+    async (length) => {
+      mockGenerateStory.mockResolvedValueOnce(generatedStory);
+      const view = await renderCreate();
+      await fillIdea(view);
+
+      await fireEvent.press(view.getByRole("button", { name: "More options" }));
+      const label = length.charAt(0).toUpperCase() + length.slice(1);
+      await fireEvent.press(view.getByRole("button", { name: label }));
+      await fireEvent.press(view.getByRole("button", { name: /create/i }));
+      await view.findByText("Here is what Katha will write");
+      await fireEvent.press(view.getByRole("button", { name: /create/i }));
+      await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+      expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+        chapterLength: length,
+      });
+    },
+  );
+
+  it("defaults visibility to private in the generation payload", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+
+    expect(
+      view.getByRole("switch", { name: "Kids Mode" }),
+    ).toBeTruthy();
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
+    expect(view.getByText("Private")).toBeTruthy();
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      visibility: "private",
+    });
+  });
+
+  it("can be switched to Public visibility and it reaches the generation payload", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+    const visibilitySwitch = view.getByRole("switch", {
+      name: "Public visibility",
+    });
+    expect(visibilitySwitch.props.value).toBe(false);
+    await fireEvent(visibilitySwitch, "valueChange", true);
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
+    expect(view.getByText("Public")).toBeTruthy();
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      visibility: "public",
+    });
+  });
+
+  it("sends a character's background and appearance to the generation payload", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate();
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
+    await fireEvent.changeText(view.getByLabelText("Name"), "Elena");
+    await fireEvent.changeText(
+      view.getByLabelText("Description"),
+      "A historical restorer, 34",
+    );
+    await fireEvent.changeText(
+      view.getByLabelText("Background"),
+      "Hasn't spoken to her mother in six years.",
+    );
+    await fireEvent.changeText(
+      view.getByLabelText("Appearance"),
+      "Dark hair pinned up, paint on her hands.",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Save" }));
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0].characters[0]).toMatchObject({
+      name: "Elena",
+      description: "A historical restorer, 34",
+      background: "Hasn't spoken to her mother in six years.",
+      appearance: "Dark hair pinned up, paint on her hands.",
+    });
+  });
+
+  it("shows every chosen value on the review screen and preserves them when going back", async () => {
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view, "A lighthouse keeper receives a letter from tomorrow.");
+
+    await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
+    await fireEvent.changeText(view.getByLabelText("Name"), "Mara");
+    await fireEvent.press(view.getByRole("button", { name: "Save" }));
+
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+    await fireEvent.changeText(
+      view.getByLabelText("Writing style"),
+      "Lyrical, present tense",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "15 chapters" }));
+    await fireEvent.press(view.getByRole("button", { name: "Long" }));
+    const visibilitySwitch = view.getByRole("switch", {
+      name: "Public visibility",
+    });
+    await fireEvent(visibilitySwitch, "valueChange", true);
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
+
+    // Every choice made on the setup screen is restated here before anything
+    // is spent.
+    expect(
+      view.getByText("A lighthouse keeper receives a letter from tomorrow."),
+    ).toBeTruthy();
+    expect(view.getByText(/Mara/)).toBeTruthy();
+    expect(view.getByText("15")).toBeTruthy();
+    expect(view.getByText(/Long/)).toBeTruthy();
+    expect(view.getByText("Lyrical, present tense")).toBeTruthy();
+    expect(view.getByText("Public")).toBeTruthy();
+
+    // Going back does not reset anything: it is the same draft, not a copy.
+    await fireEvent.press(view.getByRole("button", { name: "Back to edit" }));
+    expect(view.getByLabelText("Story idea").props.value).toBe(
+      "A lighthouse keeper receives a letter from tomorrow.",
+    );
+    expect(
+      view.getByRole("switch", { name: "Public visibility" }).props.value,
+    ).toBe(true);
+    expect(
+      view.getByRole("button", { name: "15 chapters" }).props.accessibilityState
+        .selected,
+    ).toBe(true);
+    expect(
+      view.getByRole("button", { name: "Long" }).props.accessibilityState
+        .selected,
+    ).toBe(true);
+    expect(view.getByLabelText("Writing style").props.value).toBe(
+      "Lyrical, present tense",
+    );
+
+    await fireEvent.press(view.getByRole("button", { name: "Edit Mara" }));
+    expect(view.getByLabelText("Name").props.value).toBe("Mara");
+  });
+});
+
+describe("draft restoration across a remount", () => {
+  it("restores every new brief field from a saved draft after a remount", async () => {
+    const savedDraft = {
+      primaryGenre: "mystery",
+      audienceMode: "adult",
+      spiceLevel: "sweet",
+      identityLenses: [],
+      seed: "A retired postman finds one undelivered letter every year.",
+      language: "English",
+      visibility: "public",
+      isSeries: true,
+      characters: [{
+        name: "Iris",
+        description: "A retired postman",
+        background: "Delivers one final letter every winter.",
+        appearance: "Grey coat, a satchel that has outlived three owners.",
+        isHero: true,
+      }],
+      moments: [],
+      storyValues: [],
+      writingStyle: "Wry, first person",
+      avoid: "no graphic violence",
+      chapterLength: "long",
+      plannedChapterCount: 15,
+      illustrateChapters: false,
+    };
+    mockLoadDraft.mockResolvedValue(savedDraft);
+
+    const first = await renderCreate({ isAnonymous: false });
+    await waitFor(() =>
+      expect(first.getByLabelText("Story idea").props.value).toBe(
+        savedDraft.seed,
+      ),
+    );
+    await act(async () => {
+      first.unmount();
+    });
+
+    // A fresh mount — the studio tab being left and re-entered — reads the
+    // same saved draft back rather than starting from the blank default.
+    const second = await renderCreate({ isAnonymous: false });
+    await waitFor(() =>
+      expect(second.getByLabelText("Story idea").props.value).toBe(
+        savedDraft.seed,
+      ),
+    );
+
+    await fireEvent.press(second.getByRole("button", { name: "More options" }));
+    expect(
+      second.getByRole("switch", { name: "Public visibility" }).props.value,
+    ).toBe(true);
+    expect(second.getByLabelText("Writing style").props.value).toBe(
+      "Wry, first person",
+    );
+    expect(second.getByLabelText("Avoid").props.value).toBe(
+      "no graphic violence",
+    );
+    expect(
+      second.getByRole("button", { name: "15 chapters" }).props
+        .accessibilityState.selected,
+    ).toBe(true);
+    expect(
+      second.getByRole("button", { name: "Long" }).props.accessibilityState
+        .selected,
+    ).toBe(true);
+
+    await fireEvent.press(second.getByRole("button", { name: "Edit Iris" }));
+    expect(second.getByLabelText("Background").props.value).toBe(
+      "Delivers one final letter every winter.",
+    );
+    expect(second.getByLabelText("Appearance").props.value).toBe(
+      "Grey coat, a satchel that has outlived three owners.",
+    );
   });
 });
