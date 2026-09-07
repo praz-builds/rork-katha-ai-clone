@@ -92,7 +92,17 @@ declare
       'furthermore','moreover','consequently','bustling','labyrinth',
       'crucible','ministrations'
     ];
-    v_banned_phrases constant text[] := array[
+    -- Regex fragments, not literals, and matched as a CONTAINED phrase.
+    --
+    -- Two bugs lived in the previous form of this list. The variable-word
+    -- patterns had their wildcards flattened out ("knot in .* stomach" was
+    -- stored as "knot in stomach"), so the exact thing people write -- "knot in
+    -- my stomach" -- passed while a collapsed form nobody writes was refused.
+    -- And the comparison was equality, so a phrase merely CONTAINING a cliche
+    -- was allowed as long as it had anything else attached to it.
+    --
+    -- `\s+\S+` stands in for the wildcard: one or more intervening words.
+    v_banned_patterns constant text[] := array[
       'it''s not x it''s y','it is important to note',
       'it is worth mentioning','in today''s world','at the end of the day',
       'one of the most','when it comes to','at its core',
@@ -102,12 +112,14 @@ declare
       'enduring legacy','a shiver ran down','a wave of emotion washed over',
       'the weight of','time seemed to stand still','their eyes locked',
       'heart pounding in','heart hammered against','breath caught in',
-      'let out a breath didn''t know was holding','couldn''t help but',
+      'let out a breath(\s+\S+)+ know(\s+\S+)+ was holding','couldn''t help but',
       'voice barely above a whisper','etched with','gaze softened',
       'sent a chill through','furrowed brow','jaw tightened',
       'steeled themselves','squared their shoulders','eyes widened',
-      'eyes sparkling','knot in stomach','pit in stomach','air was thick with'
+      'eyes sparkling','knot in(\s+\S+)+ stomach','pit in(\s+\S+)+ stomach',
+      'air was thick with'
     ];
+    v_pattern text;
 begin
     if v_key = '' then
         return false;
@@ -120,7 +132,13 @@ begin
         end if;
     end loop;
 
-    return not (v_key = any(v_banned_phrases));
+    foreach v_pattern in array v_banned_patterns loop
+        if v_key ~ ('(^|\s)' || v_pattern || '(\s|$)') then
+            return false;
+        end if;
+    end loop;
+
+    return true;
 end;
 $$;
 
@@ -270,11 +288,27 @@ revoke all on table public.phrase_corpus from public, anon;
 grant select on table public.phrase_corpus to authenticated;
 grant select, insert, update, delete on table public.phrase_corpus to service_role;
 
+-- Insert and update go through `save_phrase`, never straight at the table.
+--
+-- `save_phrase` is the only place that checks the ban list, binds the row to a
+-- corpus entry, and enforces the chapter/story match. Leaving `insert` granted
+-- to `authenticated` left all of that optional: a client could write whatever
+-- it liked into `saved_phrases`, including a banned cliche, and that text is
+-- later assembled into a story prompt. The validation has to be unavoidable to
+-- be worth anything.
+--
+-- `delete` stays. Removing your own saved phrase corrupts nothing -- there is
+-- no counter or derived state behind it -- and `unsave-phrase` deletes through
+-- the caller's own client under the own-row policy.
 revoke all on table public.saved_phrases from public, anon;
-grant select, insert, update, delete on table public.saved_phrases to authenticated;
+grant select, delete on table public.saved_phrases to authenticated;
+grant select, insert, update, delete on table public.saved_phrases to service_role;
 
+-- Same reasoning: scheduling is computed in `record_phrase_practice`, so a
+-- direct write would let a client invent its own spaced-repetition state.
 revoke all on table public.phrase_practice from public, anon;
-grant select, insert, update on table public.phrase_practice to authenticated;
+grant select on table public.phrase_practice to authenticated;
+grant select, insert, update, delete on table public.phrase_practice to service_role;
 
 create or replace function public.save_phrase(
     p_user_id uuid,
@@ -385,9 +419,24 @@ begin
     for update;
 
     if not found then
+        -- `for update` above locks nothing when there is no row yet, so two
+        -- concurrent first attempts at the same phrase both reach here. The
+        -- plain insert made one of them raise a unique violation, which the
+        -- endpoint answered as a 500 -- a lost practice result for a race that
+        -- is entirely ordinary the first time someone drills a phrase.
         insert into public.phrase_practice (user_id, saved_phrase_id)
         values (p_user_id, p_saved_phrase_id)
+        on conflict (user_id, saved_phrase_id) do nothing
         returning * into v_existing;
+
+        if v_existing.id is null then
+            -- The other transaction won. Take its row and carry on; the update
+            -- below then applies this outcome on top of it.
+            select * into v_existing
+            from public.phrase_practice
+            where user_id = p_user_id and saved_phrase_id = p_saved_phrase_id
+            for update;
+        end if;
     end if;
 
     v_ease := greatest(

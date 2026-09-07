@@ -12,6 +12,7 @@ const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
 const CURLY_QUOTES = /[\u201c\u201d\u2033]/g;
 const DASHES = /[\u2010-\u2015]/g;
 const NON_WORD_PUNCTUATION = /[^\p{L}\p{N}'\s]+/gu;
+const WILDCARD = ".*";
 
 export function normalizePhraseKey(value: string): string {
   return value
@@ -36,9 +37,30 @@ export function isAllowedCorpusPhrase(value: string): boolean {
   }
 
   for (const pattern of BANNED_PHRASES) {
-    if (phrasePatternMatches(key, normalizePhraseKey(pattern))) return false;
+    if (phrasePatternMatches(key, normalizeBanPattern(pattern))) return false;
   }
   return true;
+}
+
+/**
+ * Normalise a ban pattern WITHOUT destroying its wildcards.
+ *
+ * `normalizePhraseKey` strips everything that is not a letter, number or
+ * apostrophe, which is right for a phrase and wrong for a pattern: it turned
+ * "knot in .* stomach" into the literal "knot in stomach", so the three
+ * variable-word patterns in the ban list matched only a collapsed form nobody
+ * ever writes. "knot in my stomach" was allowed straight into the corpus while
+ * "knot in stomach" was refused -- exactly backwards.
+ *
+ * So the wildcard is held out of normalisation and put back afterwards.
+ */
+function normalizeBanPattern(pattern: string): string {
+  return pattern
+    .split(WILDCARD)
+    .map((segment) => normalizePhraseKey(segment))
+    .join(" .* ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function phrasePatternMatches(key: string, pattern: string): boolean {
