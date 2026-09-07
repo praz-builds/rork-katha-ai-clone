@@ -12,6 +12,7 @@ const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
 const CURLY_QUOTES = /[\u201c\u201d\u2033]/g;
 const DASHES = /[\u2010-\u2015]/g;
 const NON_WORD_PUNCTUATION = /[^\p{L}\p{N}'\s]+/gu;
+const WILDCARD = ".*";
 
 export function normalizePhraseKey(value: string): string {
   return value
@@ -36,9 +37,30 @@ export function isAllowedCorpusPhrase(value: string): boolean {
   }
 
   for (const pattern of BANNED_PHRASES) {
-    if (phrasePatternMatches(key, normalizePhraseKey(pattern))) return false;
+    if (phrasePatternMatches(key, normalizeBanPattern(pattern))) return false;
   }
   return true;
+}
+
+/**
+ * Normalise a ban pattern WITHOUT destroying its wildcards.
+ *
+ * `normalizePhraseKey` strips everything that is not a letter, number or
+ * apostrophe, which is right for a phrase and wrong for a pattern: it turned
+ * "knot in .* stomach" into the literal "knot in stomach", so the three
+ * variable-word patterns in the ban list matched only a collapsed form nobody
+ * ever writes. "knot in my stomach" was allowed straight into the corpus while
+ * "knot in stomach" was refused -- exactly backwards.
+ *
+ * So the wildcard is held out of normalisation and put back afterwards.
+ */
+function normalizeBanPattern(pattern: string): string {
+  return pattern
+    .split(WILDCARD)
+    .map((segment) => normalizePhraseKey(segment))
+    .join(" .* ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function phrasePatternMatches(key: string, pattern: string): boolean {
@@ -115,4 +137,54 @@ function phraseLabel(
   const details = [seed.register, seed.difficulty]
     .filter((value): value is string => typeof value === "string" && !!value);
   return details.length ? ` (${details.join(", ")})` : "";
+}
+
+/**
+ * Read the phrases this reader has saved, for seeding their next generation.
+ *
+ * This is the wire that makes the phrase layer real. Without it
+ * `buildUserPrompt` received an empty list on every production call, the layer
+ * rendered as `""`, and the whole pillar was inert while looking finished.
+ *
+ * Best-effort by construction, for the same reason grounding is: a reader's
+ * saved phrases are a convenience they did not explicitly request for THIS
+ * generation, and a paid story must never fail because a nice-to-have lookup
+ * did. Every failure path returns an empty array, which renders the prompt
+ * exactly as it was before this existed.
+ *
+ * Newest first, and capped at the layer's own cap: reading more rows than can
+ * possibly be used is wasted latency on the paid path.
+ */
+export async function fetchPhraseSeeds(
+  client: {
+    from: (table: string) => {
+      // deno-lint-ignore no-explicit-any
+      select: (columns: string) => any;
+    };
+  },
+  userId: string,
+  language?: string,
+): Promise<PhraseSeed[]> {
+  try {
+    // Filters first, then ordering, then the cap. PostgREST does not care about
+    // the order these are chained in, but a reader does, and appending a filter
+    // after `.limit()` reads as though it applies to the truncated set.
+    let query = client
+      .from("saved_phrases")
+      .select("phrase_text")
+      .eq("user_id", userId);
+    if (language) query = query.eq("language", language);
+
+    const { data, error } = await query
+      .order("saved_at", { ascending: false })
+      .limit(MAX_PHRASE_LAYER_PHRASES);
+    if (error || !Array.isArray(data)) return [];
+    return data
+      .map((row: { phrase_text?: unknown }) => row?.phrase_text)
+      .filter((text: unknown): text is string =>
+        typeof text === "string" && text.trim().length > 0
+      );
+  } catch {
+    return [];
+  }
 }
