@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -17,19 +17,25 @@ import {
   ChevronRight,
   Ellipsis,
   Heart,
+  Headphones,
   Share2,
+  Star,
 } from "lucide-react-native";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { authorFor } from "@/data/seed";
 import CommentThread from "@/components/comments/CommentThread";
 import type { ReportReason } from "@/components/comments/types";
 import { blockAuthor, reportContent } from "@/lib/comments";
+import {
+  setAuthorFollow,
+  setStoryBookmark,
+  setStoryLike,
+} from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
 import { imageAssets } from "@/data/images";
 import {
   colors,
-  controls,
   fonts,
   genreGradients,
   genreLabels,
@@ -39,6 +45,9 @@ import {
   type,
 } from "@/theme";
 import type { Story } from "@/types/domain";
+
+type ReadMode = "read" | "listen";
+type ReadOptions = { mode?: ReadMode };
 
 /**
  * Builds an rgba() string FROM a hex token instead of writing a literal one.
@@ -114,6 +123,61 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function storyPublishedDate(story: Story): string {
+  const date = new Date();
+  date.setDate(date.getDate() - story.publishedOffset);
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function chapterWordCount(story: Story): number {
+  return story.chapters.reduce((total, chapter) =>
+    total + chapter.paragraphs.join(" ").trim().split(/\s+/).filter(Boolean)
+      .length, 0);
+}
+
+function storyFormatLabel(story: Story): string {
+  if (story.storyMode === "series" || (story.plannedChapterCount ?? 0) > 1) {
+    return "Series";
+  }
+  const words = chapterWordCount(story);
+  if (words >= 17500) return "Novel";
+  if (words >= 7500) return "Novella";
+  return "Short story";
+}
+
+function storyMetaLine(story: Story): string {
+  const parts = [storyPublishedDate(story), storyFormatLabel(story)];
+  const planned = story.plannedChapterCount;
+  if (planned && planned > 1 && story.chapters.length > 1) {
+    parts[1] = `${parts[1]} (${story.chapters.length}/${planned})`;
+  }
+  return parts.join(" · ");
+}
+
+function storyHook(story: Story): string {
+  const firstLine = story.chapters[0]?.firstLine?.trim();
+  if (firstLine) return firstLine;
+  return story.chapters[0]?.paragraphs.join(" ").replace(/\s+/g, " ").trim() ??
+    "";
+}
+
+function hasNarration(story: Story): boolean {
+  return story.chapters.some((chapter) =>
+    Boolean(chapter.audioUrl || chapter.audioUrls?.female || chapter.audioUrls?.male)
+  );
+}
+
+function badgeLabels(story: Story): string[] {
+  return [
+    story.contentRating?.trim(),
+    story.audienceMode === "kids" ? "Kids" : undefined,
+  ].filter((label): label is string => Boolean(label));
+}
+
 export default function StoryDetailScreen({
   story,
   onBack,
@@ -123,40 +187,111 @@ export default function StoryDetailScreen({
   story: Story;
   onBack: () => void;
   /** Opens the reader at the given chapter index. */
-  onRead: (chapterIndex: number) => void;
+  onRead: (chapterIndex: number, options?: ReadOptions) => void;
   onAuthor: (authorId: string) => void;
 }) {
   const author = authorFor(story.authorId);
   const hasMultipleChapters = story.chapters.length > 1;
+  const narrationReady = hasNarration(story);
+  const badges = badgeLabels(story);
+  const [listenNotice, setListenNotice] = useState(false);
 
-  // Local, optimistic engagement state - there is no backend mutation wired
-  // yet, so a tap toggles a locally-held count exactly as ReaderScreen in
-  // App.tsx already does for the same fields. When persistence lands this
-  // becomes a thin wrapper around the real mutation instead of a rewrite.
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(story.likes);
   const [isSaved, setIsSaved] = useState(false);
   const [saveCount, setSaveCount] = useState(story.bookmarks);
   const [isFollowing, setIsFollowing] = useState(false);
   const [shareToast, setShareToast] = useState(false);
+  const likeInFlight = useRef(false);
+  const saveInFlight = useRef(false);
+  const followInFlight = useRef(false);
 
   const handleLike = useCallback(() => {
-    setIsLiked((prev) => {
-      setLikeCount((count) => (prev ? count - 1 : count + 1));
-      return !prev;
-    });
-  }, []);
+    if (likeInFlight.current) return;
+    likeInFlight.current = true;
+    const previousOn = isLiked;
+    const previousCount = likeCount;
+    const nextOn = !previousOn;
+    const nextCount = Math.max(0, previousCount + (nextOn ? 1 : -1));
+    setIsLiked(nextOn);
+    setLikeCount(nextCount);
+    const rollback = () => {
+      setIsLiked(previousOn);
+      setLikeCount(previousCount);
+    };
+    try {
+      setStoryLike(story.id, nextOn, nextCount).then((result) => {
+        setIsLiked(result.on);
+        setLikeCount(result.count);
+      }).catch(rollback).finally(() => {
+        likeInFlight.current = false;
+      });
+    } catch {
+      rollback();
+      likeInFlight.current = false;
+    }
+  }, [isLiked, likeCount, story.id]);
 
   const handleSave = useCallback(() => {
-    setIsSaved((prev) => {
-      setSaveCount((count) => (prev ? count - 1 : count + 1));
-      return !prev;
-    });
-  }, []);
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    const previousOn = isSaved;
+    const previousCount = saveCount;
+    const nextOn = !previousOn;
+    const nextCount = Math.max(0, previousCount + (nextOn ? 1 : -1));
+    setIsSaved(nextOn);
+    setSaveCount(nextCount);
+    const rollback = () => {
+      setIsSaved(previousOn);
+      setSaveCount(previousCount);
+    };
+    try {
+      setStoryBookmark(story.id, nextOn, nextCount).then((result) => {
+        setIsSaved(result.on);
+        setSaveCount(result.count);
+      }).catch(rollback).finally(() => {
+        saveInFlight.current = false;
+      });
+    } catch {
+      rollback();
+      saveInFlight.current = false;
+    }
+  }, [isSaved, saveCount, story.id]);
 
   const handleFollow = useCallback(() => {
-    setIsFollowing((prev) => !prev);
-  }, []);
+    if (followInFlight.current) return;
+    followInFlight.current = true;
+    const previousOn = isFollowing;
+    const nextOn = !previousOn;
+    setIsFollowing(nextOn);
+    const rollback = () => setIsFollowing(previousOn);
+    try {
+      setAuthorFollow(
+        story.authorId,
+        nextOn,
+        Math.max(0, author.followers + (nextOn ? 1 : -1)),
+      ).then((result) => {
+        setIsFollowing(result.on);
+      }).catch(rollback).finally(() => {
+        followInFlight.current = false;
+      });
+    } catch {
+      rollback();
+      followInFlight.current = false;
+    }
+  }, [author.followers, isFollowing, story.authorId]);
+
+  const handleRead = useCallback(() => {
+    onRead(0, { mode: "read" });
+  }, [onRead]);
+
+  const handleListen = useCallback(() => {
+    if (!narrationReady) {
+      setListenNotice(true);
+      return;
+    }
+    onRead(0, { mode: "listen" });
+  }, [narrationReady, onRead]);
 
   // Mirrors ReaderScreen's handleShare in App.tsx: native Share sheet off the
   // platform, clipboard + a brief toast on web where there is no share sheet.
@@ -257,23 +392,9 @@ export default function StoryDetailScreen({
             pointerEvents="none"
           />
 
-          <View style={styles.heroTitleBlock} pointerEvents="none">
-            <Text style={styles.heroGenre}>
-              {genreLabels[story.genre].toUpperCase()}
-            </Text>
-            {/*
-              `colors.surface` (pure white) doubles as "ink on a dark ground"
-              here - the same reuse `HomeScreen`'s write-CTA card makes for
-              title text on `colors.ink`. There is no separate "on-dark" text
-              token in the system yet, so the white surface colour is the
-              correct token to reach for rather than a one-off hex.
-            */}
-            <Text style={styles.heroTitle}>{story.title}</Text>
-          </View>
-
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel="Close story"
             onPress={onBack}
             style={({ pressed }) => [
               styles.iconButton,
@@ -283,31 +404,106 @@ export default function StoryDetailScreen({
           >
             <ArrowLeft size={20} color={colors.strong} />
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="More options"
-            onPress={handleOverflowPress}
-            style={({ pressed }) => [
-              styles.iconButton,
-              styles.heroOverflowButton,
-              pressed && styles.iconButtonPressed,
-            ]}
-          >
-            <Ellipsis size={20} color={colors.strong} />
-          </Pressable>
+          <View style={styles.heroActionCluster}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={isSaved ? "Remove saved story" : "Save story"}
+              onPress={handleSave}
+              style={({ pressed }) => [
+                styles.iconButton,
+                pressed && styles.iconButtonPressed,
+              ]}
+            >
+              <Star
+                size={20}
+                color={isSaved ? colors.accent : colors.strong}
+                fill={isSaved ? colors.accent : "none"}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Share story"
+              onPress={handleShare}
+              style={({ pressed }) => [
+                styles.iconButton,
+                pressed && styles.iconButtonPressed,
+              ]}
+            >
+              <Share2 size={20} color={colors.strong} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More options"
+              onPress={handleOverflowPress}
+              style={({ pressed }) => [
+                styles.iconButton,
+                pressed && styles.iconButtonPressed,
+              ]}
+            >
+              <Ellipsis size={20} color={colors.strong} />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.content}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={hasMultipleChapters ? "Continue reading" : "Start reading"}
-            onPress={() => onRead(0)}
-            style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
-          >
-            <Text style={styles.ctaText}>
-              {hasMultipleChapters ? "Continue reading" : "Start reading"}
+          <View style={styles.storyIntro}>
+            <Text style={styles.detailTitle} numberOfLines={3}>
+              {story.title}
             </Text>
-          </Pressable>
+            <Text style={styles.metaLine}>{storyMetaLine(story)}</Text>
+            {story.tags.length > 0 && (
+              <Text style={styles.themeLine} numberOfLines={1}>
+                {story.tags.join(", ")}
+              </Text>
+            )}
+            {badges.length > 0 && (
+              <View style={styles.badgeRow}>
+                {badges.map((badge) => (
+                  <View key={badge} style={styles.badgeChip}>
+                    <Text style={styles.badgeText}>{badge}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {!!storyHook(story) && (
+              <Text style={styles.hookText} numberOfLines={3}>
+                {storyHook(story)}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.primaryActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Read story"
+              onPress={handleRead}
+              style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
+            >
+              <BookOpen size={19} color={colors.surface} />
+              <Text style={styles.ctaText}>Read</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Listen to story"
+              onPress={handleListen}
+              style={({ pressed }) => [
+                styles.cta,
+                styles.listenCta,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Headphones size={19} color={colors.accent} />
+              <Text style={[styles.ctaText, styles.listenCtaText]}>Listen</Text>
+            </Pressable>
+          </View>
+          {listenNotice && (
+            <Text
+              accessibilityRole="text"
+              style={styles.listenNotice}
+            >
+              Narration is not ready for this story yet.
+            </Text>
+          )}
 
           <View style={styles.statsGroup}>
             <View style={styles.statRow}>
@@ -469,29 +665,12 @@ const styles = StyleSheet.create({
     position: "relative",
     backgroundColor: colors.surface2,
   },
-  heroTitleBlock: {
-    position: "absolute",
-    left: spacing.xl,
-    right: spacing.xl,
-    bottom: spacing.xl,
-    gap: spacing.related,
-  },
-  heroGenre: {
-    ...type.caption,
-    fontFamily: fonts.ui,
-    fontWeight: "700",
-    letterSpacing: 1.1,
-    color: colors.tertiary,
-  },
-  heroTitle: {
-    ...type.largeTitle,
-    color: colors.surface,
-  },
   iconButton: {
-    position: "absolute",
-    width: controls.iconButton,
-    height: controls.iconButton,
-    borderRadius: controls.iconButton / 2,
+    minWidth: 44,
+    minHeight: 44,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
@@ -501,12 +680,16 @@ const styles = StyleSheet.create({
     boxShadow: shadows.iconButtonPressed,
   },
   heroBackButton: {
+    position: "absolute",
     top: spacing.xl,
     left: spacing.xl,
   },
-  heroOverflowButton: {
+  heroActionCluster: {
+    position: "absolute",
     top: spacing.xl,
     right: spacing.xl,
+    flexDirection: "row",
+    gap: spacing.sm,
   },
 
   /* ── Content ── */
@@ -520,21 +703,95 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
 
+  storyIntro: {
+    gap: spacing.related,
+  },
+  detailTitle: {
+    ...type.largeTitle,
+    fontFamily: fonts.display,
+    letterSpacing: 0,
+    color: colors.ink,
+  },
+  metaLine: {
+    ...type.subhead,
+    fontFamily: fonts.ui,
+    letterSpacing: 0,
+    color: colors.muted,
+  },
+  themeLine: {
+    ...type.subhead,
+    fontFamily: fonts.ui,
+    letterSpacing: 0,
+    color: colors.strong,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  badgeChip: {
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    ...type.caption,
+    fontFamily: fonts.ui,
+    fontWeight: "700",
+    letterSpacing: 0,
+    color: colors.accent,
+  },
+  hookText: {
+    ...type.body,
+    fontFamily: fonts.readerItalic,
+    letterSpacing: 0,
+    color: colors.ink,
+    marginTop: spacing.xs,
+  },
+  primaryActions: {
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: spacing.betweenGroups,
+  },
+
   /* Primary CTA. `radius.pill` + `shadows.raised` is the documented recipe
      for "the create CTA" - see the doc comment on `shadows.raised`. */
   cta: {
+    flex: 1,
     minHeight: 52,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: spacing.sm,
     boxShadow: shadows.raised,
+  },
+  listenCta: {
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    boxShadow: shadows.card,
   },
   ctaText: {
     ...type.headline,
     fontFamily: fonts.ui,
     fontWeight: "700",
+    letterSpacing: 0,
     color: colors.surface,
+  },
+  listenCtaText: {
+    color: colors.accent,
+  },
+  listenNotice: {
+    ...type.subhead,
+    fontFamily: fonts.ui,
+    letterSpacing: 0,
+    color: colors.muted,
+    marginTop: spacing.related,
   },
 
   /* Stats + share */
