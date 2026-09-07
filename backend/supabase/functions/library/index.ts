@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { viewerStateForStories } from "../_shared/engagement.ts";
 
 const MAX_PAGE = 500;
 
@@ -47,15 +48,22 @@ serve(async (req) => {
       return respond({ error: "Invalid genre or search query" }, 400);
     }
 
+    const authHeader = req.headers.get("Authorization");
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
+      authHeader
+        ? { global: { headers: { Authorization: authHeader } } }
+        : undefined,
     );
+    const {
+      data: { user },
+    } = authHeader ? await supabase.auth.getUser() : { data: { user: null } };
 
     let query = supabase
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating",
+        "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating, author_id",
         { count: "planned" },
       )
       .or("is_public.eq.true,is_curated.eq.true")
@@ -74,8 +82,20 @@ serve(async (req) => {
     const { data: stories, count, error } = await query;
     if (error) throw error;
 
+    const storyRows = (stories ?? []) as Record<string, unknown>[];
+    const storiesWithViewerState = user
+      ? await viewerStateForStories(
+        createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        ),
+        user.id,
+        storyRows,
+      )
+      : storyRows;
+
     return respond({
-      stories,
+      stories: storiesWithViewerState,
       pagination: {
         page,
         limit,

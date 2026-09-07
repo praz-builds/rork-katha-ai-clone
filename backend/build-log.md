@@ -2415,6 +2415,48 @@ is a separate, explicit decision for later.
 - Local URL `http://localhost:8090/` was opened and returned `200 OK`.
 - No production infrastructure was tested or deployed in this pass.
 
+## 2026-09-07: Engagement persistence RPCs and Edge Functions
+
+### Changed
+
+- Added migration `00046_engagement_persistence.sql` for real likes,
+  bookmarks, story follows, author follows, reads, and streak touches.
+- Replaced broad relationship-table read policies with own-row RLS policies
+  and added service-role-only `security definer` RPCs for idempotent toggles,
+  `record_story_read`, and `touch_streak`.
+- The story like, story follow, and read RPCs move the relationship row and
+  denormalized `stories` counter under one transaction-level advisory lock;
+  duplicate likes/follows and no-op unlikes/unfollows do not move counters.
+- `record_story_read` enforces one persisted read per user/story/chapter within
+  24 hours, marks author self-reads as `counts_for_earnings = false`, and only
+  counted reads increment `stories.read_count`.
+- `touch_streak` increments once per UTC calendar day, resets after a missed
+  day, raises `longest_streak` without lowering it, and deliberately leaves
+  `next_credit_at` untouched because streak credits are parked for this build.
+- Added Edge Functions `like`, `bookmark`, `follow-story`, `follow-user`, and
+  `record-read`, all using auth, UUID validation, service-role RPC calls, CORS,
+  and persistent engagement error logging.
+- `feed` now includes viewer relationship flags on the main feed and continue
+  reading rail. `library` includes the same flags when called with a valid
+  viewer JWT, while unauthenticated reads keep the existing public path.
+
+### Verification
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions` passed:
+  468 tests, 0 failed. This is up from the task baseline of 464 because
+  `_shared/engagement.test.ts` adds 4 handler tests.
+- `deno test --allow-env --allow-net --allow-read supabase/migrations` passed:
+  53 tests, 0 failed. `00046_engagement_persistence_test.ts` adds 9 migration
+  tests covering duplicate likes, no-op unlikes, concurrent-safe like shape,
+  clean self-follow refusal, 24-hour read dedupe, author self-read earnings
+  exclusion, once-daily streak touches, longest-streak monotonicity, and
+  relationship RLS.
+- `deno check` passed on every touched TypeScript file.
+- `deno fmt --check` passed on every touched TypeScript file.
+- No production-level test was run, so no `public.error_events` rows were
+  written.
+- Not pushed or deployed.
+
 ## 2026-09-06: Comment vote RPC review fix
 
 ### Changed
