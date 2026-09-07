@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Bookmark, MessageCircle } from "lucide-react-native";
+import { Bookmark, ChevronRight, GraduationCap, MessageCircle } from "lucide-react-native";
 import { StoryCard } from "@/components/KathaPrimitives";
 import { colors, fonts, radius, spacing } from "@/theme";
 import type { Story } from "@/types/domain";
@@ -15,11 +15,21 @@ export default function LibraryScreen({
   stories: allStories,
   onStory,
   onCreate,
+  onPractice,
 }: {
   generatedStories: Story[];
   stories: Story[];
   onStory: (id: string) => void;
   onCreate: () => void;
+  /**
+   * Opens the Practice surface. A dedicated screen rather than a fifth
+   * segment here: the segmented control is four equal-width labels in a
+   * 342pt row on a 390pt phone, and "Practice" alongside "My Stories" left
+   * two labels wrapping onto a second line. Practice also does not behave
+   * like the other tabs - it runs a session, not just a list - so it reads
+   * better as its own place than as a cramped fifth tab.
+   */
+  onPractice: () => void;
 }) {
   const [segment, setSegment] = useState<LibrarySegment>("saved");
   const saved = allStories.filter((story) => story.bookmarks > 100);
@@ -127,6 +137,24 @@ export default function LibraryScreen({
           <Bookmark size={28} color={colors.accent} />
         </View>
 
+        <Pressable
+          onPress={onPractice}
+          accessibilityLabel="Practice your saved phrases"
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.practiceBanner, pressed && styles.pressed]}
+        >
+          <View style={styles.practiceIcon}>
+            <GraduationCap size={20} color={colors.accent} />
+          </View>
+          <View style={styles.practiceBannerBody}>
+            <Text style={styles.practiceBannerTitle}>Practice</Text>
+            <Text style={styles.practiceBannerSubtitle}>
+              Review the phrases you saved while reading
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.tertiary} />
+        </Pressable>
+
         {/* Segment selector */}
         <View style={styles.segmented}>
           {segments.map(({ key, label }) => (
@@ -171,6 +199,44 @@ const styles = {
     justifyContent: "space-between",
   },
   accentLink: { color: colors.accent, fontWeight: "800" },
+  pressed: { opacity: 0.7 },
+
+  /* ── Practice entry point ── */
+  practiceBanner: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+    minHeight: 64,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  practiceIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  practiceBannerBody: { flex: 1 },
+  practiceBannerTitle: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 16,
+    letterSpacing: 0,
+  },
+  practiceBannerSubtitle: {
+    marginTop: 2,
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12.5,
+    letterSpacing: 0,
+  },
 
   /* ── Library ── */
   segmented: {

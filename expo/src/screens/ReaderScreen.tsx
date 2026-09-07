@@ -62,6 +62,13 @@ export type ReaderScreenProps = {
   renderChapterEnd?: (chapter: Chapter) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
+  /**
+   * Fired with the chapter now on screen, on mount and again every time the
+   * reader switches chapters from the Chapters sheet. `chapterIndex` is
+   * internal state a caller cannot otherwise observe, and phrase capture
+   * needs to know which chapter a save belongs to.
+   */
+  onChapterChange?: (chapter: Chapter, chapterIndex: number) => void;
 };
 
 type ReaderTheme = {
@@ -204,6 +211,7 @@ export default function ReaderScreen({
   initialChapterIndex = 0,
   renderChapterEnd,
   renderWord = (word) => word,
+  onChapterChange,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
@@ -351,6 +359,9 @@ export default function ReaderScreen({
     if (!music) return;
     void music.setStatusAsync({ volume: isPlaying ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME });
   }, [isPlaying]);
+  useEffect(() => {
+    onChapterChange?.(chapter, chapterIndex);
+  }, [chapter, chapterIndex, onChapterChange]);
 
   const updatePreferences = useCallback((next: ReaderPreferences) => {
     setPreferences(next);

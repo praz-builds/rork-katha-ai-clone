@@ -18,8 +18,9 @@ import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
+import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
-import ReaderScreen from "@/screens/ReaderScreen";
+import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
 import ChapterEnd from "@/components/reader/ChapterEnd";
 import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
@@ -262,6 +263,7 @@ export default function App() {
             stories={allStories}
             onStory={openStory}
             onCreate={() => goTabs("create")}
+            onPractice={() => setScreen({ name: "practice" })}
           />
         );
       case "profile":
@@ -348,7 +350,7 @@ export default function App() {
         )
         : screen.name === "reader"
         ? (
-          <ReaderScreen
+          <PhraseCaptureReader
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
             initialChapterIndex={screen.chapterIndex ?? 0}
@@ -360,6 +362,13 @@ export default function App() {
                 chapter={chapter}
               />
             )}
+          />
+        )
+        : screen.name === "practice"
+        ? (
+          <PracticeScreen
+            onBack={() => goTabs(tab)}
+            onStory={openStory}
           />
         )
         : screen.name === "author"

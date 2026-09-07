@@ -267,4 +267,5 @@ export type Screen =
   | { name: "reader"; storyId: string; chapterIndex?: number }
   | { name: "author"; authorId: string }
   | { name: "credits" }
-  | { name: "paywall" };
+  | { name: "paywall" }
+  | { name: "practice" };
