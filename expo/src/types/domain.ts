@@ -132,6 +132,19 @@ export type Story = {
    */
   coverImageUrl?: string;
   /**
+   * What THIS viewer has already done to this story.
+   *
+   * The engagement endpoints return these alongside the story so a screen can
+   * render the correct initial state. Optional because the endpoints that
+   * supply them are not deployed everywhere yet; absent means "not engaged",
+   * which is the safe reading. Without them every control started at `false`,
+   * so a reader who had already liked a story was shown an unfilled heart and
+   * their next tap removed the like they could not see.
+   */
+  viewerHasLiked?: boolean;
+  viewerHasBookmarked?: boolean;
+  viewerFollowsAuthor?: boolean;
+  /**
    * Which of "not attempted", "in flight", "ready" and "failed" the cover is.
    *
    * A null `coverImageUrl` means all four of those things, and the UI owes the
@@ -264,7 +277,13 @@ export type Screen =
    * standalone skips it.
    */
   | { name: "story"; storyId: string }
-  | { name: "reader"; storyId: string; chapterIndex?: number }
+  | {
+    name: "reader";
+    storyId: string;
+    chapterIndex?: number;
+    /** Set when the reader was opened by Listen, so narration starts on arrival. */
+    autoplay?: boolean;
+  }
   | { name: "author"; authorId: string }
   | { name: "credits" }
   | { name: "paywall" };

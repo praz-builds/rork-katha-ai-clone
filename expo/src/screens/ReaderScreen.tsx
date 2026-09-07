@@ -38,11 +38,17 @@ const INITIAL_COMMENTS: ReaderComment[] = [
 ];
 
 export default function ReaderScreen(
-  { story, onBack, initialChapterIndex = 0 }: {
+  { story, onBack, initialChapterIndex = 0, autoplay = false }: {
     story: Story;
     onBack: () => void;
     /** Which chapter the story page sent the reader to. */
     initialChapterIndex?: number;
+    /**
+     * The reader was opened by Listen rather than Read, so narration should
+     * start on arrival. Without this the two buttons did the same thing and
+     * Listen was indistinguishable from Read.
+     */
+    autoplay?: boolean;
   },
 ) {
   const author = authorFor(story.authorId);
@@ -129,6 +135,18 @@ export default function ReaderScreen(
       setIsPlaying(false);
     }
   }, [isPlaying, getAudioUrl]);
+
+  // Listen opens the reader already playing. Guarded so it fires once per
+  // arrival rather than on every re-render, and it deliberately reuses
+  // `handlePlayTap` so autoplay cannot drift from what the button does --
+  // including its "narration will be generated when this story is published"
+  // path, which is still the honest answer for a story with no audio.
+  const autoplayFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoplay || autoplayFiredRef.current) return;
+    autoplayFiredRef.current = true;
+    void handlePlayTap();
+  }, [autoplay, handlePlayTap]);
 
   const handleVoiceChange = useCallback(async (gender: "female" | "male") => {
     if (gender === voiceGender || isLoadingAudioRef.current) return;
