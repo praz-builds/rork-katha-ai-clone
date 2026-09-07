@@ -5,6 +5,7 @@ import {
 import { BANNED_PHRASES, BANNED_WORDS } from "./ban-lists.ts";
 import {
   buildPhraseLayer,
+  fetchPhraseSeeds,
   isAllowedCorpusPhrase,
   MAX_PHRASE_LAYER_PHRASES,
   normalizePhraseKey,
@@ -105,4 +106,73 @@ Deno.test("teachable idiom is still allowed past the ban list", () => {
       `should be allowed: ${allowed}`,
     );
   }
+});
+
+// The wire that makes the layer real.
+//
+// Before this existed, `buildUserPrompt` received an empty phrase list on every
+// production call: the layer rendered as "" and the whole pillar was inert
+// while looking finished. These pin both that it reads, and that it never
+// throws on the paid generation path.
+Deno.test("fetchPhraseSeeds returns the reader's phrases newest-first", async () => {
+  const calls: Record<string, unknown> = {};
+  const client = {
+    from: () => {
+      const builder = {
+        select: (columns: string) => {
+          calls.columns = columns;
+          return builder;
+        },
+        eq: (column: string, value: unknown) => {
+          calls[column] = value;
+          return builder;
+        },
+        order: (column: string, opts: { ascending: boolean }) => {
+          calls.order = `${column}:${opts.ascending ? "asc" : "desc"}`;
+          return builder;
+        },
+        limit: (n: number) => {
+          calls.limit = n;
+          return Promise.resolve({
+            data: [{ phrase_text: "hang in there" }, { phrase_text: "" }],
+            error: null,
+          });
+        },
+      };
+      return builder;
+    },
+  };
+
+  const seeds = await fetchPhraseSeeds(
+    client as never,
+    "11111111-1111-4111-8111-111111111111",
+    "English",
+  );
+
+  assertEquals(seeds, ["hang in there"]);
+  assertEquals(calls.order, "saved_at:desc");
+  assertEquals(calls.limit, MAX_PHRASE_LAYER_PHRASES);
+});
+
+Deno.test("fetchPhraseSeeds degrades to empty rather than failing a generation", async () => {
+  const throwing = {
+    from: () => {
+      throw new Error("database is unreachable");
+    },
+  };
+  assertEquals(await fetchPhraseSeeds(throwing as never, "u"), []);
+
+  const erroring = {
+    from: () => {
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        order: () => builder,
+        limit: () =>
+          Promise.resolve({ data: null, error: { message: "denied" } }),
+      };
+      return builder;
+    },
+  };
+  assertEquals(await fetchPhraseSeeds(erroring as never, "u"), []);
 });
