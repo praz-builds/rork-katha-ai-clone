@@ -1,7 +1,12 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import {
+  GENERATION_GROUNDING_DEADLINE_MS,
+  resolveGrounding,
+} from "../_shared/grounding-pipeline.ts";
 import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
@@ -92,6 +97,8 @@ serve(async (req) => {
       plannedChapterCount,
       illustrateChapters,
       notifyOnReady,
+      grounding,
+      groundingEntities,
     } = input;
     const chapterRole = storyMode === "series"
       ? "series_opening"
@@ -102,6 +109,32 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // The grounding fallback, started here so it overlaps the opening round
+    // trip rather than adding to it.
+    //
+    // Grounding is normally resolved during shaping, which is free and which
+    // the writer spends editing chips. Only onboarding calls that endpoint
+    // today: a story started in the Create studio arrives with no cards, and
+    // without this it would silently lose grounding entirely - the Shivaji
+    // case would be wrong for exactly the writers most likely to ask for it.
+    //
+    // It runs concurrently with `begin_story_generation`, which is 1.4-2.2s of
+    // measured round trip, so most of the classification is spent against time
+    // the request was already going to wait. It is skipped whenever the client
+    // supplied cards, which is the shaped path and the common one.
+    //
+    // `deadlineMs` is deliberately tighter than the shaping call's. Here the
+    // writer is watching a paid generation, not editing chips, and an ungrounded
+    // story is a far better outcome than a slow one.
+    const groundingFallback = grounding.length || groundingEntities.length
+      ? Promise.resolve(null)
+      : resolveGrounding({
+        idea: seed,
+        characterNames: characters?.map((c) => c.name).filter(Boolean),
+        cache: serviceClient,
+        deadlineMs: GENERATION_GROUNDING_DEADLINE_MS,
+      }).catch(() => null);
 
     // One call opens the generation: idempotency check, story row, credit
     // reservation. It was three sequential round trips, measured at 1.4-2.2s
@@ -239,6 +272,18 @@ serve(async (req) => {
           }))
         : Promise.resolve({ error: null });
 
+      // Awaited only now, so the fallback has had the whole opening round trip
+      // to finish. A null here is every failure mode collapsed into one: no
+      // entity, a dead provider, or a blown deadline all mean an ungrounded
+      // prompt, which is what every story had before this existed.
+      const fallback = await groundingFallback;
+      const resolvedGrounding = fallback?.cards.length
+        ? fallback.cards
+        : grounding;
+      const resolvedEntities = fallback?.entities.length
+        ? fallback.entities
+        : groundingEntities;
+
       const systemPrompt = buildStorySystemPrompt({
         primaryGenre,
         audienceMode,
@@ -271,7 +316,9 @@ serve(async (req) => {
         avoid,
         chapterLength,
         plannedChapterCount,
+        grounding: resolvedGrounding,
       });
+      mark("grounding");
       mark("prompt_built");
       const result = await generateStoryText(
         systemPrompt,
@@ -305,6 +352,14 @@ serve(async (req) => {
         moments,
       );
       const wordCount = output.chapter_body.split(/\s+/).length;
+      // Report-only, and free unless it fires: the scan itself is synchronous
+      // and awaits nothing when the prose is clean, which is the case this
+      // path is optimised for.
+      await reportCrudeLexicon(output.chapter_body, {
+        feature: "generate_story",
+        storyId: story.id,
+        userId: user.id,
+      });
       const contentRating = deriveContentRating(audienceMode, spiceLevel);
 
       const { data: chapter, error: completionError } = await serviceClient.rpc(
@@ -334,6 +389,43 @@ serve(async (req) => {
         throw completionError ?? new Error("Story persistence failed");
       }
       mark("persist");
+
+      // Grounding is recorded after the story exists, not inside
+      // `complete_story_generation`.
+      //
+      // Two reasons. It is not part of the credit transaction - a card that
+      // fails to persist must not roll back a chapter the writer has paid for
+      // and is about to read - and it is what `continue-story` reads to keep
+      // chapter seven calling an entity what chapter one called it, which is a
+      // read that happens minutes later, not on this response.
+      //
+      // Both columns are outside the owner-update grant, so this runs on the
+      // service client. A failure here costs later chapters their grounding
+      // and nothing else, which is why it is logged rather than thrown.
+      if (resolvedGrounding.length || resolvedEntities.length) {
+        const { error: groundingError } = await serviceClient
+          .from("stories")
+          .update({
+            grounding: resolvedGrounding,
+            grounding_entities: resolvedEntities,
+          })
+          .eq("id", story.id);
+        if (groundingError) {
+          console.error(
+            "generate-story grounding persist failed:",
+            safeErrorMessage(groundingError),
+          );
+          await logError({
+            bucket: "generation.story",
+            severity: "low",
+            source: "runtime",
+            errorCode: "grounding_persist_failed",
+            error: groundingError,
+            context: { feature: "grounding", story_id: story.id },
+            userId: user.id,
+          });
+        }
+      }
 
       // Chapter 1's art is the story's cover (section 10.4, decisions 38 and
       // 40), and the cast's portraits are generated once, now, because

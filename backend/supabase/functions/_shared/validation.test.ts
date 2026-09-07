@@ -4,8 +4,15 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   deriveContentRating,
+  normalizeSpiceLevel,
+  scanCrudeLexicon,
   validateGenerationRequest,
 } from "./validation.ts";
+import {
+  GENRE_ALLOWED_SPICE,
+  GENRE_DEFAULT_SPICE,
+  SPICE_LEVELS,
+} from "./types.ts";
 
 // Helper to build a valid base request
 function validRequest(overrides: Record<string, unknown> = {}) {
@@ -57,12 +64,93 @@ Deno.test("darkRomance rejected in kids mode", () => {
   assertEquals(result.error, "Dark Romance is not available in kids mode");
 });
 
-Deno.test("explicit spice rejected (MVP gate)", () => {
+// The retirement of the explicit tier (2026-09-07). It used to 403 here; a
+// stale client or a replayed request now gets the story one notch cooler
+// instead of a failed generation.
+Deno.test("legacy explicit spice normalizes down to steamy", () => {
   const result = validateGenerationRequest(
     validRequest({ spice_level: "explicit" }),
   );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.spiceLevel, "steamy");
+});
+
+Deno.test("legacy explicit spice still clamps to the genre ceiling", () => {
+  const result = validateGenerationRequest(
+    validRequest({ primary_genre: "poetry", spice_level: "explicit" }),
+  );
+  if ("error" in result) throw new Error(result.error);
+  assertEquals(result.spiceLevel, "sweet");
+});
+
+Deno.test("a value that was never a spice tier is still rejected", () => {
+  const result = validateGenerationRequest(
+    validRequest({ spice_level: "scorching" }),
+  );
   if (!("error" in result)) throw new Error("Expected error");
-  assertEquals(result.error, "Explicit content is not available yet");
+  assertEquals(result.error, "spice_level must be 'sweet' or 'steamy'");
+});
+
+Deno.test("no genre may allow a retired spice tier", () => {
+  for (const [genre, allowed] of Object.entries(GENRE_ALLOWED_SPICE)) {
+    for (const level of allowed) {
+      assert(
+        SPICE_LEVELS.has(level),
+        `${genre} allows retired or unknown spice level "${level}"`,
+      );
+    }
+  }
+});
+
+Deno.test("no genre default may be a retired spice tier", () => {
+  for (const [genre, level] of Object.entries(GENRE_DEFAULT_SPICE)) {
+    assert(
+      SPICE_LEVELS.has(level),
+      `${genre} defaults to retired or unknown spice level "${level}"`,
+    );
+  }
+});
+
+Deno.test("normalizeSpiceLevel maps the retired tier and keeps live ones", () => {
+  assertEquals(normalizeSpiceLevel("explicit"), "steamy");
+  assertEquals(normalizeSpiceLevel("  steamy "), "steamy");
+  assertEquals(normalizeSpiceLevel("sweet"), "sweet");
+  assertEquals(normalizeSpiceLevel("scorching"), undefined);
+  assertEquals(normalizeSpiceLevel(undefined), undefined);
+});
+
+// A row written before the retirement keeps its rating, because feed and
+// library exclude `content_rating = 'explicit'` from public surfaces and a
+// silent downgrade to "steamy" would publish it.
+Deno.test("deriveContentRating still reports a stored explicit rating", () => {
+  assertEquals(deriveContentRating("adult", "explicit"), "explicit");
+  assertEquals(deriveContentRating("adult", "steamy"), "steamy");
+  assertEquals(deriveContentRating("adult", "sweet"), "sweet");
+  assertEquals(deriveContentRating("kids", "explicit"), "kids");
+});
+
+Deno.test("scanCrudeLexicon reports crude vocabulary in generated prose", () => {
+  const found = scanCrudeLexicon(
+    "She said the word Tits out loud, then jerked off the handbrake and " +
+      "called him a dick.",
+  );
+  assert(found.includes("tits"));
+  assert(found.includes("dick"));
+  assertEquals(found.filter((t) => t === "tits").length, 1);
+});
+
+Deno.test("scanCrudeLexicon leaves ordinary prose alone", () => {
+  // "Dick" the person and the words the prompt bans but the scanner
+  // deliberately does not (cocked, prick, screwed, rode) must not fire.
+  assertEquals(
+    scanCrudeLexicon(
+      "Dick cocked his head at the prick of the needle, screwed the lid " +
+        "back on, and rode north until dawn.",
+    ),
+    [],
+  );
+  assertEquals(scanCrudeLexicon(""), []);
+  assertEquals(scanCrudeLexicon(null), []);
 });
 
 Deno.test("poetry allows only sweet", () => {

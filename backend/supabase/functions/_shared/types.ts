@@ -4,6 +4,7 @@
  * 15 primary genres (13 in UI, 2 DB-only), audience modes,
  * identity lenses and spice levels.
  */
+import type { EntityMention, GroundingCard } from "./grounding-types.ts";
 
 // ---------------------------------------------------------------------------
 // Primary Genre
@@ -139,13 +140,54 @@ export const IDENTITY_LENSES: ReadonlySet<string> = new Set<IdentityLens>([
 // Spice Level
 // ---------------------------------------------------------------------------
 
-export type SpiceLevel = "sweet" | "steamy" | "explicit";
+/**
+ * The heat tiers a story can be generated at.
+ *
+ * `explicit` was retired on 2026-09-07 by product decision: depicted sex acts
+ * and crude anatomical vocabulary are out of the product entirely, at every
+ * tier. It was never reachable — no entry in `GENRE_ALLOWED_SPICE` ever
+ * contained it and validation refused it outright — so removing it from the
+ * union costs no shipped behaviour. What replaces it is not silence: the two
+ * remaining tiers carry craft direction for writing intimacy well (see
+ * `buildSpiceRules` in story-prompts.ts), because a prohibition on its own
+ * produces timid, flat romance, which is the worse product.
+ */
+export type SpiceLevel = "sweet" | "steamy";
 
 export const SPICE_LEVELS: ReadonlySet<string> = new Set<SpiceLevel>([
   "sweet",
   "steamy",
-  "explicit",
 ]);
+
+/**
+ * Heat tiers that exist in stored rows but can never be generated again.
+ *
+ * `stories.spice_level` and `stories.content_rating` are `text` columns whose
+ * CHECK constraints (migrations 00008 and 00014) still admit `'explicit'`, and
+ * the feed and library queries still filter on `content_rating <> 'explicit'`.
+ * Narrowing those constraints would be a destructive migration against rows
+ * nobody has audited, and would break the one query that depends on the value
+ * surviving. So the retirement is enforced in code on the write path, and every
+ * read path maps the legacy value forward instead of rejecting it — a stored
+ * `explicit` row must still open, continue and render.
+ */
+export type LegacySpiceLevel = "explicit";
+
+/** What a row can hold: a live tier, or a retired one written before 2026-09-07. */
+export type StoredSpiceLevel = SpiceLevel | LegacySpiceLevel;
+
+/**
+ * Where a retired tier lands when it is read back or replayed.
+ *
+ * Down, never up, and never an error. A client holding a stale build, a
+ * retried request body or a `continue-story` call on a legacy row all arrive
+ * here, and 400-ing any of them would orphan stories their authors can still
+ * see. `steamy` is the nearest surviving tier; the crude-language floor in the
+ * prompt layer binds it regardless.
+ */
+export const RETIRED_SPICE_LEVELS: Readonly<Record<string, SpiceLevel>> = {
+  explicit: "steamy",
+};
 
 // ---------------------------------------------------------------------------
 // Genre-aware defaults and constraints
@@ -169,6 +211,13 @@ export const GENRE_DEFAULT_SPICE: Record<string, SpiceLevel> = {
   poetry: "sweet",
 };
 
+/**
+ * The clamp is downward only (see `validateGenerationRequest`), so this table
+ * is the last gate a heat tier passes through before it reaches a prompt. Every
+ * entry must be a subset of `SPICE_LEVELS`; a retired tier listed here would
+ * resurrect itself for that genre. Pinned by a test rather than by types,
+ * because the values are plain strings.
+ */
 export const GENRE_ALLOWED_SPICE: Record<string, ReadonlySet<string>> = {
   romance: new Set(["sweet", "steamy"]),
   romantasy: new Set(["sweet", "steamy"]),
@@ -333,6 +382,15 @@ export interface ValidatedGenerationParams {
   illustrateChapters: boolean;
   /** Whether the author asked to be told when the story is finished. */
   notifyOnReady: boolean;
+  /**
+   * Validated fact cards for real entities the idea names. Empty is the common
+   * case and means "written from model knowledge", not "grounding failed" -
+   * the two are indistinguishable here on purpose, because they produce the
+   * same prompt and the same story.
+   */
+  grounding: GroundingCard[];
+  /** What the classifier saw. Recorded on the story; never used in a prompt. */
+  groundingEntities: EntityMention[];
 }
 
 export interface SeriesState {

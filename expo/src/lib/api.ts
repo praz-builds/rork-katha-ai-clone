@@ -56,6 +56,17 @@ export type StoryShape = {
   title?: string;
   /** Onboarding variant only: 120-180 words of real opening. */
   opening?: string;
+  /**
+   * Grounding resolved alongside the shape, carried opaquely.
+   *
+   * The client deliberately does not model the card shape. It never renders
+   * these, never edits them and never reasons about them - it hands them back
+   * to `generate-story`, which re-validates them at the boundary. Duplicating
+   * the schema here would create a second copy to keep in step with the
+   * backend for no behaviour the user can see.
+   */
+  grounding?: unknown[];
+  groundingEntities?: unknown[];
 };
 
 export type StoryShapeBrief = {
@@ -183,6 +194,13 @@ export async function inferStoryBrief(
       : undefined,
     opening: typeof shape.opening === "string" && shape.opening.trim()
       ? shape.opening.trim()
+      : undefined,
+    // Read from the response root, not from `shape`: grounding is resolved by
+    // a separate concurrent call on the server and is absent whenever that
+    // call found nothing or failed, which is the common case.
+    grounding: Array.isArray(data.grounding) ? data.grounding : undefined,
+    groundingEntities: Array.isArray(data.grounding_entities)
+      ? data.grounding_entities
       : undefined,
   };
 }
@@ -463,6 +481,13 @@ function buildGenerationRequestBody(
       // the legacy is_series boolean, but story_mode takes precedence there and
       // is what new callers are expected to send.
       story_mode: draft.isSeries ? "series" : "standalone",
+      // Resolved during shaping and echoed back untouched. Omitted entirely
+      // when absent so an ungrounded request is byte-identical to what it was
+      // before grounding existed.
+      ...(draft.grounding?.length ? { grounding: draft.grounding } : {}),
+      ...(draft.groundingEntities?.length
+        ? { grounding_entities: draft.groundingEntities }
+        : {}),
   };
 }
 
@@ -1225,8 +1250,11 @@ async function localEditParagraph(
  * text the model originally produced and every manual edit was discarded at
  * the moment the user committed to the story.
  *
- * Omitting `edits` publishes exactly what is on the server, which is the old
- * behaviour and the right one for a story the user never opened the editor on.
+ * Omitting `edits` saves exactly what is on the server, which is the right
+ * thing for a story the user never opened the editor on.
+ *
+ * Omitting `visibility` saves the story privately. Going public is a decision
+ * a caller has to make out loud; see `STORY_GENERATION_FLOW.md` §10.5.
  */
 export async function publishStory(
   storyId: string,
@@ -1242,16 +1270,23 @@ export async function publishStory(
     return;
   }
 
-  const user = await bootstrapUser();
-  const visibility = edits?.visibility ??
-    (user?.isAnonymous ? "private" : undefined);
+  // Always stated, never inferred.
+  //
+  // This used to send the field only for a guest and leave a signed-in user's
+  // publish to the server's default, which was `public`. The default is now
+  // `private` on both sides, but a client that says nothing is still at the
+  // mercy of whichever build of the function happens to be deployed — and an
+  // older one still reads silence as "publish to the world". Visibility is the
+  // one field where being explicit costs nothing and guessing is unrecoverable.
+  await bootstrapUser();
+  const visibility = edits?.visibility ?? "private";
 
   const { error } = await supabase.functions.invoke("publish-story", {
     body: {
       story_id: storyId,
       ...(edits?.title ? { title: edits.title } : {}),
       ...(edits?.chapters?.length ? { chapters: edits.chapters } : {}),
-      ...(visibility ? { visibility } : {}),
+      visibility,
     },
   });
 

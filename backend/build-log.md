@@ -7,6 +7,147 @@
 
 ---
 
+## 2026-09-07 UTC — Entity grounding, a retired spice tier, and private by default
+
+**Session:** Three tracks built in parallel by sub-agents against disjoint file
+ownership, then integrated. Stories can now be grounded in facts about the real
+entities they name; the `explicit` spice tier is gone and romance is written to
+a higher craft floor instead; and a story cannot become public because a caller
+forgot to say otherwise.
+
+### Entity grounding
+
+A story naming a real entity was written from model recollection alone, and the
+failure was not "the model does not know" — it is that a US-weighted model is
+confidently wrong about long-tail and regional figures in ways an informed
+reader catches on the first page. "Maharaj" is an honorific, not a surname.
+
+The pipeline is classify -> decide -> card -> prompt layer, and the decision in
+the middle is the point: `needsGrounding` asks *will the model get this wrong*,
+not *is this famous*. Churchill and Spider-Man are known cold and get nothing;
+Shivaji Maharaj gets a card.
+
+- `_shared/grounding-types.ts`, `entity-classify.ts`, `grounding-card.ts`,
+  `grounding-search.ts` — vocabulary, classifier, fact card, and a Brave
+  provider behind `GROUNDING_SEARCH_ENABLED` + `BRAVE_SEARCH_API_KEY`. Both
+  unset, so **phase 1 ships on model knowledge alone**: the cheap test of
+  whether a structured card fixes the register errors before paying for search.
+- `_shared/grounding-pipeline.ts` — the only module that sequences the three
+  parts, so the two callers cannot disagree about order or about what a failure
+  means. Every failure path returns empty, which renders as the prompt every
+  story had before this existed.
+- Migration `00045` — `stories.grounding`, `stories.grounding_entities`, and
+  the `entity_grounding` cache. The cache is the whole cost design: entities
+  repeat across users far more heavily than ideas do, and a card for a dead
+  17th-century king does not change between requests. TTL by class.
+- `buildGroundingBlock` is inserted into `buildUserPrompt` directly after the
+  cast, because the highest-value field on a card is how the entity is named
+  and addressed. It returns `""` for no cards, so an ungrounded prompt is
+  byte-identical to what it was.
+
+**Two hard rules, enforced in code rather than in a prompt.** A
+`private_individual` is never searchable — `searchable` is derived from the
+class on read, so no payload can talk the pipeline into sending a user's child
+to a search vendor — and raw retrieved text never reaches the story prompt, only
+a validated card, which contains prompt injection to a call that can emit
+nothing but a schema.
+
+**Where it runs.** Normally in `shape-story`, concurrently with shaping
+(`allSettled`, so grounding cannot take the shaped brief down with it) — free,
+and spent while the writer edits chips. Only onboarding calls that endpoint, so
+a Create-studio story would have arrived ungrounded; both generation transports
+now start a bounded fallback (`GENERATION_GROUNDING_DEADLINE_MS`, 9s) before
+`begin_story_generation` and await it after, overlapping the measured 1.4-2.2s
+opening round trip. Skipped entirely when the client supplied cards.
+
+`continue-story` replays the stored cards rather than re-deriving them: chapter
+seven must call an entity what chapter one called it, and re-classifying per
+chapter would spend two calls a chapter and still let the name forms drift.
+
+Cards reach generation through the client, which is safe because a tampered card
+only degrades the tamperer's own story and is fenced like any user text — but
+`validateGroundingCards` still caps count, field lengths and list sizes at the
+boundary, because every card byte is a prompt token somebody pays for.
+
+### Explicit retired, craft floor raised
+
+`SpiceLevel` is now `sweet | steamy`. `stories.spice_level` and `content_rating`
+keep CHECK constraints admitting `'explicit'` and `feed`/`library` still filter
+on it, so the value must round-trip: retirement is enforced in code, not by a
+destructive constraint migration. An inbound `explicit` now **normalizes down**
+to `steamy` instead of returning 403 — a stale client build must not fail a
+generation the writer is waiting on.
+
+A `## Language Floor (ABSOLUTE)` block with 31 enumerated crude terms sits in
+**layer 1**, not the spice layer, so no combination of tier, genre, lens,
+audience mode or language drops it. `scanCrudeLexicon` is the defence-in-depth
+detector, following the living-author precedent including its honest
+over-match: a case-sensitive lowercase-only regex keeps a character named Dick
+from firing it, and unscannable terms (`cock`, `prick`, `bang`) stay
+prompt-only.
+
+`_shared/content-scan.ts` wires it into all three generation paths as
+**report-only**. Rejecting and retrying would buy a second 11-30s generation on
+the word of a regex with known over-matches, and cannot help the streamed path
+at all — the reader has already seen every word. The floor is the control; this
+scan measures whether it holds. Escalate from that data, not before it.
+
+Both spice branches were rewritten as technique rather than prohibition —
+prohibition alone produces timid, flat intimacy, which is a worse product than
+what it replaced.
+
+### Private by default
+
+`publish-story` read a missing `visibility` as `"public"`, so any caller that
+merely forgot the field published to the feed. Now `resolveVisibility()`,
+defaulting to private, with a regression test that fails if it is flipped back.
+`expo/src/lib/api.ts` now always sends the field explicitly rather than relying
+on whichever build of the function is deployed.
+
+**A regression was caught and reverted during integration.** A proposed
+migration re-granted `SELECT, INSERT` on `public.stories` to `authenticated`,
+restating a grant from `00015` verbatim — but `00034` had deliberately revoked
+`insert, update` on that table and dropped the matching policies, because story
+creation and publication are service-owned. `00034`'s own test
+("clients cannot bypass the service-owned story publication path") caught it.
+The migration was dropped entirely: the invariant it aimed at was already
+enforced, and a revoke-then-regrant migration is pure risk. **The lesson is in
+the test, not in the migration** — any future migration that re-grants INSERT or
+UPDATE on `stories` fails it, which is exactly what it is for.
+
+The related claim that `00045` broke PGlite migration replay
+(`normalize(x, NFKC)`) did **not** reproduce: PGlite parses the unqualified
+form, verified directly, and the full migration suite passes.
+
+### Verification
+
+- `deno check` clean across all `_shared/*.ts` and every function `index.ts`.
+- `deno test supabase/functions`: **464 passed, 0 failed** (baseline 361).
+- `deno test supabase/migrations`: **44 passed, 0 failed**.
+- `deno fmt --check`: the 6 remaining unformatted files
+  (`send-push`, `feed/index.test.ts`, `story-shape.ts`, `edit-story`,
+  `comments` x2) are pre-existing and were not touched.
+- `expo/`: `pnpm typecheck` clean, `pnpm test` **30 suites / 304 tests passed**
+  (Node v22.23.0).
+
+### Known gaps, deliberately not closed
+
+- **Web search is built but off.** Phase 2 turns it on for the narrow
+  `needsGrounding` set once phase 1 shows whether cards alone are enough.
+- **Covers are not grounded yet.** `cover-prompts.ts` still works from genre
+  config, so a Shivaji cover is generated without the card. This is now a
+  quality bug rather than a legal one.
+- **`entity_grounding_prune()` has no caller.** It needs a scheduler entry
+  alongside `refresh-subscription-grants`.
+- **`feed`'s continue-reading rail** fetches stories from the reader's own
+  `story_reads` without re-checking `is_public`. Harmless while there is no
+  unpublish feature; it becomes a stale-visibility path the moment one ships.
+- **The publish gate for real-entity stories is not built.** `grounding_entities`
+  is being recorded from now on precisely so that gate is a `WHERE` clause
+  later rather than a backfill over the whole corpus.
+
+---
+
 ## 2026-09-07 UTC — Brief fidelity, chapter steering, an honest cover, and Write the rest
 
 **Session:** Four changes to the create flow, in the order they depend on each

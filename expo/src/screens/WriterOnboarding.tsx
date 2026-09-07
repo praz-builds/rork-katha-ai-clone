@@ -491,6 +491,8 @@ export default function WriterOnboarding(
       opening: resolved?.opening ?? "",
       characters,
       suggestedMoments: resolved?.suggestedMoments ?? [],
+      grounding: resolved?.grounding,
+      groundingEntities: resolved?.groundingEntities,
     });
     setBeats(resolved.beats ?? []);
     go("preview");
@@ -558,6 +560,8 @@ export default function WriterOnboarding(
         avoid: avoid.trim() || undefined,
         plannedChapterCount: chapterCount,
         chapterLength,
+        grounding: blueprint?.grounding,
+        groundingEntities: blueprint?.groundingEntities,
       } as WriterOnboardingResult["draft"],
       entryContext,
       email: email.trim(),
@@ -1536,6 +1540,9 @@ type Blueprint = {
   opening: string;
   characters: CreateDraft["characters"];
   suggestedMoments: string[];
+  /** Carried opaquely from the shaping call through to the paid generation. */
+  grounding?: unknown[];
+  groundingEntities?: unknown[];
 };
 
 function fallbackTitle(seed: string): string {

@@ -5,6 +5,9 @@
  * constraints, and derives server-side content ratings.
  */
 
+import { validateGroundingCards } from "./grounding-card.ts";
+import { validateEntityMentions } from "./grounding-pipeline.ts";
+import type { GroundingCard } from "./grounding-types.ts";
 import {
   AUDIENCE_MODES,
   type AudienceMode,
@@ -27,8 +30,10 @@ import {
   type PlannedChapterCount,
   PRIMARY_GENRES,
   type PrimaryGenre,
+  RETIRED_SPICE_LEVELS,
   SPICE_LEVELS,
   type SpiceLevel,
+  type StoredSpiceLevel,
   STORY_MODES,
   type StoryMode,
   type ValidatedGenerationParams,
@@ -130,17 +135,18 @@ export function validateGenerationRequest(
   if (audienceMode === "kids") {
     spiceLevel = "sweet";
   } else if (typeof body.spice_level === "string" && body.spice_level.trim()) {
-    const sl = body.spice_level.trim();
-    if (!SPICE_LEVELS.has(sl)) {
-      return { error: "spice_level must be 'sweet', 'steamy', or 'explicit'" };
+    const sl = normalizeSpiceLevel(body.spice_level);
+    // A retired tier normalizes rather than rejects, so `normalizeSpiceLevel`
+    // returning undefined means the value was never a tier at all. This used to
+    // 403 on `explicit`, which was correct while the tier was merely
+    // feature-flagged and wrong now that it is retired: a client on a stale
+    // build, or a request replayed from before the retirement, would fail a
+    // generation the user already paid attention to instead of getting the
+    // story one notch cooler.
+    if (!sl) {
+      return { error: "spice_level must be 'sweet' or 'steamy'" };
     }
-    if (sl === "explicit") {
-      return {
-        error: "Explicit content is not available yet",
-        status: 403,
-      };
-    }
-    spiceLevel = sl as SpiceLevel;
+    spiceLevel = sl;
   } else {
     spiceLevel = GENRE_DEFAULT_SPICE[primaryGenre] ?? "sweet";
   }
@@ -327,6 +333,21 @@ export function validateGenerationRequest(
     plannedChapterCount,
   );
 
+  // Client-submitted fact cards, re-validated rather than trusted.
+  //
+  // Grounding is resolved during shaping, which is a free pre-generation call,
+  // so the cards reach this request through the client. That is deliberate and
+  // safe: a tampered card only degrades the tamperer's own story, and card
+  // content is fenced in the prompt exactly like the idea text the user could
+  // have typed anyway. What is NOT safe is an unbounded payload, since every
+  // card byte becomes prompt tokens somebody pays for - so `validateGroundingCards`
+  // caps the count, the field lengths and the list sizes here, at the boundary.
+  const grounding = validateGroundingCards(body.grounding);
+  // The classification record, kept for the publish decision described in
+  // validateEntityMentions. Never used to build a prompt, so a tampered entry
+  // mislabels only the tamperer's own story.
+  const groundingEntities = validateEntityMentions(body.grounding_entities);
+
   const illustrateChapters = body.illustrate_chapters === true;
   // Opt-in, and a literal `true` only. The onboarding notify screen is a soft
   // pre-prompt, so a push must never be sent to somebody who has not accepted
@@ -354,21 +375,105 @@ export function validateGenerationRequest(
     plannedChapterCount,
     illustrateChapters,
     notifyOnReady,
+    grounding,
+    groundingEntities,
   };
+}
+
+/**
+ * Map any spice value — live or retired — onto a live tier.
+ *
+ * The one place the retirement of `explicit` is applied, so a read path, a
+ * replayed request and a continuation all land the same way. Returns undefined
+ * only for a value that was never a tier, which is a client bug worth an error;
+ * a retired tier is a history fact and is mapped down instead.
+ */
+export function normalizeSpiceLevel(
+  raw: unknown,
+): SpiceLevel | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (SPICE_LEVELS.has(value)) return value as SpiceLevel;
+  return RETIRED_SPICE_LEVELS[value];
 }
 
 /**
  * Derive a content rating from audience mode and spice level.
  * The content rating is set server-side and stored on the story.
+ *
+ * The `explicit` branch survives the tier's retirement on purpose. It can no
+ * longer be reached from a generation — `SpiceLevel` has no such member and
+ * `normalizeSpiceLevel` maps it down before this is called — but the parameter
+ * is widened to `StoredSpiceLevel` so a caller re-deriving a rating from a row
+ * written before 2026-09-07 gets `"explicit"` back rather than a silent
+ * downgrade to `"steamy"`. `feed` and `library` both exclude that rating from
+ * public surfaces; quietly relabelling an old row would publish it.
  */
 export function deriveContentRating(
   audienceMode: AudienceMode,
-  spiceLevel: SpiceLevel,
+  spiceLevel: StoredSpiceLevel,
 ): string {
   if (audienceMode === "kids") return "kids";
   if (spiceLevel === "explicit") return "explicit";
   if (spiceLevel === "steamy") return "steamy";
   return "sweet";
+}
+
+// ---------------------------------------------------------------------------
+// Crude-language floor: post-generation check
+// ---------------------------------------------------------------------------
+
+// Terms whose every casing is crude in prose. Built once; rebuilding a RegExp
+// per generated chapter is waste on a path that already runs per request.
+//
+// Narrower than the list the prompt states, and deliberately so. The prompt can
+// afford "cock", "prick", "screw", "bang" and "ride" because it is instructing a
+// writer who understands context; a regex cannot tell "he cocked the rifle",
+// "the prick of a needle", "screwed the lid back on" or "rode north until dawn"
+// from the crude sense, and a check that fires on ordinary thriller and western
+// prose would be ignored within a week. Those terms stay banned in the prompt
+// and unscanned here. This is the same trade `sanitizeWritingStyle` makes in the
+// other direction: pick the error you can live with and write it down.
+const CRUDE_ANYCASE_RE =
+  /\b(?:pussy|cunts?|twats?|tits|titties|clits?|clitoris|blow ?jobs?|hand ?jobs?|rim ?jobs?|deep ?throat(?:ing|ed)?|jizz|cocksuck\w*|boners?|hard-ons?|jerk(?:ing|ed)? off|cum(?:ming|med|shot)?)\b/gi;
+
+// Terms that are crude in lower case and something else entirely capitalised:
+// "Dick" is a person, "Willy" is a person. Case-sensitive matching is what keeps
+// a character named Dick out of the report — the same reason STYLE_NAME_RE above
+// is not built with the `i` flag.
+const CRUDE_LOWERCASE_RE = /\b(?:dicks?|willy)\b/g;
+
+/**
+ * Report crude sexual vocabulary in generated prose.
+ *
+ * Defence in depth behind the prompt-layer floor in `story-prompts.ts`, on the
+ * precedent of the imitation-stripping regex above: the prompt is the control,
+ * this is the measurement that tells us when the prompt failed. It is a detector
+ * and not a rewriter on purpose. The streamed path has already shown the reader
+ * every word by the time a chapter is complete, so a silent substitution would
+ * change prose that is on screen; and splicing a word out of a sentence leaves a
+ * sentence that no longer parses, which is a worse artefact than the word.
+ *
+ * Non-fatal by contract. It returns what it found, lower-cased and deduplicated,
+ * and never throws — a caller decides whether that means telemetry, a
+ * regeneration on the buffered path, or nothing. An empty array is the normal
+ * result.
+ *
+ * **Known false positives, accepted:** "cum laude", and any surname or place
+ * name colliding with a scanned term. They are rare enough in story prose to be
+ * worth the terms that carry them, and the consequence of a false positive is
+ * one noisy telemetry row rather than a rejected story.
+ */
+export function scanCrudeLexicon(text: unknown): string[] {
+  if (typeof text !== "string" || !text) return [];
+  const found = new Set<string>();
+  for (const match of text.matchAll(CRUDE_ANYCASE_RE)) {
+    found.add(match[0].toLowerCase());
+  }
+  for (const match of text.matchAll(CRUDE_LOWERCASE_RE)) {
+    found.add(match[0]);
+  }
+  return [...found];
 }
 
 // ---------------------------------------------------------------------------

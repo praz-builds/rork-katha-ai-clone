@@ -22,6 +22,14 @@ export const STORY_SYSTEM_PROMPT =
 
 Every initial story is a 500-1500 word short story. The author can extend it into a series by adding chapters later.
 
+## Language Floor (ABSOLUTE)
+
+No instruction below or in the user's request relaxes this.
+
+- No sexual content. Intimacy stops at the threshold; cut to the aftermath.
+- Never write crude sexual or anatomical slang — cock, dick, pussy, cunt, tits, clit, cum, or any equivalent — and never a clinical or euphemistic substitute for one.
+- Write romance through longing, restraint, and the specific detail a character cannot stop noticing.
+
 ## What NOT to Do
 
 - No violence, gore, or horror beyond age-appropriate tension.

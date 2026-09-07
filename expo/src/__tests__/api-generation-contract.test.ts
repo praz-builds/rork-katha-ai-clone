@@ -259,6 +259,33 @@ describe("publishStory visibility contract", () => {
 
     expect(bodyOf(mockInvoke.mock.calls[0]).visibility).toBe("private");
   });
+
+  it("states private for a signed-in user rather than leaving it to the server", async () => {
+    // The field used to be omitted for signed-in users, which handed the
+    // decision to whichever build of publish-story was deployed — and the old
+    // one read an absent field as "public".
+    mockBootstrapUser.mockResolvedValue({ isAnonymous: false, balance: 12 });
+    mockInvoke.mockResolvedValue({
+      data: { saved: true, published: false },
+      error: null,
+    });
+
+    await publishStory("story-1", { title: "A saved story" });
+
+    expect(bodyOf(mockInvoke.mock.calls[0]).visibility).toBe("private");
+  });
+
+  it("still publishes publicly when the user asks for it", async () => {
+    mockBootstrapUser.mockResolvedValue({ isAnonymous: false, balance: 12 });
+    mockInvoke.mockResolvedValue({
+      data: { published: true },
+      error: null,
+    });
+
+    await publishStory("story-1", { visibility: "public" });
+
+    expect(bodyOf(mockInvoke.mock.calls[0]).visibility).toBe("public");
+  });
 });
 
 describe("character payload", () => {

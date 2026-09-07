@@ -178,6 +178,8 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00035 (Guest bootstrap)** | `anonymous_bootstrap_rate_limits`, `anonymous_bootstrap_global_limits` |
 | **00037 (Push)** | `push_tokens` |
 | **00038-00041 (Hardening)** | Profile update policy, shape-claim ordering, ledger tie-breaker, `characters.story_id` index |
+| **00043-00044 (Comments + covers)** | Threaded comments/votes/moderation, cover regeneration counters |
+| **00045 (Entity grounding)** | `entity_grounding` (shared expiring fact-card cache, service-role only), `stories.grounding`, `stories.grounding_entities` |
 
 ### Credit Ledger Pattern
 

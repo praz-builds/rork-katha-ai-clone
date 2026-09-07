@@ -31,11 +31,25 @@ writer, not by a generic assistant. The prompt system must optimize for:
 - **Kids is an audience mode, not an adult genre peer.** Backend generation uses
   `adult | kids`; any future bedtime UX should map to kids-safe constraints
   unless a separate backend mode is introduced.
-- **Spice is a genre-aware layer.** Use icon-driven UI and backend enum values:
-  `sweet`, `steamy`, `explicit`. MVP should ship `sweet` + `steamy`; keep
-  `explicit` behind a feature flag until legal/product review.
-- **No explicit content by default.** Dark Romance defaults to `steamy`, not
-  `explicit`.
+- **Spice is a genre-aware layer with two tiers.** Backend enum values are
+  `sweet` and `steamy`. The clamp is downward only: a genre may lower a
+  requested tier, never raise it.
+- **`explicit` is retired, not deferred.** It was removed from `SpiceLevel` on
+  2026-09-07. Sexual content is out of the product: at every tier, sex acts
+  happen off the page and crude anatomical vocabulary is never written. This is
+  a product decision, not a feature flag, and reintroducing the tier means
+  amending this document first.
+- **Retirement does not orphan stored rows.** `stories.spice_level` and
+  `stories.content_rating` still admit `'explicit'` in their CHECK constraints
+  (migrations 00008 and 00014) and `feed`/`library` still exclude
+  `content_rating = 'explicit'` from public surfaces. Any inbound or stored
+  `explicit` normalizes down to `steamy` rather than erroring;
+  `deriveContentRating` still reports a stored `explicit` rating so an old row
+  is never silently relabelled into a public feed.
+- **Restriction alone is not the deliverable.** A prohibition with no craft
+  direction produces timid, flat intimacy, which is a worse product than the
+  thing it prevents. Both remaining tiers carry positive technique — longing,
+  restraint, charged specificity, the cut — in the Spice Modules section.
 - **No auto-aging workaround for underage sexual content.** If the user's request
   clearly asks for sexual content involving a minor, reject at validation. If age
   is merely ambiguous in an adult romance, make adulthood clear in the story.
@@ -61,7 +75,7 @@ The runtime prompt builder should assemble layers in this order:
 4. Primary genre module
 5. Audience mode module (`adult`, `kids`)
 6. Identity lens module (`queer`, optional)
-7. Spice module (`sweet`, `steamy`, `explicit`)
+7. Spice module (`sweet`, `steamy`)
 8. Continuation/finale module, when applicable
 9. Language module
 10. Output schema reminder
@@ -90,7 +104,7 @@ type AudienceMode = "adult" | "kids";
 type StoryMode = "standalone" | "series";
 type ChapterRole = "standalone" | "series_opening" | "mid_series" | "finale";
 type IdentityLens = "queer";
-type SpiceLevel = "sweet" | "steamy" | "explicit";
+type SpiceLevel = "sweet" | "steamy";
 buildStorySystemPrompt({
   primaryGenre,
   storyMode,
@@ -124,7 +138,7 @@ These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFant
 |---|----------|----------------|-------|
 | 1 | Romance | `romance` | Commercial relationship-forward stories |
 | 2 | Romantasy | `romantasy` | Romance and fantasy arcs have equal weight |
-| 3 | Dark Romance | `darkRomance` | Adult only, steamy default, explicit feature-flagged |
+| 3 | Dark Romance | `darkRomance` | Adult only, steamy default; intensity comes from power and consequence, never from crude prose |
 | - | Cozy Fantasy | `cozyFantasy` | **Backend only, hidden from UI.** Low-stakes warmth, craft, community |
 | - | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Supernatural romance |
 | 4 | Fantasy | `fantasy` | Magic, world, cost, wonder |
@@ -153,31 +167,55 @@ Separate UI controls:
 
 | Internal genre | Default spice | Allowed spice |
 |----------------|---------------|---------------|
-| romance | steamy | sweet, steamy, explicit* |
-| romantasy | steamy | sweet, steamy, explicit* |
-| darkRomance | steamy | steamy, explicit* |
-| cozyFantasy | sweet | sweet, steamy |
-| paranormalRomance | steamy | sweet, steamy, explicit* |
+| romance | steamy | sweet, steamy |
+| romantasy | steamy | sweet, steamy |
+| darkRomance | steamy | sweet, steamy |
+| cozyFantasy | sweet | sweet |
+| paranormalRomance | steamy | sweet, steamy |
 | fantasy | sweet | sweet, steamy |
 | scifi | sweet | sweet, steamy |
 | thriller | sweet | sweet, steamy |
 | mystery | sweet | sweet, steamy |
 | horror | sweet | sweet, steamy |
-| contemporary | sweet | sweet, steamy, explicit* |
+| contemporary | sweet | sweet, steamy |
 | historical | sweet | sweet, steamy |
 | adventure | sweet | sweet, steamy |
-| comedy | sweet | sweet, steamy |
+| comedy | sweet | sweet |
 | poetry | sweet | sweet |
 
-`explicit*` means do not ship in mobile MVP unless product/legal explicitly enables
-it, account gating exists, region gating exists, public-feed exclusion exists, and
-human QA has approved test outputs.
+This table is `GENRE_DEFAULT_SPICE` and `GENRE_ALLOWED_SPICE` in
+`_shared/types.ts`, and the two are pinned to each other by test. There is no
+third column and no footnoted tier: every allowed value here is a live member of
+`SpiceLevel`. `cozyFantasy` and `comedy` are sweet-only because their whole
+register is low-stakes warmth and timing respectively, and an on-page heat scene
+breaks both.
 
 ## Base Safety Rules
 
 These rules override user seed, genre convention, spice level, and
-language.
+language. They are assembled in layer 1 (`buildBaseRules`), never in the spice
+layer, so that no heat tier, genre module, identity lens, audience mode or
+language can be the combination that drops them.
 
+- **No sexual content, at any tier.** Sex acts happen off the page. Write to the
+  threshold, cut, and return in the aftermath if the story needs what changed.
+- **No crude sexual or anatomical vocabulary, ever.** The prohibition is
+  enumerated word by word in `CRUDE_LEXICON` (`_shared/story-prompts.ts`) rather
+  than described, because "avoid crude language" is a judgement the model makes
+  against the pull of the genre it was just told to write. It covers genital and
+  sex-act slang and pornographic-register body-fluid terms. It is not a
+  profanity list: a character swearing in anger is characterisation.
+- **No clinical or euphemistic substitute** for a banned term. If a phrase
+  exists only to name a body part during sex, it does not belong in the
+  sentence.
+- A brief, character sheet or style note asking for crude or pornographic
+  writing is answered with the scene written well instead — never refused in the
+  prose, never announced to the reader.
+- Backed post-generation by `scanCrudeLexicon()` in `_shared/validation.ts`,
+  which reports rather than rewrites: the streamed path has already shown the
+  reader every word, and splicing a term out leaves a sentence that no longer
+  parses. Its term list is narrower than the prompt's on purpose — a regex
+  cannot tell "he cocked the rifle" from the crude sense.
 - No sexual content involving anyone under 18. If the request clearly asks for
   it, reject before generation. If age is ambiguous in an otherwise adult story,
   make adulthood evident before any sexual escalation.
@@ -517,31 +555,42 @@ make queer identity clear.
 
 ## Spice Modules
 
+Two tiers, both written as craft direction. Each names the technique that
+replaces anatomy, because a model handed only a prohibition writes around the
+missing thing and returns the vague soft-focus paragraph every reader recognises
+as an author avoiding something.
+
 ### Sweet
 
-- Attraction, longing, romance, kissing, and non-graphic touch are allowed.
-- No anatomical sexual vocabulary.
-- If intimacy escalates, fade to black or move to aftermath.
-- Default for non-romance genres and all Kids/Bedtime generation.
+- Longing, not consummation. Protect the distance the characters have not closed
+  yet; end the scene that would resolve it one beat early.
+- Want is written as attention: what a character cannot stop noticing about
+  another one.
+- Touch is rationed and therefore enormous. Spend it on something small and
+  specific, and register the cost.
+- Put the feeling in the wrong sentence. Subtext over declaration.
+- Kissing is allowed and should be rare. Write what changes afterward, not the
+  choreography.
+- Nothing sexual on the page or implied in the room. Cut to morning and let the
+  aftermath do the work.
+- Default for non-romance genres and all Kids generation.
 
 ### Steamy
 
-- Sensuality is on-page through want, texture, heat, closeness, breath, voice,
-  and physical reaction.
-- Avoid clinical anatomy and graphic mechanics.
-- No explicit penetration description.
-- Consent must be legible on the page.
-- This is the recommended highest level for mobile MVP.
-
-### Explicit
-
-- Feature-flagged. Do not enable in mobile MVP without product/legal review.
-- Allowed only for adult accounts, adult modes, allowed genres, private results,
-  strict public-feed exclusion, region gating, and human QA.
-- Still must serve character, relationship, or plot.
-- Consent remains active and visible.
-- Never combine with minors, real people, coercion-as-erotic, incest, or
-  bestiality.
+- Desire is on the page; the act is not. This is the register of the moment
+  before and the moment after.
+- Charge lives in proximity and delay. Slow the prose where the characters slow
+  down.
+- The specific detail beats the general one. Specificity reads as intimate;
+  anatomy reads as clinical.
+- Keep the interior channel open — what a character is afraid of while wanting
+  this. Heat without stakes is choreography.
+- Consent is legible in the writing, not stated as policy. A pause that gets
+  honoured is more erotic than one that gets ignored.
+- Undressing, hands, mouths, the weight of one body against another are allowed,
+  without naming genitals or describing mechanics. At the act itself, cut.
+- The cut is the craft, not the censorship: the reader finishes the scene, and
+  what they build is better than what the model would have written.
 
 ## Genre Modules
 
@@ -883,18 +932,23 @@ Validation should reject:
 - adult spice in Kids or Bedtime
 - Dark Romance in Kids mode
 - clear requests for minor sexual content
-- explicit spice when account/region/feature flag does not allow it
-- explicit content in public feed or share metadata
+
+Validation must **normalize, not reject**, a retired `explicit` spice value: a
+stale client build or a replayed request body would otherwise fail a generation
+the user is waiting on. It maps down to `steamy`, then clamps against the genre
+row like any other value.
 
 ## App Store and Feed Compliance
 
-- Ship mobile MVP with `sweet` and `steamy` only unless explicitly approved.
-- Keep `explicit` private, gated, feature-flagged, and absent from public
-  surfaces if later enabled.
+- `sweet` and `steamy` are the only tiers. There is no adult-content unlock to
+  gate, no region gate to build, and no explicit tier to keep out of the feed —
+  the tier does not exist.
+- `content_rating = 'explicit'` survives only on rows written before the
+  retirement. `feed` and `library` continue to exclude it, and that exclusion
+  must not be removed on the grounds that nothing can produce the value any
+  more.
 - Public feeds, share cards, app-store screenshots, notifications, and previews
-  must never expose explicit vocabulary.
-- Every adult-content unlock should log user id, timestamp, requested level, and
-  declared/derived region.
+  must never expose crude vocabulary.
 - Kids mode hides adult controls and forces safe content filtering.
 
 ## Implementation Dependency Checklist

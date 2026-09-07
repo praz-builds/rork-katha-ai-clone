@@ -98,6 +98,94 @@ Deno.test("spice rules vary: sweet vs steamy", () => {
   assert(!sweetPrompt.includes("Content Heat: Steamy"));
 });
 
+// The floor lives in the base layer precisely so no tier, genre, audience or
+// lens can be the one that omits it. Checking a couple of representative
+// prompts would not catch the combination that drops it, so check them all.
+Deno.test("the crude-language floor survives every heat, genre and lens", () => {
+  const genres = [
+    "romance",
+    "romantasy",
+    "darkRomance",
+    "paranormalRomance",
+    "contemporary",
+    "poetry",
+  ] as const;
+  for (const primaryGenre of genres) {
+    for (const spiceLevel of ["sweet", "steamy"] as const) {
+      for (const identityLenses of [[], ["queer"]] as const) {
+        const prompt = buildStorySystemPrompt({
+          primaryGenre,
+          spiceLevel,
+          identityLenses: [...identityLenses],
+        });
+        const where = `${primaryGenre}/${spiceLevel}/${identityLenses.length}`;
+        assert(
+          prompt.includes("## Language Floor (ABSOLUTE)"),
+          `missing floor for ${where}`,
+        );
+        for (const term of ["pussy", "cunt", "cum", "blowjob"]) {
+          assert(prompt.includes(term), `floor omits "${term}" for ${where}`);
+        }
+        assert(
+          prompt.includes("Sex acts happen off the page"),
+          `missing off-page rule for ${where}`,
+        );
+      }
+    }
+  }
+});
+
+Deno.test("the floor holds in kids mode and in a non-English language", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "adventure",
+    audienceMode: "kids",
+    language: "Portuguese",
+  });
+  assert(prompt.includes("## Language Floor (ABSOLUTE)"));
+  assert(prompt.includes("Never write these words or their inflections"));
+});
+
+Deno.test("continuation prompts carry the floor too", () => {
+  for (const mode of ["chapter", "finale"] as const) {
+    const prompt = buildContinuationSystemPrompt({
+      primaryGenre: "darkRomance",
+      spiceLevel: "steamy",
+      mode,
+    });
+    assert(prompt.includes("## Language Floor (ABSOLUTE)"), mode);
+  }
+});
+
+// A prohibition on its own produces the vague soft-focus paragraph this rewrite
+// exists to prevent, so each tier must still hand the model a technique.
+Deno.test("both heat tiers give craft direction, not only prohibition", () => {
+  const sweet = buildStorySystemPrompt({
+    primaryGenre: "romance",
+    spiceLevel: "sweet",
+  });
+  assert(sweet.includes("Longing, not consummation"));
+  assert(sweet.includes("Touch is rationed"));
+
+  const steamy = buildStorySystemPrompt({
+    primaryGenre: "romance",
+    spiceLevel: "steamy",
+  });
+  assert(steamy.includes("Desire is on the page; the act is not"));
+  assert(steamy.includes("The cut is the craft"));
+  assert(steamy.includes("Consent is legible"));
+});
+
+Deno.test("no prompt path can emit an explicit heat module", () => {
+  for (const spiceLevel of [undefined, "sweet", "steamy"] as const) {
+    const prompt = buildStorySystemPrompt({
+      primaryGenre: "darkRomance",
+      spiceLevel,
+    });
+    assert(!prompt.includes("Content Heat: Explicit"));
+    assert(!prompt.includes("Use anatomically accurate language"));
+  }
+});
+
 Deno.test("story engine section present", () => {
   const prompt = buildStorySystemPrompt({ primaryGenre: "thriller" });
   assert(prompt.includes("## Story Engine"));
