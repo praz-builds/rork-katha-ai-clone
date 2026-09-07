@@ -1,4 +1,10 @@
-// 13 UI genres (cozyFantasy + paranormalRomance hidden, DB-only)
+/**
+ * Every genre value a story can carry, past and present.
+ *
+ * A genre removed from the UI (see `UI_GENRES`) stays in this list forever,
+ * because stories already published with it must keep rendering - a label,
+ * a gradient, and a valid `Genre` value, even after nobody can pick it again.
+ */
 export const GENRES = [
   "romance",
   "romantasy",
@@ -13,9 +19,34 @@ export const GENRES = [
   "adventure",
   "comedy",
   "poetry",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "sliceOfLife",
 ] as const;
 
 export type Genre = (typeof GENRES)[number];
+
+/**
+ * The genre list the UI actually offers, in the app's fixed display order.
+ * Romance is deliberately last. Every picker, filter, and chip row should
+ * read from this - not from `GENRES`, which exists only to keep every past
+ * and present genre value typed and labeled even after it drops out of here.
+ */
+export const UI_GENRES = [
+  "adventure",
+  "comedy",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "historical",
+  "scifi",
+  "fantasy",
+  "mystery",
+  "horror",
+  "sliceOfLife",
+  "romance",
+] as const satisfies readonly Genre[];
 
 export type AudienceMode = "adult" | "kids";
 export type SpiceLevel = "sweet" | "steamy";

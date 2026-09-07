@@ -32,7 +32,7 @@ import {
   spacing,
   type,
 } from "@/theme";
-import { GENRES } from "@/types/domain";
+import { UI_GENRES } from "@/types/domain";
 import type { Genre, Story } from "@/types/domain";
 
 /** How the list is sorted. `newest` reads `publishedOffset` ascending - the
@@ -314,7 +314,7 @@ function ExploreListHeader({
           selected={genreFilter === "all"}
           onPress={() => onGenreChange("all")}
         />
-        {GENRES.map((genre) => (
+        {UI_GENRES.map((genre) => (
           <Chip
             key={genre}
             label={genreLabels[genre]}

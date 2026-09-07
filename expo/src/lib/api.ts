@@ -976,6 +976,10 @@ const MOCK_TITLES: Partial<Record<Genre, string[]>> = {
     "Weather Reports of Love",
     "What the Tide Pool Remembers",
   ],
+  educational: ["What the Tide Pool Teaches", "The Apprentice's Typo", "One Afternoon Cloud"],
+  fanfiction: ["The Bridge, Retold", "What the Finale Left Out", "The Best Part of the Week"],
+  folktale: ["The Miller's Third Wish", "The Key Nobody Built", "The Crow's Third Winter"],
+  sliceOfLife: ["The Corner Laundromat", "The Spice Rack", "The Shared Desk Lamp"],
 };
 
 function generateMockTitle(genre: Genre): string {

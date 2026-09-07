@@ -22,7 +22,6 @@ import {
 import { enableNotifications } from "@/lib/notifications";
 import { sendEmailCode, verifyEmailCode } from "@/lib/session";
 import {
-  GENRE_BAR,
   GENRE_EMOJI,
   GENRE_STARTERS,
 } from "@/lib/genre-content";
@@ -48,6 +47,7 @@ import {
   spacing,
   type,
 } from "@/theme";
+import { UI_GENRES } from "@/types/domain";
 import type { CreateDraft, Genre, WriterEntryContext } from "@/types/domain";
 
 /**
@@ -682,7 +682,7 @@ export default function WriterOnboarding(
                 {genreOpen
                   ? (
                     <View style={styles.genrePanel} accessibilityRole="radiogroup">
-                      {GENRE_BAR.map((option) => (
+                      {UI_GENRES.map((option) => (
                         <Pressable
                           key={option}
                           onPress={() => {

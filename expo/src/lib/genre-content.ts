@@ -25,6 +25,10 @@ export const GENRE_EMOJI: Record<Genre, string> = {
   romance: "💕",
   romantasy: "✨",
   darkRomance: "🖤",
+  educational: "🎓",
+  fanfiction: "💬",
+  folktale: "🕯️",
+  sliceOfLife: "🍵",
 };
 
 /**
@@ -135,6 +139,26 @@ export const GENRE_STARTERS: Record<Genre, string[]> = {
     "A marriage told entirely through weather reports, from the first hot summer to the last February. Restrained, nothing stated directly, let the forecasts carry all of it.",
     "What a tide pool remembers between one tide and the next. Close observation, small creatures, present tense, and no human anywhere in it until the very last line.",
   ],
+  educational: [
+    "A tide pool guide told as a walk with a curious ten year old, explaining what each creature is doing and why, without ever talking down to her.",
+    "The history of the printing press, told through the one apprentice who kept setting a typo into every run and the master who finally worked out why.",
+    "A gentle explainer on how a thunderstorm actually forms, following one afternoon cloud from its first updraft to the rain hitting a rooftop.",
+  ],
+  fanfiction: [
+    "The found-family crew of a beloved space series gets a quiet week between missions, and the two members who never talk finally get stuck on watch together.",
+    "A canon-divergent take on the last season of a fantasy show, where the exiled knight makes the opposite choice at the bridge and has to live with it.",
+    "The side character everyone loved and the show never explained gets her own week, narrated in first person, filling in exactly what the finale left out.",
+  ],
+  folktale: [
+    "A miller's youngest daughter outwits a river spirit three times, and the third time she has to give up something she actually wanted to keep.",
+    "The last blacksmith in a mountain village forges a key for a locked door nobody remembers building, and the village elders beg him to melt it back down.",
+    "A crow teaches a lazy farmer's son to listen before he speaks, across three winters and three broken promises, in the cadence of a story told by firelight.",
+  ],
+  sliceOfLife: [
+    "A corner laundromat on a Tuesday night, and the regulars who fold each other's washing without ever quite becoming friends. Nothing happens. Everything does.",
+    "A woman reorganizes her late mother's spice rack over one long weekend, one jar at a time, remembering a different meal with each label.",
+    "Two coworkers split a desk lamp and a running joke for four years before either admits the shift has become the best part of their week.",
+  ],
 };
 
 /**
@@ -159,4 +183,8 @@ export const GENRE_MOMENT_SUGGESTIONS: Record<Genre, string[]> = {
   adventure: ["The route disappears behind them", "They find help where no one should live"],
   comedy: ["The careful plan fails loudly", "The lie gets more specific"],
   poetry: ["A recurring image changes its meaning", "The last line answers the first"],
+  educational: ["A misconception gets gently corrected", "One small fact reframes everything before it"],
+  fanfiction: ["A beloved dynamic gets one new layer", "The canon moment plays out differently"],
+  folktale: ["A trickster's trick turns on itself", "The old warning turns out to be literal"],
+  sliceOfLife: ["An ordinary routine breaks just slightly", "A small kindness goes unnoticed by everyone but the reader"],
 };
