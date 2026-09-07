@@ -132,6 +132,18 @@ type StudioDraft = {
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
   illustrateChapters?: boolean;
+  /**
+   * Grounding resolved during onboarding, carried through to generation.
+   *
+   * Shaping resolves these for free while the writer edits chips, so a draft
+   * that arrives from onboarding already has them. They were reaching this
+   * screen and then being dropped when `createDraft` was rebuilt, which meant
+   * the paid generation either re-derived them or, past its tighter fallback
+   * deadline, lost them entirely -- silently, because `api.ts` forwards these
+   * only when present.
+   */
+  grounding?: unknown[];
+  groundingEntities?: unknown[];
 };
 
 /**
@@ -643,6 +655,13 @@ export default function CreateStudioScreen({
       chapterLength: draft.chapterLength,
       plannedChapterCount: draft.plannedChapterCount,
       illustrateChapters: draft.illustrateChapters,
+      // Carried through from onboarding, where shaping already resolved it for
+      // free. Omitting them here meant the paid generation arrived ungrounded
+      // and re-derived what had already been paid for -- or, past the fallback
+      // deadline, simply lost it. `api.ts` forwards these only when present, so
+      // dropping them was silent.
+      grounding: draft.grounding,
+      groundingEntities: draft.groundingEntities,
     };
 
     streamedProseRef.current = "";

@@ -251,6 +251,49 @@ describe("approved Create flow", () => {
     });
   });
 
+  // Onboarding resolves grounding for free while the writer edits chips, and it
+  // reached this screen and was then dropped when `createDraft` was rebuilt. The
+  // paid generation either re-derived it or, past its tighter fallback deadline,
+  // lost it -- silently, because `api.ts` forwards these fields only when
+  // present. Nothing failed; the Shivaji case was just quietly wrong again.
+  it("carries onboarding grounding through to the generation payload", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const grounding = [{ canonicalName: "Shivaji Maharaj" }];
+    const groundingEntities = [
+      { name: "Shivaji Maharaj", entityClass: "historical_public_figure" },
+    ];
+
+    const view = await render(
+      <CreateStudioScreen
+        credits={12}
+        onCreditUsed={jest.fn()}
+        onPublished={jest.fn()}
+        onBack={jest.fn()}
+        initialDraft={{
+          primaryGenre: "historical",
+          audienceMode: "adult",
+          spiceLevel: "sweet",
+          identityLenses: [],
+          seed: "A boy in Pune finds his great-grandfather's campaign journal.",
+          language: "English",
+          visibility: "private",
+          characters: [],
+          isSeries: false,
+          grounding,
+          groundingEntities,
+        }}
+      />,
+    );
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      grounding,
+      groundingEntities,
+    });
+  });
+
   it("creates character images separately before the story generation call", async () => {
     mockGenerateStory.mockResolvedValueOnce(generatedStory);
     const view = await renderCreate();
