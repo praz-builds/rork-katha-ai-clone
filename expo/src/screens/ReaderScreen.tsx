@@ -26,12 +26,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import { pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
+import { isOwnStory } from "@/lib/ownership";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
@@ -195,7 +197,20 @@ export default function ReaderScreen({
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 768;
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex);
-  const chapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  const baseChapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  // A chapter this reading session has edited, keyed by chapter id. Ephemeral:
+  // it lives only in this component's state, exactly like the AI editor's
+  // one-step revert it is fed by - nothing here is a second source of truth
+  // for what the server holds.
+  const [chapterEdits, setChapterEdits] = useState<Record<string, string>>({});
+  const chapter = useMemo(() => {
+    const edited = chapterEdits[baseChapter.id];
+    if (edited === undefined) return baseChapter;
+    return { ...baseChapter, paragraphs: edited.split(/\n\s*\n/).filter(Boolean) };
+  }, [baseChapter, chapterEdits]);
+  const isAuthor = isOwnStory(story);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editWandOpen, setEditWandOpen] = useState(false);
   const [preferences, setPreferences] = useState<ReaderPreferences>(DEFAULT_PREFS);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
@@ -329,6 +344,16 @@ export default function ReaderScreen({
     setIsPlaying(false);
     setVoiceGender(gender);
   }, [voiceGender]);
+
+  const openEditor = useCallback((wandOpen: boolean) => {
+    setEditWandOpen(wandOpen);
+    setEditOpen(true);
+  }, []);
+
+  const closeEditor = useCallback((content: string) => {
+    setChapterEdits((prev) => ({ ...prev, [baseChapter.id]: content }));
+    setEditOpen(false);
+  }, [baseChapter.id]);
 
   const handleLike = useCallback(() => {
     setIsLiked((prev) => {
@@ -501,10 +526,27 @@ export default function ReaderScreen({
         onSearchNext={() => jumpToMatch(1)}
         onSearchPrevious={() => jumpToMatch(-1)}
         onPageChange={goToPage}
+        // `onHistory` is deliberately left unwired. There is no persisted
+        // version history to show it - the AI editor holds exactly one prior
+        // version, in memory, scoped to that editor being open - so wiring
+        // this control to the same one-step revert would surface it a
+        // navigation away from the wand it belongs beside, reading as a
+        // history feature that does not exist. See `EditStoryScreen` for
+        // where that revert control actually lives.
+        onEdit={isAuthor ? () => openEditor(false) : undefined}
+        onReimagine={isAuthor ? () => openEditor(true) : undefined}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
         onListen={() => setListenOpen(true)}
       />
+      {editOpen ? (
+        <EditStoryScreen
+          story={story}
+          chapter={chapter}
+          initialWandOpen={editWandOpen}
+          onClose={closeEditor}
+        />
+      ) : null}
       <PreferencesSheet
         visible={prefsOpen}
         preferences={preferences}
