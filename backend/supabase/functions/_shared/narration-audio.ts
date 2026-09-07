@@ -339,12 +339,67 @@ async function bytesFromRunpodOutput(
 
   const url = stringField(record, ["audio_url", "url", "mp3_url"]);
   if (url) {
+    // This URL arrives in a provider response, so it is attacker-influenced the
+    // moment the provider is compromised, spoofed or simply wrong. Fetching it
+    // unchecked let this function be pointed at anything the Edge runtime can
+    // reach -- internal addresses and cloud metadata endpoints included -- and
+    // at a body of any size. Narration audio is the only thing it is ever meant
+    // to retrieve.
+    if (!isAllowedAudioUrl(url)) {
+      console.error(
+        "narration: refusing to fetch audio from an unexpected host",
+      );
+      return null;
+    }
     const response = await fetch(url);
     if (!response.ok) return null;
-    return new Uint8Array(await response.arrayBuffer());
+
+    const declared = Number(response.headers.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > MAX_AUDIO_BYTES) return null;
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // The header is a claim, not a guarantee, so the real length is checked too.
+    if (bytes.byteLength > MAX_AUDIO_BYTES) return null;
+    return bytes;
   }
 
   return null;
+}
+
+/** 50 MB. A narrated chapter is a few MB; anything past this is not our audio. */
+const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Hosts the narration provider may hand us a file on.
+ *
+ * An allowlist rather than a denylist of internal ranges: blocking `169.254.
+ * 169.254` and RFC1918 by hand misses DNS names that resolve to them, IPv6
+ * forms, and redirects, and it has to be re-derived every time the runtime
+ * changes. Naming the two hosts we actually expect cannot be wrong in that
+ * direction. `NARRATION_AUDIO_HOSTS` extends it without a deploy if the provider
+ * moves.
+ */
+function isAllowedAudioUrl(candidate: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+
+  const configured = (Deno.env.get("NARRATION_AUDIO_HOSTS") ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  const allowed = configured.length
+    ? configured
+    : ["api.runpod.ai", "runpod.ai"];
+
+  const host = parsed.hostname.toLowerCase();
+  return allowed.some((suffix) =>
+    host === suffix || host.endsWith(`.${suffix}`)
+  );
 }
 
 function stringField(

@@ -143,8 +143,33 @@ export const VALID_VOICE_IDS = new Set(
 /** The voice used when a caller names none, and the only one the pre-library code wrote back to the chapter row. */
 export const DEFAULT_VOICE_ID = "aria";
 
+/**
+ * A cheap shape check against the ids compiled into this file.
+ *
+ * This is NOT the authority on whether a voice may be used. The registry lives
+ * in `public.voices` and can hold voices this file has never heard of, so a
+ * handler that gates on this alone rejects every voice added after deploy.
+ * Handlers resolve a voice with `getVoiceRecord`, which asks the table; this
+ * stays for the static allowlist and for callers with no database at hand.
+ */
 export function isValidVoiceId(value: unknown): value is string {
   return typeof value === "string" && VALID_VOICE_IDS.has(value);
+}
+
+/**
+ * Is this a voice the runtime will accept -- registry first, static list second.
+ *
+ * Answers `true` for a voice added to `public.voices` since deploy, and `false`
+ * for one deliberately deactivated there, which is the pair of behaviours the
+ * static-only check got wrong in both directions.
+ */
+export async function isKnownVoiceId(
+  supabase: SupabaseClient | null,
+  value: unknown,
+): Promise<boolean> {
+  if (typeof value !== "string" || !value.trim()) return false;
+  if (!supabase) return VALID_VOICE_IDS.has(value);
+  return (await getVoiceRecord(supabase, value)) !== null;
 }
 
 const VOICE_COLUMNS =
@@ -174,7 +199,12 @@ export async function listVoices(
     const { data, error } = await query.order("sort_order", {
       ascending: true,
     });
-    if (error || !data || data.length === 0) return fallback;
+    // An empty result is an ANSWER, not an outage. Falling back to the static
+    // list here re-exposed every voice an administrator had deliberately
+    // deactivated, which is the opposite of what deactivating one is for.
+    // Only a failure to reach the table falls back.
+    if (error) return fallback;
+    if (!data) return fallback;
     return data as VoiceRecord[];
   } catch {
     return fallback;
@@ -194,9 +224,18 @@ export async function getVoiceRecord(
         .eq("id", voiceId)
         .eq("is_active", true)
         .maybeSingle();
-      if (!error && data) return data as VoiceRecord;
+      if (error) {
+        // The table could not answer. Degrade to the static list rather than
+        // taking narration down with it.
+        return STATIC_VOICES.find((voice) => voice.id === voiceId) ?? null;
+      }
+      // The table answered. Whatever it said is the truth, including "no row",
+      // which is how a disabled or removed voice presents. Falling back here
+      // resurrected voices that had been switched off and let generation run on
+      // stale provider parameters.
+      return (data as VoiceRecord | null) ?? null;
     } catch {
-      // Fall through to the static list below.
+      return STATIC_VOICES.find((voice) => voice.id === voiceId) ?? null;
     }
   }
   return STATIC_VOICES.find((voice) => voice.id === voiceId) ?? null;

@@ -214,4 +214,11 @@ grant select on public.voices to authenticated;
 grant select on public.chapter_audio to authenticated;
 grant all on public.voices to service_role;
 grant all on public.chapter_audio to service_role;
+-- PostgreSQL grants EXECUTE on a new function to PUBLIC by default, so the
+-- `grant ... to service_role` below is not what restricts this: without the
+-- revoke, any authenticated caller could invoke a `security definer` function
+-- and pre-create pending `chapter_audio` rows for arbitrary chapters and
+-- voices, poisoning the claim that is supposed to de-duplicate generation.
+-- `00046` and `00047` revoke first for the same reason; this one did not.
+revoke all on function public.claim_chapter_audio_generation(uuid, text, text, integer) from public;
 grant execute on function public.claim_chapter_audio_generation(uuid, text, text, integer) to service_role;

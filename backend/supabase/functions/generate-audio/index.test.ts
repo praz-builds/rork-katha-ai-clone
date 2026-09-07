@@ -10,6 +10,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleRequest } from "./index.ts";
+import { STATIC_VOICES } from "../_shared/voices.ts";
 import { NARRATION_REFUSAL } from "../_shared/narration-audio.ts";
 
 const AUTHOR_ID = "11111111-1111-4111-8111-111111111111";
@@ -167,10 +168,22 @@ function makeFetchStub(state: ServerState): typeof fetch {
     }
 
     if (url.pathname === "/rest/v1/voices") {
-      // Force the static fallback rather than re-implementing the voice
-      // registry's wire shape here -- STATIC_VOICES already has everything
-      // `generate-audio` needs for these tests.
-      return json([]);
+      // Serve the registry, because the registry is now authoritative.
+      //
+      // This used to answer `[]` to force the static fallback, which quietly
+      // encoded the bug: an empty answer from a reachable table was being read
+      // as "the table is down" rather than "there are no active voices", so a
+      // deactivated voice stayed usable. Migration `00048` seeds these rows, so
+      // a fixture that serves them is also the more honest one.
+      const requested = url.searchParams.get("id")?.replace("eq.", "");
+      const rows = STATIC_VOICES.filter((voice) =>
+        !requested || voice.id === requested
+      );
+      // `.maybeSingle()` asks for a single object, not an array.
+      const wantsObject = (request.headers.get("Accept") ?? "").includes(
+        "vnd.pgrst.object",
+      );
+      return wantsObject ? json(rows[0] ?? null) : json(rows);
     }
 
     if (url.pathname === "/rest/v1/chapter_audio") {
