@@ -26,11 +26,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { MusicPicker } from "@/components/reader/MusicPicker";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
+import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
+import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
@@ -66,6 +69,10 @@ type ReaderTheme = {
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
 const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: "paper" };
+/** Full-volume level for background music when narration is not playing. */
+const MUSIC_FULL_VOLUME = 1;
+/** Ducked level while narration plays, so the two never compete at equal volume. */
+const MUSIC_DUCKED_VOLUME = 0.18;
 const TYPE_SIZES = [16, 18, 20, 22];
 const LINE_HEIGHTS = [26, 30, 34, 38];
 
@@ -210,6 +217,10 @@ export default function ReaderScreen({
   const [isPlaying, setIsPlaying] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoadingAudioRef = useRef(false);
+  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
+  const [musicTrackId, setMusicTrackId] = useState<string | null>(null);
+  const musicSoundRef = useRef<Audio.Sound | null>(null);
+  const isNarrationPlayingRef = useRef(isPlaying);
   const fullText = useMemo(() => chapterText(chapter), [chapter]);
   const theme = READER_THEMES[preferences.theme];
   const pageViewport = useMemo(() => ({
@@ -249,6 +260,9 @@ export default function ReaderScreen({
     return () => {
       alive = false;
       if (soundRef.current) void soundRef.current.unloadAsync();
+      // Leaving the story stops music too. This unmount cleanup is the only
+      // place playback is torn down; a chapter or page change never reaches it.
+      if (musicSoundRef.current) void musicSoundRef.current.unloadAsync();
     };
   }, []);
 
@@ -260,6 +274,63 @@ export default function ReaderScreen({
   useEffect(() => {
     setActiveSearchMatch(0);
   }, [searchQuery]);
+
+  // Restores the story's saved music choice (or "None") when the reader opens it.
+  useEffect(() => {
+    let alive = true;
+    void getStoryMusicTrackId(story.id).then((trackId) => {
+      if (alive) setMusicTrackId(trackId);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [story.id]);
+
+  useEffect(() => {
+    isNarrationPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  // Loads (or clears) the background-music sound whenever the chosen track
+  // changes. Deliberately does not depend on chapterIndex or pageIndex, so
+  // music keeps looping across page turns and chapter navigation.
+  useEffect(() => {
+    let cancelled = false;
+    async function syncMusicTrack() {
+      if (musicSoundRef.current) {
+        const previous = musicSoundRef.current;
+        musicSoundRef.current = null;
+        await previous.unloadAsync();
+      }
+      const track = findMusicTrack(musicTrackId, MUSIC_TRACKS);
+      if (!track) return;
+      try {
+        const { sound } = await Audio.Sound.createAsync(track.source, {
+          shouldPlay: true,
+          isLooping: true,
+          volume: isNarrationPlayingRef.current ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME,
+        });
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        musicSoundRef.current = sound;
+      } catch {
+        // A catalogue row without a working asset (development-time state)
+        // fails silently rather than breaking the reader.
+      }
+    }
+    void syncMusicTrack();
+    return () => {
+      cancelled = true;
+    };
+  }, [musicTrackId]);
+
+  // Ducks music under narration and restores it when narration stops.
+  useEffect(() => {
+    const music = musicSoundRef.current;
+    if (!music) return;
+    void music.setStatusAsync({ volume: isPlaying ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME });
+  }, [isPlaying]);
 
   const updatePreferences = useCallback((next: ReaderPreferences) => {
     setPreferences(next);
@@ -329,6 +400,11 @@ export default function ReaderScreen({
     setIsPlaying(false);
     setVoiceGender(gender);
   }, [voiceGender]);
+
+  const handleMusicSelect = useCallback((trackId: string | null) => {
+    setMusicTrackId(trackId);
+    void setStoryMusicTrackId(story.id, trackId);
+  }, [story.id]);
 
   const handleLike = useCallback(() => {
     setIsLiked((prev) => {
@@ -504,6 +580,7 @@ export default function ReaderScreen({
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
         onListen={() => setListenOpen(true)}
+        onMusic={() => setMusicPickerOpen(true)}
       />
       <PreferencesSheet
         visible={prefsOpen}
@@ -528,6 +605,13 @@ export default function ReaderScreen({
         onVoiceChange={handleVoiceChange}
         onPlay={handlePlayTap}
         onClose={() => setListenOpen(false)}
+      />
+      <MusicPicker
+        visible={musicPickerOpen}
+        genre={story.genre}
+        selectedTrackId={musicTrackId}
+        onSelect={handleMusicSelect}
+        onClose={() => setMusicPickerOpen(false)}
       />
     </View>
   );
