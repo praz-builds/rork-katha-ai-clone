@@ -6,6 +6,7 @@
 // a failure that gets recorded rather than silently retried forever.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleRequest } from "./index.ts";
+import { STATIC_VOICES } from "../_shared/voices.ts";
 
 const AUTHOR_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_ID = "55555555-5555-4555-8555-555555555555";
@@ -105,7 +106,19 @@ function makeFetchStub(state: ServerState): typeof fetch {
     if (url.pathname === "/rest/v1/chapters") {
       return state.chapter ? json(state.chapter) : pgrst116();
     }
-    if (url.pathname === "/rest/v1/voices") return json([]);
+    if (url.pathname === "/rest/v1/voices") {
+      // The registry is authoritative now, and migration `00048` seeds these
+      // rows, so the fixture serves them. Answering `[]` from a reachable table
+      // used to be read as an outage and silently fell back to the static list.
+      const requested = url.searchParams.get("id")?.replace("eq.", "");
+      const rows = STATIC_VOICES.filter((voice) =>
+        !requested || voice.id === requested
+      );
+      const wantsObject = (request.headers.get("Accept") ?? "").includes(
+        "vnd.pgrst.object",
+      );
+      return wantsObject ? json(rows[0] ?? null) : json(rows);
+    }
 
     if (url.pathname === "/rest/v1/chapter_audio") {
       if (request.method === "PATCH") {

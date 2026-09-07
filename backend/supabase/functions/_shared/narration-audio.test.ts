@@ -325,7 +325,7 @@ Deno.test("pollRunpodNarration fetches audio_url when no inline base64 is presen
           return new Response(
             JSON.stringify({
               status: "COMPLETED",
-              output: { audio_url: "https://cdn.example/clip.mp3" },
+              output: { audio_url: "https://api.runpod.ai/v2/clip.mp3" },
             }),
             { status: 200 },
           );
@@ -429,4 +429,36 @@ Deno.test("storageObjectExists is true only when the listing names an exact matc
     await storageObjectExists(errored, "audio", "voice-previews/aria.mp3"),
     false,
   );
+});
+
+// The provider tells us where to fetch the audio from, which makes that URL
+// attacker-influenced the moment the provider is compromised, spoofed, or
+// simply wrong. Unchecked, it pointed this function at anything the Edge
+// runtime could reach -- internal services and cloud metadata endpoints
+// included -- and at a body of any size.
+Deno.test("pollRunpodNarration refuses an audio_url on an unexpected host", async () => {
+  let audioFetched = false;
+
+  await withEnv({ RUNPOD_API_KEY: "test-key" }, () =>
+    withFetch(
+      (request) => {
+        if (request.url.includes("/status/")) {
+          return new Response(
+            JSON.stringify({
+              status: "COMPLETED",
+              // The classic SSRF target.
+              output: { audio_url: "http://169.254.169.254/latest/meta-data/" },
+            }),
+            { status: 200 },
+          );
+        }
+        audioFetched = true;
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      },
+      async () => {
+        const result = await pollRunpodNarration("job-ssrf");
+        assertEquals(audioFetched, false);
+        assertEquals(result.audioBytes, undefined);
+      },
+    ));
 });

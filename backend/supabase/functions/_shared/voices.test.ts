@@ -88,10 +88,15 @@ Deno.test("listVoices falls back to STATIC_VOICES on a query error", async () =>
   assertEquals(voices, STATIC_VOICES.filter((v) => v.language === "en"));
 });
 
-Deno.test("listVoices falls back to STATIC_VOICES on an empty result", async () => {
+// An empty answer is an answer, not an outage.
+//
+// This test previously asserted the opposite, and in doing so pinned a real
+// bug: falling back to the static list when a reachable table returned no rows
+// re-exposed every voice an administrator had deliberately deactivated. The
+// fallback exists for an unreachable table, and only for that.
+Deno.test("listVoices trusts an empty result rather than resurrecting the static list", async () => {
   const client = stubClient([]);
-  const voices = await listVoices(client);
-  assertEquals(voices, STATIC_VOICES);
+  assertEquals(await listVoices(client), []);
 });
 
 Deno.test("listVoices falls back to STATIC_VOICES with no client at all", async () => {
@@ -106,10 +111,16 @@ Deno.test("getVoiceRecord returns the database row when the read succeeds", asyn
   assertEquals(record, dbRow);
 });
 
-Deno.test("getVoiceRecord falls back to the static entry on a miss or an outage", async () => {
+// The distinction that matters: "the table said no" is not "the table did not
+// answer". Only the second one falls back.
+Deno.test("getVoiceRecord treats a miss as a real absence and an outage as a fallback", async () => {
+  // Reachable table, no such active voice. That is a deactivated or removed
+  // voice, and returning the static entry would let generation keep running on
+  // stale provider parameters for a voice that was switched off on purpose.
   const missing = stubClient([]);
-  assertEquals(await getVoiceRecord(missing, "aria"), STATIC_VOICES[0]);
+  assertEquals(await getVoiceRecord(missing, "aria"), null);
 
+  // Unreachable table. Degrade rather than take narration down.
   const errored = stubClient(null, new Error("boom"));
   assertEquals(await getVoiceRecord(errored, "aria"), STATIC_VOICES[0]);
 
