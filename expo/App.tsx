@@ -20,6 +20,7 @@ import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
 import ReaderScreen from "@/screens/ReaderScreen";
+import ChapterEnd from "@/components/reader/ChapterEnd";
 import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
 import HomeScreen from "@/screens/HomeScreen";
@@ -352,6 +353,13 @@ export default function App() {
               allStories[0]}
             initialChapterIndex={screen.chapterIndex ?? 0}
             onBack={() => goTabs(tab)}
+            renderChapterEnd={(chapter) => (
+              <ChapterEnd
+                story={allStories.find((story) =>
+                  story.id === screen.storyId) ?? allStories[0]}
+                chapter={chapter}
+              />
+            )}
           />
         )
         : screen.name === "author"
