@@ -81,7 +81,10 @@ import {
   spacing,
 } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
-import type { KathaOnboardingResult } from "@/screens/KathaOnboardingFlowV2";
+import type {
+  KathaOnboardingResult,
+  KathaWriterPathPayload,
+} from "@/screens/KathaOnboardingFlowV2";
 
 /**
  * Dev-only deep link into a tab, e.g. `localhost:8081/?tab=explore`.
@@ -245,6 +248,21 @@ export default function App() {
     // finished the flow, and making them find it again is how it gets lost.
     goTabs("create");
   };
+  const startWriterOnboarding = (payload?: KathaWriterPathPayload) => {
+    setScreen({
+      name: "writer-onboarding",
+      initialGenre: payload?.initialGenre,
+      entryContext: payload?.onboarding
+        ? {
+          name: payload.onboarding.name,
+          genreInterests: payload.onboarding.genres,
+          otherGenre: payload.onboarding.otherGenre,
+          format: payload.onboarding.refine,
+          blocker: payload.onboarding.moment,
+        }
+        : undefined,
+    });
+  };
   const goTabs = (nextTab: TabKey = tab) => {
     setTab(nextTab);
     setScreen({ name: "tabs" });
@@ -345,7 +363,7 @@ export default function App() {
         ? (
           <KathaOnboardingComplete
             onDone={finishOnboarding}
-            onWriterPath={() => setScreen({ name: "writer-onboarding" })}
+            onWriterPath={startWriterOnboarding}
             onSignIn={() => setScreen({ name: "onboarding" })}
           />
         )
@@ -354,10 +372,8 @@ export default function App() {
           <WriterOnboarding
             onDone={finishWriterOnboarding}
             onExit={() => goTabs("home")}
-            // Their first pick, when they made one. The writer path branches
-            // at Purpose, before the genre screen, so this is usually
-            // undefined and the flow falls back to its own default.
-            initialGenre={toGenreKeys(onboarding?.genres)[0]}
+            initialGenre={screen.initialGenre}
+            entryContext={screen.entryContext}
           />
         )
         : screen.name === "onboarding"

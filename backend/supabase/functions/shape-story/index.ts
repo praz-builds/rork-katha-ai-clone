@@ -11,6 +11,7 @@ import { generateFastStructuredText } from "../_shared/llm.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 import {
   buildStoryShapePrompt,
+  normalizeStoryShapeBrief,
   ONBOARDING_SHAPE_OUTPUT,
   ONBOARDING_SHAPE_SYSTEM_PROMPT,
   parseStoryShape,
@@ -95,6 +96,14 @@ serve(async (req) => {
     // buildStoryShapePrompt, so an unknown value degrades to no hint rather
     // than reaching the model as free text.
     const genre = typeof body?.genre === "string" ? body.genre.trim() : "";
+    const brief = normalizeStoryShapeBrief({
+      characters: body?.characters,
+      moments: body?.moments,
+      writingStyle: body?.writing_style,
+      avoid: body?.avoid,
+      chapterLength: body?.chapter_length,
+      plannedChapterCount: body?.planned_chapter_count,
+    });
 
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(
@@ -120,7 +129,7 @@ serve(async (req) => {
     try {
       const result = await generateFastStructuredText(
         onboarding ? ONBOARDING_SHAPE_SYSTEM_PROMPT : STORY_SHAPE_SYSTEM_PROMPT,
-        buildStoryShapePrompt(idea, genre || undefined),
+        buildStoryShapePrompt(idea, genre || undefined, brief),
         onboarding ? ONBOARDING_SHAPE_OUTPUT : STORY_SHAPE_OUTPUT,
         onboarding ? ONBOARDING_SHAPE_MAX_TOKENS : SHAPE_MAX_TOKENS,
         onboarding ? ONBOARDING_SHAPE_DEADLINE_MS : SHAPE_DEADLINE_MS,

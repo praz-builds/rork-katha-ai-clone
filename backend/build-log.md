@@ -2306,6 +2306,21 @@ is a separate, explicit decision for later.
   known high `image-size` advisories ignored under the local parser patch
   documented in this session.
 
+## 2026-09-07: Onboarding shape-story now receives the full writer brief
+
+### Changed
+
+- Extended the onboarding `shape-story` prompt contract to accept sanitized characters, moments, writing style, avoid text, chapter length, and planned chapter count.
+- The onboarding prompt now explicitly preserves creator-supplied character names and returns a beat for each selected planned chapter count.
+- `shape-story` normalizes the added fields before building the prompt; production story generation was already using these variables through `generate-story` and `generate-story-stream`.
+
+### Verification
+
+- `deno check supabase/functions/shape-story/index.ts supabase/functions/_shared/story-shape.ts` clean.
+- `deno test --allow-env --allow-net supabase/functions/_shared/story-shape.test.ts`: 17 tests passing.
+- No production-level test was run, so no `public.error_events` rows were written.
+- Not pushed or deployed.
+
 ## 2026-09-06: The comments function, and blocked authors leave the feed
 
 ### Changed

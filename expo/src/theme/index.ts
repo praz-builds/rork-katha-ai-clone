@@ -12,6 +12,10 @@ export {
   IconChevronDown,
   IconChevronForward,
   IconClose,
+  IconPalette,
+  IconPencil,
+  IconRefresh,
   IconRemove,
+  IconTrash,
 } from './icons';
 export type { IconComponent, IconProps } from './icons';

@@ -38,7 +38,24 @@ const FF = {
 };
 
 // ── Static data ─────────────────────────────────────────────────────────────
-const GENRES = ['Romance','Romantasy','Dark Romance','Fantasy','Sci-Fi','Thriller','Mystery','Horror','Contemporary','Historical','Adventure','Comedy','Poetry','Other'];
+const GENRE_INTERESTS = [
+  { k: 'Romance', emoji: '\uD83D\uDC95', createGenre: 'romance' },
+  { k: 'Romantasy', emoji: '\uD83D\uDC09', createGenre: 'romantasy' },
+  { k: 'Dark Romance', emoji: '\uD83D\uDD6F\uFE0F', createGenre: 'darkRomance' },
+  { k: 'Cozy Fantasy', emoji: '\uD83E\uDED6', createGenre: 'fantasy' },
+  { k: 'Paranormal Romance', emoji: '\uD83C\uDF19', createGenre: 'romance' },
+  { k: 'Fantasy', emoji: '\uD83E\uDDD9', createGenre: 'fantasy' },
+  { k: 'Sci-Fi', emoji: '\uD83E\uDE90', createGenre: 'scifi' },
+  { k: 'Thriller', emoji: '\uD83D\uDD2A', createGenre: 'thriller' },
+  { k: 'Mystery', emoji: '\uD83D\uDD0D', createGenre: 'mystery' },
+  { k: 'Horror', emoji: '\uD83D\uDC7B', createGenre: 'horror' },
+  { k: 'Contemporary', emoji: '\uD83C\uDFD9\uFE0F', createGenre: 'contemporary' },
+  { k: 'Historical', emoji: '\uD83D\uDCDC', createGenre: 'historical' },
+  { k: 'Adventure', emoji: '\uD83D\uDDFC\uFE0F', createGenre: 'adventure' },
+  { k: 'Comedy', emoji: '\uD83C\uDFAD', createGenre: 'comedy' },
+  { k: 'Poetry', emoji: '\uD83C\uDF19', createGenre: 'poetry' },
+  { k: 'Other', emoji: '\u2728', createGenre: null },
+];
 const PURPOSES = [
   { k: 'read',  icon: '\uD83D\uDCD6', label: 'Reading',       sub: 'Get lost in stories from around the world' },
   { k: 'write', icon: '\u270D\uFE0F', label: 'Writing',       sub: 'Create stories of my own with Katha' },
@@ -154,10 +171,11 @@ const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}
 const emailRe = /\S+@\S+\.\S+/;
 
 // ── Root ────────────────────────────────────────────────────────────────────
-export default function KathaOnboardingFlowV2({ onDone = () => {}, onWriterPath = null, initialScreen = 'purpose' }) {
+export default function KathaOnboardingFlowV2({ onDone = () => {}, onWriterPath = null, initialScreen = 'name' }) {
   const [screen, setScreen] = useState(initialScreen);
   const [name, setName] = useState('');
   const [genres, setGenres] = useState({});
+  const [genreOrder, setGenreOrder] = useState([]);
   const [otherText, setOtherText] = useState('');
   const [purpose, setPurpose] = useState('');
   const [email, setEmail] = useState('');
@@ -171,34 +189,55 @@ export default function KathaOnboardingFlowV2({ onDone = () => {}, onWriterPath 
   const reduceMotion = useReducedMotionPreference();
 
   const fname = name.trim() || 'there';
-  const topGenre = Object.keys(genres).filter((k) => genres[k] && k !== 'Other')[0] || 'stories you love';
+  const selectedGenreLabels = genreOrder.filter((key) => genres[key]);
+  const topGenre = selectedGenreLabels.find((k) => k !== 'Other') || 'stories you love';
+  const firstCreateGenre = selectedGenreLabels
+    .map((label) => GENRE_INTERESTS.find((genre) => genre.k === label)?.createGenre)
+    .find(Boolean);
   const genreCount = Object.values(genres).filter(Boolean).length;
-  const qStep = { purpose: 1, name: 2, genres: 3, refine: 4, moment: 5 }[screen];
+  const qStep = { name: 1, genres: 2, purpose: 3, refine: 4, moment: 5 }[screen];
 
-  const toggleGenre = (g) => setGenres((prev) => { const n = { ...prev }; n[g] ? delete n[g] : (n[g] = true); return n; });
+  const toggleGenre = (g) => {
+    setGenres((prev) => {
+      const n = { ...prev };
+      if (n[g]) {
+        delete n[g];
+      } else {
+        n[g] = true;
+      }
+      return n;
+    });
+    setGenreOrder((prev) => prev.includes(g) ? prev.filter((key) => key !== g) : [...prev, g]);
+  };
 
   const next = () => {
-    // The writer path leaves this flow at the branch. Everything after purpose
-    // here - name, genre picker, the two persona questions - is the stale
-    // questionnaire the rebuilt writer flow exists to replace, and running a
-    // user through both is how they end up answering the same thing twice.
-    if (screen === 'purpose' && purpose === 'write' && onWriterPath) {
-      onWriterPath();
+    if (screen === 'moment' && purpose === 'write' && onWriterPath) {
+      onWriterPath({
+        initialGenre: firstCreateGenre,
+        onboarding: {
+          name: name.trim(),
+          genres: selectedGenreLabels,
+          otherGenre: otherText.trim(),
+          purpose,
+          refine,
+          moment,
+        },
+      });
       return;
     }
-    const map = { purpose: 'name', name: 'genres', genres: 'refine', refine: 'moment', moment: 'building' };
+    const map = { name: 'genres', genres: 'purpose', purpose: 'refine', refine: 'moment', moment: 'building' };
     if (map[screen]) setScreen(map[screen]);
   };
   const back = () => {
     if (screen === 'email' && otp) { setOtp(false); return; }
-    const map = { name: 'purpose', genres: 'name', refine: 'genres', moment: 'refine', notify: 'moment', email: 'paywall' };
+    const map = { genres: 'name', purpose: 'genres', refine: 'purpose', moment: 'refine', notify: 'moment', email: 'paywall' };
     if (map[screen]) setScreen(map[screen]);
   };
 
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" />
-      {qStep != null && <TopBar step={qStep} onBack={back} canBack={screen !== 'purpose'} />}
+      {qStep != null && <TopBar step={qStep} onBack={back} canBack={screen !== 'name'} />}
 
       {screen === 'purpose' && <PurposeScreen fname={fname} purpose={purpose} setPurpose={setPurpose} onNext={next} />}
       {screen === 'name' && <NameScreen name={name} setName={setName} fname={fname} onNext={next} />}
@@ -211,7 +250,7 @@ export default function KathaOnboardingFlowV2({ onDone = () => {}, onWriterPath 
       {screen === 'building' && <BuildingScreen fname={fname} purpose={purpose} topGenre={topGenre} reduceMotion={reduceMotion} onDone={() => setScreen('notify')} />}
       {screen === 'paywall' && <Paywall fname={fname} purpose={purpose} topGenre={topGenre} refine={refine} moment={moment} plan={plan} setPlan={setPlan} trial={trial} setTrial={setTrial} reduceMotion={reduceMotion} onSubscribe={async () => { try { await revenueCatService.presentPaywall(); } catch { Alert.alert('Purchase unavailable', 'Please try again shortly.'); } setOtp(false); setScreen('email'); }} onClose={() => setScreen('oto')} />}
       {screen === 'oto' && <OneTimeOffer reduceMotion={reduceMotion} onClaim={() => { setOtp(false); setScreen('email'); }} onClose={() => { setOtp(false); setScreen('email'); }} />}
-      {screen === 'success' && <SuccessScreen fname={fname} purpose={purpose} reduceMotion={reduceMotion} onStart={() => onDone({ name: name.trim(), genres: Object.keys(genres).filter((key) => genres[key]), otherGenre: otherText.trim(), purpose, email: email.trim(), notificationsAllowed, refine, moment, plan, trial })} />}
+      {screen === 'success' && <SuccessScreen fname={fname} purpose={purpose} reduceMotion={reduceMotion} onStart={() => onDone({ name: name.trim(), genres: selectedGenreLabels, otherGenre: otherText.trim(), purpose, email: email.trim(), notificationsAllowed, refine, moment, plan, trial })} />}
     </SafeAreaView>
   );
 }
@@ -298,13 +337,17 @@ function GenreScreen({ fname, genres, toggle, count, otherText, setOtherText, on
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 30, paddingBottom: 16 }}>
         <View style={styles.chipWrap}>
-          {GENRES.map((g) => {
-            const on = !!genres[g];
+          {GENRE_INTERESTS.map((g) => {
+            const on = !!genres[g.k];
             return (
-              <Pressable key={g} onPress={() => toggle(g)}
+              <Pressable key={g.k} onPress={() => toggle(g.k)}
+                accessibilityRole="button"
+                accessibilityLabel={`${g.k} genre`}
+                accessibilityState={{ selected: on }}
                 style={[styles.chip, { borderColor: on ? C.orange : C.line, backgroundColor: on ? C.peach : C.card }]}>
+                <Text style={{ fontSize: 16 }}>{g.emoji}</Text>
                 <Text style={{ fontSize: 12, opacity: on ? 1 : 0.28, color: on ? C.orange : C.inkBody2 }}>{'\u2713'}</Text>
-                <Text style={{ fontFamily: FF.h6, fontSize: 14.5, color: on ? C.orangeDeep : C.inkBody2 }}>{g}</Text>
+                <Text style={{ fontFamily: FF.h6, fontSize: 14.5, color: on ? C.orangeDeep : C.inkBody2 }}>{g.k}</Text>
               </Pressable>
             );
           })}
@@ -469,7 +512,7 @@ function ReviewCard({ r }) {
 // ── REFINE (adaptive) ───────────────────────────────────────────────────────
 function RefineScreen({ fname, purpose, refine, setRefine, onNext }) {
   const opts = purpose === 'read' ? REFINE_READ : purpose === 'write' ? REFINE_WRITE : REFINE_BOTH;
-  const title = purpose === 'read' ? `How do you want to enjoy stories, ${fname}?` : purpose === 'write' ? `What do you want to make first, ${fname}?` : `Where should Katha start today, ${fname}?`;
+  const title = purpose === 'read' ? `How do you want to enjoy stories, ${fname}?` : purpose === 'write' ? 'What do you want to write?' : `Where should Katha start today, ${fname}?`;
   const sub = purpose === 'read' ? 'We will tune reading and narration around you.' : purpose === 'write' ? 'We will prepare the right creative tools.' : 'Your shelf and writing room can work together.';
   return (
     <View style={{ flex: 1 }}>
@@ -487,7 +530,7 @@ function RefineScreen({ fname, purpose, refine, setRefine, onNext }) {
 
 function MomentScreen({ fname, purpose, moment, setMoment, onNext }) {
   const opts = purpose === 'read' ? MOMENTS_READ : purpose === 'write' ? MOMENTS_WRITE : MOMENTS_BOTH;
-  const title = purpose === 'read' ? `When will Katha fit your day, ${fname}?` : purpose === 'write' ? `Where should Katha help most, ${fname}?` : `Which loop sounds most like you, ${fname}?`;
+  const title = purpose === 'read' ? `When will Katha fit your day, ${fname}?` : purpose === 'write' ? 'What usually stops you?' : `Which loop sounds most like you, ${fname}?`;
   const sub = purpose === 'read' ? 'We will pace recommendations around your real routine.' : purpose === 'write' ? 'Your answer decides what we put within reach first.' : 'We will connect discovery and creation around this rhythm.';
   return (
     <View style={{ flex: 1 }}>
@@ -495,7 +538,7 @@ function MomentScreen({ fname, purpose, moment, setMoment, onNext }) {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 30, paddingBottom: 12, gap: 12 }}>
         {opts.map((o) => <OptionRow key={o.k} icon={o.icon} label={o.label} sub={o.sub} selected={moment === o.k} onPress={() => setMoment(o.k)} />)}
       </ScrollView>
-      <View style={styles.footPad}><PrimaryButton label="Build my profile" enabled={!!moment} onPress={onNext} /></View>
+      <View style={styles.footPad}><PrimaryButton label={purpose === 'write' ? 'Continue' : 'Build my profile'} enabled={!!moment} onPress={onNext} /></View>
     </View>
   );
 }
@@ -1005,26 +1048,29 @@ const styles = StyleSheet.create({
   h1med: { fontFamily: FF.bri7, fontWeight: '800', fontSize: 28, lineHeight: 32, letterSpacing: 0, color: C.ink },
   sub: { fontFamily: FF.h4, fontWeight: '500', fontSize: 15, lineHeight: 23, color: C.muted, marginTop: 10 },
   subSm: { fontFamily: FF.h4, fontWeight: '500', fontSize: 14.5, lineHeight: 22, color: C.muted, marginTop: 8 },
-  cta: { height: 58, borderRadius: 16, backgroundColor: C.orange, alignItems: 'center', justifyContent: 'center',
-    ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.5, shadowRadius: 15, shadowOffset: { width: 0, height: 10 } }, android: { elevation: 6 } }) },
+  cta: { height: 64, borderRadius: 20, backgroundColor: C.orange, alignItems: 'center', justifyContent: 'center',
+    ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.42, shadowRadius: 18, shadowOffset: { width: 0, height: 12 } }, android: { elevation: 6 }, default: { boxShadow: '0 1px 2px rgba(255,107,26,0.24), 0 12px 26px rgba(255,107,26,0.22)' } }) },
   ctaText: { fontFamily: FF.h7, fontSize: 17, color: '#fff' },
   nameInput: { borderBottomWidth: 2, borderBottomColor: '#E4D8C4', paddingVertical: 12, paddingHorizontal: 2, fontSize: 24, fontFamily: FF.bri7, color: C.ink },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 8 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 22, borderWidth: 1.5 },
-  otherInput: { marginTop: 14, borderWidth: 1.5, borderColor: '#F0D9C4', borderRadius: 14, backgroundColor: '#fff', paddingVertical: 13, paddingHorizontal: 15, fontFamily: FF.h5, fontSize: 15, color: C.ink },
+  otherInput: { marginTop: 14, borderWidth: 1, borderColor: '#F0D9C4', borderRadius: 18, backgroundColor: '#fff', paddingVertical: 13, paddingHorizontal: 15, fontFamily: FF.h5, fontSize: 15, color: C.ink,
+    ...Platform.select({ default: { boxShadow: '0 1px 1px rgba(15,14,12,0.05), 0 5px 14px rgba(15,14,12,0.06)' } }) },
   optRow: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 18, borderWidth: 1.5 },
   optLabel: { fontFamily: FF.h7, fontSize: 16, color: C.ink },
   optSub: { fontFamily: FF.h4, fontSize: 13, color: C.muted2, marginTop: 2 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   radioMark: { color: '#fff', fontSize: 12 },
   iconBadge: { width: 52, height: 52, borderRadius: 15, backgroundColor: C.iconBg, alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
-  emailInput: { borderWidth: 1.5, borderColor: '#E4D8C4', borderRadius: 14, backgroundColor: '#fff', padding: 16, fontFamily: FF.h6, fontSize: 17, color: C.ink },
+  emailInput: { borderWidth: 1, borderColor: '#E4D8C4', borderRadius: 18, backgroundColor: '#fff', minHeight: 58, padding: 16, fontFamily: FF.h6, fontSize: 17, color: C.ink,
+    ...Platform.select({ default: { boxShadow: '0 1px 1px rgba(15,14,12,0.05), 0 5px 14px rgba(15,14,12,0.06)' } }) },
   emailHint: { marginTop: 14, fontFamily: FF.h4, fontSize: 12.5, color: '#9A8E7E', lineHeight: 19 },
   otpRow: { flexDirection: 'row', gap: 9 },
-  otpBox: { flex: 1, height: 60, borderRadius: 14, borderWidth: 2, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  otpDigit: { fontFamily: FF.bri8, fontSize: 24, color: C.ink },
+  otpBox: { flex: 1, height: 58, borderRadius: 14, borderWidth: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    ...Platform.select({ default: { boxShadow: '0 1px 1px rgba(15,14,12,0.05), 0 5px 14px rgba(15,14,12,0.06)' } }) },
+  otpDigit: { fontFamily: FF.h7, fontSize: 22, lineHeight: 26, color: C.ink },
   otpHidden: { position: 'absolute', width: '100%', height: '100%', opacity: 0 },
-  otpMeta: { marginTop: 18, fontFamily: FF.h4, fontSize: 13, color: '#9A8E7E' },
+  otpMeta: { marginTop: 10, fontFamily: FF.h4, fontSize: 13, color: '#9A8E7E' },
   notifyWrap: { flex: 1, paddingTop: 26, paddingBottom: 22 },
   permissionAlert: { alignSelf: 'center', width: 326, backgroundColor: '#fff', borderRadius: 28, alignItems: 'center', paddingTop: 22, overflow: 'hidden',
     ...Platform.select({ ios: { shadowColor: '#3D2B1E', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } }, android: { elevation: 10 }, default: { boxShadow: '0 12px 30px rgba(61,43,30,0.16)' } }) },

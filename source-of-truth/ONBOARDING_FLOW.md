@@ -13,7 +13,7 @@
 > control recipes built from them. Pricing wins on any conflict, and
 > `DESIGN_SYSTEM.md` is subordinate to this file on anything behavioural.
 >
-> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-02.
+> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-07.
 > *Inference* marks a decision not yet shipped.
 
 ---
@@ -26,26 +26,24 @@ can honestly remove. A writer sees a story become specific, changes its lead and
 opening, then wants to keep reading it. Only then do we ask them to save the
 specific shelf or blueprint and show the relevant paywall.
 
-Read and **A bit of both** start on the reader path. The R4 bridge is the only
-invitation into writing. It self-selects Writer; skipping it reaches Reader.
-There is no cold writer upsell.
+The shared onboarding questionnaire now starts with identity and taste before it
+asks intent: name, genre interests, then Reading / Writing / A bit of both. A
+writer who selects Writing answers two writer setup questions before entering
+the dedicated story creation rehearsal. The first selected genre interest maps
+to the writer flow's initial create-genre chip.
 
 Cost discipline is binding: **one structured model call per submitted idea**,
 zero best case, and no image generation. Starter chips use a precomputed concept
 library. A typed idea receives blueprint, lead, all opening variants, and preview
 prose in one response. Neither path spends user credits.
 
-The bound is per submitted idea rather than per flow, and that wording is load
-bearing. The writer's shaping call is fired when the user leaves W1, not when
-they reach the wait, so it warms while they fill in shape, email and code. The
-request needs only the idea and the shelf, both final at that point, and the
-measured call takes about 8 seconds against the current model, which is time the
-user would otherwise spend watching a loader. Two consequences follow and both
-are accepted. A user who returns to W1 and genuinely changes the idea or the
-shelf spends a second call, because the first response no longer describes the
-story they are asking for. And abandoning at W2 now costs one call where it
-previously cost zero. At the current rate a shaping call is about $0.0002, so
-the spend is bounded by how often a person reconsiders one sentence.
+The bound is per submitted brief rather than per flow, and that wording is load
+bearing. The writer's shaping call is fired only after the idea, shelf, cast,
+moments, writing style, avoid text, chapter length, and chapter count are known.
+Those values are not decorative UI; they are prompt inputs. The wait screen stays
+up until that backend operation resolves. A failed or empty response shows a
+retry screen that preserves the brief. There is no fixed-duration client loader
+and no silent preview fallback in the writer path.
 
 The three-screen animated intro in
 [`expo/src/screens/KathaOnboarding.jsx`](../expo/src/screens/KathaOnboarding.jsx)
@@ -88,11 +86,14 @@ selected states, and `colors.success` for checks. Reader uses the `colors.sepia*
 tokens. Concept palette always derives from `genreGradients[primaryGenre]`.
 
 Use `spacing.xxxl` horizontal gutter and only existing spacing tokens. Primary
-button height is `spacing.huge + spacing.sm`; it uses `radius.lg`. Option cards
-use `radius.lg`, panels `radius.xl`, chips `radius.pill`; use `shadows.card`,
-`shadows.raised`, or `shadows.overlay` only. Use `motion.fast`, `motion.base`,
-and `motion.slow`; the named W2 choreography is 900 ms. Typography uses `type`:
-`largeTitle`, `title`, `headline`, `body`, `subhead`, `caption`, and `reader`.
+text CTAs use `controls.primaryCtaHeight`, `controls.primaryCtaRadius`, and
+`shadows.primaryCta`. Form fields use `controls.formFieldMinHeight`,
+`controls.formFieldRadius`, and `shadows.formField`. OTP code entry is six
+individual cells using `controls.otpCellHeight` and `controls.otpCellRadius`
+over one invisible numeric `TextInput`. Option cards use `radius.lg`, panels
+`radius.xl`, chips `radius.pill`; use `shadows.card`, `shadows.raised`, or
+`shadows.overlay` only. Use `motion.fast`, `motion.base`, and `motion.slow`; the
+named W2 choreography is 900 ms. Typography uses `type` and `onboardingType`.
 `fonts.brand` is wordmark/accent only; `fonts.reader` is prose only.
 `letterSpacing: 0` except uppercase eyebrows at `0.08em`.
 
@@ -115,9 +116,9 @@ differ. Do not autofocus W1 or a chip.
 > objection it was written against does not apply. If the reader path ever
 > merges into this row, the rule wins and the row goes.
 >
-> The idea and details screens still draw no dots, so the row appears at step 3.
-> That is a known inconsistency, left because adding a progress row to a
-> signed-off screen is a decision about that screen.
+> The row now appears across the writer path with a fixed top bar, including
+> idea, details, email, code, preview, paywall, and the backend wait state. The
+> top bar has no border and the back glyph has no raised plate.
 
 *Inference:* retain anonymous state for 24 hours only. It includes IDs,
 selections, idea, shape, concept ID, lead override, and opening choice. Never put
@@ -161,7 +162,49 @@ authenticated welcome bonus. Reader and Writer paywalls merge only at OF.
 
 ---
 
-## 3. S1: Purpose
+## 3. S1-S3: Name, genre interests, purpose
+
+| Step | Header | Control | CTA |
+|---|---|---|---|
+| `name` | **First, what should we call you?** | First-name text input | **Continue**, disabled until non-empty |
+| `genres` | **Nice to meet you, {name}. What worlds pull you in?** | Multi-select genre-interest chips with emoji | **Continue with {count}**, enabled at 2+ |
+| `purpose` | **What brings you to Katha?** | Three full-width single-select cards | **Continue**, disabled until selected |
+
+Genre interests include the active create genres plus Cozy Fantasy, Paranormal
+Romance, and Other. The first selected interest with a create mapping populates
+the first genre chip in the writer story-generation flow. Other collects a free
+label but does not populate a create genre.
+
+Purpose remains the branch decision after name and genre interest are known.
+Read and Both continue into the reader/persona path. Write continues through W0a
+and W0b before W1.
+
+**Instrumentation:** `onboarding_name_continued { length_bucket }`;
+`onboarding_genres_completed { genre_ids, selected_count, first_create_genre }`;
+`onboarding_purpose_selected { purpose }`;
+`onboarding_purpose_continued { purpose }`.
+
+---
+
+## 3A. W0a-W0b: Writer intent
+
+| Step | Header | Control | CTA |
+|---|---|---|---|
+| `writer_format` | **What do you want to write?** | Four full-width single-select cards | **Continue** |
+| `writer_blocker` | **What usually stops you?** | Four full-width single-select cards | **Continue** into W1 |
+
+`writer_format` options: A full novel, Short stories, Fan fiction, Poetry and
+verse.
+
+`writer_blocker` options: Turn an idea into a draft, Rewrite in my voice, Plan
+chapters, Publish and find readers.
+
+These two answers are setup and routing inputs; they must not trigger a model
+call, generation operation, ledger row, or cover request.
+
+---
+
+## 3B. Legacy S1: Purpose vocabulary
 
 | Item | Specification |
 |---|---|
@@ -794,9 +837,11 @@ Starter lookup accepts `starter_id`, `shape`, `variant_index`, returns full
 `OnboardingConcept`, and is bundled/cached. Each starter has ordered at least two
 concepts. Try another increments; never randomizes.
 
-Typed request accepts only `idea`, `shape`, `locale`, and makes one structured
-call. Server owns provider, timeout, validation, fallback. No separate title,
-lead, opening, preview, image, or rewrite call. Client gets:
+Typed request accepts `idea`, `shape`, `locale`, primary genre, and the final
+writer brief: cast, moments, writing style, avoid text, chapter length, and
+planned chapter count. It makes one structured call. Server owns provider,
+timeout, validation, and fallback. No separate title, lead, opening, preview,
+image, or rewrite call. Client gets:
 
 ~~~json
 {
@@ -820,9 +865,12 @@ lead, opening, preview, image, or rewrite call. Client gets:
 ~~~
 
 Every preview has 120 to 180 words before boundary, lead token before boundary,
-and a following live-hook paragraph. Chapter has exactly four beats, short story
-one, poem none. Invalid/unavailable output silently returns same-shape fallback
-with internal `concept_source: fallback`, never visible.
+and a following live-hook paragraph. Chapter beats match the chosen planned
+chapter count, but the preview screen may show only a teaser subset so long
+series stay visually stable. Invalid/unavailable starter output silently returns
+same-shape fallback with internal `concept_source: fallback`, never visible.
+Invalid/unavailable typed writer shaping returns an error state with **Try
+again**, because the preview depends on the creator's actual brief.
 
 The rehearsal creates no `stories`, `chapters`, `characters`, `covers`, audio,
 generation operation, or ledger row. Auth saves editable blueprint. Turning the saved blueprint into a real story follows the standard flow and
@@ -835,9 +883,8 @@ chapter**, or 2 when chapters are illustrated. See
 
 ## 17. Prohibitions
 
-Never ship: genre picker/count; read/listen/mix; separate writer-goal cards;
-“What usually stops you?”; author byline; model call on reader path, starter,
-name recast, opening choice, shelf ranking, or visual; image generation;
+Never ship: author byline; model call on reader path, starter, name recast,
+opening choice, shelf ranking, or visual; image generation;
 W2 spinner/progress/fake work/source tell; random returned concept/counter/cost;
 W3 lock/curtain/early or generic-name fade/faded entitlements; generic A1 art;
 audio-only Reader; Writer without Reader-superset claim; unlimited generation;
@@ -875,10 +922,10 @@ error logging contract and contain identifiers/enums only.
 1. **Story Generation Flow §10.6 proposes different multi-chapter pricing.**
    Pricing wins: a full chapter is 3 credits. Onboarding shows no competing
    price, creates no paid asset, and does not create a full chapter.
-2. **KathaOnboardingFlowV2 is stale implementation, not authority.** Its prices,
-   product IDs, claims, flow order, genre picker, mode/goal questions, and
-   author-name screen do not govern. Its warm visual language and auth pattern are
-   reference only.
+2. **KathaOnboardingFlowV2 has been brought back into the product path for the
+   shared questionnaire.** Its pricing and product IDs still do not govern; the
+   sequence, typography, genre-interest chips, writer setup questions, and auth
+   geometry must follow this file and `DESIGN_SYSTEM.md`.
 3. **Pricing §6's old prose diagram predates decisions 29–29f.** Those decisions
    govern the break, Both reader-first path, A1 placement, paywalls, offer, and
    entitlement visibility described here.
@@ -888,7 +935,7 @@ error logging contract and contain identifiers/enums only.
 ## Decisions
 
 1. **Intro remains unchanged.**
-2. **Purpose is the sole branch; Both starts reader-first.**
+2. **Name and genre interests precede Purpose; Purpose remains the branch.**
 3. **Every retained question changes a downstream surface.**
 4. **R1 uses eight static lines and exactly three picks.**
 5. **R2 is real reader UI with about 250 static words matched to strongest taste.**

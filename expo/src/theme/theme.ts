@@ -237,6 +237,14 @@ export const controls = {
   iconButtonSm: 38,
   iconButton: 42,
   iconButtonLg: 46,
+  iconButtonStroke: 2.4,
+  iconButtonStrokeStrong: 2.8,
+  primaryCtaHeight: 64,
+  primaryCtaRadius: 20,
+  formFieldMinHeight: 58,
+  formFieldRadius: 18,
+  otpCellHeight: 58,
+  otpCellRadius: 14,
   /** Inset highlight offset used by shadows.iconButton, kept here so a custom size can reuse it. */
   iconButtonHighlightInset: 6
 } as const;

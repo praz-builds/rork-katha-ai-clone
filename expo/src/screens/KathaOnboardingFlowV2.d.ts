@@ -1,3 +1,5 @@
+import type { Genre } from "../types/domain";
+
 export type OnboardingPurpose = "read" | "write" | "both";
 export type OnboardingPlan = "weekly" | "yearly";
 export type KathaOnboardingScreen =
@@ -26,11 +28,23 @@ export type KathaOnboardingResult = {
   trial: boolean;
 };
 
+export type KathaWriterPathPayload = {
+  initialGenre?: Genre;
+  onboarding: {
+    name: string;
+    genres: string[];
+    otherGenre: string;
+    purpose: OnboardingPurpose | "";
+    refine: string;
+    moment: string;
+  };
+};
+
 export type KathaOnboardingFlowV2Props = {
   initialScreen?: KathaOnboardingScreen;
   onDone?: (result: KathaOnboardingResult) => void;
-  /** Called instead of advancing when the user selects the writer purpose. */
-  onWriterPath?: () => void;
+  /** Called after the writer setup questions, before the dedicated writer flow. */
+  onWriterPath?: (payload: KathaWriterPathPayload) => void;
 };
 
 export default function KathaOnboardingFlowV2(

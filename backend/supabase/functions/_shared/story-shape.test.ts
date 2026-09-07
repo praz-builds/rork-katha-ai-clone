@@ -222,6 +222,36 @@ Deno.test("the chosen shelf outranks what the sentence implies", () => {
   assert(prompt.includes("even where the idea alone would suggest another"));
 });
 
+Deno.test("the onboarding prompt carries the creator's final brief", () => {
+  const prompt = buildStoryShapePrompt(
+    "Nikita inherits a haunted house.",
+    "mystery",
+    {
+      characters: [{
+        name: "Nikita",
+        description: "",
+        background: "Architect who distrusts family legends.",
+        appearance: "",
+        isHero: true,
+      }],
+      moments: ["She opens the sealed nursery"],
+      writingStyle: "quiet gothic",
+      avoid: "avoid gore",
+      chapterLength: "long",
+      plannedChapterCount: 7,
+    },
+  );
+
+  assert(prompt.includes("Return exactly 7 one-line beats"));
+  assert(prompt.includes("long chapter length"));
+  assert(prompt.includes("Creator-supplied characters"));
+  assert(prompt.includes("Nikita"));
+  assert(prompt.includes("lead character"));
+  assert(prompt.includes("She opens the sealed nursery"));
+  assert(prompt.includes("quiet gothic"));
+  assert(prompt.includes("avoid gore"));
+});
+
 Deno.test("an unknown shelf degrades to no hint rather than free text", () => {
   // The value reaches the instruction channel unfenced, so anything outside the
   // controlled list must be dropped rather than interpolated.

@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This file is the definitive design contract for the Katha Expo app. It describes the implementation in `src/components/BrandWordmark.tsx`, `src/screens/KathaOnboarding.jsx`, `src/screens/KathaOnboardingFlowV2.jsx`, and `src/theme/theme.ts` as of 2026-08-22.
+This file is the definitive design contract for the Katha Expo app. It describes the implementation in `src/components/BrandWordmark.tsx`, `src/screens/KathaOnboarding.jsx`, `src/screens/KathaOnboardingFlowV2.jsx`, `src/screens/WriterOnboarding.tsx`, and `src/theme/theme.ts` as of 2026-09-07.
 
 Use this document before changing onboarding, paywall, or shared visual components. The reference viewport is **390 x 844 points**. Local screenshots and the historical handoff are supporting evidence, not permission to fork the system.
 
@@ -132,10 +132,12 @@ The shared theme exposes 8, 14, 18, 24, and pill. Onboarding uses additional val
 | 8 | Small general controls from the shared theme |
 | 9 | Intro notification icon tile |
 | 12 | Intro cover cards |
-| 14 | Inputs, OTP boxes, reaction chips |
+| 14 | OTP boxes, reaction chips |
 | 15 | Icon badges |
-| 16 | Primary buttons, intro notification, success button |
+| 16 | Intro notification, success button |
 | 17 | Paywall CTA |
+| 18 | Text fields and prompt boxes |
+| 20 | Primary text CTA |
 | 18 | Option rows, plan cards, review cards, one-time-offer CTA |
 | 20 | Publish card |
 | 22 | Create card, genre chips, edit chips, one-time-offer card |
@@ -198,7 +200,7 @@ Use shadows to establish a single center piece or actionable surface, not on eve
 | Surface | iOS shadow | Android | Web |
 | --- | --- | --- | --- |
 | Intro warm cards | `#7A2E0E`, radius 15, offset 0/12, opacity supplied by component | elevation 12 | No explicit fallback in intro helper |
-| Primary flow CTA | orange, opacity 0.5, radius 15, offset 0/10 | elevation 6 | Platform default |
+| Primary flow CTA | orange, opacity 0.42, radius 18, offset 0/12 | elevation 6 | `boxShadow: shadows.primaryCta` |
 | Notification alert | `#3D2B1E`, opacity 0.18, radius 24, offset 0/12 | elevation 10 | `0 12px 30px rgba(61,43,30,0.16)` |
 | Review card | `#7A2E0E`, opacity 0.15, radius 12, offset 0/6 | elevation 3 | Platform default |
 | Paywall CTA | orange, opacity 0.7, radius 17, offset 0/12 | elevation 8 | Platform default |
@@ -234,12 +236,14 @@ Use shadows to establish a single center piece or actionable surface, not on eve
 - Name input uses a 2 point bottom rule, no enclosing card, Bricolage 24.
 - Email and Other inputs use a white surface, radius 14, border 1.5.
 - Email padding is 16 with Hanken 600 at 17.
-- OTP is six equal cells, height 60, radius 14, 2 point border, with a single invisible numeric input over the row.
+- Primary text CTAs use `controls.primaryCtaHeight` 64, `controls.primaryCtaRadius` 20, and `shadows.primaryCta`.
+- Form fields and prompt boxes use `controls.formFieldMinHeight` 58, `controls.formFieldRadius` 18, and `shadows.formField`.
+- OTP is six equal cells, height 58, radius 14, with a single invisible numeric input over the row.
 - Focus is orange. Placeholders use `#B49A82`.
 
 ### Progress
 
-- Five visible personalization steps only: purpose, name, genres, first persona question, second persona question.
+- Five visible personalization steps only: name, genres, purpose, first persona question, second persona question.
 - Top bar gutter 24, element gap 14.
 - Back button 34 x 34, radius 17.
 - Track height 6, rounded, `#EAE0D0`; fill uses `#FF8A3D` to `#FF6B1A`.
@@ -339,11 +343,11 @@ Keep reactions readable and inside the 360 point stage. The continuation notific
 The implemented order is:
 
 1. Animated Create, Publish, and Read introduction.
-2. Purpose: Reading, Writing, or A bit of both.
-3. First name.
-4. At least two genres.
+2. First name.
+3. At least two genre interests, with emoji chips. The first selected genre with a create mapping becomes the initial writer-genre chip.
+4. Purpose: Reading, Writing, or A bit of both.
 5. Adaptive persona question one.
-6. Adaptive persona question two. CTA: `Build my profile`.
+6. Adaptive persona question two. For Writing this opens the dedicated writer story flow; for Reading or Both the CTA is `Build my profile`.
 7. Profile-building transition.
 8. Notification education.
 9. Personalized paywall.
@@ -360,10 +364,10 @@ Email comes after the offer action so the user first sees Katha's value, invests
 | Purpose | Question 1 | Question 2 | Product consequence |
 | --- | --- | --- | --- |
 | Read | Reading, listening, or a mix | Before sleep, commutes/breaks, weekend binges, or on-demand escape | Tunes narration, recommendation framing, and routine messaging |
-| Write | Novel, short stories, fan fiction, or poetry | Drafting, voice rewrites, chapter planning, or publishing/finding readers | Tunes writing tools, build-state copy, and paywall benefits |
+| Write | Novel, short stories, fan fiction, or poetry | Drafting, voice rewrites, chapter planning, or publishing/finding readers | Routes into the writer story-generation flow with the first selected genre prefilled |
 | Both | Find a read, start creating, balance both, or surprise me | Read/remix, write/publish, listen/unwind, or explore/save | Connects discovery and creation without treating the user as read-first |
 
-Purpose is always first because it determines all later copy. Name personalizes subsequent questions. Genres provide concrete taste before the adaptive questions.
+Name is first because it makes the questionnaire feel personal without asking for intent too early. Genres provide concrete taste before the purpose branch; Purpose then determines the copy and routing for the two adaptive questions.
 
 ## Notification Education
 

@@ -14,7 +14,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { CraftingLoader } from "@/components/create/CraftingLoader";
-import { inferStoryBrief } from "@/lib/api";
+import {
+  inferOnboardingStoryBrief,
+  inferStoryBrief,
+  type StoryShapeBrief,
+} from "@/lib/api";
 import { enableNotifications } from "@/lib/notifications";
 import { sendEmailCode, verifyEmailCode } from "@/lib/session";
 import {
@@ -31,7 +35,12 @@ import {
   IconCheck,
   IconChevronDown,
   IconClose,
+  IconPalette,
+  IconPencil,
+  IconRefresh,
   IconRemove,
+  IconTrash,
+  controls,
   motion,
   onboardingType,
   radius,
@@ -39,7 +48,7 @@ import {
   spacing,
   type,
 } from "@/theme";
-import type { CreateDraft, Genre } from "@/types/domain";
+import type { CreateDraft, Genre, WriterEntryContext } from "@/types/domain";
 
 /**
  * The writer path through onboarding.
@@ -97,6 +106,7 @@ type Step =
   | "email"
   | "code"
   | "crafting"
+  | "craftError"
   | "preview"
   | "paywall"
   | "offer"
@@ -105,10 +115,13 @@ type Step =
 
 export type WriterOnboardingResult = {
   draft: Partial<CreateDraft> & { seed: string };
+  entryContext?: WriterOnboardingEntryContext;
   email: string;
   subscribed: boolean;
   notificationsEnabled: boolean;
 };
+
+export type WriterOnboardingEntryContext = WriterEntryContext;
 
 type Props = {
   onDone: (result: WriterOnboardingResult) => void;
@@ -120,6 +133,7 @@ type Props = {
    * rather than on nothing selected.
    */
   initialGenre?: Genre;
+  entryContext?: WriterOnboardingEntryContext;
 };
 
 /**
@@ -178,10 +192,10 @@ function minutesFor(length: "short" | "standard" | "long"): number {
 }
 
 const ENTITLEMENTS = [
-  "Rewrite any line by hand, free and unlimited",
-  "Ask Katha to redraft a chapter, 3 free per chapter",
-  "Regenerate a cover you paid for, 1 free retry",
-  "Delete it, publish it, or keep it private. Yours.",
+  { Icon: IconPencil, text: "Rewrite any line by hand, free and unlimited" },
+  { Icon: IconRefresh, text: "Ask Katha to redraft a chapter, 3 free per chapter" },
+  { Icon: IconPalette, text: "Regenerate a cover you paid for, 1 free retry" },
+  { Icon: IconTrash, text: "Delete it, publish it, or keep it private. Yours." },
 ];
 
 const OFFER_SECONDS = 120;
@@ -236,37 +250,6 @@ const PAYWALL_STEP = 6;
  * space after it. `writer-onboarding.test.tsx` asserts the peek at 390 rather
  * than trusting this comment.
  */
-/**
- * The floor on the crafting wait, in milliseconds.
- *
- * `CraftingLoader` cycles four stages at `AUTO_CYCLE_MS` (1.25s) each, and the
- * single `inferStoryBrief` call can come back in well under a second. Without
- * a floor the loader is gone before the first stage has been read: the user
- * taps, something flashes, and the blueprint is simply there. The reveal then
- * lands as a jump cut instead of as the end of a wait they watched happen.
- *
- * 5000 is a PRODUCT DECISION, not a tuning constant - it is exactly ONE FULL
- * PASS of the loader at the current cadence (4 stages x 1250ms), so every
- * stage is on screen for its whole turn and the user reads all four before the
- * reveal. Not half a pass, not two passes: the sentences say what the one call
- * is doing, and reading them once is the point. If `AUTO_CYCLE_MS` moves, this
- * moves with it - the relationship is `stages x AUTO_CYCLE_MS`, not a number
- * somebody liked. It is a FLOOR and never a cap: a call that takes longer
- * keeps the loader up for exactly as long as it takes, and nothing here
- * shortens it.
- *
- * It is also not a fake progress bar. The stages name work the server is
- * genuinely doing on that one call, and the only thing this delay buys is the
- * time to read them. Do not "optimise" it away.
- *
- * The hold is measured from the moment the crafting step is ENTERED, never
- * from the moment the request was fired. Those used to be the same instant and
- * are not any more: the request is warmed from the idea step, so timing the
- * floor from the fire would find it already spent by the time the user
- * arrives, and the loader they were meant to read would be a single frame.
- */
-export const CRAFTING_MIN_MS = 5000;
-
 const REFERENCE_WIDTH = 390;
 export const STARTER_CARD_WIDTH = 272;
 export const STARTER_CARD_GAP = spacing.md;
@@ -286,7 +269,15 @@ export const STARTER_RAIL_PEEK = REFERENCE_WIDTH - spacing.xxxl -
  */
 type ShapeOutcome = {
   failed: boolean;
+  retryable: boolean;
+  message?: string;
   shaped: Awaited<ReturnType<typeof inferStoryBrief>>;
+};
+
+type ShapeRequest = {
+  seed: string;
+  genre: Genre;
+  brief: StoryShapeBrief;
 };
 
 /**
@@ -297,13 +288,37 @@ type ShapeOutcome = {
  * is no way to check that after the fact except to have written them down.
  */
 type PendingShape = {
-  seed: string;
-  genre: Genre;
+  key: string;
   outcome: Promise<ShapeOutcome>;
 };
 
+function shapeRequestKey(request: ShapeRequest): string {
+  return JSON.stringify(request);
+}
+
+function storyShapeRetryable(error: unknown): boolean {
+  const candidate = error as { name?: unknown; retryable?: unknown };
+  return error instanceof Error &&
+      candidate.name === "StoryShapeRequestError" &&
+      typeof candidate.retryable === "boolean"
+    ? candidate.retryable
+    : true;
+}
+
+function normalizeTypedCast(cast: CastMember[]): CreateDraft["characters"] {
+  return cast
+    .filter((member) => member.name.trim())
+    .map((member, index) => ({
+      name: member.name.trim(),
+      description: "",
+      background: member.background.trim() || undefined,
+      appearance: "",
+      isHero: index === 0,
+    }));
+}
+
 export default function WriterOnboarding(
-  { onDone, onExit, initialGenre }: Props,
+  { onDone, onExit, initialGenre, entryContext }: Props,
 ) {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>("idea");
@@ -328,6 +343,8 @@ export default function WriterOnboarding(
   const [code, setCode] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [shapeError, setShapeError] = useState<string | null>(null);
+  const [shapeRetryable, setShapeRetryable] = useState(true);
   /**
    * Auth is one-way. Walking back from the blueprint to change the idea must
    * not send a second code to an address already verified, and must not put a
@@ -377,113 +394,85 @@ export default function WriterOnboarding(
     // step it becomes a complaint about a field that is no longer on screen -
     // "That code did not match" sitting under the box asking for an address.
     setAuthError(null);
+    setShapeError(null);
+    setShapeRetryable(true);
     setStep(next);
   }, [haptic]);
 
   /* ── The one model call ─────────────────────────────────────────────── */
 
-  /**
-   * Start shaping, or hand back the request already shaping the same thing.
-   *
-   * ## Why it is fired from the idea step
-   *
-   * `inferStoryBrief` needs the idea and the shelf and nothing else - the cast
-   * and the chapter count are applied to its RESPONSE, in `craft()`, and never
-   * sent. Both are final the moment the user leaves the idea screen, and what
-   * follows is the details screen, the email screen and a six-digit code:
-   * thirty to sixty seconds in which the request can be in flight instead of
-   * the user watching a loader for the eight or nine seconds the model takes.
-   * By the time they reach the wait the answer is usually already here, and
-   * the wait collapses to the CRAFTING_MIN_MS floor, which is the wait we
-   * chose rather than the one the provider imposed.
-   *
-   * ## Why it is keyed, and what it costs
-   *
-   * The flow has a working Back control, so a user can return to the idea
-   * screen after a request has already gone out and change the sentence or the
-   * shelf. A warmed answer to a question they no longer asked is worse than no
-   * warm answer at all, so every request is tagged with the pair it was fired
-   * for and is only used by a `craft()` whose pair still matches. A discarded
-   * request is simply dropped: nothing awaits it, so it can write no state and
-   * navigate nowhere, and its rejection handler is already attached.
-   *
-   * The trigger is LEAVING the idea step, not typing in it - one press of
-   * Continue, one request, however many keystrokes went into it - and the
-   * matching key means pressing Continue again on an unchanged idea reuses the
-   * warm one rather than firing a second.
-   *
-   * **The budget.** `ONBOARDING_FLOW.md`'s Summary says the pre-paywall flow
-   * costs "one structured model call worst case", and with this change that
-   * sentence is no longer true of the edit case. The honest number is **one
-   * call per departure from the idea step with a changed idea or shelf**: a
-   * user who goes straight through costs one, a user who backs up twice to
-   * rewrite their sentence costs three, and there is no fixed ceiling because
-   * there is no limit on how many times a person may reconsider. Abandonment
-   * also costs one now where it used to cost nothing, since the user who quits
-   * on the details screen has already fired the request. That sentence in the
-   * Summary needs rewording to bound the call per *submitted idea* rather than
-   * per flow; this file deliberately does not edit the spec.
-   */
   const pendingShape = useRef<PendingShape | null>(null);
 
+  const typedCast = useMemo(() => normalizeTypedCast(cast), [cast]);
+  const shapeRequest = useMemo<ShapeRequest>(() => ({
+    seed: seed.trim(),
+    genre,
+    brief: {
+      characters: typedCast.length ? typedCast : undefined,
+      moments: moments.length ? moments : undefined,
+      writingStyle: writingStyle.trim() || undefined,
+      avoid: avoid.trim() || undefined,
+      chapterLength,
+      plannedChapterCount: chapterCount,
+    },
+  }), [avoid, chapterCount, chapterLength, genre, moments, seed, typedCast, writingStyle]);
+
+  /**
+   * Start shaping, or hand back the request already shaping the same complete
+   * brief. The preview depends on these details, so the call is coordinated
+   * with the backend request instead of hidden behind a fixed client timer.
+   */
   const startShaping = useCallback(
-    (forSeed: string, forGenre: Genre): Promise<ShapeOutcome> => {
+    (request: ShapeRequest): Promise<ShapeOutcome> => {
+      const key = shapeRequestKey(request);
       const warm = pendingShape.current;
-      if (warm && warm.seed === forSeed && warm.genre === forGenre) {
+      if (warm && warm.key === key) {
         return warm.outcome;
       }
-      // The rejection handler goes on HERE, at the moment the request is
-      // fired, and not where it is awaited. Between the two there are three
-      // screens and up to a minute of the user typing, and a rejected promise
-      // that nobody is holding for that long is an unhandled rejection - a
-      // warning in development and a crash in a release build.
-      const outcome = inferStoryBrief(forSeed, "onboarding", forGenre).then(
-        (shaped) => ({ failed: false, shaped }),
-        // Silent. A failed convenience must never become an error screen in a
-        // flow the user has not yet been given a reason to trust.
-        () => ({ failed: true, shaped: null }),
-      );
-      pendingShape.current = { seed: forSeed, genre: forGenre, outcome };
+      const outcome = (async (): Promise<ShapeOutcome> => {
+        try {
+          const shaped = await inferOnboardingStoryBrief(
+            request.seed,
+            request.genre,
+            request.brief,
+          );
+          return { failed: false, retryable: true, shaped };
+        } catch (error) {
+          if (pendingShape.current?.key === key) {
+            pendingShape.current = null;
+          }
+          return {
+            failed: true,
+            retryable: storyShapeRetryable(error),
+            message: error instanceof Error ? error.message : undefined,
+            shaped: null,
+          };
+        }
+      })();
+      pendingShape.current = { key, outcome };
       return outcome;
     },
     [],
   );
 
   const craft = useCallback(async (alive: () => boolean) => {
-    // The floor is measured from HERE, the entry to the wait, and not from the
-    // fire. See CRAFTING_MIN_MS.
-    const startedAt = Date.now();
-    // Warm if the idea and the shelf are still the ones it was fired for, and
-    // a fresh call if they are not. `startShaping` decides which; this line
-    // reads the same either way, which is the point of putting the key there.
-    const { failed, shaped } = await startShaping(seed, genre);
+    const { failed, message, retryable, shaped } = await startShaping(shapeRequest);
     // The request outlives a user who backgrounds the app or taps Back while it
     // is in flight. Writing state and navigating from a dead screen is at best
     // a leak and at worst a jump back into a flow they already left.
     if (!alive()) return;
 
-    // Hold the wait to its floor. See CRAFTING_MIN_MS: this exists so the
-    // stages can be read, and it is a minimum rather than a duration - a warm
-    // request has already resolved and still owes the user the full pass.
-    //
-    // A FAILED call is let straight through. The stages describe work on a
-    // request that is already over, so holding would be the one thing the
-    // floor is not: theatre. There is also nothing better waiting at the end
-    // of it - the fallback blueprint is a title derived from the sentence the
-    // user typed - and five seconds of "understanding the character" before
-    // handing back their own words is worse than handing them back at once.
-    if (!failed) {
-      const remaining = CRAFTING_MIN_MS - (Date.now() - startedAt);
-      if (remaining > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-      }
-      // Checked AGAIN, not only before the hold. The hold is a window several
-      // seconds wide in which the user can tap Back or background the app, and
-      // a screen that has been left must not be navigated out of afterwards.
-      if (!alive()) return;
+    if (failed || !shaped) {
+      setShapeRetryable(retryable);
+      setShapeError(message ??
+        (retryable
+          ? "We could not shape the preview. Try again and we will keep your idea and details."
+          : "We could not shape the preview from that response. Your idea and details are still here."));
+      setStep("craftError");
+      return;
     }
 
-    const resolved = shaped ?? null;
+    const resolved = shaped;
 
     // The chosen shelf leads, always. Inference may add secondary tags, but a
     // user who picked Horror and got Romance back would have watched the one
@@ -491,19 +480,6 @@ export default function WriterOnboarding(
     const inferred = (resolved?.genres ?? []) as Genre[];
     const genres = [genre, ...inferred.filter((item) => item !== genre)];
 
-    // A cast the user typed outranks an inferred one, and their first
-    // character is the lead. Inference only fills in when they added nobody.
-    const typedCast = cast
-      .filter((member) => member.name.trim())
-      .map((member, index) => ({
-        name: member.name.trim(),
-        description: "",
-        // Personality, relationships and backstory, which is what drives the
-        // character's voice on the page.
-        background: member.background.trim(),
-        appearance: "",
-        isHero: index === 0,
-      }));
     const characters = typedCast.length ? typedCast : resolved?.characters ?? [];
 
     setBlueprint({
@@ -516,9 +492,9 @@ export default function WriterOnboarding(
       characters,
       suggestedMoments: resolved?.suggestedMoments ?? [],
     });
-    setBeats((resolved?.beats ?? []).slice(0, chapterCount));
+    setBeats(resolved.beats ?? []);
     go("preview");
-  }, [cast, chapterCount, genre, go, seed, startShaping]);
+  }, [genre, go, seed, shapeRequest, startShaping, typedCast]);
 
   useEffect(() => {
     if (step !== "crafting") return;
@@ -583,6 +559,7 @@ export default function WriterOnboarding(
         plannedChapterCount: chapterCount,
         chapterLength,
       } as WriterOnboardingResult["draft"],
+      entryContext,
       email: email.trim(),
       subscribed,
       notificationsEnabled,
@@ -594,6 +571,7 @@ export default function WriterOnboarding(
     chapterCount,
     chapterLength,
     email,
+    entryContext,
     genre,
     moments,
     notificationsEnabled,
@@ -627,6 +605,11 @@ export default function WriterOnboarding(
       blueprint?.lead?.name,
     ].filter(Boolean).join(" \u00b7 ");
   }, [blueprint, genre]);
+  const previewBeats = useMemo(() => beats.slice(0, chapterCount > 3 ? 4 : 3), [
+    beats,
+    chapterCount,
+  ]);
+  const remainingPreviewBeats = Math.max(0, beats.length - previewBeats.length);
   const frame = { paddingTop: insets.top, paddingBottom: insets.bottom };
 
   /* ── Render ─────────────────────────────────────────────────────────── */
@@ -634,7 +617,14 @@ export default function WriterOnboarding(
   if (step === "crafting") {
     return (
       <View style={[styles.screen, frame]}>
-        <CraftingLoader autoCycle />
+        <OnboardingTopBar
+          onBack={() => go("details")}
+          steps={ONBOARDING_STEPS}
+          currentStep={PREVIEW_STEP}
+        />
+        <View style={styles.loaderFrame}>
+          <CraftingLoader autoCycle />
+        </View>
       </View>
     );
   }
@@ -904,10 +894,7 @@ export default function WriterOnboarding(
               <Primary
                 label="Continue"
                 disabled={!ideaReady}
-                onPress={() => {
-                  void startShaping(seed, genre);
-                  go("details");
-                }}
+                onPress={() => go("details")}
               />
             </StepScroll>
           )
@@ -1079,7 +1066,12 @@ export default function WriterOnboarding(
               </View>
 
               <View style={styles.lengthCountRow}>
-                <View style={styles.filterGroup}>
+                <View
+                  style={[
+                    styles.filterGroup,
+                    chapterLengthOpen && styles.filterGroupOpen,
+                  ]}
+                >
                   <Text style={styles.eyebrowDark}>CHAPTER LENGTH</Text>
                   <Pressable
                     onPress={() => {
@@ -1143,7 +1135,12 @@ export default function WriterOnboarding(
                     : null}
                 </View>
 
-                <View style={styles.filterGroup}>
+                <View
+                  style={[
+                    styles.filterGroup,
+                    chapterCountOpen && styles.filterGroupOpen,
+                  ]}
+                >
                   <Text style={styles.eyebrowDark}>CHAPTERS</Text>
                   <Pressable
                     onPress={() => {
@@ -1292,17 +1289,9 @@ export default function WriterOnboarding(
             >
               <View style={styles.section}>
                 <Text style={styles.eyebrowDark}>CODE</Text>
-                <TextInput
+                <OtpBoxes
                   value={code}
-                  onChangeText={setCode}
-                  placeholder="123456"
-                  placeholderTextColor={colors.tertiary}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  textContentType="oneTimeCode"
-                  autoComplete="one-time-code"
-                  accessibilityLabel="Verification code"
-                  style={[styles.inlineInput, styles.codeInput]}
+                  onChangeText={(next) => setCode(next)}
                 />
               </View>
 
@@ -1319,9 +1308,31 @@ export default function WriterOnboarding(
               <Pressable
                 onPress={submitEmail}
                 accessibilityRole="button"
-                style={styles.quietButton}
+                style={styles.resendButton}
               >
                 <Text style={styles.quietText}>Resend code</Text>
+              </Pressable>
+            </StepScroll>
+          )
+          : step === "craftError"
+          ? (
+            <StepScroll
+              onBack={() => go("details")}
+              steps={ONBOARDING_STEPS}
+              currentStep={PREVIEW_STEP}
+              title="Preview needs one more try"
+              sub={shapeError ??
+                "We could not shape the preview. Your idea and details are still here."}
+            >
+              {shapeRetryable
+                ? <Primary label="Try again" onPress={() => go("crafting")} />
+                : null}
+              <Pressable
+                onPress={() => go("details")}
+                accessibilityRole="button"
+                style={styles.quietButton}
+              >
+                <Text style={styles.quietText}>Back to details</Text>
               </Pressable>
             </StepScroll>
           )
@@ -1375,13 +1386,13 @@ export default function WriterOnboarding(
                   {conceptMeta
                     ? <Text style={styles.conceptByline}>{conceptMeta}</Text>
                     : null}
-                  {beats.length
+                  {previewBeats.length
                     ? (
                       <View
                         style={styles.chapterList}
                         accessibilityRole="list"
                       >
-                        {beats.map((beat, index) => (
+                        {previewBeats.map((beat, index) => (
                           <View key={`${index}-${beat}`} style={styles.chapterRow}>
                             {/* Zero-padded and accent-coloured, so the column
                                 of numbers reads as a plan rather than as a
@@ -1389,9 +1400,18 @@ export default function WriterOnboarding(
                             <Text style={styles.chapterNumber}>
                               {String(index + 1).padStart(2, "0")}
                             </Text>
-                            <Text style={styles.chapterText}>{beat}</Text>
+                            <Text numberOfLines={1} style={styles.chapterText}>
+                              {beat}
+                            </Text>
                           </View>
                         ))}
+                        {remainingPreviewBeats
+                          ? (
+                            <Text style={styles.chapterMore}>
+                              + {remainingPreviewBeats} more shaped chapters
+                            </Text>
+                          )
+                          : null}
                       </View>
                     )
                     : null}
@@ -1404,8 +1424,8 @@ export default function WriterOnboarding(
                     <View style={styles.previewTag}>
                       <Text style={styles.previewTagText}>PREVIEW</Text>
                     </View>
-                    {blueprint.opening.split(/\n{2,}/).map((paragraph, i) => (
-                      <Text key={i} style={styles.readerText}>
+                    {blueprint.opening.split(/\n{2,}/).slice(0, 2).map((paragraph, i) => (
+                      <Text key={i} numberOfLines={i === 0 ? 3 : 2} style={styles.readerText}>
                         {paragraph.trim()}
                       </Text>
                     ))}
@@ -1429,10 +1449,12 @@ export default function WriterOnboarding(
               <View style={styles.entitlements}>
                 <Text style={styles.eyebrowDark}>YOU CAN ALWAYS</Text>
                 <View style={styles.entitlementRows}>
-                  {ENTITLEMENTS.map((line) => (
-                    <View key={line} style={styles.entitlementRow}>
-                      <IconCheck size={16} color={colors.success} />
-                      <Text style={styles.entitlementText}>{line}</Text>
+                  {ENTITLEMENTS.map(({ Icon, text }) => (
+                    <View key={text} style={styles.entitlementRow}>
+                      <View style={styles.entitlementIconTile}>
+                        <Icon size={18} color={colors.accent} />
+                      </View>
+                      <Text style={styles.entitlementText}>{text}</Text>
                     </View>
                   ))}
                 </View>
@@ -1548,62 +1570,88 @@ function StepScroll({
 }) {
   const showProgress = Boolean(steps && currentStep);
   return (
-    <ScrollView
-      contentContainerStyle={styles.scroll}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Two top rows, one control. With progress the back control sits on a
-          rounded-square plate and the dots take the rest of the row; without
-          it the chevron stands alone on the gutter as it always has. The plate
-          only makes sense next to the dots: on its own it is a box drawn
-          around a glyph for no reason. */}
-      <View style={showProgress ? styles.topBarProgress : styles.topBar}>
-        {onBack
+    <View style={styles.stepFrame}>
+      <OnboardingTopBar
+        onBack={onBack}
+        steps={showProgress ? steps : undefined}
+        currentStep={showProgress ? currentStep : undefined}
+      />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {art}
+        {/* One group, not two siblings. The scroll container's
+            `spacing.betweenGroups` gap is the distance between UNRELATED
+            sections, and with the headline and its sub sitting in it directly
+            the sub was as far from the heading it belongs to as it was from the
+            first field of the form. Wrapped, the pair is `spacing.related`
+            apart inside and keeps the larger gap below it. */}
+        {title || sub
           ? (
-            <Pressable
-              onPress={onBack}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={12}
-              style={showProgress ? styles.backTile : styles.backButton}
-            >
-              <IconBack
-                size={20}
-                color={showProgress ? colors.strong : colors.ink}
-              />
-            </Pressable>
+            <View style={styles.headerGroup}>
+              {title
+                ? (
+                  <Text style={styles.title} accessibilityRole="header">
+                    {title}
+                  </Text>
+                )
+                : null}
+              {sub ? <Text style={styles.sub}>{sub}</Text> : null}
+            </View>
           )
-          : <View style={styles.iconButton} />}
-        {showProgress
-          ? <ProgressDots steps={steps!} current={currentStep!} />
           : null}
-        {showProgress ? <View style={styles.iconButton} /> : null}
-      </View>
-      {art}
-      {/* One group, not two siblings. The scroll container's
-          `spacing.betweenGroups` gap is the distance between UNRELATED
-          sections, and with the headline and its sub sitting in it directly
-          the sub was as far from the heading it belongs to as it was from the
-          first field of the form. Wrapped, the pair is `spacing.related` apart
-          inside and keeps the larger gap below it. See the `related` rule in
-          theme.ts. */}
-      {title || sub
+        {children}
+      </ScrollView>
+    </View>
+  );
+}
+
+function OnboardingTopBar({
+  onBack,
+  steps,
+  currentStep,
+  onClose,
+}: {
+  onBack?: () => void;
+  steps?: number;
+  currentStep?: number;
+  onClose?: () => void;
+}) {
+  const showProgress = Boolean(steps && currentStep);
+  return (
+    <View style={styles.fixedTopBar}>
+      {onBack
         ? (
-          <View style={styles.headerGroup}>
-            {title
-              ? (
-                <Text style={styles.title} accessibilityRole="header">
-                  {title}
-                </Text>
-              )
-              : null}
-            {sub ? <Text style={styles.sub}>{sub}</Text> : null}
-          </View>
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={12}
+            style={styles.backTile}
+          >
+            <IconBack size={20} color={colors.strong} />
+          </Pressable>
         )
+        : <View style={styles.iconButton} />}
+      {showProgress
+        ? <ProgressDots steps={steps!} current={currentStep!} />
         : null}
-      {children}
-    </ScrollView>
+      {onClose
+        ? (
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={16}
+            style={styles.closeTile}
+          >
+            <IconClose size={20} color={colors.strong} />
+          </Pressable>
+        )
+        : <View style={styles.iconButton} />}
+    </View>
   );
 }
 
@@ -1638,6 +1686,58 @@ function ProgressDots({ steps, current }: { steps: number; current: number }) {
           ]}
         />
       ))}
+    </View>
+  );
+}
+
+function OtpBoxes({
+  value,
+  onChangeText,
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+}) {
+  const inputRef = useRef<TextInput>(null);
+  const digits = value.replace(/\D/g, "").slice(0, 6);
+
+  return (
+    <View
+      onStartShouldSetResponder={() => true}
+      onResponderRelease={() => inputRef.current?.focus()}
+      style={styles.otpShell}
+    >
+      <View style={styles.otpRow}>
+        {Array.from({ length: 6 }, (_, index) => {
+          const active = index === digits.length;
+          const filled = Boolean(digits[index]);
+          return (
+            <View
+              key={index}
+              style={[
+                styles.otpCell,
+                active && styles.otpCellActive,
+                filled && styles.otpCellFilled,
+              ]}
+            >
+              <Text style={styles.otpDigit}>{digits[index] ?? ""}</Text>
+            </View>
+          );
+        })}
+      </View>
+      <TextInput
+        ref={inputRef}
+        value={digits}
+        onChangeText={(next) => onChangeText(next.replace(/\D/g, "").slice(0, 6))}
+        accessibilityLabel="Verification code"
+        accessibilityHint="Enter the six digit code"
+        keyboardType="number-pad"
+        maxLength={6}
+        textContentType="oneTimeCode"
+        autoComplete="one-time-code"
+        style={styles.otpHidden}
+        caretHidden
+        autoFocus
+      />
     </View>
   );
 }
@@ -1762,23 +1862,16 @@ function Paywall({
 }) {
   const visibleGenres = genres.slice(0, 2);
   return (
-    <ScrollView
-      contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.topBarProgress}>
-        <View style={styles.iconButton} />
-        <ProgressDots steps={ONBOARDING_STEPS} current={PAYWALL_STEP} />
-        <Pressable
-          onPress={onDismiss}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          hitSlop={16}
-          style={styles.closeTile}
-        >
-          <IconClose size={20} color={colors.strong} />
-        </Pressable>
-      </View>
+    <View style={styles.stepFrame}>
+      <OnboardingTopBar
+        steps={ONBOARDING_STEPS}
+        currentStep={PAYWALL_STEP}
+        onClose={onDismiss}
+      />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
 
       <View style={styles.paywallStoryCard}>
         <ConceptCover title={title} />
@@ -1805,14 +1898,16 @@ function Paywall({
 
       <View style={styles.paywallBenefits}>
         {[
-          ["📝", "50 credits a month.", "Around 16 full chapters."],
-          ["🎨", "Covers and characters included.", "Every chapter, not an add-on."],
-          ["✏️", "Editing is free.", "Type, rewrite and restructure as much as you want."],
-          ["↩️", "A failed generation refunds itself.", "Every time, automatically."],
-          ["📖", "Reading stays free.", "It always was."],
-        ].map(([icon, lead, body]) => (
+          { Icon: IconPencil, lead: "50 credits a month.", body: "Around 16 full chapters." },
+          { Icon: IconPalette, lead: "Covers and characters included.", body: "Every chapter, not an add-on." },
+          { Icon: IconPencil, lead: "Editing is free.", body: "Type, rewrite and restructure as much as you want." },
+          { Icon: IconRefresh, lead: "A failed generation refunds itself.", body: "Every time, automatically." },
+          { Icon: IconCheck, lead: "Reading stays free.", body: "It always was." },
+        ].map(({ Icon, lead, body }) => (
           <View key={lead} style={styles.paywallBenefitRow}>
-            <Text style={styles.paywallBenefitIcon}>{icon}</Text>
+            <View style={styles.paywallBenefitIconTile}>
+              <Icon size={18} color={colors.accent} />
+            </View>
             <Text style={styles.paywallBenefitText}>
               <Text style={styles.paywallBenefitLead}>{lead}</Text> {body}
             </Text>
@@ -1839,9 +1934,10 @@ function Paywall({
         Or $12.99 monthly for 50 credits.
       </Text>
 
-      <Primary label="Create my story" onPress={onSubscribe} />
-      <Text style={styles.legal}>Cancel anytime. Trial gives you 15 credits.</Text>
-    </ScrollView>
+        <Primary label="Create my story" onPress={onSubscribe} />
+        <Text style={styles.legal}>Cancel anytime. Trial gives you 15 credits.</Text>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1939,6 +2035,8 @@ function OneTimeOffer({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
+  stepFrame: { flex: 1 },
+  loaderFrame: { flex: 1 },
   /**
    * The gap here separates one *group* from the next, never two elements
    * inside a group. A uniform `spacing.md` between every child put a section's
@@ -1971,6 +2069,13 @@ const styles = StyleSheet.create({
    * time.
    */
   section: { gap: spacing.related },
+  fixedTopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.xxxl,
+    height: spacing.huge,
+    marginBottom: spacing.md,
+  },
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2000,8 +2105,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.lg,
-    backgroundColor: colors.surface2,
-    boxShadow: shadows.card,
+    backgroundColor: "transparent",
   },
   closeTile: {
     width: spacing.huge,
@@ -2009,8 +2113,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.lg,
-    backgroundColor: colors.surface2,
-    boxShadow: shadows.card,
+    backgroundColor: "transparent",
   },
   progressRow: {
     flex: 1,
@@ -2275,11 +2378,11 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   ideaInput: {
-    ...type.body,
+    ...onboardingType.body,
     color: colors.ink,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    boxShadow: shadows.card,
+    borderRadius: controls.formFieldRadius,
+    boxShadow: shadows.formField,
     padding: spacing.lg,
     minHeight: 132,
     textAlignVertical: "top",
@@ -2296,13 +2399,14 @@ const styles = StyleSheet.create({
   ideaStateReady: { color: colors.success },
   freeText: { minHeight: 62, paddingTop: spacing.md, textAlignVertical: "top" },
   castField: {
-    ...type.body,
+    ...onboardingType.body,
     color: colors.ink,
     backgroundColor: colors.surface2,
-    borderRadius: radius.md,
+    borderRadius: controls.formFieldRadius,
+    boxShadow: shadows.formField,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    minHeight: spacing.huge,
+    minHeight: controls.formFieldMinHeight,
   },
   /**
    * Secondary copy under an eyebrow. `helper` (14.5), never `body` (16).
@@ -2440,9 +2544,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.md,
-    zIndex: 2,
+    zIndex: 20,
   },
-  filterGroup: { flex: 1, gap: spacing.related },
+  filterGroup: {
+    flex: 1,
+    gap: spacing.related,
+    position: "relative",
+    zIndex: 1,
+  },
+  filterGroupOpen: { zIndex: 30 },
   filterChip: {
     minHeight: spacing.huge,
     alignSelf: "flex-start",
@@ -2461,10 +2571,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   filterMenu: {
+    position: "absolute",
+    top: onboardingType.sectionHeader.lineHeight + spacing.related +
+      spacing.huge + spacing.sm,
+    left: 0,
+    right: 0,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.xs,
     boxShadow: shadows.overlay,
+    zIndex: 40,
   },
   filterMenuItem: {
     minHeight: spacing.huge,
@@ -2509,14 +2625,14 @@ const styles = StyleSheet.create({
   segmentText: { ...type.subhead, color: colors.muted },
   segmentTextActive: { color: colors.accent },
   inlineInput: {
-    ...type.body,
+    ...onboardingType.body,
     color: colors.ink,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    boxShadow: shadows.card,
+    borderRadius: controls.formFieldRadius,
+    boxShadow: shadows.formField,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    minHeight: spacing.huge,
+    minHeight: controls.formFieldMinHeight,
   },
   codeInput: { letterSpacing: 8, textAlign: "center", fontSize: 22 },
   wrapChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
@@ -2538,14 +2654,14 @@ const styles = StyleSheet.create({
    */
   composer: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   composerInput: {
-    ...type.body,
+    ...onboardingType.body,
     flex: 1,
     color: colors.ink,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    boxShadow: shadows.card,
+    borderRadius: controls.formFieldRadius,
+    boxShadow: shadows.formField,
     paddingHorizontal: spacing.lg,
-    minHeight: spacing.huge,
+    minHeight: controls.formFieldMinHeight,
   },
   /**
    * Reads as a button at a glance: accent glyph, accent word, its own surface.
@@ -2561,7 +2677,7 @@ const styles = StyleSheet.create({
     height: spacing.huge,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
-    boxShadow: shadows.card,
+    boxShadow: shadows.iconCta,
   },
   addMomentButtonPressed: { backgroundColor: colors.surface2 },
   addMomentText: { ...type.subhead, color: colors.accent },
@@ -2647,6 +2763,11 @@ const styles = StyleSheet.create({
     width: 22,
   },
   chapterText: { ...onboardingType.helper, color: colors.ink, flex: 1 },
+  chapterMore: {
+    ...onboardingType.caption,
+    color: colors.tertiary,
+    paddingLeft: 22 + spacing.sm,
+  },
   readerSurface: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -2685,7 +2806,15 @@ const styles = StyleSheet.create({
   entitlementRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.md,
+  },
+  entitlementIconTile: {
+    width: spacing.xxl,
+    height: spacing.xxl,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
   entitlementText: { ...onboardingType.helper, color: colors.ink, flex: 1 },
   paywallStoryCard: {
@@ -2722,10 +2851,13 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.md,
   },
-  paywallBenefitIcon: {
-    ...type.subhead,
+  paywallBenefitIconTile: {
     width: spacing.xxl,
-    lineHeight: 22,
+    height: spacing.xxl,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
   paywallBenefitText: {
     ...onboardingType.helper,
@@ -2823,16 +2955,18 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   primary: {
-    marginTop: spacing.xl,
-    height: spacing.huge + spacing.sm,
-    borderRadius: radius.lg,
+    marginTop: spacing.md,
+    height: controls.primaryCtaHeight,
+    borderRadius: controls.primaryCtaRadius,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
-    boxShadow:
-      "0 1px 2px rgba(255, 107, 26, 0.22), 0 10px 24px rgba(255, 107, 26, 0.18)",
+    boxShadow: shadows.primaryCta,
   },
-  primaryPill: { borderRadius: radius.pill, height: spacing.huge + spacing.lg },
+  primaryPill: {
+    borderRadius: controls.primaryCtaRadius,
+    height: controls.primaryCtaHeight,
+  },
   primaryPressed: { backgroundColor: colors.accentPressed },
   primaryDisabled: { opacity: 0.4 },
   primaryText: { ...type.headline, color: colors.surface },
@@ -2841,6 +2975,47 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
   },
+  resendButton: {
+    alignSelf: "center",
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
   quietText: { ...type.subhead, color: colors.muted },
   error: { ...type.subhead, color: colors.accentPressed },
+  otpShell: {
+    minHeight: controls.otpCellHeight,
+    justifyContent: "center",
+  },
+  otpRow: { flexDirection: "row", gap: spacing.sm },
+  otpCell: {
+    flex: 1,
+    height: controls.otpCellHeight,
+    borderRadius: controls.otpCellRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: shadows.formField,
+  },
+  otpCellActive: {
+    borderColor: colors.accent,
+  },
+  otpCellFilled: {
+    borderColor: colors.borderStrong,
+  },
+  otpDigit: {
+    ...onboardingType.body,
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 22,
+    lineHeight: 26,
+  },
+  otpHidden: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    opacity: 0,
+  },
 });

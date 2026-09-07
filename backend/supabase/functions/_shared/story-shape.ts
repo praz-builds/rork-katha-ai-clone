@@ -1,14 +1,20 @@
-import { fenceUserText } from "./story-prompts.ts";
+import { fenceUserText, userField } from "./story-prompts.ts";
 import {
   type CharacterInput,
+  CHAPTER_LENGTHS,
+  DEFAULT_CHAPTER_LENGTH,
+  DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_MIGRATION_MAP,
   MAX_BEAT_LENGTH,
   MAX_BRIEF_FIELD_LENGTH,
   MAX_CAST_SIZE,
   MAX_MOMENTS,
   MAX_PLAN_BEATS,
+  PLANNED_CHAPTER_COUNTS,
   MAX_STORY_GENRES,
   PRIMARY_GENRES,
+  type ChapterLength,
+  type PlannedChapterCount,
   type PrimaryGenre,
 } from "./types.ts";
 
@@ -39,6 +45,15 @@ export type StoryShape = {
  * paying for a draft of them twice is waste.
  */
 export type StoryShapeVariant = "create" | "onboarding";
+
+export type StoryShapePromptBrief = {
+  characters?: CharacterInput[];
+  moments?: string[];
+  writingStyle?: string;
+  avoid?: string;
+  chapterLength?: ChapterLength;
+  plannedChapterCount?: PlannedChapterCount;
+};
 
 /** Compact schema for the free Idea -> Shape scaffolding request. */
 export const STORY_SHAPE_OUTPUT = buildStoryShapeOutput("create");
@@ -133,7 +148,7 @@ Also return a title and an opening.
 
 The title is 1-6 words, specific to this story, and never a genre label.
 
-The opening is the first 120-180 words of the story itself, in two or three paragraphs separated by a blank line. Write it as finished prose, not a summary or a blurb. Name the lead character in the first two paragraphs. End on a live moment the reader wants resolved, never on a settled one.`;
+The opening is the first 120-180 words of the story itself, in two or three paragraphs separated by a blank line. Write it as finished prose, not a summary or a blurb. If the creator supplied characters, use the lead character by name in the first two paragraphs and do not replace them with an invented lead. End on a live moment the reader wants resolved, never on a settled one.`;
 
 /**
  * Fenced input keeps an idea from entering the instruction channel.
@@ -145,13 +160,86 @@ The opening is the first 120-180 words of the story itself, in two or three para
  * silently returning horror is the flow overruling the one explicit choice on
  * the screen.
  */
-export function buildStoryShapePrompt(idea: string, genre?: string): string {
+export function buildStoryShapePrompt(
+  idea: string,
+  genre?: string,
+  brief: StoryShapePromptBrief = {},
+): string {
   const shelf = genre && PRIMARY_GENRES.has(genre)
     ? `\n\nThe creator has chosen ${genre} as the primary genre. Return it first in genres, and shape the world, cast, beats and opening to that shelf even where the idea alone would suggest another.`
     : "";
-  return `Shape only the following user idea.${shelf}\n\n<katha:idea>\n${
+  const parts = [`Shape only the following user idea.${shelf}\n\n<katha:idea>\n${
     fenceUserText(idea)
-  }\n</katha:idea>`;
+  }\n</katha:idea>`];
+
+  if (brief.plannedChapterCount) {
+    parts.push(
+      `The creator chose ${brief.plannedChapterCount} chapters. Return exactly ${brief.plannedChapterCount} one-line beats, one per chapter.`,
+    );
+  }
+  if (brief.chapterLength) {
+    parts.push(
+      `The creator chose ${brief.chapterLength} chapter length. Pace the preview and beats for that reading density.`,
+    );
+  }
+  if (brief.characters?.length) {
+    parts.push("Creator-supplied characters. Preserve these names exactly:");
+    for (const character of brief.characters.slice(0, MAX_CAST_SIZE)) {
+      parts.push(`- ${userField("character-name", character.name)}`);
+      if (character.isHero) parts.push("  Role: lead character");
+      if (character.description?.trim()) {
+        parts.push(`  Description: ${userField("description", character.description)}`);
+      }
+      if (character.background?.trim()) {
+        parts.push(`  Background: ${userField("background", character.background)}`);
+      }
+      if (character.appearance?.trim()) {
+        parts.push(`  Appearance: ${userField("appearance", character.appearance)}`);
+      }
+    }
+  }
+  if (brief.moments?.length) {
+    parts.push("Creator-supplied moments to include in the plan/opening when they fit:");
+    for (const moment of brief.moments.slice(0, MAX_MOMENTS)) {
+      parts.push(`- ${userField("moment", moment)}`);
+    }
+  }
+  if (brief.writingStyle?.trim()) {
+    parts.push(
+      `Writing direction:\n${userField("writing-style", brief.writingStyle)}`,
+    );
+  }
+  if (brief.avoid?.trim()) {
+    parts.push(`Avoid:\n${userField("avoid", brief.avoid)}`);
+  }
+
+  return parts.join("\n\n");
+}
+
+export function normalizeStoryShapeBrief(input: {
+  characters?: unknown;
+  moments?: unknown;
+  writingStyle?: unknown;
+  avoid?: unknown;
+  chapterLength?: unknown;
+  plannedChapterCount?: unknown;
+}): StoryShapePromptBrief {
+  return {
+    characters: normalizeCharacters(input.characters),
+    moments: normalizeTextList(input.moments, MAX_MOMENTS),
+    writingStyle: normalizeText(input.writingStyle),
+    avoid: normalizeText(input.avoid),
+    chapterLength: typeof input.chapterLength === "string" &&
+        CHAPTER_LENGTHS.has(input.chapterLength)
+      ? input.chapterLength as ChapterLength
+      : DEFAULT_CHAPTER_LENGTH,
+    plannedChapterCount: typeof input.plannedChapterCount === "number" &&
+        (PLANNED_CHAPTER_COUNTS as readonly number[]).includes(
+          input.plannedChapterCount,
+        )
+      ? input.plannedChapterCount as PlannedChapterCount
+      : DEFAULT_PLANNED_CHAPTER_COUNT,
+  };
 }
 
 /** Parse defensively: a malformed convenience response is equivalent to none. */

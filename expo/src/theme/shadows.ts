@@ -57,4 +57,11 @@ export const shadows = {
     'inset 0 1px 2px rgba(255, 255, 255, 0.60)',
     '0 1px 1px rgba(15, 14, 12, 0.06)',
   ].join(', '),
+
+  primaryCta:
+    '0 1px 2px rgba(255, 107, 26, 0.24), 0 12px 26px rgba(255, 107, 26, 0.22)',
+  formField:
+    '0 1px 1px rgba(15, 14, 12, 0.05), 0 5px 14px rgba(15, 14, 12, 0.06)',
+  iconCta:
+    '0 1px 1px rgba(15, 14, 12, 0.05), 0 5px 14px rgba(255, 107, 26, 0.10)',
 } as const;
