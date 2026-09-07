@@ -48,8 +48,13 @@ export type ReaderScreenProps = {
   onBack: () => void;
   /** Which chapter the story page sent the reader to. */
   initialChapterIndex?: number;
-  /** Extension point for branching or end-of-chapter modules on the final page. */
-  renderChapterEnd?: () => ReactNode;
+  /**
+   * Extension point for branching or end-of-chapter modules on the final
+   * page. Fires at the last page of every chapter (not only the story's
+   * newest one), so it is handed the chapter actually on screen rather than
+   * whichever chapter the reader started on.
+   */
+  renderChapterEnd?: (chapter: Chapter) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
 };
@@ -414,7 +419,7 @@ export default function ReaderScreen({
             >
               {renderedWords}
             </Text>
-            {isLastPage ? renderChapterEnd?.() : null}
+            {isLastPage ? renderChapterEnd?.(chapter) : null}
           </View>
           <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {pageIndex + 1} of {pages.length}</Text>
           {isLastPage ? (
