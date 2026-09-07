@@ -107,10 +107,16 @@ export async function handleRequest(req: Request): Promise<Response> {
       );
     }
 
-    // A public story is never silently demoted by a stale client retry.
-    if (story.is_public) {
-      return respond({ published: true, story_id: storyId });
-    }
+    // A public story is never silently demoted by a stale client retry, but
+    // "already public" is not the same as "nothing left to do". This used to
+    // return here, above the edit-persistence block below, so every save made
+    // to an already-published story was answered `published: true` and then
+    // silently dropped. The editor kept the text on screen and the author lost
+    // it on the next refresh.
+    //
+    // The guard now covers only the thing it was written to protect - the
+    // visibility transition - and edits fall through to be persisted.
+    const alreadyPublic = story.is_public === true;
 
     // A story needs content before it can go public.
     //
@@ -209,6 +215,13 @@ export async function handleRequest(req: Request): Promise<Response> {
     // the story enter public feeds - and this is the branch a request that
     // omitted `visibility` takes.
     if (visibility === "private") {
+      // This is where the demotion guard actually belongs. A save against a
+      // story that is already public keeps its edits and keeps its visibility:
+      // a client that omits `visibility` is saving, not asking to unpublish.
+      // Taking a live story out of the feed has to be an explicit act.
+      if (alreadyPublic) {
+        return respond({ saved: true, published: true, story_id: storyId });
+      }
       return respond({ saved: true, published: false, story_id: storyId });
     }
 
