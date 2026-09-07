@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -36,14 +37,25 @@ import GeneratingOverlay from "@/components/GeneratingOverlay";
 import StreamingProse from "@/components/create/StreamingProse";
 import {
   continueStoryStreaming,
+  type CoverState,
   createGenerationRequestId,
   editParagraphStreaming,
+  fetchCoverState,
   generateStoryStreaming,
   GenerationRequestError,
   publishStory,
+  regenerateCover,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
-import { MAX_CAST_SIZE } from "@/lib/pricing-limits";
+import {
+  CHAPTER_TEXT_CREDITS,
+  COVER_POLL_INTERVAL_MS,
+  COVER_POLL_MAX_ATTEMPTS,
+  MAX_CAST_SIZE,
+  MAX_COVER_NOTE_CHARS,
+  MAX_NEXT_INSTRUCTION_CHARS,
+  WRITE_THE_REST_MIN_CHAPTERS,
+} from "@/lib/pricing-limits";
 import {
   colors,
   fonts,
@@ -64,7 +76,22 @@ import type { AudienceMode, CreateDraft, Genre, IdentityLens, SpiceLevel, Story 
 // Local types
 // ---------------------------------------------------------------------------
 
-type StudioStep = "setup" | "generating" | "editor" | "cover" | "review" | "publishing";
+/**
+ * The steps the studio actually has.
+ *
+ * There used to be a `cover` step between the editor and review, and every
+ * thing on it was untrue: it drew a gradient concept card and called it a
+ * preview of a cover that had in fact already been generated, it said the cover
+ * "will be created when you publish" when `generate-story` schedules it the
+ * moment chapter 1 persists, and its Regenerate button was permanently
+ * disabled next to a prompt box whose contents were never sent anywhere.
+ *
+ * §10.4 settles where the cover belongs: chapter 1's art *is* the cover, so it
+ * is revealed in the editor as soon as it lands and confirmed at review, which
+ * is the step that was always going to show it. A step of its own was a step
+ * about a thing that had already happened.
+ */
+type StudioStep = "setup" | "generating" | "editor" | "review" | "publishing";
 
 type DraftCharacter = {
   name: string;
@@ -105,6 +132,47 @@ type StudioDraft = {
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
   illustrateChapters?: boolean;
+};
+
+/**
+ * What one trip through the continuation path did.
+ *
+ * The single-chapter Continue button used to be the only caller, so it could
+ * raise its own alerts inline and return nothing. "Write the rest" drives the
+ * same function in a loop and has to *decide* what to do next, which a void
+ * function cannot tell it: a guard that refused before spending anything ends
+ * a run quietly, a failure ends it loudly, and a written chapter is the base
+ * story for the next iteration. Hence a returned value rather than a thrown
+ * error — a throw would collapse those three into one shape and the loop would
+ * have to re-derive the difference from a message string.
+ */
+type ContinueOutcome =
+  /** A chapter was written, persisted and charged. `story` includes it. */
+  | { status: "written"; story: Story }
+  /** A guard refused. Nothing was requested, nothing was spent. */
+  | { status: "blocked"; title: string; message: string }
+  /**
+   * The request failed. The credit is refunded server-side by the existing
+   * single-chapter path. `keptPartial` says whether prose had already reached
+   * the reader, because that decides which screen they are looking at.
+   */
+  | { status: "failed"; message: string; keptPartial: boolean };
+
+/**
+ * A "Write the rest" run in flight, as the UI needs to see it.
+ *
+ * Nothing about a run outlives the mount that started it. `written` and
+ * `stopping` are only meaningful inside the process that owns the loop, and
+ * there is deliberately no persisted counterpart — see the note on the unmount
+ * teardown for why resume is not implemented.
+ */
+type ActiveRun = {
+  /** Chapter count the run is driving toward. */
+  target: number;
+  /** Chapters this run has written so far. */
+  written: number;
+  /** Stop has been pressed; the in-flight chapter is being allowed to finish. */
+  stopping: boolean;
 };
 
 type ParagraphState = {
@@ -308,13 +376,74 @@ export default function CreateStudioScreen({
   } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cover prompt
+  // The cover, which is chapter 1's art (§10.4).
+  //
+  // Held apart from `story` rather than folded into it because it moves on a
+  // different clock: the story object is rewritten on every keystroke in the
+  // editor, and the cover is settled by a background task on the server that
+  // this screen only observes. Seeded from the generation response, advanced by
+  // `fetchCoverState`, replaced outright by a regeneration.
+  const [cover, setCover] = useState<CoverState>({
+    coverStatus: "pending",
+    coverRegenCount: 0,
+  });
+  /** The writer's optional steer for the next cover. Sent, not discarded. */
   const [coverPrompt, setCoverPrompt] = useState("");
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  /**
+   * How many times the cover watch has asked, across every interval it has had.
+   *
+   * A ref rather than an effect-local counter because the watch is torn down
+   * and rebuilt whenever `step` changes, and the whole point of the bound is
+   * that one image gets a fixed number of asks in total. It is reset when a
+   * *new* image starts being made — a fresh story, or a regeneration — because
+   * that is a different job and deserves its own budget.
+   */
+  const coverPollAttemptsRef = useRef(0);
 
   // Chapter state
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const [addingChapter, setAddingChapter] = useState(false);
   const maxChapters = story?.plannedChapterCount ?? draft.plannedChapterCount ?? 3;
+
+  // The reader's optional steer for the chapter that has not been written yet.
+  //
+  // Blank is the normal case and means Katha decides — the field exists so a
+  // reader who *does* have something in mind is not forced to accept whatever
+  // the plan had queued up. It costs nothing: the credit is charged for the
+  // chapter, never for saying what should be in it.
+  const [nextInstruction, setNextInstruction] = useState("");
+
+  // -----------------------------------------------------------------------
+  // "Write the rest" — the same loop, under program control (§10.2)
+  // -----------------------------------------------------------------------
+
+  /**
+   * The re-entrancy guard, and why it is a ref and not the state below.
+   *
+   * A run is the only thing in this screen that can spend a whole balance, so
+   * "start a second one" has to be impossible rather than merely unlikely.
+   * `runActiveRef` is set synchronously in the first statement of the starter,
+   * before any await, so two presses in the same tick cannot both get past it.
+   * A `useState` flag could not do that job: the second press would read the
+   * pre-render value and start a parallel loop, and two loops appending to two
+   * diverging copies of the same story would double-charge and lose chapters.
+   *
+   * `activeRun` is the render-time mirror of it, for disabling controls and
+   * drawing progress. It is never the guard.
+   */
+  const runActiveRef = useRef(false);
+  const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
+  /**
+   * Stop, as a ref for the same reason: the loop reads it between chapters
+   * from inside a closure that was created before the press happened.
+   */
+  const runStopRef = useRef(false);
+  /** The itemised confirm. Null means it is closed; nothing is spent while it is open. */
+  const [runConfirmOpen, setRunConfirmOpen] = useState(false);
+  /** What the last run did, said once in the editor rather than as an alert. */
+  const [runNotice, setRunNotice] = useState<string | null>(null);
 
   // Pulse animation for processing paragraphs
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -355,6 +484,35 @@ export default function CreateStudioScreen({
   useEffect(() => {
     return () => {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
+  }, []);
+
+  /**
+   * A run must not outlive the screen silently.
+   *
+   * Switching tabs unmounts the studio, and the loop would otherwise keep
+   * buying chapters against a tree nobody is looking at. It cannot be
+   * cancelled mid-chapter without abandoning a reservation, so it is asked to
+   * stop after the one in flight — the same semantics as the Stop button.
+   *
+   * **What is deliberately not here: resume.** An earlier revision persisted
+   * the run's intent to AsyncStorage so the remainder could be re-offered on
+   * the way back. It could never fire. `story` is only ever set by a generation
+   * inside the current mount — the studio has no way to *open* an existing
+   * story — so after the unmount the screen comes back at `setup` with
+   * `story === null`, and every condition an offer could be gated on is false
+   * forever. Making resume real needs a fetch-by-id and navigation the studio
+   * does not have, so the whole record is gone rather than shipped as a code
+   * path that cannot run. The gap is written down in
+   * `source-of-truth/STORY_GENERATION_FLOW.md` §10.2 instead of being implied
+   * by dead code. What survives either way is the part that costs money: every
+   * chapter the run wrote is on the server, paid for, and nothing further is
+   * ever charged without another confirm.
+   */
+  useEffect(() => {
+    return () => {
+      if (!runActiveRef.current) return;
+      runStopRef.current = true;
     };
   }, []);
 
@@ -427,6 +585,22 @@ export default function CreateStudioScreen({
 
   const readTimeMin = Math.max(1, Math.round(wordCount / 200));
 
+  // What the Continue button calls itself.
+  //
+  // Three readings of the same action, and the label is the only place the
+  // difference shows: the chapter that closes the planned run is the finale,
+  // a typed direction is being followed rather than invented, and blank is
+  // Katha's own choice. There is still one handler and one request behind all
+  // three — the wording follows the state, it does not create one.
+  const continueIsFinale = story
+    ? story.chapters.length + 1 >= maxChapters
+    : false;
+  const continueLabel = continueIsFinale
+    ? "Write the finale"
+    : nextInstruction.trim()
+      ? "Continue this way"
+      : "Continue";
+
   // -----------------------------------------------------------------------
   // Step 1: Generate draft
   // -----------------------------------------------------------------------
@@ -491,6 +665,19 @@ export default function CreateStudioScreen({
       onCreditUsed(3);
       clearDraft();
       setStory(generated);
+      // Chapter 1's art is already in flight by the time this response arrives
+      // — `generate-story` schedules it the moment the chapter persists — so
+      // the studio starts watching from here rather than pretending the cover
+      // is a publish-time concern.
+      // A new story is a new image, so the watch gets its full budget back.
+      coverPollAttemptsRef.current = 0;
+      setCover({
+        coverImageUrl: generated.coverImageUrl,
+        coverStatus: generated.coverStatus ?? "generating",
+        coverRegenCount: generated.coverRegenCount ?? 0,
+      });
+      setCoverPrompt("");
+      setCoverError(null);
       setStoryTitle(generated.title);
       setActiveChapterIndex(0);
       setParagraphs(
@@ -715,25 +902,148 @@ export default function CreateStudioScreen({
   }, [story, activeChapterIndex, paragraphs, storyTitle]);
 
   // -----------------------------------------------------------------------
-  // Step transitions: Editor → Cover → Review → Publish
+  // Step transitions: Editor → Review → Publish
   // -----------------------------------------------------------------------
 
   const handleDoneWriting = useCallback(() => {
     saveEditorToStory();
-    setStep("cover");
-  }, [saveEditorToStory]);
-
-  const handleCoverNext = useCallback(() => {
     setStep("review");
-  }, []);
-
-  const handleBackToCover = useCallback(() => {
-    setStep("cover");
-  }, []);
+  }, [saveEditorToStory]);
 
   const handleBackToEditor = useCallback(() => {
     setStep("editor");
   }, []);
+
+  // -----------------------------------------------------------------------
+  // The cover
+  // -----------------------------------------------------------------------
+
+  /**
+   * Watch for chapter 1's art while the writer is in the studio.
+   *
+   * `generate-story` returns `cover_status: "generating"` and then finishes the
+   * job on a background task, so this screen is handed a promise and no way to
+   * hear it kept. Without this the cover could only ever appear on a later
+   * launch, and the studio would be back to describing a cover it had never
+   * seen — which is the thing §10.4 is a correction to.
+   *
+   * It runs only while there is something to wait for: the effect re-runs when
+   * the status changes and returns immediately once it is no longer
+   * `generating`, which is what tears the interval down. It is bounded so a
+   * server-side claim that died leaves the writer with the concept card rather
+   * than a spinner that never resolves.
+   *
+   * Two things the bound has to survive to mean anything. `step` is a
+   * dependency — moving between the editor and review re-creates the interval —
+   * so the attempt count lives in a ref rather than in the effect body; a local
+   * `let` would reset to zero on every toggle and a writer flicking between the
+   * two screens would poll a dead job forever. And the callback is `async`, so
+   * a fetch slower than the interval would otherwise be re-entered while the
+   * previous one is still out, stacking requests and burning attempts on
+   * answers nobody waited for. The in-flight flag makes a tick that arrives
+   * during a fetch a no-op instead.
+   */
+  useEffect(() => {
+    const storyId = story?.id;
+    if (!storyId) return;
+    if (cover.coverStatus !== "generating") return;
+    if (step !== "editor" && step !== "review") return;
+
+    let cancelled = false;
+    let inFlight = false;
+    const timer = setInterval(async () => {
+      if (inFlight) return;
+      if (coverPollAttemptsRef.current >= COVER_POLL_MAX_ATTEMPTS) {
+        clearInterval(timer);
+        return;
+      }
+      inFlight = true;
+      coverPollAttemptsRef.current += 1;
+      try {
+        const next = await fetchCoverState(storyId);
+        if (cancelled) return;
+        if (next) setCover(next);
+      } finally {
+        inFlight = false;
+      }
+    }, COVER_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [story?.id, cover.coverStatus, step]);
+
+  /** 1 free retry, then 1 credit — `CREDITS_AND_PRICING.md`, §10.4. */
+  const coverRegenCostsCredit = cover.coverRegenCount >= 1;
+
+  /**
+   * An image is already being made for this story.
+   *
+   * The server holds one claim per story and answers a second request with a
+   * 409 `in_flight`, so pressing Regenerate while chapter 1's own cover is
+   * still being painted is a guaranteed error dressed up as a button. This is
+   * not the permanently disabled control §10.4 removed: it is off only while
+   * the server says work is happening, and it comes back the moment the status
+   * resolves to `ready` or `failed` — including via the watch above, which is
+   * running for exactly this state.
+   */
+  const coverGenerating = cover.coverStatus === "generating";
+  /** Either reason the control is off, so the label and the guard agree. */
+  const coverActionBusy = coverBusy || coverGenerating;
+
+  const handleRegenerateCover = useCallback(async () => {
+    if (!story || coverActionBusy) return;
+    if (coverRegenCostsCredit && credits < 1) {
+      Alert.alert(
+        "Credits needed",
+        "You need 1 credit to regenerate this cover. The first one was free.",
+      );
+      return;
+    }
+
+    setCoverBusy(true);
+    setCoverError(null);
+    // A regeneration is a new image, so the watch that will pick it up starts
+    // its bound again rather than inheriting whatever the last one spent.
+    coverPollAttemptsRef.current = 0;
+    const note = coverPrompt.trim();
+    // A fresh id every press. A regeneration is not a retry of the last one —
+    // the writer wants a different picture — and the server refuses a request
+    // id that has already bought a cover rather than handing out a second one.
+    const requestId = createGenerationRequestId();
+
+    try {
+      const next = await regenerateCover(story.id, requestId, note || undefined);
+      setCover({
+        coverImageUrl: next.coverImageUrl,
+        coverStatus: next.coverStatus,
+        coverRegenCount: next.coverRegenCount,
+      });
+      // The server says what it charged. Deriving it here from the count would
+      // be a second copy of the pricing rule, and the two would drift.
+      if (next.charged) onCreditUsed(1);
+      // Cleared only on success, for the same reason the continuation box is:
+      // a failed regeneration that also ate what the writer typed charges them
+      // twice for one of our failures.
+      setCoverPrompt("");
+    } catch (error) {
+      setCoverError(
+        error instanceof Error
+          ? error.message
+          : "The cover could not be regenerated. Please try again.",
+      );
+    } finally {
+      setCoverBusy(false);
+    }
+  }, [
+    story,
+    coverActionBusy,
+    coverRegenCostsCredit,
+    credits,
+    coverPrompt,
+    onCreditUsed,
+  ]);
 
   // -----------------------------------------------------------------------
   // Step: Publish
@@ -811,28 +1121,78 @@ export default function CreateStudioScreen({
     onPublished(publishedStory);
   }, [draft.visibility, story, storyTitle, onPublished, saveEditorToStory]);
 
-  const handleContinueStory = useCallback(async (isFinale = false) => {
-    if (!story || addingChapter) return;
-    if (story.chapters.length >= maxChapters) {
-      Alert.alert(
-        "Series complete",
-        `This story has reached its planned ${maxChapters} chapters.`,
-      );
-      return;
-    }
-    if (credits < 1) {
-      Alert.alert("Credits needed", "You need 1 credit to add a chapter.");
-      return;
-    }
+  /**
+   * Write exactly one more chapter. The single continuation path.
+   *
+   * Extracted from `handleContinueStory` so that "Write the rest" can drive it
+   * rather than reimplement it. §10.2 is explicit that the run "is not a second
+   * mode — each chapter is still its own request, its own reservation and its
+   * own credit", and the only way to hold that true in code is for both callers
+   * to be the same code. Everything a continuation has to get right — the
+   * chapter-count guard, the credit guard, the fresh request id per chapter,
+   * the finale flag, the streamed-prose bookkeeping, and above all the
+   * partial-stream rule that keeps text the reader has already seen on screen
+   * — lives here once.
+   *
+   * The three things the caller supplies rather than this function reading from
+   * state, and why each has to be a parameter:
+   *
+   * - **`baseStory`.** Inside a run, chapter N+1 is appended to the story that
+   *   chapter N produced, which the `story` state variable will not hold yet:
+   *   this closure was created before that render. Reading state here would
+   *   append every chapter of a run to the same base and silently lose all but
+   *   the last.
+   * - **`budget`.** Same problem with `credits`, which arrives as a prop from a
+   *   parent that re-renders on its own schedule. A run tracks what it has
+   *   spent and passes the remainder down, so the guard cannot be fooled by a
+   *   balance that has not caught up.
+   * - **`settle`.** A single Continue ends in the editor. A run ends in the
+   *   editor *once*, after its last chapter; settling between chapters would
+   *   flash the editor between every one.
+   */
+  const continueOnce = useCallback(async (options: {
+    baseStory: Story;
+    direction?: string;
+    isFinale?: boolean;
+    budget: number;
+    /** Default true: return to the editor and drop the busy flag when done. */
+    settle?: boolean;
+    /** Default false. Only a caller that actually sent the box may empty it. */
+    clearDirectionOnSuccess?: boolean;
+  }): Promise<ContinueOutcome> => {
+    const {
+      baseStory,
+      direction,
+      isFinale = false,
+      budget,
+      settle = true,
+      clearDirectionOnSuccess = false,
+    } = options;
 
-    // Save current editor state before generating next chapter
-    const savedStory = saveEditorToStory() ?? story;
+    if (baseStory.chapters.length >= maxChapters) {
+      return {
+        status: "blocked",
+        title: "Series complete",
+        message: `This story has reached its planned ${maxChapters} chapters.`,
+      };
+    }
+    if (budget < CHAPTER_TEXT_CREDITS) {
+      return {
+        status: "blocked",
+        title: "Credits needed",
+        message: "You need 1 credit to add a chapter.",
+      };
+    }
 
     setAddingChapter(true);
     setStep("generating");
 
+    // A fresh id per chapter, never per run. The id is what makes a
+    // reservation idempotent, so reusing one across chapters would make the
+    // server treat chapter 6 as a replay of chapter 5 and hand back the text
+    // the writer already has.
     const requestId = createGenerationRequestId();
-    const nextChapterNum = savedStory.chapters.length + 1;
+    const nextChapterNum = baseStory.chapters.length + 1;
     const shouldFinale = isFinale || nextChapterNum >= maxChapters;
 
     streamedProseRef.current = "";
@@ -842,7 +1202,7 @@ export default function CreateStudioScreen({
 
     try {
       const { chapter } = await continueStoryStreaming(
-        savedStory.id,
+        baseStory.id,
         requestId,
         {
           onStage: setStreamStage,
@@ -853,12 +1213,13 @@ export default function CreateStudioScreen({
         },
         shouldFinale,
         nextChapterNum,
+        direction,
       );
-      onCreditUsed(1);
+      onCreditUsed(CHAPTER_TEXT_CREDITS);
 
       const updatedStory: Story = {
-        ...savedStory,
-        chapters: [...savedStory.chapters, chapter],
+        ...baseStory,
+        chapters: [...baseStory.chapters, chapter],
       };
       setStory(updatedStory);
 
@@ -874,27 +1235,258 @@ export default function CreateStudioScreen({
       );
       streamedProseRef.current = "";
       setStreamedProse("");
-      setStep("editor");
+
+      // Cleared only on success, and only for the caller that sent it. A
+      // direction that survived into the next chapter would keep steering
+      // chapters the reader never aimed it at, with nothing on screen to say
+      // so. A failed continuation keeps the text, because retyping it is the
+      // reader paying for our error. A run never sends it at all, so a run
+      // must never empty it either.
+      if (clearDirectionOnSuccess) setNextInstruction("");
+
+      if (settle) {
+        setAddingChapter(false);
+        setStep("editor");
+      }
+      return { status: "written", story: updatedStory };
     } catch (error) {
       const message = error instanceof Error
         ? error.message
         : "Please try again.";
+      setAddingChapter(false);
       // Same rule as the first chapter: prose the reader has already seen stays
       // on screen, and only a failure before that returns them to the editor.
       if (streamedProseRef.current.trim()) {
         setStreamError(message);
-        setAddingChapter(false);
-        return;
+        return { status: "failed", message, keptPartial: true };
       }
       setStep("editor");
-      Alert.alert(
-        "Could not continue story",
-        message,
-      );
-    } finally {
-      setAddingChapter(false);
+      return { status: "failed", message, keptPartial: false };
     }
-  }, [story, addingChapter, credits, maxChapters, onCreditUsed, saveEditorToStory]);
+  }, [maxChapters, onCreditUsed]);
+
+  const handleContinueStory = useCallback(async (isFinale = false) => {
+    if (!story || addingChapter) return;
+    // A run owns the continuation path while it holds it. The button is
+    // disabled during one, but the tab-strip chip and this handler are reached
+    // from two places, so the guard is here rather than only in the markup.
+    if (runActiveRef.current) return;
+
+    // Save current editor state before generating next chapter
+    const savedStory = saveEditorToStory() ?? story;
+
+    // Read the direction once, here, rather than inside the stream callbacks.
+    // The box stays editable while the chapter streams, and a request that
+    // re-read the state later could send text the reader typed *after* they
+    // pressed Continue. Empty collapses to `undefined` so the request omits the
+    // field entirely — an empty string would still render the reader-direction
+    // block in the prompt, telling the model a steer exists when none does.
+    const direction = nextInstruction.trim() || undefined;
+
+    const outcome = await continueOnce({
+      baseStory: savedStory,
+      direction,
+      isFinale,
+      budget: credits,
+      clearDirectionOnSuccess: true,
+    });
+
+    if (outcome.status === "blocked") {
+      Alert.alert(outcome.title, outcome.message);
+      return;
+    }
+    if (outcome.status === "failed" && !outcome.keptPartial) {
+      Alert.alert("Could not continue story", outcome.message);
+    }
+  }, [story, addingChapter, credits, nextInstruction, continueOnce, saveEditorToStory]);
+
+  // -----------------------------------------------------------------------
+  // "Write the rest": the same loop, driven by the program
+  // -----------------------------------------------------------------------
+
+  /**
+   * What a run would cost, itemised, before anything is spent.
+   *
+   * `CREDITS_AND_PRICING.md` puts two obligations on this. "Every paid button
+   * shows its price" — and a run's price is not one chapter's price, so it has
+   * to be added up rather than implied. And "you pay as each chapter is
+   * written, so a story you stop halfway costs what it wrote, not what it
+   * planned" — which is what makes the *shortfall* case honest rather than a
+   * refusal: a balance that covers four of seven chapters buys four chapters,
+   * and the writer is told that number before they agree to it.
+   *
+   * **Why there is no art line, even though §10.2 asks for one.** Per-chapter
+   * art is not implemented anywhere: `chapter_art` exists only as an enum value
+   * on `generation_operations.kind`, nothing ever reserves it,
+   * `reserve_generation_operation` deducts exactly one credit for every kind it
+   * accepts, and `continue-story` never reads `illustrate_chapters`. A run with
+   * the toggle on is therefore charged exactly what a run with it off is
+   * charged. Quoting a second credit per chapter would not merely overstate the
+   * bill, it would *refuse work the balance covers*: 4 credits against 4
+   * remaining chapters quoted at 2 each offers two chapters and calls the other
+   * two unaffordable. So the quote bills what is actually charged — one credit
+   * per chapter — and the itemisation says only that. The divergence from §10.2
+   * is recorded in `source-of-truth/STORY_GENERATION_FLOW.md` rather than
+   * papered over here; when chapter art is really built, the art line and its
+   * price come back with it.
+   */
+  const chaptersWritten = story?.chapters.length ?? 0;
+  const runQuote = (() => {
+    const remaining = Math.max(0, maxChapters - chaptersWritten);
+    const perChapter = CHAPTER_TEXT_CREDITS;
+    const textCredits = remaining * CHAPTER_TEXT_CREDITS;
+    const total = textCredits;
+    // What the balance actually reaches. Floor, never round: a chapter that is
+    // 90% paid for is a chapter that fails.
+    const affordable = Math.min(remaining, Math.floor(credits / perChapter));
+    return { remaining, perChapter, textCredits, total, affordable };
+  })();
+
+  /**
+   * Whether the run control is offered at all.
+   *
+   * Three conditions, all from §10.2 and the shape of the editor. From chapter
+   * 3 onward, because that is where the section puts it. Only while chapters
+   * remain. And only on the last chapter, for the same reason Continue is: an
+   * append offered while the writer is back editing chapter 1 of 7 lands
+   * somewhere they are not looking.
+   */
+  const canOfferWriteTheRest = Boolean(
+    story
+    && activeChapterIndex === chaptersWritten - 1
+    && chaptersWritten >= WRITE_THE_REST_MIN_CHAPTERS
+    && runQuote.remaining > 0,
+  );
+
+  /**
+   * Run the loop.
+   *
+   * `chaptersToWrite` is decided by the confirm sheet, not here, because that
+   * is where the balance was quoted and agreed. Passing it in is what keeps
+   * "start a run the balance cannot finish" impossible by construction rather
+   * than by a check somewhere downstream.
+   *
+   * The loop is sequential and has no retry. §10.2's promise is that each
+   * chapter is its own reservation and its own credit; a retry inside the loop
+   * would turn one failure into two charges for one chapter, and the
+   * single-chapter path already refunds the failed one. So a failure ends the
+   * run, and everything written before it stays written — it is on the server
+   * already.
+   */
+  const startWriteTheRest = useCallback(async (chaptersToWrite: number) => {
+    if (!story || addingChapter) return;
+    // Synchronous, and first. See the comment on `runActiveRef`.
+    if (runActiveRef.current) return;
+    if (chaptersToWrite < 1) return;
+    runActiveRef.current = true;
+    runStopRef.current = false;
+
+    const base = saveEditorToStory() ?? story;
+    const target = Math.min(maxChapters, base.chapters.length + chaptersToWrite);
+
+    setRunNotice(null);
+    setActiveRun({ target, written: 0, stopping: false });
+
+    let current = base;
+    let budget = credits;
+    let written = 0;
+    let ending: "done" | "stopped" | "halted" = "done";
+    let failure: Exclude<ContinueOutcome, { status: "written" }> | null = null;
+
+    while (current.chapters.length < target) {
+      // Checked here as well as after each chapter so a Stop pressed during the
+      // very first request is honoured the moment that chapter lands.
+      if (runStopRef.current) {
+        ending = "stopped";
+        break;
+      }
+
+      const outcome = await continueOnce({
+        baseStory: current,
+        // Deliberately no `direction`. See the note rendered beside the button:
+        // "What happens next?" steers one chapter, and a run has no single
+        // chapter to aim it at.
+        budget,
+        settle: false,
+      });
+
+      if (outcome.status !== "written") {
+        ending = "halted";
+        failure = outcome;
+        break;
+      }
+
+      current = outcome.story;
+      budget -= runQuote.perChapter;
+      written += 1;
+      setActiveRun((prev) => (prev ? { ...prev, written } : prev));
+
+      // Stop keeps every chapter already written and never discards one
+      // mid-flight: the check is *after* the chapter has been persisted and
+      // charged, so the worst case is one more chapter than the writer expected
+      // and never half of one.
+      if (runStopRef.current) {
+        ending = "stopped";
+        break;
+      }
+    }
+
+    runActiveRef.current = false;
+    runStopRef.current = false;
+    setActiveRun(null);
+
+    const kept = written === 1
+      ? "1 chapter was written and kept."
+      : `${written} chapters were written and kept.`;
+
+    if (ending === "halted" && failure) {
+      const reason = failure.message;
+      // A failure that reached the reader mid-sentence is already on screen in
+      // `StreamingProse` with its own dismiss. Stacking an alert on top of it
+      // would make them acknowledge the same thing twice.
+      if (failure.status === "failed" && failure.keptPartial) {
+        setRunNotice(`The run stopped. ${kept} ${reason}`);
+        return;
+      }
+      setAddingChapter(false);
+      setStep("editor");
+      setRunNotice(`The run stopped. ${kept} ${reason}`);
+      Alert.alert("Write the rest stopped", `${kept}\n\n${reason}`);
+      return;
+    }
+
+    setAddingChapter(false);
+    setStep("editor");
+    setRunNotice(
+      ending === "stopped"
+        ? `Stopped. ${kept} Continue whenever you want the next one.`
+        : null,
+    );
+  }, [
+    story,
+    addingChapter,
+    credits,
+    maxChapters,
+    runQuote.perChapter,
+    continueOnce,
+    saveEditorToStory,
+  ]);
+
+  /**
+   * Stop.
+   *
+   * It sets a flag and nothing else. Aborting the request in flight would
+   * abandon a chapter the server is already writing and has already reserved
+   * against — the reader would have paid for prose nobody ever sees, which is
+   * the one outcome `CREDITS_AND_PRICING.md` principle 4 exists to prevent. So
+   * the in-flight chapter finishes and persists, and the run halts after it.
+   * The label says exactly that.
+   */
+  const handleStopRun = useCallback(() => {
+    if (!runActiveRef.current) return;
+    runStopRef.current = true;
+    setActiveRun((prev) => (prev ? { ...prev, stopping: true } : prev));
+  }, []);
 
   const switchToChapter = useCallback((index: number) => {
     if (!story || index === activeChapterIndex) return;
@@ -934,6 +1526,10 @@ export default function CreateStudioScreen({
             setParagraphs([]);
             setSelectedIndex(null);
             setStoryTitle("");
+            coverPollAttemptsRef.current = 0;
+            setCover({ coverStatus: "pending", coverRegenCount: 0 });
+            setCoverPrompt("");
+            setCoverError(null);
           },
         },
       ],
@@ -1318,6 +1914,52 @@ export default function CreateStudioScreen({
   // Render: Generating step (loading overlay)
   // -----------------------------------------------------------------------
 
+  /**
+   * The run bar: progress, and Stop.
+   *
+   * Rendered above whichever generating surface is showing — the loader before
+   * the first token, the streamed prose after it — rather than inside either,
+   * because it belongs to the run and not to the chapter. It is the only place
+   * Stop exists, and Stop has to be reachable for the whole run, which is
+   * precisely the time this screen is showing one of those two things.
+   *
+   * "Chapter 5 of 7" counts the chapter being written now: `chaptersWritten`
+   * is the story as persisted, so the one in flight is the next number up.
+   */
+  const runBar = activeRun ? (
+    <View style={styles.runBar} testID="write-the-rest-run-bar">
+      <View style={styles.runBarBody}>
+        <Text style={styles.runBarProgress}>
+          Chapter {Math.min(activeRun.target, chaptersWritten + 1)} of{" "}
+          {activeRun.target}
+        </Text>
+        <Text style={styles.runBarNote}>
+          {activeRun.stopping
+            ? "Stopping when this chapter is finished. Every chapter already written is kept."
+            : "One chapter at a time, each its own credit. Stop whenever you like."}
+        </Text>
+      </View>
+      <Pressable
+        onPress={handleStopRun}
+        disabled={activeRun.stopping}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: activeRun.stopping }}
+        accessibilityLabel={
+          activeRun.stopping
+            ? "Stopping after this chapter"
+            : "Stop writing the rest"
+        }
+        accessibilityHint="The chapter being written now is finished and kept. Nothing after it is written or charged."
+        style={[styles.runStopBtn, activeRun.stopping && styles.runStopBtnBusy]}
+        testID="write-the-rest-stop"
+      >
+        <Text style={styles.runStopBtnText}>
+          {activeRun.stopping ? "Stopping..." : "Stop"}
+        </Text>
+      </Pressable>
+    </View>
+  ) : null;
+
   if (step === "generating") {
     // The handoff. The loader holds only until the first token exists; from
     // that moment the reader is reading their own story instead of watching a
@@ -1327,6 +1969,7 @@ export default function CreateStudioScreen({
     if (streamedProse.length > 0) {
       return (
         <SafeAreaView style={styles.flex}>
+          {runBar}
           <StreamingProse
             testID="streaming-prose"
             text={streamedProse}
@@ -1350,109 +1993,11 @@ export default function CreateStudioScreen({
     }
     return (
       <SafeAreaView style={styles.flex}>
+        {runBar}
         <GeneratingOverlay
           genre={draft.primaryGenre}
           mode={addingChapter ? (story && story.chapters.length + 1 >= maxChapters ? "finale" : "chapter") : "story"}
         />
-      </SafeAreaView>
-    );
-  }
-
-  // -----------------------------------------------------------------------
-  // Render: Cover preview step
-  // -----------------------------------------------------------------------
-
-  if (step === "cover") {
-    const genre = story?.genre ?? draft.primaryGenre;
-    const gradient = genreGradients[genre];
-    const totalWords = story
-      ? story.chapters.reduce((sum, ch) => sum + ch.paragraphs.join(" ").split(/\s+/).filter(Boolean).length, 0)
-      : wordCount;
-
-    return (
-      <SafeAreaView style={styles.flex}>
-        {/* Header */}
-        <View style={styles.editorHeader}>
-          <Pressable onPress={handleBackToEditor} style={styles.editorBackBtn}>
-            <ArrowLeft size={20} color={colors.ink} />
-            <Text style={styles.editorBackText}>Back</Text>
-          </Pressable>
-          <Text style={styles.editorHeaderTitle}>Cover Preview</Text>
-          <Pressable onPress={handleCoverNext} style={styles.publishHeaderBtn}>
-            <Text style={styles.publishHeaderBtnText}>Next</Text>
-            <ChevronRight size={14} color={colors.surface} />
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.coverScroll}>
-          {/* Cover card with genre gradient */}
-          <View style={styles.coverCardWrap}>
-            <View style={[styles.coverCard, { backgroundColor: gradient[1] }]}>
-              <View style={[styles.coverGradientTop, { backgroundColor: gradient[0] }]} />
-              <View style={styles.coverTextOverlay}>
-                <Text style={styles.coverGenreLabel}>
-                  {genreLabels[genre]}
-                </Text>
-                <Text style={styles.coverTitle}>
-                  {storyTitle || "Untitled"}
-                </Text>
-                {story && story.chapters.length > 1 && (
-                  <Text style={styles.coverChapterCount}>
-                    {story.chapters.length} chapters
-                  </Text>
-                )}
-              </View>
-              <View style={[styles.coverGradientBottom, { backgroundColor: gradient[2] }]} />
-            </View>
-          </View>
-
-          {/* Cover prompt + regenerate */}
-          <View style={styles.coverActions}>
-            <TextInput
-              value={coverPrompt}
-              onChangeText={setCoverPrompt}
-              placeholder="Describe your ideal cover (optional)"
-              placeholderTextColor={colors.tertiary}
-              style={styles.coverPromptInput}
-              multiline
-            />
-            <Pressable
-              style={[styles.regenerateBtn, { opacity: 0.5 }]}
-              disabled
-              accessibilityRole="button"
-              accessibilityLabel="Regenerate cover — available after publishing"
-            >
-              <RefreshCw size={16} color={colors.accent} />
-              <Text style={styles.regenerateBtnText}>Regenerate Cover</Text>
-            </Pressable>
-            <Text style={styles.coverHint}>
-              Cover generation uses your prompt above.{"\n"}
-              A unique AI cover will be created when you publish.
-            </Text>
-          </View>
-
-          {/* Story summary */}
-          <View style={styles.coverSummary}>
-            <View style={styles.coverSummaryRow}>
-              <Text style={styles.coverSummaryLabel}>Title</Text>
-              <Text style={styles.coverSummaryValue}>{storyTitle || "Untitled"}</Text>
-            </View>
-            <View style={styles.coverSummaryRow}>
-              <Text style={styles.coverSummaryLabel}>Genre</Text>
-              <Text style={styles.coverSummaryValue}>{genreLabels[genre]}</Text>
-            </View>
-            <View style={styles.coverSummaryRow}>
-              <Text style={styles.coverSummaryLabel}>Words</Text>
-              <Text style={styles.coverSummaryValue}>{totalWords.toLocaleString()}</Text>
-            </View>
-            {story && story.chapters.length > 1 && (
-              <View style={styles.coverSummaryRow}>
-                <Text style={styles.coverSummaryLabel}>Chapters</Text>
-                <Text style={styles.coverSummaryValue}>{story.chapters.length}</Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1472,7 +2017,7 @@ export default function CreateStudioScreen({
       <SafeAreaView style={styles.flex}>
         {/* Header */}
         <View style={styles.editorHeader}>
-          <Pressable onPress={handleBackToCover} style={styles.editorBackBtn}>
+          <Pressable onPress={handleBackToEditor} style={styles.editorBackBtn}>
             <ArrowLeft size={20} color={colors.ink} />
             <Text style={styles.editorBackText}>Back</Text>
           </Pressable>
@@ -1481,19 +2026,122 @@ export default function CreateStudioScreen({
         </View>
 
         <ScrollView contentContainerStyle={styles.reviewScroll}>
-          {/* Mini cover + title */}
+          {/* The cover, as it actually is.
+            *
+            * §10.4: chapter 1's art *is* the cover, and it was generated when
+            * chapter 1 was. So this shows the real image when there is one and
+            * the free typographic concept card when there is not — and the
+            * concept card is labelled CONCEPT rather than dressed up as a
+            * preview, because keeping it is a legitimate published look and the
+            * writer is entitled to know which of the two they are choosing.
+            *
+            * The three states below are the three the row can actually be in.
+            * A spinner is shown only while the server says work is happening;
+            * a cover that failed says so and offers the retry, rather than
+            * spinning forever over a job nothing is running. */}
           <View style={styles.reviewCard}>
-            <View style={[styles.reviewCoverMini, { backgroundColor: gradient[1] }]}>
-              <Text style={styles.reviewCoverMiniTitle} numberOfLines={2}>
-                {storyTitle || "Untitled"}
-              </Text>
-            </View>
+            {cover.coverImageUrl ? (
+              <Image
+                source={{ uri: cover.coverImageUrl }}
+                style={styles.reviewCoverMini}
+                resizeMode="cover"
+                accessibilityRole="image"
+                accessibilityLabel={`Cover for ${storyTitle || "your story"}`}
+                testID="review-cover-image"
+              />
+            ) : (
+              <View
+                style={[styles.reviewCoverMini, { backgroundColor: gradient[1] }]}
+                accessibilityLabel="Concept cover"
+                testID="review-concept-cover"
+              >
+                <Text style={styles.reviewCoverMiniTitle} numberOfLines={2}>
+                  {storyTitle || "Untitled"}
+                </Text>
+                <Text style={styles.reviewCoverConceptTag}>CONCEPT</Text>
+              </View>
+            )}
             <View style={styles.reviewCardMeta}>
               <Text style={styles.reviewCardTitle}>{storyTitle || "Untitled"}</Text>
               <Text style={styles.reviewCardSubtitle}>
                 {genreLabels[genre]} · {totalWords.toLocaleString()} words
               </Text>
+              {cover.coverStatus === "generating" && !cover.coverImageUrl && (
+                <View style={styles.reviewCoverStatusRow} testID="cover-generating">
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.reviewCoverStatusText}>
+                    Painting chapter one&apos;s art
+                  </Text>
+                </View>
+              )}
+              {cover.coverStatus === "failed" && !cover.coverImageUrl && (
+                <Text style={styles.reviewCoverStatusText} testID="cover-failed">
+                  The cover didn&apos;t come through. Your concept card is a real
+                  cover — or try again below.
+                </Text>
+              )}
             </View>
+          </View>
+
+          {/* Cover controls. Never a permanently disabled button: the price is
+            * stated, the note is sent, and the only thing that turns the
+            * control off is a request already in flight. */}
+          <View style={styles.coverActions}>
+            <TextInput
+              value={coverPrompt}
+              onChangeText={setCoverPrompt}
+              maxLength={MAX_COVER_NOTE_CHARS}
+              placeholder="Optional. Say what this cover should show."
+              placeholderTextColor={colors.tertiary}
+              style={styles.coverPromptInput}
+              multiline
+              accessibilityLabel="Cover note"
+              accessibilityHint="Optional. Describe what the regenerated cover should show."
+              testID="cover-note-input"
+            />
+            <Pressable
+              onPress={handleRegenerateCover}
+              disabled={coverActionBusy || !story}
+              accessibilityRole="button"
+              accessibilityState={{
+                disabled: coverActionBusy,
+                busy: coverActionBusy,
+              }}
+              accessibilityLabel={
+                coverBusy
+                  ? "Regenerating the cover"
+                  : coverGenerating
+                    ? "A cover is already being made"
+                    : coverRegenCostsCredit
+                      ? "Regenerate the cover, 1 credit"
+                      : "Regenerate the cover, free"
+              }
+              style={[
+                styles.regenerateBtn,
+                coverActionBusy && styles.regenerateBtnBusy,
+              ]}
+              testID="regenerate-cover-button"
+            >
+              <RefreshCw size={16} color={colors.accent} />
+              <Text style={styles.regenerateBtnText}>
+                {coverBusy
+                  ? "Regenerating..."
+                  : coverGenerating
+                    ? "Painting the first one..."
+                    : `Regenerate cover · ${coverRegenCostsCredit ? "1 credit" : "free"}`}
+              </Text>
+            </Pressable>
+            {coverError && (
+              <Text style={styles.coverErrorText} testID="cover-error">
+                {coverError}
+              </Text>
+            )}
+            <Text style={styles.coverHint}>
+              {coverRegenCostsCredit
+                ? "Your free retry is used. Each new cover costs 1 credit."
+                : "Your first new cover is free. After that each one costs 1 credit."}
+              {"\n"}Keeping the concept card costs nothing.
+            </Text>
           </View>
 
           {/* Chapter list (only for series with multiple chapters) */}
@@ -1517,10 +2165,17 @@ export default function CreateStudioScreen({
           {/* What happens next */}
           <View style={styles.reviewInfoCard}>
             <Text style={styles.reviewSectionTitle}>What happens next</Text>
+            {/* The cover is deliberately not on this list any more. It was
+              * generated with chapter 1, and promising it again here was the
+              * same untruth the removed cover step told. */}
             <Text style={styles.reviewInfoText}>
-              {"\u2022"} A unique AI cover image will be generated{"\n"}
+              {"\u2022"} {cover.coverImageUrl
+                ? "Your cover goes out with the story"
+                : "Your concept card goes out as the cover"}{"\n"}
               {"\u2022"} Audio narration will be created in two voices{"\n"}
-              {"\u2022"} Your story will be visible to all readers
+              {"\u2022"} {draft.visibility === "public"
+                ? "Your story will be visible to all readers"
+                : "Your story stays private until you publish it"}
             </Text>
           </View>
         </ScrollView>
@@ -1554,7 +2209,9 @@ export default function CreateStudioScreen({
             {draft.visibility === "public" ? "Publishing your story..." : "Saving your story..."}
           </Text>
           <Text style={styles.publishingSubtitle}>
-            Generating cover image and audio
+            {/* Not "generating cover image" any more. The cover was made with
+              * chapter 1; this step saves the story. */}
+            Saving your chapters and starting narration
           </Text>
         </View>
       </SafeAreaView>
@@ -1595,8 +2252,26 @@ export default function CreateStudioScreen({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Story info card */}
+          {/* Story info card.
+            *
+            * The cover thumbnail appears here the moment chapter 1's art lands
+            * — §10.4 puts the cover with chapter 1, and a writer who has to
+            * reach the review step to find out whether their story has a face
+            * has been kept waiting for information that arrived minutes ago.
+            * Deliberately a thumbnail in a header the writer is already looking
+            * at, and never a modal: this is a reveal, not an interruption to
+            * somebody who is reading. */}
           <View style={styles.storyInfoCard}>
+            {cover.coverImageUrl && (
+              <Image
+                source={{ uri: cover.coverImageUrl }}
+                style={styles.editorCoverThumb}
+                resizeMode="cover"
+                accessibilityRole="image"
+                accessibilityLabel="Your story's cover"
+                testID="editor-cover-thumb"
+              />
+            )}
             {editingTitle ? (
               <TextInput
                 autoFocus
@@ -1657,6 +2332,9 @@ export default function CreateStudioScreen({
                 <Pressable
                   onPress={() => handleContinueStory(false)}
                   disabled={addingChapter}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: addingChapter, busy: addingChapter }}
+                  accessibilityLabel="Add the next chapter, 1 credit"
                   style={styles.chapterTabAdd}
                 >
                   <Plus size={14} color={colors.accent} />
@@ -1845,6 +2523,138 @@ export default function CreateStudioScreen({
               </View>
             ))}
           </View>
+
+          {/* End of chapter: say what happens next, then Continue.
+            *
+            * This sits at the foot of the chapter because that is where a
+            * reader arrives with an opinion about where the story should go.
+            * The tab-strip "+ Add" chip is the same action reached from the
+            * top of the screen; both call `handleContinueStory`, so there is
+            * one continuation path and one set of guards behind it.
+            *
+            * Only the last chapter gets it. Offering Continue while the reader
+            * is back editing chapter 1 of 3 would append to the end of the
+            * story from a position that does not look like the end.
+            *
+            * The copy below is literal English like the rest of this screen,
+            * which has no `useTranslation` yet. Every string here already has
+            * its EN/ES/PT key under `editor.whatHappensNext` so the screen-wide
+            * i18n pass has nothing left to translate when it happens. */}
+          {story
+            && activeChapterIndex === story.chapters.length - 1
+            && story.chapters.length < maxChapters && (
+            <View style={styles.continueBlock}>
+              <Text style={styles.continueHeading}>What happens next?</Text>
+              <TextInput
+                multiline
+                value={nextInstruction}
+                onChangeText={setNextInstruction}
+                maxLength={MAX_NEXT_INSTRUCTION_CHARS}
+                placeholder="Optional. Leave this blank and Katha decides."
+                placeholderTextColor={colors.tertiary}
+                style={styles.continueInput}
+                accessibilityLabel="What happens next"
+                accessibilityHint="Optional. Leave blank and Katha decides what the next chapter does."
+                testID="next-instruction-input"
+              />
+              {/* The counter appears only in the last stretch before the cap.
+                * A permanent countdown reads as a quota on a field most
+                * readers should feel free to leave empty; it earns its place
+                * once the next sentence is the one that gets truncated. */}
+              {nextInstruction.length >= MAX_NEXT_INSTRUCTION_CHARS - 60 && (
+                <Text style={styles.continueCounter}>
+                  {MAX_NEXT_INSTRUCTION_CHARS - nextInstruction.length} characters left
+                </Text>
+              )}
+              <Pressable
+                onPress={() => handleContinueStory(false)}
+                disabled={addingChapter}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: addingChapter, busy: addingChapter }}
+                accessibilityLabel={
+                  addingChapter
+                    ? "Writing the next chapter"
+                    : `${continueLabel}, 1 credit`
+                }
+                style={[
+                  styles.continueBtn,
+                  addingChapter && styles.continueBtnBusy,
+                ]}
+                testID="continue-chapter-button"
+              >
+                <Text style={styles.continueBtnText}>
+                  {addingChapter ? "Writing..." : `${continueLabel} · 1 credit`}
+                </Text>
+              </Pressable>
+              <Text style={styles.continueNote}>
+                Saying what happens next is free. The credit pays for the chapter.
+              </Text>
+
+              {/* Write the rest — the same loop, under program control.
+                *
+                * §10.2: "It is not a second mode — each chapter is still its
+                * own request, its own reservation and its own credit." So it
+                * sits under Continue rather than beside it, as the same action
+                * repeated rather than a different way of writing.
+                *
+                * The note about "What happens next?" is not decoration. A
+                * single typed direction aimed at one chapter must not silently
+                * steer seven, and the alternative — spending it on the run's
+                * first chapter only — makes one chapter of a program-driven
+                * run behave differently from the rest with nothing on screen
+                * to say which. So the run ignores the box, does not consume
+                * it, and says so here. The reader's note is still there for
+                * the next single Continue. */}
+              {canOfferWriteTheRest && (
+                <View style={styles.runOfferBlock}>
+                  <Pressable
+                    onPress={() => setRunConfirmOpen(true)}
+                    disabled={addingChapter || activeRun !== null}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      disabled: addingChapter || activeRun !== null,
+                    }}
+                    accessibilityLabel={`Write the rest, ${runQuote.remaining} chapters, ${runQuote.total} credits`}
+                    accessibilityHint="Shows what the whole run costs before anything is spent."
+                    style={[
+                      styles.runOfferBtn,
+                      (addingChapter || activeRun !== null)
+                        && styles.continueBtnBusy,
+                    ]}
+                    testID="write-the-rest-button"
+                  >
+                    <Text style={styles.runOfferBtnText}>
+                      Write the rest · {runQuote.total} credits
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.continueNote}>
+                    Chapters {chaptersWritten + 1} to {maxChapters}, one at a
+                    time. Stop after any of them and you keep what it wrote.
+                  </Text>
+                  <Text style={styles.continueNote}>
+                    Write the rest does not use What happens next? — that steers
+                    one chapter. Your note stays here for the next Continue.
+                  </Text>
+                </View>
+              )}
+
+            </View>
+          )}
+
+          {/* What the last run did. Said once, here, rather than as an alert:
+            * a Stop the writer chose is not an error to acknowledge.
+            *
+            * Outside the Continue block on purpose. That block hides itself
+            * once the plan is full, and a run that wrote its way to the final
+            * chapter — the ordinary successful ending, and the one that stops
+            * on the last chapter of all — would then have nowhere to say what
+            * it did. The notice belongs to the run, not to Continue, so it
+            * renders whenever there is one. */}
+          {runNotice && (
+            <Text style={styles.runNotice} testID="write-the-rest-notice">
+              {runNotice}
+            </Text>
+          )}
         </ScrollView>
 
         {/* Bottom toolbar */}
@@ -1864,6 +2674,115 @@ export default function CreateStudioScreen({
             <ChevronRight size={16} color={colors.surface} />
           </Pressable>
         </View>
+
+        {/* The itemised confirm.
+          *
+          * §10.2 requires "an itemised confirm stating text and art
+          * separately" *before* a run starts, and this is the only place in
+          * the flow that quotes a multi-credit total. Two things it must never
+          * do: imply a price the pricing document does not set — the per
+          * chapter line comes from `CHAPTER_TEXT_CREDITS`, not from a literal,
+          * and there is no art line because nothing charges for chapter art
+          * (see `runQuote`) — and start a run the balance cannot finish. A short balance is not a refusal: "you pay as
+          * each chapter is written" means it buys what it reaches, and the
+          * button then says exactly how many chapters that is. */}
+        {runConfirmOpen && story && (
+          <View style={styles.runSheetScrim} testID="write-the-rest-confirm">
+            <Pressable
+              style={styles.runSheetBackdrop}
+              onPress={() => setRunConfirmOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close without starting a run"
+            />
+            <View
+              style={styles.runSheet}
+              accessibilityViewIsModal
+              accessibilityRole="alert"
+            >
+              <Text style={styles.runSheetTitle}>Write the rest</Text>
+
+              <View style={styles.runSheetRow}>
+                <Text style={styles.runSheetLabel}>
+                  Chapters {chaptersWritten + 1} to {maxChapters}
+                </Text>
+                <Text style={styles.runSheetValue}>
+                  {runQuote.remaining === 1
+                    ? "1 chapter"
+                    : `${runQuote.remaining} chapters`}
+                </Text>
+              </View>
+              <View style={styles.runSheetRow}>
+                <Text style={styles.runSheetLabel}>
+                  Chapter text · {CHAPTER_TEXT_CREDITS} credit each
+                </Text>
+                <Text style={styles.runSheetValue}>
+                  {runQuote.textCredits} credits
+                </Text>
+              </View>
+              <View style={[styles.runSheetRow, styles.runSheetTotalRow]}>
+                <Text style={styles.runSheetTotalLabel}>Total</Text>
+                <Text
+                  style={styles.runSheetTotalValue}
+                  testID="write-the-rest-total"
+                >
+                  {runQuote.total} credits
+                </Text>
+              </View>
+
+              {credits < runQuote.total && (
+                <Text
+                  style={styles.runSheetShortfall}
+                  testID="write-the-rest-shortfall"
+                >
+                  {runQuote.affordable > 0
+                    ? `You have ${credits} credits and this run needs ${runQuote.total}. It will write ${runQuote.affordable} of the ${runQuote.remaining} chapters and stop there. You keep every chapter it writes.`
+                    : `You have ${credits} credits, and one more chapter needs ${runQuote.perChapter}. Nothing has been spent.`}
+                </Text>
+              )}
+
+              <Text style={styles.runSheetNote}>
+                Each chapter is its own request and its own credit, charged as
+                it is written. Stop after any of them and the rest costs
+                nothing.
+              </Text>
+              <Text style={styles.runSheetNote}>
+                What happens next? steers a single chapter, so a run does not
+                use it. Your note is left where it is.
+              </Text>
+
+              {runQuote.affordable > 0 && (
+                <Pressable
+                  onPress={() => {
+                    const chapters = runQuote.affordable;
+                    setRunConfirmOpen(false);
+                    startWriteTheRest(chapters);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Write ${runQuote.affordable} chapters for ${runQuote.affordable * runQuote.perChapter} credits`}
+                  style={styles.runSheetConfirmBtn}
+                  testID="write-the-rest-confirm-button"
+                >
+                  <Text style={styles.runSheetConfirmText}>
+                    {runQuote.affordable === 1
+                      ? "Write 1 chapter"
+                      : `Write ${runQuote.affordable} chapters`}
+                    {" · "}
+                    {runQuote.affordable * runQuote.perChapter} credits
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => setRunConfirmOpen(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Not now"
+                style={styles.runSheetCancelBtn}
+                testID="write-the-rest-cancel-button"
+              >
+                <Text style={styles.runSheetCancelText}>Not now</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Undo toast */}
         {undoTarget && (
@@ -2455,6 +3374,253 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  // End-of-chapter continuation
+  continueBlock: {
+    marginTop: spacing.xl,
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface2,
+  },
+  continueHeading: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 18,
+  },
+  continueInput: {
+    minHeight: 76,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    color: colors.ink,
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    textAlignVertical: "top",
+  },
+  continueCounter: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: "right",
+  },
+  continueBtn: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+  continueBtnBusy: {
+    opacity: 0.6,
+  },
+  continueBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.surface,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  continueNote: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: "center",
+  },
+
+  // "Write the rest" — the run bar, the offer, the confirm.
+  //
+  // Every colour here is a token. The run bar deliberately uses `surface` on
+  // `border` rather than the accent: it is a status strip that sits above prose
+  // the reader is reading, and an accent band there competes with the text the
+  // whole feature exists to deliver.
+  runBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  runBarBody: {
+    flex: 1,
+    gap: 2,
+  },
+  runBarProgress: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  runBarNote: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  runStopBtn: {
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface2,
+  },
+  runStopBtnBusy: {
+    opacity: 0.6,
+  },
+  runStopBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  runOfferBlock: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  runOfferBtn: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+  },
+  runOfferBtnText: {
+    fontFamily: fonts.ui,
+    color: colors.accent,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  // Sits on the scroll surface rather than inside the Continue card, so it
+  // carries its own horizontal inset.
+  runNotice: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: spacing.md,
+    marginHorizontal: spacing.lg,
+  },
+  runSheetScrim: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+  },
+  // The dim is its own layer rather than an alpha on the scrim, because
+  // `opacity` on the container would take the sheet down with it. Same
+  // treatment as `StoryActionsSheet`.
+  runSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.ink,
+    opacity: 0.5,
+  },
+  runSheet: {
+    gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  runSheetTitle: {
+    fontFamily: fonts.display,
+    color: colors.ink,
+    fontSize: 20,
+    marginBottom: spacing.xs,
+  },
+  runSheetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  runSheetLabel: {
+    flex: 1,
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 13,
+  },
+  runSheetValue: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  runSheetTotalRow: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  runSheetTotalLabel: {
+    flex: 1,
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  runSheetTotalValue: {
+    fontFamily: fonts.ui,
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  runSheetShortfall: {
+    fontFamily: fonts.ui,
+    // `heart` is the failure/attention colour every other line in this flow
+    // uses. A short balance is not an error, but it is the one line here the
+    // writer must not skim past.
+    color: colors.heart,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+    marginTop: spacing.xs,
+  },
+  runSheetNote: {
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  runSheetConfirmBtn: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    marginTop: spacing.sm,
+  },
+  runSheetConfirmText: {
+    fontFamily: fonts.ui,
+    color: colors.surface,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  runSheetCancelBtn: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  runSheetCancelText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
   // Bottom toolbar
   bottomToolbar: {
     flexDirection: "row",
@@ -2563,69 +3729,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Cover preview step
-  coverScroll: {
-    paddingBottom: spacing.huge,
-  },
-  coverCardWrap: {
-    alignItems: "center",
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl,
-  },
-  coverCard: {
-    width: 220,
-    height: 320,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  coverGradientTop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "35%",
-    opacity: 0.7,
-  },
-  coverGradientBottom: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: "25%",
-    opacity: 0.8,
-  },
-  coverTextOverlay: {
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-  },
-  coverGenreLabel: {
-    fontFamily: fonts.ui,
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  coverTitle: {
-    fontFamily: fonts.display,
-    color: "#FFFFFF",
-    fontSize: 22,
-    textAlign: "center",
-    lineHeight: 28,
-  },
-  coverChapterCount: {
-    fontFamily: fonts.ui,
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 12,
-    fontWeight: "600",
-  },
+  // Cover controls (review step)
   coverActions: {
     alignItems: "center",
     gap: spacing.md,
@@ -2671,34 +3775,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 18,
   },
-  coverSummary: {
-    marginTop: spacing.xxl,
-    marginHorizontal: spacing.xl,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.md,
-  },
-  coverSummaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  coverSummaryLabel: {
+  coverErrorText: {
     fontFamily: fonts.ui,
-    color: colors.muted,
+    // `heart` is what every other failure line in the create flow uses
+    // (StreamingProse, the portrait error, the credit warning). There is no
+    // separate danger token and inventing one here would be design drift.
+    color: colors.heart,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
+    textAlign: "center",
   },
-  coverSummaryValue: {
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: "800",
+  regenerateBtnBusy: {
+    opacity: 0.6,
   },
-
   // Review step
   reviewScroll: {
     paddingBottom: 120,
@@ -2715,19 +3804,59 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   reviewCoverMini: {
-    width: 64,
-    height: 88,
+    // Larger than the 64x88 it was. This is now the writer's confirmation of a
+    // real image rather than a decorative chip beside a title, and at 64 wide a
+    // generated cover is unjudgeable. The 3:4 ratio matches the card slot the
+    // story will occupy on the shelf.
+    width: 84,
+    height: 116,
     borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xs,
+    overflow: "hidden",
   },
   reviewCoverMiniTitle: {
     fontFamily: fonts.display,
-    color: "#FFFFFF",
-    fontSize: 10,
+    color: colors.surface,
+    fontSize: 12,
     textAlign: "center",
-    lineHeight: 13,
+    lineHeight: 15,
+  },
+  reviewCoverConceptTag: {
+    // The concept card says what it is. §10.4 makes keeping it a legitimate
+    // published look, which is only a choice if the writer can tell it apart
+    // from a generated cover that has not arrived.
+    marginTop: spacing.xs,
+    fontFamily: fonts.ui,
+    color: colors.surface,
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 1,
+    opacity: 0.75,
+  },
+  reviewCoverStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  reviewCoverStatusText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 17,
+    flexShrink: 1,
+  },
+  editorCoverThumb: {
+    // Small on purpose. This is a reveal inside a header the writer is already
+    // looking at, not a hero: chapter 1's art arriving must not push the prose
+    // they are editing down the screen.
+    width: 44,
+    height: 60,
+    borderRadius: radius.sm,
+    alignSelf: "flex-start",
+    marginBottom: spacing.sm,
   },
   reviewCardMeta: {
     flex: 1,

@@ -14,8 +14,8 @@ import {
   CHAPTER_METADATA_OUTPUT,
   CHAPTER_METADATA_SYSTEM_PROMPT,
   chapterLengthVerdict,
-  StreamCommittedError,
   streamChapterProse,
+  StreamCommittedError,
 } from "../_shared/story-stream.ts";
 import {
   errorMessage,
@@ -26,9 +26,7 @@ import {
 } from "../_shared/operations.ts";
 import {
   buildContinuationSystemPrompt,
-  buildUserPrompt,
-  formatSeriesStateBlock,
-  userField,
+  buildContinuationUserPrompt,
 } from "../_shared/story-prompts.ts";
 import {
   isEmptySeriesState,
@@ -311,9 +309,6 @@ serve(async (req) => {
       chapterLength: (story.chapter_length ?? "standard") as ChapterLength,
       plannedChapterCount,
     });
-    const finaleNote = isFinale
-      ? " This is the FINAL chapter. Bring the story to a satisfying close."
-      : "";
     // The world layer travels with every chapter, not just the first. Without
     // it a chapter-7 continuation has only the prose window above to infer the
     // setting from, and a series drifts out of its own world by degrees.
@@ -329,38 +324,38 @@ serve(async (req) => {
       : undefined;
     const avoid = typeof story.avoid === "string" ? story.avoid : undefined;
     const chapterLength = (story.chapter_length ?? "standard") as ChapterLength;
-    const briefPrompt = buildUserPrompt({
-      primaryGenre,
-      genres,
-      audienceMode,
-      spiceLevel,
-      storyMode: "series",
-      chapterRole,
-      seed: story.topic ?? "",
-      whereAndWhen: story.where_and_when ?? undefined,
-      moments,
-      beats,
-      chapterNumber: nextChapterNum,
-      storyValues,
-      writingStyle,
-      avoid,
-      continuationInstruction: nextInstruction || undefined,
-      chapterLength,
-      plannedChapterCount,
-      characters,
-    });
-    // Everything above the closing instruction is shared by the two transports.
-    // Only the last line differs, because only the last line is about shape.
-    const continuationBody =
-      `Continue this story with Chapter ${nextChapterNum}.${finaleNote}\n\n${
-        userField("story-title", story.title)
-      }\n${briefPrompt}\n${formatSeriesStateBlock(seriesState)}\n\n${
-        userField("previous-chapters", `${previousText}${earliestContext}`)
-      }`;
-    const userPrompt =
-      `${continuationBody}\n\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.`;
-    const proseUserPrompt =
-      `${continuationBody}\n\nRespond with the chapter text only. No title, no heading, no commentary, no JSON.`;
+    // One assembler for both transports, and it lives in `story-prompts.ts`.
+    //
+    // This was four template literals here, and the seam cost two bugs: the
+    // series state was read above, sent to the system prompt, and never passed
+    // to `buildUserPrompt`, so the delivered-moments partition saw an empty set
+    // on every chapter; and the exclusion, deliberately moved to the tail of
+    // the brief, ended up in front of the whole previous-chapters window. Both
+    // are now decided in the tested function rather than restated here.
+    const { jsonPrompt: userPrompt, prosePrompt: proseUserPrompt } =
+      buildContinuationUserPrompt({
+        primaryGenre,
+        genres,
+        audienceMode,
+        spiceLevel,
+        chapterRole,
+        chapterNumber: nextChapterNum,
+        chapterLength,
+        plannedChapterCount,
+        seed: story.topic ?? "",
+        whereAndWhen: story.where_and_when ?? undefined,
+        moments,
+        beats,
+        storyValues,
+        writingStyle,
+        avoid,
+        continuationInstruction: nextInstruction || undefined,
+        characters,
+        seriesState,
+        title: story.title,
+        previousChapters: `${previousText}${earliestContext}`,
+        isFinale,
+      });
 
     // Persisting a finished continuation is identical whether the prose
     // arrived in one response or in a thousand chunks, so both paths call this.
@@ -382,9 +377,18 @@ serve(async (req) => {
       // Which keys the model actually sent decides whether an empty list means
       // "cleared" or "not mentioned".
       const providedKeys = providedSeriesStateKeys(output.raw_series_state);
+      // `moments` is the allowlist for `delivered_moments`: the model is asked
+      // to echo the brief back, so anything it returns that was never in the
+      // brief is a hallucination and must not become stored state that every
+      // later chapter reads as fact.
       const nextState = isEmptySeriesState(output.series_state)
         ? seriesState
-        : mergeSeriesState(seriesState, output.series_state, providedKeys);
+        : mergeSeriesState(
+          seriesState,
+          output.series_state,
+          providedKeys,
+          moments,
+        );
       // A mid-series chapter must leave its ending hook in open_hooks so later
       // chapters can pay it off. The model sometimes writes a real hook_text
       // and hook_type but forgets to record it in the state. The chapter itself

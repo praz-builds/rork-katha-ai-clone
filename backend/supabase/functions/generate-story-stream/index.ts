@@ -57,7 +57,10 @@ import {
   streamChapterProse,
   StreamCommittedError,
 } from "../_shared/story-stream.ts";
-import { parseStructuredOutput } from "../_shared/story_text.ts";
+import {
+  parseStructuredOutput,
+  verifyDeliveredMoments,
+} from "../_shared/story_text.ts";
 import type { ChapterRole } from "../_shared/types.ts";
 import { EMPTY_SERIES_STATE, wordBandFor } from "../_shared/types.ts";
 import {
@@ -342,6 +345,13 @@ serve(async (req) => {
             "Untitled Story",
           );
 
+          // Chapter 1 opens the delivered set, so this is where an invented
+          // entry would enter it. Only moments the brief actually asked for
+          // survive into stored state.
+          output.series_state = verifyDeliveredMoments(
+            output.series_state,
+            moments,
+          );
           const verdict = chapterLengthVerdict(prose.text, band);
           if (!verdict.usable) {
             // Not a failure: the reader has already read this chapter, so
@@ -411,6 +421,7 @@ serve(async (req) => {
               title: output.title,
               themes: output.themes,
               whereAndWhen,
+              avoid,
               notifyOnReady,
             }));
           } catch (mediaError) {

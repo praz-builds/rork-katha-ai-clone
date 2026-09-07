@@ -303,6 +303,100 @@ Continuation structure:
 - Finale resolves the central tension and calls back to earlier details.
 - The planned final chapter is automatically a finale.
 
+## Brief Layers
+
+The user prompt is assembled from the brief the writer approved, in this order:
+idea, setting, kids values, writing direction, reader direction, planned length,
+plan beats, series state, characters, moments, exclusion, language, schema
+reminder. Every free-text value is fenced as untrusted data (`<katha:...>`), and
+the fence delimiter is stripped from the value so it cannot be closed early.
+
+Two of those layers carry rules of their own.
+
+### Moments and Their Delivery
+
+A moment is unordered: the model schedules it wherever the pacing allows, which
+is the difference between a moment and a plan beat, and the reason the
+instruction says "somewhere" rather than naming a chapter. Up to five may be
+pinned.
+
+Across a series the list is **partitioned, not repeated**. `series_state`
+carries `delivered_moments`, the moments earlier chapters reported delivering,
+and the moments layer splits the supplied list against it:
+
+- Moments already delivered are listed under their own heading and the model is
+  told they have happened and must not be written again.
+- Moments still owed keep the "each must happen somewhere in the story, in
+  whatever order serves the pacing" instruction.
+- When nothing is owed, the prompt says so plainly rather than emitting an empty
+  list — "no moments in the brief" and "every moment already landed" are
+  different stories.
+- Matching is on trimmed text. A story created before delivery tracking existed
+  has no `delivered_moments` key; a missing or non-list value reads as empty and
+  briefs exactly as it always did.
+
+**Runway pressure.** When the chapters remaining
+(`planned_chapter_count - chapter_number + 1`, clamped at one) are no more than
+the moments still owed, the prompt states both counts and instructs the model to
+start landing them in this chapter. Without it a series defers every moment and
+arrives at its finale owing the whole brief. A missing or nonsensical chapter
+number reads as chapter one, the same defensive reading the plan layer uses.
+
+The moments block sits directly beneath the cast, and carries one line saying
+that where a moment names a character from the cast above, it refers to that
+character. This is what links the two without making `moments` a structured
+column.
+
+Both halves of that partition have to be wired for either to work. The
+continuation prompt is assembled by `buildContinuationUserPrompt`
+(`story-prompts.ts`), which takes `series_state` as a **required** argument and
+passes it into the brief itself. It is a single function rather than four
+template literals in `continue-story/index.ts` because when it was the latter,
+the handler read the row's state, gave it to the *system* prompt, and left it
+out of the brief — so `delivered_moments` was empty on every chapter of every
+story, the "already delivered" heading never rendered, and the runway line
+always claimed the entire brief was still owed.
+
+`delivered_moments` is part of the emitted `series_state`, so the model reports
+what it delivered. Every entry must be **copied verbatim** from the supplied
+moments; the merge is append-only and drops anything the brief did not contain,
+so a partial, malformed or inventive response can neither shrink the delivered
+set nor write arbitrary text into stored state. Chapter 1 is verified the same
+way, since it is where the set starts.
+
+### The Exclusion Layer (`avoid`)
+
+`avoid` is the **last** content layer, after the moments and before the language
+line. It is stated as a bound, not a preference: the text must not appear, it
+must not be alluded to, and it must not be substituted by a renamed version.
+Negative constraints need recency, and a hedge invites the model to trade the
+constraint away against everything asked of it further down the prompt.
+
+"Last" is measured against the whole message, not against the brief. On a
+continuation the brief is only the opening of the user turn: the
+previous-chapters window follows it, and by chapter seven that window is the
+largest block in the request. So `buildUserPrompt` takes `deferExclusion` and
+`buildContinuationUserPrompt` emits `buildExclusionBlock` **after** the window,
+immediately before the single closing instruction — which is also the only
+closing instruction now, rather than the brief's plus the handler's. A first
+chapter is unchanged: nothing follows its brief, so the exclusion stays where
+the builder puts it.
+
+`avoid` also reaches the **cover**. It is threaded from the generation functions
+through `generateStoryMedia` and `generateCoverImage` into `buildCoverPrompt`,
+where it renders as an explicit `Do not depict: ...` clause. The exclusion is
+carried at **every rung of the safety-level fallback ladder**, including the
+genre-and-title-only rung: that ladder exists to get past a content filter, so
+the rung most likely to be reached is the one where an unconstrained cover would
+be worst. The value is sanitized before it leaves for the image provider —
+newlines collapsed, sentence terminators collapsed to commas, quoting and
+bracket characters removed, length capped — because it is user free text
+travelling to a third party in the same string as our own instructions. That
+sanitizer is applied to the two free-text fields that reach a cover prompt,
+`avoid` and the regeneration steer; `title` and `where_and_when` are
+interpolated as written, deliberately, because collapsing punctuation in them
+would turn "Dr. Smith's Door" into "Dr, Smiths Door".
+
 ## Anti-Slop Rules
 
 ### Banned Words
@@ -688,7 +782,8 @@ Standalone:
     "promised_payoffs": [],
     "world_facts": [],
     "character_changes": [],
-    "next_chapter_pressure": ""
+    "next_chapter_pressure": "",
+    "delivered_moments": []
   },
   "hook_type": "none",
   "hook_text": ""
@@ -714,7 +809,8 @@ Continuation:
     "promised_payoffs": ["string"],
     "world_facts": ["string"],
     "character_changes": ["string"],
-    "next_chapter_pressure": "string"
+    "next_chapter_pressure": "string",
+    "delivered_moments": ["string"]
   },
   "hook_type": "none|revelation|reversal|decision|arrival|betrayal|danger|unanswered_question|emotional_rupture",
   "hook_text": "string"
@@ -729,6 +825,10 @@ Field rules:
   continuation context.
 - `series_state`: empty strings/arrays for standalone; complete continuity state
   for every series chapter.
+- `series_state.delivered_moments`: the promised moments this chapter actually
+  delivered, each copied verbatim from the supplied list. Never invented, never
+  reworded, and a moment only set up does not belong here. The server merges it
+  append-only and discards any entry the brief did not contain.
 - `hook_type` and `hook_text`: `none`/empty for standalone and finale; required
   for series opening and mid-series chapters.
 - Taxonomy, audience, ratings and chapter roles are server-derived metadata and
@@ -755,7 +855,10 @@ Required request fields:
 - `identity_lenses`: optional, currently only `queer`
 - `spice_level`: optional, defaults by genre and account permissions
 - `where_and_when`, `moments`, `writing_style` and `avoid`: optional bounded
-  brief fields; every free-text value is fenced as untrusted data
+  brief fields; every free-text value is fenced as untrusted data. `moments` is
+  capped at five and tracked for delivery across a series; `avoid` is a hard
+  constraint on the prose and is also routed to the cover prompt, so the art is
+  bound by the same exclusion as the text. See **Brief Layers**.
 - `story_values`: optional and meaningful only in Kids mode; the model explores
   them through action rather than delivering a lesson
 - `chapter_length`: `short | standard | long`, selecting 600-900,

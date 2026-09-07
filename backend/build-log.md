@@ -7,6 +7,90 @@
 
 ---
 
+## 2026-09-07 UTC — Brief fidelity, chapter steering, an honest cover, and Write the rest
+
+**Session:** Four changes to the create flow, in the order they depend on each
+other. Everything the user types in the brief now reaches the model, the writer
+can steer each chapter, the cover step stops lying about when the cover is made,
+and the remaining chapters can be handed over in one action.
+
+### Moments were re-promised on every chapter
+
+A series handed all five moments to every chapter under "each must happen
+somewhere in the story", and nothing recorded that one had landed. The model
+either wrote a moment twice or held all five for the finale. `series_state`
+gained `delivered_moments`; the prompt now partitions the list into delivered
+(do not repeat) and owed, and adds runway pressure once the chapters remaining
+no longer cover what is owed. The merge is an append-only union allowlisted
+against the story's own moments, so neither a partial response nor an inventive
+one can shrink the set or inject text into it. `series_state` is `jsonb`, so no
+migration was needed, and a story predating the key reads as `[]`.
+
+### `avoid` was the weakest line in the prompt, and never reached the art
+
+It sat fifth of twelve blocks reading "keep this out of the story where
+reasonably possible" — a hedge on a negative constraint, in the position least
+likely to survive. It now sits at the tail after moments, stated as a
+constraint. It is also threaded through `generateStoryMedia` into
+`buildCoverPrompt` as an explicit exclusion, sanitized before it reaches the
+image provider and preserved at every rung of the safety fallback ladder.
+
+### `next_instruction` existed on the server and no client sent it
+
+`continue-story` has validated it all along and `story-prompts.ts` already
+carried the rule that typed direction outranks the approved beat. Only the UI
+was missing. The end of a chapter now offers an optional 300-character box above
+a Continue button carrying its price; blank sends nothing, and the box clears
+only on success so a failed continuation keeps what was typed.
+
+### The cover step described work that had already happened
+
+It showed a gradient concept card rather than the real cover, promised the cover
+would be made "when you publish" when `generate-story` schedules the art the
+moment chapter 1 persists, and collected a cover note into state nothing read,
+beside a permanently disabled Regenerate button. Per `STORY_GENERATION_FLOW.md`
+§10.4 the step is removed rather than repaired: the editor header reveals the
+thumbnail when the art lands, and review shows the real cover with an honest
+`cover_status`.
+
+**Migration 00044** adds `stories.cover_regen_count` and `stories.cover_prompt`
+(the latter did not exist, despite being referenced in a 00027 comment), plus
+`claim_cover_regeneration` and `finish_cover_regeneration`. The new
+`regenerate-cover` function reserves through the existing `kind='cover'`
+operation path, inheriting idempotency and auto-refund. `requires_credit` is
+decided inside the claim, under the same advisory lock and `for update` that
+claims the row — reading it in the Edge Function and acting a round trip later
+is what turns two fast taps into two free covers. The counter moves only in the
+statement that writes the URL, so an exhausted generation costs nothing and does
+not spend the free retry.
+
+### Write the rest
+
+`continueOnce` is now the only continuation path; the run loops it. Each chapter
+stays its own request, reservation and credit. Stop lets the in-flight chapter
+finish rather than abandoning a reservation the server is already writing
+against, a failure ends the run without retrying, and the "What happens next?"
+box is ignored and not consumed by a run — stated in the confirm sheet and under
+the button.
+
+### Verification
+
+- Backend: `deno test --allow-env --allow-net --allow-read
+  backend/supabase/functions/_shared/` — **337 passed, 0 failed** (291 on the
+  base commit). `deno check` passes on every `functions/*/index.ts`, including
+  the new `regenerate-cover`. `deno fmt --check` clean on the three gated files.
+- Expo: `pnpm typecheck` 0 errors; `pnpm lint` 0 errors (17 pre-existing
+  warnings, none in touched files); `npx jest --ci` — **305 passed, 30 suites**
+  (274/27 on the base commit).
+- Type-checking note: an intermediate agent ran the backend suite with
+  `--no-check` and reported four type errors it had introduced as pre-existing.
+  They were real and are fixed. The base commit was re-measured clean to confirm
+  it, and every gate above was re-run by the orchestrator rather than trusted.
+- **No Supabase function was deployed and no production-level test was run
+  against deployed infrastructure**, so no `error_events` rows were required.
+  Migration 00044 is unapplied; `regenerate-cover` is undeployed. Both must ship
+  before the cover UI is exercised against production.
+
 ## 2026-09-06 UTC — Main Create single-screen correction
 
 **Session:** Corrected the Expo main Create UI after review: the main story-generation flow is one screen, not Idea → Review. Character craft remains the only separate full-screen surface.

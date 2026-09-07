@@ -345,6 +345,18 @@ export interface SeriesState {
   world_facts: string[];
   character_changes: string[];
   next_chapter_pressure: string;
+  /**
+   * The promised moments that have already landed, across every chapter so far.
+   *
+   * A moment is unordered and the model schedules it wherever the pacing
+   * allows, which is right for a standalone story and wrong for a series:
+   * every chapter was handed all five with "each must happen somewhere", so the
+   * model either repeated one it had already written or deferred all of them
+   * into the finale. Recording what landed is what lets a later chapter be told
+   * what it still owes. Entries are echoed verbatim from the supplied moments,
+   * never invented, and the set only ever grows.
+   */
+  delivered_moments: string[];
 }
 
 export const EMPTY_SERIES_STATE: SeriesState = {
@@ -357,6 +369,7 @@ export const EMPTY_SERIES_STATE: SeriesState = {
   world_facts: [],
   character_changes: [],
   next_chapter_pressure: "",
+  delivered_moments: [],
 };
 
 /**

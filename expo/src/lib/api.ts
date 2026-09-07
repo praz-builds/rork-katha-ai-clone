@@ -12,6 +12,7 @@ import { GENRES } from "@/types/domain";
 import type {
   Chapter,
   ChapterRole,
+  CoverStatus,
   CreateDraft,
   Genre,
   HookType,
@@ -522,7 +523,29 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
     language: typeof story.language === "string"
       ? story.language
       : draft.language,
+    // Chapter 1's art is the cover (§10.4) and it is generated on a background
+    // task after this response is flushed, so what arrives here is almost
+    // always `generating` with no URL behind it yet. Carrying it anyway is what
+    // lets the studio show a progress line instead of guessing from a null URL,
+    // which is the same value a cover that failed leaves behind.
+    coverImageUrl: stringOrUndefined(story.cover_image_url),
+    coverStatus: parseCoverStatus(story.cover_status),
+    coverRegenCount: numberOrZero(story.cover_regen_count),
   };
+}
+
+const COVER_STATUSES: readonly CoverStatus[] = [
+  "pending",
+  "generating",
+  "ready",
+  "failed",
+];
+
+function parseCoverStatus(value: unknown): CoverStatus | undefined {
+  return typeof value === "string" &&
+      (COVER_STATUSES as readonly string[]).includes(value)
+    ? value as CoverStatus
+    : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -1173,6 +1196,127 @@ export async function publishStory(
   if (error) {
     throw new Error("Publishing failed. Please try again.");
   }
+}
+
+// ---------------------------------------------------------------------------
+// The cover
+// ---------------------------------------------------------------------------
+
+/** What the server knows about a story's cover right now. */
+export type CoverState = {
+  coverImageUrl?: string;
+  coverStatus: CoverStatus;
+  /** 0 means the next regeneration is the free retry; above 0 it costs 1. */
+  coverRegenCount: number;
+};
+
+/**
+ * Read a story's cover state.
+ *
+ * This exists because chapter 1's art is produced on a background task *after*
+ * the generation response is flushed (`media.ts`), so the studio is handed
+ * `cover_status: "generating"` and then has no second moment at which it could
+ * ever learn the cover arrived. `regenerate-cover` answers a GET for exactly
+ * this, in the shape `audio-status` already uses for the other background media
+ * job.
+ *
+ * Returns null rather than throwing on every failure, offline included. A cover
+ * the reader cannot see yet is a missing picture, never an error dialogue in
+ * front of a story that is otherwise finished.
+ */
+export async function fetchCoverState(
+  storyId: string,
+): Promise<CoverState | null> {
+  if (!isSupabaseConfigured) return null;
+
+  try {
+    await bootstrapUser();
+  } catch {
+    return null;
+  }
+
+  const { data, error } = await supabase.functions.invoke(
+    `regenerate-cover?story_id=${encodeURIComponent(storyId)}`,
+    { method: "GET" },
+  );
+  if (error || !data || typeof data !== "object") return null;
+
+  const payload = data as Record<string, unknown>;
+  const status = parseCoverStatus(payload.cover_status);
+  if (!status) return null;
+  return {
+    coverImageUrl: stringOrUndefined(payload.cover_image_url),
+    coverStatus: status,
+    coverRegenCount: numberOrZero(payload.cover_regen_count),
+  };
+}
+
+/**
+ * Re-roll a story's cover.
+ *
+ * The price is the server's to state, not this function's: the first
+ * regeneration is free and every one after it is 1 credit
+ * (`CREDITS_AND_PRICING.md`), and the count that decides it is read under the
+ * same lock that claims the row. `charged` comes back so the caller can adjust
+ * the balance it is displaying without re-deriving the rule.
+ *
+ * Unlike `fetchCoverState` this throws, because it is a paid action the writer
+ * asked for by name and a silent no-op would look like a cover that simply
+ * refused to change.
+ */
+export async function regenerateCover(
+  storyId: string,
+  requestId: string,
+  promptNote?: string,
+): Promise<CoverState & { charged: boolean }> {
+  if (!isSupabaseConfigured) {
+    // The offline shape the other generation calls use: a plausible delay and a
+    // scheme-tagged URL nothing will try to fetch.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return {
+      coverImageUrl: `cover://${storyId}/${requestId}`,
+      coverStatus: "ready",
+      coverRegenCount: 1,
+      charged: false,
+    };
+  }
+
+  try {
+    await bootstrapUser();
+  } catch {
+    throw new GenerationRequestError(
+      "Unable to set up your story account. Please try again.",
+      false,
+    );
+  }
+
+  const { data, error } = await supabase.functions.invoke("regenerate-cover", {
+    body: {
+      story_id: storyId,
+      request_id: requestId,
+      ...(promptNote ? { prompt_note: promptNote } : {}),
+    },
+  });
+
+  if (error) {
+    const failure = await edgeFunctionFailure(error, data);
+    throw new GenerationRequestError(failure.message, true);
+  }
+
+  const payload = (data ?? {}) as Record<string, unknown>;
+  const url = stringOrUndefined(payload.cover_image_url);
+  if (!url) {
+    throw new GenerationRequestError(
+      "The cover could not be regenerated. Please try again.",
+      true,
+    );
+  }
+  return {
+    coverImageUrl: url,
+    coverStatus: parseCoverStatus(payload.cover_status) ?? "ready",
+    coverRegenCount: numberOrZero(payload.cover_regen_count),
+    charged: payload.charged === true,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -301,7 +301,7 @@ This is Chapter 1 of a series, not a complete standalone story.
 - Do NOT include the final climax. Chapter 1 should feel satisfying as an episode but unfinished as a larger story.
 - End with a strong hook that grows from the chapter's conflict: revelation, reversal, decision, arrival, betrayal, danger, unanswered_question, or emotional_rupture.
 - The hook must not feel pasted onto the final paragraph. It should be the consequence of what happened in the chapter.
-- Return a complete "series_state" object that future chapters can rely on. Include central_conflict, protagonist_want, relationship_state, open_hooks, promised_payoffs, world_facts, character_changes, and next_chapter_pressure.
+- Return a complete "series_state" object that future chapters can rely on. Include central_conflict, protagonist_want, relationship_state, open_hooks, promised_payoffs, world_facts, character_changes, next_chapter_pressure, and delivered_moments.
 - "resolved_hooks" should be empty unless the chapter resolves a smaller opening question.`;
   }
 
@@ -325,7 +325,8 @@ The series_state you return is the state AFTER this finale, not a copy of the st
 
 - Every hook this finale pays off MUST move from "open_hooks" to "resolved_hooks".
 - "next_chapter_pressure" MUST be empty: the series is over.
-- "character_changes" MUST record where each major character ended up.${stateSection}`;
+- "character_changes" MUST record where each major character ended up.
+- "delivered_moments" MUST list every promised moment this finale delivered, each copied verbatim from the moments you were given.${stateSection}`;
   }
 
   return `
@@ -351,7 +352,8 @@ The series_state you return is the state AFTER this chapter, not a copy of the s
 - Add at least one new entry to "open_hooks" for the hook this chapter ends on.
 - Add this chapter's irreversible change to "character_changes", and any new world detail to "world_facts".
 - "relationship_state" MUST reflect where the relationships stand at the END of this chapter.
-- Keep "central_conflict" stable unless this chapter genuinely redefined it.${stateSection}`;
+- Keep "central_conflict" stable unless this chapter genuinely redefined it.
+- "delivered_moments" MUST list every promised moment this chapter delivered, each copied verbatim from the moments you were given. Omit a moment you only set up.${stateSection}`;
 }
 
 function buildPlannedLengthRules(
@@ -419,6 +421,13 @@ function formatSeriesState(state: SeriesState): string {
       world_facts: state.world_facts,
       character_changes: state.character_changes,
       next_chapter_pressure: state.next_chapter_pressure,
+      // The one series_state field the model is asked to echo user text into,
+      // so it is the one that can carry a user's delimiter back into the
+      // prompt. Stripped here for the same reason `SERIES_STATE_FENCE` strips
+      // this block's own delimiter from its payload.
+      delivered_moments:
+        (Array.isArray(state.delivered_moments) ? state.delivered_moments : [])
+          .map(fenceUserText),
     },
     null,
     2,
@@ -774,7 +783,8 @@ Schema:
     "promised_payoffs": ["string"],
     "world_facts": ["string"],
     "character_changes": ["string"],
-    "next_chapter_pressure": "string"
+    "next_chapter_pressure": "string",
+    "delivered_moments": ["string (a promised moment this chapter actually delivered, copied verbatim from the moments you were given; never invent an entry and never reword one)"]
   },
   "hook_type": "none | revelation | reversal | decision | arrival | betrayal | danger | unanswered_question | emotional_rupture",
   "hook_text": "string, empty for standalone/finale unless there is a soft non-series resonance"
@@ -1181,6 +1191,23 @@ export function buildUserPrompt(params: {
   storyValues?: string[];
   writingStyle?: string;
   avoid?: string;
+  /**
+   * Hold the exclusion back so the caller can place it itself.
+   *
+   * The exclusion layer is last in this function because a negative constraint
+   * needs recency. On the continuation path this prompt is not the end of the
+   * message - `buildContinuationUserPrompt` appends the previous-chapters
+   * window after it, which by chapter seven is the largest block in the
+   * request - so "last in the brief" is nowhere near last in the prompt. The
+   * caller sets this and emits `buildExclusionBlock` itself, after that window.
+   */
+  deferExclusion?: boolean;
+  /**
+   * Omit the trailing "respond with JSON" line, for a caller that appends its
+   * own closing instruction. Without this a continuation carried two of them,
+   * and on the prose transport they contradicted each other.
+   */
+  omitClosingInstruction?: boolean;
   continuationInstruction?: string;
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
@@ -1207,6 +1234,8 @@ export function buildUserPrompt(params: {
   storyValues?: string[];
   writingStyle?: string;
   avoid?: string;
+  deferExclusion?: boolean;
+  omitClosingInstruction?: boolean;
   continuationInstruction?: string;
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
@@ -1308,14 +1337,6 @@ export function buildUserPrompt(params: {
     );
   }
 
-  if (params.avoid?.trim()) {
-    parts.push(
-      `Keep this out of the story where reasonably possible:\n${
-        userField("avoid", params.avoid)
-      }`,
-    );
-  }
-
   if (params.continuationInstruction?.trim()) {
     parts.push(
       `For this chapter, move toward this reader direction without treating it as a checklist:\n${
@@ -1386,23 +1407,240 @@ export function buildUserPrompt(params: {
   // collects them as chips rather than as a paragraph: a paragraph is one blob
   // to parse and partially ignore. The instruction says "somewhere",
   // deliberately - pinning a beat to a chapter produces a checklist.
+  //
+  // Across a series the list has to be partitioned, not repeated. Every chapter
+  // used to receive all five moments under "each must happen somewhere", with
+  // nothing recording that one had already landed: the model either wrote a
+  // moment twice or held all of them back for the finale. `delivered_moments`
+  // in series_state is what the earlier chapters reported delivering, so the
+  // owed set is the supplied list minus that.
   const moments = params.moments?.filter((m) => m.trim()) ?? [];
   if (moments.length) {
-    parts.push(
-      "Moments the reader was promised. Each must happen somewhere in the story, in whatever order serves the pacing. Do not announce them; let them arrive:",
+    // A story created before delivery tracking has no key here, and an older
+    // or hand-edited row can hold something that is not a list at all. Both
+    // must read as "nothing delivered yet" and brief exactly as before.
+    const stored = params.seriesState?.delivered_moments;
+    const delivered = new Set(
+      (Array.isArray(stored) ? stored : [])
+        .filter((moment): moment is string => typeof moment === "string")
+        .map((moment) => moment.trim())
+        .filter(Boolean),
     );
-    for (const moment of moments) {
-      parts.push(`- ${userField("moment", moment)}`);
+    const landed = moments.filter((moment) => delivered.has(moment.trim()));
+    const owed = moments.filter((moment) => !delivered.has(moment.trim()));
+
+    if (landed.length) {
+      parts.push(
+        "Moments already delivered in earlier chapters. They have happened; do not write them again:",
+      );
+      for (const moment of landed) {
+        parts.push(`- ${userField("moment", moment)}`);
+      }
     }
+
+    if (owed.length) {
+      parts.push(
+        "Moments the reader was promised and that have not happened yet. Each must happen somewhere in the story, in whatever order serves the pacing. Do not announce them; let them arrive:",
+      );
+      for (const moment of owed) {
+        parts.push(`- ${userField("moment", moment)}`);
+      }
+    } else {
+      // Saying nothing here would read as "the brief has no moments", which is
+      // a different story from "every promised moment has already landed".
+      parts.push(
+        "Every promised moment has already been delivered in an earlier chapter. Nothing on that list is still owed; write this chapter from where the story stands.",
+      );
+    }
+
+    // The moments block sits directly under the cast for this reason: a moment
+    // is written about the characters above it, not about a stranger with the
+    // same name.
+    parts.push(
+      "Where a moment names a character from the cast above, it refers to that character.",
+    );
+
+    // Runway pressure.
+    //
+    // A moment nobody is pushed to spend gets deferred, and a series that
+    // defers all five arrives at its final chapter owing the whole brief. When
+    // there is no longer room to write one moment per remaining chapter, say so
+    // in numbers. Chapter numbers are 1-indexed and a missing or nonsensical
+    // one means chapter 1, the same defensive reading `buildPlanSection` uses.
+    if (params.storyMode === "series" && owed.length) {
+      const planned = params.plannedChapterCount ??
+        DEFAULT_PLANNED_CHAPTER_COUNT;
+      const index = Number.isInteger(params.chapterNumber) &&
+          (params.chapterNumber as number) >= 1
+        ? (params.chapterNumber as number)
+        : 1;
+      const remaining = Math.max(1, planned - index + 1);
+      if (remaining <= owed.length) {
+        parts.push(
+          `Runway: ${remaining} ${
+            remaining === 1 ? "chapter remains" : "chapters remain"
+          } including this one, and ${owed.length} ${
+            owed.length === 1 ? "promised moment is" : "promised moments are"
+          } still owed. Start landing them now. Holding them all for the final chapter is a failure.`,
+        );
+      }
+    }
+  }
+
+  // --- Exclusion layer ---
+  //
+  // Last, unless the caller asked for it back so it can be placed later still.
+  // See `buildExclusionBlock`.
+  if (!params.deferExclusion) {
+    const exclusion = buildExclusionBlock(params.avoid);
+    if (exclusion) parts.push(exclusion);
   }
 
   if (params.language && params.language !== "English") {
     parts.push(`Write in ${params.language}.`);
   }
 
-  parts.push(
-    "\nRespond with a JSON object only. No markdown fences. Follow the output schema from your instructions.",
-  );
+  if (!params.omitClosingInstruction) {
+    parts.push(`\n${JSON_CLOSING_INSTRUCTION}`);
+  }
 
   return parts.join("\n");
+}
+
+/** The last line of a prompt that wants structured output. */
+const JSON_CLOSING_INSTRUCTION =
+  "Respond with a JSON object only. No markdown fences. Follow the output schema from your instructions.";
+
+/** The last line of a prompt that wants prose and nothing else. */
+const PROSE_CLOSING_INSTRUCTION =
+  "Respond with the chapter text only. No title, no heading, no commentary, no JSON.";
+
+/**
+ * The *Avoid* field, as a bound rather than a preference.
+ *
+ * A block of its own, and exported, because where it sits is the whole point
+ * of it. It used to be the fifth of a dozen brief sections, phrased as "keep
+ * this out where reasonably possible" - a hedge the model can trade away
+ * against everything asked of it afterwards. A negative constraint needs
+ * recency and no escape clause, so it is emitted last.
+ *
+ * "Last in the brief" and "last in the prompt" are the same thing only for a
+ * first chapter. A continuation wraps the brief in a much larger message, so
+ * `buildContinuationUserPrompt` asks `buildUserPrompt` to hold this back and
+ * emits it after the previous-chapters window instead. Returns "" when there
+ * is nothing to exclude, so the caller can concatenate unconditionally.
+ */
+export function buildExclusionBlock(avoid?: string): string {
+  if (!avoid?.trim()) return "";
+  return `This must not appear in the story. It is a constraint, not a preference:\n${
+    userField("avoid", avoid)
+  }\nDo not depict it, allude to it, or substitute a renamed version of it.`;
+}
+
+/**
+ * Everything `continue-story` sends as the user turn, for both transports.
+ *
+ * ## Why this is here and not in the handler
+ *
+ * It used to be four template literals in `continue-story/index.ts`, and two
+ * bugs lived in the gap between them and `buildUserPrompt`:
+ *
+ *   - `seriesState` was read from the row, put into the *system* prompt, and
+ *     then not passed to `buildUserPrompt`. The delivered-moments partition
+ *     reads `params.seriesState?.delivered_moments`, so it saw an empty set on
+ *     every chapter of every story: the "already delivered, do not repeat"
+ *     block never rendered once in production, and the runway line always
+ *     claimed the whole brief was still owed. `story-prompts.test.ts` handed
+ *     `buildUserPrompt` a `seriesState` directly and was green over it.
+ *   - the exclusion was moved to the tail of the brief for recency, and the
+ *     handler then appended several thousand tokens of previous chapters after
+ *     it, which is the position the move was meant to get it out of.
+ *
+ * Both are the same failure: the assembly was not a thing that could be tested,
+ * so what was tested was a hand-built approximation of it. `seriesState` is
+ * required here rather than optional for exactly that reason - a caller cannot
+ * forget it - and the exclusion is placed by this function rather than by the
+ * caller.
+ */
+export interface ContinuationPromptInput {
+  primaryGenre: string;
+  genres: string[];
+  audienceMode: AudienceMode;
+  spiceLevel: SpiceLevel;
+  chapterRole: ChapterRole;
+  chapterNumber: number;
+  chapterLength: "short" | "standard" | "long";
+  plannedChapterCount: 3 | 7 | 15;
+  seed: string;
+  whereAndWhen?: string;
+  moments: string[];
+  beats: string[];
+  storyValues: string[];
+  writingStyle?: string;
+  avoid?: string;
+  continuationInstruction?: string;
+  characters: CharacterInput[];
+  /**
+   * Continuity carried forward from earlier chapters. Not optional: an absent
+   * one is `parseSeriesState(null)`, which is an empty state, not a missing
+   * argument.
+   */
+  seriesState: SeriesState;
+  title: string;
+  /** The rendered previous-chapters window, already summarized and fenced. */
+  previousChapters: string;
+  isFinale: boolean;
+}
+
+export function buildContinuationUserPrompt(
+  input: ContinuationPromptInput,
+): { jsonPrompt: string; prosePrompt: string } {
+  const finaleNote = input.isFinale
+    ? " This is the FINAL chapter. Bring the story to a satisfying close."
+    : "";
+
+  const brief = buildUserPrompt({
+    primaryGenre: input.primaryGenre,
+    genres: input.genres,
+    audienceMode: input.audienceMode,
+    spiceLevel: input.spiceLevel,
+    storyMode: "series",
+    chapterRole: input.chapterRole,
+    seriesState: input.seriesState,
+    seed: input.seed,
+    whereAndWhen: input.whereAndWhen,
+    moments: input.moments,
+    beats: input.beats,
+    chapterNumber: input.chapterNumber,
+    storyValues: input.storyValues,
+    writingStyle: input.writingStyle,
+    avoid: input.avoid,
+    continuationInstruction: input.continuationInstruction,
+    chapterLength: input.chapterLength,
+    plannedChapterCount: input.plannedChapterCount,
+    characters: input.characters,
+    // Both held back so this function can put them either side of the window
+    // below. The brief is no longer the end of the message.
+    deferExclusion: true,
+    omitClosingInstruction: true,
+  });
+
+  const exclusion = buildExclusionBlock(input.avoid);
+
+  // Everything above the closing instruction is shared by the two transports.
+  // Only the last line differs, because only the last line is about shape.
+  const body =
+    `Continue this story with Chapter ${input.chapterNumber}.${finaleNote}
+
+${userField("story-title", input.title)}
+${brief}
+
+${userField("previous-chapters", input.previousChapters)}${
+      exclusion ? `\n\n${exclusion}` : ""
+    }`;
+
+  return {
+    jsonPrompt: `${body}\n\n${JSON_CLOSING_INSTRUCTION}`,
+    prosePrompt: `${body}\n\n${PROSE_CLOSING_INSTRUCTION}`,
+  };
 }

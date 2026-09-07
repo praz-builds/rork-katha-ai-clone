@@ -715,9 +715,79 @@ Create ·  n ✦
   that keeps every chapter already written, and a resume prompt if the app is
   killed mid-run. It is not a second mode — each chapter is still its own
   request, its own reservation and its own credit.
+
+  > **Implemented 2026-09-07.** It is a client-side loop over the existing
+  > `continue-story`, with **no new endpoint** — the sentence above requires each
+  > chapter to be its own request, and a server-side runner would have had to
+  > break that to exist. `CreateStudioScreen` therefore calls one `continueOnce`
+  > function that the single Continue button also calls, so the chapter-count
+  > guard, the credit guard, the per-chapter request id, the finale flag, the
+  > refund path and the partial-stream rule are inherited rather than
+  > reimplemented. Five details this section left open, settled here because the
+  > answers are user-visible:
+  >
+  > 1. **The run does not use "What happens next?", and does not consume it.**
+  >    That box is per-chapter steering. Reusing one typed direction for six
+  >    chapters would steer chapters the reader never aimed it at — the exact
+  >    defect the box's own clear-on-success rule exists to prevent — and
+  >    spending it on only the run's first chapter would make one chapter of a
+  >    program-driven run behave differently from the rest with nothing on
+  >    screen to say which. So a run ignores it, leaves the text where it is for
+  >    the next single Continue, and says both things in the confirm sheet and
+  >    beside the button.
+  > 2. **Stop lets the chapter in flight finish, and keeps it.** Aborting it
+  >    would abandon a reservation the server is already writing against, which
+  >    is a reader paying for prose nobody ever sees. So Stop halts the run
+  >    *after* the current chapter has persisted and charged; the control says
+  >    so. The worst case is one more chapter than expected, never half of one.
+  > 3. **A failure ends the run and is not retried.** The single-chapter path
+  >    already refunds a failed chapter; a retry inside the loop would turn one
+  >    failure into two charges. Everything written before it stays written.
+  > 4. **A short balance is quoted, not sprung.** The confirm itemises chapters,
+  >    text credits and art credits before anything is spent. If the balance
+  >    cannot cover the whole run, the sheet says so and the button offers
+  >    exactly the number of chapters the balance reaches — which is what
+  >    `CREDITS_AND_PRICING.md`'s "you pay as each chapter is written" already
+  >    implies, made explicit rather than discovered halfway through.
+  > 5. **Resume is NOT implemented. This is the one part of the sentence above
+  >    that is still outstanding.** A first attempt persisted the run's intent to
+  >    AsyncStorage and offered it again on the way back into the studio. It was
+  >    removed on 2026-09-07 because it could never fire: the studio's `story` is
+  >    only ever set by a generation inside the current mount, there is no way to
+  >    **open an existing story**, and leaving the Create tab unmounts the screen
+  >    — so the writer always comes back at the brief with `story === null` and
+  >    every condition the offer was gated on false forever. Shipping a code path
+  >    that cannot run, and a document claiming it works, is worse than recording
+  >    the gap. Resuming a run therefore needs a fetch-by-id and the navigation to
+  >    reach it, which is not generation and is not owned here; until that exists,
+  >    an interrupted run is simply not offered again.
+  >
+  >    What the unmount *does* do is request the same Stop the button does, so a
+  >    tab switch stops buying chapters after the one in flight. And what survives
+  >    regardless is the part that costs money: every chapter the run wrote is on
+  >    the server, paid for, and nothing further is charged without another
+  >    confirm.
+  > 6. **The confirm quotes text only, because nothing charges for chapter art.**
+  >    The bullet below prices "1 for its art where the toggle is on", and no code
+  >    implements it: `chapter_art` exists only as an enum value on
+  >    `generation_operations.kind`, nothing reserves it,
+  >    `reserve_generation_operation` deducts exactly one credit for every kind,
+  >    and `continue-story` never reads `illustrate_chapters`. An itemised art
+  >    line would therefore have quoted money that is never taken — and worse,
+  >    would have *refused work the balance covers*, since the affordable-chapter
+  >    count divides the balance by the per-chapter price. So the sheet itemises
+  >    one line, at 1 credit per chapter, matching what is charged. **No price has
+  >    changed** — `CREDITS_AND_PRICING.md` remains canonical and still lists
+  >    chapter art at 1 each; the art line and its price return to this sheet when
+  >    per-chapter art is actually built.
 - **Each chapter's text is 1 credit**, charged as it is generated, plus 1 for its
   art where the toggle is on. A story abandoned at chapter 2 of 7 costs what it
   wrote, not what it planned.
+
+  > **Per-chapter art is unimplemented as of 2026-09-07.** Nothing reserves or
+  > charges for it, so a run with the toggle on costs exactly what a run with it
+  > off costs, and the client quotes accordingly. See note 6 above. The price
+  > stated here is the intended one and is not being changed.
 - **What generates it, as of 2026-09-05.** Every generation path — this loop,
   continuation, the paragraph editor, and the shaping call onboarding makes —
   leads with OpenRouter `meta/muse-spark-1.3-contributor`, falls back to
@@ -800,6 +870,43 @@ After chapter 1's art is generated the user gets:
 Uploading is free and must be prominent. It costs us nothing, it is the escape
 hatch when generations miss, and for a writer with existing art it is the reason
 they can bring a real book here.
+
+> **Implemented 2026-09-07, with three details this section did not settle.**
+> Regenerate and the concept card ship; **upload does not yet** — it needs a
+> storage and signed-URL surface that is tracked separately, and until it lands
+> the *Upload your own* row above describes an intent rather than a control.
+>
+> 1. **"1 free retry" is counted on delivery, not on attempt.** A regeneration
+>    that exhausted every image provider costs nothing *and* does not spend the
+>    free retry, because the writer has not been given a cover. `stories.cover_regen_count`
+>    is incremented only by the statement that records the new image.
+> 2. **A failed regeneration restores the cover it was replacing.** The row goes
+>    back to the status it held, not to `failed`. `failed` is the honest answer
+>    for a *first* cover, where the concept card is the fallback; here it would
+>    report a cover the reader can see as missing.
+> 3. **Regeneration is bounded by attempts, not by deliveries.** Point 1 is the
+>    right pricing rule and, on its own, an unmetered image budget: the caller
+>    supplies `prompt_note`, so "make it fail" is a request anyone can send, and
+>    each failure leaves the next attempt free. `stories.cover_attempt_count`
+>    counts every regeneration *started* and the claim is refused past **12 per
+>    story** with a 429 — separate from `cover_regen_count`, which still counts
+>    deliveries and still decides the price. Twelve is roughly an order of
+>    magnitude above plausible use (§13 treats a regeneration rate over 40% as a
+>    prompt problem rather than demand), and past it a caller must buy another
+>    story at 3 ✦ to get another twelve. The attempt is counted by the claim,
+>    before any provider call, so an evicted isolate or a hung caller stays
+>    counted — and `release_cover_claim` gives it back on the paths that
+>    provably reached no provider (no credits, a reservation already held, a
+>    spent request id, a reservation RPC that threw). Those cost nothing to
+>    refuse, and charging them against a ceiling that never resets would leave a
+>    writer with an empty balance permanently 429'd on a story they later bought
+>    credits for.
+> 4. **There is no cover step in Create.** This section's model made one
+>    unnecessary: chapter 1's art is revealed in the editor as it lands and
+>    confirmed at review. The step that existed showed a gradient card it called
+>    a preview, said the cover would be made at publish, and carried a disabled
+>    Regenerate button beside a prompt box that was never sent — every claim on
+>    it contradicted this section.
 
 ### 10.5 Publish
 
@@ -985,6 +1092,9 @@ derived value.
 | `cover-prompts.ts` | Consume `whereAndWhen`. This is what stops covers reading as genre stock art |
 | `image.ts` | Character portrait prompt from `appearance` + `description`; separate from the cover path |
 | `generate-character-image` | Client-callable portrait endpoint wrapping the character image path. It must not start story generation. |
+| `cover-regeneration.ts` | The claim / price / generate / settle transaction behind Regenerate, kept out of the handler so the paths that cost a credit can be tested. **Migration 00044 is required.** `stories.cover_regen_count` is what makes "1 free retry, then 1 ✦" expressible at all; `stories.cover_attempt_count` is what bounds provider spend when the free retry keeps failing; `stories.cover_last_request_id` is what makes the *free* path idempotent, which `reserve_generation_operation` only does for the paid one — written **only** by `finish_cover_regeneration`, so it records the request that delivered the cover on the row rather than the last one to claim it, and a retry after a failed regeneration re-attempts instead of being handed the old cover as a success; and `stories.cover_prompt` — which §10.4 assumed existed and did not — is what lets a regeneration vary from the cover it replaces instead of re-sending the request that produced it. It is written by the original cover too (`media.ts`), not only by a regeneration: the *first* regeneration is the free one and therefore the common case, and it is the one that reads a column no regeneration has yet written. All four are server-derived and deliberately outside the owner-update grant of 00015, like `cover_status`. The price, the ceiling, the replay check and the claim all happen inside `claim_cover_regeneration`, under one advisory lock and one `for update`: reading any of them in one round trip and acting in the next is what makes two fast taps two free covers. |
+| `regenerate-cover` | Client-callable cover endpoint. **POST** re-rolls the cover — reserving `kind = 'cover'` on chapter 1 when a credit is due, refunding it when the image does not arrive. **GET** reports the current cover state, which is how the client learns chapter 1's art landed: it is generated on a background task after the response is flushed, so without a read there is no second moment at which the client could find out. Same shape as `audio-status`. |
+| `cover-prompts.ts` / `image.ts` | A regeneration steer, carried beside the *Avoid* exclusion — but **dropped at the last safety rung**, which the exclusion is not. Level 2 exists to be the prompt that cannot be refused; the steer is the only per-request caller-supplied text in a cover prompt, so leaving it there lets a note written to trip a content filter trip every rung of every provider, and one request becomes nine image calls. The two free-text fields a cover prompt carries — the *Avoid* exclusion and the steer — are each collapsed to a single clause, every `.` `!` `?` `;` `:` becoming a comma, because the value is emitted inside `Do not depict: X.` and a terminator inside X ends our sentence and starts the caller's. That is a promise about those two fields and not about the whole prompt: `title` and `where_and_when` are interpolated as written, because collapsing punctuation in them would turn "Dr. Smith's Door" into "Dr, Smiths Door". The steer's two halves — the writer's note and a description of the cover being replaced — are budgeted separately rather than sharing one cap, or a maximum-length note truncates the "make it clearly different" half away and the regeneration is free to reproduce the cover it was asked to replace. Plus a per-attempt storage key. The cover URL carries no version, so overwriting the object would leave every CDN edge serving the picture the writer just paid to replace. |
 | `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; accept only English or Portuguese from the Create contract |
 
 ### `expo/src/i18n/`

@@ -40,6 +40,15 @@ export interface StoryMediaInput {
   themes: string[];
   whereAndWhen?: string;
   /**
+   * The brief's *Avoid* field.
+   *
+   * Threaded through for the cover for the same reason `whereAndWhen` is: the
+   * prose and the art are generated from one brief and must not disagree. A
+   * story the reader asked to keep free of graphic violence should not open on
+   * a cover full of it.
+   */
+  avoid?: string;
+  /**
    * Whether to tell the author the story is finished.
    *
    * Off unless the caller asks. The onboarding notify screen is a soft
@@ -183,8 +192,24 @@ async function refundMissingMedia(
  */
 export const COVER_GENERATING_STALE_MS = 10 * 60 * 1000;
 
-async function setCoverStatus(
-  supabase: SupabaseClient,
+/**
+ * The narrow slice of the Supabase client `setCoverStatus` needs.
+ *
+ * Structural rather than `SupabaseClient` so the regeneration endpoint - which
+ * has to put the previous status back when a *re*generation misses - can share
+ * this function instead of writing a second one, and so both can be tested
+ * against a stub rather than a live project.
+ */
+export interface CoverStatusClient {
+  from(table: string): {
+    update(values: Record<string, unknown>): {
+      eq(column: string, value: unknown): PromiseLike<{ error: unknown }>;
+    };
+  };
+}
+
+export async function setCoverStatus(
+  supabase: CoverStatusClient,
   storyId: string,
   status: "generating" | "ready" | "failed",
   extra: Record<string, unknown> = {},
@@ -209,7 +234,7 @@ async function setCoverStatus(
   if (error) {
     console.error(
       `[media] cover_status=${status} failed for ${storyId}:`,
-      error.message,
+      safeErrorMessage(error),
     );
     await logError({
       bucket: "generation.cover",
@@ -295,6 +320,7 @@ async function generateAndStoreCover(
       title: input.title,
       themes: input.themes,
       whereAndWhen: input.whereAndWhen,
+      avoid: input.avoid,
       characters: await readCastForCover(supabase, input.storyId),
     });
 
@@ -315,8 +341,17 @@ async function generateAndStoreCover(
       return false;
     }
 
+    // The prompt is persisted with the URL, not discarded with the rest of the
+    // result. `stories.cover_prompt` exists so a regeneration can be told to
+    // vary from the cover it is replacing (migration 00044); writing it only in
+    // `finish_cover_regeneration` left it null for every original cover, which
+    // is the one the *first* regeneration - the free one, the common case -
+    // reads. `describePreviousCover` then returned undefined and the steer
+    // degraded to "make it different from the previous attempt", with no idea
+    // what the previous attempt was.
     await setCoverStatus(supabase, input.storyId, "ready", {
       cover_image_url: cover.url,
+      ...(cover.prompt ? { cover_prompt: cover.prompt } : {}),
     });
 
     console.log(

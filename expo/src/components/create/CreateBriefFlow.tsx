@@ -459,9 +459,20 @@ function MoreOptions({
   const [languageOpen, setLanguageOpen] = useState(false);
   const moments = draft.moments ?? [];
   const suggestions = GENRE_MOMENT_SUGGESTIONS[draft.primaryGenre].filter((item) => !moments.includes(item));
+  // A moment that names someone from the cast is what the prompt links back to
+  // that character, so the cast is offered here as one tap rather than left to
+  // be retyped (and misspelled) into the box. A character sheet only requires a
+  // name eventually, so unnamed rows have nothing to insert and the row is
+  // hidden entirely rather than rendered empty.
+  const namedCharacters = draft.characters.filter((character) => character.name.trim());
+  const appendCharacterName = (name: string) => {
+    const base = momentInput.trimEnd();
+    onMomentInput(base ? `${base} ${name.trim()}` : name.trim());
+    onSelect();
+  };
   return <View style={styles.optionsPanel}>
     <OptionLabel label="Moments to include" />
-    {draft.characters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{draft.characters.map((character) => <Pressable key={character.name} onPress={() => onMomentInput(`${momentInput}${momentInput ? " " : ""}${character.name}`)} style={styles.nameToken}><Text style={styles.nameTokenText}>{character.name}</Text></Pressable>)}</ScrollView> : null}
+    {namedCharacters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{namedCharacters.map((character) => <Pressable key={character.name} accessibilityRole="button" accessibilityLabel={`Add ${character.name.trim()} to this moment`} onPress={() => appendCharacterName(character.name)} style={styles.nameToken}><Text style={styles.nameTokenText}>{character.name.trim()}</Text></Pressable>)}</ScrollView> : null}
     <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} style={styles.momentText}>{moment}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
     {moments.length < maxMoments ? <><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalChips}>{suggestions.slice(0, 2).map((item) => <Pressable key={item} onPress={() => onAddMoment(item)} style={styles.suggestionChip}><Plus size={14} color={colors.accent} /><Text style={styles.suggestionText}>{item}</Text></Pressable>)}</ScrollView><View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" placeholder="Add a moment" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View></> : null}
     {draft.beats?.length ? (

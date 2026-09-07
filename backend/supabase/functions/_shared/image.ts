@@ -114,6 +114,17 @@ export interface ImageResult {
   /** Which provider and model actually produced it — for telemetry. */
   provider: string;
   model: string;
+  /**
+   * The prompt the surviving attempt actually sent.
+   *
+   * Not necessarily the one the caller would have built: the safety ladder
+   * rebuilds the prompt on a moderation rejection, so the image on disk may
+   * have come from level 1 or level 2. Regeneration stores this in
+   * `stories.cover_prompt` and varies from it, and storing the prompt we
+   * *meant* to send instead would tell the next attempt to differ from a cover
+   * that was never made.
+   */
+  prompt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,8 +147,30 @@ export async function generateCoverImage(input: {
   characters?: { name: string; description?: string; isHero?: boolean }[];
   /** The where-and-when chip. What stops the cover being genre stock art. */
   whereAndWhen?: string;
+  /** The brief's *Avoid* field. Bounds the art the way it bounds the prose. */
+  avoid?: string;
+  /**
+   * A regeneration steer, threaded through to `buildCoverPrompt` at every
+   * safety level so a simplified retry is still a *different* cover.
+   */
+  variation?: string;
+  /**
+   * Distinguishes this attempt's storage key from the cover it replaces.
+   *
+   * The original cover is written to `covers/<story>/cover.png` with
+   * `upsert: true`, and its public URL contains no version. Overwriting those
+   * bytes leaves every CDN edge and every client image cache holding the old
+   * picture behind the URL the row still points at, so the user pays for a
+   * regeneration and keeps seeing the cover they rejected. A distinct key per
+   * regeneration is the whole fix: the row's URL changes, so nothing is cached
+   * under it yet.
+   */
+  storageSuffix?: string;
 }): Promise<ImageResult | null> {
-  const storagePath = `covers/${input.storyId}/cover.png`;
+  const suffix = input.storageSuffix
+    ? `-${input.storageSuffix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32)}`
+    : "";
+  const storagePath = `covers/${input.storyId}/cover${suffix}.png`;
   return await runImageChain({
     label: `cover ${input.storyId}`,
     bucket: "covers",
@@ -153,6 +186,12 @@ export async function generateCoverImage(input: {
  * Level 0 is the full prompt. Level 1 drops the cast and trims the themes -
  * a character description is by far the likeliest part of a cover prompt to
  * trip a content filter. Level 2 is genre and title only.
+ *
+ * The *Avoid* exclusion is carried at every level, including the last. Each
+ * rung of this ladder exists to get *past* a content filter, so the rung most
+ * likely to be reached is the one where an unconstrained cover would be most
+ * embarrassing - and unlike the cast or the themes, an exclusion cannot be the
+ * thing the filter objected to.
  */
 function buildCoverPromptForLevel(
   safetyLevel: number,
@@ -162,9 +201,12 @@ function buildCoverPromptForLevel(
     themes: string[];
     characters?: { name: string; description?: string; isHero?: boolean }[];
     whereAndWhen?: string;
+    avoid?: string;
+    variation?: string;
   },
 ): string {
-  const { genre, title, themes, characters, whereAndWhen } = input;
+  const { genre, title, themes, characters, whereAndWhen, avoid, variation } =
+    input;
   if (safetyLevel === 0) {
     return buildCoverPrompt(
       genre,
@@ -172,6 +214,8 @@ function buildCoverPromptForLevel(
       themes,
       usableCharacters(characters),
       whereAndWhen,
+      avoid,
+      variation,
     );
   }
   if (safetyLevel === 1) {
@@ -185,9 +229,23 @@ function buildCoverPromptForLevel(
       themes.slice(0, 2),
       undefined,
       whereAndWhen,
+      avoid,
+      variation,
     );
   }
-  return buildCoverPrompt(genre, title, []);
+  // The last rung drops the steer, and it is the one place the steer must be
+  // dropped. Level 2 exists to be the prompt that *cannot* be refused - it is
+  // what every provider falls back to and what the chain has left when
+  // everything else has been rejected. The steer is the only part of a
+  // regeneration prompt that is per-request caller-supplied text, so leaving it
+  // here means a note crafted to trip a content filter trips every rung of
+  // every provider and the ladder has no floor. Bounded work per attempt is
+  // what makes the per-story attempt ceiling a real bound rather than a
+  // multiplier.
+  //
+  // The exclusion still survives, per the note above: it is a *negative*
+  // constraint, so it cannot be the thing a filter objected to.
+  return buildCoverPrompt(genre, title, [], undefined, undefined, avoid);
 }
 
 /**
@@ -398,8 +456,9 @@ async function runImageChain(input: {
         console.log(
           `[image] ${input.label}: ${provider.name}/${provider.model} at safety level ${level}`,
         );
+        const prompt = input.promptFor(level);
         const bytes = await provider.generate(
-          input.promptFor(level),
+          prompt,
           apiKey,
           input.aspect,
           deadline,
@@ -418,6 +477,7 @@ async function runImageChain(input: {
             input.storagePath,
           provider: provider.name,
           model: provider.model,
+          prompt,
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
