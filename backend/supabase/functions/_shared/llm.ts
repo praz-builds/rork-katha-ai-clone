@@ -487,6 +487,53 @@ export function generateStoryText(
  */
 const FAST_OPENROUTER_SHARE = 0.6;
 
+/**
+ * The tail held back for the runner-up, instead of halving the window.
+ *
+ * The window used to be cut into equal slices by model index, and that is a
+ * bad shape for a two-model phase where only one of them is expected to
+ * answer. `OPENROUTER_MODELS[0]` returns `404` by account data policy today,
+ * so it costs a round trip and `[1]` inherits nearly the whole window - the
+ * arrangement the measured 11s median was taken against. The moment that
+ * account setting is changed at https://openrouter.ai/settings/privacy, `[0]`
+ * starts serving and an even split hands it half: 13.5s of onboarding's 45s
+ * against an 11s median, so a normal-length request would abort near the
+ * finish and be re-run from scratch on `[1]`. Latency roughly doubles because
+ * somebody flipped a checkbox, with no deploy and nothing in this repo
+ * changing.
+ *
+ * So the leader gets the window minus this reserve, and the reserve is what
+ * keeps the original guarantee: a stalled leader still cannot abort the
+ * fallback before `fetch` is called. It is sized for a fast failure - a `404`,
+ * a `429`, a refused key - because a leader that burns the whole window has
+ * already established that this phase is not going to answer, and the OpenAI
+ * phase behind it holds the real redundancy.
+ */
+const FAST_OPENROUTER_RESERVE_MS = 6_000;
+
+/**
+ * The OpenRouter phase's per-model deadlines, as offsets from the phase start.
+ *
+ * Exported for `llm.test.ts` rather than inlined, because the property that
+ * matters here is a number of seconds the leader is allowed to take, and the
+ * only way to assert that from outside is to wait for it.
+ */
+export function fastOpenRouterDeadlines(
+  deadlineMs: number,
+  models: number,
+): number[] {
+  const window = Math.max(0, Math.floor(deadlineMs * FAST_OPENROUTER_SHARE));
+  const reserve = Math.min(FAST_OPENROUTER_RESERVE_MS, Math.floor(window / 2));
+  return Array.from(
+    { length: models },
+    // One reserve per model still to come, so the last one owns the rest of
+    // the phase and nobody's slice is time that cannot be spent: a leader
+    // that fails in a round trip hands everything it did not use straight to
+    // whoever is behind it.
+    (_, index) => Math.max(0, window - reserve * (models - 1 - index)),
+  );
+}
+
 export async function generateFastStructuredText(
   systemPrompt: string,
   userPrompt: string,
@@ -508,12 +555,12 @@ export async function generateFastStructuredText(
   const openRouterModels = isProviderDisabled("openrouter", disabled)
     ? []
     : OPENROUTER_MODELS;
-  const openRouterPhaseEnd = start +
-    Math.floor(deadlineMs * FAST_OPENROUTER_SHARE);
-  const openRouterWindow = Math.max(0, openRouterPhaseEnd - start);
+  const openRouterOffsets = fastOpenRouterDeadlines(
+    deadlineMs,
+    openRouterModels.length,
+  );
   for (const [index, model] of openRouterModels.entries()) {
-    const modelDeadline = start +
-      Math.floor((openRouterWindow * (index + 1)) / openRouterModels.length);
+    const modelDeadline = start + openRouterOffsets[index];
     try {
       return await generateOpenRouterText(
         model,

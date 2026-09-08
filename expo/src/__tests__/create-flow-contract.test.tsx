@@ -290,11 +290,9 @@ describe("approved Create flow", () => {
       />,
     );
 
-    // The setup screen's Create button opens the pre-generation review screen
-    // (see "sends the reviewed Kids brief..." below); this pre-existing test
-    // predated that screen and only ever pressed Create once, so it never
-    // actually reached generation. Fixed as part of this task's baseline
-    // measurement, not the dropdown work itself.
+    // This branch adds the pre-generation review, so Create now opens it and
+    // the review's own Create commits. The assertion arrived from the grounding
+    // branch, which predates that screen and pressed once.
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await view.findByText("Here is what Katha will write");
     await fireEvent.press(view.getByRole("button", { name: /create/i }));

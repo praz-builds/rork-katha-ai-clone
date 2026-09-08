@@ -1,4 +1,4 @@
-import { cleanWord, sentenceAroundWord } from "@/lib/sentence";
+import { cleanWord, sentenceAroundWord, splitWords } from "@/lib/sentence";
 
 describe("sentenceAroundWord", () => {
   const words = "The old lighthouse stood alone. Waves crashed against the rocks below. Nobody came anymore.".split(" ");
@@ -51,5 +51,46 @@ describe("cleanWord", () => {
 
   it("returns an empty string for punctuation-only tokens", () => {
     expect(cleanWord("--")).toBe("");
+  });
+});
+
+// A sentence must not be truncated at a page break.
+//
+// `renderWord` used to hand phrase capture a PAGE-local index, and the capture
+// layer accumulated only the words it had seen rendered. So a sentence running
+// across a page boundary was cut at the boundary: long-pressing near the foot of
+// a page returned the half that happened to be on screen.
+//
+// The tokens are now the chapter's, and the index is chapter-absolute.
+describe("a sentence spanning a page break", () => {
+  const chapter =
+    "The ladder creaked under his feet. He climbed toward the attic where the trunk had waited for thirty years. Aaji called from below.";
+
+  it("returns the whole sentence, not the part on one page", () => {
+    const words = splitWords(chapter);
+    // "toward" sits in the middle of the second sentence, which a page break
+    // could easily fall inside.
+    const at = words.findIndex((word) => word === "toward");
+    expect(at).toBeGreaterThan(0);
+
+    const sentence = sentenceAroundWord(words, at).text;
+    expect(sentence).toBe(
+      "He climbed toward the attic where the trunk had waited for thirty years.",
+    );
+  });
+
+  it("splitWords tokenises the way the reader renders", () => {
+    expect(splitWords("One  two\n\nthree.")).toEqual(["One", "two", "three."]);
+    expect(splitWords("   ")).toEqual([]);
+  });
+
+  it("still resolves a sentence at the very start and end of a chapter", () => {
+    const words = splitWords(chapter);
+    expect(sentenceAroundWord(words, 0).text).toBe(
+      "The ladder creaked under his feet.",
+    );
+    expect(sentenceAroundWord(words, words.length - 1).text).toBe(
+      "Aaji called from below.",
+    );
   });
 });
