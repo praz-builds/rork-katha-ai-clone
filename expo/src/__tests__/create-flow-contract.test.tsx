@@ -14,7 +14,15 @@ jest.mock("@/lib/api", () => {
     resetRequestId = false;
   }
 
+  // Keeps every other real export -- `effectiveChapterLength` in particular,
+  // which CreateBriefFlow calls at render time to decide what the Chapter
+  // length field displays. Duplicating that logic into this mock would let
+  // the display and the real request body drift apart again with nothing
+  // here to catch it.
+  const actual = jest.requireActual("@/lib/api");
+
   return {
+    ...actual,
     // The Create flow generates through the streamed path. The buffered
     // `generateStory` is still exported for retries, but the screen no longer
     // calls it, and asserting against it here would pass while the user got
@@ -587,5 +595,41 @@ describe("draft restoration across a remount", () => {
     expect(second.getByLabelText("Appearance").props.value).toBe(
       "Grey coat, a satchel that has outlived three owners.",
     );
+  });
+  it("shows the same chapter length default for a restored Kids draft that never set one, as generation will actually send", async () => {
+    // A Kids draft reached through the switch always gets an explicit
+    // `chapterLength` (see `chooseAudience`), and a fresh draft's own default
+    // is "standard" (see `INITIAL_DRAFT`) regardless of audience -- so the
+    // case that silently diverged, a Kids draft with the field truly unset,
+    // only arises for one already sitting in storage from before this
+    // default existed, or otherwise saved without it. `effectiveChapterLength`
+    // in `lib/api.ts` is the one place that default is computed now, and
+    // both this display and the request body (see
+    // `api-generation-contract.test.ts`) read it from there, so they cannot
+    // say different things.
+    mockLoadDraft.mockResolvedValue({
+      primaryGenre: "adventure",
+      audienceMode: "kids",
+      spiceLevel: "sweet",
+      identityLenses: [],
+      seed: "A child follows a map hidden in a library book.",
+      language: "English",
+      visibility: "private",
+      characters: [],
+      isSeries: false,
+      // chapterLength deliberately absent.
+    });
+
+    const view = await renderCreate();
+    await waitFor(() =>
+      expect(view.getByLabelText("Story idea").props.value).toBe(
+        "A child follows a map hidden in a library book.",
+      ),
+    );
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+
+    expect(
+      view.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
+    ).toEqual({ text: "Short" });
   });
 });

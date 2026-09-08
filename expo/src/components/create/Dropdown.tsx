@@ -1,11 +1,11 @@
-import { createContext, useCallback, useContext, useId, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AccessibilityInfo,
+  BackHandler,
   Dimensions,
   findNodeHandle,
   Keyboard,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -26,6 +26,17 @@ import { colors, fonts, radius, spacing } from "@/theme";
  * hardware back button both close it, and closing is always a cancel. The
  * option list only ever mutates the committed value when the user taps an
  * option; the scrim and back button paths never call `onChange`.
+ *
+ * Deliberately not a native `Modal`. A `Modal` opens a separate native
+ * window that covers the whole screen, so while one dropdown's menu is open
+ * the *other* dropdown's trigger sits underneath that window and cannot
+ * receive a tap at all on a real device -- only in the test renderer, which
+ * does not model window occlusion. The menu and its scrim are instead
+ * rendered as absolutely-positioned siblings inside the normal view tree, in
+ * an order that keeps every trigger reachable: the scrim renders *before*
+ * `children` (so triggers, painted after it, sit visually and hit-test
+ * above it) and the menu renders *after* `children` (so it -- and only it --
+ * sits above everything, including other triggers it happens to overlap).
  */
 
 export type DropdownOption<T extends string = string> = {
@@ -42,13 +53,170 @@ export type DropdownOption<T extends string = string> = {
   detail?: string;
 };
 
+type Anchor = { x: number; y: number; width: number; height: number };
+
+type OpenMenuDescriptor = {
+  id: string;
+  testID?: string;
+  // Starts null: opening must not wait on `measureInWindow`, which is
+  // asynchronous (and, in tests, may never resolve at all -- see the
+  // comment on `open` below). The menu renders with a sensible fallback
+  // position until the measurement lands.
+  anchor: Anchor | null;
+  options: readonly DropdownOption[];
+  value: string;
+  onChange: (value: string) => void;
+};
+
 type DropdownContextValue = {
   openId: string | null;
-  requestOpen: (id: string) => void;
+  openMenu: OpenMenuDescriptor | null;
+  requestOpen: (descriptor: OpenMenuDescriptor) => void;
   requestClose: (id?: string) => void;
+  updateAnchor: (id: string, anchor: Anchor) => void;
 };
 
 const DropdownContext = createContext<DropdownContextValue | null>(null);
+
+const SCREEN_MARGIN = 12;
+
+/**
+ * Closes whichever entry matches `id` (or, with no `id`, whichever is open).
+ * Shared by the grouped and standalone open/close state so both behave
+ * identically.
+ */
+function closeMatching(currentId: string | null, closeId?: string): string | null {
+  if (closeId !== undefined && currentId !== closeId) return currentId;
+  return null;
+}
+
+/**
+ * Hosts the shared scrim and popover menu for one or more triggers. A
+ * `DropdownGroup` renders one of these around every dropdown it coordinates;
+ * a standalone `Dropdown` (no group above it) renders one around just
+ * itself, so outside-tap-to-close and the no-Modal reachability guarantee
+ * hold either way.
+ */
+function DropdownOverlayHost({
+  openId,
+  openMenu,
+  requestClose,
+  rootStyle,
+  children,
+}: {
+  openId: string | null;
+  openMenu: OpenMenuDescriptor | null;
+  requestClose: (id?: string) => void;
+  rootStyle?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const rootRef = useRef<View>(null);
+  const [origin, setOrigin] = useState({ x: 0, y: 0 });
+
+  const measureOrigin = useCallback(() => {
+    // The root is not itself a Modal, so the menu's window-absolute anchor
+    // coordinates (from the trigger's `measureInWindow`) need translating
+    // into coordinates relative to this root before they mean anything as
+    // `top`/`left` styles. The root sits still once laid out -- nothing
+    // above a `DropdownGroup` scrolls it -- so measuring once on layout is
+    // enough; re-measuring per open would only matter if the root itself
+    // could move, which it does not.
+    rootRef.current?.measureInWindow((x, y) => setOrigin({ x, y }));
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || !openId) return undefined;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      requestClose(openId);
+      return true;
+    });
+    return () => sub.remove();
+  }, [openId, requestClose]);
+
+  return (
+    <View ref={rootRef} onLayout={measureOrigin} style={rootStyle} collapsable={false}>
+      {openId ? (
+        <Pressable
+          style={styles.scrim}
+          onPress={() => requestClose(openId)}
+          accessible={false}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          testID={openMenu?.testID ? `${openMenu.testID}-scrim` : `dropdown-scrim-${openId}`}
+        />
+      ) : null}
+      {children}
+      {openId && openMenu ? (
+        <DropdownMenu descriptor={openMenu} originX={origin.x} originY={origin.y} onDone={() => requestClose(openId)} />
+      ) : null}
+    </View>
+  );
+}
+
+function DropdownMenu({
+  descriptor,
+  originX,
+  originY,
+  onDone,
+}: {
+  descriptor: OpenMenuDescriptor;
+  originX: number;
+  originY: number;
+  onDone: () => void;
+}) {
+  const { anchor, options, value, onChange } = descriptor;
+  const screenWidth = Dimensions.get("window").width;
+  const menuWidth = Math.min(Math.max(anchor?.width ?? 0, 220), screenWidth - SCREEN_MARGIN * 2);
+  const left = anchor
+    ? Math.min(Math.max(anchor.x - originX, SCREEN_MARGIN), screenWidth - menuWidth - SCREEN_MARGIN)
+    : SCREEN_MARGIN;
+  const top = anchor ? anchor.y - originY + anchor.height + 6 : 0;
+
+  return (
+    <View
+      accessibilityViewIsModal
+      accessibilityRole={Platform.OS === "web" ? "menu" : undefined}
+      style={[
+        styles.menu,
+        { top, left, minWidth: menuWidth, maxWidth: screenWidth - SCREEN_MARGIN * 2 },
+      ]}
+    >
+      <ScrollView
+        style={styles.menuScroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {options.map((option) => {
+          const isSelected = option.value === value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => {
+                onChange(option.value);
+                onDone();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={option.accessibilityLabel ?? option.label}
+              accessibilityState={{ selected: isSelected }}
+              style={[styles.option, isSelected && styles.optionActive]}
+            >
+              <View style={styles.optionCopy}>
+                {option.icon ? <Text style={styles.triggerIcon}>{option.icon}</Text> : null}
+                <View style={styles.optionTextGroup}>
+                  <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>
+                    {option.label}
+                  </Text>
+                  {option.detail ? <Text style={styles.optionDetail}>{option.detail}</Text> : null}
+                </View>
+              </View>
+              {isSelected ? <Check size={16} color={colors.accent} /> : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
 
 /**
  * Wrap any part of a screen that hosts more than one Dropdown so opening one
@@ -58,20 +226,33 @@ const DropdownContext = createContext<DropdownContextValue | null>(null);
  */
 export function DropdownGroup({ children }: { children: ReactNode }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const requestOpen = useCallback((id: string) => setOpenId(id), []);
-  const requestClose = useCallback(
-    (id?: string) =>
-      setOpenId((current) => (id === undefined || current === id ? null : current)),
-    [],
-  );
+  const [openMenu, setOpenMenu] = useState<OpenMenuDescriptor | null>(null);
+
+  const requestOpen = useCallback((descriptor: OpenMenuDescriptor) => {
+    setOpenId(descriptor.id);
+    setOpenMenu(descriptor);
+  }, []);
+  const requestClose = useCallback((id?: string) => {
+    setOpenId((current) => closeMatching(current, id));
+    setOpenMenu((current) => (id !== undefined && current?.id !== id ? current : null));
+  }, []);
+  const updateAnchor = useCallback((id: string, anchor: Anchor) => {
+    setOpenMenu((current) => (current && current.id === id ? { ...current, anchor } : current));
+  }, []);
+
   return (
-    <DropdownContext.Provider value={{ openId, requestOpen, requestClose }}>
-      {children}
+    <DropdownContext.Provider value={{ openId, openMenu, requestOpen, requestClose, updateAnchor }}>
+      <DropdownOverlayHost
+        openId={openId}
+        openMenu={openMenu}
+        requestClose={requestClose}
+        rootStyle={styles.groupRoot}
+      >
+        {children}
+      </DropdownOverlayHost>
     </DropdownContext.Provider>
   );
 }
-
-const SCREEN_MARGIN = 12;
 
 export function Dropdown<T extends string = string>({
   id,
@@ -103,10 +284,20 @@ export function Dropdown<T extends string = string>({
   const generatedId = useId();
   const dropdownId = id || generatedId;
   const context = useContext(DropdownContext);
-  const [localOpen, setLocalOpen] = useState(false);
-  const isOpen = context ? context.openId === dropdownId : localOpen;
   const triggerRef = useRef<View>(null);
-  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  // Standalone fallback state, used only when no DropdownGroup ancestor
+  // provides shared open/close state.
+  const [localOpenId, setLocalOpenId] = useState<string | null>(null);
+  const [localOpenMenu, setLocalOpenMenu] = useState<OpenMenuDescriptor | null>(null);
+
+  const openId = context ? context.openId : localOpenId;
+  const isOpen = openId === dropdownId;
+
+  const localRequestClose = useCallback((closeId?: string) => {
+    setLocalOpenId((current) => closeMatching(current, closeId));
+    setLocalOpenMenu((current) => (closeId !== undefined && current?.id !== closeId ? current : null));
+  }, []);
 
   const returnFocusToTrigger = useCallback(() => {
     // Best-effort: RN's accessibility focus API needs a native tag and does
@@ -119,141 +310,132 @@ export function Dropdown<T extends string = string>({
 
   const close = useCallback(() => {
     if (context) context.requestClose(dropdownId);
-    else setLocalOpen(false);
+    else localRequestClose(dropdownId);
     returnFocusToTrigger();
-  }, [context, dropdownId, returnFocusToTrigger]);
+  }, [context, dropdownId, localRequestClose, returnFocusToTrigger]);
 
   const open = useCallback(() => {
     Keyboard.dismiss();
-    triggerRef.current?.measureInWindow((x, y, width, height) => {
-      setAnchor({ x, y, width, height });
-    });
+    // Opens synchronously with no anchor yet, rather than waiting on
+    // `measureInWindow` to open -- that call is asynchronous (a bridge
+    // round-trip on a real device, and never resolved at all by the test
+    // renderer's host-component mock), and gating "is the menu open" on it
+    // would mean a real tap sometimes visibly does nothing for a moment,
+    // and would mean this component could never be tested at all.
+    // `DropdownMenu` renders a sensible fallback position until the anchor
+    // measurement lands and this is upgraded to the real one.
+    const descriptor: OpenMenuDescriptor = {
+      id: dropdownId,
+      testID,
+      anchor: null,
+      options: options as readonly DropdownOption[],
+      value,
+      onChange: (next) => onChange(next as T),
+    };
+    if (context) context.requestOpen(descriptor);
+    else {
+      setLocalOpenId(dropdownId);
+      setLocalOpenMenu(descriptor);
+    }
     onOpen?.();
-    if (context) context.requestOpen(dropdownId);
-    else setLocalOpen(true);
-  }, [context, dropdownId, onOpen]);
+    triggerRef.current?.measureInWindow((x, y, width, height) => {
+      const anchor: Anchor = { x, y, width, height };
+      if (context) context.updateAnchor(dropdownId, anchor);
+      else {
+        setLocalOpenMenu((current) => (current && current.id === dropdownId ? { ...current, anchor } : current));
+      }
+    });
+  }, [context, dropdownId, onChange, onOpen, options, testID, value]);
 
   const toggle = useCallback(() => {
     if (isOpen) close();
     else open();
   }, [isOpen, open, close]);
 
+  // The hardware back button closes only the dropdown that is actually
+  // open, and goes through the same `close()` as everything else so focus
+  // returns to the trigger -- matching what a plain outside tap does.
+  useEffect(() => {
+    if (Platform.OS !== "android" || !isOpen) return undefined;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      close();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isOpen, close]);
+
   const selected = options.find((option) => option.value === value);
-  const screenWidth = Dimensions.get("window").width;
-  const menuWidth = Math.min(
-    Math.max(anchor?.width ?? 0, 220),
-    screenWidth - SCREEN_MARGIN * 2,
+
+  const trigger = (
+    <Pressable
+      ref={triggerRef}
+      onPress={disabled ? undefined : toggle}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      // Announces the current value alongside the field name, so a screen
+      // reader hears e.g. "Chapter length, Standard" without the visible
+      // name itself having to change.
+      accessibilityValue={selected ? { text: selected.valueLabel ?? selected.label } : undefined}
+      accessibilityState={{ expanded: isOpen, disabled }}
+      hitSlop={variant === "pill" ? undefined : 2}
+      style={[
+        variant === "pill" ? styles.pillTrigger : styles.fieldTrigger,
+        disabled && styles.triggerDisabled,
+      ]}
+      testID={testID}
+    >
+      {variant === "field" ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      <View style={styles.triggerValueRow}>
+        {selected?.icon ? <Text style={styles.triggerIcon}>{selected.icon}</Text> : null}
+        <Text
+          numberOfLines={1}
+          style={variant === "pill" ? styles.pillValueText : styles.fieldValueText}
+        >
+          {selected?.valueLabel ?? selected?.label ?? label}
+        </Text>
+        <ChevronDown
+          size={variant === "pill" ? 16 : 15}
+          color={variant === "pill" ? colors.accent : colors.tertiary}
+        />
+      </View>
+    </Pressable>
   );
-  const left = anchor
-    ? Math.min(Math.max(anchor.x, SCREEN_MARGIN), screenWidth - menuWidth - SCREEN_MARGIN)
-    : SCREEN_MARGIN;
-  const top = anchor ? anchor.y + anchor.height + 6 : 0;
+
+  if (context) {
+    // A DropdownGroup ancestor owns the shared scrim and menu -- see
+    // `DropdownOverlayHost` above -- so this instance only ever renders its
+    // trigger.
+    return <View style={style}>{trigger}</View>;
+  }
 
   return (
-    <View style={style}>
-      <Pressable
-        ref={triggerRef}
-        onPress={disabled ? undefined : toggle}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        // Announces the current value alongside the field name, so a screen
-        // reader hears e.g. "Chapter length, Standard" without the visible
-        // name itself having to change.
-        accessibilityValue={selected ? { text: selected.valueLabel ?? selected.label } : undefined}
-        accessibilityState={{ expanded: isOpen, disabled }}
-        hitSlop={variant === "pill" ? undefined : 2}
-        style={[
-          variant === "pill" ? styles.pillTrigger : styles.fieldTrigger,
-          disabled && styles.triggerDisabled,
-        ]}
-        testID={testID}
-      >
-        {variant === "field" ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-        <View style={styles.triggerValueRow}>
-          {selected?.icon ? <Text style={styles.triggerIcon}>{selected.icon}</Text> : null}
-          <Text
-            numberOfLines={1}
-            style={variant === "pill" ? styles.pillValueText : styles.fieldValueText}
-          >
-            {selected?.valueLabel ?? selected?.label ?? label}
-          </Text>
-          <ChevronDown
-            size={variant === "pill" ? 16 : 15}
-            color={variant === "pill" ? colors.accent : colors.tertiary}
-          />
-        </View>
-      </Pressable>
-
-      {isOpen ? (
-        <Modal visible transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
-          {/*
-            The scrim is a plain full-screen Pressable, never a wrapper around
-            the menu. Tapping it only closes -- it never touches `value` -- and
-            it is hidden from the accessibility tree so a screen reader lands
-            on the menu below, not on an unlabeled full-screen surface.
-          */}
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={close}
-            accessible={false}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            testID={testID ? `${testID}-scrim` : `dropdown-scrim-${dropdownId}`}
-          />
-          <View
-            accessibilityViewIsModal
-            accessibilityRole={Platform.OS === "web" ? "menu" : undefined}
-            style={[
-              styles.menu,
-              { top, left, minWidth: menuWidth, maxWidth: screenWidth - SCREEN_MARGIN * 2 },
-            ]}
-          >
-            <ScrollView
-              style={styles.menuScroll}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {options.map((option) => {
-                const isSelected = option.value === value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => {
-                      onChange(option.value);
-                      close();
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={option.accessibilityLabel ?? option.label}
-                    accessibilityState={{ selected: isSelected }}
-                    style={[styles.option, isSelected && styles.optionActive]}
-                  >
-                    <View style={styles.optionCopy}>
-                      {option.icon ? <Text style={styles.triggerIcon}>{option.icon}</Text> : null}
-                      <View style={styles.optionTextGroup}>
-                        <Text
-                          style={[styles.optionLabel, isSelected && styles.optionLabelActive]}
-                        >
-                          {option.label}
-                        </Text>
-                        {option.detail ? (
-                          <Text style={styles.optionDetail}>{option.detail}</Text>
-                        ) : null}
-                      </View>
-                    </View>
-                    {isSelected ? <Check size={16} color={colors.accent} /> : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </Modal>
-      ) : null}
-    </View>
+    <DropdownOverlayHost
+      openId={localOpenId}
+      openMenu={localOpenMenu}
+      requestClose={localRequestClose}
+      rootStyle={style}
+    >
+      {trigger}
+    </DropdownOverlayHost>
   );
 }
 
 const styles = StyleSheet.create({
+  groupRoot: { flex: 1 },
+  // Deliberately oversized and un-positioned relative to the *screen* --
+  // this root may be as small as a single trigger (the standalone case) or
+  // as large as the whole screen (the grouped case), and either way the
+  // scrim must still reach every edge of the visible app. Because it is a
+  // plain sibling (not a Modal), a large negative inset does that without
+  // needing to know the device's actual dimensions.
+  scrim: {
+    position: "absolute",
+    top: -2000,
+    left: -2000,
+    right: -2000,
+    bottom: -2000,
+  },
   fieldTrigger: {
     minHeight: 48,
     flexDirection: "column",
@@ -306,6 +488,10 @@ const styles = StyleSheet.create({
   },
   menu: {
     position: "absolute",
+    // Comfortably above any ordinary in-flow content (the highest sibling
+    // zIndex elsewhere in the create flow is 20), so the menu -- and only
+    // the menu -- reliably paints above everything else it might overlap.
+    zIndex: 1000,
     maxHeight: 320,
     borderRadius: radius.md,
     backgroundColor: colors.surface,

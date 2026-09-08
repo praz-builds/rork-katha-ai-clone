@@ -8,6 +8,25 @@ jest.mock("lucide-react-native", () => {
   return new Proxy({}, { get: () => () => React.createElement(React.Fragment) });
 });
 
+/**
+ * The test renderer never models native window layering, so a query that
+ * merely finds an element in the tree cannot by itself prove a second
+ * trigger is reachable on a real device -- a `Modal`-based menu would pass
+ * that same query, because `Modal`'s children are still part of the React
+ * tree even though the *native* Modal opens a separate window that covers
+ * the whole screen and would swallow the tap before it ever reached the
+ * other trigger. What the test renderer *can* prove structurally is that no
+ * `Modal` is used at all, which rules that failure mode out regardless of
+ * what the renderer does or does not simulate.
+ */
+function containsModal(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some(containsModal);
+  const { type, children } = node as { type?: unknown; children?: unknown };
+  if (type === "Modal") return true;
+  return containsModal(children);
+}
+
 const OPTIONS = [
   { value: "short", label: "Short" },
   { value: "standard", label: "Standard" },
@@ -98,13 +117,35 @@ describe("Dropdown", () => {
     ).toEqual({ text: "Long" });
   });
 
-  it("opening a second dropdown in the same group closes the first", async () => {
+  it("never renders a native Modal for the open menu", async () => {
+    // A Modal opens a separate native window that covers the whole screen,
+    // so while it is open the *other* dropdown's trigger sits underneath
+    // that window and cannot receive a tap at all on a real device -- only
+    // in this test renderer, which does not model window occlusion and
+    // would happily let a query find (and "press") a trigger that a real
+    // finger could never reach. Asserting the menu is never a Modal in the
+    // first place is the one thing this renderer can prove that actually
+    // rules that failure mode out.
+    const view = await render(<TwoDropdowns />);
+    await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
+    expect(containsModal(view.toJSON())).toBe(false);
+  });
+
+  it("opening a second dropdown in the same group closes the first, and its trigger is reachable while the first is open", async () => {
     const view = await render(<TwoDropdowns />);
 
     await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
     expect(view.getByRole("button", { name: "15" })).toBeTruthy();
 
-    await fireEvent.press(view.getByRole("button", { name: "Language" }));
+    // Language's trigger is scoped out of the *accessibility* tree while
+    // Chapters' menu holds `accessibilityViewIsModal` (screen-reader focus
+    // stays inside the open menu until it closes, same as any modal
+    // popover) -- includeHiddenElements looks past that, the same way
+    // sighted-user touch dispatch does, since accessibilityViewIsModal only
+    // affects assistive-tech traversal, never raw touch delivery.
+    await fireEvent.press(
+      view.getByRole("button", { name: "Language", includeHiddenElements: true }),
+    );
 
     // The Chapters menu's "15" option is gone -- opening Language closed it.
     expect(view.queryByRole("button", { name: "15" })).toBeNull();

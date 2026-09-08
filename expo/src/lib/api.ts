@@ -563,6 +563,24 @@ export async function generateStoryStreaming(
 }
 
 /**
+ * The chapter length generation will actually use for `draft`.
+ *
+ * A kids draft with no explicit choice defaults to "short" (see
+ * `chooseAudience` in `CreateBriefFlow.tsx`), but the backend's own fallback
+ * for an entirely absent `chapter_length` is "standard" -- a generic default
+ * that knows nothing about audience mode. Sending `draft.chapterLength`
+ * unmodified would let that generic default quietly override the
+ * kids-specific one. This is the one place the effective value is computed;
+ * both the request body below and every screen that displays "what will
+ * generate" read it from here, so the two can never say different things.
+ */
+export function effectiveChapterLength(
+  draft: Pick<CreateDraft, "chapterLength" | "audienceMode">,
+): NonNullable<CreateDraft["chapterLength"]> {
+  return draft.chapterLength ?? (draft.audienceMode === "kids" ? "short" : "standard");
+}
+
+/**
  * The generation request body, built once for both the buffered and the
  * streamed path.
  *
@@ -616,7 +634,7 @@ function buildGenerationRequestBody(
       story_values: draft.storyValues,
       writing_style: draft.writingStyle,
       avoid: draft.avoid,
-      chapter_length: draft.chapterLength,
+      chapter_length: effectiveChapterLength(draft),
       planned_chapter_count: draft.plannedChapterCount,
       illustrate_chapters: draft.illustrateChapters,
       // story_mode is the current request contract. The backend still accepts

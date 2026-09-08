@@ -24,7 +24,12 @@ jest.mock("@/lib/api", () => {
   class MockGenerationRequestError extends Error {
     resetRequestId = false;
   }
+  // Keeps every other real export -- `effectiveChapterLength` in particular,
+  // which CreateBriefFlow calls at render time to decide what the Chapter
+  // length field displays.
+  const actual = jest.requireActual("@/lib/api");
   return {
+    ...actual,
     generateStoryStreaming: (...args: unknown[]) => mockGenerateStory(...args),
     inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
     generateCharacterImage: (...args: unknown[]) => mockGenerateCharacterImage(...args),

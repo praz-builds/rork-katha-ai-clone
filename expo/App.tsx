@@ -162,7 +162,9 @@ export default function App() {
     let active = true;
     bootstrapUser().then((user) => {
       if (active && user) {
-        setCredits(resolveBootstrappedCredits(__DEV__, user.balance));
+        setCredits(
+          resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, user.balance),
+        );
         setIsAnonymous(user.isAnonymous);
       }
       // Expo tokens rotate on reinstall, on some OS updates, and when a backup

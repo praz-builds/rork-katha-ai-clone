@@ -539,7 +539,7 @@ function ReviewScreen({
   const hasPendingCharacterImage = draft.characters.some(
     (character) => character.portraitStatus === "generating",
   );
-  const chapterLength = draft.chapterLength ?? (draft.audienceMode === "kids" ? "short" : "standard");
+  const chapterLength = storyApi.effectiveChapterLength(draft);
   const chapterLengthLabel = chapterLength.charAt(0).toUpperCase() + chapterLength.slice(1);
   const chapterMinutes = CHAPTER_LENGTHS.find((item) => item.id === chapterLength)?.minutes;
   const plannedChapterCount = draft.plannedChapterCount ?? 3;
@@ -670,7 +670,7 @@ function MoreOptions({
     valueLabel: String(count),
     accessibilityLabel: `${count} chapters`,
   }));
-  const chapterLength = draft.chapterLength ?? (draft.audienceMode === "kids" ? "short" : "standard");
+  const chapterLength = storyApi.effectiveChapterLength(draft);
   const chapterLengthOptions: DropdownOption<string>[] = CHAPTER_LENGTHS.map((item) => ({
     value: item.id,
     label: item.label,
