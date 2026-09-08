@@ -7,6 +7,7 @@ import {
   GENERATION_GROUNDING_DEADLINE_MS,
   resolveGrounding,
 } from "../_shared/grounding-pipeline.ts";
+import { claimGroundingFallback } from "../_shared/grounding-rate-limit.ts";
 import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
 import {
   errorMessage,
@@ -105,9 +106,10 @@ serve(async (req) => {
       : "standalone";
 
     // Use service role client for credit operations
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      serviceRoleKey,
     );
 
     // The grounding fallback, started here so it overlaps the opening round
@@ -127,14 +129,39 @@ serve(async (req) => {
     // `deadlineMs` is deliberately tighter than the shaping call's. Here the
     // writer is watching a paid generation, not editing chips, and an ungrounded
     // story is a far better outcome than a slow one.
-    const groundingFallback = grounding.length || groundingEntities.length
-      ? Promise.resolve(null)
-      : resolveGrounding({
-        idea: seed,
-        characterNames: characters?.map((c) => c.name).filter(Boolean),
-        cache: serviceClient,
-        deadlineMs: GENERATION_GROUNDING_DEADLINE_MS,
-      }).catch(() => null);
+    //
+    // The ordering relative to `begin_story_generation` below is deliberate and
+    // must not change: this promise is created and already running before that
+    // RPC is awaited. What changed is what runs first *inside* it. A request
+    // `begin_story_generation` is about to reject - no credits, a replay - has
+    // otherwise already paid for a real classification call by the time that
+    // rejection is known, and a caller with no credits could replay that for
+    // free. `claimGroundingFallback` is the guard: one cheap RPC (see
+    // migration 00051) gates whether `resolveGrounding` runs at all, and it
+    // does so without adding a single await to this line - the check and the
+    // classification both happen inside the promise this variable already
+    // held, concurrently with `begin_story_generation` exactly as before. A
+    // caller over the limit still gets a story; they just get an ungrounded
+    // one, same as any other grounding failure.
+    const needsGroundingFallback = grounding.length === 0 &&
+      groundingEntities.length === 0;
+    const groundingFallback = needsGroundingFallback
+      ? claimGroundingFallback({
+        user,
+        request: req,
+        serviceRoleKey,
+        client: serviceClient,
+      }).then((allowed) =>
+        allowed
+          ? resolveGrounding({
+            idea: seed,
+            characterNames: characters?.map((c) => c.name).filter(Boolean),
+            cache: serviceClient,
+            deadlineMs: GENERATION_GROUNDING_DEADLINE_MS,
+          }).catch(() => null)
+          : null
+      ).catch(() => null)
+      : Promise.resolve(null);
 
     // One call opens the generation: idempotency check, story row, credit
     // reservation. It was three sequential round trips, measured at 1.4-2.2s
