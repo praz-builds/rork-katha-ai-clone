@@ -222,6 +222,31 @@ describe("writer onboarding back navigation", () => {
     ).toBeTruthy();
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
   });
+
+  // Shaping is rate limited per user, so a warm request the writer has already
+  // superseded is not merely wasted -- it can take the slot the live request
+  // then needs, and the preview fails for someone who did nothing but change
+  // their mind.
+  //
+  // What this pins is that a second submit does not stack a second WARM call.
+  // It does not, and cannot, recall the first: `inferOnboardingStoryBrief`
+  // takes no abort signal and the request has already reached the server and
+  // already spent its slot. Cancelling the client promise would hide that
+  // rather than fix it.
+  it("does not stack a second warm request when the brief is edited and resubmitted", async () => {
+    const { view } = await renderFlow();
+    await reachPreview(view);
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(view.getByRole("button", { name: "Back" }));
+    await view.findByText("Shape the Story");
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
+    await settleCraftingHold();
+
+    // Still one. Warming again would have made two in flight against a limit
+    // that counts them.
+    expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+  });
 });
 
 /* ── Moments ──────────────────────────────────────────────────────────── */

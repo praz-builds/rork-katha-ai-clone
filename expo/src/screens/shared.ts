@@ -2,12 +2,6 @@ import { StyleSheet } from "react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
 
 export const sharedStyles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.bg,
-  },
   flex: { flex: 1 },
   pagePad: { padding: spacing.xl, paddingBottom: spacing.huge },
   backButton: {
