@@ -32,6 +32,7 @@ import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import { pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
+import { splitWords } from "@/lib/sentence";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
@@ -164,6 +165,14 @@ function readStoredPrefs(raw: string | null): ReaderPreferences {
 function renderPageWords(
   text: string,
   pageStart: number,
+  /**
+   * How many words of the chapter precede this page.
+   *
+   * `renderWord` receives a CHAPTER-absolute index, not a page-local one. A
+   * page-local index cannot tell phrase capture which occurrence of a word was
+   * tapped, so a sentence spanning a page break was truncated at the boundary.
+   */
+  pageWordStart: number,
   matches: readonly { start: number; end: number }[],
   activeMatch: number,
   renderWord: (word: string, index: number) => ReactNode,
@@ -178,7 +187,7 @@ function renderPageWords(
     const currentWordIndex = wordIndex;
     wordIndex += 1;
     const matchIndex = matches.findIndex((match) => absoluteStart < match.end && absoluteStart + word.length > match.start);
-    const content = renderWord(word, currentWordIndex);
+    const content = renderWord(word, pageWordStart + currentWordIndex);
     if (matchIndex < 0) return <Text key={`word-${index}`}>{content}</Text>;
     return (
       <Text
@@ -388,7 +397,14 @@ export default function ReaderScreen({
     ? pageMatches.findIndex((match) => match.start === activeGlobalMatch.start && match.end === activeGlobalMatch.end)
     : -1;
 
-  const renderedWords = renderPageWords(page.text, page.start, pageMatches, activePageMatch, renderWord);
+  // Words before this page, so `renderWord` can be handed a chapter-absolute
+  // index. Derived from the page's own character offset using the shared
+  // tokenizer, so it cannot disagree with how the words are actually split.
+  const pageWordStart = useMemo(
+    () => splitWords(fullText.slice(0, page.start)).length,
+    [fullText, page.start],
+  );
+  const renderedWords = renderPageWords(page.text, page.start, pageWordStart, pageMatches, activePageMatch, renderWord);
   const isLastPage = pageIndex === pages.length - 1;
 
   return (

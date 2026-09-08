@@ -15,7 +15,7 @@ import {
   unsavePhrase,
   type SavedPhrase,
 } from "@/lib/phrases";
-import { cleanWord, sentenceAroundWord } from "@/lib/sentence";
+import { cleanWord, sentenceAroundWord, splitWords } from "@/lib/sentence";
 import ReaderScreen from "@/screens/ReaderScreen";
 import { colors, fonts, motion, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
@@ -68,6 +68,15 @@ export default function PhraseCaptureReader({
   const [activeChapter, setActiveChapter] = useState<Chapter>(
     story.chapters[initialChapterIndex] ?? story.chapters[0],
   );
+  // The chapter's tokens, seeded up front rather than accumulated as pages
+  // render. `renderWord` still fills in what it draws, but seeding means a
+  // sentence that runs off the bottom of the page is already known, so a
+  // long-press near a page break returns the whole sentence rather than the
+  // half that happened to be on screen.
+  useEffect(() => {
+    wordsRef.current = splitWords(activeChapter.paragraphs.join("\n\n"));
+  }, [activeChapter]);
+
   const activeChapterRef = useRef(activeChapter);
   useEffect(() => {
     activeChapterRef.current = activeChapter;
@@ -216,7 +225,10 @@ export default function PhraseCaptureReader({
   }, [story.id, toggleSave, toggleUnsave]);
 
   const renderWord = useCallback((word: string, index: number): ReactNode => {
-    if (index === 0) wordsRef.current = [];
+    // `index` is chapter-absolute, and `wordsRef` holds the whole chapter's
+    // tokens rather than the current page's. Accumulating page tokens here
+    // meant a sentence running across a page break was truncated at the
+    // boundary, so a long-press near the foot of a page saved a fragment.
     wordsRef.current[index] = word;
 
     // A screen-reader user gets the unmodified reading experience: the
