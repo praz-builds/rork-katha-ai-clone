@@ -150,9 +150,9 @@ it("falls back to the opening paragraph when the first line is absent", async ()
     .toBeTruthy();
 });
 
-// Narration is generated on first play now, so a PUBLISHED chapter with no
-// audio yet is eligible rather than unavailable. Only an unpublished chapter
-// with no audio genuinely has nothing to offer.
+// Listen must not open a flow that cannot play anything. Generation sits behind
+// an entitlement gate that defaults closed and the reader has no path that
+// triggers it, so a published chapter with no audio is NOT listenable yet.
 it("explains unavailable narration without crashing", async () => {
   const story = withStory({
     chapters: [{
@@ -170,10 +170,10 @@ it("explains unavailable narration without crashing", async () => {
     .toBeTruthy();
 });
 
-// The regression this pairs with: reporting a published chapter unavailable
-// sent the reader away from a story they could have listened to, because the
-// check predated generation-on-first-play.
-it("offers Listen for a published chapter that has no audio yet", async () => {
+// A published chapter with no audio must also say so, rather than opening a
+// reader that can only show an alert. Widening this was a mistake: it promised
+// narration the product cannot currently produce.
+it("says so for a published chapter that has no audio yet", async () => {
   const onRead = jest.fn();
   const story = withStory({
     chapters: [{
@@ -187,10 +187,27 @@ it("offers Listen for a published chapter that has no audio yet", async () => {
 
   await fireEvent.press(view.getByLabelText("Listen to story"));
 
+  expect(view.getByText("Narration is not ready for this story yet."))
+    .toBeTruthy();
+  expect(onRead).not.toHaveBeenCalled();
+});
+
+// And the mirror: a chapter that HAS audio still opens the reader in listen
+// mode, so the check above cannot pass by refusing everything.
+it("opens the reader in listen mode when narration exists", async () => {
+  const onRead = jest.fn();
+  const story = withStory({
+    chapters: [{
+      ...standalone!.chapters[0],
+      audioUrl: "https://example.test/audio/chapter-1.mp3",
+    }],
+  });
+  const view = await renderDetail(story, onRead);
+
+  await fireEvent.press(view.getByLabelText("Listen to story"));
+
   await waitFor(() => expect(onRead).toHaveBeenCalled());
   expect(onRead.mock.calls[0][1]).toMatchObject({ mode: "listen" });
-  expect(view.queryByText("Narration is not ready for this story yet."))
-    .toBeNull();
 });
 
 it("deduplicates a double tap on save and settles on one saved state", async () => {

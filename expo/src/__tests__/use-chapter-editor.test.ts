@@ -209,3 +209,44 @@ it("keeps an edit typed while a rewrite is in flight", async () => {
   );
   expect(result.current.text).toContain("Second paragraph, edited.");
 });
+
+// The paragraph-count fallback must not be a worse loss than the one it avoids.
+//
+// An earlier version of this fix fell back to the pre-rewrite snapshot whenever
+// the paragraph count had changed, which protected the target paragraph by
+// discarding EVERY manual edit the writer had made -- including edits to
+// paragraphs the rewrite never touched. The current text is now always the base.
+it("keeps edits to untouched paragraphs when a paragraph is added mid-rewrite", async () => {
+  let resolveRewrite: ((value: string) => void) | undefined;
+  mockEditParagraph.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveRewrite = resolve;
+      }),
+  );
+
+  const { result } = await renderHook(() =>
+    useChapterEditor({
+      ...baseParams,
+      initialContent: "One.\n\nTwo.",
+    })
+  );
+
+  await act(async () => {
+    result.current.regenerate(0, "colder");
+  });
+
+  // The writer edits paragraph two AND adds a third while waiting.
+  await act(async () => {
+    result.current.onChangeText("One.\n\nTwo, edited.\n\nThree, new.");
+  });
+
+  await act(async () => {
+    resolveRewrite?.("A colder one.");
+    await Promise.resolve();
+  });
+
+  await waitFor(() => expect(result.current.text).toContain("A colder one."));
+  expect(result.current.text).toContain("Two, edited.");
+  expect(result.current.text).toContain("Three, new.");
+});

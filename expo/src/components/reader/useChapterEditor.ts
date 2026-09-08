@@ -257,15 +257,24 @@ export function useChapterEditor({
         // the rewrite started. Using the snapshot threw away whatever the
         // writer typed while waiting.
         //
-        // If the paragraph count changed under us the indexes no longer line
-        // up, and writing into position N could overwrite the wrong paragraph.
-        // The snapshot is the safe base in that case, and the reader keeps
-        // their rewrite rather than losing it to an ambiguity.
+        // The current text is ALWAYS the base, even when the paragraph count
+        // changed. An earlier version fell back to the snapshot in that case,
+        // which fixed the ambiguity by discarding every manual edit the writer
+        // had made -- including edits to paragraphs the rewrite never touched.
+        // Losing the untouched paragraphs to protect the touched one is a worse
+        // trade than losing the rewrite.
+        //
+        // So when the target index no longer exists, the rewrite is dropped and
+        // reported as a failure. The writer keeps everything they typed, and is
+        // told the rewrite could not be placed rather than silently losing
+        // either one.
         const currentParagraphs = textRef.current.split("\n\n");
-        const base = currentParagraphs.length === paragraphs.length
-          ? currentParagraphs
-          : paragraphs;
-        const nextParagraphs = [...base];
+        if (paragraphIndex >= currentParagraphs.length) {
+          throw new Error(
+            "That paragraph moved while the rewrite was running. Your text is unchanged. Please try again.",
+          );
+        }
+        const nextParagraphs = [...currentParagraphs];
         nextParagraphs[paragraphIndex] = updated;
         // Exactly one prior version is held, and this replaces whatever was
         // held before - it is never pushed onto a stack.
