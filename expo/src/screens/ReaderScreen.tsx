@@ -36,6 +36,7 @@ import { getDefaultVoices, getVoice } from "@/data/voices";
 import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
+import { splitWords } from "@/lib/sentence";
 import { isOwnStory } from "@/lib/ownership";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
@@ -64,6 +65,13 @@ export type ReaderScreenProps = {
   renderChapterEnd?: (chapter: Chapter) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
+  /**
+   * Fired with the chapter now on screen, on mount and again every time the
+   * reader switches chapters from the Chapters sheet. `chapterIndex` is
+   * internal state a caller cannot otherwise observe, and phrase capture
+   * needs to know which chapter a save belongs to.
+   */
+  onChapterChange?: (chapter: Chapter, chapterIndex: number) => void;
   /**
    * The reader was opened by Listen rather than Read, so narration starts on
    * arrival. Without it the story page's two buttons did the same thing and
@@ -204,6 +212,14 @@ function readStoredPrefs(raw: string | null): ReaderPreferences {
 function renderPageWords(
   text: string,
   pageStart: number,
+  /**
+   * How many words of the chapter precede this page.
+   *
+   * `renderWord` receives a CHAPTER-absolute index, not a page-local one. A
+   * page-local index cannot tell phrase capture which occurrence of a word was
+   * tapped, so a sentence spanning a page break was truncated at the boundary.
+   */
+  pageWordStart: number,
   matches: readonly { start: number; end: number }[],
   activeMatch: number,
   renderWord: (word: string, index: number) => ReactNode,
@@ -218,7 +234,7 @@ function renderPageWords(
     const currentWordIndex = wordIndex;
     wordIndex += 1;
     const matchIndex = matches.findIndex((match) => absoluteStart < match.end && absoluteStart + word.length > match.start);
-    const content = renderWord(word, currentWordIndex);
+    const content = renderWord(word, pageWordStart + currentWordIndex);
     if (matchIndex < 0) return <Text key={`word-${index}`}>{content}</Text>;
     return (
       <Text
@@ -237,6 +253,7 @@ export default function ReaderScreen({
   initialChapterIndex = 0,
   renderChapterEnd,
   renderWord = (word) => word,
+  onChapterChange,
   autoplay = false,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
@@ -337,6 +354,9 @@ export default function ReaderScreen({
     setActiveSearchMatch(0);
   }, [searchQuery]);
 
+  useEffect(() => {
+    onChapterChange?.(chapter, chapterIndex);
+  }, [chapter, chapterIndex, onChapterChange]);
   // Restores the story's saved music choice (or "None") when the reader opens it.
   //
   // A reader can choose a track before this read resolves, and the restore then
@@ -562,7 +582,14 @@ export default function ReaderScreen({
     ? pageMatches.findIndex((match) => match.start === activeGlobalMatch.start && match.end === activeGlobalMatch.end)
     : -1;
 
-  const renderedWords = renderPageWords(page.text, page.start, pageMatches, activePageMatch, renderWord);
+  // Words before this page, so `renderWord` can be handed a chapter-absolute
+  // index. Derived from the page's own character offset using the shared
+  // tokenizer, so it cannot disagree with how the words are actually split.
+  const pageWordStart = useMemo(
+    () => splitWords(fullText.slice(0, page.start)).length,
+    [fullText, page.start],
+  );
+  const renderedWords = renderPageWords(page.text, page.start, pageWordStart, pageMatches, activePageMatch, renderWord);
   const isLastPage = pageIndex === pages.length - 1;
 
   return (

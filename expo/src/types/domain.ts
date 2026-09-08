@@ -286,4 +286,5 @@ export type Screen =
   }
   | { name: "author"; authorId: string }
   | { name: "credits" }
-  | { name: "paywall" };
+  | { name: "paywall" }
+  | { name: "practice" };
