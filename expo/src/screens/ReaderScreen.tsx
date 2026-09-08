@@ -126,6 +126,22 @@ function chapterText(chapter: Chapter): string {
   return chapter.paragraphs.join("\n\n");
 }
 
+/**
+ * The exact inverse of `chapterText`'s `join("\n\n")`.
+ *
+ * A regex split that also drops empty results (the previous implementation
+ * used `/\n\s*\n/` plus `.filter(Boolean)`) treats an intentionally blank
+ * paragraph as noise to discard, which shifts the index of every paragraph
+ * after it. The AI editor addresses paragraphs by that index
+ * (`useChapterEditor.regenerate`), so a shifted index silently rewrites the
+ * wrong paragraph. Splitting on the exact separator `join` used, with no
+ * filtering, round-trips every paragraph - blank ones included - at its
+ * original index.
+ */
+function splitChapterParagraphs(text: string): string[] {
+  return text.split("\n\n");
+}
+
 function clampIndex(index: number, count: number): number {
   return Math.min(Math.max(index, 0), Math.max(count - 1, 0));
 }
@@ -206,7 +222,7 @@ export default function ReaderScreen({
   const chapter = useMemo(() => {
     const edited = chapterEdits[baseChapter.id];
     if (edited === undefined) return baseChapter;
-    return { ...baseChapter, paragraphs: edited.split(/\n\s*\n/).filter(Boolean) };
+    return { ...baseChapter, paragraphs: splitChapterParagraphs(edited) };
   }, [baseChapter, chapterEdits]);
   const isAuthor = isOwnStory(story);
   const [editOpen, setEditOpen] = useState(false);

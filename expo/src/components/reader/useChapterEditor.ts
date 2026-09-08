@@ -39,6 +39,16 @@ export type UseChapterEditorResult = {
   regenerate: (paragraphIndex: number, prompt: string) => void;
   /** Re-sends the last regeneration request that failed. No-op if there was none. */
   retryRegenerate: () => void;
+  /**
+   * Cancels any pending debounce and sends whatever has not yet been
+   * confirmed saved right now, awaiting the result. Resolves `true` when
+   * there was nothing to send or the send succeeded, `false` on failure.
+   * Callers that are about to close the editor must await this rather than
+   * let an in-flight debounce be silently dropped.
+   */
+  flushPendingSave: () => Promise<boolean>;
+  /** The last chapter text this hook confirmed was persisted to the server. */
+  getLastSavedText: () => string;
 };
 
 const DEFAULT_DEBOUNCE_MS = 900;
@@ -72,9 +82,22 @@ export function useChapterEditor({
   const mountedRef = useRef(true);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveText = useRef<string | null>(null);
+  // The most recent text this hook knows the server actually holds. Used to
+  // fall back to honest content when a caller decides to discard a save that
+  // never went through, rather than ever presenting unsaved text as saved.
+  const lastSavedText = useRef(initialContent);
   const regenerateInFlight = useRef(false);
   const lastPrompt = useRef<{ paragraphIndex: number; prompt: string } | null>(
     null,
+  );
+  // Holds the latest `runSave` so the mount/unmount effect below can call it
+  // from its cleanup without depending on it directly - `runSave` is a new
+  // function identity on every render its own deps change, and putting it in
+  // that effect's dependency array would re-run the mount/cleanup pair on
+  // every such render instead of once per real mount. Assigned during render
+  // (not inside an effect) so it is always current by the time cleanup runs.
+  const runSaveRef = useRef<(content: string) => Promise<boolean>>(
+    () => Promise.resolve(true),
   );
 
   useEffect(() => {
@@ -86,13 +109,28 @@ export function useChapterEditor({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      // Closing must flush a pending debounced edit, not cancel it - the
+      // caller may have unmounted this hook without going through
+      // `flushPendingSave` first (a hard back-navigation, a parent that
+      // stops rendering the editor for some other reason). `runSave` itself
+      // guards every state update behind `mountedRef`, so calling it here is
+      // safe even though the component is already gone: the network call
+      // still reaches the server, only the UI feedback is skipped because
+      // there is no UI left to show it to.
+      const pending = pendingSaveText.current;
+      if (pending !== null) void runSaveRef.current(pending);
     };
   }, []);
 
-  const runSave = useCallback(async (content: string) => {
-    setSaveStatus("saving");
-    setSaveError(null);
+  const runSave = useCallback(async (content: string): Promise<boolean> => {
+    if (mountedRef.current) {
+      setSaveStatus("saving");
+      setSaveError(null);
+    }
     try {
       // `publishStory` is the one call in `src/lib/api.ts` that persists hand
       // edits to a chapter's content, so this reuses it exactly as Create
@@ -102,23 +140,36 @@ export function useChapterEditor({
         chapters: [{ id: chapterId, content }],
         visibility: isPublished ? "public" : "private",
       });
-      if (!mountedRef.current) return;
-      pendingSaveText.current = null;
-      setSaveStatus("idle");
+      lastSavedText.current = content;
+      // Only clear the pending marker if it still points at the content
+      // this call just persisted. A newer edit typed while this save was in
+      // flight already overwrote it with the newer text, and that edit's
+      // own (separately scheduled) save is what must reach the server next
+      // - clearing unconditionally here would strand it forever, since its
+      // debounce timer reads this same ref and finds nothing to send.
+      if (pendingSaveText.current === content) {
+        pendingSaveText.current = null;
+      }
+      if (mountedRef.current) setSaveStatus("idle");
+      return true;
     } catch (error) {
-      if (!mountedRef.current) return;
-      // The text stays exactly as the reader left it. Only the save state
-      // changes, so a retry can re-send the same content without them typing
-      // anything again.
-      pendingSaveText.current = content;
-      setSaveStatus("error");
-      setSaveError(
-        error instanceof Error
-          ? error.message
-          : "Could not save your edit. Please try again.",
-      );
+      if (mountedRef.current) {
+        setSaveStatus("error");
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : "Could not save your edit. Please try again.",
+        );
+      }
+      // The text stays exactly as the reader left it, and `pendingSaveText`
+      // is left untouched too: it already holds either this same content
+      // (safe to retry) or something newer typed since this call started
+      // (which must not be overwritten with the stale content that just
+      // failed).
+      return false;
     }
   }, [chapterId, isPublished, storyId]);
+  runSaveRef.current = runSave;
 
   const scheduleSave = useCallback((content: string) => {
     pendingSaveText.current = content;
@@ -145,6 +196,18 @@ export function useChapterEditor({
     void runSave(pending);
   }, [runSave]);
 
+  const flushPendingSave = useCallback(async (): Promise<boolean> => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    const pending = pendingSaveText.current;
+    if (pending === null) return true;
+    return runSave(pending);
+  }, [runSave]);
+
+  const getLastSavedText = useCallback(() => lastSavedText.current, []);
+
   const regenerate = useCallback((paragraphIndex: number, prompt: string) => {
     // A double tap fires this twice before the first request has a chance to
     // resolve. The ref, not state, is what stops the second one: state would
@@ -168,6 +231,16 @@ export function useChapterEditor({
           { customNote: prompt },
         );
         if (!mountedRef.current) return;
+        // An empty or whitespace-only result is a failed rewrite, not
+        // content - the local mock (`localEditParagraph`) always returns
+        // "", and a real provider is not guaranteed to reject a blank
+        // completion either. Assigning it into the paragraph unconditionally
+        // would blank out what the reader wrote, silently.
+        if (!updated.trim()) {
+          throw new Error(
+            "The AI returned an empty rewrite. Please try again.",
+          );
+        }
         const nextParagraphs = [...paragraphs];
         nextParagraphs[paragraphIndex] = updated;
         // Exactly one prior version is held, and this replaces whatever was
@@ -199,9 +272,18 @@ export function useChapterEditor({
 
   const revert = useCallback(() => {
     if (previousText === null) return;
-    setText(previousText);
+    const reverted = previousText;
+    setText(reverted);
     setPreviousText(null);
-  }, [previousText]);
+    // The AI rewrite this undoes was already persisted server-side by
+    // `edit-story` itself (unlike a manual edit, which only ever reaches the
+    // server through this hook's own debounced save). Without scheduling a
+    // save here, the revert only ever changes what this screen shows - the
+    // server keeps the rewritten text forever, and the revert does not
+    // actually stick. Routed through the same debounced path as any other
+    // edit, per `STORY_GENERATION_FLOW.md`'s reader-edit note.
+    scheduleSave(reverted);
+  }, [previousText, scheduleSave]);
 
   return {
     text,
@@ -215,5 +297,7 @@ export function useChapterEditor({
     regenerateError,
     regenerate,
     retryRegenerate,
+    flushPendingSave,
+    getLastSavedText,
   };
 }

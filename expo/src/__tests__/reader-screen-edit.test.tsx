@@ -67,3 +67,45 @@ it("opens the editor for a story the reader owns and lets them save a manual edi
 
   await waitFor(() => expect(view.queryByText("Edit Story")).toBeNull());
 });
+
+it("round-trips a chapter with a deliberately blank paragraph, preserving every paragraph's index (finding 6)", async () => {
+  const ownStory = { ...baseStory, authorId: "me" };
+  const view = await render(<ReaderScreen story={ownStory} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+  await waitFor(() => expect(view.getByLabelText("Edit")).toBeTruthy());
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Edit"));
+  });
+  await waitFor(() => expect(view.getByLabelText("Chapter text")).toBeTruthy());
+
+  // Paragraph 0, an intentionally blank paragraph 1, then paragraph 2 - the
+  // exact `join("\n\n")` shape a real chapter with a deliberate blank line
+  // between two paragraphs would produce.
+  const withBlankParagraph = "Paragraph zero.\n\n\n\nParagraph two.";
+  await act(async () => {
+    fireEvent.changeText(view.getByLabelText("Chapter text"), withBlankParagraph);
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Close editor"));
+  });
+  await waitFor(() => expect(view.queryByText("Edit Story")).toBeNull());
+
+  // Reopen: the closed editor's text becomes `chapter.paragraphs` by way of
+  // the reader's own split/join round trip. Before the fix, splitting on
+  // `/\n\s*\n/` and filtering empty parts collapsed the blank paragraph away
+  // and pulled "Paragraph two." from index 2 down to index 1 - exactly the
+  // index shift that would point the AI editor at the wrong paragraph.
+  // (The chrome is still visible from the earlier toggle - closing the
+  // editor does not hide it - so there is no second toggle to press here.)
+  await waitFor(() => expect(view.getByLabelText("Edit")).toBeTruthy());
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Edit"));
+  });
+
+  await waitFor(() =>
+    expect(view.getByLabelText("Chapter text").props.value).toBe(withBlankParagraph)
+  );
+});
