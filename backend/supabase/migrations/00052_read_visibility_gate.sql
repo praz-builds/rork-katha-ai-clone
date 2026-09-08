@@ -97,7 +97,13 @@ begin
         -- non-author still needs the specific chapter to be readable.
         -- The author's own draft chapters are exempt, same as everywhere
         -- else chapter readability is decided.
-        if v_author_id <> p_user_id and not coalesce(v_chapter_published, false) then
+        -- `is distinct from`, not `<>`. A null `author_id` makes `<>` evaluate to
+        -- NULL rather than true, so the `if` never fires and an unpublished
+        -- chapter is accepted for a non-author -- the exact case this guard
+        -- exists to refuse. Three-valued logic turns a security check into a
+        -- no-op precisely when the data is unusual.
+        if v_author_id is distinct from p_user_id
+           and not coalesce(v_chapter_published, false) then
             raise exception 'Story not found';
         end if;
     end if;

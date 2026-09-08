@@ -63,7 +63,9 @@ async function createUser(db: PGlite, id: string, username?: string) {
 async function createStory(
   db: PGlite,
   id: string,
-  authorId: string,
+  // Nullable on purpose: a story with no author is the case that exposed the
+  // three-valued-logic hole in the readability guard.
+  authorId: string | null,
   opts: { isPublic?: boolean; isCurated?: boolean } = {},
 ) {
   await db.query(
@@ -237,6 +239,39 @@ Deno.test("a nonexistent story and a private one the caller cannot read fail ide
     );
     const unreadable = await recordRead(db, READER, STORY, CHAPTER);
     assertEquals(missing, unreadable);
+  } finally {
+    await db.close();
+  }
+});
+
+
+// A null author must not make the guard evaporate.
+//
+// The check was `v_author_id <> p_user_id`, and `<>` against NULL evaluates to
+// NULL rather than true -- so the `if` never fired and an unpublished chapter
+// was accepted for a non-author. Three-valued logic turns a security check into
+// a no-op exactly when the data is unusual, which is exactly when you want it.
+Deno.test("an unpublished chapter is refused even when the story has no author", async () => {
+  const db = await createDatabase();
+  try {
+    await createUser(db, READER);
+    await createStory(db, STORY, null, { isPublic: true, isCurated: false });
+    await createChapter(db, CHAPTER, STORY, false);
+    await asService(db);
+
+    const error = await recordRead(db, READER, STORY, CHAPTER);
+    assertEquals(
+      error,
+      "Story not found",
+      "a null author must not open the gate",
+    );
+
+    await asSuperuser(db);
+    const readCount = await db.query<{ read_count: number }>(
+      "select read_count from stories where id = $1",
+      [STORY],
+    );
+    assertEquals(readCount.rows[0].read_count, 0);
   } finally {
     await db.close();
   }

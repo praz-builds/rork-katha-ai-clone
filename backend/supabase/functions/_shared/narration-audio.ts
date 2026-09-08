@@ -344,18 +344,33 @@ export async function pollRunpodNarration(
  * this is strictly a best-effort cleanup on top of that failure, not
  * something worth failing louder over.
  */
-export async function cancelRunpodNarration(jobId: string): Promise<void> {
+export async function cancelRunpodNarration(
+  jobId: string,
+): Promise<{ cancelled: boolean; status: number | null }> {
   const url = runpodCancelUrl(jobId);
-  if (!url) return;
+  // No endpoint and no key are both "the cancel did not happen", not success.
+  if (!url) return { cancelled: false, status: null };
   const apiKey = Deno.env.get("RUNPOD_API_KEY");
-  if (!apiKey) return;
+  if (!apiKey) return { cancelled: false, status: null };
   try {
-    await fetch(url, {
+    const response = await fetch(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}` },
     });
+    // A non-2xx is a cancellation that did NOT happen. Treating any answer as
+    // success let a job RunPod had accepted keep running and keep billing,
+    // while this code believed it had been stopped -- the leak this function
+    // exists to prevent, reported as prevented.
+    if (!response.ok) {
+      console.error(
+        `narration: RunPod refused the cancel (${response.status}); job may still be running`,
+      );
+      return { cancelled: false, status: response.status };
+    }
+    return { cancelled: true, status: response.status };
   } catch (error) {
     console.error("narration: best-effort RunPod cancel failed", error);
+    return { cancelled: false, status: null };
   }
 }
 

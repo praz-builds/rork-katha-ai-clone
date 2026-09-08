@@ -104,17 +104,25 @@ describe("savePhrase against a reachable backend", () => {
 });
 
 describe("listSavedPhrases against a reachable backend", () => {
+  /**
+   * A row shaped the way `phrases` ACTUALLY returns one.
+   *
+   * This fixture used to be camelCase, matching the client's model rather than
+   * the wire. That is why the contract mismatch survived: the endpoint selects
+   * database columns and returns `phrase_text` and `story_id`, so every real
+   * response was discarded while this test passed against a shape the server
+   * never sends.
+   */
   function remotePhrase(overrides: Partial<Record<string, unknown>> = {}) {
+    const now = new Date().toISOString();
     return {
       id: "remote-1",
-      phrase: "harbor",
+      phrase_text: "harbor",
       sentence: "The harbor was quiet.",
-      storyId: "story-9",
-      storyTitle: "Some Other Story",
-      chapterId: "chapter-9",
-      createdAt: new Date().toISOString(),
-      dueAt: new Date().toISOString(),
-      reviewCount: 0,
+      story_id: "story-9",
+      chapter_id: "chapter-9",
+      language: "English",
+      saved_at: now,
       ...overrides,
     };
   }

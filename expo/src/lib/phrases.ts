@@ -40,6 +40,16 @@ export type SavedPhrase = {
   dueAt: string;
   /** How many practice rounds this phrase has been through, for the interval bump. */
   reviewCount: number;
+  /**
+   * ISO timestamp of the last time the server confirmed this phrase, if ever.
+   *
+   * Absent means the row is the reader's unsent work and must survive a refresh
+   * that does not mention it. Present means the server knew about it once, so
+   * its absence from a later complete answer means it was deleted elsewhere and
+   * must NOT be resurrected. Without this discriminator the two cases are
+   * indistinguishable and one of them is always handled wrongly.
+   */
+  syncedAt?: string;
 };
 
 export type PracticeOutcome = "know" | "again";
@@ -157,12 +167,61 @@ async function invokeGuarded<T>(
   }
 }
 
+/**
+ * One row as `phrases` actually returns it.
+ *
+ * The endpoint selects database columns, so the wire shape is snake_case:
+ * `phrase_text`, `story_id`, `saved_at`. The client models a phrase in
+ * camelCase. Nothing translated between them, so every remote row failed the
+ * shape check and was discarded -- the sync has never worked, silently, because
+ * discarding everything looks exactly like the server having nothing.
+ */
+type RemotePhraseRow = {
+  id?: unknown;
+  phrase_text?: unknown;
+  story_id?: unknown;
+  chapter_id?: unknown;
+  sentence?: unknown;
+  saved_at?: unknown;
+  language?: unknown;
+};
+
+/** Map a wire row to the client's shape, or null when it is not usable. */
+function fromRemoteRow(row: RemotePhraseRow): SavedPhrase | null {
+  const phrase = typeof row.phrase_text === "string" ? row.phrase_text : null;
+  const storyId = typeof row.story_id === "string" ? row.story_id : null;
+  const id = typeof row.id === "string" ? row.id : null;
+  if (!phrase || !storyId || !id) return null;
+
+  const savedAt = typeof row.saved_at === "string"
+    ? row.saved_at
+    : new Date().toISOString();
+  return {
+    id,
+    phrase,
+    sentence: typeof row.sentence === "string" ? row.sentence : phrase,
+    storyId,
+    // Straight from the server, so by definition synced.
+    syncedAt: savedAt,
+    // The wire row carries no story title; the local cache is the only place it
+    // exists, so a merged entry keeps whatever the local copy knew.
+    storyTitle: "",
+    chapterId: typeof row.chapter_id === "string" ? row.chapter_id : "",
+    createdAt: savedAt,
+    dueAt: savedAt,
+    reviewCount: 0,
+  };
+}
+
 /** All saved phrases, newest first. Local cache, refreshed from the server when it answers. */
 export async function listSavedPhrases(): Promise<SavedPhrase[]> {
   const store = await readStore();
-  const result = await invokeGuarded<{ phrases?: SavedPhrase[] }>("phrases", { method: "GET" });
+  const result = await invokeGuarded<{ phrases?: RemotePhraseRow[] }>("phrases", { method: "GET" });
   if (result.ok && Array.isArray(result.data?.phrases)) {
-    const merged = mergeSavedPhrases(store.phrases, result.data.phrases);
+    const remote = result.data.phrases
+      .map(fromRemoteRow)
+      .filter((entry): entry is SavedPhrase => entry !== null);
+    const merged = mergeSavedPhrases(store.phrases, remote);
     await writeStore({ phrases: merged });
     return sortByCreatedAtDesc(merged);
   }
@@ -357,8 +416,17 @@ function mergeSavedPhrases(
   const remoteKeys = new Set(
     validRemote.map((entry) => dedupeKey(entry.storyId, entry.phrase)),
   );
-  const localOnly = local.filter(
-    (entry) => !remoteKeys.has(dedupeKey(entry.storyId, entry.phrase)),
+  // Only local entries the server has not seen are kept, and only while they
+  // are still unsynced. Keeping every local-only row unconditionally meant a
+  // phrase deleted on another device came back on the next refresh: the server
+  // had correctly stopped returning it, and this treated its absence as "not
+  // synced yet" rather than "deleted".
+  //
+  // `syncedAt` is the discriminator. A row that has never synced is the
+  // reader's unsent work and must survive; a row that HAS synced and is now
+  // absent from a complete server answer was deleted elsewhere.
+  const localOnly = local.filter((entry) =>
+    !remoteKeys.has(dedupeKey(entry.storyId, entry.phrase)) && !entry.syncedAt
   );
   return [...validRemote, ...localOnly];
 }
