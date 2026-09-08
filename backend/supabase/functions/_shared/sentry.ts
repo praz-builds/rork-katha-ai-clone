@@ -115,12 +115,41 @@ interface SentryModule {
   flush(timeoutMs?: number): Promise<boolean>;
 }
 
+
+/**
+ * An error code safe to send to a third party, or undefined.
+ *
+ * An identifier -- lowercase letters, digits, `_`, `-`, `.`, `:` -- passes
+ * through, capped at 64 characters. Anything else (a sentence, a provider
+ * response body, a URL, anything with whitespace) is replaced wholesale by
+ * `unclassified_error` rather than truncated: truncating free text still sends
+ * free text, just less of it, and the first 64 characters of a provider error
+ * are exactly the part most likely to carry a payload.
+ */
+export function safeErrorCode(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return /^[a-z0-9_.:-]{1,64}$/i.test(value) ? value : "unclassified_error";
+}
+
 let sentryModulePromise: Promise<SentryModule> | null = null;
 let initializedForDsn: string | null = null;
 
 function loadSentry(): Promise<SentryModule> {
   if (!sentryModulePromise) {
-    sentryModulePromise = import(SENTRY_MODULE_URL) as Promise<SentryModule>;
+    // A rejected import must not be cached.
+    //
+    // The module is fetched over the network on first use, so the first
+    // attempt can fail for reasons that have nothing to do with the next one:
+    // a cold-start DNS hiccup, a transient CDN 5xx. Holding the rejected
+    // promise meant one unlucky first alert silenced every alert for the rest
+    // of that isolate's life -- and silently, since `captureError` swallows
+    // its own failures by contract. Clearing the slot on rejection costs one
+    // retry per failure and buys back the alerting.
+    const attempt = import(SENTRY_MODULE_URL) as Promise<SentryModule>;
+    sentryModulePromise = attempt;
+    attempt.catch(() => {
+      if (sentryModulePromise === attempt) sentryModulePromise = null;
+    });
   }
   return sentryModulePromise;
 }
@@ -176,7 +205,23 @@ export async function captureError(input: LogErrorInput): Promise<boolean> {
   return await withTimeout(CAPTURE_TIMEOUT_MS, async () => {
     const Sentry = await ensureInitialized(dsn);
     const severity: ErrorSeverity = input.severity ?? "medium";
-    const message = safeErrorMessage(input.error, input.errorCode);
+    // `errorCode` is bounded here rather than trusted.
+    //
+    // Most callers pass a literal, but not all: some build one by
+    // interpolation, and any caller could in future pass a provider's own
+    // message through. Sentry is a third party and its events are retained, so
+    // "the codebase currently happens to pass literals" is not a strong enough
+    // guarantee to send free text on. `safeErrorCode` keeps anything that
+    // looks like an identifier and replaces anything that does not with
+    // `unclassified_error`, so an event's message and its `error_code` tag are
+    // both drawn from a shape this module controls -- the same rule
+    // `sanitizeErrorContext` already applies to `extra`.
+    //
+    // This does not weaken `error_events`: `logError` is untouched and still
+    // records the caller's own code verbatim in the durable row, which is
+    // where the unbounded detail belongs.
+    const errorCode = safeErrorCode(input.errorCode);
+    const message = safeErrorMessage(input.error, errorCode);
 
     Sentry.captureMessage(message, {
       level: sentryLevel(severity),
@@ -184,7 +229,7 @@ export async function captureError(input: LogErrorInput): Promise<boolean> {
         bucket: input.bucket,
         severity,
         source: input.source ?? "runtime",
-        ...(input.errorCode ? { error_code: input.errorCode } : {}),
+        ...(errorCode ? { error_code: errorCode } : {}),
       },
       extra: sanitizeErrorContext(input.context),
       user: input.userId ? { id: input.userId } : undefined,

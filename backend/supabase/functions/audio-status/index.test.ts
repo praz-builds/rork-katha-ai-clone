@@ -71,6 +71,14 @@ interface ServerState {
     error?: string;
   };
   patches: Array<Record<string, unknown>>;
+  /**
+   * `staleCountQueries` as it stood when each PATCH was issued.
+   *
+   * The severity count and the row's own failure write are ordered, and the
+   * order is the whole point: this records it so a test can assert it rather
+   * than infer it from a count the mock returns statically.
+   */
+  staleCountAtPatch: number[];
   uploads: number;
   sentryEvents: Array<Record<string, unknown>>;
   errorEventsInserts: Array<Record<string, unknown>>;
@@ -97,6 +105,7 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     row: null,
     runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
     patches: [],
+    staleCountAtPatch: [],
     uploads: 0,
     sentryEvents: [],
     errorEventsInserts: [],
@@ -164,6 +173,7 @@ function makeFetchStub(state: ServerState): typeof fetch {
 
     if (url.pathname === "/rest/v1/chapter_audio") {
       if (request.method === "PATCH") {
+        state.staleCountAtPatch.push(state.staleCountQueries);
         state.patches.push(await request.json());
         return json([]);
       }
@@ -643,6 +653,82 @@ Deno.test("without SENTRY_DSN, a timeout is still detected and marked failed, bu
       state.sentryEvents.length > 0,
       "with no DSN, Sentry must never be reached",
     );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// Two stuck jobs is systemic, and used to report as if it were one.
+//
+// `classifyTimeoutSeverity` counts stale `pending` rows and treats "more than
+// one" as systemic, because this row is meant to be one of the rows it counts.
+// The failure write ran first, which took this row out of the count, so every
+// reading was one short: two jobs stuck at the same moment counted as one and
+// reported `high`, and `critical` needed three. The exact case the split
+// exists to catch -- narration broken for everyone rather than for one chapter
+// -- was the case it under-reported.
+Deno.test("two jobs stuck at once is critical, and the count is taken before this row is failed", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+      // This row plus one other. Under the old ordering this arrived as 1.
+      stalePendingCount: 2,
+    });
+
+    await run(state, QUERY);
+
+    assertEquals(state.sentryEvents.length, 1);
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.severity, "critical");
+
+    // The ordering itself, not just its consequence. A mock returns a static
+    // count, so the count alone cannot prove which ran first.
+    assertEquals(state.patches.length, 1);
+    assertEquals(
+      state.staleCountAtPatch[0],
+      1,
+      "the stale count must be taken before the row is marked failed",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("one job stuck alone is still only high", async () => {
+  // The mirror. Without it, a change that simply always reported critical
+  // would pass the test above.
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+      stalePendingCount: 1,
+    });
+
+    await run(state, QUERY);
+
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.severity, "high");
   } finally {
     restoreEnv(env);
   }

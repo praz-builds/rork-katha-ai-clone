@@ -9,7 +9,12 @@ import {
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { captureError, reportError, resetSentryForTests } from "./sentry.ts";
+import {
+  captureError,
+  reportError,
+  resetSentryForTests,
+  safeErrorCode,
+} from "./sentry.ts";
 
 const SENTRY_HOST = "sentry.katha.test";
 
@@ -360,4 +365,43 @@ Deno.test("severity maps onto Sentry's level vocabulary without inventing a seco
     const [, level] = cases[i];
     assertEquals(log.sentryEvents[i].level, level);
   }
+});
+
+// Nothing free-form reaches Sentry, whatever a caller passes as `errorCode`.
+//
+// Most callers pass a literal, but `generate-audio` used to build one from a
+// thrown Error's own message, and any caller could pass a provider's response
+// text through in future. Sentry is a third party and retains what it is sent,
+// so this is enforced at the boundary rather than assumed from the call sites.
+Deno.test("safeErrorCode passes identifiers through and replaces anything else", () => {
+  for (const identifier of [
+    "runpod_start_5xx",
+    "job_not_recorded",
+    "cover_regeneration_rate_limited",
+    "generation.audio:timeout",
+    "unhandled",
+  ]) {
+    assertEquals(safeErrorCode(identifier), identifier);
+  }
+
+  for (const freeText of [
+    "RunPod start failed: 500",
+    "RUNPOD_API_KEY is not configured",
+    '{"error":"invalid input","prompt":"the story text"}',
+    "https://api.runpod.ai/v2/abc/run returned 401",
+    "TypeError: Cannot read properties of undefined",
+  ]) {
+    assertEquals(
+      safeErrorCode(freeText),
+      "unclassified_error",
+      `${freeText} was not bounded`,
+    );
+  }
+
+  // A 65-character identifier is over the cap, and is replaced rather than
+  // truncated: half a payload is still a payload.
+  assertEquals(safeErrorCode("a".repeat(65)), "unclassified_error");
+  assertEquals(safeErrorCode("a".repeat(64)), "a".repeat(64));
+  assertEquals(safeErrorCode(undefined), undefined);
+  assertEquals(safeErrorCode(""), undefined);
 });

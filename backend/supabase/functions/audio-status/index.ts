@@ -77,8 +77,17 @@ async function timedOutResponsePayload(
   voiceId: string,
 ): Promise<Record<string, unknown>> {
   const errorCode = "generation_timed_out";
-  await markChapterAudioFailed(serviceClient, row.id!, errorCode);
+  // Counted BEFORE this row is marked failed, not after.
+  //
+  // `classifyTimeoutSeverity` counts stale `pending` rows and reads "more than
+  // one" as systemic, because this row is meant to be one of the rows it
+  // counts. Marking the row failed first took it out of the count, so the
+  // reading was always one short: two jobs stuck at the same moment counted as
+  // one and reported `high`, and the `critical` branch needed three. The exact
+  // case the severity split exists to catch -- narration breaking for everyone
+  // rather than for one chapter -- was the case it under-reported.
   const severity = await classifyTimeoutSeverity(serviceClient);
+  await markChapterAudioFailed(serviceClient, row.id!, errorCode);
   await reportError({
     bucket: "generation.audio",
     severity,

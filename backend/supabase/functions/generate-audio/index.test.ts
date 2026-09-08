@@ -570,7 +570,11 @@ Deno.test("a RunPod outage (5xx on /run) is reported to Sentry as critical, and 
     const tags = event.tags as Record<string, unknown>;
     assertEquals(tags.bucket, "generation.audio");
     assertEquals(tags.severity, "critical");
-    assertEquals(event.message, "RunPod start failed: 500");
+    // The event carries a classified code, not the thrown sentence. What
+    // reaches Sentry is drawn from a fixed set this codebase controls; the
+    // provider's own text stays in `error_events`.
+    assertEquals(event.message, "runpod_start_5xx");
+    assertEquals(tags.error_code, "runpod_start_5xx");
     const extra = event.extra as Record<string, unknown>;
     assertEquals(extra.story_id, STORY_ID);
     assertEquals(extra.chapter_id, CHAPTER_ID);
