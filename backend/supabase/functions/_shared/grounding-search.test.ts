@@ -127,6 +127,40 @@ Deno.test("fictional characters are not searched either", () => {
   );
 });
 
+Deno.test("canon_character is grounded but not searched, and private_individual stays untouched by the new class", () => {
+  // Job: extend grounding to a new class without widening who can be searched.
+  // The proof that private_individual "still holds" is that nothing about
+  // adding canon_character changes its answer here.
+  assertEquals(
+    isSearchableEntity(
+      entity({ entityClass: "canon_character", searchable: true }),
+    ),
+    false,
+  );
+  assertEquals(
+    groundingSearchQuery(
+      entity({ entityClass: "canon_character", searchable: true }),
+    ),
+    null,
+  );
+  assertEquals(
+    isSearchableEntity(
+      entity({ entityClass: "private_individual", searchable: true }),
+    ),
+    false,
+  );
+  assertEquals(
+    groundingSearchQuery(
+      entity({
+        entityClass: "private_individual",
+        canonicalName: "Anjali Rao",
+        searchable: true,
+      }),
+    ),
+    null,
+  );
+});
+
 Deno.test("the query is the canonical name and nothing else", () => {
   assertEquals(
     groundingSearchQuery(entity()),

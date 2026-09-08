@@ -66,6 +66,24 @@ export class StoryShapeRequestError extends Error {
   }
 }
 
+/** Why the entity visibility gate kept a story private. Mirrors the backend enum. */
+export type StoryGatingReason = "living_public_figure" | "private_individual";
+
+/**
+ * The server refused to make a story public because its idea names a real
+ * living person - a public figure or a private individual - and kept the
+ * story private instead. This is not a failed publish in the ordinary sense:
+ * every edit was still saved, the story still exists and reads exactly as
+ * before, and nothing needs to be retried. The caller's job is to explain
+ * that, not to offer a retry button.
+ */
+export class StoryGatedPrivateError extends Error {
+  constructor(readonly gatingReason: StoryGatingReason) {
+    super("This story stays private.");
+    this.name = "StoryGatedPrivateError";
+  }
+}
+
 export type StoryShape = {
   /** Primary first, then up to two editable secondary genre chips. */
   genres: Genre[];
@@ -685,6 +703,35 @@ function objectFailure(
       (typeof payload.operation_id === "string" &&
         /refunded|start a new request/i.test(message)),
   };
+}
+
+/**
+ * Read `publish-story`'s typed refusal out of a failed invoke, or null for
+ * every other kind of failure.
+ *
+ * Reuses the same `error.context.json()` reach-through as `edgeFunctionFailure`
+ * above - the Supabase JS SDK reports a non-2xx function response as an error
+ * with no parsed body, and the body is the only place `error_code` and
+ * `gating_reason` live.
+ */
+async function storyGatedPrivateReason(
+  error: unknown,
+): Promise<StoryGatingReason | null> {
+  const context = error && typeof error === "object"
+    ? (error as { context?: { json?: () => Promise<unknown> } }).context
+    : undefined;
+  if (typeof context?.json !== "function") return null;
+  try {
+    const body = await context.json();
+    if (!body || typeof body !== "object") return null;
+    const payload = body as Record<string, unknown>;
+    if (payload.error_code !== "story_gated_private") return null;
+    return payload.gating_reason === "private_individual"
+      ? "private_individual"
+      : "living_public_figure";
+  } catch {
+    return null;
+  }
 }
 
 function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
@@ -1490,6 +1537,8 @@ export async function publishStory(
   });
 
   if (error) {
+    const gatingReason = await storyGatedPrivateReason(error);
+    if (gatingReason) throw new StoryGatedPrivateError(gatingReason);
     throw new Error("Publishing failed. Please try again.");
   }
 }

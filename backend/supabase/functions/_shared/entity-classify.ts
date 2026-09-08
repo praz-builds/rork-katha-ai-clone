@@ -54,7 +54,8 @@ Classify each one:
 
 - historical_public_figure: a real person, no longer living, publicly documented.
 - living_public_figure: a real person, alive, publicly documented.
-- fictional_character: a character from published fiction, myth or folklore.
+- canon_character: a specific character from an existing published or produced work - a novel, show, film, game, or comic - that this idea is deliberately writing as themselves, inside or continuing that work's own continuity. Use this only when the story is fan fiction of a named, identifiable work; a character only borrowed, alluded to or mashed up in passing is fictional_character below instead.
+- fictional_character: any other character from published fiction, myth or folklore - referenced, invoked or borrowed, but not written as an extension of a specific existing work's own canon.
 - real_place: a specific real location - city, building, region, landmark.
 - real_event: a specific real event - a battle, a treaty, a disaster, a festival.
 - organization_brand: a real company, institution, team, product or brand.
@@ -70,11 +71,12 @@ Set needs_grounding true when any of these hold:
 1. The entity is long-tail or regionally weighted away from English-language, Western sources. A figure central to one region's history and marginal in English-language writing is the highest-risk case: the model knows the name and little else, so it fills the gap fluently. Honorifics, titles, forms of address, court and social register, and local chronology are what it gets wrong.
 2. Relevant facts postdate ${ASSISTANT_KNOWLEDGE_CUTOFF}, or the entity's public situation changes often enough that a fixed snapshot is likely stale.
 3. Writing the entity requires specific verifiable present-day or period detail that an informed reader would catch being wrong - dates, sequence, geography, titles, material culture.
+4. The entity is canon_character. Always set needs_grounding true here, and never for the reasons above: the risk is not a fact the model might not know, it is a voice the model will flatten into generic dialogue. That risk does not correlate with fame - a famous character is exactly as easy to flatten as an obscure one, because being well-documented tells the model what the character did, not how the character sounds saying it.
 
 Set needs_grounding false when:
 
-- The entity is heavily documented in exactly the sources the model saw most of. Churchill, Napoleon, Lincoln, Leonardo da Vinci, Marie Curie, Shakespeare: no grounding.
-- The entity is fictional. The model knows published fiction well, and this product does not require canon fidelity. Spider-Man, Sherlock Holmes, Zeus: no grounding.
+- The entity is heavily documented in exactly the sources the model saw most of. Churchill, Napoleon, Lincoln, Leonardo da Vinci, Marie Curie, Shakespeare: no grounding. This exception is about real people; it never applies to canon_character - see rule 4 above.
+- The entity is fictional_character. The model knows published fiction well, and this product does not require canon fidelity for a character that is merely referenced. Spider-Man, Sherlock Holmes, Zeus: no grounding, as long as none of them is being written as the specific subject of a work of fan fiction - in that case they are canon_character instead, and rule 4 applies.
 - The entity is private_individual. There is nothing to look up, and the user's own description is the only authority.
 - The entity is mentioned in passing and carries no scene.
 

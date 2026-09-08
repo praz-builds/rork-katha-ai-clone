@@ -53,6 +53,17 @@
  *                             reader catches.
  *   fictional_character       never grounded. The model knows Spider-Man, and
  *                             this product does not owe anyone canon fidelity.
+ *   canon_character           grounded, unlike the class above. Added for
+ *                             fanfiction, the one genre that is entirely about
+ *                             canon fidelity rather than owing none. A general
+ *                             model reliably flattens a specific character's
+ *                             voice into generic dialogue, and fame does not
+ *                             protect against that failure the way it protects
+ *                             a historical figure from a factual one - Draco
+ *                             Malfoy is exactly as easy to flatten as a side
+ *                             character from an obscure webcomic. See
+ *                             entity-classify.ts for the classification rule
+ *                             and grounding-card.ts's `voice` field.
  *   real_place                grounded for sensory texture, not for facts.
  *   real_event                chronology risk, same shape as historical.
  *   organization_brand        naming and register risk, plus defamation edge.
@@ -62,6 +73,7 @@ export type EntityClass =
   | "historical_public_figure"
   | "living_public_figure"
   | "fictional_character"
+  | "canon_character"
   | "real_place"
   | "real_event"
   | "organization_brand"
@@ -71,6 +83,7 @@ export const ENTITY_CLASSES: ReadonlySet<string> = new Set<EntityClass>([
   "historical_public_figure",
   "living_public_figure",
   "fictional_character",
+  "canon_character",
   "real_place",
   "real_event",
   "organization_brand",
@@ -95,7 +108,12 @@ export const ENTITY_CLASS_NONE = "none";
  * Katha story is private by default, and shipping "my ex-boyfriend Daniel from
  * the Bangalore office" to a third-party search API breaks that silently, in a
  * way no user could discover. `fictional_character` is absent for a cheaper
- * reason - it is never worth a request.
+ * reason - it is never worth a request. `canon_character` is absent for the
+ * same cheaper reason: a fandom card is about voice and characterisation, not
+ * about facts a search engine holds, so phase 1's model-knowledge card is the
+ * whole mechanism and there is nothing here for phase 2 to add. Its absence is
+ * not a privacy decision the way `private_individual`'s is - nothing about
+ * adding a new grounded class may ever narrow that one's exclusion.
  *
  * This is a code-level gate, not prompt guidance. A prompt that says "do not
  * search private people" fails open the first time a model misreads a sentence;
@@ -165,6 +183,12 @@ export const EMPTY_ENTITY_CLASSIFICATION: EntityClassification = {
  *               is the single most embarrassing output the naive path produces.
  *               Register and address are what a reader notices first and what
  *               a general-purpose model gets wrong most reliably.
+ *   voice       how the entity speaks - diction, rhythm, verbal tics, what they
+ *               would never say. Added for `canon_character`: fanfiction is
+ *               read for voice above everything else, and a flattened voice is
+ *               the single failure mode that class exists to catch. Useful but
+ *               optional for every other class, so it is capped and defaulted
+ *               like `era`/`role` rather than required like `nameForms`.
  *   details     5-8 concrete, material, sensory things a writer can put on the
  *               page. Not achievements - textures. "Achievements" produce a
  *               Wikipedia paragraph; "the smell of the forge" produces a scene.
@@ -180,6 +204,11 @@ export type GroundingCard = {
   role: string;
   /** How they are named and addressed, and in what register. */
   nameForms: string;
+  /**
+   * How they speak. Empty string, never absent, matching `era`/`role` - a card
+   * missing this is still a usable card, unlike one missing `nameForms`.
+   */
+  voice: string;
   /** Concrete, sensory, stageable. See the note above on why not achievements. */
   details: string[];
   /** Named, specific errors to avoid. */
@@ -232,6 +261,14 @@ export const MAX_CARD_FIELD_LENGTH = 240;
  */
 export const MAX_NAME_FORMS_LENGTH = 500;
 
+/**
+ * `voice` is a paragraph, not a one-liner - diction, rhythm, verbal tics, what
+ * they would never say - but it is not `nameForms`: it is optional scaffolding
+ * for every class except the one it was added for, so it sits below the name
+ * budget rather than beside it.
+ */
+export const MAX_VOICE_LENGTH = 400;
+
 export const MIN_CARD_DETAILS = 5;
 export const MAX_CARD_DETAILS = 8;
 export const MAX_DETAIL_LENGTH = 200;
@@ -274,6 +311,18 @@ export const GROUNDING_TTL_DAYS: Record<EntityClass, number> = {
   // a new class cannot be added without a TTL decision being made about it.
   fictional_character: 365,
   private_individual: 0,
+  // canon_character IS grounded (see selectGroundingCandidates in
+  // entity-classify.ts) but is deliberately not yet cached in
+  // `entity_grounding`: that table's class check (migration 00045) only
+  // allows the five classes above, so caching a canon character's card is a
+  // follow-up that needs its own migration decision, not a silent side effect
+  // of adding the class here. Until then every request rebuilds the card from
+  // model knowledge, which is correct - just not free. 0 mirrors the "never
+  // cached" value already used for the other two ungrounded-or-uncached
+  // classes, and `entity_grounding_ttl_days()` in migration 00045 never has to
+  // answer for it because the table's check constraint rejects the insert
+  // first.
+  canon_character: 0,
 };
 
 /**

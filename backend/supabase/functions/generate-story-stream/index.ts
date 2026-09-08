@@ -40,6 +40,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
+import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
   GENERATION_GROUNDING_DEADLINE_MS,
@@ -328,6 +329,17 @@ serve(async (req) => {
           const resolvedEntities = fallback?.entities.length
             ? fallback.entities
             : groundingEntities;
+          // The entity visibility gate. Computed from the same classification
+          // that populates `grounding_entities` - see
+          // `_shared/entity-visibility-gate.ts` for the rule. This never makes
+          // the story public; `is_public` was already false by column default
+          // (migration 00001) and nothing in this handler ever sets it true.
+          // What this decides is whether the story can EVER be published, and
+          // it is recorded now because a well-known living person produces no
+          // grounding card (the model already writes them accurately) while
+          // being exactly the entity this gate exists for - `resolvedGrounding`
+          // alone would never see them.
+          const gateReason = deriveGatingReason(resolvedEntities);
 
           // The reader's saved phrases seed their next story. Best-effort: an
           // empty list renders the prompt byte-identically, so a lookup failure
@@ -479,6 +491,7 @@ serve(async (req) => {
               .update({
                 grounding: resolvedGrounding,
                 grounding_entities: resolvedEntities,
+                entity_gate_reason: gateReason,
               })
               .eq("id", story.id);
             if (groundingError) {

@@ -592,6 +592,7 @@ Deno.test("buildUserPrompt places phrase seeds after grounding", () => {
       era: "Western India.",
       role: "Hill fort.",
       nameForms: "Raigad Fort.",
+      voice: "",
       details: ["Stone steps."],
       pitfalls: ["Do not place it in Delhi."],
     }],

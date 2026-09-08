@@ -43,6 +43,7 @@ import {
   MAX_GROUNDING_CARDS,
   MAX_NAME_FORMS_LENGTH,
   MAX_PITFALL_LENGTH,
+  MAX_VOICE_LENGTH,
   MIN_CARD_DETAILS,
   MIN_CARD_PITFALLS,
   stripJsonCodeFence,
@@ -65,6 +66,7 @@ Fields:
 - era: dates or period, and place. Chronology and geography are half of what gets written wrong.
 - role: what this entity was or is, in one line a writer can build a scene around.
 - name_forms: THE MOST IMPORTANT FIELD. The full formal name; which part is a title or honorific rather than a name; what other characters would call them, and how that differs by who is speaking; what the narration should call them; and any form that would be anachronistic or disrespectful. Be explicit about honorifics that are commonly mistaken for surnames.
+- voice: how this entity actually speaks - diction, sentence rhythm, verbal tics, what register they use with whom, and anything they would flatly never say. For a canon_character this is as important as name_forms: a fan-fiction reader is there for the voice, and a generic-sounding version of a specific character is the whole failure this field exists to prevent. For any other entity, a line is still useful if their manner of speaking is distinctive; otherwise keep it brief rather than inventing texture that is not there.
 - details: ${MIN_CARD_DETAILS} to ${MAX_CARD_DETAILS} concrete, material, sensory facts a writer can put on the page - what is worn, held, eaten, built, heard, smelled; what a room or a road looked like; what a working day contained. NOT achievements, NOT significance, NOT legacy. "Won a decisive battle" is useless. "Fought in the ravines above the fort, where cavalry could not follow" is a scene.
 - pitfalls: ${MIN_CARD_PITFALLS} to ${MAX_CARD_PITFALLS} specific errors writers and models actually make with this entity. Name the wrong turn, not the general principle. "Do not be inaccurate" is not a pitfall.
 
@@ -126,6 +128,7 @@ export const GROUNDING_CARD_OUTPUT_SCHEMA = {
     "era",
     "role",
     "name_forms",
+    "voice",
     "details",
     "pitfalls",
     "insufficient_knowledge",
@@ -135,6 +138,7 @@ export const GROUNDING_CARD_OUTPUT_SCHEMA = {
     era: { type: "string" },
     role: { type: "string" },
     name_forms: { type: "string" },
+    voice: { type: "string" },
     details: {
       type: "array",
       minItems: MIN_CARD_DETAILS,
@@ -275,6 +279,10 @@ export function parseGroundingCard(
     era: boundedText(card.era, MAX_CARD_FIELD_LENGTH) ?? "",
     role: boundedText(card.role, MAX_CARD_FIELD_LENGTH) ?? "",
     nameForms,
+    // Capped and defaulted, never a rejection ground - unlike nameForms above,
+    // a card missing voice is still a usable card for every class it is not
+    // the point of.
+    voice: boundedText(card.voice, MAX_VOICE_LENGTH) ?? "",
     details,
     pitfalls,
     source,
@@ -352,6 +360,7 @@ export function validateGroundingCards(value: unknown): GroundingCard[] {
       era: boundedText(card.era, MAX_CARD_FIELD_LENGTH) ?? "",
       role: boundedText(card.role, MAX_CARD_FIELD_LENGTH) ?? "",
       nameForms,
+      voice: boundedText(card.voice, MAX_VOICE_LENGTH) ?? "",
       details,
       pitfalls: boundedTextList(
         card.pitfalls,
@@ -422,6 +431,7 @@ function renderCard(card: GroundingCard): string {
   if (card.era) lines.push(`Era and place: ${card.era}`);
   if (card.role) lines.push(`Role: ${card.role}`);
   lines.push(`Name and address: ${card.nameForms}`);
+  if (card.voice) lines.push(`Voice: ${card.voice}`);
   lines.push("Concrete detail available for scene texture:");
   for (const detail of card.details) lines.push(`- ${detail}`);
   if (card.pitfalls.length) {

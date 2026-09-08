@@ -75,6 +75,49 @@ Deno.test("a well-formed card round-trips", () => {
   assertEquals(card.pitfalls.length, 3);
   assertEquals(card.source, "model_knowledge");
   assertStringIncludes(card.nameForms, "honorific");
+  // A payload that never mentions voice still parses: the field is optional
+  // scaffolding for every class except the one it was added for.
+  assertEquals(card.voice, "");
+});
+
+Deno.test("voice is capped like the other prose fields, and rendered when present", () => {
+  const CANON_CHARACTER: EntityMention = {
+    surface: "Draco Malfoy",
+    canonicalName: "Draco Malfoy",
+    entityClass: "canon_character",
+    confidence: 0.95,
+    searchable: false,
+    needsGrounding: true,
+  };
+  const card = parseGroundingCard(
+    JSON.stringify(cardPayload({
+      canonical_name: "Draco Malfoy",
+      voice:
+        "Clipped, superior, drops into genuine fear only when truly cornered. " +
+        "v".repeat(1000),
+    })),
+    CANON_CHARACTER,
+    "model_knowledge",
+  );
+  assert(card);
+  assertEquals(card.voice.length, 400);
+
+  const block = buildGroundingBlock([card]);
+  assertStringIncludes(block, "Voice: Clipped, superior");
+});
+
+Deno.test("validation caps voice the same way it caps every other field", () => {
+  const cards = validateGroundingCards([{
+    ...validCard(),
+    voice: "v".repeat(5000),
+  }]);
+  assertEquals(cards.length, 1);
+  assertEquals(cards[0].voice.length, 400);
+});
+
+Deno.test("no voice means no voice line, not an empty one", () => {
+  const block = buildGroundingBlock([validCard()]);
+  assertEquals(block.includes("Voice:"), false);
 });
 
 Deno.test("the model's own insufficient-knowledge flag is honoured first", () => {

@@ -30,6 +30,7 @@ import {
 import CreateBriefFlow from "@/components/create/CreateBriefFlow";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import StreamingProse from "@/components/create/StreamingProse";
+import StoryGatedPrivateModal from "@/components/create/StoryGatedPrivateModal";
 import {
   continueStoryStreaming,
   type CoverState,
@@ -40,6 +41,8 @@ import {
   GenerationRequestError,
   publishStory,
   regenerateCover,
+  StoryGatedPrivateError,
+  type StoryGatingReason,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
 import { normalizeText, paginateChapter } from "@/lib/paginate";
@@ -1244,8 +1247,22 @@ export default function CreateStudioScreen({
         // Bounded so the UI never hangs on a stalled request.
         new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000)),
       ]);
-    } catch {
+    } catch (err) {
       setStep("review");
+      // The entity visibility gate. The server still saved every edit before
+      // refusing to go public - see publish-story - so this is not a failure
+      // to explain away with a retry button. It is a decision to explain once,
+      // with the modal, and the story finishes the flow the moment the writer
+      // acknowledges it.
+      if (err instanceof StoryGatedPrivateError) {
+        setGatedPrivateReason(err.gatingReason);
+        setGatedPrivateStory({
+          ...edited,
+          title: storyTitle || edited.title,
+          chapters: edited.chapters.map((ch) => ({ ...ch, isPublished: false })),
+        });
+        return;
+      }
       Alert.alert(
         shouldPublish ? "Couldn't publish" : "Couldn't save",
         "Your story and every edit are still here. Check your connection and try again.",
@@ -1291,6 +1308,15 @@ export default function CreateStudioScreen({
     cover.coverStatus,
     cover.coverRegenCount,
   ]);
+
+  const [gatedPrivateReason, setGatedPrivateReason] = useState<StoryGatingReason | null>(null);
+  const [gatedPrivateStory, setGatedPrivateStory] = useState<Story | null>(null);
+
+  const handleAcknowledgeGatedPrivate = useCallback(() => {
+    setGatedPrivateReason(null);
+    if (gatedPrivateStory) onPublished(gatedPrivateStory);
+    setGatedPrivateStory(null);
+  }, [gatedPrivateStory, onPublished]);
 
   /**
    * Write exactly one more chapter. The single continuation path.
@@ -2021,6 +2047,11 @@ export default function CreateStudioScreen({
             <Check size={16} color={colors.surface} />
           </Pressable>
         </View>
+
+        <StoryGatedPrivateModal
+          reason={gatedPrivateReason}
+          onAcknowledge={handleAcknowledgeGatedPrivate}
+        />
       </SafeAreaView>
     );
   }

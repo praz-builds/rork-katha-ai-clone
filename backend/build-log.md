@@ -3345,3 +3345,182 @@ absence signal. Full reasoning is in the comment on `canGenerateNarration` in
 - Nothing pushed, deployed, or run against the live project
   `iafeuxgoiknncgyjmugd`. `SENTRY_DSN` and `sentryDsn` remain unset. No git
   commit made, per instructions.
+## 2026-09-08: The entity visibility gate, canon-character grounding for fanfiction, and confirming grounding is genre-independent
+
+### Changed
+
+- **The entity visibility gate (migration 00050, `_shared/entity-visibility-gate.ts`).**
+  Product decision, implemented exactly: a story whose idea names a
+  `living_public_figure` or a `private_individual` is forced private, whatever
+  the client asked for. Historical figures, real places, real events and
+  organisations never trigger it -- a story about Shivaji Maharaj or the Taj
+  Mahal stays publishable, which is precisely the case grounding (00045)
+  exists to serve.
+  - `deriveGatingReason(entities)` reads the full classification `resolveGrounding`
+    already produces (not just the entities that got a card -- a well-known
+    living person is exactly the case where `needsGrounding` is false, so they
+    would be invisible to a check that only looked at `grounding`), and returns
+    one of exactly two reasons or `null`.
+  - `generate-story` and `generate-story-stream` compute the reason alongside
+    `grounding_entities` and persist it on the same update as `entity_gate_reason`.
+    `is_public` was already `false` by column default (00001) and nothing at
+    generation ever sets it true, so "forced private at generation" was already
+    structurally true; what this adds is the stored *why*, which is what
+    `publish-story` and any future moderation surface reads.
+  - `publish-story` reads `entity_gate_reason` and refuses a public request with
+    a typed 403 (`error_code: "story_gated_private"`, `gating_reason`) -- edits
+    (title, chapters) are still persisted first, so a refused publish never
+    costs the writer their work, and the story simply stays a private save.
+    Guarded by `!alreadyPublic`, matching the existing demotion guard: this is
+    forward-only and never touches a story that is already public.
+  - **The application-level check is a courtesy, not the gate.** `stories.is_public`
+    sits inside the `authenticated` role's own UPDATE grant (00015, kept for the
+    editor's local visibility toggle) behind an RLS policy that only checks
+    `auth.uid() = author_id` -- a client can already set `is_public = true`
+    directly through PostgREST, entirely outside `publish-story`. Migration
+    00050 adds `stories_entity_gate_forces_private`, a CHECK constraint making
+    `entity_gate_reason is not null and is_public = true` an invalid row full
+    stop, independent of which endpoint attempts the write. Proven directly: a
+    PGlite test updates `is_public = true` on a gated row through raw SQL (the
+    same path `authenticated` has) and gets `23514`.
+  - The reason is an enum column, never a name or free text -- the whole point
+    of `deriveGatingReason`'s return type is that there is no code path that can
+    put anything else there.
+- **A new entity class for fanfiction: `canon_character` (`grounding-types.ts`,
+  `entity-classify.ts`, `grounding-card.ts`).** `fictional_character`'s
+  "never grounded, no fidelity owed" semantics are correct for every genre that
+  isn't about writing a specific existing character as canon, and are
+  untouched. `canon_character` is the new, narrower class for exactly that case:
+  a character from a named existing work that the idea is fan fiction of.
+  - Classifier heuristic: needs_grounding is unconditionally true for this
+    class, and the prompt says so explicitly, in terms, because none of the
+    other three tests (obscurity, staleness, verifiable fact) applies. The
+    research point is that fame does not predict out-of-character risk -- a
+    famous character is exactly as easy to flatten as an obscure one, because
+    the failure is about voice, not about facts the model might not know. The
+    existing "heavily documented -> no grounding" exemption for real people is
+    explicitly stated to never apply to this class.
+  - New card field: `voice` (`grounding-types.ts`, capped at
+    `MAX_VOICE_LENGTH` = 400). Optional and defaulted like `era`/`role`, never a
+    parse-rejection ground like `nameForms` -- every existing card payload in
+    the test suite has no `voice` field and still parses. Rendered into the
+    prompt block (`Voice: ...`) only when present.
+  - `canon_character` is grounded (phase 1, model knowledge) but deliberately
+    NOT added to `SEARCHABLE_ENTITY_CLASSES` and not cached in `entity_grounding`
+    -- its class-check constraint (00045) still allows only the original five,
+    so a caching attempt for this class silently no-ops through the same
+    swallow every cache-write failure already goes through. That is a
+    documented follow-up, not an oversight: fandom card caching would pay for
+    itself, but it is a separate migration decision from adding the class.
+  - `private_individual` is untouched and re-proven: `SEARCHABLE_ENTITY_CLASSES`
+    is unchanged, `selectGroundingCandidates`'s exclusion list still names only
+    `private_individual` and `fictional_character`, and new tests exercise a
+    mixed classification (a canon character plus a private individual) to show
+    the private individual is still never a candidate, never searchable, and
+    never given `needsGrounding: true` -- whatever the model claims.
+- **Confirmed grounding is genre-independent; no fix needed.** `resolveGrounding`'s
+  input (`{ idea, characterNames, cache, deadlineMs }`) has no genre concept at
+  all, and none of `generate-story`, `generate-story-stream`, or `shape-story`
+  branches on `primaryGenre` before calling it. The one place a genre-specific
+  regression could hide silently is the prompt layer: `buildUserPrompt` inserts
+  `buildGroundingBlock` unconditionally, not inside any genre branch. A new test
+  file iterates every member of `PRIMARY_GENRES` (all 19, UI and DB-only alike)
+  and asserts the grounding block renders for each one given a card, and that
+  no genre renders one when there is no card. `story-prompts.ts` itself was not
+  touched -- a sibling task owns `GENRE_VOICES` in that file, and this is a
+  read-only import from a new, separate test file.
+- **Client: the entity visibility gate's modal (`expo/`).** `publishStory()` in
+  `lib/api.ts` now recognises `error_code: "story_gated_private"` in a failed
+  `publish-story` invoke and throws a new `StoryGatedPrivateError` (carrying
+  the `gatingReason`) instead of the generic "Publishing failed" message.
+  `CreateStudioScreen`'s `handlePublish` catches it specifically, keeps the
+  writer on the review step, and shows the new `StoryGatedPrivateModal`
+  instead of an error alert; the story is saved as private (chapters marked
+  `isPublished: false`, matching what the server actually did) once the writer
+  acknowledges. Copy, verbatim:
+  - Title: "This one stays private"
+  - Living public figure: "This story names a real person who's still alive,
+    so it stays private. It's in your library to read and continue - it just
+    can't be shared or made public."
+  - Private individual: "This story names someone from your own life, so it
+    stays private. It's in your library to read and continue - it just can't
+    be shared or made public."
+  - Button: "Got it"
+  No "policy", no "violation", no apology -- an explanation, not a warning.
+  Single button (44x44 minimum), `accessibilityLabel="Story kept private"` on
+  the modal root, reduced-motion aware (`useReducedMotion` from Reanimated
+  switches `animationType` between `fade` and `none`), and the backdrop is
+  deliberately excluded from the accessibility tree
+  (`accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"`)
+  so a screen reader has exactly the one control the task asked for, plus the
+  hardware back gesture (`onRequestClose`) wired to the same acknowledge
+  handler so nothing traps the user on one path out.
+
+### What this does not do
+
+- No retroactive unpublishing, anywhere. `entity_gate_reason` is written only
+  at generation and only forward; no backfill exists or is planned in this
+  change, and a story already public before this migration keeps
+  `entity_gate_reason = null` forever, which trivially satisfies the new CHECK
+  constraint regardless of its `is_public` value. Proven directly in the
+  migration test.
+- No change to `fictional_character`'s semantics. It stays "never grounded,
+  no fidelity owed" for every genre that isn't fanfiction; `canon_character`
+  is additive, not a reinterpretation.
+- No caching for `canon_character` in `entity_grounding` -- see above.
+- `_shared/story-prompts.ts`'s `GENRE_VOICES`, `_shared/cover-prompts.ts`, and
+  `docs/research/` were not touched, per the task's hard constraints (a
+  sibling task owns them). One mechanical, unrelated fix was required in
+  `story-prompts.test.ts`: an existing `GroundingCard` object literal there
+  needed the new required `voice` field added (`voice: ""`) to keep compiling
+  -- it is a one-line addition to a test fixture, not a change to
+  `story-prompts.ts` or to `GENRE_VOICES`.
+
+### Verification
+
+Run from `backend/` with `export PATH="/Users/mac16/.deno/bin:$PATH"`:
+
+- **Baseline, measured before any change:**
+  `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  571 passed, 0 failed.
+  `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  78 passed, 0 failed.
+  `deno fmt --check supabase/functions supabase/migrations`: 5 pre-existing
+  unformatted files (`comments/index.ts`, `comments/index.test.ts`), unrelated
+  to this task and not touched.
+- **After this change:**
+  `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  **598 passed, 0 failed** (+27).
+  `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  **84 passed, 0 failed** (+6, all in the new `00050_entity_visibility_gate_test.ts`,
+  run against real Postgres via PGlite).
+  `deno check` on every function and migration test file: clean, exit 0.
+  `deno fmt --check`: still exactly the same 5 pre-existing files, 0 new
+  violations from this session's files (all formatted with `deno fmt` before
+  the final check).
+- Client, from `expo/` with
+  `export PATH="/Users/mac16/.nvm/versions/node/v22.23.0/bin:$PATH"`:
+  - Baseline: `tsc --noEmit` clean; `jest`: 429 passed, 49 suites; `eslint .`:
+    0 errors, 17 pre-existing warnings.
+  - After: `tsc --noEmit` clean; `jest`: **434 passed, 50 suites** (+5 tests,
+    +1 suite, all in the new `story-gated-private-modal.test.tsx`); `eslint .`:
+    0 errors, the same 17 pre-existing warnings, 0 new.
+- Smoke tests run and passing, matching every item on the acceptance list:
+  a living-public-figure story is forced private at generation and refused at
+  publish regardless of the requested visibility; a private-individual story
+  is likewise refused; a historical figure / real place / real event is never
+  gated and publishes normally; the refusal is a typed 403
+  (`story_gated_private`) the client renders into a modal; an already-public
+  story is never retroactively touched (migration test, direct SQL); the
+  stored reason is a bare enum with no path for a name to reach it (unit
+  test); the modal renders, explains per reason, and its "Got it" button
+  dismisses it; a canon character is now a grounding candidate whether famous
+  or obscure (unit test), while `private_individual` remains unsearchable and
+  ungrounded in the same classification (unit test with both classes present
+  together); grounding is not gated by genre (new test across all 19
+  `PRIMARY_GENRES`).
+- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
+  `00050` is written but not applied there, and no function was deployed. No
+  production-level test ran, so no `public.error_events` rows were written
+  this session.
+- Not committed, per instructions.

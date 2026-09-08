@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import {
+  parseGatingReason,
+  STORY_GATED_PRIVATE_ERROR_CODE,
+} from "../_shared/entity-visibility-gate.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
 /**
@@ -85,7 +89,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     // Verify story exists and user is the author
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
-      .select("id, author_id, status, is_public")
+      .select("id, author_id, status, is_public, entity_gate_reason")
       .eq("id", storyId)
       .single();
 
@@ -223,6 +227,35 @@ export async function handleRequest(req: Request): Promise<Response> {
         return respond({ saved: true, published: true, story_id: storyId });
       }
       return respond({ saved: true, published: false, story_id: storyId });
+    }
+
+    // The entity visibility gate (see `_shared/entity-visibility-gate.ts`).
+    // A story whose idea named a living public figure or a private individual
+    // was recorded as such at generation, and no request to publish it - not
+    // this one, and not a future endpoint - is allowed to make it public.
+    //
+    // Guarded by `!alreadyPublic` for the same reason the demotion guard above
+    // is: this rule is forward-only. It must never retroactively act on a
+    // story that is already public, because `entity_gate_reason` can only ever
+    // be set at generation and every story published before this gate existed
+    // carries a null value anyway - this check is unreachable for them either
+    // way, but the guard states the intent rather than relying on that as an
+    // accident of data.
+    //
+    // A database CHECK constraint (migration 00050) backstops this
+    // independently of this function ever running at all - `is_public` is
+    // directly reachable through the `authenticated` role's own UPDATE grant
+    // (migration 00015), so this refusal is a courtesy that explains the
+    // decision, not the only thing enforcing it.
+    const gatingReason = parseGatingReason(story.entity_gate_reason);
+    if (gatingReason && !alreadyPublic) {
+      return respond({
+        error:
+          "This story names a real person and stays private. It's still in your library - it just can't be shared.",
+        error_code: STORY_GATED_PRIVATE_ERROR_CODE,
+        gating_reason: gatingReason,
+        story_id: storyId,
+      }, 403);
     }
 
     // Publish the chapters first. If the story row went public while its

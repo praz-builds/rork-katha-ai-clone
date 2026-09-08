@@ -277,6 +277,115 @@ Deno.test("the classify schema is strict and offers no searchable field", () => 
   );
 });
 
+// The heuristic every other class uses is obscurity, staleness, or verifiable
+// fact - none of which applies to a canon character. The research behind this
+// class is that fame does not predict out-of-character risk: a famous
+// character is exactly as easy to flatten as an obscure one, because the
+// failure is about voice, not about facts the model might not know. So the
+// right test here is not "is the obscure one selected and the famous one
+// not" - it is that fame makes no difference at all.
+Deno.test("a canon character is a grounding candidate whether famous or obscure", () => {
+  const result = parseEntityClassification(JSON.stringify({
+    entities: [
+      entityPayload({
+        surface: "Draco Malfoy",
+        canonical_name: "Draco Malfoy",
+        entity_class: "canon_character",
+        confidence: 0.97,
+        needs_grounding: true,
+        reason: "canon voice must be preserved",
+      }),
+      entityPayload({
+        surface: "a side character from an obscure indie visual novel",
+        canonical_name: "Mira Okonkwo-Reyes",
+        entity_class: "canon_character",
+        confidence: 0.75,
+        needs_grounding: true,
+        reason: "canon voice must be preserved",
+      }),
+    ],
+  }));
+
+  assert(result);
+  const candidates = selectGroundingCandidates(
+    result,
+    MIN_GROUNDING_CONFIDENCE,
+  );
+  assertEquals(
+    candidates.map((entity) => entity.canonicalName).sort(),
+    ["Draco Malfoy", "Mira Okonkwo-Reyes"],
+  );
+});
+
+Deno.test("canon_character is grounded but never marked searchable", () => {
+  // Grounding a new class must not widen who gets sent to a search provider -
+  // canon_character is built from model knowledge alone.
+  const result = parseEntityClassification(JSON.stringify({
+    entities: [entityPayload({
+      surface: "Draco Malfoy",
+      canonical_name: "Draco Malfoy",
+      entity_class: "canon_character",
+      needs_grounding: true,
+      searchable: true, // the model claiming otherwise must not matter
+    })],
+  }));
+  assert(result);
+  assertEquals(result.entities[0].searchable, false);
+});
+
+Deno.test("a private individual stays inviolable alongside the new class", () => {
+  // The hard rule this whole module exists to enforce, re-asserted with
+  // canon_character in the mix: adding a class that IS grounded and searched
+  // for must never loosen the one class that is neither.
+  const result = parseEntityClassification(JSON.stringify({
+    entities: [
+      entityPayload({
+        surface: "Draco Malfoy",
+        canonical_name: "Draco Malfoy",
+        entity_class: "canon_character",
+        confidence: 0.95,
+        needs_grounding: true,
+      }),
+      entityPayload({
+        surface: "my little brother Kabir",
+        canonical_name: "Kabir",
+        entity_class: "private_individual",
+        confidence: 0.99,
+        needs_grounding: true,
+        searchable: true,
+      }),
+    ],
+  }));
+
+  assert(result);
+  const kabir = result.entities.find((e) => e.canonicalName === "Kabir");
+  assert(kabir);
+  assertEquals(kabir.entityClass, "private_individual");
+  assertEquals(kabir.searchable, false);
+  assertEquals(kabir.needsGrounding, false);
+
+  const candidates = selectGroundingCandidates(
+    result,
+    MIN_GROUNDING_CONFIDENCE,
+  );
+  assertEquals(candidates.some((e) => e.canonicalName === "Kabir"), false);
+  assertEquals(candidates.map((e) => e.canonicalName), ["Draco Malfoy"]);
+});
+
+Deno.test("the classifier distinguishes canon_character from fictional_character in prompt text", () => {
+  assertStringIncludes(ENTITY_CLASSIFY_SYSTEM_PROMPT, "canon_character");
+  assertStringIncludes(
+    ENTITY_CLASSIFY_SYSTEM_PROMPT,
+    "exactly as easy to flatten as an obscure one",
+  );
+  // The fame exemption that applies to real people must say, in terms, that it
+  // never applies to canon_character.
+  assertStringIncludes(
+    ENTITY_CLASSIFY_SYSTEM_PROMPT,
+    "it never applies to canon_character",
+  );
+});
+
 Deno.test("the classifier is told the cutoff date rather than asked for it", () => {
   // A model asked about its own cutoff answers optimistically, which defeats
   // the post-cutoff test entirely.

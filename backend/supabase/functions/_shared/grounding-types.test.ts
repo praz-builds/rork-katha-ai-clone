@@ -25,6 +25,17 @@ Deno.test("a private individual is never in the searchable set", () => {
   }
 });
 
+Deno.test("canon_character is grounded but adds no new searchable surface", () => {
+  // Adding a grounded class must never widen who can be sent to a search
+  // provider. canon_character is grounded via model knowledge alone (see
+  // entity-classify.ts), so it has no business in this set, and
+  // private_individual's absence - the load-bearing one - must be unaffected.
+  assertEquals(ENTITY_CLASSES.has("canon_character"), true);
+  assertEquals(SEARCHABLE_ENTITY_CLASSES.has("canon_character"), false);
+  assertEquals(SEARCHABLE_ENTITY_CLASSES.has("private_individual"), false);
+  assertEquals(SEARCHABLE_ENTITY_CLASSES.size, 5);
+});
+
 Deno.test("every entity class has a TTL decision recorded", () => {
   for (const entityClass of ENTITY_CLASSES) {
     const ttl = GROUNDING_TTL_DAYS[entityClass as EntityClass];
