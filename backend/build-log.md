@@ -2538,6 +2538,118 @@ is a separate, explicit decision for later.
   the `auth.getUser()` flow and action dispatch are covered by inspection only,
   because PGlite speaks Postgres rather than the PostgREST wire protocol.
 
+## 2026-09-07: The narration voice library - generate on first play, not at publish
+
+### Changed
+
+- Finished a bucket a previous session left mid-flight. `_shared/narration-entitlement.ts`
+  and `_shared/narration-audio.ts` were already started; this session built on
+  both rather than restarting, and completed migration `00048_voice_library.sql`
+  which was already partly written.
+- `00048_voice_library.sql`: `voices` (the allowlist as data - id, display name,
+  language, gender, tier, provider, provider voice params, preview path, sort
+  order, is_active) seeded with exactly today's 8 ids so behaviour is preserved;
+  4 English voices marked `premium` per the existing contract, the other 4
+  `standard`. `chapter_audio` (one row per chapter+voice - storage path,
+  duration, word count at generation time, provider job id, status, generated_at)
+  with a unique constraint on `(chapter_id, voice_id)` and a check constraint
+  tying `status = 'ready'` to both `storage_path` and `generated_at` being set -
+  which is also what forces a retry to clear both rather than leaving a stale
+  path on a `pending` row. `chapters.audio_url` is untouched and commented as a
+  later migration's job once nothing reads it; the migration backfills every
+  existing value into a `ready` `chapter_audio` row for `aria`. RLS: `voices`
+  readable by `authenticated`, `chapter_audio` readable when the reader can read
+  the chapter (author, or published + public/curated) - both service-role write
+  only.
+- `claim_chapter_audio_generation(chapter_id, voice_id, storage_path, word_count)`:
+  the one place two concurrent "generate this" requests are serialized. It takes
+  an advisory lock keyed on `(chapter, voice)` plus `select ... for update`,
+  returns `claimed: false` against an existing `pending` or `ready` row, and
+  resets a `failed` row back to `pending` (clearing `storage_path`,
+  `provider_job_id`, `generated_at`) so a retry is possible without a second row
+  ever existing for the same pair.
+- `_shared/voices.ts` rewritten: `STATIC_VOICES` (8 entries, mirrors the
+  migration's seed) is now the fallback rather than the whole story;
+  `listVoices()` / `getVoiceRecord()` read `public.voices` and fall back to the
+  static list on a missing client, a query error, or an empty result, so a
+  database hiccup narrows the picker instead of breaking narration. Every
+  caller on the audio path goes through these two functions.
+- `_shared/narration-audio.ts` gained `getChapterAudioRow()` (any status, for
+  polling) alongside the existing `findReadyChapterAudio()` (ready only, for the
+  cache-hit path), and `storageObjectExists()` (used to make preview seeding
+  idempotent).
+- `generate-audio/index.ts` rewritten. A ready `chapter_audio` row (or, as a
+  pre-backfill safety net, a legacy `chapters.audio_url` on the default voice)
+  is returned without touching RunPod. A miss asks `canGenerateNarration()`
+  first - closed by default, unchanged from today - and only then claims the
+  row and starts a RunPod job; a caller who loses the claim reports the winner's
+  in-flight generation instead of starting a second one. Access is now "can this
+  user read the chapter" (author, or a published chapter on a public/curated
+  story), not "is this user the author" - the function was effectively
+  unreachable by ordinary readers before this.
+- `audio-status/index.ts` rewritten to resolve against `chapter_audio` instead
+  of guessing a storage path, which is what actually lets it poll RunPod at
+  all now - `AGENTS.md` recorded the missing durable job binding as the reason
+  it couldn't. A `ready` or `failed` row answers directly; a `pending` row with
+  no `provider_job_id` yet reports pending without polling; a `pending` row with
+  a job id polls RunPod once and uploads + marks `ready`, or marks `failed` with
+  the provider's error code, on that one call.
+- Two new functions. `voices` (GET, authenticated): active voices for an
+  optional `language` filter, with `tier` and a `preview_url` resolved from
+  `preview_path`. `seed-voice-previews` (POST, service-role only - the caller's
+  bearer token is compared to `SUPABASE_SERVICE_ROLE_KEY` in constant time):
+  generates the one missing preview clip per voice, checked via
+  `storageObjectExists()` before ever starting a provider job, so a repeat run
+  costs nothing for a voice that already has one. Neither `generate-audio` nor
+  `audio-status` generates a preview on their read path.
+- edge-tts-provider voices (`elvira`, `alvaro`) hit a typed
+  `edge_tts_not_implemented` failure on the fresh-generation and preview paths
+  rather than silently claiming a job started - `_shared/edge-tts.ts` still
+  returns `null` unconditionally, unchanged by this session.
+
+### What this does not do
+
+- No pricing, unlock, grant, or credit-ledger read/write anywhere in this
+  bucket. `canGenerateNarration()` is the only place that decision is asked,
+  and its body still returns today's flag-gated refusal - the credits session
+  replaces the body of that one function and nothing else on this path.
+- Voice `tier` is stored and served, but nothing enforces it yet - a caller
+  can request a `premium` voice today and generation proceeds if the
+  entitlement gate is open. Tier enforcement is credits-session work.
+- `NARRATION_GENERATION_ENABLED` is unset in every environment, so production
+  behaviour is unchanged by this merge - the same refusal, the same 503.
+
+### Verification
+
+Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
+`export PATH="/Users/mac16/.deno/bin:$PATH"`:
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  **525 passed, 0 failed** (baseline before this session: 468).
+- `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  **66 passed, 0 failed** (baseline before this session: 53; the 13 new tests
+  are all in `00048_voice_library_test.ts`). Real Postgres via PGlite, no
+  network - includes RLS as both `anon` and `authenticated`, the unique and
+  check constraints, the claim RPC's dedup and retry behaviour proven directly
+  against the function (not simulated), and the backfill proven by applying
+  every migration up to but excluding `00048`, seeding a legacy
+  `chapters.audio_url` by hand, then applying `00048` and reading back the
+  `chapter_audio` row it produced.
+- `deno check` and `deno fmt --check` clean on every file this session touched
+  or added (17 files: the 3 handed off plus 14 more).
+- The concurrency property ("two readers pressing Listen at once cost one
+  generation") is proven at two levels: the SQL claim function directly in the
+  migration test, and the HTTP handler's response to a `claimed: false` result
+  in `generate-audio/index.test.ts` - true wall-clock concurrency isn't
+  reachable through a stubbed single-threaded `fetch`, so the handler test
+  proves the handler obeys the claim rather than proving the claim itself is
+  atomic; the migration test proves that.
+- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
+  `00048` is written but not applied there, and none of the five touched or
+  added functions (`generate-audio`, `audio-status`, `voices`,
+  `seed-voice-previews`, plus the shared modules) are deployed. No production-
+  level test ran, so no `public.error_events` rows were written this session.
+- Not committed. Changes are left in the working tree per instructions.
 ## 2026-09-08: Rate-limit the grounding fallback, without reordering it
 
 ### Changed

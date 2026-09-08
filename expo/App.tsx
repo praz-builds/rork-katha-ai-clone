@@ -21,6 +21,8 @@ import LibraryScreen from "@/screens/LibraryScreen";
 import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
 import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
+import ReaderScreen from "@/screens/ReaderScreen";
+import ChapterEnd from "@/components/reader/ChapterEnd";
 import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
 import HomeScreen from "@/screens/HomeScreen";
@@ -360,6 +362,40 @@ export default function App() {
             initialChapterIndex={screen.chapterIndex ?? 0}
             autoplay={screen.autoplay ?? false}
             onBack={() => goTabs(tab)}
+            renderChapterEnd={(chapter) => (
+              <ChapterEnd
+                story={allStories.find((story) =>
+                  story.id === screen.storyId) ?? allStories[0]}
+                chapter={chapter}
+                // Without this the continuation succeeded, showed a
+                // confirmation, and then went nowhere: the new chapter was
+                // never added to app state, so it could not be read and the
+                // reader still ended where it had ended before. A "What's
+                // next?" that produces a chapter you cannot reach is worse than
+                // no button at all.
+                onChapterReady={(next) =>
+                  setGeneratedStories((current) => {
+                    const target = allStories.find((story) =>
+                      story.id === screen.storyId
+                    );
+                    if (!target) return current;
+                    const alreadyHeld = current.some((story) =>
+                      story.id === target.id
+                    );
+                    const withChapter: Story = {
+                      ...target,
+                      chapters: [...target.chapters, next],
+                    };
+                    // A seed story being continued is not in `generatedStories`
+                    // yet, so it is added rather than mapped over.
+                    return alreadyHeld
+                      ? current.map((story) =>
+                        story.id === target.id ? withChapter : story
+                      )
+                      : [withChapter, ...current];
+                  })}
+              />
+            )}
           />
         )
         : screen.name === "practice"

@@ -31,6 +31,12 @@ export type PhraseCaptureReaderProps = {
    * without starting narration.
    */
   autoplay?: boolean;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason as `autoplay`: a seam this wrapper
+   * does not pass through silently stops working the moment phrase capture is
+   * enabled, and here that would mean end-of-chapter branching disappearing.
+   */
+  renderChapterEnd?: (chapter: Chapter) => ReactNode;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -63,6 +69,7 @@ export default function PhraseCaptureReader({
   onBack,
   initialChapterIndex = 0,
   autoplay = false,
+  renderChapterEnd,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
   const savedPhrasesRef = useRef<SavedPhrase[]>([]);
@@ -279,6 +286,7 @@ export default function PhraseCaptureReader({
         renderWord={renderWord}
         onChapterChange={onChapterChange}
         autoplay={autoplay}
+        renderChapterEnd={renderChapterEnd}
       />
       {toast ? (
         <Animated.View

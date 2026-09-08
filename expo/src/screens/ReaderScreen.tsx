@@ -26,13 +26,18 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { MusicPicker } from "@/components/reader/MusicPicker";
+import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
+import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
+import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { splitWords } from "@/lib/sentence";
+import { isOwnStory } from "@/lib/ownership";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
@@ -50,7 +55,14 @@ export type ReaderScreenProps = {
   /** Which chapter the story page sent the reader to. */
   initialChapterIndex?: number;
   /** Extension point for branching or end-of-chapter modules on the final page. */
-  renderChapterEnd?: () => ReactNode;
+  /**
+   * Rendered at the end of the last page, with the chapter ON SCREEN.
+   *
+   * The seam fires at the last page of EVERY chapter, not only the story's
+   * newest, so the callback needs the chapter actually being read rather than
+   * whatever a navigation-time closure captured.
+   */
+  renderChapterEnd?: (chapter: Chapter) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
   /**
@@ -80,6 +92,10 @@ type ReaderTheme = {
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
 const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: "paper" };
+/** Full-volume level for background music when narration is not playing. */
+const MUSIC_FULL_VOLUME = 1;
+/** Ducked level while narration plays, so the two never compete at equal volume. */
+const MUSIC_DUCKED_VOLUME = 0.18;
 const TYPE_SIZES = [16, 18, 20, 22];
 const LINE_HEIGHTS = [26, 30, 34, 38];
 
@@ -145,6 +161,22 @@ const INITIAL_COMMENTS: ReaderComment[] = [
  */
 function chapterText(chapter: Chapter): string {
   return normalizeText(chapter.paragraphs.join("\n\n"));
+}
+
+/**
+ * The exact inverse of `chapterText`'s `join("\n\n")`.
+ *
+ * A regex split that also drops empty results (the previous implementation
+ * used `/\n\s*\n/` plus `.filter(Boolean)`) treats an intentionally blank
+ * paragraph as noise to discard, which shifts the index of every paragraph
+ * after it. The AI editor addresses paragraphs by that index
+ * (`useChapterEditor.regenerate`), so a shifted index silently rewrites the
+ * wrong paragraph. Splitting on the exact separator `join` used, with no
+ * filtering, round-trips every paragraph - blank ones included - at its
+ * original index.
+ */
+function splitChapterParagraphs(text: string): string[] {
+  return text.split("\n\n");
 }
 
 function clampIndex(index: number, count: number): number {
@@ -228,7 +260,20 @@ export default function ReaderScreen({
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 768;
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex);
-  const chapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  const baseChapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  // A chapter this reading session has edited, keyed by chapter id. Ephemeral:
+  // it lives only in this component's state, exactly like the AI editor's
+  // one-step revert it is fed by - nothing here is a second source of truth
+  // for what the server holds.
+  const [chapterEdits, setChapterEdits] = useState<Record<string, string>>({});
+  const chapter = useMemo(() => {
+    const edited = chapterEdits[baseChapter.id];
+    if (edited === undefined) return baseChapter;
+    return { ...baseChapter, paragraphs: splitChapterParagraphs(edited) };
+  }, [baseChapter, chapterEdits]);
+  const isAuthor = isOwnStory(story);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editWandOpen, setEditWandOpen] = useState(false);
   const [preferences, setPreferences] = useState<ReaderPreferences>(DEFAULT_PREFS);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
@@ -243,6 +288,10 @@ export default function ReaderScreen({
   const [isPlaying, setIsPlaying] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoadingAudioRef = useRef(false);
+  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
+  const [musicTrackId, setMusicTrackId] = useState<string | null>(null);
+  const musicSoundRef = useRef<Audio.Sound | null>(null);
+  const isNarrationPlayingRef = useRef(isPlaying);
   /**
    * Bumped whenever the in-flight audio load is no longer wanted (the
    * chapter changed, or the screen unmounted) so a `createAsync` that
@@ -290,6 +339,9 @@ export default function ReaderScreen({
       alive = false;
       audioGenerationRef.current += 1;
       if (soundRef.current) void soundRef.current.unloadAsync();
+      // Leaving the story stops music too. This unmount cleanup is the only
+      // place playback is torn down; a chapter or page change never reaches it.
+      if (musicSoundRef.current) void musicSoundRef.current.unloadAsync();
     };
   }, []);
 
@@ -305,6 +357,77 @@ export default function ReaderScreen({
   useEffect(() => {
     onChapterChange?.(chapter, chapterIndex);
   }, [chapter, chapterIndex, onChapterChange]);
+  // Restores the story's saved music choice (or "None") when the reader opens it.
+  //
+  // A reader can choose a track before this read resolves, and the restore then
+  // overwrote their newer choice with the older saved one -- their music
+  // changing under them a moment after they picked it. A choice made by the
+  // person beats a value read from disk, always.
+  const musicChosenByUserRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    musicChosenByUserRef.current = false;
+    void getStoryMusicTrackId(story.id).then((trackId) => {
+      if (alive && !musicChosenByUserRef.current) setMusicTrackId(trackId);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [story.id]);
+
+  useEffect(() => {
+    isNarrationPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  // Loads (or clears) the background-music sound whenever the chosen track
+  // changes. Deliberately does not depend on chapterIndex or pageIndex, so
+  // music keeps looping across page turns and chapter navigation.
+  useEffect(() => {
+    let cancelled = false;
+    async function syncMusicTrack() {
+      if (musicSoundRef.current) {
+        const previous = musicSoundRef.current;
+        musicSoundRef.current = null;
+        await previous.unloadAsync();
+      }
+      const track = findMusicTrack(musicTrackId, MUSIC_TRACKS);
+      if (!track) return;
+      try {
+        const { sound } = await Audio.Sound.createAsync(track.source, {
+          shouldPlay: true,
+          isLooping: true,
+          volume: isNarrationPlayingRef.current ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME,
+        });
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        musicSoundRef.current = sound;
+        // Narration can start while `createAsync` is still pending. The ducking
+        // effect keyed on `isPlaying` would have run already and found no sound
+        // to duck, so the track then began at full volume over the narration.
+        // Re-reading the current state here closes that window.
+        const volumeNow = isNarrationPlayingRef.current
+          ? MUSIC_DUCKED_VOLUME
+          : MUSIC_FULL_VOLUME;
+        await sound.setStatusAsync({ volume: volumeNow });
+      } catch {
+        // A catalogue row without a working asset (development-time state)
+        // fails silently rather than breaking the reader.
+      }
+    }
+    void syncMusicTrack();
+    return () => {
+      cancelled = true;
+    };
+  }, [musicTrackId]);
+
+  // Ducks music under narration and restores it when narration stops.
+  useEffect(() => {
+    const music = musicSoundRef.current;
+    if (!music) return;
+    void music.setStatusAsync({ volume: isPlaying ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME });
+  }, [isPlaying]);
 
   const updatePreferences = useCallback((next: ReaderPreferences) => {
     setPreferences(next);
@@ -396,6 +519,22 @@ export default function ReaderScreen({
     setIsPlaying(false);
     setVoiceGender(gender);
   }, [voiceGender]);
+
+  const handleMusicSelect = useCallback((trackId: string | null) => {
+    // Marks the choice as the reader's, so a slower restore cannot undo it.
+    musicChosenByUserRef.current = true;
+    setMusicTrackId(trackId);
+    void setStoryMusicTrackId(story.id, trackId);
+  }, [story.id]);
+  const openEditor = useCallback((wandOpen: boolean) => {
+    setEditWandOpen(wandOpen);
+    setEditOpen(true);
+  }, []);
+
+  const closeEditor = useCallback((content: string) => {
+    setChapterEdits((prev) => ({ ...prev, [baseChapter.id]: content }));
+    setEditOpen(false);
+  }, [baseChapter.id]);
 
   const handleLike = useCallback(() => {
     setIsLiked((prev) => {
@@ -498,7 +637,7 @@ export default function ReaderScreen({
               >
                 {renderedWords}
               </Text>
-              {isLastPage ? renderChapterEnd?.() : null}
+              {isLastPage ? renderChapterEnd?.(chapter) : null}
             </View>
             <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {pageIndex + 1} of {pages.length}</Text>
             {isLastPage ? (
@@ -586,10 +725,28 @@ export default function ReaderScreen({
         onSearchNext={() => jumpToMatch(1)}
         onSearchPrevious={() => jumpToMatch(-1)}
         onPageChange={goToPage}
+        // `onHistory` is deliberately left unwired. There is no persisted
+        // version history to show it - the AI editor holds exactly one prior
+        // version, in memory, scoped to that editor being open - so wiring
+        // this control to the same one-step revert would surface it a
+        // navigation away from the wand it belongs beside, reading as a
+        // history feature that does not exist. See `EditStoryScreen` for
+        // where that revert control actually lives.
+        onEdit={isAuthor ? () => openEditor(false) : undefined}
+        onReimagine={isAuthor ? () => openEditor(true) : undefined}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
         onListen={() => setListenOpen(true)}
+        onMusic={() => setMusicPickerOpen(true)}
       />
+      {editOpen ? (
+        <EditStoryScreen
+          story={story}
+          chapter={chapter}
+          initialWandOpen={editWandOpen}
+          onClose={closeEditor}
+        />
+      ) : null}
       <PreferencesSheet
         visible={prefsOpen}
         preferences={preferences}
@@ -613,6 +770,13 @@ export default function ReaderScreen({
         onVoiceChange={handleVoiceChange}
         onPlay={handlePlayTap}
         onClose={() => setListenOpen(false)}
+      />
+      <MusicPicker
+        visible={musicPickerOpen}
+        genre={story.genre}
+        selectedTrackId={musicTrackId}
+        onSelect={handleMusicSelect}
+        onClose={() => setMusicPickerOpen(false)}
       />
     </View>
   );
