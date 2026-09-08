@@ -23,7 +23,6 @@ import LibraryScreen from "@/screens/LibraryScreen";
 import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
 import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
-import ReaderScreen from "@/screens/ReaderScreen";
 import ChapterEnd from "@/components/reader/ChapterEnd";
 import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
