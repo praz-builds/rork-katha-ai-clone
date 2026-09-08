@@ -80,10 +80,19 @@ export default function PhraseCaptureReader({
   const reducedMotion = useReducedMotion();
   const wordsRef = useRef<string[]>([]);
 
+  // The initial load must not clobber a save the reader already made.
+  //
+  // This read is asynchronous, and a reader can tap a word before it resolves.
+  // Assigning its result unconditionally then replaced the optimistic entry,
+  // clearing the highlight and letting the same word be saved twice. A phrase
+  // saved in this session outranks a snapshot taken before it existed.
+  const hasLocalSaveRef = useRef(false);
   useEffect(() => {
     let alive = true;
+    hasLocalSaveRef.current = false;
     listSavedPhrases().then((phrases) => {
-      if (alive) setSavedPhrases(phrases);
+      if (!alive || hasLocalSaveRef.current) return;
+      setSavedPhrases(phrases);
     });
     return () => {
       alive = false;
@@ -138,6 +147,7 @@ export default function PhraseCaptureReader({
       dueAt: new Date().toISOString(),
       reviewCount: 0,
     };
+    hasLocalSaveRef.current = true;
     setSavedPhrases((prev) => [optimistic, ...prev]);
 
     const saved = await savePhrase({
