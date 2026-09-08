@@ -12,6 +12,26 @@ import {
 import { handleRequest } from "./index.ts";
 import { STATIC_VOICES } from "../_shared/voices.ts";
 import { NARRATION_REFUSAL } from "../_shared/narration-audio.ts";
+import { resetSentryForTests } from "../_shared/sentry.ts";
+
+const SENTRY_HOST = "sentry.katha.test";
+const FAKE_SENTRY_DSN = `https://fakekey@${SENTRY_HOST}/1234`;
+
+/** Pulls every JSON object with a `message` field out of a Sentry envelope body. */
+function eventsFromEnvelope(body: string): Array<Record<string, unknown>> {
+  const events: Array<Record<string, unknown>> = [];
+  for (const line of body.trim().split("\n")) {
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        events.push(parsed as Record<string, unknown>);
+      }
+    } catch {
+      // Not every envelope line is JSON with a message; skip it.
+    }
+  }
+  return events;
+}
 
 const AUTHOR_ID = "11111111-1111-4111-8111-111111111111";
 const READER_ID = "22222222-2222-4222-8222-222222222222";
@@ -49,6 +69,8 @@ interface ServerState {
    * failure window `generate-audio` has to reconcile.
    */
   failJobStartedPatch: boolean;
+  sentryEvents: Array<Record<string, unknown>>;
+  errorEventsInserts: Array<Record<string, unknown>>;
   calls: {
     rpc: number;
     runpodRun: number;
@@ -73,6 +95,8 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     runpodRunStatus: 200,
     runpodRunBody: () => ({ id: "job-xyz" }),
     failJobStartedPatch: false,
+    sentryEvents: [],
+    errorEventsInserts: [],
     calls: {
       rpc: 0,
       patches: [] as ServerState["calls"]["patches"],
@@ -263,7 +287,19 @@ function makeFetchStub(state: ServerState): typeof fetch {
       return json({ id: url.href.split("/cancel/")[1], status: "CANCELLED" });
     }
 
-    if (url.pathname === "/rest/v1/error_events") return json([]);
+    if (url.hostname === SENTRY_HOST) {
+      const body = init?.body ? String(init.body) : await request.text();
+      state.sentryEvents.push(...eventsFromEnvelope(body));
+      return json({});
+    }
+
+    if (url.pathname === "/rest/v1/error_events") {
+      if (request.method === "POST") {
+        const body = init?.body ? String(init.body) : await request.text();
+        state.errorEventsInserts.push(JSON.parse(body));
+      }
+      return json([]);
+    }
 
     throw new Error(`unexpected request: ${request.method} ${request.url}`);
   }) as typeof fetch;
@@ -589,6 +625,136 @@ Deno.test("a retry after a failed recording claims cleanly and starts one new jo
     const row = state.chapterAudio.get(`${CHAPTER_ID}:aria`);
     assertEquals(row?.status, "pending");
     assertEquals(row?.provider_job_id, "job-xyz");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Sentry: a failed RunPod job reports to Sentry AND writes error_events.
+// ---------------------------------------------------------------------------
+
+Deno.test("a RunPod outage (5xx on /run) is reported to Sentry as critical, and still writes error_events", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+    SENTRY_DSN: FAKE_SENTRY_DSN,
+  });
+  try {
+    const state = newState({
+      runpodRunStatus: 500,
+      runpodRunBody: () => ({ error: "internal" }),
+    });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+    });
+
+    assertEquals(status, 502);
+    assertEquals(body.error, "Narration generation failed to start");
+
+    assertEquals(
+      state.calls.patches.filter((p) => p.table === "chapter_audio").length,
+      1,
+    );
+    assertEquals(
+      state.calls.patches[0].body.status,
+      "failed",
+      "the chapter_audio row must still be marked failed",
+    );
+    assertEquals(
+      state.errorEventsInserts.length,
+      1,
+      "the durable error_events row must still be written",
+    );
+    assertEquals(state.errorEventsInserts[0].bucket, "generation.audio");
+
+    assertEquals(
+      state.sentryEvents.length,
+      1,
+      "Sentry must receive exactly one event",
+    );
+    const event = state.sentryEvents[0];
+    assertEquals(
+      event.level,
+      "fatal",
+      "a 5xx from RunPod's own endpoint is systemic, not one job",
+    );
+    const tags = event.tags as Record<string, unknown>;
+    assertEquals(tags.bucket, "generation.audio");
+    assertEquals(tags.severity, "critical");
+    // The event carries a classified code, not the thrown sentence. What
+    // reaches Sentry is drawn from a fixed set this codebase controls; the
+    // provider's own text stays in `error_events`.
+    assertEquals(event.message, "runpod_start_5xx");
+    assertEquals(tags.error_code, "runpod_start_5xx");
+    const extra = event.extra as Record<string, unknown>;
+    assertEquals(extra.story_id, STORY_ID);
+    assertEquals(extra.chapter_id, CHAPTER_ID);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a single rejected job (4xx on /run) is reported to Sentry as high, not critical", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+    SENTRY_DSN: FAKE_SENTRY_DSN,
+  });
+  try {
+    const state = newState({
+      runpodRunStatus: 400,
+      runpodRunBody: () => ({ error: "bad request" }),
+    });
+
+    const { status } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+    });
+
+    assertEquals(status, 502);
+    assertEquals(state.sentryEvents.length, 1);
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(
+      tags.severity,
+      "high",
+      "a single rejected request must not read as a systemic outage",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("without SENTRY_DSN, a start failure still writes error_events and never touches Sentry", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ runpodRunStatus: 500 });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+    });
+
+    assertEquals(status, 502);
+    assertEquals(body.error, "Narration generation failed to start");
+    assertEquals(
+      state.errorEventsInserts.length,
+      1,
+      "logError must behave exactly as before Sentry was wired in",
+    );
+    assertEquals(
+      state.sentryEvents.length,
+      0,
+      "with no DSN, Sentry must never be reached",
+    );
   } finally {
     restoreEnv(env);
   }

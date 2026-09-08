@@ -9,10 +9,14 @@
  * `provider_job_id` reaches the provider at all.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { parseUuid } from "../_shared/uuid.ts";
-import { logError } from "../_shared/errors.ts";
+import { type ErrorSeverity, logError } from "../_shared/errors.ts";
+import { reportError } from "../_shared/sentry.ts";
 import {
   DEFAULT_VOICE_ID,
   getVoiceRecord,
@@ -20,14 +24,92 @@ import {
 } from "../_shared/voices.ts";
 import {
   canReadChapter,
+  type ChapterAudioRow,
   getChapterAudioRow,
+  isNarrationJobStale,
   markChapterAudioFailed,
   markChapterAudioReady,
+  NARRATION_JOB_STALE_MS,
   pollRunpodNarration,
   publicAudioUrl,
   stableChapterAudioPath,
   uploadAudio,
 } from "../_shared/narration-audio.ts";
+
+/**
+ * A single job's provider-reported failure ("high") vs a sign that narration
+ * generation is stuck for more than just this one chapter ("critical").
+ *
+ * The signal is a direct count, not a guess: `idx_chapter_audio_pending`
+ * already indexes `(status, updated_at) where status = 'pending'` for
+ * exactly this query, so asking "how many other jobs are also stuck right
+ * now" costs one indexed lookup, not a scan.
+ */
+async function classifyTimeoutSeverity(
+  serviceClient: SupabaseClient,
+): Promise<ErrorSeverity> {
+  const staleBefore = new Date(Date.now() - NARRATION_JOB_STALE_MS)
+    .toISOString();
+  const { count, error } = await serviceClient
+    .from("chapter_audio")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending")
+    .lt("updated_at", staleBefore);
+  if (error || count === null) return "high";
+  // This row is itself one of the rows the count includes, so more than one
+  // means at least one other job is stuck at the same moment.
+  return count > 1 ? "critical" : "high";
+}
+
+/**
+ * Mark a stale-`pending` row failed and report the timeout once. Callers
+ * reach this only from the `pending` branches below, and once the row is
+ * `failed` every later poll returns from the `row.status === "failed"`
+ * branch above the provider call -- so this fires exactly once per job, not
+ * on every poll that finds it still stuck.
+ */
+async function timedOutResponsePayload(
+  serviceClient: SupabaseClient,
+  userId: string,
+  row: ChapterAudioRow,
+  storyId: string,
+  chapterId: string,
+  voiceId: string,
+): Promise<Record<string, unknown>> {
+  const errorCode = "generation_timed_out";
+  // Counted BEFORE this row is marked failed, not after.
+  //
+  // `classifyTimeoutSeverity` counts stale `pending` rows and reads "more than
+  // one" as systemic, because this row is meant to be one of the rows it
+  // counts. Marking the row failed first took it out of the count, so the
+  // reading was always one short: two jobs stuck at the same moment counted as
+  // one and reported `high`, and the `critical` branch needed three. The exact
+  // case the severity split exists to catch -- narration breaking for everyone
+  // rather than for one chapter -- was the case it under-reported.
+  const severity = await classifyTimeoutSeverity(serviceClient);
+  await markChapterAudioFailed(serviceClient, row.id!, errorCode);
+  await reportError({
+    bucket: "generation.audio",
+    severity,
+    errorCode,
+    error: new Error(
+      `chapter_audio row ${row.id} pending beyond ${NARRATION_JOB_STALE_MS}ms`,
+    ),
+    userId,
+    context: {
+      story_id: storyId,
+      chapter_id: chapterId,
+      job_id: row.provider_job_id ?? undefined,
+    },
+  });
+  return {
+    status: "FAILED",
+    story_id: storyId,
+    chapter_id: chapterId,
+    voice_id: voiceId,
+    error_code: errorCode,
+  };
+}
 
 export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
@@ -131,8 +213,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
 
     // `pending`. Nothing to poll until the request that claimed this row has
-    // recorded the provider job id.
+    // recorded the provider job id -- unless it never did, and the claim
+    // itself is now stale (the isolate that claimed it never came back).
     if (!row.provider_job_id) {
+      if (isNarrationJobStale(row.updated_at)) {
+        return respond(
+          await timedOutResponsePayload(
+            serviceClient,
+            user.id,
+            row,
+            storyId,
+            chapterId,
+            voiceId,
+          ),
+        );
+      }
       return respond({
         status: "PENDING",
         story_id: storyId,
@@ -156,6 +251,18 @@ export async function handleRequest(req: Request): Promise<Response> {
     const poll = await pollRunpodNarration(row.provider_job_id);
 
     if (poll.status === "pending") {
+      if (isNarrationJobStale(row.updated_at)) {
+        return respond(
+          await timedOutResponsePayload(
+            serviceClient,
+            user.id,
+            row,
+            storyId,
+            chapterId,
+            voiceId,
+          ),
+        );
+      }
       return respond({
         status: "PENDING",
         story_id: storyId,
@@ -167,9 +274,14 @@ export async function handleRequest(req: Request): Promise<Response> {
     if (poll.status === "failed" || !poll.audioBytes) {
       const errorCode = poll.errorCode ?? "provider_failed";
       await markChapterAudioFailed(serviceClient, row.id!, errorCode);
-      await logError({
+      // A single job the provider itself reported as failed (GPU OOM, no
+      // usable output on a "completed" job, ...) -- one reader's chapter, not
+      // a sign generation is broken for everyone. Compare the stale-timeout
+      // path above, which escalates to "critical" when several jobs are
+      // stuck at once.
+      await reportError({
         bucket: "generation.audio",
-        severity: "medium",
+        severity: "high",
         errorCode,
         error: new Error(`RunPod job ${row.provider_job_id} failed`),
         userId: user.id,

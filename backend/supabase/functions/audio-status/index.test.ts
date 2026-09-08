@@ -4,9 +4,37 @@
 // prove the four outcomes a poll can produce: ready and already-uploaded,
 // nothing to poll yet, a fresh ready result that gets uploaded and marked, and
 // a failure that gets recorded rather than silently retried forever.
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertFalse,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleRequest } from "./index.ts";
 import { STATIC_VOICES } from "../_shared/voices.ts";
+import { resetSentryForTests } from "../_shared/sentry.ts";
+import { NARRATION_JOB_STALE_MS } from "../_shared/narration-audio.ts";
+
+const SENTRY_HOST = "sentry.katha.test";
+const FAKE_SENTRY_DSN = `https://fakekey@${SENTRY_HOST}/1234`;
+
+/** Pulls every JSON object with a `message` field out of a Sentry envelope body. */
+function eventsFromEnvelope(body: string): Array<Record<string, unknown>> {
+  const events: Array<Record<string, unknown>> = [];
+  for (const line of body.trim().split("\n")) {
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        events.push(parsed as Record<string, unknown>);
+      }
+    } catch {
+      // Not every envelope line is JSON with a message; skip it.
+    }
+  }
+  return events;
+}
+
+function isoMsAgo(ms: number): string {
+  return new Date(Date.now() - ms).toISOString();
+}
 
 const AUTHOR_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_ID = "55555555-5555-4555-8555-555555555555";
@@ -21,6 +49,8 @@ interface ChapterAudioFixture {
   provider_job_id: string | null;
   status: "pending" | "ready" | "failed";
   error_code?: string | null;
+  /** `null`/omitted means "no age at all" -- never treated as stale. */
+  updated_at?: string | null;
 }
 
 interface ServerState {
@@ -41,7 +71,23 @@ interface ServerState {
     error?: string;
   };
   patches: Array<Record<string, unknown>>;
+  /**
+   * `staleCountQueries` as it stood when each PATCH was issued.
+   *
+   * The severity count and the row's own failure write are ordered, and the
+   * order is the whole point: this records it so a test can assert it rather
+   * than infer it from a count the mock returns statically.
+   */
+  staleCountAtPatch: number[];
   uploads: number;
+  sentryEvents: Array<Record<string, unknown>>;
+  errorEventsInserts: Array<Record<string, unknown>>;
+  /**
+   * What `classifyTimeoutSeverity`'s count-only query reports back: how many
+   * `chapter_audio` rows are stale-pending right now, this row included.
+   */
+  stalePendingCount: number;
+  staleCountQueries: number;
 }
 
 function newState(overrides: Partial<ServerState> = {}): ServerState {
@@ -59,7 +105,12 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     row: null,
     runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
     patches: [],
+    staleCountAtPatch: [],
     uploads: 0,
+    sentryEvents: [],
+    errorEventsInserts: [],
+    stalePendingCount: 1,
+    staleCountQueries: 0,
     ...overrides,
   };
 }
@@ -122,8 +173,23 @@ function makeFetchStub(state: ServerState): typeof fetch {
 
     if (url.pathname === "/rest/v1/chapter_audio") {
       if (request.method === "PATCH") {
+        state.staleCountAtPatch.push(state.staleCountQueries);
         state.patches.push(await request.json());
         return json([]);
+      }
+      if (request.method === "HEAD") {
+        // `classifyTimeoutSeverity`'s `select("id", { count: "exact", head:
+        // true })` -- postgrest-js reads the total off `Content-Range`, not
+        // the (absent) body. See `publish-story/index.test.ts` for the same
+        // contract.
+        state.staleCountQueries += 1;
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Range": `*/${state.stalePendingCount}`,
+          },
+        });
       }
       return state.row ? json([state.row]) : json([]);
     }
@@ -141,7 +207,19 @@ function makeFetchStub(state: ServerState): typeof fetch {
       return json({ Key: "audio/uploaded.mp3" });
     }
 
-    if (url.pathname === "/rest/v1/error_events") return json([]);
+    if (url.hostname === SENTRY_HOST) {
+      const body = init?.body ? String(init.body) : await request.text();
+      state.sentryEvents.push(...eventsFromEnvelope(body));
+      return json({});
+    }
+
+    if (url.pathname === "/rest/v1/error_events") {
+      if (request.method === "POST") {
+        const body = init?.body ? String(init.body) : await request.text();
+        state.errorEventsInserts.push(JSON.parse(body));
+      }
+      return json([]);
+    }
 
     throw new Error(`unexpected request: ${request.method} ${request.url}`);
   }) as typeof fetch;
@@ -154,9 +232,11 @@ const TEST_ENV: Record<string, string> = {
   RUNPOD_API_KEY: "test-runpod-key",
 };
 
-function setTestEnv(): Record<string, string | undefined> {
+function setTestEnv(
+  extra: Record<string, string> = {},
+): Record<string, string | undefined> {
   const previous: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(TEST_ENV)) {
+  for (const [key, value] of Object.entries({ ...TEST_ENV, ...extra })) {
     previous[key] = Deno.env.get(key);
     Deno.env.set(key, value);
   }
@@ -367,6 +447,288 @@ Deno.test("no row but a legacy audio_url on the default voice is reported comple
     assertEquals(status, 200);
     assertEquals(body.status, "COMPLETED");
     assertEquals(body.audio_url, "https://cdn.example/legacy.mp3");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Sentry: a provider-reported failure, and a timed-out job.
+// ---------------------------------------------------------------------------
+
+Deno.test("a provider-reported job failure is reported to Sentry as high severity", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: `${STORY_ID}/${CHAPTER_ID}/aria.mp3`,
+        provider_job_id: "job-xyz",
+        status: "pending",
+      },
+      runpodStatusResponse: () => ({ status: "FAILED", error: "gpu_oom" }),
+    });
+    const { status, json: body } = await run(state, QUERY);
+    assertEquals(status, 200);
+    assertEquals(body.status, "FAILED");
+    assertEquals(state.errorEventsInserts.length, 1);
+    assertEquals(state.sentryEvents.length, 1);
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.severity, "high");
+    assertEquals(state.sentryEvents[0].message, "gpu_oom");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a job stuck pending past the stale threshold is marked timed out and reported once, not on every poll", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: `${STORY_ID}/${CHAPTER_ID}/aria.mp3`,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      // The provider still has not resolved it either -- this is what makes
+      // it honestly a timeout rather than a race with a real completion.
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+      stalePendingCount: 1,
+    });
+
+    const first = await run(state, QUERY);
+    assertEquals(first.status, 200);
+    assertEquals(first.json.status, "FAILED");
+    assertEquals(first.json.error_code, "generation_timed_out");
+    assertEquals(state.patches.length, 1);
+    assertEquals(state.patches[0].status, "failed");
+    assertEquals(state.patches[0].error_code, "generation_timed_out");
+    assertEquals(state.errorEventsInserts.length, 1);
+    assertEquals(state.sentryEvents.length, 1);
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(
+      tags.severity,
+      "high",
+      "exactly one stuck job must not read as systemic",
+    );
+
+    // The claiming request would have persisted the failure; reflect that in
+    // the fixture and poll again, the way a client's next poll actually would.
+    state.row = {
+      ...state.row!,
+      status: "failed",
+      error_code: "generation_timed_out",
+    };
+
+    const second = await run(state, QUERY);
+    assertEquals(second.status, 200);
+    assertEquals(second.json.status, "FAILED");
+    assertEquals(
+      state.errorEventsInserts.length,
+      1,
+      "a second poll of an already-failed row must not log again",
+    );
+    assertEquals(
+      state.sentryEvents.length,
+      1,
+      "a second poll of an already-failed row must not report to Sentry again",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("several jobs stuck at once escalate the timeout report to critical", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+      stalePendingCount: 3,
+    });
+
+    await run(state, QUERY);
+
+    assertEquals(state.sentryEvents.length, 1);
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.severity, "critical");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a claimed row that never even started is also reported timed out once stale, without polling the provider", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: null,
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+    });
+
+    const { status, json: body } = await run(state, QUERY);
+    assertEquals(status, 200);
+    assertEquals(body.status, "FAILED");
+    assertEquals(body.error_code, "generation_timed_out");
+    assertEquals(state.sentryEvents.length, 1);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a pending job that is merely young (not yet stale) is still reported pending, untouched", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(1_000),
+      },
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+    });
+
+    const { status, json: body } = await run(state, QUERY);
+    assertEquals(status, 200);
+    assertEquals(body.status, "PENDING");
+    assertEquals(state.patches.length, 0);
+    assertEquals(state.sentryEvents.length, 0);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("without SENTRY_DSN, a timeout is still detected and marked failed, but Sentry is never reached", async () => {
+  resetSentryForTests();
+  const env = setTestEnv();
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+    });
+
+    const { status, json: body } = await run(state, QUERY);
+    assertEquals(status, 200);
+    assertEquals(body.status, "FAILED");
+    assertEquals(body.error_code, "generation_timed_out");
+    assertEquals(state.errorEventsInserts.length, 1);
+    assertFalse(
+      state.sentryEvents.length > 0,
+      "with no DSN, Sentry must never be reached",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// Two stuck jobs is systemic, and used to report as if it were one.
+//
+// `classifyTimeoutSeverity` counts stale `pending` rows and treats "more than
+// one" as systemic, because this row is meant to be one of the rows it counts.
+// The failure write ran first, which took this row out of the count, so every
+// reading was one short: two jobs stuck at the same moment counted as one and
+// reported `high`, and `critical` needed three. The exact case the split
+// exists to catch -- narration broken for everyone rather than for one chapter
+// -- was the case it under-reported.
+Deno.test("two jobs stuck at once is critical, and the count is taken before this row is failed", async () => {
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+      // This row plus one other. Under the old ordering this arrived as 1.
+      stalePendingCount: 2,
+    });
+
+    await run(state, QUERY);
+
+    assertEquals(state.sentryEvents.length, 1);
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.severity, "critical");
+
+    // The ordering itself, not just its consequence. A mock returns a static
+    // count, so the count alone cannot prove which ran first.
+    assertEquals(state.patches.length, 1);
+    assertEquals(
+      state.staleCountAtPatch[0],
+      1,
+      "the stale count must be taken before the row is marked failed",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("one job stuck alone is still only high", async () => {
+  // The mirror. Without it, a change that simply always reported critical
+  // would pass the test above.
+  resetSentryForTests();
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  try {
+    const state = newState({
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: null,
+        provider_job_id: "job-xyz",
+        status: "pending",
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+      stalePendingCount: 1,
+    });
+
+    await run(state, QUERY);
+
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.severity, "high");
   } finally {
     restoreEnv(env);
   }

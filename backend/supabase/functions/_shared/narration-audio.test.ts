@@ -14,6 +14,8 @@ import {
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   canReadChapter,
+  isNarrationJobStale,
+  NARRATION_JOB_STALE_MS,
   normalizeAudioStatus,
   pollRunpodNarration,
   stableChapterAudioPath,
@@ -149,6 +151,35 @@ Deno.test("chapter audio paths are stable and voice-scoped", () => {
 
 Deno.test("voice preview paths live under one shared prefix", () => {
   assertEquals(stableVoicePreviewPath("nova"), "voice-previews/nova.mp3");
+});
+
+// ---------------------------------------------------------------------------
+// isNarrationJobStale
+// ---------------------------------------------------------------------------
+
+Deno.test("a job younger than the stale threshold is not stale", () => {
+  const now = Date.parse("2026-01-01T00:10:00.000Z");
+  const updatedAt = new Date(now - (NARRATION_JOB_STALE_MS - 1)).toISOString();
+  assertEquals(isNarrationJobStale(updatedAt, now), false);
+});
+
+Deno.test("a job older than the stale threshold is stale", () => {
+  const now = Date.parse("2026-01-01T00:10:00.000Z");
+  const updatedAt = new Date(now - (NARRATION_JOB_STALE_MS + 1)).toISOString();
+  assertEquals(isNarrationJobStale(updatedAt, now), true);
+});
+
+Deno.test("exactly the threshold is not yet stale -- the bound is exclusive", () => {
+  const now = Date.parse("2026-01-01T00:10:00.000Z");
+  const updatedAt = new Date(now - NARRATION_JOB_STALE_MS).toISOString();
+  assertEquals(isNarrationJobStale(updatedAt, now), false);
+});
+
+Deno.test("missing or malformed timestamps are never treated as stale", () => {
+  const now = Date.parse("2026-01-01T00:10:00.000Z");
+  assertEquals(isNarrationJobStale(null, now), false);
+  assertEquals(isNarrationJobStale(undefined, now), false);
+  assertEquals(isNarrationJobStale("not-a-timestamp", now), false);
 });
 
 // ---------------------------------------------------------------------------

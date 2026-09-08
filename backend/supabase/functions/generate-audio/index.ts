@@ -19,7 +19,8 @@ import {
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 import { parseUuid } from "../_shared/uuid.ts";
-import { logError } from "../_shared/errors.ts";
+import { type ErrorSeverity, logError } from "../_shared/errors.ts";
+import { reportError } from "../_shared/sentry.ts";
 import { canGenerateNarration } from "../_shared/narration-entitlement.ts";
 import {
   DEFAULT_VOICE_ID,
@@ -196,9 +197,9 @@ export async function handleRequest(req: Request): Promise<Response> {
         story_id: storyId,
         chapter_id: chapterId,
       });
-      await logError({
+      await reportError({
         bucket: "generation.audio",
-        severity: "high",
+        severity: classifyStartFailureSeverity(errorCode),
         errorCode,
         error: providerError,
         userId: user.id,
@@ -280,11 +281,59 @@ async function startProviderJob(
   throw new Error(`unsupported_provider:${voice.provider}`);
 }
 
+/**
+ * Classify a provider start failure into one of a fixed set of codes.
+ *
+ * This used to return `error.message` truncated to 96 characters, which made
+ * the "code" whatever text happened to be thrown -- and that value is written
+ * to `chapter_audio.error_code`, to `error_events`, and now to a Sentry tag.
+ * None of the current throw sites interpolate a response *body* (they carry a
+ * status number at most), so nothing has leaked; but that is a property of
+ * today's call sites rather than of this function, and one future
+ * `throw new Error(await response.text())` would have changed it silently.
+ *
+ * An enumeration also makes the severity split below something other than
+ * substring matching against English prose, which would have broken the first
+ * time one of those messages was reworded.
+ */
 function providerErrorCode(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.slice(0, 96) || "provider_error";
+  if (!(error instanceof Error)) return "provider_error";
+  const message = error.message;
+
+  if (message.includes("RUNPOD_API_KEY is not configured")) {
+    return "runpod_key_missing";
+  }
+  if (message.includes("RunPod start returned no job id")) {
+    return "runpod_no_job_id";
+  }
+  const startFailure = /RunPod start failed: (\d{3})/.exec(message);
+  if (startFailure) {
+    // The status is the part worth keeping, and it is a number, so it can be
+    // kept without keeping any text alongside it.
+    const status = Number(startFailure[1]);
+    return status >= 500 ? "runpod_start_5xx" : "runpod_start_4xx";
+  }
+  if (message.includes("edge_tts_not_implemented")) {
+    return "edge_tts_not_implemented";
+  }
+  if (message.startsWith("unsupported_provider:")) {
+    return "unsupported_provider";
   }
   return "provider_error";
+}
+
+/**
+ * A single job's failure to start ("high") vs a sign that narration
+ * generation is broken for everyone ("critical"). A missing provider
+ * credential or a 5xx from RunPod's own `/run` endpoint are
+ * configuration/outage shaped -- true regardless of which chapter was being
+ * narrated -- unlike a 4xx, a missing job id, or an unimplemented provider,
+ * each of which is specific to this one request.
+ */
+function classifyStartFailureSeverity(errorCode: string): ErrorSeverity {
+  return errorCode === "runpod_key_missing" || errorCode === "runpod_start_5xx"
+    ? "critical"
+    : "high";
 }
 
 /**
