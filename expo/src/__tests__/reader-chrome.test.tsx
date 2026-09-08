@@ -45,6 +45,13 @@ it("invokes extension controls exactly once per press", async () => {
   expect(onMusic).toHaveBeenCalledTimes(1);
 });
 
+it("does not render Edit or Reimagine when their handlers are omitted", async () => {
+  const view = await render(<ReaderChrome {...props()} />);
+
+  expect(view.queryByLabelText("Edit")).toBeNull();
+  expect(view.queryByLabelText("Reimagine")).toBeNull();
+});
+
 it("hides the search bar along with the rest of the chrome, without discarding the in-progress query", async () => {
   const hidden = await render(
     <ReaderChrome
