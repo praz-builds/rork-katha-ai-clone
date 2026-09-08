@@ -9,6 +9,7 @@ import {
 } from "../_shared/grounding-pipeline.ts";
 import { claimGroundingFallback } from "../_shared/grounding-rate-limit.ts";
 import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
+import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
   errorMessage,
   isStaleReservation,
@@ -322,6 +323,14 @@ serve(async (req) => {
         chapterLength,
         plannedChapterCount,
       });
+      // The reader's saved phrases seed their next story. Best-effort: an empty
+      // list renders the prompt byte-identically, so a lookup failure costs the
+      // language layer and never the paid generation.
+      const savedPhrases = await fetchPhraseSeeds(
+        serviceClient,
+        user.id,
+        language,
+      );
       const userPrompt = buildUserPrompt({
         primaryGenre,
         genres,
@@ -343,6 +352,7 @@ serve(async (req) => {
         avoid,
         chapterLength,
         plannedChapterCount,
+        savedPhrases,
         grounding: resolvedGrounding,
       });
       mark("grounding");

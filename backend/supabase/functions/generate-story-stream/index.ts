@@ -51,6 +51,7 @@ import {
   generateFastStructuredText,
 } from "../_shared/llm.ts";
 import { errorMessage, readJsonObject } from "../_shared/operations.ts";
+import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
   buildStoryProsePrompt,
   buildUserPrompt,
@@ -328,6 +329,15 @@ serve(async (req) => {
             ? fallback.entities
             : groundingEntities;
 
+          // The reader's saved phrases seed their next story. Best-effort: an
+          // empty list renders the prompt byte-identically, so a lookup failure
+          // costs the language layer and never the paid generation.
+          const savedPhrases = await fetchPhraseSeeds(
+            serviceClient,
+            user.id,
+            language,
+          );
+
           const systemPrompt = buildStoryProsePrompt(promptParams);
           const userPrompt = buildUserPrompt({
             ...promptParams,
@@ -341,6 +351,7 @@ serve(async (req) => {
             storyValues,
             writingStyle,
             avoid,
+            savedPhrases,
             grounding: resolvedGrounding,
           });
 
