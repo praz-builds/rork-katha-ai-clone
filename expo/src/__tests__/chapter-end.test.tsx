@@ -318,3 +318,95 @@ describe("ReaderScreen renderChapterEnd wiring", () => {
     expect(lastCallChapter.id).toBe(longChapter.id);
   });
 });
+
+// Two findings from review.
+//
+// A story with no `plannedChapterCount` was offered a continuation forever,
+// while `continue-story` resolves a missing count to 3 and refuses anything
+// past it -- the client promising what the backend had already decided against.
+//
+// And the production caller omitted `onChapterReady`, so a successful
+// continuation showed a confirmation and went nowhere: the chapter was never
+// added to app state, so it could not be read. A "What's next?" that produces
+// a chapter you cannot reach is worse than no button at all.
+describe("agreeing with the server about where a series ends", () => {
+  it("treats a story with no planned count as finished at the server's default", async () => {
+    const story = makeStory({ plannedChapterCount: undefined });
+    const third = makeChapter({ id: "chapter-3", chapterNumber: 3 });
+    story.chapters = [...story.chapters, third];
+
+    const view = await render(
+      <ChapterEnd story={story} chapter={third} continueChapter={jest.fn()} />,
+    );
+
+    await waitFor(() =>
+      expect(view.queryByTestId("chapter-end-option-0")).toBeNull()
+    );
+  });
+
+  it("still offers a continuation before that default is reached", async () => {
+    const story = makeStory({ plannedChapterCount: undefined });
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={jest.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.getByTestId("chapter-end-option-0")).toBeTruthy()
+    );
+  });
+});
+
+// The offline walkthrough cannot honour a direction, and must say so.
+//
+// With no backend configured, `continueStory` returns canned prose, so a
+// suggested or typed next step is accepted by the UI and does not shape the
+// text. Silently returning prose that ignores the reader's choice teaches them
+// the feature does not work; saying so is the honest option, and faking
+// direction-sensitive text would be a worse lie.
+describe("the offline continuation is honest about itself", () => {
+  it("says the direction was not used when the chapter came from the stub", async () => {
+    const story = makeStory();
+    const stub = jest.fn(async () => ({
+      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      model: "mock",
+    }));
+
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={stub as never}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
+    await fireEvent.press(view.getByTestId("chapter-end-option-0"));
+
+    await waitFor(() => expect(view.getByText(/direction you chose was not used/i)).toBeTruthy());
+  });
+
+  it("says nothing extra when a real model wrote the chapter", async () => {
+    const story = makeStory();
+    const real = jest.fn(async () => ({
+      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      model: "meta/muse-spark-1.3",
+    }));
+
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={real as never}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
+    await fireEvent.press(view.getByTestId("chapter-end-option-0"));
+
+    await waitFor(() => expect(view.getByText(/New chapter ready/i)).toBeTruthy());
+    expect(view.queryByText(/direction you chose was not used/i)).toBeNull();
+  });
+});

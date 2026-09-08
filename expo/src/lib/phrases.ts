@@ -79,6 +79,26 @@ async function writeStore(store: Store): Promise<void> {
 }
 
 /**
+ * Serialises the read-modify-write cycle every mutation performs.
+ *
+ * Saving, unsaving and recording practice each read the whole store, change one
+ * entry and write it all back. Two of those overlapping meant the second read
+ * saw the state from before the first write landed, so a save could erase a
+ * save. Tapping two words quickly is enough to hit it, which is exactly what
+ * reading with phrase capture on looks like.
+ *
+ * The chain swallows failures rather than rejecting: one bad mutation must not
+ * strand every later one behind it.
+ */
+let storeQueue: Promise<unknown> = Promise.resolve();
+
+function serialize<T>(mutate: () => Promise<T>): Promise<T> {
+  const run = storeQueue.then(mutate, mutate);
+  storeQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+/**
  * Call an unshipped edge function without ever throwing.
  *
  * Mirrors the guard `getLibrary` and `fetchCoverState` already use in
@@ -97,7 +117,12 @@ async function invokeGuarded<T>(
   try {
     await bootstrapUser();
   } catch {
-    return { ok: false, unavailable: true };
+    // Not `unavailable`. Unavailable means "this endpoint is not deployed yet",
+    // and the caller keeps its optimistic local write on that basis. A
+    // configured backend that cannot authenticate is a real failure, and
+    // reporting it as unavailable made a save look like it had succeeded
+    // locally when the server had rejected the caller outright.
+    return { ok: false, unavailable: false };
   }
 
   try {
@@ -151,7 +176,7 @@ export function isPhraseSaved(
  * reachable server explicitly declined the save - the one case that must roll
  * the caller's optimistic UI back.
  */
-export async function savePhrase(input: {
+async function savePhraseImpl(input: {
   phrase: string;
   sentence: string;
   storyId: string;
@@ -210,7 +235,7 @@ export async function savePhrase(input: {
  * server refuses the request, returning `false` so the caller can roll its
  * own optimistic UI back too.
  */
-export async function unsavePhrase(phraseId: string): Promise<boolean> {
+async function unsavePhraseImpl(phraseId: string): Promise<boolean> {
   const store = await readStore();
   const removed = store.phrases.find((entry) => entry.id === phraseId);
   if (!removed) return true;
@@ -237,7 +262,7 @@ export async function unsavePhrase(phraseId: string): Promise<boolean> {
  * never blocks the local schedule from moving on, and this function is called
  * exactly once per answer regardless of how the call resolves.
  */
-export async function recordPracticeOutcome(
+async function recordPracticeOutcomeImpl(
   phraseId: string,
   outcome: PracticeOutcome,
 ): Promise<void> {
@@ -260,4 +285,30 @@ export async function recordPracticeOutcome(
 
 function sortByCreatedAtDesc(phrases: readonly SavedPhrase[]): SavedPhrase[] {
   return [...phrases].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+}
+
+
+/*
+ * Public mutation entry points.
+ *
+ * Each one funnels through `serialize` so the read-modify-write cycle inside
+ * cannot interleave with another. Tapping two words in quick succession used to
+ * lose one of them: both reads saw the store before either write landed, and
+ * the second write overwrote the first with a snapshot that never contained it.
+ */
+
+export function savePhrase(
+  input: Parameters<typeof savePhraseImpl>[0],
+): Promise<SavedPhrase | null> {
+  return serialize(() => savePhraseImpl(input));
+}
+
+export function unsavePhrase(phraseId: string): Promise<boolean> {
+  return serialize(() => unsavePhraseImpl(phraseId));
+}
+
+export function recordPracticeOutcome(
+  ...args: Parameters<typeof recordPracticeOutcomeImpl>
+): ReturnType<typeof recordPracticeOutcomeImpl> {
+  return serialize(() => recordPracticeOutcomeImpl(...args));
 }

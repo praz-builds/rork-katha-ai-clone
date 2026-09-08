@@ -59,8 +59,11 @@ const styles = {
   word: {
     fontFamily: fonts.reader,
     letterSpacing: 0,
-    paddingVertical: 3,
-    paddingHorizontal: 1,
+    // No padding. Pagination measures how much text fits a page BEFORE these
+    // render, so per-word padding silently added height and horizontal width
+    // that the page-fitting calculation never accounted for -- pushing the last
+    // line of a page past its frame. A word is already a large enough target at
+    // reading sizes, and an accidental tap is reversible: tapping again unsaves.
   },
   saved: {
     color: colors.accentPressed,

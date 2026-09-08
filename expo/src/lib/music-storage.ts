@@ -35,16 +35,35 @@ export async function getStoryMusicTrackId(storyId: string): Promise<string | nu
 }
 
 /** Saves (or, with a null trackId, clears) the music selection for a story. */
-export async function setStoryMusicTrackId(storyId: string, trackId: string | null): Promise<void> {
-  try {
-    const map = await readSelectionMap();
-    if (trackId) {
-      map[storyId] = trackId;
-    } else {
-      delete map[storyId];
+/**
+ * Serialises writes so a read-modify-write cannot be interleaved.
+ *
+ * Every write reads the whole selection map, edits one key, and writes the map
+ * back. Two of those overlapping meant the second read saw the state before the
+ * first write landed, so the first selection was silently erased -- which a
+ * reader hits by changing track twice quickly, or by having two stories open.
+ * Chaining on a single promise makes each write see the previous one's result.
+ */
+let writeQueue: Promise<void> = Promise.resolve();
+
+export function setStoryMusicTrackId(
+  storyId: string,
+  trackId: string | null,
+): Promise<void> {
+  writeQueue = writeQueue.then(async () => {
+    try {
+      const map = await readSelectionMap();
+      if (trackId) {
+        map[storyId] = trackId;
+      } else {
+        delete map[storyId];
+      }
+      await AsyncStorage.setItem(MUSIC_SELECTION_KEY, JSON.stringify(map));
+    } catch {
+      // Silent fail. Music selection persistence is best-effort, matching
+      // draft-storage.ts. The queue must survive a failure, so this swallows
+      // rather than rejecting: one bad write must not strand every later one.
     }
-    await AsyncStorage.setItem(MUSIC_SELECTION_KEY, JSON.stringify(map));
-  } catch {
-    // Silent fail. Music selection persistence is best-effort, matching draft-storage.ts.
-  }
+  });
+  return writeQueue;
 }

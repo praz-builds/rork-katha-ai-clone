@@ -285,6 +285,11 @@ describe("approved Create flow", () => {
       />,
     );
 
+    // This branch adds the pre-generation review, so Create now opens it and
+    // the review's own Create commits. The assertion arrived from the grounding
+    // branch, which predates that screen and pressed once.
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await view.findByText("Here is what Katha will write");
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 

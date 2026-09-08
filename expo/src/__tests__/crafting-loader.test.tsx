@@ -1,5 +1,5 @@
 import React from "react";
-import { AccessibilityInfo, StyleSheet } from "react-native";
+import { AccessibilityInfo } from "react-native";
 import { act, render } from "@testing-library/react-native";
 
 jest.mock("react-native-reanimated", () => {
@@ -8,7 +8,14 @@ jest.mock("react-native-reanimated", () => {
   const passthrough = (value: unknown) => value;
   return {
     __esModule: true,
-    default: { View },
+    // `createAnimatedComponent` and the four symbols below it are here for the
+    // KathaMark the loader centres, not for the loader itself. This file's
+    // subject uses only some of them; its child uses the rest, and a mock that
+    // omits them fails the suite at import time rather than at an assertion.
+    default: {
+      View,
+      createAnimatedComponent: (component: unknown) => component,
+    },
     cancelAnimation: jest.fn(),
     Easing: {
       linear: passthrough,
@@ -18,10 +25,17 @@ jest.mock("react-native-reanimated", () => {
       cubic: passthrough,
     },
     interpolate: () => 1,
+    runOnJS: (fn: unknown) => fn,
+    useAnimatedProps: (factory: () => unknown) => factory(),
     useAnimatedStyle: (factory: () => unknown) => factory(),
     useSharedValue: (initial: unknown) => ({ value: initial }),
-    withRepeat: passthrough,
-    withTiming: passthrough,
+    withDelay: (_delay: number, value: unknown) => value,
+    // Jest mocks rather than bare passthroughs, so a test can assert that
+    // reduced motion schedules nothing at all. Reached through
+    // `jest.requireMock` below: a factory may not close over a variable this
+    // file declares.
+    withRepeat: jest.fn(passthrough),
+    withTiming: jest.fn(passthrough),
   };
 });
 
@@ -42,6 +56,7 @@ jest.mock("react-native-svg", () => {
     Svg: stub("Svg"),
     Circle: stub("Circle"),
     Defs: stub("Defs"),
+    Path: stub("Path"),
     Pattern: stub("Pattern"),
     Rect: stub("Rect"),
   };
@@ -55,17 +70,12 @@ import {
 } from "@/components/create/CraftingLoader";
 /* eslint-enable import/first */
 
-let reduceMotion = false;
+const reanimated = jest.requireMock("react-native-reanimated") as {
+  withRepeat: jest.Mock;
+  withTiming: jest.Mock;
+};
 
-function fillWidth(view: Awaited<ReturnType<typeof render>>): string {
-  const style = StyleSheet.flatten(
-    // The bar is hidden from accessibility on purpose — the stage name is what
-    // gets announced — so the query has to opt into hidden elements.
-    view.getByTestId("crafting-progress-fill", { includeHiddenElements: true })
-      .props.style,
-  ) as { width: string };
-  return style.width;
-}
+let reduceMotion = false;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -96,6 +106,9 @@ describe("CraftingLoader", () => {
       now: 2,
       text: "Understanding the character",
     });
+    // The name is on the screen as well as in the value: the label is what a
+    // sighted user reads, and the two must never drift apart.
+    expect(view.getByText("Understanding the character")).toBeTruthy();
   });
 
   it("clamps a stage index that runs off either end of the list", async () => {
@@ -120,43 +133,26 @@ describe("CraftingLoader", () => {
     });
 
     const cycling = await render(<CraftingLoader autoCycle />);
-    // The cycled bar is elapsed time through named stages, not measurement, so
-    // a screen reader is told the stage and never "2 of 4".
+    // A cycled headline is elapsed time through named stages, not measurement,
+    // so a screen reader is told the stage and never "1 of 4".
     expect(cycling.getByRole("progressbar").props.accessibilityValue).toEqual({
       text: CRAFTING_STAGES[0].label,
     });
   });
 
-  it("hides the bar entirely when the caller asks it to", async () => {
-    const view = await render(
-      <CraftingLoader autoCycleMs={1000} showProgress={false} />,
-    );
-    expect(
-      view.queryByTestId("crafting-progress", { includeHiddenElements: true }),
-    ).toBeNull();
-  });
-
-  it("steps the bar and the headline off one clock while cycling", async () => {
+  it("keeps the cycled value on the stage the headline is showing", async () => {
     jest.useFakeTimers();
     try {
       const view = await render(<CraftingLoader autoCycle />);
-      // The reference's barFill keyframes: 4% -> 29% -> 54% -> 79% -> 100%.
-      expect(view.getByText(CRAFTING_STAGES[0].label)).toBeTruthy();
-      expect(fillWidth(view)).toBe("4%");
-
-      for (const [step, label] of [
-        [1, CRAFTING_STAGES[1].label],
-        [2, CRAFTING_STAGES[2].label],
-        [3, CRAFTING_STAGES[3].label],
-      ] as const) {
-        await act(async () => {
-          jest.advanceTimersByTime(AUTO_CYCLE_MS);
-        });
-        // One clock drives both, so the bar can never name a different stage
-        // than the headline does.
-        expect(view.getByText(label)).toBeTruthy();
-        expect(fillWidth(view)).toBe(`${4 + step * 25}%`);
-      }
+      await act(async () => {
+        jest.advanceTimersByTime(AUTO_CYCLE_MS * 2);
+      });
+      // One clock drives both, so the announced value can never name a
+      // different stage than the headline does.
+      expect(view.getByText(CRAFTING_STAGES[2].label)).toBeTruthy();
+      expect(view.getByRole("progressbar").props.accessibilityValue).toEqual({
+        text: CRAFTING_STAGES[2].label,
+      });
     } finally {
       jest.useRealTimers();
     }
@@ -179,18 +175,25 @@ describe("CraftingLoader", () => {
     }
   });
 
-  it("keeps the measured bar on the stage path", async () => {
-    const view = await render(<CraftingLoader stage={1} />);
-    // Two of four stages done, unchanged by the cycled bar existing.
-    expect(fillWidth(view)).toBe("50%");
-  });
-
-  it("cycles the headline on its own timer, and wraps", async () => {
+  it("announces each stage change to a screen reader", async () => {
     jest.useFakeTimers();
     try {
-      const view = await render(
-        <CraftingLoader autoCycleMs={1000} showProgress={false} />,
+      await render(<CraftingLoader autoCycleMs={1000} />);
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+        CRAFTING_STAGES[1].label,
       );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("cycles the headline on its own timer, and holds at the end", async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await render(<CraftingLoader autoCycleMs={1000} />);
       expect(view.getByText("Getting the context")).toBeTruthy();
       await act(async () => {
         jest.advanceTimersByTime(1000);
@@ -199,30 +202,39 @@ describe("CraftingLoader", () => {
       await act(async () => {
         jest.advanceTimersByTime(3000);
       });
-      // Four stages, so it is back at the first one rather than stuck at the
-      // last: the wait can outlast the list.
-      expect(view.getByText("Getting the context")).toBeTruthy();
+      // The wait can outlast the list, and when it does the screen holds on
+      // the last stage rather than starting the list again. It used to wrap,
+      // and at the 8-11s this screen actually waits that meant the writer
+      // re-read a stage they had already been shown - the screen taking back
+      // a claim it had just made.
+      expect(view.getByText("Building the story arc")).toBeTruthy();
+      expect(view.queryByText("Getting the context")).toBeNull();
+      // Still held, however long the provider takes.
+      await act(async () => {
+        jest.advanceTimersByTime(30000);
+      });
+      expect(view.getByText("Building the story arc")).toBeTruthy();
     } finally {
       jest.useRealTimers();
     }
   });
+});
 
-  it("keeps naming the work when the user has asked for reduced motion", async () => {
+describe("CraftingLoader under reduced motion", () => {
+  it("keeps naming the work, and schedules no animation", async () => {
     reduceMotion = true;
     jest.useFakeTimers();
     try {
-      const view = await render(
-        <CraftingLoader autoCycleMs={1000} showProgress={false} />,
-      );
+      const view = await render(<CraftingLoader autoCycleMs={1000} />);
       // Let the reduce-motion query resolve.
       await act(async () => {});
-      await act(async () => {
-        jest.advanceTimersByTime(4000);
-      });
+      reanimated.withRepeat.mockClear();
+      reanimated.withTiming.mockClear();
+
       // Reduced motion is a request about animation, not about information.
       // Freezing the headline leaves the one honest signal on this screen
       // saying "Getting the context" for the whole wait, for exactly the
-      // users who have no spinning ring telling them anything is happening.
+      // users who have no motion telling them anything is happening.
       expect(view.getByText("Getting the context")).toBeTruthy();
       await act(async () => {
         jest.advanceTimersByTime(1000);
@@ -231,25 +243,11 @@ describe("CraftingLoader", () => {
       expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
         "Understanding the character",
       );
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-});
 
-describe("CraftingLoader under reduced motion", () => {
-  it("still shows the bar's value, it just does not animate to it", async () => {
-    reduceMotion = true;
-    jest.useFakeTimers();
-    try {
-      const view = await render(<CraftingLoader autoCycle />);
-      await act(async () => {});
-      expect(fillWidth(view)).toBe("4%");
-      await act(async () => {
-        jest.advanceTimersByTime(AUTO_CYCLE_MS);
-      });
-      expect(view.getByText(CRAFTING_STAGES[1].label)).toBeTruthy();
-      expect(fillWidth(view)).toBe("29%");
+      // Nothing moved to get there: no headline cross-fade, and no breath on
+      // the mark.
+      expect(reanimated.withTiming).not.toHaveBeenCalled();
+      expect(reanimated.withRepeat).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

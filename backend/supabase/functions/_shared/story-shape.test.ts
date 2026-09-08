@@ -268,3 +268,38 @@ Deno.test("no shelf is the same prompt it always was", () => {
   assert(!prompt.includes("primary genre"));
   assert(prompt.includes("<katha:idea>"));
 });
+
+Deno.test("the onboarding opening is asked for at the length the screen shows", async () => {
+  // The band and the clamp are one decision split across two files, and they
+  // drifted: the prompt asked for 120-180 words in up to three paragraphs
+  // while the preview rendered two paragraphs clamped to three lines and two.
+  // Everything past that was generated, paid for, waited on by a user watching
+  // a loader, and then dropped - `finish()` does not carry `opening` into the
+  // draft either. This is the assertion that notices the next time one side
+  // moves without the other.
+  assert(ONBOARDING_SHAPE_SYSTEM_PROMPT.includes("90-120 words"));
+  assert(ONBOARDING_SHAPE_SYSTEM_PROMPT.includes("exactly two paragraphs"));
+
+  const screen = await Deno.readTextFile(
+    new URL("../../../../expo/src/screens/WriterOnboarding.tsx", import.meta.url),
+  );
+  // The clamp the band is sized against. If the preview starts showing three
+  // paragraphs, the prompt has to be told to write them.
+  assert(screen.includes("blueprint.opening.split(/\\n{2,}/).slice(0, 2)"));
+});
+
+Deno.test("shape-story never answers an empty shape without saying why", async () => {
+  // A refused rate-limit claim used to be indistinguishable from a model that
+  // returned nothing usable, and the client read both as "your idea produced
+  // nothing" - a non-retryable dead end in the middle of onboarding. Every
+  // path that answers a null shape now carries a reason.
+  const source = await Deno.readTextFile(
+    new URL("../shape-story/index.ts", import.meta.url),
+  );
+  const nulls = source.match(/respond\(\{\s*shape:\s*null[^}]*\}/g) ?? [];
+  assert(nulls.length >= 3, `expected the null-shape paths, saw ${nulls.length}`);
+  for (const answer of nulls) {
+    assert(answer.includes("reason:"), `bare null shape: ${answer}`);
+  }
+  assert(source.includes('reason: "rate_limited"'));
+});
