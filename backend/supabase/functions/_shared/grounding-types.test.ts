@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   boundedText,
   ENTITY_CLASSES,
@@ -38,14 +41,24 @@ Deno.test("every entity class has a TTL decision recorded", () => {
 });
 
 Deno.test("the cache key folds spelling noise but not diacritics", () => {
-  assertEquals(groundingCacheKey("Shivaji Maharaj"), "shivaji maharaj");
-  assertEquals(groundingCacheKey("  shivaji   MAHARAJ. "), "shivaji maharaj");
-  assertEquals(groundingCacheKey("Shivaji-Maharaj"), "shivaji maharaj");
+  assertEquals(
+    groundingCacheKey("Shivaji Maharaj", "historical_public_figure"),
+    "shivaji maharaj:historical_public_figure",
+  );
+  assertEquals(
+    groundingCacheKey("  shivaji   MAHARAJ. ", "historical_public_figure"),
+    "shivaji maharaj:historical_public_figure",
+  );
+  assertEquals(
+    groundingCacheKey("Shivaji-Maharaj", "historical_public_figure"),
+    "shivaji maharaj:historical_public_figure",
+  );
 
   // Deliberate: folding accents collides names that are genuinely different,
   // and a cache that returns the wrong entity is worse than a miss.
   assertEquals(
-    groundingCacheKey("Malmö") === groundingCacheKey("Malmo"),
+    groundingCacheKey("Malmö", "real_place") ===
+      groundingCacheKey("Malmo", "real_place"),
     false,
   );
 });
@@ -71,4 +84,27 @@ Deno.test("the card budget is smaller than the classification budget", () => {
   // Classification is one cheap call over the whole idea; each card is its own
   // call plus a slice of every chapter's prompt for the life of the series.
   assertEquals(MAX_GROUNDING_CARDS < 6, true);
+});
+
+// Two entities can share a name and share nothing else.
+//
+// The cache key was the normalized name alone, so a card about Washington the
+// person and a card about Washington the place resolved to the same row: one
+// silently overwrote the other, and every later lookup was answered with facts
+// about the wrong kind of thing. In a system whose entire job is factual
+// accuracy, that is the worst place for a collision to hide -- the card looks
+// perfectly well-formed on the way into the prompt.
+Deno.test("the cache key separates entities that share a name", () => {
+  assert(
+    groundingCacheKey("Washington", "historical_public_figure") !==
+      groundingCacheKey("Washington", "real_place"),
+    "a person and a place with one name must not share a cache row",
+  );
+});
+
+Deno.test("the cache key still collapses spelling of the same entity", () => {
+  assertEquals(
+    groundingCacheKey("  shivaji   MAHARAJ. ", "historical_public_figure"),
+    groundingCacheKey("Shivaji-Maharaj", "historical_public_figure"),
+  );
 });

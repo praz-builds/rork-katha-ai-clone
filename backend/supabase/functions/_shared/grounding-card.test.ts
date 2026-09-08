@@ -309,3 +309,35 @@ Deno.test("the card schema is strict and carries the uncertainty escape", () => 
   assertEquals(GROUNDING_CARD_OUTPUT_SCHEMA.properties.details.minItems, 5);
   assertEquals(GROUNDING_CARD_OUTPUT_SCHEMA.properties.details.maxItems, 8);
 });
+
+// The two gates on the same invariant must agree.
+//
+// `parseGroundingCard` rejects a card with fewer than MIN_CARD_DETAILS facts,
+// because a card with an era and a role and nothing else spends a card slot and
+// changes no sentence of the output. `validateGroundingCards` -- which is what
+// guards a card arriving from the cache or a stored row rather than straight
+// from the model -- only required one. So a thin card that could never have got
+// in could still come back out and reach the authoritative story prompt.
+Deno.test("a thin cached card is refused on the way out, not just on the way in", () => {
+  const thin = {
+    canonicalName: "Shivaji Maharaj",
+    entityClass: "historical_public_figure",
+    nameForms: "Shivaji Maharaj, never 'Mr Maharaj'",
+    details: ["Ruled in the 17th century"],
+    pitfalls: ["Maharaj is an honorific, not a surname"],
+    source: "model_knowledge",
+  };
+  assertEquals(validateGroundingCards([thin]).length, 0);
+
+  const full = {
+    ...thin,
+    details: [
+      "Ruled in the 17th century",
+      "Fought in ravines above the fort where cavalry could not follow",
+      "Wore a jiretop helmet in campaign seasons",
+      "Kept a Persian-literate secretariat",
+      "Ate simple millet bread on the march",
+    ],
+  };
+  assertEquals(validateGroundingCards([full]).length, 1);
+});

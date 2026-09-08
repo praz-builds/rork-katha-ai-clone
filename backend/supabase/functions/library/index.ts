@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { viewerStateForStories } from "../_shared/engagement.ts";
 
 const MAX_PAGE = 500;
 
@@ -47,15 +48,39 @@ serve(async (req) => {
       return respond({ error: "Invalid genre or search query" }, 400);
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-    );
+    // The library is a public endpoint that becomes personalised when the
+    // caller is signed in, so a token is optional. It must also be allowed to
+    // be *bad*: an expired or malformed one is ordinary, not exceptional.
+    //
+    // Resolving the viewer and reading the stories are therefore two clients.
+    // Previously one client carried the caller's Authorization header into the
+    // stories query even when `getUser()` had already returned null, so an
+    // expired token turned a public browse into a 401 instead of simply
+    // returning the public library unpersonalised.
+    const authHeader = req.headers.get("Authorization");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    let user: { id: string } | null = null;
+    if (authHeader) {
+      const authed = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data } = await authed.auth.getUser();
+      user = data.user ?? null;
+    }
+
+    // Only a token that actually resolved to a user is carried forward.
+    const supabase = user
+      ? createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader! } },
+      })
+      : createClient(supabaseUrl, anonKey);
 
     let query = supabase
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating",
+        "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating, author_id",
         { count: "planned" },
       )
       .or("is_public.eq.true,is_curated.eq.true")
@@ -74,8 +99,20 @@ serve(async (req) => {
     const { data: stories, count, error } = await query;
     if (error) throw error;
 
+    const storyRows = (stories ?? []) as Record<string, unknown>[];
+    const storiesWithViewerState = user
+      ? await viewerStateForStories(
+        createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        ),
+        user.id,
+        storyRows,
+      )
+      : storyRows;
+
     return respond({
-      stories,
+      stories: storiesWithViewerState,
       pagination: {
         page,
         limit,
