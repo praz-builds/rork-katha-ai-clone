@@ -202,14 +202,31 @@ export async function handleRecordRead(req: Request): Promise<Response> {
     const row = (Array.isArray(data) ? data[0] : data) as ReadRow | null;
     if (!row) throw new Error("record_story_read returned no row");
 
+    // The read is already committed by the time we get here, so the streak is
+    // explicitly best-effort: throwing would answer 500 for work that actually
+    // succeeded, and the client would be told its read was lost when it was
+    // recorded. These are two RPCs and cannot be one transaction from here, so
+    // the honest shape is to report the read and degrade the streak to null.
+    let streak: StreakRow | null = null;
     const { data: streakData, error: streakError } = await auth.service.rpc(
       "touch_streak",
       { p_user_id: userId },
     );
-    if (streakError) throw streakError;
-    const streak = (Array.isArray(streakData) ? streakData[0] : streakData) as
-      | StreakRow
-      | null;
+    if (streakError) {
+      console.error("record-read: touch_streak failed", streakError);
+      await logError({
+        bucket: "engagement",
+        severity: "low",
+        errorCode: "touch_streak",
+        error: streakError,
+        context: safeContext({ story_id: storyId }),
+        userId,
+      });
+    } else {
+      streak = (Array.isArray(streakData) ? streakData[0] : streakData) as
+        | StreakRow
+        | null;
+    }
 
     return respond({
       recorded: row.recorded,

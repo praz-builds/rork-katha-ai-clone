@@ -289,12 +289,21 @@ export const GROUNDING_TTL_DAYS: Record<EntityClass, number> = {
  * Mirrored by `entity_grounding_key()` in migration 00045, which is the column
  * the unique index is on. Same rule as the TTLs: move both or neither.
  */
-export function groundingCacheKey(canonicalName: string): string {
-  return canonicalName
+export function groundingCacheKey(
+  canonicalName: string,
+  entityClass: string,
+): string {
+  const name = canonicalName
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+  // The class is part of the key, not metadata beside it. Washington the person
+  // and Washington the place share a name and share nothing else; keying on the
+  // name alone let a later classification overwrite an earlier one and answer
+  // lookups with facts about the wrong kind of thing. Mirrors
+  // `entity_grounding_key(text, text)` in migration 00045.
+  return `${name}:${entityClass.trim().toLowerCase()}`;
 }
 
 /**

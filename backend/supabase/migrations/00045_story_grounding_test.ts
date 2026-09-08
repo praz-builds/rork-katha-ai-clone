@@ -146,22 +146,28 @@ Deno.test("the cache key is derived, and matches the TypeScript rule", async () 
     const row = await db.query<{ cache_key: string }>(
       "select cache_key from entity_grounding",
     );
-    assertEquals(row.rows[0].cache_key, "shivaji maharaj");
+    assertEquals(
+      row.rows[0].cache_key,
+      "shivaji maharaj:historical_public_figure",
+    );
     // The SQL and the TypeScript must agree, or the cache silently halves its
     // hit rate and writes duplicate rows nobody notices.
     assertEquals(
       row.rows[0].cache_key,
-      groundingCacheKey("  Shivaji   MAHARAJ. "),
+      groundingCacheKey("  Shivaji   MAHARAJ. ", "historical_public_figure"),
     );
 
     // Diacritics survive on both sides: folding them collides names that are
     // genuinely different.
     const accented = await db.query<{ key: string }>(
-      "select entity_grounding_key($1) as key",
-      ["Malmö"],
+      "select entity_grounding_key($1, $2) as key",
+      ["Malmö", "real_place"],
     );
-    assertEquals(accented.rows[0].key, groundingCacheKey("Malmö"));
-    assert(accented.rows[0].key !== "malmo");
+    assertEquals(
+      accented.rows[0].key,
+      groundingCacheKey("Malmö", "real_place"),
+    );
+    assert(!accented.rows[0].key.startsWith("malmo:"));
   } finally {
     await db.close();
   }
@@ -257,7 +263,7 @@ Deno.test("lookup applies expiry itself, so no caller can forget it", async () =
     );
 
     const hit = await db.query<{ card: { canonicalName: string } | null }>(
-      "select entity_grounding_lookup('taylor  swift') as card",
+      "select entity_grounding_lookup('taylor  swift', 'living_public_figure') as card",
     );
     assertEquals(hit.rows[0].card?.canonicalName, "Taylor Swift");
 
@@ -267,7 +273,7 @@ Deno.test("lookup applies expiry itself, so no caller can forget it", async () =
       "update entity_grounding set expires_at = now() - interval '1 day'",
     );
     const miss = await db.query<{ card: unknown }>(
-      "select entity_grounding_lookup('Taylor Swift') as card",
+      "select entity_grounding_lookup('Taylor Swift', 'living_public_figure') as card",
     );
     assertEquals(miss.rows[0].card, null);
 
@@ -309,6 +315,45 @@ Deno.test("the cache is service-role only, with RLS enabled behind it", async ()
       service.rows.map((row) => row.privilege_type),
       ["DELETE", "INSERT", "SELECT", "UPDATE"],
     );
+  } finally {
+    await db.close();
+  }
+});
+
+// A name is not an identity.
+//
+// The cache key was the normalized name alone, so a card about Washington the
+// person and a card about Washington the place resolved to the same row: the
+// second upsert silently overwrote the first, and every later lookup answered
+// with facts about the wrong kind of thing. The card is well-formed on the way
+// into the prompt, which is what makes this the worst place for a collision to
+// hide in a system whose whole job is factual accuracy.
+Deno.test("two entities sharing a name do not share a cache row", async () => {
+  const db = await createDatabase();
+  try {
+    await db.query(
+      `select entity_grounding_upsert('Washington', 'historical_public_figure', $1::jsonb, 'model_knowledge')`,
+      [JSON.stringify({ canonicalName: "Washington", kind: "person" })],
+    );
+    await db.query(
+      `select entity_grounding_upsert('Washington', 'real_place', $1::jsonb, 'model_knowledge')`,
+      [JSON.stringify({ canonicalName: "Washington", kind: "real_place" })],
+    );
+
+    const rows = await db.query<{ n: number }>(
+      "select count(*)::int as n from entity_grounding",
+    );
+    assertEquals(rows.rows[0].n, 2, "the two entities must not collide");
+
+    const person = await db.query<{ card: { kind: string } | null }>(
+      "select entity_grounding_lookup('Washington', 'historical_public_figure') as card",
+    );
+    assertEquals(person.rows[0].card?.kind, "person");
+
+    const place = await db.query<{ card: { kind: string } | null }>(
+      "select entity_grounding_lookup('Washington', 'real_place') as card",
+    );
+    assertEquals(place.rows[0].card?.kind, "real_place");
   } finally {
     await db.close();
   }
