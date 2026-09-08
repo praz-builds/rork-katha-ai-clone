@@ -1054,14 +1054,44 @@ export default function CreateStudioScreen({
       return;
     }
 
+    // The cover the studio has actually been showing, not the one the story
+    // arrived with.
+    //
+    // `cover` is separate state, and for good reason: the image is made
+    // asynchronously and arrives through a poll (and again through
+    // `regenerateCover`) long after `setStory` last ran. But that means
+    // `edited.coverImageUrl` is still whatever `generate-story` answered with,
+    // which for a cover that was not finished yet is nothing at all. Handing
+    // that to `onPublished` meant the writer watched their cover appear in the
+    // studio, published, and landed on a story showing the placeholder
+    // gradient -- with the real image sitting in Storage the whole time.
+    // Reopening the story later fetched it and it reappeared, which made the
+    // bug look like a fluke rather than a certainty.
+    //
+    // The three fields move together because they describe one thing. Taking
+    // the url without the status would leave a story whose status still says
+    // "generating" over an image that has arrived, and the reader's UI keys
+    // its placeholder off that.
     const publishedStory: Story = {
       ...edited,
       title: storyTitle || edited.title,
       chapters: updatedChapters,
+      coverImageUrl: cover.coverImageUrl ?? edited.coverImageUrl,
+      coverStatus: cover.coverStatus ?? edited.coverStatus,
+      coverRegenCount: cover.coverRegenCount ?? edited.coverRegenCount,
     };
 
     onPublished(publishedStory);
-  }, [draft.visibility, story, storyTitle, onPublished, saveEditorToStory]);
+  }, [
+    draft.visibility,
+    story,
+    storyTitle,
+    onPublished,
+    saveEditorToStory,
+    cover.coverImageUrl,
+    cover.coverStatus,
+    cover.coverRegenCount,
+  ]);
 
   /**
    * Write exactly one more chapter. The single continuation path.

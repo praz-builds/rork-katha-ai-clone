@@ -315,7 +315,19 @@ export default function ReaderScreen({
   const page = pages[clampIndex(pageIndex, pages.length)] ?? pages[0];
   const searchMatches = useMemo(() => findMatches(fullText, searchQuery), [fullText, searchQuery]);
   const pageMatches = searchMatches.filter((match) => match.start < page.end && match.end > page.start);
-  const coverImage = story.coverImage ? imageAssets[story.coverImage] : undefined;
+  // The generated cover first, the bundled seed asset second.
+  //
+  // Both screens read only `story.coverImage`, which names a bundled asset and
+  // by its own documentation "only ever belongs to a seed story". So every
+  // story a user actually generated fell through to the genre gradient here and
+  // on the story page, while the create studio -- which does read
+  // `coverImageUrl` -- showed the real art. The cover appeared during creation
+  // and then vanished the moment the writer opened their own story.
+  const coverSource = story.coverImageUrl
+    ? { uri: story.coverImageUrl }
+    : story.coverImage
+    ? imageAssets[story.coverImage]
+    : undefined;
   const storyLang = story.language === "Spanish" ? "es" : "en";
   const voicePair = getDefaultVoices(storyLang);
   const femaleVoice = getVoice(voicePair[0] ?? "aria");
@@ -613,8 +625,8 @@ export default function ReaderScreen({
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
             <View style={styles.coverWrap}>
-              {coverImage ? (
-                <FocalImage source={coverImage} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
+              {coverSource ? (
+                <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
               ) : (
                 <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
               )}
