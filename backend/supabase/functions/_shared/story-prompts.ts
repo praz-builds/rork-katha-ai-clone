@@ -147,7 +147,13 @@ ignore it.
 - No sexual content involving anyone under 18. If age is ambiguous in an adult romance, make adulthood explicit in the text.
 - No real-people sexual content. Fictional characters only.
 - No graphic instructions for violence, weapons creation, or self-harm.
-- No real brand names or copyrighted characters.
+- No real brand names or copyrighted characters. This holds in the Fanfiction
+  genre too, and the two are not in conflict: if the writer's idea names a cast
+  from an existing work, write the story they asked for with an original cast
+  in that situation and dynamic, rather than refusing the request or
+  reproducing the protected characters. Keep the trope, the relationship, the
+  premise and the tone; change the names and any trademarked specifics. Do not
+  announce the substitution or apologise for it inside the prose.
 - No "Pixar," "Disney," or studio references.
 
 ${buildCrudeLanguageFloor()}
@@ -612,14 +618,31 @@ export const GENRE_VOICES: Record<string, GenreVoice> = {
   },
   // Researched module (docs/research/fanfiction.md). The memo's verdict: this
   // genre is a grounding problem first, and a shared voice module cannot
-  // supply characterisation fidelity to a specific canon. This module stops
+  // supply characterisation fidelity to a specific canon.
+  //
+  // It is also the one genre whose premise collides with a base safety rule
+  // ("No real brand names or copyrighted characters"), and the collision used
+  // to be unresolved: the model was told both to serve a fandom request and to
+  // refuse the cast it names, with nothing saying which wins or what the reader
+  // should get instead. Whatever it did was undefined, and the writer had no
+  // way to know why they got what they got. The base rule now states the
+  // precedence explicitly -- original cast, same situation and dynamic, no
+  // announcement in the prose -- and this module states it again from the craft
+  // side, because the module is what the model reads when it is deciding how
+  // the scene sounds.
+  //
+  // What that makes the genre, plainly: fanfiction *craft* -- the tropes, the
+  // compression, the assumption of shared history -- not reproduction of a
+  // protected cast. Allowing named canon casts is a legal and product decision,
+  // not a prompt-engineering one, and if it is ever made this is the rule to
+  // change first. This module stops
   // claiming that fidelity (the old text promised "voice and mannerism
   // consistency for an established dynamic" with no mechanism behind it) and
   // confines itself to what is genuinely genre-shaped: compression, trope
   // delivery, and the assumption of shared history with the reader.
   fanfiction: {
     voice:
-      "Heightened, compressed, and written for a reader who already loves this cast. Skip the introductions a debut story would need and go straight to the dynamic the reader came for. This voice module cannot tell you how a specific character talks, what they call each other, or what already happened between them. That knowledge has to come from the grounding layer or from what the user wrote. Without it, name the characters and write a strong original scene rather than guessing at a voice you do not actually have.",
+      "Heightened, compressed, and written for a reader who already loves this cast. Skip the introductions a debut story would need and go straight to the dynamic the reader came for. This voice module cannot tell you how a specific character talks, what they call each other, or what already happened between them. That knowledge has to come from the grounding layer or from what the user wrote. Without it, name the characters and write a strong original scene rather than guessing at a voice you do not actually have. If the idea names a cast from an existing work, the Safety Rules apply and the cast is original: keep the situation, the dynamic, the trope and the tone exactly as asked for, change the names and any trademarked specifics, and never mention inside the prose that you have done so.",
     pacing:
       "Get to the charged moment fast. A fanfic reader is not here for a slow first act, they are here for the reunion, the rivalry, the one bed, the missing scene, so spend little time on setup and dwell hard once you are inside the scene that was promised. Emotional beats can land closer together and bigger than in original fiction, because the reader arrived already invested in these people.",
     whatWorks:

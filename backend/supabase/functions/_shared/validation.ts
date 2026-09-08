@@ -18,6 +18,7 @@ import {
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_ALLOWED_SPICE,
   GENRE_DEFAULT_SPICE,
+  GENRE_MIGRATION_BY_NORMALIZED_KEY,
   GENRE_MIGRATION_MAP,
   IDENTITY_LENSES,
   type IdentityLens,
@@ -627,22 +628,36 @@ function sanitizeWritingStyle(
  * romance mid-series.
  */
 function normalizeGenre(raw: string): PrimaryGenre {
+  // Migration is checked before recognition, at BOTH precisions.
+  //
+  // Every retired genre is still a valid `PrimaryGenre` -- they have to be, or
+  // existing stories carrying them could not be read. So "is this already
+  // valid?" answers yes for exactly the genres that most need migrating, and
+  // whichever check runs first wins.
+  //
+  // The exact-match ordering was fixed once. The case-insensitive pair was not,
+  // and that left the bug fully intact for any client sending a display-cased
+  // or spaced value: measured before this change, `thriller` normalised to
+  // `mystery` while `Thriller` normalised to `thriller`, and `darkRomance`
+  // became `romance` while `dark romance` stayed `darkRomance`. A retired genre
+  // reached generation whenever it arrived capitalised.
   const migrated = GENRE_MIGRATION_MAP[raw];
   if (migrated) return migrated;
 
+  const lower = raw.toLowerCase().replace(/[\s_-]/g, "");
+  const migratedLower = GENRE_MIGRATION_BY_NORMALIZED_KEY[lower];
+  if (migratedLower) return migratedLower;
+
   if (PRIMARY_GENRES.has(raw)) return raw as PrimaryGenre;
 
-  // Case-insensitive match against primary genres
-  const lower = raw.toLowerCase().replace(/[\s_-]/g, "");
   for (const genre of PRIMARY_GENRES) {
     if (genre.toLowerCase() === lower) return genre as PrimaryGenre;
   }
 
-  // Migration map, case/format-insensitive
-  const migratedLower = GENRE_MIGRATION_MAP[lower];
-  if (migratedLower) return migratedLower;
-
-  return "contemporary";
+  // The fallback is a genre the picker still offers. `contemporary` was
+  // retired in v7, so defaulting to it handed unrecognised input a genre no
+  // user can choose and the migration map itself sends elsewhere.
+  return "sliceOfLife";
 }
 
 /**

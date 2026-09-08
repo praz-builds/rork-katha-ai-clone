@@ -258,12 +258,16 @@ Deno.test("an empty or whitespace-only seed is still rejected", () => {
   }
 });
 
-Deno.test("unknown genre maps to contemporary", () => {
+// Was "unknown genre maps to contemporary". `contemporary` was retired from the
+// picker in v7 and the migration map now sends it to `sliceOfLife`, so
+// defaulting to it handed unrecognised input a genre no user can choose and the
+// system itself migrates away from. The fallback follows the migration.
+Deno.test("unknown genre maps to a genre the picker still offers", () => {
   const result = validateGenerationRequest(
     validRequest({ primary_genre: "nonExistentGenre" }),
   );
   if ("error" in result) throw new Error(result.error);
-  assertEquals(result.primaryGenre, "contemporary");
+  assertEquals(result.primaryGenre, "sliceOfLife");
 });
 
 // ---------------------------------------------------------------------------
@@ -788,4 +792,83 @@ Deno.test("an accepted prompt is carried through", () => {
   });
   assert(!("error" in result));
   assertEquals(result.notifyOnReady, true);
+});
+
+// Migration must not depend on how the caller cased or spaced the genre.
+//
+// Every retired genre is still a valid `PrimaryGenre` -- it has to be, or an
+// existing story carrying it could not be read. So "is this already valid?"
+// answers yes for exactly the genres that most need migrating, and whichever
+// check runs first wins. The exact-match ordering was fixed once; the
+// case-insensitive pair was not, which left the bug fully intact for any client
+// sending a display-cased value.
+//
+// Measured before the fix: `thriller` normalised to `mystery` while `Thriller`
+// normalised to `thriller`, and `darkRomance` became `romance` while
+// `dark romance` stayed `darkRomance`.
+Deno.test("a retired genre migrates however it is written", () => {
+  const requestId = "11111111-1111-4111-8111-111111111111";
+  const normalise = (primaryGenre: string) => {
+    const result = validateGenerationRequest({
+      primary_genre: primaryGenre,
+      seed: "a story idea",
+      request_id: requestId,
+    } as never);
+    if ("error" in result) {
+      throw new Error(`unexpected refusal: ${result.error}`);
+    }
+    return result.primaryGenre;
+  };
+
+  for (
+    const written of ["thriller", "Thriller", "THRILLER", "thriller "]
+  ) {
+    assertEquals(normalise(written), "mystery", written);
+  }
+
+  for (
+    const written of [
+      "darkRomance",
+      "dark romance",
+      "Dark Romance",
+      "DARK_ROMANCE",
+      "dark-romance",
+    ]
+  ) {
+    assertEquals(normalise(written), "romance", written);
+  }
+
+  assertEquals(normalise("Contemporary"), "sliceOfLife");
+  assertEquals(normalise("POETRY"), "folktale");
+
+  // A surviving genre is untouched at any casing.
+  assertEquals(normalise("Historical"), "historical");
+  assertEquals(normalise("historical"), "historical");
+});
+
+// The fallback must be a genre the picker still offers. `contemporary` was
+// retired in v7, so defaulting to it handed unrecognised input a genre no user
+// can choose and the migration map itself sends elsewhere.
+Deno.test("an unrecognised genre falls back to one the picker still offers", () => {
+  const result = validateGenerationRequest({
+    primary_genre: "not-a-real-genre",
+    seed: "a story idea",
+    request_id: "11111111-1111-4111-8111-111111111111",
+  } as never);
+  if ("error" in result) throw new Error("unexpected refusal");
+  assertEquals(result.primaryGenre, "sliceOfLife");
+});
+
+// The kids gate reads the RAW genre on purpose, so migration must not soften it.
+// A capitalised kids-mode request for a blocked genre is still refused.
+Deno.test("kids mode still refuses a blocked genre however it is written", () => {
+  for (const written of ["darkRomance", "Dark Romance", "dark romance"]) {
+    const result = validateGenerationRequest({
+      primary_genre: written,
+      audience_mode: "kids",
+      seed: "a story idea",
+      request_id: "11111111-1111-4111-8111-111111111111",
+    } as never);
+    assertEquals("error" in result, true, `should refuse: ${written}`);
+  }
 });

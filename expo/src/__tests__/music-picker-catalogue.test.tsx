@@ -72,3 +72,4 @@ it("shows the currently selected track", async () => {
   expect(view.getByLabelText("Neon Drift, selected")).toBeTruthy();
   expect(view.getByLabelText("None")).toBeTruthy();
 });
+

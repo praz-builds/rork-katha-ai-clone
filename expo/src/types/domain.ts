@@ -1,4 +1,10 @@
-// 13 UI genres (cozyFantasy + paranormalRomance hidden, DB-only)
+/**
+ * Every genre value a story can carry, past and present.
+ *
+ * A genre removed from the UI (see `UI_GENRES`) stays in this list forever,
+ * because stories already published with it must keep rendering - a label,
+ * a gradient, and a valid `Genre` value, even after nobody can pick it again.
+ */
 export const GENRES = [
   "romance",
   "romantasy",
@@ -13,9 +19,69 @@ export const GENRES = [
   "adventure",
   "comedy",
   "poetry",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "sliceOfLife",
 ] as const;
 
 export type Genre = (typeof GENRES)[number];
+
+/**
+ * The genre list the UI actually offers, in the app's fixed display order.
+ * Romance is deliberately last. Every picker, filter, and chip row should
+ * read from this - not from `GENRES`, which exists only to keep every past
+ * and present genre value typed and labeled even after it drops out of here.
+ */
+export const UI_GENRES = [
+  "adventure",
+  "comedy",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "historical",
+  "scifi",
+  "fantasy",
+  "mystery",
+  "horror",
+  "sliceOfLife",
+  "romance",
+] as const satisfies readonly Genre[];
+
+/**
+ * The genres offered in kids mode, named one by one.
+ *
+ * An ALLOWLIST, deliberately, and it is the one place in this file where that
+ * is the right shape. Everywhere else a blocklist is safer, because a genre
+ * added later should appear rather than silently go missing.
+ *
+ * Kids mode inverts that. Here the failure of forgetting is not a genre quietly
+ * absent from a picker, it is a genre inappropriate for a child quietly
+ * PRESENT in one. A missing genre is a papercut someone reports; an unsuitable
+ * one shipped to a child is not. So a new genre stays out of kids mode until
+ * somebody adds it here on purpose, and the test below fails the moment
+ * `UI_GENRES` grows without that decision being made.
+ */
+const KIDS_ALLOWED_GENRES: ReadonlySet<Genre> = new Set([
+  "adventure",
+  "comedy",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "historical",
+  "scifi",
+  "fantasy",
+  "mystery",
+  "sliceOfLife",
+]);
+
+/** Whether `genre` is offered in kids mode. See `KIDS_ALLOWED_GENRES`. */
+export function isKidsGenre(genre: Genre): boolean {
+  return KIDS_ALLOWED_GENRES.has(genre);
+}
+
+/** The kids-mode subset of `UI_GENRES`, in the same fixed display order. */
+export const KIDS_UI_GENRES: readonly Genre[] = UI_GENRES.filter(isKidsGenre);
 
 export type AudienceMode = "adult" | "kids";
 export type SpiceLevel = "sweet" | "steamy";
@@ -131,6 +197,19 @@ export type Story = {
    * absent for every draft younger than that.
    */
   coverImageUrl?: string;
+  /**
+   * What THIS viewer has already done to this story.
+   *
+   * The engagement endpoints return these alongside the story so a screen can
+   * render the correct initial state. Optional because the endpoints that
+   * supply them are not deployed everywhere yet; absent means "not engaged",
+   * which is the safe reading. Without them every control started at `false`,
+   * so a reader who had already liked a story was shown an unfilled heart and
+   * their next tap removed the like they could not see.
+   */
+  viewerHasLiked?: boolean;
+  viewerHasBookmarked?: boolean;
+  viewerFollowsAuthor?: boolean;
   /**
    * Which of "not attempted", "in flight", "ready" and "failed" the cover is.
    *
@@ -264,7 +343,13 @@ export type Screen =
    * standalone skips it.
    */
   | { name: "story"; storyId: string }
-  | { name: "reader"; storyId: string; chapterIndex?: number }
+  | {
+    name: "reader";
+    storyId: string;
+    chapterIndex?: number;
+    /** Set when the reader was opened by Listen, so narration starts on arrival. */
+    autoplay?: boolean;
+  }
   | { name: "author"; authorId: string }
   | { name: "credits" }
   | { name: "paywall" }

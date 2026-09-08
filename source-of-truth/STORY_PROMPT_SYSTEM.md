@@ -221,8 +221,20 @@ Separate UI controls:
   `spiceLevel: "sweet"`, filters unsuitable genres, and reveals Values.
 - **Values:** Kids-only chips. They are written into the brief as themes to
   explore through character action, never as a moral lesson.
-- **Spice selector:** adult-only, genre-specific availability. It is absent,
-  rather than set safe, in Kids mode.
+- **Spice selector: removed (2026-09-08).** There is no spice control on any
+  surface, in either audience mode. This entry previously described an
+  adult-only, genre-specific selector, which contradicted the retirement
+  recorded above under "Spice leaves the product surface" — two sections of
+  the same contract specifying opposite UI. The retirement is the current
+  decision; this line is kept, rather than deleted, so a reader who remembers
+  the selector finds out what happened to it instead of assuming the contract
+  forgot to mention it.
+
+  Nothing about the backend changed: `spiceLevel` is still part of the request
+  contract, an absent `spice_level` is still defaulted per genre by
+  `validateGenerationRequest` (`GENRE_DEFAULT_SPICE`), and Kids mode still
+  forces `sweet`. What went away is the writer choosing a heat tier from a
+  meter; heat is inferred from the story idea instead.
 - **Language:** Create offers English and Portuguese only. Spanish remains a
   legacy read/continuation concern, not a creation selection.
 

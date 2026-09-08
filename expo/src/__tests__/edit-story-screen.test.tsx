@@ -1,4 +1,5 @@
 import React from "react";
+import { Alert } from "react-native";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
 import type { Chapter, Story } from "@/types/domain";
@@ -263,4 +264,75 @@ it("keeps the reader's text and offers a retry when a save fails", async () => {
   expect(view.getByLabelText("Chapter text").props.value).toBe(
     "A change that will fail to save.",
   );
+});
+
+it("saves an edit typed immediately before closing instead of losing it (findings 1 and 2)", async () => {
+  const onClose = jest.fn();
+  const view = await render(
+    <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
+  );
+  const input = view.getByLabelText("Chapter text");
+
+  // Typed, then closed straight away - well inside the default 900ms
+  // debounce, so the timer has not fired yet.
+  await act(async () => {
+    fireEvent.changeText(input, "Typed a moment before closing.");
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Close editor"));
+  });
+
+  await waitFor(() => expect(mockPublishStory).toHaveBeenCalledTimes(1));
+  expect(mockPublishStory).toHaveBeenCalledWith("story-1", {
+    chapters: [{ id: "chapter-1", content: "Typed a moment before closing." }],
+    visibility: "public",
+  });
+  expect(onClose).toHaveBeenCalledWith("Typed a moment before closing.");
+});
+
+it("does not vanish a failed save on close - it asks before discarding it (finding 7)", async () => {
+  const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  mockPublishStory.mockRejectedValue(new Error("network down"));
+
+  const onClose = jest.fn();
+  const view = await render(
+    <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
+  );
+  const input = view.getByLabelText("Chapter text");
+
+  await act(async () => {
+    fireEvent.changeText(input, "A change that will never save.");
+  });
+  await waitFor(() => expect(view.getByLabelText("Retry save")).toBeTruthy());
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Close editor"));
+  });
+
+  // The close is intercepted, not silently allowed through: the editor is
+  // still on screen and the writer was asked, rather than told nothing.
+  expect(onClose).not.toHaveBeenCalled();
+  expect(alertSpy).toHaveBeenCalledWith(
+    "Couldn't save your edit",
+    expect.stringContaining("couldn't be saved"),
+    expect.arrayContaining([
+      expect.objectContaining({ text: "Keep Editing" }),
+      expect.objectContaining({ text: "Discard & Close" }),
+    ]),
+  );
+
+  // Choosing to discard closes with the last text the server actually has -
+  // the chapter's original content - never the unsaved edit, so the reader
+  // screen is never handed text as if it had been saved when it had not.
+  const [, , buttons] = alertSpy.mock.calls[0];
+  const discard = buttons?.find((button) => button.text === "Discard & Close");
+  await act(async () => {
+    discard?.onPress?.();
+  });
+
+  expect(onClose).toHaveBeenCalledWith(
+    "The lighthouse keeper climbed the stairs one last time.",
+  );
+
+  alertSpy.mockRestore();
 });

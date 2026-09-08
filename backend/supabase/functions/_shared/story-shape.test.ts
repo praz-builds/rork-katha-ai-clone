@@ -268,3 +268,95 @@ Deno.test("no shelf is the same prompt it always was", () => {
   assert(!prompt.includes("primary genre"));
   assert(prompt.includes("<katha:idea>"));
 });
+
+Deno.test("the onboarding opening is asked for at the length the screen shows", async () => {
+  // The band and the clamp are one decision split across two files, and they
+  // drifted: the prompt asked for 120-180 words in up to three paragraphs
+  // while the preview rendered two paragraphs clamped to three lines and two.
+  // Everything past that was generated, paid for, waited on by a user watching
+  // a loader, and then dropped - `finish()` does not carry `opening` into the
+  // draft either. This is the assertion that notices the next time one side
+  // moves without the other.
+  assert(ONBOARDING_SHAPE_SYSTEM_PROMPT.includes("90-120 words"));
+  assert(ONBOARDING_SHAPE_SYSTEM_PROMPT.includes("exactly two paragraphs"));
+
+  const screen = await Deno.readTextFile(
+    new URL("../../../../expo/src/screens/WriterOnboarding.tsx", import.meta.url),
+  );
+  // The clamp the band is sized against. If the preview starts showing three
+  // paragraphs, the prompt has to be told to write them.
+  assert(screen.includes("blueprint.opening.split(/\\n{2,}/).slice(0, 2)"));
+});
+
+Deno.test("shape-story never answers an empty shape without saying why", async () => {
+  // A refused rate-limit claim used to be indistinguishable from a model that
+  // returned nothing usable, and the client read both as "your idea produced
+  // nothing" - a non-retryable dead end in the middle of onboarding. Every
+  // path that answers a null shape now carries a reason.
+  const source = await Deno.readTextFile(
+    new URL("../shape-story/index.ts", import.meta.url),
+  );
+  const nulls = source.match(/respond\(\{\s*shape:\s*null[^}]*\}/g) ?? [];
+  assert(nulls.length >= 3, `expected the null-shape paths, saw ${nulls.length}`);
+  for (const answer of nulls) {
+    assert(answer.includes("reason:"), `bare null shape: ${answer}`);
+  }
+  assert(source.includes('reason: "rate_limited"'));
+});
+
+// A shaping response is a NEW submission, so a retired genre in it migrates.
+//
+// The prompt asks the model for the twelve UI genres by name, but a prompt is
+// guidance. `normalizeGenre` here used to check `PRIMARY_GENRES` first, and
+// every retired genre is still a member of that set -- it has to be, or stories
+// already written in one could not be read. So a model that answered
+// `thriller` had that answer accepted verbatim, and the shape carried a genre
+// the picker no longer offers into a story the creator never chose it for.
+// Recognition-first also meant the answer depended on capitalisation:
+// `thriller` and `Thriller` reached different results.
+Deno.test("a shaping response naming a retired genre is migrated, not accepted", () => {
+  const shape = parseStoryShape(JSON.stringify({
+    genres: ["thriller"],
+    whereAndWhen: "A harbour town, winter",
+    characters: [],
+    suggestedMoments: [],
+  }));
+
+  assert(shape);
+  assertEquals(shape.genres, ["mystery"]);
+});
+
+Deno.test("migration does not depend on how the model cased or spaced the genre", () => {
+  for (const [written, expected] of [
+    ["Thriller", "mystery"],
+    ["THRILLER", "mystery"],
+    ["dark romance", "romance"],
+    ["Dark Romance", "romance"],
+    ["contemporary", "sliceOfLife"],
+    ["poetry", "folktale"],
+    ["cozy fantasy", "fantasy"],
+  ] as const) {
+    const shape = parseStoryShape(JSON.stringify({
+      genres: [written],
+      whereAndWhen: "",
+      characters: [],
+      suggestedMoments: [],
+    }));
+    assert(shape, `${written} produced no shape`);
+    assertEquals(shape.genres, [expected], `${written} did not migrate`);
+  }
+});
+
+Deno.test("a genre that survived v7 is still returned as itself", () => {
+  // The mirror of the tests above. Without it, a `normalizeGenre` that had
+  // simply started rejecting everything would pass them both.
+  const shape = parseStoryShape(JSON.stringify({
+    genres: ["Mystery", "fantasy", "sliceOfLife"],
+    whereAndWhen: "",
+    characters: [],
+    suggestedMoments: [],
+  }));
+
+  assert(shape);
+  assertEquals(shape.genres, ["mystery", "fantasy", "sliceOfLife"]);
+});

@@ -15,7 +15,7 @@ import {
   unsavePhrase,
   type SavedPhrase,
 } from "@/lib/phrases";
-import { cleanWord, sentenceAroundWord } from "@/lib/sentence";
+import { cleanWord, sentenceAroundWord, splitWords } from "@/lib/sentence";
 import ReaderScreen from "@/screens/ReaderScreen";
 import { colors, fonts, motion, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
@@ -25,10 +25,16 @@ export type PhraseCaptureReaderProps = {
   onBack: () => void;
   initialChapterIndex?: number;
   /**
-   * Forwarded straight to `ReaderScreen`. This wrapper sits between App and the
-   * reader, so any seam it does not pass through silently stops working the
-   * moment phrase capture is enabled. End-of-chapter branching is rendered
-   * through here for exactly that reason.
+   * Forwarded to `ReaderScreen`. This wrapper sits between App and the reader,
+   * so a seam it does not pass through silently stops working the moment phrase
+   * capture is enabled -- here that would mean Listen quietly opening the reader
+   * without starting narration.
+   */
+  autoplay?: boolean;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason as `autoplay`: a seam this wrapper
+   * does not pass through silently stops working the moment phrase capture is
+   * enabled, and here that would mean end-of-chapter branching disappearing.
    */
   renderChapterEnd?: (chapter: Chapter) => ReactNode;
 };
@@ -62,6 +68,7 @@ export default function PhraseCaptureReader({
   story,
   onBack,
   initialChapterIndex = 0,
+  autoplay = false,
   renderChapterEnd,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
@@ -76,6 +83,15 @@ export default function PhraseCaptureReader({
   const [activeChapter, setActiveChapter] = useState<Chapter>(
     story.chapters[initialChapterIndex] ?? story.chapters[0],
   );
+  // The chapter's tokens, seeded up front rather than accumulated as pages
+  // render. `renderWord` still fills in what it draws, but seeding means a
+  // sentence that runs off the bottom of the page is already known, so a
+  // long-press near a page break returns the whole sentence rather than the
+  // half that happened to be on screen.
+  useEffect(() => {
+    wordsRef.current = splitWords(activeChapter.paragraphs.join("\n\n"));
+  }, [activeChapter]);
+
   const activeChapterRef = useRef(activeChapter);
   useEffect(() => {
     activeChapterRef.current = activeChapter;
@@ -88,10 +104,19 @@ export default function PhraseCaptureReader({
   const reducedMotion = useReducedMotion();
   const wordsRef = useRef<string[]>([]);
 
+  // The initial load must not clobber a save the reader already made.
+  //
+  // This read is asynchronous, and a reader can tap a word before it resolves.
+  // Assigning its result unconditionally then replaced the optimistic entry,
+  // clearing the highlight and letting the same word be saved twice. A phrase
+  // saved in this session outranks a snapshot taken before it existed.
+  const hasLocalSaveRef = useRef(false);
   useEffect(() => {
     let alive = true;
+    hasLocalSaveRef.current = false;
     listSavedPhrases().then((phrases) => {
-      if (alive) setSavedPhrases(phrases);
+      if (!alive || hasLocalSaveRef.current) return;
+      setSavedPhrases(phrases);
     });
     return () => {
       alive = false;
@@ -146,6 +171,7 @@ export default function PhraseCaptureReader({
       dueAt: new Date().toISOString(),
       reviewCount: 0,
     };
+    hasLocalSaveRef.current = true;
     setSavedPhrases((prev) => [optimistic, ...prev]);
 
     const saved = await savePhrase({
@@ -214,7 +240,10 @@ export default function PhraseCaptureReader({
   }, [story.id, toggleSave, toggleUnsave]);
 
   const renderWord = useCallback((word: string, index: number): ReactNode => {
-    if (index === 0) wordsRef.current = [];
+    // `index` is chapter-absolute, and `wordsRef` holds the whole chapter's
+    // tokens rather than the current page's. Accumulating page tokens here
+    // meant a sentence running across a page break was truncated at the
+    // boundary, so a long-press near the foot of a page saved a fragment.
     wordsRef.current[index] = word;
 
     // A screen-reader user gets the unmodified reading experience: the
@@ -256,6 +285,7 @@ export default function PhraseCaptureReader({
         initialChapterIndex={initialChapterIndex}
         renderWord={renderWord}
         onChapterChange={onChapterChange}
+        autoplay={autoplay}
         renderChapterEnd={renderChapterEnd}
       />
       {toast ? (
