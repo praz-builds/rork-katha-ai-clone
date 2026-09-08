@@ -89,6 +89,26 @@ const GENRE_PHRASES: Record<Genre, PhraseTemplate[]> = {
     "Counting|syllables and silence",
     "Finding the image that|carries it all",
   ],
+  educational: [
+    "Fact-checking the|details",
+    "Explaining the|why",
+    "Making the complicated feel|simple",
+  ],
+  fanfiction: [
+    "Honoring the|source material",
+    "Finding the moment canon|left out",
+    "Getting the voices|right",
+  ],
+  folktale: [
+    "Passing down the|old warning",
+    "Setting the moral in|motion",
+    "Finding the trick behind the|trick",
+  ],
+  sliceOfLife: [
+    "Noticing the|small moment",
+    "Letting the ordinary|breathe",
+    "Finding the feeling under the|routine",
+  ],
 };
 
 const CONTINUATION: PhraseTemplate[] = [

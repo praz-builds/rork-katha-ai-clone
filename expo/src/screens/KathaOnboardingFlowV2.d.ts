@@ -1,5 +1,11 @@
 import type { Genre } from "../types/domain";
 
+/**
+ * How many genre interests a reader must pick before Continue activates on
+ * the genre screen. The helper copy and the button read this one number.
+ */
+export const MIN_GENRE_SELECTIONS: number;
+
 export type OnboardingPurpose = "read" | "write" | "both";
 export type OnboardingPlan = "weekly" | "yearly";
 export type KathaOnboardingScreen =

@@ -63,6 +63,42 @@ it("shows the empty state when nothing matches, and recovers from it", async () 
   expect(view.queryByText("No stories match")).toBeNull();
 });
 
+/**
+ * `UI_GENRES` added four genres - educational, fanfiction, folktale, and
+ * slice of life - that the seeded fixture catalogue has no stories in yet.
+ * Selecting one of those chips must never land the reader on a silent blank
+ * screen or on the generic "No stories match" copy, which reads as "your
+ * search failed" when the truth is "nobody has published here yet". These
+ * assert against the live seed catalogue (see `expo/src/data/seed.ts`)
+ * rather than a hardcoded list of which four genres are empty, so the test
+ * still means the right thing once a story is eventually seeded into one of
+ * them, or once a fifth genre with no stories arrives.
+ */
+describe("a genre with nothing published in it yet", () => {
+  it("explains the gap instead of the generic no-match copy, and recovers from it", async () => {
+    const view = await renderExplore();
+
+    expect(stories.some((story) => story.genre === "educational")).toBe(false);
+
+    await fireEvent.press(view.getByText("Educational"));
+    expect(view.getByText("No Educational stories yet")).toBeTruthy();
+    expect(view.queryByText("No stories match")).toBeNull();
+
+    await fireEvent.press(view.getByText("See every story"));
+    expect(view.queryByText("No Educational stories yet")).toBeNull();
+  });
+
+  it("does not show the empty-genre copy for a genre the catalogue actually has stories in", async () => {
+    const view = await renderExplore();
+
+    expect(stories.some((story) => story.genre === "fantasy")).toBe(true);
+
+    await fireEvent.press(view.getByText("Fantasy"));
+    expect(view.queryByText(/stories yet$/)).toBeNull();
+    expect(view.queryByText("No stories match")).toBeNull();
+  });
+});
+
 it("reorders the list when the sort changes", async () => {
   const view = await renderExplore();
   await fireEvent.press(view.getByLabelText("Filters"));
