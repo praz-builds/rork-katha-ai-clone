@@ -5,6 +5,7 @@ import {
   type CharacterInput,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
+  GENRE_MIGRATION_BY_NORMALIZED_KEY,
   GENRE_MIGRATION_MAP,
   MAX_BEAT_LENGTH,
   MAX_BRIEF_FIELD_LENGTH,
@@ -333,15 +334,43 @@ function normalizeGenres(value: unknown): PrimaryGenre[] {
   return genres;
 }
 
+/**
+ * One genre from a shaping response, mapped to the genre a NEW story may use.
+ *
+ * Migration is checked before recognition, and at both precisions -- the same
+ * order `validation.ts` uses, and for the same reason. Every retired genre is
+ * still a member of `PRIMARY_GENRES` (they have to be, or stories already
+ * written in them could not be read), so "is this already valid?" answers yes
+ * for exactly the genres that most need migrating, and whichever check runs
+ * first wins.
+ *
+ * With recognition first, a model that ignored the controlled list in the
+ * prompt and answered `thriller` or `Dark Romance` had that answer accepted
+ * verbatim: the shaping response then carried a genre the picker no longer
+ * offers, into a story the creator never chose it for. The prompt asking for
+ * the twelve UI genres is guidance; this is the enforcement.
+ *
+ * This is deliberately NOT the same rule `story-prompts.ts` applies. That one
+ * checks its supported-genre set first, because it is loading a STORED story
+ * for continuation and a series already written in `darkRomance` must keep its
+ * own voice module rather than jump to romance mid-way. Here the value is part
+ * of a brand-new submission, so it migrates.
+ */
 function normalizeGenre(value: string): PrimaryGenre | undefined {
   const trimmed = value.trim();
+  const migrated = GENRE_MIGRATION_MAP[trimmed];
+  if (migrated) return migrated;
+
+  const lower = trimmed.toLowerCase().replace(/[\s_-]/g, "");
+  const migratedLower = GENRE_MIGRATION_BY_NORMALIZED_KEY[lower];
+  if (migratedLower) return migratedLower;
+
   if (PRIMARY_GENRES.has(trimmed)) return trimmed as PrimaryGenre;
-  const lower = trimmed.toLowerCase();
   const canonical = [...PRIMARY_GENRES].find((genre) =>
     genre.toLowerCase() === lower
   );
   if (canonical) return canonical as PrimaryGenre;
-  return GENRE_MIGRATION_MAP[trimmed] ?? GENRE_MIGRATION_MAP[lower];
+  return undefined;
 }
 
 function normalizeCharacters(value: unknown): CharacterInput[] {

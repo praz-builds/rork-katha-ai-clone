@@ -18,6 +18,7 @@ import {
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_ALLOWED_SPICE,
   GENRE_DEFAULT_SPICE,
+  GENRE_MIGRATION_BY_NORMALIZED_KEY,
   GENRE_MIGRATION_MAP,
   IDENTITY_LENSES,
   type IdentityLens,
@@ -626,23 +627,6 @@ function sanitizeWritingStyle(
  * keeps writing in the darkRomance voice module rather than jumping to
  * romance mid-series.
  */
-/**
- * The migration map, re-keyed the way a caller might actually write a genre.
- *
- * `GENRE_MIGRATION_MAP` is keyed in the codebase's camelCase (`darkRomance`),
- * so a lowercased, separator-stripped lookup against it missed every
- * multi-word retired genre: "dark romance" and "Dark Romance" both normalise to
- * `darkromance`, which the map does not contain, so they fell through to the
- * case-insensitive recognition step and arrived unmigrated. Building the index
- * once keeps the map itself readable and the lookup total.
- */
-const MIGRATION_BY_NORMALIZED_KEY: Record<string, PrimaryGenre> = Object
-  .fromEntries(
-    Object.entries(GENRE_MIGRATION_MAP).map((
-      [key, value],
-    ) => [key.toLowerCase().replace(/[\s_-]/g, ""), value]),
-  );
-
 function normalizeGenre(raw: string): PrimaryGenre {
   // Migration is checked before recognition, at BOTH precisions.
   //
@@ -661,7 +645,7 @@ function normalizeGenre(raw: string): PrimaryGenre {
   if (migrated) return migrated;
 
   const lower = raw.toLowerCase().replace(/[\s_-]/g, "");
-  const migratedLower = MIGRATION_BY_NORMALIZED_KEY[lower];
+  const migratedLower = GENRE_MIGRATION_BY_NORMALIZED_KEY[lower];
   if (migratedLower) return migratedLower;
 
   if (PRIMARY_GENRES.has(raw)) return raw as PrimaryGenre;

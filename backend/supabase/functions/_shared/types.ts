@@ -345,6 +345,25 @@ export const GENRE_MIGRATION_MAP: Record<string, PrimaryGenre> = {
   cozyFantasy: "fantasy",
 };
 
+/**
+ * `GENRE_MIGRATION_MAP`, re-keyed the way a caller might actually write a genre.
+ *
+ * The map is keyed in this codebase's camelCase (`darkRomance`), so a
+ * lowercased, separator-stripped lookup against it missed every multi-word
+ * retired genre: "dark romance" and "Dark Romance" both reduce to
+ * `darkromance`, which the map does not contain. Building the index once,
+ * here beside the map it derives from, keeps the map readable and gives every
+ * caller that has to migrate a raw string the same total lookup -- there are
+ * two of them (`validation.ts` for a request, `story-shape.ts` for a model
+ * response) and they used to disagree.
+ */
+export const GENRE_MIGRATION_BY_NORMALIZED_KEY: Record<string, PrimaryGenre> =
+  Object.fromEntries(
+    Object.entries(GENRE_MIGRATION_MAP).map((
+      [key, value],
+    ) => [key.toLowerCase().replace(/[\s_-]/g, ""), value]),
+  );
+
 // ---------------------------------------------------------------------------
 // Story shape: planned length, chapter length, cast size
 // ---------------------------------------------------------------------------

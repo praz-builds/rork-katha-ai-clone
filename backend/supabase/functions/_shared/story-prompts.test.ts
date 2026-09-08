@@ -10,10 +10,17 @@ import {
   buildUserPrompt,
   type ContinuationPromptInput,
   fenceUserText,
+  GENRE_VOICES,
   USER_FIELD_LABELS,
 } from "./story-prompts.ts";
 import { buildPhraseLayer, MAX_PHRASE_LAYER_PHRASES } from "./phrases.ts";
-import { EMPTY_SERIES_STATE, type SeriesState, wordBandFor } from "./types.ts";
+import {
+  EMPTY_SERIES_STATE,
+  GENRE_MIGRATION_MAP,
+  type SeriesState,
+  wordBandFor,
+} from "./types.ts";
+import { BANNED_WORDS } from "./ban-lists.ts";
 
 Deno.test("buildStorySystemPrompt includes genre module text", () => {
   const prompt = buildStorySystemPrompt({ primaryGenre: "romance" });
@@ -345,10 +352,10 @@ Deno.test("new genre modules exist: educational, fanfiction, folktale, sliceOfLi
 
 Deno.test("each new genre module carries its own distinct craft guidance", () => {
   const distinguishingText: Record<string, string> = {
-    educational: "load-bearing",
-    fanfiction: "already loves these characters",
-    folktale: "oral and cadenced",
-    sliceOfLife: "quiet and observational",
+    educational: "a vague sentence that holds up",
+    fanfiction: "already loves this cast",
+    folktale: "oral, cadenced",
+    sliceOfLife: "the tension of normality cracking",
   };
   for (const [genre, phrase] of Object.entries(distinguishingText)) {
     const prompt = buildStorySystemPrompt({ primaryGenre: genre });
@@ -417,6 +424,142 @@ Deno.test("a story stored with a removed genre still builds a prompt without thr
       continuation.includes(`## Genre: ${genre}`),
       `${genre} continuation prompt did not resolve to its own genre module`,
     );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// v7 taxonomy (2026-09-08): researched voice modules and inheritance rules.
+// See docs/research/folktale.md, docs/research/educational.md,
+// docs/research/fanfiction.md and source-of-truth/STORY_PROMPT_SYSTEM.md.
+// ---------------------------------------------------------------------------
+
+Deno.test("folktale carries its researched module, not the old placeholder text", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "folktale" });
+  assert(prompt.includes("## Genre: folktale"));
+  assert(
+    prompt.includes(
+      "Oral, cadenced, and told by someone in the room with the listener",
+    ),
+  );
+  assert(prompt.includes("Address the listener directly"));
+});
+
+Deno.test("educational carries its researched module", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "educational" });
+  assert(prompt.includes("## Genre: educational"));
+  assert(
+    prompt.includes("State a mechanism only when you are certain of it"),
+  );
+  assert(
+    prompt.includes(
+      "choose the truer, plainer version over the more impressive",
+    ),
+  );
+});
+
+Deno.test("fanfiction carries its researched module and admits what it cannot deliver", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "fanfiction" });
+  assert(prompt.includes("## Genre: fanfiction"));
+  assert(
+    prompt.includes(
+      "This voice module cannot tell you how a specific character talks",
+    ),
+  );
+  assert(prompt.includes("the grounding layer"));
+});
+
+Deno.test("sliceOfLife and contemporary share the exact same module object", () => {
+  // Referential sharing, not two copies that happen to read the same today:
+  // an edit to one cannot silently diverge from the other (product decision,
+  // 2026-09-08).
+  assert(GENRE_VOICES.sliceOfLife === GENRE_VOICES.contemporary);
+  assertEquals(GENRE_VOICES.sliceOfLife, GENRE_VOICES.contemporary);
+
+  const stripHeading = (p: string) => p.replace(/## Genre: \w+/, "## Genre: X");
+  const sliceOfLife = buildStorySystemPrompt({ primaryGenre: "sliceOfLife" });
+  const contemporary = buildStorySystemPrompt({
+    primaryGenre: "contemporary",
+  });
+  assertEquals(stripHeading(sliceOfLife), stripHeading(contemporary));
+});
+
+Deno.test("mystery's module mentions both the puzzle engine and the dread/momentum engine", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "mystery" })
+    .toLowerCase();
+  assert(prompt.includes("puzzle"), "mystery module dropped the puzzle engine");
+  assert(
+    prompt.includes("dread") || prompt.includes("momentum"),
+    "mystery module dropped the dread/momentum engine",
+  );
+});
+
+Deno.test("a migrated thriller submission ends up with the mystery module", () => {
+  // GENRE_MIGRATION_MAP.thriller is what validateGenerationRequest reads for
+  // a NEW submission (see validation.test.ts's own migration coverage); this
+  // confirms the genre it lands on actually renders the merged craft.
+  const migrated = GENRE_MIGRATION_MAP.thriller;
+  assertEquals(migrated, "mystery");
+  const prompt = buildStorySystemPrompt({ primaryGenre: migrated });
+  assert(prompt.includes("## Genre: mystery"));
+  const lower = prompt.toLowerCase();
+  assert(lower.includes("puzzle"));
+  assert(lower.includes("dread") || lower.includes("momentum"));
+});
+
+Deno.test("thriller keeps its own, unmerged module for stories that already carry it", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "thriller" });
+  assert(prompt.includes("## Genre: thriller"));
+  assert(prompt.includes("Urgent, lean, propulsive"));
+});
+
+Deno.test("the folktale module explicitly names each global rule it suspends", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "folktale" });
+  assert(
+    prompt.includes("suspends the base layer's Show, Don't Tell rule"),
+    "folktale module does not name the Show, Don't Tell carve-out",
+  );
+  assert(
+    prompt.includes("suspends the base layer's Sentence Rhythm rule"),
+    "folktale module does not name the Sentence Rhythm carve-out",
+  );
+  assert(
+    prompt.includes("suspends the general anti-cliche instinct"),
+    "folktale module does not name the anti-cliche carve-out",
+  );
+  assert(
+    prompt.includes("base Pacing rule against resolving too neatly"),
+    "folktale module does not name the pacing/loose-threads carve-out",
+  );
+});
+
+Deno.test("no genre module authored or relocated by this pass contains an em dash or a banned word", () => {
+  // Scoped to the modules this pass wrote or relocated: the three researched
+  // modules, the merged mystery module, and the shared contemporary/
+  // sliceOfLife module. The remaining legacy modules (romance, fantasy,
+  // romantasy, darkRomance, cozyFantasy, paranormalRomance, horror, scifi,
+  // adventure, historical, comedy, poetry, thriller) predate this house rule
+  // and are untouched, out of scope for this pass.
+  const genresInScope = [
+    "folktale",
+    "educational",
+    "fanfiction",
+    "mystery",
+    "contemporary",
+    "sliceOfLife",
+  ] as const;
+  const bannedWordPattern = new RegExp(
+    `\\b(${BANNED_WORDS.join("|")})\\b`,
+    "i",
+  );
+  const fields = ["voice", "pacing", "whatWorks", "whatToAvoid"] as const;
+  for (const genre of genresInScope) {
+    const module = GENRE_VOICES[genre];
+    for (const field of fields) {
+      const text = module[field];
+      assert(!text.includes("—"), `${genre}.${field} contains an em dash`);
+      const match = text.match(bannedWordPattern);
+      assert(!match, `${genre}.${field} contains banned word "${match?.[0]}"`);
+    }
   }
 });
 
