@@ -52,6 +52,12 @@ export type ReaderScreenProps = {
   renderChapterEnd?: () => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
+  /**
+   * The reader was opened by Listen rather than Read, so narration starts on
+   * arrival. Without it the story page's two buttons did the same thing and
+   * Listen was indistinguishable from Read.
+   */
+  autoplay?: boolean;
 };
 
 type ReaderTheme = {
@@ -199,6 +205,7 @@ export default function ReaderScreen({
   initialChapterIndex = 0,
   renderChapterEnd,
   renderWord = (word) => word,
+  autoplay = false,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
@@ -347,6 +354,18 @@ export default function ReaderScreen({
     }
   }, [getAudioUrl, isPlaying]);
 
+
+  // Listen opens the reader already playing. Guarded by a ref so it fires once
+  // per arrival, and it reuses `handlePlayTap` on purpose so autoplay cannot
+  // drift from what the control does, including its honest answer for a story
+  // whose narration does not exist yet.
+  const autoplayFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoplay || autoplayFiredRef.current) return;
+    autoplayFiredRef.current = true;
+    setListenOpen(true);
+    void handlePlayTap();
+  }, [autoplay, handlePlayTap]);
   const handleVoiceChange = useCallback(async (gender: "female" | "male") => {
     if (gender === voiceGender || isLoadingAudioRef.current) return;
     if (soundRef.current) {
