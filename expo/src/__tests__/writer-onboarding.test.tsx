@@ -13,7 +13,11 @@ const mockSendEmailCode = jest.fn();
 const mockVerifyEmailCode = jest.fn();
 const mockEnableNotifications = jest.fn();
 class MockStoryShapeRequestError extends Error {
-  constructor(message: string, readonly retryable: boolean) {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+    readonly reason: string = "unavailable",
+  ) {
     super(message);
     this.name = "StoryShapeRequestError";
   }
@@ -889,16 +893,74 @@ describe("backend-coordinated crafting", () => {
     expect(mockInferStoryBrief).toHaveBeenCalledTimes(2);
   });
 
-  it("does not present retry as useful after a non-retryable shape failure", async () => {
+  it("previews from the writer's own words when shaping cannot succeed", async () => {
+    // The failure a user is most likely to meet, and the one that used to end
+    // the flow: `claim_story_shape_request` refusing the claim. All three of
+    // its windows outlast a loading screen, so there is no retry to offer -
+    // and a writer who has typed an idea, chosen a shelf and verified an email
+    // must not be handed an apology and a Back button for a capacity number
+    // they cannot see and did not cause.
     mockInferStoryBrief.mockRejectedValue(
-      new MockStoryShapeRequestError("Daily limit reached.", false),
+      new MockStoryShapeRequestError(
+        "We are shaping a lot of stories right now.",
+        false,
+        "rate_limited",
+      ),
     );
     const { view } = await renderFlow();
     await reachCrafting(view);
 
-    await view.findByText("Daily limit reached.");
-    expect(view.queryByRole("button", { name: "Try again" })).toBeNull();
-    expect(view.getByRole("button", { name: "Back to details" })).toBeTruthy();
+    // The preview, built with no help from the model: the title falls back to
+    // the writer's own opening words and the shelf is the one they chose.
+    await view.findByText("A woman inherits a");
+    expect(view.getByText(/Mystery/)).toBeTruthy();
+    expect(view.getByRole("button", { name: "Continue" })).toBeTruthy();
+    expect(view.queryByText("Preview needs one more try")).toBeNull();
+    // What is missing is named rather than left as a gap where a plan was.
+    expect(
+      view.getByText(/3-chapter plan is written when your story starts/),
+    ).toBeTruthy();
+  });
+
+  it("keeps a shape it already has when a later request is refused", async () => {
+    // The quota trap. The warm request is keyed on the whole brief, so walking
+    // back to add one moment spends another of the six shapes a minute the
+    // backend allows. Once they run out, the preview the writer already
+    // earned must not disappear with them.
+    mockInferStoryBrief
+      .mockResolvedValueOnce(SHAPE)
+      .mockRejectedValue(
+        new MockStoryShapeRequestError("Slow down.", false, "rate_limited"),
+      );
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+    await view.findByText(SHAPE.title);
+
+    // Back to details, change the brief so the warm no longer matches, and
+    // come forward again into a refusal.
+    await fireEvent.press(view.getByRole("button", { name: "Back" }));
+    await fireEvent.changeText(
+      await view.findByLabelText("Writing style"),
+      "quiet gothic",
+    );
+    await fireEvent.press(view.getByRole("button", { name: "Create my story" }));
+
+    await view.findByText(SHAPE.title);
+    expect(view.getByText(SHAPE.beats[0])).toBeTruthy();
+  });
+
+  it("always leaves a way past the retry screen", async () => {
+    mockInferStoryBrief.mockRejectedValue(new Error("provider down"));
+    const { view } = await renderFlow();
+    await reachCrafting(view);
+
+    await view.findByText("Preview needs one more try");
+    await fireEvent.press(
+      view.getByRole("button", { name: "Continue without it" }),
+    );
+
+    await view.findByText("A woman inherits a");
+    expect(view.getByRole("button", { name: "Continue" })).toBeTruthy();
   });
 
   it("abandons the reveal when the screen goes away during the request", async () => {

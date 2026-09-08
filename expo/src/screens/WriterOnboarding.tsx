@@ -17,7 +17,9 @@ import { CraftingLoader } from "@/components/create/CraftingLoader";
 import {
   inferOnboardingStoryBrief,
   inferStoryBrief,
+  type StoryShape,
   type StoryShapeBrief,
+  type StoryShapeFailureReason,
 } from "@/lib/api";
 import { enableNotifications } from "@/lib/notifications";
 import { sendEmailCode, verifyEmailCode } from "@/lib/session";
@@ -270,6 +272,12 @@ export const STARTER_RAIL_PEEK = REFERENCE_WIDTH - spacing.xxxl -
 type ShapeOutcome = {
   failed: boolean;
   retryable: boolean;
+  /**
+   * Why it failed, when it did. `rate_limited` is the one that changes the
+   * screen: no amount of trying again clears a capacity window, so offering a
+   * Try again for it is offering a button that cannot work.
+   */
+  reason?: StoryShapeFailureReason;
   message?: string;
   shaped: Awaited<ReturnType<typeof inferStoryBrief>>;
 };
@@ -303,6 +311,15 @@ function storyShapeRetryable(error: unknown): boolean {
       typeof candidate.retryable === "boolean"
     ? candidate.retryable
     : true;
+}
+
+function storyShapeReason(error: unknown): StoryShapeFailureReason | undefined {
+  const candidate = error as { name?: unknown; reason?: unknown };
+  return error instanceof Error &&
+      candidate.name === "StoryShapeRequestError" &&
+      typeof candidate.reason === "string"
+    ? candidate.reason as StoryShapeFailureReason
+    : undefined;
 }
 
 function normalizeTypedCast(cast: CastMember[]): CreateDraft["characters"] {
@@ -344,7 +361,6 @@ export default function WriterOnboarding(
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [shapeError, setShapeError] = useState<string | null>(null);
-  const [shapeRetryable, setShapeRetryable] = useState(true);
   /**
    * Auth is one-way. Walking back from the blueprint to change the idea must
    * not send a second code to an address already verified, and must not put a
@@ -395,13 +411,14 @@ export default function WriterOnboarding(
     // "That code did not match" sitting under the box asking for an address.
     setAuthError(null);
     setShapeError(null);
-    setShapeRetryable(true);
     setStep(next);
   }, [haptic]);
 
   /* ── The one model call ─────────────────────────────────────────────── */
 
   const pendingShape = useRef<PendingShape | null>(null);
+  /** The most recent shape that came back, whatever brief it was asked for. */
+  const lastShape = useRef<Awaited<ReturnType<typeof inferStoryBrief>>>(null);
 
   const typedCast = useMemo(() => normalizeTypedCast(cast), [cast]);
   const shapeRequest = useMemo<ShapeRequest>(() => ({
@@ -436,11 +453,19 @@ export default function WriterOnboarding(
             request.genre,
             request.brief,
           );
+          // Kept for the rest of the session, not just for this key. A writer
+          // who walks back from email to add one moment invalidates the warm
+          // request and spends another of the six shapes a minute
+          // `claim_story_shape_request` allows; the seventh is refused, and
+          // without this the preview they had already earned is gone. A shape
+          // for a slightly older brief is a far better answer than an error.
+          lastShape.current = shaped;
           return { failed: false, retryable: true, shaped };
         } catch (error) {
           return {
             failed: true,
             retryable: storyShapeRetryable(error),
+            reason: storyShapeReason(error),
             message: error instanceof Error ? error.message : undefined,
             shaped: null,
           };
@@ -452,29 +477,18 @@ export default function WriterOnboarding(
     [],
   );
 
-  const craft = useCallback(async (alive: () => boolean) => {
-    const requestKey = shapeRequestKey(shapeRequest);
-    const { failed, message, retryable, shaped } = await startShaping(shapeRequest);
-    // The request outlives a user who backgrounds the app or taps Back while it
-    // is in flight. Writing state and navigating from a dead screen is at best
-    // a leak and at worst a jump back into a flow they already left.
-    if (!alive()) return;
-
-    if (failed || !shaped) {
-      if (pendingShape.current?.key === requestKey) {
-        pendingShape.current = null;
-      }
-      setShapeRetryable(retryable);
-      setShapeError(message ??
-        (retryable
-          ? "We could not shape the preview. Try again and we will keep your idea and details."
-          : "We could not shape the preview from that response. Your idea and details are still here."));
-      setStep("craftError");
-      return;
-    }
-
-    const resolved = shaped;
-
+  /**
+   * Show the preview, with whatever came back - including nothing.
+   *
+   * `resolved` is null when the model gave us nothing usable, and that is a
+   * thinner preview rather than no preview. The screen's title, shelf, lead
+   * and cover are all reachable from what the writer typed on the two screens
+   * behind it: `fallbackTitle` reads the idea, the shelf is the chip they
+   * chose, the cast is the cast they entered. What is genuinely missing is the
+   * chapter plan and the opening prose, and the screen says so in one line
+   * instead of pretending.
+   */
+  const showPreview = useCallback((resolved: StoryShape | null) => {
     // The chosen shelf leads, always. Inference may add secondary tags, but a
     // user who picked Horror and got Romance back would have watched the one
     // explicit choice on the screen be overruled by a guess.
@@ -494,10 +508,58 @@ export default function WriterOnboarding(
       suggestedMoments: resolved?.suggestedMoments ?? [],
       grounding: resolved?.grounding,
       groundingEntities: resolved?.groundingEntities,
+      shaped: Boolean(resolved),
     });
-    setBeats(resolved.beats ?? []);
+    setBeats(resolved?.beats ?? []);
     go("preview");
-  }, [genre, go, seed, shapeRequest, startShaping, typedCast]);
+  }, [genre, go, seed, typedCast]);
+
+  const craft = useCallback(async (alive: () => boolean) => {
+    const requestKey = shapeRequestKey(shapeRequest);
+    const { failed, message, retryable, reason, shaped } = await startShaping(
+      shapeRequest,
+    );
+    // The request outlives a user who backgrounds the app or taps Back while it
+    // is in flight. Writing state and navigating from a dead screen is at best
+    // a leak and at worst a jump back into a flow they already left.
+    if (!alive()) return;
+
+    // A shape for an older brief still beats an error screen. See `lastShape`.
+    const resolved = shaped ?? lastShape.current;
+    if (resolved) {
+      showPreview(resolved);
+      return;
+    }
+
+    if (pendingShape.current?.key === requestKey) {
+      pendingShape.current = null;
+    }
+
+    /**
+     * Onboarding used to stop here for every empty answer, and that was the
+     * single worst failure in the flow: a user who had typed an idea, chosen a
+     * shelf, entered a cast, verified an email and watched a loader was shown
+     * an apology and a Back to details button. Whatever the model did or did
+     * not return, they still have a story - the preview can be built from
+     * their own words - so the flow now only stops when stopping buys them
+     * something, which is a retry that can actually succeed.
+     *
+     * A refused rate-limit claim buys them nothing: all three windows in
+     * `claim_story_shape_request` outlast the patience of somebody standing on
+     * a loading screen, so a Try again there is a button that fails on press.
+     * Those go straight to the preview.
+     */
+    if (failed && retryable && reason !== "rate_limited") {
+      setShapeError(
+        message ??
+          "We could not shape the preview. Try again and we will keep your idea and details.",
+      );
+      setStep("craftError");
+      return;
+    }
+
+    showPreview(null);
+  }, [showPreview, shapeRequest, startShaping]);
 
   const submitDetails = useCallback(() => {
     // The brief is complete here. Warm the single onboarding shape request
@@ -1347,9 +1409,21 @@ export default function WriterOnboarding(
               sub={shapeError ??
                 "We could not shape the preview. Your idea and details are still here."}
             >
-              {shapeRetryable
-                ? <Primary label="Try again" onPress={() => go("crafting")} />
-                : null}
+              <Primary label="Try again" onPress={() => go("crafting")} />
+              {/* The screen is only reached when a retry can genuinely
+                  succeed, so Try again leads. This is the floor under it: a
+                  provider having a bad minute must not be able to hold a
+                  writer who has already verified an email on an apology
+                  screen, so there is always a way forward that needs nothing
+                  from the network. It goes to the same preview, built from
+                  their own words. */}
+              <Pressable
+                onPress={() => showPreview(lastShape.current)}
+                accessibilityRole="button"
+                style={styles.quietButton}
+              >
+                <Text style={styles.quietText}>Continue without it</Text>
+              </Pressable>
               <Pressable
                 onPress={() => go("details")}
                 accessibilityRole="button"
@@ -1436,6 +1510,19 @@ export default function WriterOnboarding(
                           )
                           : null}
                       </View>
+                    )
+                    : blueprint && !blueprint.shaped
+                    /* The one line that keeps an unshaped preview honest.
+                       Without it the byline is followed by empty space and the
+                       screen reads as a plan that failed to load, which is
+                       exactly what it is - but the writer cannot tell whether
+                       anything is coming, and the chapter count is a thing
+                       they chose and we can still name. */
+                    ? (
+                      <Text style={styles.planPending}>
+                        Your {chapterCount}-chapter plan is written when your
+                        story starts.
+                      </Text>
                     )
                     : null}
                 </View>
@@ -1559,6 +1646,15 @@ type Blueprint = {
   opening: string;
   characters: CreateDraft["characters"];
   suggestedMoments: string[];
+  /**
+   * False when this preview was built from the writer's own words alone.
+   *
+   * Everything else on the screen degrades quietly - an absent world drops out
+   * of the byline, an absent lead drops out too - but the chapter plan and the
+   * opening cannot degrade into nothing without the screen looking broken, so
+   * this is what the preview branches on to say one honest line instead.
+   */
+  shaped: boolean;
   /** Carried opaquely from the shaping call through to the paid generation. */
   grounding?: unknown[];
   groundingEntities?: unknown[];
@@ -2793,6 +2889,17 @@ const styles = StyleSheet.create({
     ...onboardingType.caption,
     color: colors.tertiary,
     paddingLeft: 22 + spacing.sm,
+  },
+  /**
+   * The unshaped preview's stand-in for the chapter list.
+   *
+   * Same type and colour as `chapterMore`, without its indent: that padding
+   * exists to align a trailing note under the beat text it follows, and there
+   * are no beats above this one to align to.
+   */
+  planPending: {
+    ...onboardingType.caption,
+    color: colors.tertiary,
   },
   readerSurface: {
     backgroundColor: colors.surface,

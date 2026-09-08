@@ -7,6 +7,7 @@ import {
   AllProvidersFailedError,
   classifyLlmError,
   editParagraph,
+  fastOpenRouterDeadlines,
   GEMINI_MODEL,
   geminiRequestShape,
   generateFastStructuredText,
@@ -1115,6 +1116,32 @@ Deno.test("the chain still serves a story when the contributor tier is 404", asy
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+Deno.test("the fast path gives its leader the window, not half of it", () => {
+  // The slice used to be `window * (index + 1) / count`, an even split by
+  // model index. `OPENROUTER_MODELS[0]` returns 404 by account data policy
+  // today, so `[1]` inherits nearly the whole window and the measured 8-11s
+  // shape lands comfortably. The day that setting is changed at
+  // https://openrouter.ai/settings/privacy, `[0]` starts serving and an even
+  // split hands it 13.5s of onboarding's 45s against an 11s median: normal
+  // requests would abort near the finish and be re-run from scratch on `[1]`,
+  // roughly doubling onboarding latency because somebody flipped a checkbox.
+  const onboarding = fastOpenRouterDeadlines(45_000, 2);
+  assertEquals(onboarding, [21_000, 27_000]);
+  // The guarantee the split existed for survives: a leader that stalls to its
+  // own deadline still leaves the runner-up a window to be called in.
+  assert(onboarding[1] - onboarding[0] >= 6_000);
+
+  // The Create studio's tighter budget, and the 8s default, keep the same
+  // shape rather than falling off a cliff at small windows.
+  assertEquals(fastOpenRouterDeadlines(30_000, 2), [12_000, 18_000]);
+  const short = fastOpenRouterDeadlines(8_000, 2);
+  assertEquals(short, [2_400, 4_800]);
+  assert(short[0] > 0, "the leader is always called");
+
+  // One model is the whole window; the reserve is for somebody behind it.
+  assertEquals(fastOpenRouterDeadlines(45_000, 1), [27_000]);
 });
 
 Deno.test("the contributor tier serves the moment the account policy allows it", async () => {
