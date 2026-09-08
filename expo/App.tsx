@@ -10,9 +10,11 @@ import {
   SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { setupAndroidChannel, syncPushToken } from "@/lib/notifications";
-import { ActivityIndicator, Alert, Platform, View } from "react-native";
+import { Alert, Platform } from "react-native";
 import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
+import { LaunchScreen } from "@/components/brand/LaunchScreen";
+import LoaderPreview from "@/screens/dev/LoaderPreview";
 import { ScreenScaffold } from "@/components/KathaPrimitives";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import AuthorScreen from "@/screens/AuthorScreen";
@@ -30,8 +32,7 @@ import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import WriterOnboarding from "@/screens/WriterOnboarding";
 import type { WriterOnboardingResult } from "@/screens/WriterOnboarding";
-import { sharedStyles } from "@/screens/shared";
-import { colors, genreLabels } from "@/theme";
+import { genreLabels } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 import type {
   KathaOnboardingResult,
@@ -67,6 +68,26 @@ function devInitialTab(): TabKey | null {
   }
 }
 
+/**
+ * Dev-only isolation of a single component, e.g. `localhost:8090/?preview=loader`.
+ *
+ * The sibling of `devInitialTab`, and guarded the same way. Where that one skips
+ * you past onboarding to a tab, this one replaces the app entirely with a
+ * harness for one piece of it. The crafting loader is the case it was built for:
+ * it lives several screens inside the writer flow and is on screen only while a
+ * generation is actually running, so the only way to look at a 1.2s animation
+ * twice was to generate two stories.
+ */
+function devPreview(): string | null {
+  if (!__DEV__ || Platform.OS !== "web") return null;
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? "")
+      .get("preview");
+  } catch {
+    return null;
+  }
+}
+
 const GENRE_BY_LABEL = Object.fromEntries(
   Object.entries(genreLabels).map((
     [key, label],
@@ -81,6 +102,7 @@ const toGenreKeys = (labels: string[] | undefined): Genre[] =>
 export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
   const bootTab = devInitialTab();
+  const preview = devPreview();
   const [screen, setScreen] = useState<Screen>(
     bootTab ? { name: "tabs" } : { name: "intro" },
   );
@@ -160,13 +182,9 @@ export default function App() {
     generatedStories,
   ]);
 
-  if (!fontsReady) {
-    return (
-      <View style={sharedStyles.loading}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
+  if (!fontsReady) return <LaunchScreen />;
+
+  if (preview === "loader") return <LoaderPreview />;
 
   /**
    * A series gets a landing page; a standalone opens straight into its prose.
