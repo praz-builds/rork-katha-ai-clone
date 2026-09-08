@@ -152,9 +152,20 @@ Values for kids, and Characters. All lower-priority craft controls sit inside
 **More options**. The only second surface in main Create is the
 full-screen Craft character modal opened by **Add a character**.
 
-The older Idea → Shape → Review pattern is retired for the main Create flow. A
-two-step preview belongs to onboarding only, where the product needs a lightweight
-first-run path before the user reaches the full Create surface.
+What is retired for main Create is the three-step **Idea → Shape → Review**
+pattern, and specifically its separate **Shape** step: the user does not stop to
+approve a shaped brief before they can continue. The **Review and start** step in
+the screen order above is not that step and is not retired. It is the last screen
+before generation, it shows the user what they are about to spend a generation on,
+and going back from it preserves every value rather than resetting the draft.
+
+This paragraph previously read "the older Idea → Shape → Review pattern is
+retired", which was ambiguous enough to be read as retiring review itself, and it
+sat directly under a diagram that shows a review step. It has been read the wrong
+way at least once and cost a rebuild, so the distinction is now spelled out.
+
+A lightweight two-step preview also belongs to onboarding, where the product needs
+a short first-run path before the user reaches the full Create surface.
 
 ### Create screen
 

@@ -164,6 +164,11 @@ async function renderAtEditor(cover: Record<string, unknown>, credits = 12) {
   await act(async () => {
     fireEvent.press(view.getByRole("button", { name: /create/i }));
   });
+  // The setup screen's Create button now opens the pre-generation review
+  // screen; its own Create button is the one that actually fires generation.
+  await act(async () => {
+    fireEvent.press(view.getByRole("button", { name: /create/i }));
+  });
   await view.findByTestId("continue-chapter-button");
   return view;
 }

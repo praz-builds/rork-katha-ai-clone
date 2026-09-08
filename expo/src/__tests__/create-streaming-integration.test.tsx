@@ -159,11 +159,11 @@ async function renderCreate() {
 }
 
 /**
- * Main Create is one screen: the idea, the controls, and Create.
- *
- * It used to be Idea then Review, and this helper walked both. Keeping the old
- * two-step walk here would fail on the button that no longer exists and say
- * nothing about streaming, which is what this file is actually for.
+ * Main Create is one screen (idea, controls, Create) plus a pre-generation
+ * review screen. This helper walks to the point where the review screen's own
+ * Create button is the one still to press — the caller presses that one
+ * itself, since what happens on that press is what each test here exists to
+ * assert.
  */
 async function driveToCreate(view: Awaited<ReturnType<typeof render>>) {
   await fireEvent.changeText(
@@ -171,6 +171,10 @@ async function driveToCreate(view: Awaited<ReturnType<typeof render>>) {
     "A child finds a door in an old library that was not there yesterday.",
   );
   await view.findByRole("button", { name: "Add a character" });
+  await act(async () => {
+    fireEvent.press(view.getByRole("button", { name: /create/i }));
+  });
+  await view.findByText("Here is what Katha will write");
 }
 
 beforeEach(() => {
@@ -199,9 +203,8 @@ describe("Create Studio shows the story as it is written", () => {
     const view = await renderCreate();
     await driveToCreate(view);
 
-    const createButton = view.getByRole("button", { name: /create/i });
     await act(async () => {
-      fireEvent.press(createButton);
+      fireEvent.press(view.getByRole("button", { name: /create/i }));
     });
 
     // Nothing has been sent yet, so the loader is still up and no prose exists.

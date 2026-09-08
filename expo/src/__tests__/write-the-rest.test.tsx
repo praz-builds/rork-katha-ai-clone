@@ -167,6 +167,11 @@ async function renderAtThreeChapters(creditsAtRunTime = 12) {
   await act(async () => {
     fireEvent.press(view.getByRole("button", { name: /create/i }));
   });
+  // The setup screen's Create button now opens the pre-generation review
+  // screen; its own Create button is the one that actually fires generation.
+  await act(async () => {
+    fireEvent.press(view.getByRole("button", { name: /create/i }));
+  });
   await view.findByTestId("continue-chapter-button");
 
   // Two ordinary single-chapter Continues. The run must be reachable only from
@@ -257,6 +262,11 @@ describe("Write the rest — when it is offered", () => {
     await act(async () => {
       fireEvent.press(view.getByRole("button", { name: /create/i }));
     });
+    // The setup screen's Create button now opens the pre-generation review
+    // screen; its own Create button is the one that actually fires generation.
+    await act(async () => {
+      fireEvent.press(view.getByRole("button", { name: /create/i }));
+    });
     await view.findByTestId("continue-chapter-button");
 
     expect(view.queryByTestId("write-the-rest-button")).toBeNull();
@@ -312,6 +322,11 @@ describe("Write the rest — the itemised confirm", () => {
       "A child finds a door in an old library that was not there yesterday.",
     );
     await view.findByRole("button", { name: "Add a character" });
+    await act(async () => {
+      fireEvent.press(view.getByRole("button", { name: /create/i }));
+    });
+    // The setup screen's Create button now opens the pre-generation review
+    // screen; its own Create button is the one that actually fires generation.
     await act(async () => {
       fireEvent.press(view.getByRole("button", { name: /create/i }));
     });
