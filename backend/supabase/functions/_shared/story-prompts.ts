@@ -10,11 +10,14 @@
  * 6. Spice module rules
  * 7. Continuation/finale
  * 8. Language
- * 9. Output schema reminder
+ * 9. Language
+ * 10. Output schema reminder
  */
 
+import { BANNED_NAMES, BANNED_PHRASES, BANNED_WORDS } from "./ban-lists.ts";
 import { buildGroundingBlock } from "./grounding-card.ts";
 import type { GroundingCard } from "./grounding-types.ts";
+import { buildPhraseLayer, type PhraseSeed } from "./phrases.ts";
 import type {
   AudienceMode,
   ChapterRole,
@@ -36,108 +39,6 @@ import {
 // ---------------------------------------------------------------------------
 // Banned vocabulary
 // ---------------------------------------------------------------------------
-
-const BANNED_WORDS = [
-  "delve",
-  "tapestry",
-  "testament",
-  "pivotal",
-  "underscore",
-  "landscape",
-  "foster",
-  "beacon",
-  "undeniably",
-  "multifaceted",
-  "nuanced",
-  "intricate",
-  "commendable",
-  "meticulous",
-  "endeavor",
-  "realm",
-  "paradigm",
-  "synergy",
-  "ecosystem",
-  "framework",
-  "robust",
-  "streamline",
-  "leverage",
-  "harness",
-  "utilize",
-  "embark",
-  "unravel",
-  "comprehensive",
-  "holistic",
-  "unprecedented",
-  "transformative",
-  "groundbreaking",
-  "innovative",
-  "enhance",
-  "crucial",
-  "furthermore",
-  "moreover",
-  "consequently",
-  "bustling",
-  "labyrinth",
-  "crucible",
-  "ministrations",
-] as const;
-
-const BANNED_PHRASES = [
-  "it's not X — it's Y",
-  "it is important to note",
-  "it is worth mentioning",
-  "in today's world",
-  "at the end of the day",
-  "one of the most",
-  "when it comes to",
-  "at its core",
-  "no discussion would be complete without",
-  "in this story",
-  "overall",
-  "in summary",
-  "in conclusion",
-  "little did they know",
-  "stands as a testament",
-  "plays a vital role",
-  "rich cultural heritage",
-  "enduring legacy",
-  "a shiver ran down",
-  "a wave of emotion washed over",
-  "the weight of",
-  "time seemed to stand still",
-  "their eyes locked",
-  "heart pounding in",
-  "heart hammered against",
-  "breath caught in",
-  "let out a breath .* didn't know .* was holding",
-  "couldn't help but",
-  "voice barely above a whisper",
-  "etched with",
-  "gaze softened",
-  "sent a chill through",
-  "furrowed brow",
-  "jaw tightened",
-  "steeled themselves",
-  "squared their shoulders",
-  "eyes widened",
-  "eyes sparkling",
-  "knot in .* stomach",
-  "pit in .* stomach",
-  "air was thick with",
-] as const;
-
-const BANNED_NAMES = [
-  "Elara",
-  "Seraphina",
-  "Lysander",
-  "Thorne",
-  "Elowen",
-  "Rowan",
-  "Zephyr",
-  "Isolde",
-  "Caelum",
-  "Evren",
-] as const;
 
 /**
  * Crude sexual and anatomical vocabulary, banned in every story Katha writes.
@@ -1323,6 +1224,12 @@ export function buildUserPrompt(params: {
    * simply produces no cards and the story is written from model knowledge.
    */
   grounding?: GroundingCard[];
+  /**
+   * Everyday English the reader saved for practice. Optional and silent:
+   * `buildPhraseLayer` returns "" when there are no saved phrases, so an
+   * unseeded prompt stays byte-identical to the prompt before phrase learning.
+   */
+  savedPhrases?: PhraseSeed[];
 }): string;
 /** @deprecated Use the object-param overload. */
 export function buildUserPrompt(params: {
@@ -1363,6 +1270,7 @@ export function buildUserPrompt(params: {
   }[];
   language?: string;
   grounding?: GroundingCard[];
+  savedPhrases?: PhraseSeed[];
 }): string {
   const parts: string[] = [];
 
@@ -1523,6 +1431,19 @@ export function buildUserPrompt(params: {
   // layer existed - is byte-identical to what it was.
   const groundingBlock = buildGroundingBlock(params.grounding ?? []);
   if (groundingBlock) parts.push(groundingBlock);
+
+  // --- Phrase-learning layer ---
+  //
+  // Positioned after grounding so factual names and address forms remain next
+  // to the cast, and before moments so phrases cannot steer the plot checklist.
+  // The layer is dialogue-only by design: the existing ban lists still govern
+  // narration, and corpus entry is filtered by `isAllowedCorpusPhrase` in the
+  // shared phrase module before a phrase ever becomes reusable learning data.
+  //
+  // `buildPhraseLayer` returns "" for an empty list, preserving the same
+  // byte-identical no-op convention as `buildGroundingBlock`.
+  const phraseLayer = buildPhraseLayer(params.savedPhrases ?? []);
+  if (phraseLayer) parts.push(phraseLayer);
 
   // --- Beats layer (section 5, decision 52) ---
   //

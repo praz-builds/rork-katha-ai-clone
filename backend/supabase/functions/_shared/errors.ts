@@ -22,7 +22,9 @@ export type ErrorBucket =
   | "discovery"
   | "credits"
   | "payments"
+  | "engagement"
   | "feedback"
+  | "phrase.learning"
   | "client.app"
   | "ci.test";
 
@@ -41,6 +43,7 @@ export type LogErrorInput = {
 
 const ALLOWED_CONTEXT_KEYS = new Set([
   "attempts",
+  "author_id",
   "chapter_id",
   "chapter_number",
   "chapter_role",
@@ -54,6 +57,7 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "models",
   "operation_id",
   "paragraph_index",
+  "phrase_id",
   "primary_genre",
   "provider",
   "providers",
