@@ -5,6 +5,7 @@ import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
 import {
   initialWindowMetrics,
   SafeAreaProvider,
@@ -106,7 +107,9 @@ export default function App() {
     bootTab ? { name: "tabs" } : { name: "intro" },
   );
   const [tab, setTab] = useState<TabKey>(bootTab ?? "home");
-  const [credits, setCredits] = useState(() => isSupabaseConfigured ? 0 : 3);
+  const [credits, setCredits] = useState(() =>
+    resolveInitialCredits(__DEV__, isSupabaseConfigured)
+  );
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
   const [onboarding, setOnboarding] = useState<KathaOnboardingResult | null>(
@@ -159,7 +162,9 @@ export default function App() {
     let active = true;
     bootstrapUser().then((user) => {
       if (active && user) {
-        setCredits(user.balance);
+        setCredits(
+          resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, user.balance),
+        );
         setIsAnonymous(user.isAnonymous);
       }
       // Expo tokens rotate on reinstall, on some OS updates, and when a backup

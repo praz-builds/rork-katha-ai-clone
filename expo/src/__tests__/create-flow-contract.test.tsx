@@ -16,7 +16,15 @@ jest.mock("@/lib/api", () => {
     resetRequestId = false;
   }
 
+  // Keeps every other real export -- `effectiveChapterLength` in particular,
+  // which CreateBriefFlow calls at render time to decide what the Chapter
+  // length field displays. Duplicating that logic into this mock would let
+  // the display and the real request body drift apart again with nothing
+  // here to catch it.
+  const actual = jest.requireActual("@/lib/api");
+
   return {
+    ...actual,
     // The Create flow generates through the streamed path. The buffered
     // `generateStory` is still exported for retries, but the screen no longer
     // calls it, and asserting against it here would pass while the user got
@@ -176,14 +184,17 @@ describe("approved Create flow", () => {
     expect(view.queryByRole("button", { name: "Add a character" })).toBeNull();
   });
 
-  it("does not expose Spanish in any authoring control", async () => {
+  it("offers English only in the Language control, and never Spanish or Portuguese", async () => {
     const view = await renderCreate();
     await fillIdea(view);
 
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
-    await fireEvent.press(view.getByRole("button", { name: "Language" }));
-    expect(view.getAllByText("English").length).toBeGreaterThan(0);
-    expect(view.getByText("Portuguese")).toBeTruthy();
+    const language = view.getByRole("button", { name: "Language" });
+    expect(language.props.accessibilityValue).toEqual({ text: "English" });
+
+    await fireEvent.press(language);
+    expect(view.getByRole("button", { name: "English" })).toBeTruthy();
+    expect(view.queryByText("Portuguese")).toBeNull();
     expect(view.queryByText("Spanish")).toBeNull();
   });
 
@@ -332,15 +343,17 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     await fireEvent.changeText(view.getByLabelText("Writing style"), "Warm, playful, and direct");
     await fireEvent.changeText(view.getByLabelText("Avoid"), "scary imagery");
+    await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
     await fireEvent.press(view.getByRole("button", { name: "7 chapters" }));
+    await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
     await fireEvent(
       view.getByRole("switch", { name: "Chapter art" }),
       "valueChange",
       true,
     );
-    await fireEvent.press(view.getByRole("button", { name: "Language" }));
-    await fireEvent.press(view.getByText("Portuguese"));
+    // Language now offers English only -- see the dedicated Language test --
+    // so it is left untouched here rather than switched to Portuguese.
     // The setup screen's Create button opens the pre-generation review screen;
     // its own Create button is the one that actually fires generation.
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
@@ -351,7 +364,7 @@ describe("approved Create flow", () => {
     expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
       audienceMode: "kids",
       spiceLevel: "sweet",
-      language: "Portuguese",
+      language: "English",
       storyValues: ["kindness"],
       writingStyle: "Warm, playful, and direct",
       avoid: "scary imagery",
@@ -444,6 +457,7 @@ describe("approved Create flow", () => {
       await fillIdea(view);
 
       await fireEvent.press(view.getByRole("button", { name: "More options" }));
+      await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
       await fireEvent.press(
         view.getByRole("button", { name: `${count} chapters` }),
       );
@@ -467,6 +481,7 @@ describe("approved Create flow", () => {
 
       await fireEvent.press(view.getByRole("button", { name: "More options" }));
       const label = length.charAt(0).toUpperCase() + length.slice(1);
+      await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
       await fireEvent.press(view.getByRole("button", { name: label }));
       await fireEvent.press(view.getByRole("button", { name: /create/i }));
       await view.findByText("Here is what Katha will write");
@@ -570,7 +585,9 @@ describe("approved Create flow", () => {
       view.getByLabelText("Writing style"),
       "Lyrical, present tense",
     );
+    await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
     await fireEvent.press(view.getByRole("button", { name: "15 chapters" }));
+    await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
     const visibilitySwitch = view.getByRole("switch", {
       name: "Public visibility",
@@ -599,14 +616,15 @@ describe("approved Create flow", () => {
     expect(
       view.getByRole("switch", { name: "Public visibility" }).props.value,
     ).toBe(true);
+    // The Chapters and Chapter length dropdowns reset to closed on this fresh
+    // mount, so their options are not in the tree -- the committed value is
+    // read from the closed trigger's announced value instead.
     expect(
-      view.getByRole("button", { name: "15 chapters" }).props.accessibilityState
-        .selected,
-    ).toBe(true);
+      view.getByRole("button", { name: "Chapters" }).props.accessibilityValue,
+    ).toEqual({ text: "15" });
     expect(
-      view.getByRole("button", { name: "Long" }).props.accessibilityState
-        .selected,
-    ).toBe(true);
+      view.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
+    ).toEqual({ text: "Long" });
     expect(view.getByLabelText("Writing style").props.value).toBe(
       "Lyrical, present tense",
     );
@@ -674,13 +692,11 @@ describe("draft restoration across a remount", () => {
       "no graphic violence",
     );
     expect(
-      second.getByRole("button", { name: "15 chapters" }).props
-        .accessibilityState.selected,
-    ).toBe(true);
+      second.getByRole("button", { name: "Chapters" }).props.accessibilityValue,
+    ).toEqual({ text: "15" });
     expect(
-      second.getByRole("button", { name: "Long" }).props.accessibilityState
-        .selected,
-    ).toBe(true);
+      second.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
+    ).toEqual({ text: "Long" });
 
     await fireEvent.press(second.getByRole("button", { name: "Edit Iris" }));
     expect(second.getByLabelText("Background").props.value).toBe(
@@ -689,5 +705,41 @@ describe("draft restoration across a remount", () => {
     expect(second.getByLabelText("Appearance").props.value).toBe(
       "Grey coat, a satchel that has outlived three owners.",
     );
+  });
+  it("shows the same chapter length default for a restored Kids draft that never set one, as generation will actually send", async () => {
+    // A Kids draft reached through the switch always gets an explicit
+    // `chapterLength` (see `chooseAudience`), and a fresh draft's own default
+    // is "standard" (see `INITIAL_DRAFT`) regardless of audience -- so the
+    // case that silently diverged, a Kids draft with the field truly unset,
+    // only arises for one already sitting in storage from before this
+    // default existed, or otherwise saved without it. `effectiveChapterLength`
+    // in `lib/api.ts` is the one place that default is computed now, and
+    // both this display and the request body (see
+    // `api-generation-contract.test.ts`) read it from there, so they cannot
+    // say different things.
+    mockLoadDraft.mockResolvedValue({
+      primaryGenre: "adventure",
+      audienceMode: "kids",
+      spiceLevel: "sweet",
+      identityLenses: [],
+      seed: "A child follows a map hidden in a library book.",
+      language: "English",
+      visibility: "private",
+      characters: [],
+      isSeries: false,
+      // chapterLength deliberately absent.
+    });
+
+    const view = await renderCreate();
+    await waitFor(() =>
+      expect(view.getByLabelText("Story idea").props.value).toBe(
+        "A child follows a map hidden in a library book.",
+      ),
+    );
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+
+    expect(
+      view.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
+    ).toEqual({ text: "Short" });
   });
 });
