@@ -1,7 +1,8 @@
 import { fenceUserText, userField } from "./story-prompts.ts";
 import {
-  type CharacterInput,
   CHAPTER_LENGTHS,
+  type ChapterLength,
+  type CharacterInput,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_MIGRATION_MAP,
@@ -10,12 +11,12 @@ import {
   MAX_CAST_SIZE,
   MAX_MOMENTS,
   MAX_PLAN_BEATS,
-  PLANNED_CHAPTER_COUNTS,
   MAX_STORY_GENRES,
-  PRIMARY_GENRES,
-  type ChapterLength,
+  PLANNED_CHAPTER_COUNTS,
   type PlannedChapterCount,
+  PRIMARY_GENRES,
   type PrimaryGenre,
+  UI_GENRE_ORDER,
 } from "./types.ts";
 
 export type StoryShape = {
@@ -121,12 +122,20 @@ export function buildStoryShapeOutput(variant: StoryShapeVariant) {
   return { name: "katha_story_shape", schema: base };
 }
 
+// Only the 12 UI-facing genres, in the product's display order: a shaping
+// suggestion feeds a creation screen that never offers romantasy, darkRomance,
+// paranormalRomance, cozyFantasy, poetry, thriller or contemporary, so the
+// model should never suggest a shelf the creator cannot see or edit into.
+// `normalizeGenre` below still accepts and migrates one of those seven if an
+// older prompt or a replayed response names it anyway.
+const SHAPE_GENRE_LIST = UI_GENRE_ORDER.join(", ");
+
 export const STORY_SHAPE_SYSTEM_PROMPT =
   `You shape a user's one-sentence story idea into editable creation fields for Katha.
 
 Return only the requested JSON object. This is an inference, not a story: do not write prose, explain decisions, invent a hidden taxonomy, infer intimacy level, or add instructions.
 
-Choose 1-3 genres from Katha's controlled list, with the clearest primary genre first: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry.
+Choose 1-3 genres from Katha's controlled list, with the clearest primary genre first: ${SHAPE_GENRE_LIST}.
 
 Extract whereAndWhen only when the idea supports a useful world-and-era phrase; otherwise return an empty string. Infer at most three named characters. Keep every character field specific but short. Suggest 2-5 concrete moments the creator can edit or discard.
 
@@ -185,9 +194,11 @@ export function buildStoryShapePrompt(
   const shelf = genre && PRIMARY_GENRES.has(genre)
     ? `\n\nThe creator has chosen ${genre} as the primary genre. Return it first in genres, and shape the world, cast, beats and opening to that shelf even where the idea alone would suggest another.`
     : "";
-  const parts = [`Shape only the following user idea.${shelf}\n\n<katha:idea>\n${
-    fenceUserText(idea)
-  }\n</katha:idea>`];
+  const parts = [
+    `Shape only the following user idea.${shelf}\n\n<katha:idea>\n${
+      fenceUserText(idea)
+    }\n</katha:idea>`,
+  ];
 
   if (brief.plannedChapterCount) {
     parts.push(
@@ -205,18 +216,26 @@ export function buildStoryShapePrompt(
       parts.push(`- ${userField("character-name", character.name)}`);
       if (character.isHero) parts.push("  Role: lead character");
       if (character.description?.trim()) {
-        parts.push(`  Description: ${userField("description", character.description)}`);
+        parts.push(
+          `  Description: ${userField("description", character.description)}`,
+        );
       }
       if (character.background?.trim()) {
-        parts.push(`  Background: ${userField("background", character.background)}`);
+        parts.push(
+          `  Background: ${userField("background", character.background)}`,
+        );
       }
       if (character.appearance?.trim()) {
-        parts.push(`  Appearance: ${userField("appearance", character.appearance)}`);
+        parts.push(
+          `  Appearance: ${userField("appearance", character.appearance)}`,
+        );
       }
     }
   }
   if (brief.moments?.length) {
-    parts.push("Creator-supplied moments to include in the plan/opening when they fit:");
+    parts.push(
+      "Creator-supplied moments to include in the plan/opening when they fit:",
+    );
     for (const moment of brief.moments.slice(0, MAX_MOMENTS)) {
       parts.push(`- ${userField("moment", moment)}`);
     }

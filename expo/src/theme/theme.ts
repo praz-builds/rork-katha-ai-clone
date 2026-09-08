@@ -263,6 +263,10 @@ export const genreLabels: Record<Genre, string> = {
   adventure: "Adventure",
   comedy: "Comedy",
   poetry: "Poetry",
+  educational: "Educational",
+  fanfiction: "Fanfiction",
+  folktale: "Folktale",
+  sliceOfLife: "Slice of life",
 };
 
 export const genreGradients: Record<Genre, readonly [string, string, string]> = {
@@ -279,4 +283,8 @@ export const genreGradients: Record<Genre, readonly [string, string, string]> = 
   adventure: ["#E87B4A", "#C04A2D", "#8B2A1A"],
   comedy: ["#F0C04A", "#D4A02D", "#8B7020"],
   poetry: ["#8E7A9E", "#6B5B8E", "#4A3A6B"],
+  educational: ["#4A7AA8", "#2D5578", "#1A3550"],
+  fanfiction: ["#B34A94", "#7A2D66", "#4A1A3E"],
+  folktale: ["#7A8B4A", "#566B2D", "#33401A"],
+  sliceOfLife: ["#6B8A9A", "#3A5A6B", "#1F3540"],
 };

@@ -73,8 +73,12 @@ export function validateGenerationRequest(
     ? body.genres
     : (Array.isArray(body.genre) ? body.genre : []);
   const genres = [primaryGenre];
+  // Raw, pre-migration secondary genre strings, kept only for the kids-mode
+  // safety check below — see `kidsBlockedLabel`.
+  const rawSecondaryGenres: string[] = [];
   for (const candidate of suppliedGenres) {
     if (typeof candidate !== "string" || !candidate.trim()) continue;
+    rawSecondaryGenres.push(candidate.trim());
     const genre = normalizeGenre(candidate);
     if (!genres.includes(genre) && genres.length < MAX_STORY_GENRES) {
       genres.push(genre);
@@ -110,23 +114,16 @@ export function validateGenerationRequest(
   // would otherwise generate horror for a child. This used to reject
   // `darkRomance` alone, leaving the other three genres the spec removes from
   // the kids interface fully generatable server-side.
-  if (audienceMode === "kids" && KIDS_BLOCKED_GENRES.has(primaryGenre)) {
-    return {
-      error: `${
-        KIDS_BLOCKED_GENRES.get(primaryGenre)
-      } is not available in kids mode`,
-    };
-  }
+  //
+  // Checked against the RAW genre string, before `normalizeGenre`'s v7
+  // migration — see `kidsBlockedLabel`.
   if (audienceMode === "kids") {
-    const blockedSecondaryGenre = genres.find((genre) =>
-      KIDS_BLOCKED_GENRES.has(genre)
-    );
-    if (blockedSecondaryGenre) {
-      return {
-        error: `${
-          KIDS_BLOCKED_GENRES.get(blockedSecondaryGenre)
-        } is not available in kids mode`,
-      };
+    const blockedLabel = kidsBlockedLabel(rawGenre) ??
+      rawSecondaryGenres.map(kidsBlockedLabel).find((label) =>
+        label !== undefined
+      );
+    if (blockedLabel) {
+      return { error: `${blockedLabel} is not available in kids mode` };
     }
   }
 
@@ -609,20 +606,96 @@ function sanitizeWritingStyle(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a raw genre string to the genre a NEW submission generates as.
+ *
+ * The migration map is checked before the already-valid-genre shortcut, on
+ * purpose: several `PrimaryGenre` members (`romantasy`, `darkRomance`,
+ * `paranormalRomance`, `cozyFantasy`, `poetry`, `thriller`, `contemporary`)
+ * were removed from the UI in the v7 taxonomy change but stay valid so
+ * existing stories keep reading and continuing. If the old precedence (exact
+ * `PRIMARY_GENRES` match first) survived, none of those seven would ever
+ * migrate — they would just pass straight through, because they are still
+ * members of the type union. Checking the map first is what makes "removed
+ * from the UI" also mean "normalises for new submissions", per
+ * `GENRE_MIGRATION_MAP`'s own contract comment in types.ts.
+ *
+ * This function is NOT the same lookup used when a *stored* row is loaded for
+ * continuation: `story-prompts.ts` has its own `normalizeGenre` that checks
+ * its supported-genre set first, so a story already carrying `darkRomance`
+ * keeps writing in the darkRomance voice module rather than jumping to
+ * romance mid-series.
+ */
+/**
+ * The migration map, re-keyed the way a caller might actually write a genre.
+ *
+ * `GENRE_MIGRATION_MAP` is keyed in the codebase's camelCase (`darkRomance`),
+ * so a lowercased, separator-stripped lookup against it missed every
+ * multi-word retired genre: "dark romance" and "Dark Romance" both normalise to
+ * `darkromance`, which the map does not contain, so they fell through to the
+ * case-insensitive recognition step and arrived unmigrated. Building the index
+ * once keeps the map itself readable and the lookup total.
+ */
+const MIGRATION_BY_NORMALIZED_KEY: Record<string, PrimaryGenre> = Object
+  .fromEntries(
+    Object.entries(GENRE_MIGRATION_MAP).map((
+      [key, value],
+    ) => [key.toLowerCase().replace(/[\s_-]/g, ""), value]),
+  );
+
 function normalizeGenre(raw: string): PrimaryGenre {
+  // Migration is checked before recognition, at BOTH precisions.
+  //
+  // Every retired genre is still a valid `PrimaryGenre` -- they have to be, or
+  // existing stories carrying them could not be read. So "is this already
+  // valid?" answers yes for exactly the genres that most need migrating, and
+  // whichever check runs first wins.
+  //
+  // The exact-match ordering was fixed once. The case-insensitive pair was not,
+  // and that left the bug fully intact for any client sending a display-cased
+  // or spaced value: measured before this change, `thriller` normalised to
+  // `mystery` while `Thriller` normalised to `thriller`, and `darkRomance`
+  // became `romance` while `dark romance` stayed `darkRomance`. A retired genre
+  // reached generation whenever it arrived capitalised.
+  const migrated = GENRE_MIGRATION_MAP[raw];
+  if (migrated) return migrated;
+
+  const lower = raw.toLowerCase().replace(/[\s_-]/g, "");
+  const migratedLower = MIGRATION_BY_NORMALIZED_KEY[lower];
+  if (migratedLower) return migratedLower;
+
   if (PRIMARY_GENRES.has(raw)) return raw as PrimaryGenre;
 
-  // Case-insensitive match against primary genres
-  const lower = raw.toLowerCase().replace(/[\s_-]/g, "");
   for (const genre of PRIMARY_GENRES) {
     if (genre.toLowerCase() === lower) return genre as PrimaryGenre;
   }
 
-  // Migration map
-  const migrated = GENRE_MIGRATION_MAP[raw] ?? GENRE_MIGRATION_MAP[lower];
-  if (migrated) return migrated;
+  // The fallback is a genre the picker still offers. `contemporary` was
+  // retired in v7, so defaulting to it handed unrecognised input a genre no
+  // user can choose and the migration map itself sends elsewhere.
+  return "sliceOfLife";
+}
 
-  return "contemporary";
+/**
+ * Whether a raw, pre-migration genre string identifies a kids-blocked genre.
+ *
+ * Kept independent of `normalizeGenre`'s migration map on purpose. Several of
+ * the genres this checks (`darkRomance`, `paranormalRomance`, `thriller`) are
+ * exactly the ones the v7 taxonomy change migrates away for new submissions —
+ * if this check ran on the migrated value instead of the raw one, an explicit
+ * kids-mode request for `darkRomance` would silently become a sweet romance
+ * story rather than being refused, because `primaryGenre` could never equal
+ * `darkRomance` any more by the time this check ran. That is the wrong
+ * failure mode for a safety gate: an old client or a direct API call
+ * explicitly naming a genre the kids interface never offered should be
+ * rejected, not quietly softened.
+ */
+function kidsBlockedLabel(raw: string): string | undefined {
+  const lower = raw.toLowerCase().replace(/[\s_-]/g, "");
+  for (const [genre, label] of KIDS_BLOCKED_GENRES) {
+    if (genre.toLowerCase() === lower) return label;
+  }
+  return undefined;
 }
 
 /**

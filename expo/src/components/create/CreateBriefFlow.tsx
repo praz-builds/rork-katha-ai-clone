@@ -40,6 +40,7 @@ import {
 import * as storyApi from "@/lib/api";
 import { colors, fonts, genreLabels, radius, spacing } from "@/theme";
 import type { AudienceMode, CreateDraft, CreationLanguage, Genre } from "@/types/domain";
+import { KIDS_UI_GENRES, UI_GENRES } from "@/types/domain";
 
 type CharacterDraft = CreateDraft["characters"][number];
 
@@ -60,12 +61,6 @@ type Props = {
   onBack: () => void;
 };
 
-const ADULT_GENRES: Genre[] = [
-  "romance", "romantasy", "fantasy", "scifi", "thriller", "mystery",
-  "horror", "contemporary", "historical", "adventure", "comedy", "poetry",
-  "darkRomance",
-];
-const KIDS_GENRES: Genre[] = ["fantasy", "adventure", "mystery", "comedy", "contemporary", "poetry", "historical"];
 const VALUES = [
   { value: "kindness", label: "Kindness" },
   { value: "courage", label: "Courage" },
@@ -175,7 +170,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   const [characterBuffer, setCharacterBuffer] = useState<CharacterDraft>({ name: "", description: "", background: "", appearance: "", isHero: false });
   const fade = useRef(new Animated.Value(1)).current;
   const { reduceMotion, select, confirm } = useMotionAndHaptics();
-  const allowedGenres = draft.audienceMode === "kids" ? KIDS_GENRES : ADULT_GENRES;
+  const allowedGenres = draft.audienceMode === "kids" ? KIDS_UI_GENRES : UI_GENRES;
   const maxMoments = 5;
   const strength = briefStrength(draft);
   const isCharacter = stage === "character";
@@ -190,7 +185,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   const chooseAudience = useCallback((audienceMode: AudienceMode) => {
     select();
     setDraft((previous) => {
-      const primaryGenre = audienceMode === "kids" && !KIDS_GENRES.includes(previous.primaryGenre) ? "adventure" : previous.primaryGenre;
+      const primaryGenre = audienceMode === "kids" && !KIDS_UI_GENRES.includes(previous.primaryGenre) ? "adventure" : previous.primaryGenre;
       return {
         ...previous,
         audienceMode,
@@ -395,7 +390,7 @@ function StorySetupScreen({
   onSelect,
 }: {
   draft: StudioCreateDraft;
-  allowedGenres: Genre[];
+  allowedGenres: readonly Genre[];
   maxMoments: number;
   moreOptionsOpen: boolean;
   momentInput: string;

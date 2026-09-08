@@ -38,6 +38,13 @@ const FF = {
 };
 
 // ── Static data ─────────────────────────────────────────────────────────────
+/**
+ * How many genre interests a reader must pick before Continue activates on
+ * the genre screen. The helper copy and the button read this one number, so
+ * they cannot drift apart the way "pick at least 2" and a button that
+ * actually needed 3 once did.
+ */
+export const MIN_GENRE_SELECTIONS = 3;
 const GENRE_INTERESTS = [
   { k: 'Romance', emoji: '\uD83D\uDC95', createGenre: 'romance' },
   { k: 'Romantasy', emoji: '\uD83D\uDC09', createGenre: 'romantasy' },
@@ -327,13 +334,18 @@ function NameScreen({ name, setName, fname, onNext }) {
 
 // ── GENRES ──────────────────────────────────────────────────────────────────
 function GenreScreen({ fname, genres, toggle, count, otherText, setOtherText, onNext }) {
-  const ready = count >= 2;
-  const cta = count >= 2 ? `Continue with ${count}` : count === 1 ? 'Pick 1 more' : 'Pick at least 2';
+  const ready = count >= MIN_GENRE_SELECTIONS;
+  const remaining = MIN_GENRE_SELECTIONS - count;
+  const cta = ready
+    ? `Continue with ${count}`
+    : remaining === 1
+      ? 'Pick 1 more'
+      : `Pick at least ${MIN_GENRE_SELECTIONS}`;
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.headPad}>
         <Text style={styles.h1sm}>Nice to meet you, {fname}. What worlds pull you in?</Text>
-        <Text style={styles.subSm}>Pick at least 2 and we'll build your shelf around them.</Text>
+        <Text style={styles.subSm}>Pick at least {MIN_GENRE_SELECTIONS} and we'll build your shelf around them.</Text>
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 30, paddingBottom: 16 }}>
         <View style={styles.chipWrap}>

@@ -1,5 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { genreLabels } from "@/theme";
+import { KIDS_UI_GENRES, UI_GENRES } from "@/types/domain";
 import type { Story } from "@/types/domain";
 
 const mockGenerateStory = jest.fn();
@@ -222,6 +224,114 @@ describe("approved Create flow", () => {
     expect(view.getByRole("button", { name: "Choose Romance" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Choose Mystery" })).toBeTruthy();
   });
+
+  /**
+   * The seam this whole suite exists to close: two genre pickers used to read
+   * from two different arrays, so a genre added to `UI_GENRES` - the settled,
+   * single source of truth - could still be missing from this menu. Asserted
+   * exhaustively over the live list rather than genre by genre, so a genre
+   * added to `UI_GENRES` later is covered automatically instead of needing a
+   * matching line added here.
+   */
+  it("offers every genre in UI_GENRES, and picking each one actually selects it", async () => {
+    const view = await renderCreate();
+    const genreButton = view.getByRole("button", { name: "Genre" });
+
+    for (const genre of UI_GENRES) {
+      await fireEvent.press(genreButton);
+      const option = view.getByRole("button", {
+        name: `Choose ${genreLabels[genre]}`,
+      });
+      await fireEvent.press(option);
+      // The dropdown closes on pick, and the control now shows this genre -
+      // proof the tap changed state rather than merely existing to be tapped.
+      expect(view.queryByRole("button", { name: `Choose ${genreLabels[genre]}` })).toBeNull();
+      expect(view.getByText(genreLabels[genre])).toBeTruthy();
+
+      // Reopening confirms the pick stuck: this option, and only this one,
+      // now reads as selected.
+      await fireEvent.press(genreButton);
+      expect(
+        view.getByRole("button", { name: `Choose ${genreLabels[genre]}` }).props
+          .accessibilityState.selected,
+      ).toBe(true);
+      await fireEvent.press(genreButton);
+    }
+  });
+
+  it("derives the kids-mode genre menu from the one genre list, not a second hand-kept one", async () => {
+    const view = await renderCreate();
+    await fireEvent(view.getByRole("switch", { name: "Kids Mode" }), "valueChange", true);
+    await fireEvent.press(view.getByRole("button", { name: "Genre" }));
+
+    // Every genre KIDS_UI_GENRES computes from UI_GENRES is actually offered.
+    for (const genre of KIDS_UI_GENRES) {
+      expect(
+        view.getByRole("button", { name: `Choose ${genreLabels[genre]}` }),
+      ).toBeTruthy();
+    }
+    // And nothing outside that computed set sneaks in - the menu is exactly
+    // KIDS_UI_GENRES, not UI_GENRES with a couple of items missing by hand.
+    for (const genre of UI_GENRES) {
+      if ((KIDS_UI_GENRES as readonly string[]).includes(genre)) continue;
+      expect(
+        view.queryByRole("button", { name: `Choose ${genreLabels[genre]}` }),
+      ).toBeNull();
+    }
+  });
+
+  /**
+   * `educational`, `fanfiction`, `folktale`, and `sliceOfLife` are the four
+   * genres added to `UI_GENRES` that the writer-onboarding flow can hand back
+   * as `primaryGenre` on a fresh draft. Before this fix the editor's genre
+   * menu still read an older, shorter array, so a draft in one of these could
+   * not be reselected once the writer reopened the control - the exact
+   * finding this covers.
+   */
+  it.each(["educational", "fanfiction", "folktale", "sliceOfLife"] as const)(
+    "represents a %s draft arriving from onboarding, and lets it be reselected",
+    async (genre) => {
+      const view = await render(
+        <CreateStudioScreen
+          credits={12}
+          onCreditUsed={jest.fn()}
+          onPublished={jest.fn()}
+          onBack={jest.fn()}
+          initialDraft={{
+            primaryGenre: genre,
+            audienceMode: "adult",
+            spiceLevel: "sweet",
+            identityLenses: [],
+            seed: "A story handed off from writer onboarding.",
+            language: "English",
+            visibility: "private",
+            characters: [],
+            isSeries: false,
+          }}
+        />,
+      );
+
+      // Represented: the control already shows this genre without the writer
+      // having to open anything.
+      expect(view.getByText(genreLabels[genre])).toBeTruthy();
+
+      // Reselectable: the menu lists it, checked, right where it landed.
+      await fireEvent.press(view.getByRole("button", { name: "Genre" }));
+      const ownOption = view.getByRole("button", {
+        name: `Choose ${genreLabels[genre]}`,
+      });
+      expect(ownOption.props.accessibilityState.selected).toBe(true);
+
+      // And picking away, then picking it back, both work through the same
+      // control - this genre is not a dead end the menu cannot return to.
+      await fireEvent.press(view.getByRole("button", { name: "Choose Romance" }));
+      await fireEvent.press(view.getByRole("button", { name: "Genre" }));
+      await fireEvent.press(
+        view.getByRole("button", { name: `Choose ${genreLabels[genre]}` }),
+      );
+      expect(view.getByText(genreLabels[genre])).toBeTruthy();
+    },
+  );
 
   it("sends the reviewed Kids brief and More options to generation", async () => {
     mockGenerateStory.mockResolvedValueOnce(generatedStory);
