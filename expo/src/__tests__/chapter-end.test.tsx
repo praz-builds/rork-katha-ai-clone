@@ -358,3 +358,55 @@ describe("agreeing with the server about where a series ends", () => {
     );
   });
 });
+
+// The offline walkthrough cannot honour a direction, and must say so.
+//
+// With no backend configured, `continueStory` returns canned prose, so a
+// suggested or typed next step is accepted by the UI and does not shape the
+// text. Silently returning prose that ignores the reader's choice teaches them
+// the feature does not work; saying so is the honest option, and faking
+// direction-sensitive text would be a worse lie.
+describe("the offline continuation is honest about itself", () => {
+  it("says the direction was not used when the chapter came from the stub", async () => {
+    const story = makeStory();
+    const stub = jest.fn(async () => ({
+      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      model: "mock",
+    }));
+
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={stub as never}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
+    await fireEvent.press(view.getByTestId("chapter-end-option-0"));
+
+    await waitFor(() => expect(view.getByText(/direction you chose was not used/i)).toBeTruthy());
+  });
+
+  it("says nothing extra when a real model wrote the chapter", async () => {
+    const story = makeStory();
+    const real = jest.fn(async () => ({
+      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      model: "meta/muse-spark-1.3",
+    }));
+
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={real as never}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
+    await fireEvent.press(view.getByTestId("chapter-end-option-0"));
+
+    await waitFor(() => expect(view.getByText(/New chapter ready/i)).toBeTruthy());
+    expect(view.queryByText(/direction you chose was not used/i)).toBeNull();
+  });
+});

@@ -13,6 +13,7 @@ import {
   continueStory,
   createGenerationRequestId,
   GenerationRequestError,
+  isLocalStubChapter,
 } from "@/lib/api";
 import { CHAPTER_TEXT_CREDITS, MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
 import { colors, fonts, radius, spacing, type } from "@/theme";
@@ -193,6 +194,7 @@ export default function ChapterEnd({
   const [phase, setPhase] = useState<SubmitPhase>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [completedChapter, setCompletedChapter] = useState<Chapter | null>(null);
+  const [directionApplied, setDirectionApplied] = useState(true);
   const submittingRef = useRef(false);
 
   useEffect(() => {
@@ -243,6 +245,11 @@ export default function ChapterEnd({
         instruction,
       );
       setCompletedChapter(result.chapter);
+      // With no backend configured the continuation is canned prose, so the
+      // direction the reader chose or typed did not shape it. Saying so is the
+      // honest option: silently returning text that ignores their choice
+      // teaches them the feature does not work.
+      setDirectionApplied(!isLocalStubChapter(result));
       setPhase("success");
       onChapterReady?.(result.chapter);
     } catch (err) {
@@ -295,6 +302,14 @@ export default function ChapterEnd({
         <Text style={styles.body}>
           &quot;{completedChapter.title}&quot; has been added to this story.
         </Text>
+        {!directionApplied
+          ? (
+            <Text style={styles.stubNote}>
+              This one was written from a sample, so the direction you chose was
+              not used. Connect a backend to steer the next chapter.
+            </Text>
+          )
+          : null}
       </View>
     );
   }
@@ -532,6 +547,13 @@ const styles = StyleSheet.create({
     color: colors.surface,
     fontWeight: "800",
     fontSize: 15,
+  },
+  stubNote: {
+    ...type.subhead,
+    fontFamily: fonts.ui,
+    letterSpacing: 0,
+    color: colors.muted,
+    marginTop: spacing.related,
   },
   errorRow: {
     flexDirection: "row",
