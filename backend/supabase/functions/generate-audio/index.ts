@@ -12,7 +12,10 @@
  * reports the job the winner already started.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 import { parseUuid } from "../_shared/uuid.ts";
@@ -189,7 +192,10 @@ export async function handleRequest(req: Request): Promise<Response> {
       // The provider never accepted a job, so there is nothing to reconcile
       // -- this is the ordinary "generation failed to start" path.
       const errorCode = providerErrorCode(providerError);
-      await markChapterAudioFailed(serviceClient, claim.id!, errorCode);
+      await releaseClaim(serviceClient, claim.id!, errorCode, {
+        story_id: storyId,
+        chapter_id: chapterId,
+      });
       await logError({
         bucket: "generation.audio",
         severity: "high",
@@ -212,11 +218,10 @@ export async function handleRequest(req: Request): Promise<Response> {
       // fail the row so a retry gets a clean claim instead of an untracked
       // race.
       await cancelRunpodNarration(jobId);
-      await markChapterAudioFailed(
-        serviceClient,
-        claim.id!,
-        "job_not_recorded",
-      );
+      await releaseClaim(serviceClient, claim.id!, "job_not_recorded", {
+        story_id: storyId,
+        chapter_id: chapterId,
+      });
       await logError({
         bucket: "generation.audio",
         severity: "critical",
@@ -280,6 +285,43 @@ function providerErrorCode(error: unknown): string {
     return error.message.slice(0, 96) || "provider_error";
   }
   return "provider_error";
+}
+
+/**
+ * Mark a claimed `chapter_audio` row failed, and never throw doing it.
+ *
+ * Both callers are already inside a failure path, and both reach this after
+ * something else has gone wrong with the same database connection -- which is
+ * precisely when this write is most likely to fail as well. Letting it throw
+ * sent the request to the handler's outer catch, which logs `errorCode:
+ * "unhandled"`: the specific reason the narration failed (`job_not_recorded`,
+ * a provider 4xx) was replaced by the least useful code in the vocabulary, and
+ * the alert that should have named the cause named nothing.
+ *
+ * The row is left `pending` when this fails, which used to strand the
+ * (chapter, voice) pair forever. It no longer does: migration 00054 lets
+ * `claim_chapter_audio_generation` re-claim a `pending` row that has sat
+ * untouched for ten minutes, so the worst case is a delay rather than a
+ * chapter that can never be narrated again. That is what makes swallowing this
+ * error safe, and it is the only reason it is.
+ */
+async function releaseClaim(
+  serviceClient: SupabaseClient,
+  audioId: string,
+  errorCode: string,
+  context: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await markChapterAudioFailed(serviceClient, audioId, errorCode);
+  } catch (releaseError) {
+    await logError({
+      bucket: "generation.audio",
+      severity: "high",
+      errorCode: "audio_claim_release_failed",
+      error: releaseError,
+      context: { ...context, original_error_code: errorCode },
+    });
+  }
 }
 
 if (import.meta.main) {

@@ -41,6 +41,19 @@ export type SavedPhrase = {
   /** How many practice rounds this phrase has been through, for the interval bump. */
   reviewCount: number;
   /**
+   * Days until the next review, mirroring `phrase_practice.interval_days`.
+   *
+   * The server runs SM-2 and is the only authority on when a phrase comes back;
+   * these two fields exist so the local optimistic estimate is computed with
+   * the same formula rather than a second, incompatible one. Both are absent
+   * until the phrase has been practised once, and both default to the column
+   * defaults (0 days, ease 2.50) so a fresh phrase estimates the way the server
+   * would.
+   */
+  intervalDays?: number;
+  /** SM-2 ease factor, mirroring `phrase_practice.ease`. Clamped to [1.30, 3.50]. */
+  ease?: number;
+  /**
    * ISO timestamp of the last time the server confirmed this phrase, if ever.
    *
    * Absent means the row is the reader's unsent work and must survive a refresh
@@ -345,20 +358,100 @@ async function recordPracticeOutcomeImpl(
   const store = await readStore();
   const index = store.phrases.findIndex((entry) => entry.id === phraseId);
   if (index >= 0) {
-    const current = store.phrases[index];
-    const reviewCount = outcome === "know" ? current.reviewCount + 1 : 0;
-    const intervalDays = outcome === "know"
-      ? Math.min(30, Math.max(1, current.reviewCount === 0 ? 1 : 2 ** current.reviewCount))
-      : 0;
-    const dueAt = new Date(Date.now() + intervalDays * DAY_MS).toISOString();
     const nextPhrases = [...store.phrases];
-    nextPhrases[index] = { ...current, reviewCount, dueAt };
+    nextPhrases[index] = estimateNextReview(store.phrases[index], outcome);
     await writeStore({ phrases: nextPhrases });
   }
 
-  await invokeGuarded("record-practice", {
-    body: { phraseId, outcome: PRACTICE_OUTCOME_WIRE_VALUE[outcome] },
-  });
+  const result = await invokeGuarded<{ practice?: RemotePracticeRow }>(
+    "record-practice",
+    { body: { phraseId, outcome: PRACTICE_OUTCOME_WIRE_VALUE[outcome] } },
+  );
+
+  // The server's answer replaces the estimate. `record_phrase_practice` is the
+  // only place SM-2 actually runs, and its `due_at` is what every other device
+  // will read back from `phrase_practice`; keeping the local guess after the
+  // server has spoken is how two devices end up disagreeing about when a phrase
+  // is due, with no way to tell which one is right.
+  if (!result.ok) return;
+  const practice = result.data?.practice;
+  if (!practice || typeof practice.due_at !== "string") return;
+  const dueAt = new Date(practice.due_at);
+  if (Number.isNaN(dueAt.getTime())) return;
+
+  // Re-read rather than reusing `store`: the write above happened, and this
+  // function's serialization guarantees no *other* mutation interleaved, but
+  // the snapshot in hand is stale by exactly that write.
+  const latest = await readStore();
+  const settled = latest.phrases.findIndex((entry) => entry.id === phraseId);
+  if (settled < 0) return;
+  const nextPhrases = [...latest.phrases];
+  nextPhrases[settled] = {
+    ...nextPhrases[settled],
+    dueAt: dueAt.toISOString(),
+    intervalDays: typeof practice.interval_days === "number"
+      ? practice.interval_days
+      : nextPhrases[settled].intervalDays,
+    ease: typeof practice.ease === "number"
+      ? practice.ease
+      : Number(practice.ease) || nextPhrases[settled].ease,
+  };
+  await writeStore({ phrases: nextPhrases });
+}
+
+/** One row as `record-practice` returns it: the `phrase_practice` row itself. */
+type RemotePracticeRow = {
+  due_at?: unknown;
+  interval_days?: unknown;
+  /** `numeric(4,2)`, which PostgREST may serialise as a string. */
+  ease?: unknown;
+};
+
+/** Column defaults from `phrase_practice` (00047), so the estimate starts where the server does. */
+const DEFAULT_EASE = 2.5;
+const MIN_EASE = 1.3;
+const MAX_EASE = 3.5;
+
+/**
+ * The local optimistic estimate, using the server's own SM-2 arms.
+ *
+ * This used to double the interval on every `know` (1, 2, 4, 8 ... capped at
+ * 30) while the server ran SM-2 with an ease factor. The two never agreed, so
+ * a phrase practised on a phone came due on a different day than the same
+ * phrase practised on a tablet, and a refresh could move a due date backwards
+ * or forwards for no reason the reader could see.
+ *
+ * `PracticeOutcome` is a two-button UI ("again" / "know"), which maps onto the
+ * server's four-outcome vocabulary as `again` and `good` -- so only those two
+ * arms are reproduced here. It stays an estimate: the caller overwrites it with
+ * the server's `due_at` the moment the call returns.
+ */
+function estimateNextReview(
+  current: SavedPhrase,
+  outcome: PracticeOutcome,
+): SavedPhrase {
+  const priorInterval = current.intervalDays ?? 0;
+  const priorEase = current.ease ?? DEFAULT_EASE;
+
+  // `good` leaves ease untouched; `again` costs 0.30. Mirrors the CASE in
+  // `record_phrase_practice`.
+  const ease = Math.min(
+    MAX_EASE,
+    Math.max(MIN_EASE, outcome === "again" ? priorEase - 0.3 : priorEase),
+  );
+  const intervalDays = outcome === "again"
+    ? 0
+    : priorInterval === 0
+    ? 1
+    : Math.ceil(priorInterval * ease);
+
+  return {
+    ...current,
+    reviewCount: outcome === "know" ? current.reviewCount + 1 : 0,
+    intervalDays,
+    ease,
+    dueAt: new Date(Date.now() + intervalDays * DAY_MS).toISOString(),
+  };
 }
 
 function sortByCreatedAtDesc(phrases: readonly SavedPhrase[]): SavedPhrase[] {
@@ -416,6 +509,30 @@ function mergeSavedPhrases(
   const remoteKeys = new Set(
     validRemote.map((entry) => dedupeKey(entry.storyId, entry.phrase)),
   );
+
+  // The `phrases` endpoint returns saved phrases, not practice rows, so a
+  // remote entry carries no schedule and no story title: `fromRemoteRow` fills
+  // `dueAt` with `saved_at`, `reviewCount` with 0 and `storyTitle` with "".
+  // Taking those verbatim reset every practised phrase to "due now, never
+  // reviewed" on each refresh and blanked the title in the practice list. The
+  // local cache is the only place either lives, so it wins for those fields
+  // while the server still wins for identity and existence.
+  const localByKey = new Map(
+    local.map((entry) => [dedupeKey(entry.storyId, entry.phrase), entry]),
+  );
+  const reconciled = validRemote.map((entry) => {
+    const previous = localByKey.get(dedupeKey(entry.storyId, entry.phrase));
+    if (!previous) return entry;
+    return {
+      ...entry,
+      storyTitle: entry.storyTitle || previous.storyTitle,
+      chapterId: entry.chapterId || previous.chapterId,
+      dueAt: previous.dueAt,
+      reviewCount: previous.reviewCount,
+      intervalDays: previous.intervalDays,
+      ease: previous.ease,
+    };
+  });
   // Only local entries the server has not seen are kept, and only while they
   // are still unsynced. Keeping every local-only row unconditionally meant a
   // phrase deleted on another device came back on the next refresh: the server
@@ -428,5 +545,5 @@ function mergeSavedPhrases(
   const localOnly = local.filter((entry) =>
     !remoteKeys.has(dedupeKey(entry.storyId, entry.phrase)) && !entry.syncedAt
   );
-  return [...validRemote, ...localOnly];
+  return [...reconciled, ...localOnly];
 }

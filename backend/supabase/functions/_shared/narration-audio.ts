@@ -179,7 +179,16 @@ export async function markChapterAudioJobStarted(
 ): Promise<void> {
   const { error } = await supabase
     .from("chapter_audio")
-    .update({ provider_job_id: jobId, status: "pending" })
+    // `updated_at` is written explicitly: there is no trigger on
+    // `chapter_audio`, and `claim_chapter_audio_generation` (00054) treats a
+    // `pending` row untouched for ten minutes as abandoned and re-claimable.
+    // Without this, the clock would keep running from the moment of the claim
+    // rather than from the moment the job was actually confirmed started.
+    .update({
+      provider_job_id: jobId,
+      status: "pending",
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", audioId);
   if (error) throw error;
 }
@@ -191,7 +200,12 @@ export async function markChapterAudioFailed(
 ): Promise<void> {
   const { error } = await supabase
     .from("chapter_audio")
-    .update({ status: "failed", provider_job_id: null, error_code: errorCode })
+    .update({
+      status: "failed",
+      provider_job_id: null,
+      error_code: errorCode,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", audioId);
   if (error) throw error;
 }
