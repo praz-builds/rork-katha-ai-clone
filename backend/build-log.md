@@ -2449,6 +2449,48 @@ is a separate, explicit decision for later.
 - Local URL `http://localhost:8090/` was opened and returned `200 OK`.
 - No production infrastructure was tested or deployed in this pass.
 
+## 2026-09-07: Engagement persistence RPCs and Edge Functions
+
+### Changed
+
+- Added migration `00046_engagement_persistence.sql` for real likes,
+  bookmarks, story follows, author follows, reads, and streak touches.
+- Replaced broad relationship-table read policies with own-row RLS policies
+  and added service-role-only `security definer` RPCs for idempotent toggles,
+  `record_story_read`, and `touch_streak`.
+- The story like, story follow, and read RPCs move the relationship row and
+  denormalized `stories` counter under one transaction-level advisory lock;
+  duplicate likes/follows and no-op unlikes/unfollows do not move counters.
+- `record_story_read` enforces one persisted read per user/story/chapter within
+  24 hours, marks author self-reads as `counts_for_earnings = false`, and only
+  counted reads increment `stories.read_count`.
+- `touch_streak` increments once per UTC calendar day, resets after a missed
+  day, raises `longest_streak` without lowering it, and deliberately leaves
+  `next_credit_at` untouched because streak credits are parked for this build.
+- Added Edge Functions `like`, `bookmark`, `follow-story`, `follow-user`, and
+  `record-read`, all using auth, UUID validation, service-role RPC calls, CORS,
+  and persistent engagement error logging.
+- `feed` now includes viewer relationship flags on the main feed and continue
+  reading rail. `library` includes the same flags when called with a valid
+  viewer JWT, while unauthenticated reads keep the existing public path.
+
+### Verification
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions` passed:
+  468 tests, 0 failed. This is up from the task baseline of 464 because
+  `_shared/engagement.test.ts` adds 4 handler tests.
+- `deno test --allow-env --allow-net --allow-read supabase/migrations` passed:
+  53 tests, 0 failed. `00046_engagement_persistence_test.ts` adds 9 migration
+  tests covering duplicate likes, no-op unlikes, concurrent-safe like shape,
+  clean self-follow refusal, 24-hour read dedupe, author self-read earnings
+  exclusion, once-daily streak touches, longest-streak monotonicity, and
+  relationship RLS.
+- `deno check` passed on every touched TypeScript file.
+- `deno fmt --check` passed on every touched TypeScript file.
+- No production-level test was run, so no `public.error_events` rows were
+  written.
+- Not pushed or deployed.
+
 ## 2026-09-06: Comment vote RPC review fix
 
 ### Changed
@@ -2529,3 +2571,215 @@ is a separate, explicit decision for later.
 - Not covered by tests: the HTTP entrypoint itself - CORS, JSON parse failures,
   the `auth.getUser()` flow and action dispatch are covered by inspection only,
   because PGlite speaks Postgres rather than the PostgREST wire protocol.
+
+## 2026-09-07: The narration voice library - generate on first play, not at publish
+
+### Changed
+
+- Finished a bucket a previous session left mid-flight. `_shared/narration-entitlement.ts`
+  and `_shared/narration-audio.ts` were already started; this session built on
+  both rather than restarting, and completed migration `00048_voice_library.sql`
+  which was already partly written.
+- `00048_voice_library.sql`: `voices` (the allowlist as data - id, display name,
+  language, gender, tier, provider, provider voice params, preview path, sort
+  order, is_active) seeded with exactly today's 8 ids so behaviour is preserved;
+  4 English voices marked `premium` per the existing contract, the other 4
+  `standard`. `chapter_audio` (one row per chapter+voice - storage path,
+  duration, word count at generation time, provider job id, status, generated_at)
+  with a unique constraint on `(chapter_id, voice_id)` and a check constraint
+  tying `status = 'ready'` to both `storage_path` and `generated_at` being set -
+  which is also what forces a retry to clear both rather than leaving a stale
+  path on a `pending` row. `chapters.audio_url` is untouched and commented as a
+  later migration's job once nothing reads it; the migration backfills every
+  existing value into a `ready` `chapter_audio` row for `aria`. RLS: `voices`
+  readable by `authenticated`, `chapter_audio` readable when the reader can read
+  the chapter (author, or published + public/curated) - both service-role write
+  only.
+- `claim_chapter_audio_generation(chapter_id, voice_id, storage_path, word_count)`:
+  the one place two concurrent "generate this" requests are serialized. It takes
+  an advisory lock keyed on `(chapter, voice)` plus `select ... for update`,
+  returns `claimed: false` against an existing `pending` or `ready` row, and
+  resets a `failed` row back to `pending` (clearing `storage_path`,
+  `provider_job_id`, `generated_at`) so a retry is possible without a second row
+  ever existing for the same pair.
+- `_shared/voices.ts` rewritten: `STATIC_VOICES` (8 entries, mirrors the
+  migration's seed) is now the fallback rather than the whole story;
+  `listVoices()` / `getVoiceRecord()` read `public.voices` and fall back to the
+  static list on a missing client, a query error, or an empty result, so a
+  database hiccup narrows the picker instead of breaking narration. Every
+  caller on the audio path goes through these two functions.
+- `_shared/narration-audio.ts` gained `getChapterAudioRow()` (any status, for
+  polling) alongside the existing `findReadyChapterAudio()` (ready only, for the
+  cache-hit path), and `storageObjectExists()` (used to make preview seeding
+  idempotent).
+- `generate-audio/index.ts` rewritten. A ready `chapter_audio` row (or, as a
+  pre-backfill safety net, a legacy `chapters.audio_url` on the default voice)
+  is returned without touching RunPod. A miss asks `canGenerateNarration()`
+  first - closed by default, unchanged from today - and only then claims the
+  row and starts a RunPod job; a caller who loses the claim reports the winner's
+  in-flight generation instead of starting a second one. Access is now "can this
+  user read the chapter" (author, or a published chapter on a public/curated
+  story), not "is this user the author" - the function was effectively
+  unreachable by ordinary readers before this.
+- `audio-status/index.ts` rewritten to resolve against `chapter_audio` instead
+  of guessing a storage path, which is what actually lets it poll RunPod at
+  all now - `AGENTS.md` recorded the missing durable job binding as the reason
+  it couldn't. A `ready` or `failed` row answers directly; a `pending` row with
+  no `provider_job_id` yet reports pending without polling; a `pending` row with
+  a job id polls RunPod once and uploads + marks `ready`, or marks `failed` with
+  the provider's error code, on that one call.
+- Two new functions. `voices` (GET, authenticated): active voices for an
+  optional `language` filter, with `tier` and a `preview_url` resolved from
+  `preview_path`. `seed-voice-previews` (POST, service-role only - the caller's
+  bearer token is compared to `SUPABASE_SERVICE_ROLE_KEY` in constant time):
+  generates the one missing preview clip per voice, checked via
+  `storageObjectExists()` before ever starting a provider job, so a repeat run
+  costs nothing for a voice that already has one. Neither `generate-audio` nor
+  `audio-status` generates a preview on their read path.
+- edge-tts-provider voices (`elvira`, `alvaro`) hit a typed
+  `edge_tts_not_implemented` failure on the fresh-generation and preview paths
+  rather than silently claiming a job started - `_shared/edge-tts.ts` still
+  returns `null` unconditionally, unchanged by this session.
+
+### What this does not do
+
+- No pricing, unlock, grant, or credit-ledger read/write anywhere in this
+  bucket. `canGenerateNarration()` is the only place that decision is asked,
+  and its body still returns today's flag-gated refusal - the credits session
+  replaces the body of that one function and nothing else on this path.
+- Voice `tier` is stored and served, but nothing enforces it yet - a caller
+  can request a `premium` voice today and generation proceeds if the
+  entitlement gate is open. Tier enforcement is credits-session work.
+- `NARRATION_GENERATION_ENABLED` is unset in every environment, so production
+  behaviour is unchanged by this merge - the same refusal, the same 503.
+
+### Verification
+
+Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
+`export PATH="/Users/mac16/.deno/bin:$PATH"`:
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  **525 passed, 0 failed** (baseline before this session: 468).
+- `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  **66 passed, 0 failed** (baseline before this session: 53; the 13 new tests
+  are all in `00048_voice_library_test.ts`). Real Postgres via PGlite, no
+  network - includes RLS as both `anon` and `authenticated`, the unique and
+  check constraints, the claim RPC's dedup and retry behaviour proven directly
+  against the function (not simulated), and the backfill proven by applying
+  every migration up to but excluding `00048`, seeding a legacy
+  `chapters.audio_url` by hand, then applying `00048` and reading back the
+  `chapter_audio` row it produced.
+- `deno check` and `deno fmt --check` clean on every file this session touched
+  or added (17 files: the 3 handed off plus 14 more).
+- The concurrency property ("two readers pressing Listen at once cost one
+  generation") is proven at two levels: the SQL claim function directly in the
+  migration test, and the HTTP handler's response to a `claimed: false` result
+  in `generate-audio/index.test.ts` - true wall-clock concurrency isn't
+  reachable through a stubbed single-threaded `fetch`, so the handler test
+  proves the handler obeys the claim rather than proving the claim itself is
+  atomic; the migration test proves that.
+- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
+  `00048` is written but not applied there, and none of the five touched or
+  added functions (`generate-audio`, `audio-status`, `voices`,
+  `seed-voice-previews`, plus the shared modules) are deployed. No production-
+  level test ran, so no `public.error_events` rows were written this session.
+- Not committed. Changes are left in the working tree per instructions.
+## 2026-09-08: Rate-limit the grounding fallback, without reordering it
+
+### Changed
+
+- Closed the residual finding on `generate-story` / `generate-story-stream`:
+  `resolveGrounding`'s fallback branch (the unshaped Create-studio path, where
+  the client sent no cards) now runs behind a cheap per-caller rate limit
+  instead of unconditionally. The finding was that a request
+  `begin_story_generation` was about to reject - no credits, a replay - had
+  already paid for an LLM classification call by the time that rejection was
+  known, and a caller with no credits could replay that for free.
+- The fix does NOT move `resolveGrounding` after `begin_story_generation`. That
+  ordering is deliberate and stays: the fallback promise is still created and
+  running before `begin_story_generation` is awaited, so it still overlaps that
+  RPC's measured 1.4-2.2s round trip. What changed is what the promise does
+  first internally - a rate-limit check, then (only if allowed) the
+  classification - rather than adding latency to the line that starts it.
+- New migration `00051_grounding_fallback_rate_limit.sql`: table
+  `grounding_fallback_rate_limits` (per `user_id`, 8 requests / 10 minutes) and
+  `anonymous_grounding_fallback_rate_limits` (per hashed network scope, 15
+  requests / 60 minutes, reusing the `anonymousGrantScope` fingerprint 00035
+  already computes for guest bootstrap - a fresh anonymous JWT is free to mint,
+  so a per-`user_id` counter alone does not bound that). RPC
+  `claim_grounding_fallback_request(p_user_id, p_anonymous_scope_hash)` checks
+  the network scope first, then the per-user counter, so a request already
+  refused at the network level never consumes per-user budget it cannot use.
+  No global daily table, unlike 00034/00035: those protect a paid resource
+  (a free credit grant, a shaping call open to every visitor); this protects an
+  LLM call that still sits in front of the credit check the caller has to pass
+  to get anything paid-for, and the per-network cap is already the bound that
+  matters.
+- New `_shared/grounding-rate-limit.ts`: `claimGroundingFallback()` wraps the
+  RPC, computing the anonymous scope hash the same way `shape-story` already
+  does via `guest-bootstrap.ts`. Never throws. Fails CLOSED (skip grounding,
+  generate ungrounded) on a missing anonymous network header, an RPC error, or
+  a thrown exception - the same posture every other failure path in the
+  grounding system already has, and the correct default for a guard that must
+  never cost more than the thing it protects. Telemetry on a DB error is fired
+  without being awaited (`void logError(...)`), so a broken check cannot itself
+  add up to logError's 1.5s timeout to a promise chain the writer is waiting on.
+- Both call sites gate the fallback with `needsGroundingFallback` (the same
+  "client sent no cards" condition the code already had) before ever calling
+  `claimGroundingFallback`, so a client that supplied grounding cards makes
+  zero rate-limit RPC calls, exactly as it made zero `resolveGrounding` calls
+  before this change.
+
+### Numbers chosen, and why
+
+- Per-user: 8 requests / 10 minutes. The fallback fires at most once per
+  `generate-story` call, and most real Create-studio generations do not repeat
+  eight times in ten minutes even accounting for retries after a failure;
+  eight caps a credit-less loop at 48/hour on one session.
+- Anonymous network scope: 15 requests / 60 minutes. Wider window and slightly
+  higher count than the per-user limit because it has to cover several genuine
+  people sharing one connection, not one caller - but it still caps a script
+  that mints a fresh anonymous session per request to 15 classification calls
+  per hour per network, regardless of how many sessions it mints.
+- Both numbers are comments in the migration, next to the reasoning above, not
+  just this log entry.
+
+### Verification (real, observed)
+
+- Baseline before this change: `deno test --allow-env --allow-net --allow-read
+  supabase/functions` → 467 passed, 0 failed (45s). `deno test --allow-env
+  --allow-net --allow-read supabase/migrations` → 45 passed, 0 failed (1m32s).
+- After: `supabase/functions` → 473 passed, 0 failed (1m1s) - 6 new tests in
+  `_shared/grounding-rate-limit.test.ts`. `supabase/migrations` → 53 passed,
+  0 failed (1m35s) - 8 new tests in
+  `00051_grounding_fallback_rate_limit_test.ts`.
+- New migration test covers: under-limit caller keeps getting grounding;
+  over-limit caller is refused (`false`, never an error); the limit is scoped
+  per caller (exhausting user A's budget leaves user B untouched); the per-user
+  window resets after 10 minutes; an anonymous caller is capped by hashed
+  network scope even when each request mints a fresh anonymous `user_id`; the
+  anonymous window resets after 60 minutes; a malformed scope hash is rejected
+  rather than silently ungated; both new tables and the RPC are service-role
+  only.
+- New `_shared` test covers: a signed-in caller is checked with a null
+  anonymous scope; an anonymous caller's scope hash matches
+  `hashAnonymousGrantScope` byte for byte; a guest behind a proxy that omits
+  the trusted network header fails closed WITHOUT spending an RPC call; an RPC
+  error and a thrown rejection both fail closed and never reject the caller;
+  a non-boolean truthy RPC payload is treated as a denial, not coerced.
+- `deno check` and `deno fmt --check` clean on every touched/added file:
+  `generate-story/index.ts`, `generate-story-stream/index.ts`,
+  `_shared/grounding-rate-limit.ts`, `_shared/grounding-rate-limit.test.ts`,
+  `00051_grounding_fallback_rate_limit.sql`,
+  `00051_grounding_fallback_rate_limit_test.ts`.
+- Not independently verified: the "client supplied cards → zero rate-limit
+  calls" behavior at the live HTTP entrypoint. There is no `index.test.ts` for
+  `generate-story` or `generate-story-stream` in this repo (same gap noted in
+  the 2026-09-06 comments/feed entry - PGlite speaks Postgres, not the edge
+  runtime), so this is verified by code inspection: `needsGroundingFallback`
+  is the exact pre-existing `grounding.length || groundingEntities.length`
+  condition that already gated `resolveGrounding`, now also gating
+  `claimGroundingFallback`, with no other path into either call.
+- Nothing pushed, deployed, or run against the live project
+  `iafeuxgoiknncgyjmugd`. Migration 00051 is written but not applied. No git
+  commit made, per instructions.

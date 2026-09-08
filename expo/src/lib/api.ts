@@ -26,6 +26,11 @@ export type LibraryResult = {
   source: "mock" | "supabase";
 };
 
+export type EngagementMutationResult = {
+  on: boolean;
+  count: number;
+};
+
 export class GenerationRequestError extends Error {
   constructor(message: string, readonly resetRequestId: boolean) {
     super(message);
@@ -225,6 +230,86 @@ export async function inferOnboardingStoryBrief(
 
 // Retain the original name for callers that landed before the Create flow.
 export const shapeStoryIdea = inferStoryBrief;
+
+// ---------------------------------------------------------------------------
+// Story engagement
+// ---------------------------------------------------------------------------
+
+const engagementEndpointsEnabled =
+  process.env.EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS === "true";
+const inFlightEngagement = new Map<string, Promise<EngagementMutationResult>>();
+
+async function setEngagementState(
+  endpoint: "like" | "bookmark" | "follow-story" | "follow-user",
+  idKey: "storyId" | "authorId",
+  id: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  if (!isSupabaseConfigured || !engagementEndpointsEnabled) {
+    return { on, count: optimisticCount };
+  }
+
+  const key = `${endpoint}:${id}`;
+  const existing = inFlightEngagement.get(key);
+  if (existing) return existing;
+
+  const request = (async () => {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke(endpoint, {
+      body: { [idKey]: id, on },
+    });
+    if (error || !data || typeof data !== "object") {
+      throw error ?? new Error(`${endpoint} returned no result`);
+    }
+    const payload = data as Record<string, unknown>;
+    if (typeof payload.on !== "boolean" || typeof payload.count !== "number") {
+      throw new Error(`${endpoint} returned an invalid result`);
+    }
+    return { on: payload.on, count: payload.count };
+  })();
+
+  inFlightEngagement.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (inFlightEngagement.get(key) === request) {
+      inFlightEngagement.delete(key);
+    }
+  }
+}
+
+export async function setStoryLike(
+  storyId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("like", "storyId", storyId, on, optimisticCount);
+}
+
+export async function setStoryBookmark(
+  storyId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("bookmark", "storyId", storyId, on, optimisticCount);
+}
+
+export async function setStoryFollow(
+  storyId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("follow-story", "storyId", storyId, on, optimisticCount);
+}
+
+export async function setAuthorFollow(
+  authorId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("follow-user", "authorId", authorId, on, optimisticCount);
+}
 
 export type CharacterImageInput = {
   requestId: string;
@@ -1150,6 +1235,22 @@ function mapContinuedChapter(
   };
 }
 
+/**
+ * The offline walkthrough's continuation, and it is canned prose.
+ *
+ * This exists so the app can be walked with no backend configured. It cannot
+ * honour a direction the reader typed or chose, because there is no model in
+ * this path to honour it with -- so a suggested or written next step is
+ * accepted by the UI and does not shape the text.
+ *
+ * That gap is REPORTED rather than hidden. The returned chapter is marked, and
+ * `isLocalStubChapter` lets a caller say so, because silently returning prose
+ * that ignores the reader's choice teaches them the feature does not work. The
+ * alternative of faking direction-sensitive text would be a worse lie.
+ *
+ * Against a configured backend none of this runs: the instruction reaches
+ * `continue-story` and does shape the chapter.
+ */
 async function localContinueStory(
   _storyId: string,
   isFinale?: boolean,
@@ -1179,8 +1280,27 @@ async function localContinueStory(
       chapterNumber: chapterNum,
       isPublished: false,
     },
-    model: "mock",
+    model: LOCAL_STUB_MODEL,
   };
+}
+
+/**
+ * The `model` value the offline continuation returns.
+ *
+ * Named rather than a bare string so a caller can recognise a stub chapter
+ * instead of pattern-matching prose, and so the two places that care cannot
+ * drift apart.
+ */
+export const LOCAL_STUB_MODEL = "mock";
+
+/**
+ * Did this chapter come from the offline stub rather than a model?
+ *
+ * Callers use it to tell the reader that a direction they chose was not applied,
+ * which is the honest thing to say when there was no model to apply it.
+ */
+export function isLocalStubChapter(result: { model: string }): boolean {
+  return result.model === LOCAL_STUB_MODEL;
 }
 
 // ---------------------------------------------------------------------------

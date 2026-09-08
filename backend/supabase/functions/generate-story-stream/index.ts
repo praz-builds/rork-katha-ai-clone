@@ -45,11 +45,13 @@ import {
   GENERATION_GROUNDING_DEADLINE_MS,
   resolveGrounding,
 } from "../_shared/grounding-pipeline.ts";
+import { claimGroundingFallback } from "../_shared/grounding-rate-limit.ts";
 import {
   AllProvidersFailedError,
   generateFastStructuredText,
 } from "../_shared/llm.ts";
 import { errorMessage, readJsonObject } from "../_shared/operations.ts";
+import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
   buildStoryProsePrompt,
   buildUserPrompt,
@@ -143,22 +145,37 @@ serve(async (req) => {
       ? "series_opening"
       : "standalone";
 
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      serviceRoleKey,
     );
 
     // Same fallback as the buffered path, started before the opening round
-    // trip so it overlaps it. See the long note in `generate-story/index.ts`
-    // for why the Create studio needs this and the shaped path does not.
-    const groundingFallback = grounding.length || groundingEntities.length
-      ? Promise.resolve(null)
-      : resolveGrounding({
-        idea: seed,
-        characterNames: characters?.map((c) => c.name).filter(Boolean),
-        cache: serviceClient,
-        deadlineMs: GENERATION_GROUNDING_DEADLINE_MS,
-      }).catch(() => null);
+    // trip so it overlaps it, and gated by the same cheap per-caller rate
+    // limit before `resolveGrounding` ever runs - see the long note in
+    // `generate-story/index.ts` for why the Create studio needs the fallback,
+    // why the shaped path never reaches this branch, and why the limit check
+    // does not change the ordering against `begin_story_generation` below.
+    const needsGroundingFallback = grounding.length === 0 &&
+      groundingEntities.length === 0;
+    const groundingFallback = needsGroundingFallback
+      ? claimGroundingFallback({
+        user,
+        request: req,
+        serviceRoleKey,
+        client: serviceClient,
+      }).then((allowed) =>
+        allowed
+          ? resolveGrounding({
+            idea: seed,
+            characterNames: characters?.map((c) => c.name).filter(Boolean),
+            cache: serviceClient,
+            deadlineMs: GENERATION_GROUNDING_DEADLINE_MS,
+          }).catch(() => null)
+          : null
+      ).catch(() => null)
+      : Promise.resolve(null);
 
     const { data: begun, error: beginError } = await serviceClient.rpc(
       "begin_story_generation",
@@ -312,6 +329,15 @@ serve(async (req) => {
             ? fallback.entities
             : groundingEntities;
 
+          // The reader's saved phrases seed their next story. Best-effort: an
+          // empty list renders the prompt byte-identically, so a lookup failure
+          // costs the language layer and never the paid generation.
+          const savedPhrases = await fetchPhraseSeeds(
+            serviceClient,
+            user.id,
+            language,
+          );
+
           const systemPrompt = buildStoryProsePrompt(promptParams);
           const userPrompt = buildUserPrompt({
             ...promptParams,
@@ -325,6 +351,7 @@ serve(async (req) => {
             storyValues,
             writingStyle,
             avoid,
+            savedPhrases,
             grounding: resolvedGrounding,
           });
 

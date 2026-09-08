@@ -15,7 +15,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/icon-notification.png",
           "color": "#FF6B1A"
         }
       ],
@@ -45,13 +45,14 @@
         "POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/icon-android-foreground.png",
         "backgroundColor": "#FF6B1A"
       }
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/favicon.png"
     },
     "extra": {
       "sentryDsn": "",

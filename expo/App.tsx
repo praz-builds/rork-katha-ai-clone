@@ -10,15 +10,19 @@ import {
   SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { setupAndroidChannel, syncPushToken } from "@/lib/notifications";
-import { ActivityIndicator, Alert, Platform, View } from "react-native";
+import { Alert, Platform } from "react-native";
 import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
+import { LaunchScreen } from "@/components/brand/LaunchScreen";
+import LoaderPreview from "@/screens/dev/LoaderPreview";
 import { ScreenScaffold } from "@/components/KathaPrimitives";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
+import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
+import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
 import ReaderScreen from "@/screens/ReaderScreen";
 import ChapterEnd from "@/components/reader/ChapterEnd";
 import ExploreScreen from "@/screens/ExploreScreen";
@@ -28,8 +32,7 @@ import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
 import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import WriterOnboarding from "@/screens/WriterOnboarding";
 import type { WriterOnboardingResult } from "@/screens/WriterOnboarding";
-import { sharedStyles } from "@/screens/shared";
-import { colors, genreLabels } from "@/theme";
+import { genreLabels } from "@/theme";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 import type {
   KathaOnboardingResult,
@@ -65,6 +68,26 @@ function devInitialTab(): TabKey | null {
   }
 }
 
+/**
+ * Dev-only isolation of a single component, e.g. `localhost:8090/?preview=loader`.
+ *
+ * The sibling of `devInitialTab`, and guarded the same way. Where that one skips
+ * you past onboarding to a tab, this one replaces the app entirely with a
+ * harness for one piece of it. The crafting loader is the case it was built for:
+ * it lives several screens inside the writer flow and is on screen only while a
+ * generation is actually running, so the only way to look at a 1.2s animation
+ * twice was to generate two stories.
+ */
+function devPreview(): string | null {
+  if (!__DEV__ || Platform.OS !== "web") return null;
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? "")
+      .get("preview");
+  } catch {
+    return null;
+  }
+}
+
 const GENRE_BY_LABEL = Object.fromEntries(
   Object.entries(genreLabels).map((
     [key, label],
@@ -79,6 +102,7 @@ const toGenreKeys = (labels: string[] | undefined): Genre[] =>
 export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
   const bootTab = devInitialTab();
+  const preview = devPreview();
   const [screen, setScreen] = useState<Screen>(
     bootTab ? { name: "tabs" } : { name: "intro" },
   );
@@ -158,13 +182,9 @@ export default function App() {
     generatedStories,
   ]);
 
-  if (!fontsReady) {
-    return (
-      <View style={sharedStyles.loading}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
+  if (!fontsReady) return <LaunchScreen />;
+
+  if (preview === "loader") return <LoaderPreview />;
 
   /**
    * A series gets a landing page; a standalone opens straight into its prose.
@@ -262,6 +282,7 @@ export default function App() {
             stories={allStories}
             onStory={openStory}
             onCreate={() => goTabs("create")}
+            onPractice={() => setScreen({ name: "practice" })}
           />
         );
       case "profile":
@@ -337,29 +358,69 @@ export default function App() {
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
             onBack={() => goTabs(tab)}
-            onRead={(chapterIndex) =>
+            onRead={(chapterIndex, options) =>
               setScreen({
                 name: "reader",
                 storyId: screen.storyId,
                 chapterIndex,
+                // Listen and Read are different intents. The detail screen has
+                // always said which one it meant; this call site dropped the
+                // options, so Listen opened the reader silently and the reader
+                // had no way to know narration had been asked for.
+                autoplay: options?.mode === "listen",
               })}
             onAuthor={(authorId) => setScreen({ name: "author", authorId })}
           />
         )
         : screen.name === "reader"
         ? (
-          <ReaderScreen
+          <PhraseCaptureReader
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
             initialChapterIndex={screen.chapterIndex ?? 0}
+            autoplay={screen.autoplay ?? false}
             onBack={() => goTabs(tab)}
             renderChapterEnd={(chapter) => (
               <ChapterEnd
                 story={allStories.find((story) =>
                   story.id === screen.storyId) ?? allStories[0]}
                 chapter={chapter}
+                // Without this the continuation succeeded, showed a
+                // confirmation, and then went nowhere: the new chapter was
+                // never added to app state, so it could not be read and the
+                // reader still ended where it had ended before. A "What's
+                // next?" that produces a chapter you cannot reach is worse than
+                // no button at all.
+                onChapterReady={(next) =>
+                  setGeneratedStories((current) => {
+                    const target = allStories.find((story) =>
+                      story.id === screen.storyId
+                    );
+                    if (!target) return current;
+                    const alreadyHeld = current.some((story) =>
+                      story.id === target.id
+                    );
+                    const withChapter: Story = {
+                      ...target,
+                      chapters: [...target.chapters, next],
+                    };
+                    // A seed story being continued is not in `generatedStories`
+                    // yet, so it is added rather than mapped over.
+                    return alreadyHeld
+                      ? current.map((story) =>
+                        story.id === target.id ? withChapter : story
+                      )
+                      : [withChapter, ...current];
+                  })}
               />
             )}
+          />
+        )
+        : screen.name === "practice"
+        ? (
+          <PracticeScreen
+            onBack={() => goTabs(tab)}
+            onStory={openStory}
           />
         )
         : screen.name === "author"
