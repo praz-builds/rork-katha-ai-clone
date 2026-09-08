@@ -111,6 +111,37 @@ export async function ensureVoicePreview(
   }
 }
 
+/**
+ * Two concurrent seedings that both observe a voice's preview as missing
+ * would both start a provider job for it -- harmless in outcome (both
+ * eventually try to write the same stable path) but wasteful, and this is a
+ * service-role, manually/cron-triggered operation with no per-user reason to
+ * ever be called twice at once. Requests that land on the same warm function
+ * instance share this module's memory, so a second caller for a voice
+ * already being generated is handed the first caller's in-flight promise
+ * instead of starting its own. A genuinely concurrent cold start on a
+ * different instance is not covered by this -- that would need a durable
+ * claim (a lock table, mirroring `chapter_audio`'s
+ * `claim_chapter_audio_generation`), which is disproportionate for an
+ * idempotent-outcome, operator-only endpoint that in practice is called by
+ * one process at a time.
+ */
+const previewsInFlight = new Map<string, Promise<PreviewResult>>();
+
+async function ensureVoicePreviewOnce(
+  voice: VoiceRecord,
+  deps: EnsurePreviewDeps,
+): Promise<PreviewResult> {
+  const existing = previewsInFlight.get(voice.id);
+  if (existing) return existing;
+
+  const job = ensureVoicePreview(voice, deps).finally(() => {
+    previewsInFlight.delete(voice.id);
+  });
+  previewsInFlight.set(voice.id, job);
+  return job;
+}
+
 export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -145,7 +176,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     const results: PreviewResult[] = [];
     for (const voice of voices) {
-      const result = await ensureVoicePreview(voice, {
+      const result = await ensureVoicePreviewOnce(voice, {
         exists: (path) =>
           storageObjectExists(serviceClient, AUDIO_BUCKET, path),
         start: startRunpodNarration,

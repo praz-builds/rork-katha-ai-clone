@@ -44,6 +44,23 @@ export type SavedPhrase = {
 
 export type PracticeOutcome = "know" | "again";
 
+/**
+ * The wire vocabulary is `again | hard | good | easy` -- `record-practice`'s
+ * `OUTCOMES` set and the `record_phrase_practice` SQL function's check
+ * constraint (migration `00047`) both already agree on exactly those four
+ * values, and the SQL function's spaced-repetition math is keyed off them.
+ * That is canonical; this two-button UI is a simplified front end for it, not
+ * a second vocabulary the server is expected to learn. `again` already lines
+ * up; `know` maps to `good`, the ordinary "I got this" answer -- `hard` and
+ * `easy` stay reachable for a future finer-grained UI without another server
+ * change. Sending `outcome` unmapped, as this used to, is a value the
+ * server's `OUTCOMES` set and SQL check constraint both always rejected.
+ */
+const PRACTICE_OUTCOME_WIRE_VALUE: Record<PracticeOutcome, "again" | "good"> = {
+  again: "again",
+  know: "good",
+};
+
 const STORE_KEY = "katha.phrases.v1";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -145,9 +162,9 @@ export async function listSavedPhrases(): Promise<SavedPhrase[]> {
   const store = await readStore();
   const result = await invokeGuarded<{ phrases?: SavedPhrase[] }>("phrases", { method: "GET" });
   if (result.ok && Array.isArray(result.data?.phrases)) {
-    const merged: Store = { phrases: result.data.phrases };
-    await writeStore(merged);
-    return sortByCreatedAtDesc(merged.phrases);
+    const merged = mergeSavedPhrases(store.phrases, result.data.phrases);
+    await writeStore({ phrases: merged });
+    return sortByCreatedAtDesc(merged);
   }
   return sortByCreatedAtDesc(store.phrases);
 }
@@ -280,7 +297,9 @@ async function recordPracticeOutcomeImpl(
     await writeStore({ phrases: nextPhrases });
   }
 
-  await invokeGuarded("record-practice", { body: { phraseId, outcome } });
+  await invokeGuarded("record-practice", {
+    body: { phraseId, outcome: PRACTICE_OUTCOME_WIRE_VALUE[outcome] },
+  });
 }
 
 function sortByCreatedAtDesc(phrases: readonly SavedPhrase[]): SavedPhrase[] {
@@ -311,4 +330,35 @@ export function recordPracticeOutcome(
   ...args: Parameters<typeof recordPracticeOutcomeImpl>
 ): ReturnType<typeof recordPracticeOutcomeImpl> {
   return serialize(() => recordPracticeOutcomeImpl(...args));
+}
+
+/**
+ * Union a remote phrase list onto the local cache rather than replacing it.
+ *
+ * The remote answer is the source of truth for what it contains, but an
+ * empty or partial list is not proof the reader has nothing saved - it may
+ * mean the sync of a locally-saved phrase has not landed yet (the "backend
+ * not deployed" and "offline write, sync pending" cases `invokeGuarded`'s
+ * doc comment describes), or the server call itself only returned a subset.
+ * Replacing the cache with that answer permanently hid every phrase saved
+ * locally that the server had not got, including ones with no way back
+ * short of saving them again. Keeping local-only entries around instead
+ * costs nothing: the next successful sync reconciles them the normal way,
+ * the same `savePhrase` sync path already does for a single fresh save.
+ */
+function mergeSavedPhrases(
+  local: readonly SavedPhrase[],
+  remote: readonly SavedPhrase[],
+): SavedPhrase[] {
+  const validRemote = remote.filter(
+    (entry): entry is SavedPhrase =>
+      Boolean(entry) && typeof entry.phrase === "string" && typeof entry.storyId === "string",
+  );
+  const remoteKeys = new Set(
+    validRemote.map((entry) => dedupeKey(entry.storyId, entry.phrase)),
+  );
+  const localOnly = local.filter(
+    (entry) => !remoteKeys.has(dedupeKey(entry.storyId, entry.phrase)),
+  );
+  return [...validRemote, ...localOnly];
 }

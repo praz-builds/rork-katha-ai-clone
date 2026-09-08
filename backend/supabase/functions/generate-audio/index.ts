@@ -26,6 +26,7 @@ import {
 } from "../_shared/voices.ts";
 import { generateWithEdgeTts } from "../_shared/edge-tts.ts";
 import {
+  cancelRunpodNarration,
   canReadChapter,
   claimChapterAudioGeneration,
   findReadyChapterAudio,
@@ -181,18 +182,12 @@ export async function handleRequest(req: Request): Promise<Response> {
       }, 202);
     }
 
+    let jobId: string;
     try {
-      const jobId = await startProviderJob(voice, chapter.content);
-      await markChapterAudioJobStarted(serviceClient, claim.id!, jobId);
-      return respond({
-        status: "PENDING",
-        story_id: storyId,
-        chapter_id: chapterId,
-        voice_id: voiceId,
-        job_id: jobId,
-        cached: false,
-      }, 202);
+      jobId = await startProviderJob(voice, chapter.content);
     } catch (providerError) {
+      // The provider never accepted a job, so there is nothing to reconcile
+      // -- this is the ordinary "generation failed to start" path.
       const errorCode = providerErrorCode(providerError);
       await markChapterAudioFailed(serviceClient, claim.id!, errorCode);
       await logError({
@@ -205,6 +200,46 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
       return respond({ error: "Narration generation failed to start" }, 502);
     }
+
+    try {
+      await markChapterAudioJobStarted(serviceClient, claim.id!, jobId);
+    } catch (recordError) {
+      // RunPod already accepted `jobId` and is generating on it -- this
+      // write is what would have let anything ever learn that id again. A
+      // retry now would reclaim this same row and start a second job on top
+      // of one already running unseen, exactly the duplicate spend the
+      // (chapter, voice) claim exists to prevent. Cancel what we can, then
+      // fail the row so a retry gets a clean claim instead of an untracked
+      // race.
+      await cancelRunpodNarration(jobId);
+      await markChapterAudioFailed(
+        serviceClient,
+        claim.id!,
+        "job_not_recorded",
+      );
+      await logError({
+        bucket: "generation.audio",
+        severity: "critical",
+        errorCode: "job_not_recorded",
+        error: recordError,
+        userId: user.id,
+        context: {
+          story_id: storyId,
+          chapter_id: chapterId,
+          provider: voice.provider,
+        },
+      });
+      return respond({ error: "Narration generation failed to start" }, 502);
+    }
+
+    return respond({
+      status: "PENDING",
+      story_id: storyId,
+      chapter_id: chapterId,
+      voice_id: voiceId,
+      job_id: jobId,
+      cached: false,
+    }, 202);
   } catch (error) {
     console.error("generate-audio error:", error);
     await logError({

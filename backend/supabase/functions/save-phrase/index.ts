@@ -56,7 +56,20 @@ export async function handleRequest(req: Request): Promise<Response> {
       throw error;
     }
 
-    return respond({ phrase: data });
+    // `save_phrase` returns the `saved_phrases` row, whose primary key is
+    // `id` -- the id `unsave-phrase` deletes by. The row also carries its own
+    // `phrase_id` column, a foreign key into `phrase_corpus` that can be null
+    // and is a different thing entirely. `phrase_id` at the response root is
+    // the id the client keeps for unsaving later
+    // (`expo/src/lib/phrases.ts`'s `savePhrase`), so it has to be this row's
+    // `id`, not nested under `phrase` and not the corpus column of the same
+    // name.
+    const row = data as { id?: string } | null;
+    if (!row || typeof row.id !== "string") {
+      throw new Error("save_phrase returned no row id");
+    }
+
+    return respond({ phrase_id: row.id, phrase: row });
   } catch (error) {
     console.error("save-phrase error:", error);
     await logError({

@@ -5,6 +5,7 @@ import {
 import {
   isValidRunpodJobId,
   RUNPOD_ENDPOINT,
+  runpodCancelUrl,
   runpodStatusUrl,
 } from "./runpod.ts";
 
@@ -42,4 +43,16 @@ Deno.test("runpod status url refuses every path-steering job id", () => {
   assertEquals(runpodStatusUrl("abc/../../../"), null);
   assertEquals(runpodStatusUrl(""), null);
   assertEquals(runpodStatusUrl(null), null);
+});
+
+Deno.test("runpod cancel url keeps a valid job on the cancel path, under the same guarantees as status", () => {
+  const url = runpodCancelUrl("abc-123_XYZ");
+  assertEquals(url, `${RUNPOD_ENDPOINT}/cancel/abc-123_XYZ`);
+  assertStringIncludes(url!, "https://api.runpod.ai/v2/");
+
+  assertEquals(runpodCancelUrl("../purge-queue"), null);
+  assertEquals(runpodCancelUrl("abc?foo=bar"), null);
+  assertEquals(runpodCancelUrl("https://evil.example/cancel"), null);
+  assertEquals(runpodCancelUrl(""), null);
+  assertEquals(runpodCancelUrl(null), null);
 });

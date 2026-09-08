@@ -43,9 +43,16 @@ interface ServerState {
   chapterAudio: Map<string, ChapterAudioFixture>;
   runpodRunStatus: number;
   runpodRunBody: () => Record<string, unknown>;
+  /**
+   * Fails only the `provider_job_id` write `markChapterAudioJobStarted`
+   * makes, after the provider run has already been accepted -- the exact
+   * failure window `generate-audio` has to reconcile.
+   */
+  failJobStartedPatch: boolean;
   calls: {
     rpc: number;
     runpodRun: number;
+    runpodCancel: string[];
     patches: Array<{ table: string; body: Record<string, unknown> }>;
   };
 }
@@ -65,10 +72,12 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     chapterAudio: new Map(),
     runpodRunStatus: 200,
     runpodRunBody: () => ({ id: "job-xyz" }),
+    failJobStartedPatch: false,
     calls: {
       rpc: 0,
       patches: [] as ServerState["calls"]["patches"],
       runpodRun: 0,
+      runpodCancel: [] as string[],
     },
     ...overrides,
   };
@@ -188,8 +197,26 @@ function makeFetchStub(state: ServerState): typeof fetch {
 
     if (url.pathname === "/rest/v1/chapter_audio") {
       if (request.method === "PATCH") {
-        const body = await request.json();
+        const body = await request.json() as Record<string, unknown>;
         state.calls.patches.push({ table: "chapter_audio", body });
+        if (state.failJobStartedPatch && body.status === "pending") {
+          return json({ message: "simulated outage" }, 500);
+        }
+        // Applied to the matching fixture row, the way a real `update().eq()`
+        // would land, so a test can assert on the row's state afterwards
+        // rather than only on which PATCH bodies were sent.
+        const idFilter = url.searchParams.get("id")?.replace(/^eq\./, "");
+        if (idFilter) {
+          for (const [key, row] of state.chapterAudio) {
+            if (row.id === idFilter) {
+              state.chapterAudio.set(
+                key,
+                { ...row, ...body } as ChapterAudioFixture,
+              );
+              break;
+            }
+          }
+        }
         return json([]);
       }
       const voiceId = url.searchParams.get("voice_id")?.replace(/^eq\./, "");
@@ -225,6 +252,15 @@ function makeFetchStub(state: ServerState): typeof fetch {
     ) {
       state.calls.runpodRun += 1;
       return json(state.runpodRunBody(), state.runpodRunStatus);
+    }
+
+    if (
+      url.href.startsWith(
+        "https://api.runpod.ai/v2/minimax-speech-02-hd/cancel/",
+      )
+    ) {
+      state.calls.runpodCancel.push(url.href.split("/cancel/")[1]);
+      return json({ id: url.href.split("/cancel/")[1], status: "CANCELLED" });
     }
 
     if (url.pathname === "/rest/v1/error_events") return json([]);
@@ -474,6 +510,85 @@ Deno.test("an invalid story_id or chapter_id is rejected before touching the dat
     });
     assertEquals(status, 400);
     assertEquals(body.error, "Valid story_id and chapter_id are required");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// If RunPod has already accepted a job and the write that would remember its
+// id fails, the job must not become untracked: this asserts the job gets
+// cancelled and the claimed row is put back to "failed" rather than left
+// stuck "pending" with no provider_job_id, which would otherwise (a) waste
+// the provider spend on a job nothing can ever collect, and (b) let a retry
+// reclaim the same row and start a second job racing the still-running first
+// one -- defeating the one-job-per-(chapter,voice) guarantee that row exists
+// to hold.
+Deno.test("a provider job that cannot be recorded is cancelled, not left untracked", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ failJobStartedPatch: true });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+    });
+
+    assertEquals(status, 502);
+    assertEquals(body.error, "Narration generation failed to start");
+    assertEquals(state.calls.runpodRun, 1, "the provider job was started");
+    assertEquals(
+      state.calls.runpodCancel,
+      ["job-xyz"],
+      "the exact job RunPod accepted must be the one cancelled",
+    );
+
+    const row = state.chapterAudio.get(`${CHAPTER_ID}:aria`);
+    assertEquals(
+      row?.status,
+      "failed",
+      "the row must not be left stuck pending with no provider_job_id",
+    );
+    assertEquals(row?.provider_job_id, null);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a retry after a failed recording claims cleanly and starts one new job, not two", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ failJobStartedPatch: true });
+    await run(state, { story_id: STORY_ID, chapter_id: CHAPTER_ID });
+
+    // The failure above cancelled the first job and marked the row failed.
+    // A retry, now with recording working, must claim that same row again
+    // (not error as "already claimed") and start exactly one more job.
+    state.failJobStartedPatch = false;
+    const retry = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+    });
+
+    assertEquals(retry.status, 202);
+    assertEquals(
+      state.calls.runpodRun,
+      2,
+      "one job from the failure, one from the retry",
+    );
+    assertEquals(
+      state.calls.runpodCancel,
+      ["job-xyz"],
+      "only the untracked first job was cancelled",
+    );
+    const row = state.chapterAudio.get(`${CHAPTER_ID}:aria`);
+    assertEquals(row?.status, "pending");
+    assertEquals(row?.provider_job_id, "job-xyz");
   } finally {
     restoreEnv(env);
   }

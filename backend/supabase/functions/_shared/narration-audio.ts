@@ -15,7 +15,7 @@
  */
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DEFAULT_VOICE_ID, VoiceRecord } from "./voices.ts";
-import { RUNPOD_ENDPOINT, runpodStatusUrl } from "./runpod.ts";
+import { RUNPOD_ENDPOINT, runpodCancelUrl, runpodStatusUrl } from "./runpod.ts";
 
 export const NARRATION_REFUSAL = "Narration unlock is not available yet";
 export const AUDIO_BUCKET = "audio";
@@ -328,6 +328,37 @@ export async function pollRunpodNarration(
   };
 }
 
+/**
+ * Best-effort cancellation for a RunPod job this system failed to record.
+ *
+ * `generate-audio` claims a `chapter_audio` row, starts a provider job, and
+ * only then writes the returned job id onto that row. If that last write
+ * fails -- RunPod already accepted and is billing the job, but the row that
+ * was meant to remember its id never got it -- the job runs with nothing in
+ * the database pointing at it: unrecoverable spend, and a retry that
+ * reclaims the same row starts a second job on top of it, defeating the
+ * one-job-per-(chapter,voice) guarantee that row exists to hold. This cannot
+ * undo the request that already left, but a job actually cancelled here
+ * never finishes, so at most the retry's job produces real audio. Never
+ * throws: the caller has already lost the write it needed to succeed, and
+ * this is strictly a best-effort cleanup on top of that failure, not
+ * something worth failing louder over.
+ */
+export async function cancelRunpodNarration(jobId: string): Promise<void> {
+  const url = runpodCancelUrl(jobId);
+  if (!url) return;
+  const apiKey = Deno.env.get("RUNPOD_API_KEY");
+  if (!apiKey) return;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+  } catch (error) {
+    console.error("narration: best-effort RunPod cancel failed", error);
+  }
+}
+
 async function bytesFromRunpodOutput(
   output: unknown,
 ): Promise<Uint8Array | null> {
@@ -335,7 +366,13 @@ async function bytesFromRunpodOutput(
   const record = output as Record<string, unknown>;
 
   const base64 = stringField(record, ["audio_base64", "audio", "mp3_base64"]);
-  if (base64) return decodeBase64Audio(base64);
+  if (base64) {
+    const bytes = decodeBase64Audio(base64);
+    if (!bytes) {
+      console.error("narration: refusing an oversized base64 audio payload");
+    }
+    return bytes;
+  }
 
   const url = stringField(record, ["audio_url", "url", "mp3_url"]);
   if (url) {
@@ -345,14 +382,8 @@ async function bytesFromRunpodOutput(
     // reach -- internal addresses and cloud metadata endpoints included -- and
     // at a body of any size. Narration audio is the only thing it is ever meant
     // to retrieve.
-    if (!isAllowedAudioUrl(url)) {
-      console.error(
-        "narration: refusing to fetch audio from an unexpected host",
-      );
-      return null;
-    }
-    const response = await fetch(url);
-    if (!response.ok) return null;
+    const response = await fetchAllowedAudioUrl(url);
+    if (!response || !response.ok) return null;
 
     const declared = Number(response.headers.get("content-length") ?? "");
     if (Number.isFinite(declared) && declared > MAX_AUDIO_BYTES) return null;
@@ -363,6 +394,53 @@ async function bytesFromRunpodOutput(
     return bytes;
   }
 
+  return null;
+}
+
+/** A redirect chain is capped, not just re-validated, so it cannot be used to hang the request either. */
+const MAX_AUDIO_REDIRECTS = 5;
+
+/**
+ * Fetch a provider-supplied audio URL, re-validating the host allowlist on
+ * every redirect hop rather than only the URL this function was first
+ * handed.
+ *
+ * `fetch` follows redirects on its own by default, and it does so *after*
+ * any allowlist check the caller ran on the starting URL -- so an allowed
+ * host that responds with a 3xx to an internal address (a compromised or
+ * simply misconfigured provider edge) sails straight through: the allowlist
+ * only ever saw where the request started, never where it actually landed.
+ * `redirect: "manual"` turns every hop into a value this function inspects
+ * itself, so `isAllowedAudioUrl` gets a real say at each one instead of
+ * being bypassed by the second and every later request in the chain.
+ */
+async function fetchAllowedAudioUrl(url: string): Promise<Response | null> {
+  let current = url;
+  for (let hop = 0; hop <= MAX_AUDIO_REDIRECTS; hop += 1) {
+    if (!isAllowedAudioUrl(current)) {
+      console.error(
+        "narration: refusing to fetch audio from an unexpected host",
+      );
+      return null;
+    }
+    const response = await fetch(current, { redirect: "manual" });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) return null;
+      try {
+        // Resolved against the hop just requested, then looped back so the
+        // resolved target is validated before it is ever followed.
+        current = new URL(location, current).toString();
+      } catch {
+        return null;
+      }
+      continue;
+    }
+    return response;
+  }
+  console.error(
+    "narration: refusing an audio redirect chain that ran on too long",
+  );
   return null;
 }
 
@@ -413,8 +491,24 @@ function stringField(
   return null;
 }
 
-function decodeBase64Audio(value: string): Uint8Array {
+/**
+ * Base64 expands the original bytes by ~4/3, so this is the same 50 MB
+ * ceiling the URL path enforces, expressed in encoded characters.
+ */
+const MAX_AUDIO_BASE64_CHARS = Math.ceil((MAX_AUDIO_BYTES / 3) * 4);
+
+/**
+ * Decodes a base64 audio payload, or refuses one that is too large to be our
+ * audio -- checked against the encoded string length *before* decoding, not
+ * against the decoded byte count after. The URL path already has a size cap
+ * enforced up front by `content-length` before the body is read; this path
+ * carried no equivalent, so a provider response (or one spoofing it) could
+ * hand this function an arbitrarily large string and have it fully decoded
+ * into memory regardless.
+ */
+function decodeBase64Audio(value: string): Uint8Array | null {
   const clean = value.replace(/^data:audio\/[^;]+;base64,/, "");
+  if (clean.length > MAX_AUDIO_BASE64_CHARS) return null;
   return Uint8Array.from(atob(clean), (char) => char.charCodeAt(0));
 }
 
