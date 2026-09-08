@@ -78,8 +78,64 @@ jobs:
           done
           exit "$failed"
 
-      - name: Test shared modules
-        run: deno test --allow-env --allow-net --allow-read backend/supabase/functions/_shared/
+      # Every function test, not just the shared modules.
+      #
+      # This ran `_shared/` alone, so each `functions/<name>/index.test.ts`
+      # existed and never executed in CI. The publish visibility contract, the
+      # engagement handlers and the narration entitlement gate all have handler
+      # tests that were only ever run by hand.
+      - name: Test edge functions
+        run: deno test --allow-env --allow-net --allow-read backend/supabase/functions/
+
+      # The migration tests, which had NEVER run in CI.
+      #
+      # They are the only automated proof of the security-critical SQL: that a
+      # gated story cannot be made public even by a direct PostgREST write, that
+      # a user cannot insert their own like row and desynchronise the counter,
+      # that a private individual is never searchable, that one user cannot read
+      # another's saved phrases. Every one of those was verified by a human
+      # running deno locally and by nothing else.
+      #
+      # They spin up PGlite and take a few minutes. That is the right price for
+      # the only thing standing between a bad migration and production.
+      - name: Test migrations
+        run: deno test --allow-env --allow-net --allow-read backend/supabase/migrations/
 
       - name: Format check (shared LLM modules)
         run: deno fmt --check backend/supabase/functions/_shared/llm.ts backend/supabase/functions/_shared/llm.test.ts backend/supabase/functions/_shared/story_schema.ts
+
+  # Runs only after something lands on main, because it is slow and its job is
+  # to catch what the per-PR suites cannot: that the app actually bundles.
+  #
+  # `tsc` resolves imports through TypeScript's resolver and Metro does not, so
+  # a path that typechecks can still fail to bundle -- and the symptom is a
+  # blank screen with nothing useful in the log.
+  smoke:
+    name: Smoke - web bundle builds
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: expo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: expo
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the web bundle
+        working-directory: expo
+        run: pnpm exec expo export --platform web --output-dir "$RUNNER_TEMP/web-export"
+
+      - name: Fail if the bundle produced nothing
+        run: test -s "$RUNNER_TEMP/web-export/index.html"

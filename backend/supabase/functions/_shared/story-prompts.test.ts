@@ -327,6 +327,99 @@ Deno.test("new genre modules exist: darkRomance, cozyFantasy, paranormalRomance,
   }
 });
 
+// ---------------------------------------------------------------------------
+// v7 taxonomy (2026-09-08): four new genre voice modules
+// ---------------------------------------------------------------------------
+
+Deno.test("new genre modules exist: educational, fanfiction, folktale, sliceOfLife", () => {
+  for (
+    const genre of ["educational", "fanfiction", "folktale", "sliceOfLife"]
+  ) {
+    const prompt = buildStorySystemPrompt({ primaryGenre: genre });
+    assert(
+      prompt.includes(`## Genre: ${genre}`),
+      `Missing genre module for ${genre}`,
+    );
+  }
+});
+
+Deno.test("each new genre module carries its own distinct craft guidance", () => {
+  const distinguishingText: Record<string, string> = {
+    educational: "load-bearing",
+    fanfiction: "already loves these characters",
+    folktale: "oral and cadenced",
+    sliceOfLife: "quiet and observational",
+  };
+  for (const [genre, phrase] of Object.entries(distinguishingText)) {
+    const prompt = buildStorySystemPrompt({ primaryGenre: genre });
+    assert(
+      prompt.toLowerCase().includes(phrase.toLowerCase()),
+      `${genre} module is missing its distinguishing text "${phrase}"`,
+    );
+  }
+});
+
+Deno.test("two different new genres produce different prompts", () => {
+  const educational = buildStorySystemPrompt({ primaryGenre: "educational" });
+  const folktale = buildStorySystemPrompt({ primaryGenre: "folktale" });
+  const fanfiction = buildStorySystemPrompt({ primaryGenre: "fanfiction" });
+  const sliceOfLife = buildStorySystemPrompt({ primaryGenre: "sliceOfLife" });
+  const prompts = [educational, folktale, fanfiction, sliceOfLife];
+  for (let i = 0; i < prompts.length; i++) {
+    for (let j = i + 1; j < prompts.length; j++) {
+      assert(prompts[i] !== prompts[j], `prompt ${i} and ${j} are identical`);
+    }
+  }
+});
+
+// educational must not turn stories into lessons: the anti-slop and
+// show-don't-tell rules still govern, and the module itself has to say so
+// rather than merely obey it by omission.
+Deno.test("the educational module explicitly guards against reading like a lesson", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "educational" });
+  assert(prompt.includes("## Genre: educational"));
+  assert(
+    prompt.includes("worksheet") || prompt.includes("textbook"),
+  );
+  // The universal anti-slop and show-don't-tell rules are in the base layer,
+  // which is assembled for every genre, educational included.
+  assert(prompt.includes("NEVER explain subtext"));
+});
+
+// A story stored with a removed genre must keep building a prompt: continuing
+// an existing series never routes back through validateGenerationRequest's
+// migration, so `story-prompts.ts`'s own genre lookup has to resolve the
+// stored value directly rather than throwing on an "unsupported" genre.
+Deno.test("a story stored with a removed genre still builds a prompt without throwing", () => {
+  for (
+    const genre of [
+      "romantasy",
+      "darkRomance",
+      "paranormalRomance",
+      "cozyFantasy",
+      "poetry",
+      "thriller",
+      "contemporary",
+    ]
+  ) {
+    const prompt = buildStorySystemPrompt({ primaryGenre: genre });
+    assert(
+      prompt.includes(`## Genre: ${genre}`),
+      `${genre} did not resolve to its own genre module`,
+    );
+
+    const continuation = buildContinuationSystemPrompt({
+      primaryGenre: genre,
+      mode: "chapter",
+      seriesState: EMPTY_SERIES_STATE,
+    });
+    assert(
+      continuation.includes(`## Genre: ${genre}`),
+      `${genre} continuation prompt did not resolve to its own genre module`,
+    );
+  }
+});
+
 Deno.test("banned words are in the prompt", () => {
   const prompt = buildStorySystemPrompt({ primaryGenre: "fantasy" });
   assert(prompt.includes("delve"));

@@ -580,6 +580,46 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     whatToAvoid:
       "Purple prose masquerading as poetry (more adjectives does not equal more poetic). Abstract statements about feelings. Rhyming prose. Being obscure for its own sake — compression is not the same as confusion.",
   },
+  educational: {
+    voice:
+      "A real story first, with a fact, a skill, or a way of thinking embedded in what the protagonist does to get what they want. The information should be load-bearing: the character needs it to solve the actual problem, not a side note the narration pauses to deliver. If you can delete a sentence and the plot still works, the sentence was a lesson, not a story, and it goes.",
+    pacing:
+      "Let the protagonist attempt something, get it wrong for a real reason, and figure out the correct approach through consequence — not through a mentor explaining it in a paragraph. Curiosity drives scenes forward the way a clue drives a mystery: a specific question the character needs answered before they can act.",
+    whatWorks:
+      "A protagonist whose ignorance costs them something concrete before they learn otherwise. Information delivered through action, dialogue with a stake in it, or a mistake and its fallout — never through narration stopping to explain. A closing image or scene that shows the change in what the character can now do, rather than stating what they learned.",
+    whatToAvoid:
+      "A narrator who explains a concept directly to the reader. A character who exists only to ask the question an expert then answers. A moral or 'takeaway' paragraph at the end. Textbook diction (delve, understand that, it is important to know). Dialogue where one character quizzes another. If it reads like a worksheet with a plot bolted on, it has failed.",
+  },
+  fanfiction: {
+    voice:
+      "Heightened and devoted. This is the register of someone who already loves these characters and is extending their story rather than introducing them — so voice, relationship history, and unspoken shorthand between characters can be assumed rather than re-established. Emotional beats can run bigger and closer together than in original fiction, because the reader arrived already invested.",
+    pacing:
+      "Compress the ordinary and dwell in the charged moment. A fanfic reader is here for a specific dynamic or scenario, so get to it — the found-family reunion, the rivals forced together, the missing scene — faster than a debut story would, then slow down hard once you're inside it.",
+    whatWorks:
+      "Trope commitment: pick the shape (enemies to lovers, found family, one bed, canon-divergence) and deliver its known pleasures with a fresh specific detail rather than apologizing for the trope. Voice and mannerism consistency for an established dynamic. A callback or in-joke between characters that rewards a reader who already knows them. Emotional payoff arriving sooner and landing harder than in original fiction.",
+    whatToAvoid:
+      "Real named public figures or identifiable private individuals, in any pairing or scenario. Extensive world re-explanation the audience does not need. A wink to the reader that breaks the fourth wall. Treating the trope as a joke instead of playing it straight. Original-character worship that sidelines the dynamic the reader came for.",
+  },
+  folktale: {
+    voice:
+      "Oral and cadenced, as if told aloud across a fire or a kitchen table, not read silently off a page. Archetypal roles (the youngest child, the clever fool, the trickster animal) are allowed and expected, but give each one a single, specific, unexpected trait so the archetype doesn't collapse into a placeholder. Repetition is structural, not lazy: the same phrase returning three times is the folktale doing its job.",
+    pacing:
+      "Move in patterned units — three trials, three brothers, three attempts — with each repetition changing one variable so the third lands differently from the first two. Keep exposition minimal; a folktale trusts the listener to infer the world from what characters do in it.",
+    whatWorks:
+      "A concrete task or riddle with a fair, learnable rule. A small creature or overlooked character outwitting a larger, prouder one through cleverness rather than force. Consequences that fit the crime with folkloric symmetry (kindness returned, greed punished by its own logic). An ending that closes cleanly, often with a final image or turn of phrase that could be repeated aloud.",
+    whatToAvoid:
+      "Narrating the moral directly ('and so we learn that...') — the consequence must demonstrate the lesson, never announce it, or the story becomes a fable with the teeth pulled. Modern brand names, technology, or slang breaking the timeless setting. Overexplaining the magic's rules. A trickster who wins through violence instead of wit.",
+  },
+  sliceOfLife: {
+    voice:
+      "Quiet and observational, finding the story in a single ordinary day rather than a crisis. The prose should notice what a character notices — the specific ritual of making coffee, the exact tone of a coworker's greeting — and trust that accumulated small truth over a dramatic turn. Nothing needs to be at stake in the plot sense; what's at stake is whether the character will let themselves notice something about their own life.",
+    pacing:
+      "Real time, mostly. Let an ordinary errand, shift, or evening play out close to its actual length, and let the emotional shift happen inside that mundane container rather than needing an external event to force it. A single small decision — texting back, staying five more minutes, finally throwing something away — can be the whole climax.",
+    whatWorks:
+      "Sensory specificity about routine (the particular squeak of a chair, a recurring order at a food stall). A character who is slightly wrong about their own feelings until a small moment corrects them. Warmth that includes friction — a good day can still have an argument in it. An ending that is a shift in noticing, not a resolution of a problem.",
+    whatToAvoid:
+      "Manufacturing a crisis (an accident, a diagnosis, a breakup) to justify the stakes — that is a different genre wearing this one's clothes. A tidy lesson stated in the final paragraph. Treating 'nothing happens' as permission for the prose itself to go slack; the ordinariness is the subject, not an excuse to stop working the sentence.",
+  },
 };
 
 function buildGenreModule(genre: string): string {

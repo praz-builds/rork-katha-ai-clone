@@ -38,8 +38,29 @@ export class GenerationRequestError extends Error {
   }
 }
 
+/**
+ * Why a shape request produced nothing.
+ *
+ * `rate_limited` is the one worth naming. It is not a failure of the model or
+ * of the user's idea - it is one of three capacity windows in
+ * `claim_story_shape_request` refusing the claim - and retrying does not help
+ * within the window. Onboarding uses it to fall back to the writer's own
+ * details instead of offering a Try again that cannot succeed.
+ */
+const SHAPE_FAILURE_REASONS = [
+  "rate_limited",
+  "provider_failed",
+  "unavailable",
+] as const;
+
+export type StoryShapeFailureReason = typeof SHAPE_FAILURE_REASONS[number];
+
 export class StoryShapeRequestError extends Error {
-  constructor(message: string, readonly retryable: boolean) {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+    readonly reason: StoryShapeFailureReason = "unavailable",
+  ) {
     super(message);
     this.name = "StoryShapeRequestError";
   }
@@ -59,7 +80,7 @@ export type StoryShape = {
   beats: string[];
   /** Onboarding variant only: the title the blueprint card carries. */
   title?: string;
-  /** Onboarding variant only: 120-180 words of real opening. */
+  /** Onboarding variant only: the opening prose the preview screen shows. */
   opening?: string;
   /**
    * Grounding resolved alongside the shape, carried opaquely.
@@ -104,9 +125,13 @@ export async function inferStoryBrief(
   brief?: StoryShapeBrief,
   options: { throwOnError?: boolean } = {},
 ): Promise<StoryShape | null> {
-  const fail = (message: string, retryable: boolean) => {
+  const fail = (
+    message: string,
+    retryable: boolean,
+    reason: StoryShapeFailureReason = "unavailable",
+  ) => {
     if (options.throwOnError) {
-      throw new StoryShapeRequestError(message, retryable);
+      throw new StoryShapeRequestError(message, retryable, reason);
     }
     return null;
   };
@@ -118,7 +143,11 @@ export async function inferStoryBrief(
   try {
     await bootstrapUser();
   } catch {
-    return fail("Unable to set up your story account. Please try again.", true);
+    return fail(
+      "Unable to set up your story account. Please try again.",
+      true,
+      "provider_failed",
+    );
   }
 
   const { data, error } = await supabase.functions.invoke("shape-story", {
@@ -136,11 +165,35 @@ export async function inferStoryBrief(
   });
   if (error) {
     const message = error.message || "Story shaping failed.";
-    const retryable = !/(rate|limit|quota|429|too many)/i.test(message);
-    return fail(message, retryable);
+    const rateLimited = /(rate|limit|quota|429|too many)/i.test(message);
+    return fail(
+      message,
+      !rateLimited,
+      rateLimited ? "rate_limited" : "provider_failed",
+    );
   }
   if (!data?.shape || typeof data.shape !== "object") {
-    return fail("Story shaping returned an empty response.", false);
+    /**
+     * The server says why now, and the difference matters upstream.
+     *
+     * Every empty answer used to arrive here as one non-retryable condition
+     * called "returned an empty response", including a refused rate-limit
+     * claim - so a user who hit a capacity ceiling was told their idea had
+     * produced nothing usable, on a screen with no way forward. `reason` comes
+     * from `shape-story`, which is the only place that knows the difference.
+     */
+    const reason = SHAPE_FAILURE_REASONS.includes(
+        data?.reason as StoryShapeFailureReason,
+      )
+      ? data.reason as StoryShapeFailureReason
+      : "unavailable";
+    return fail(
+      reason === "rate_limited"
+        ? "We are shaping a lot of stories right now."
+        : "Story shaping returned an empty response.",
+      reason === "provider_failed",
+      reason,
+    );
   }
 
   const shape = data.shape as Record<string, unknown>;
@@ -223,7 +276,11 @@ export async function inferOnboardingStoryBrief(
     { throwOnError: true },
   );
   if (!shape) {
-    throw new StoryShapeRequestError("Story shaping returned an empty response.", false);
+    throw new StoryShapeRequestError(
+      "Story shaping returned an empty response.",
+      false,
+      "unavailable",
+    );
   }
   return shape;
 }
@@ -506,6 +563,24 @@ export async function generateStoryStreaming(
 }
 
 /**
+ * The chapter length generation will actually use for `draft`.
+ *
+ * A kids draft with no explicit choice defaults to "short" (see
+ * `chooseAudience` in `CreateBriefFlow.tsx`), but the backend's own fallback
+ * for an entirely absent `chapter_length` is "standard" -- a generic default
+ * that knows nothing about audience mode. Sending `draft.chapterLength`
+ * unmodified would let that generic default quietly override the
+ * kids-specific one. This is the one place the effective value is computed;
+ * both the request body below and every screen that displays "what will
+ * generate" read it from here, so the two can never say different things.
+ */
+export function effectiveChapterLength(
+  draft: Pick<CreateDraft, "chapterLength" | "audienceMode">,
+): NonNullable<CreateDraft["chapterLength"]> {
+  return draft.chapterLength ?? (draft.audienceMode === "kids" ? "short" : "standard");
+}
+
+/**
  * The generation request body, built once for both the buffered and the
  * streamed path.
  *
@@ -559,7 +634,7 @@ function buildGenerationRequestBody(
       story_values: draft.storyValues,
       writing_style: draft.writingStyle,
       avoid: draft.avoid,
-      chapter_length: draft.chapterLength,
+      chapter_length: effectiveChapterLength(draft),
       planned_chapter_count: draft.plannedChapterCount,
       illustrate_chapters: draft.illustrateChapters,
       // story_mode is the current request contract. The backend still accepts
@@ -976,6 +1051,10 @@ const MOCK_TITLES: Partial<Record<Genre, string[]>> = {
     "Weather Reports of Love",
     "What the Tide Pool Remembers",
   ],
+  educational: ["What the Tide Pool Teaches", "The Apprentice's Typo", "One Afternoon Cloud"],
+  fanfiction: ["The Bridge, Retold", "What the Finale Left Out", "The Best Part of the Week"],
+  folktale: ["The Miller's Third Wish", "The Key Nobody Built", "The Crow's Third Winter"],
+  sliceOfLife: ["The Corner Laundromat", "The Spice Rack", "The Shared Desk Lamp"],
 };
 
 function generateMockTitle(genre: Genre): string {
@@ -1235,6 +1314,22 @@ function mapContinuedChapter(
   };
 }
 
+/**
+ * The offline walkthrough's continuation, and it is canned prose.
+ *
+ * This exists so the app can be walked with no backend configured. It cannot
+ * honour a direction the reader typed or chose, because there is no model in
+ * this path to honour it with -- so a suggested or written next step is
+ * accepted by the UI and does not shape the text.
+ *
+ * That gap is REPORTED rather than hidden. The returned chapter is marked, and
+ * `isLocalStubChapter` lets a caller say so, because silently returning prose
+ * that ignores the reader's choice teaches them the feature does not work. The
+ * alternative of faking direction-sensitive text would be a worse lie.
+ *
+ * Against a configured backend none of this runs: the instruction reaches
+ * `continue-story` and does shape the chapter.
+ */
 async function localContinueStory(
   _storyId: string,
   isFinale?: boolean,
@@ -1264,8 +1359,27 @@ async function localContinueStory(
       chapterNumber: chapterNum,
       isPublished: false,
     },
-    model: "mock",
+    model: LOCAL_STUB_MODEL,
   };
+}
+
+/**
+ * The `model` value the offline continuation returns.
+ *
+ * Named rather than a bare string so a caller can recognise a stub chapter
+ * instead of pattern-matching prose, and so the two places that care cannot
+ * drift apart.
+ */
+export const LOCAL_STUB_MODEL = "mock";
+
+/**
+ * Did this chapter come from the offline stub rather than a model?
+ *
+ * Callers use it to tell the reader that a direction they chose was not applied,
+ * which is the honest thing to say when there was no model to apply it.
+ */
+export function isLocalStubChapter(result: { model: string }): boolean {
+  return result.model === LOCAL_STUB_MODEL;
 }
 
 // ---------------------------------------------------------------------------

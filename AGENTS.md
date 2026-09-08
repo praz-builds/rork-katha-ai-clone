@@ -253,7 +253,7 @@ The generation pipeline lives in `backend/supabase/functions/_shared/story-promp
 System prompts are assembled from 9 layers:
 1. **Base craft + safety** -- anti-slop, show-don't-tell, rhythm, dialogue, formatting, safety rules
 2. **Story engine** -- protagonist, want, obstacle, stakes, irreversible choice, emotional turn, genre payoff, final image
-3. **Primary genre module** -- 15 voice modules with voice/pacing/what-works/what-to-avoid
+3. **Primary genre module** -- 19 voice modules with voice/pacing/what-works/what-to-avoid
 4. **Audience mode** -- kids constraints (ages 4-10, 500-1200 words, safe content)
 5. **Identity lens** -- queer lens guidance
 6. **Spice module** -- sweet (fade to black), steamy (sensuality on-page), explicit (feature-flagged)
@@ -269,12 +269,13 @@ API:
 
 ### Taxonomy
 
-- **15 primary genres**: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry.
-- **13 UI genres** (cozyFantasy + paranormalRomance are DB-only, hidden from UI).
+- **19 primary genres**: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry, educational, fanfiction, folktale, sliceOfLife.
+- **12 UI genres** (2026-09-08 taxonomy), in display order: adventure, comedy, educational, fanfiction, folktale, historical, scifi, fantasy, mystery, horror, sliceOfLife, romance (romance deliberately last). `UI_GENRE_ORDER` in `_shared/types.ts` is the canonical order.
+- **7 DB-only genres, removed from the UI but never from the database**: romantasy, darkRomance, paranormalRomance, cozyFantasy, poetry, thriller, contemporary. A story already written in one keeps reading, continuing and rendering in that genre's own voice module forever -- only a NEW submission of one is migrated (see below). This follows the precedent this same rule set before 2026-09-08 for cozyFantasy and paranormalRomance.
 - **2 audience modes**: adult (default), kids (full-width segmented control in Shape).
-- **Spice levels**: sweet (default), steamy, explicit (feature-flagged off).
+- **Spice levels**: sweet (default), steamy. `explicit` was retired 2026-09-07 (not merely feature-flagged) -- see `source-of-truth/STORY_PROMPT_SYSTEM.md`. Spice itself left the product surface 2026-09-08: there is no user-facing spice picker any more, and an ABSENT `spice_level` is a first-class safe path that defaults per genre (`GENRE_DEFAULT_SPICE`, `sweet` as the final backstop) rather than an edge case. Inferring spice from the story idea's own prose is a stated follow-up, not yet implemented.
 - **Identity lenses**: queer.
-- **Genre migration map**: drama/sliceOfLife/darkAcademia -> contemporary, mythology -> fantasy, kids/bedtime -> adventure, lgbtq/motivational/spirituality -> contemporary.
+- **Genre migration map** (`GENRE_MIGRATION_MAP` in `_shared/types.ts`, applied only to new submissions, never to a stored value): drama/darkAcademia -> contemporary, mythology -> fantasy, kids/bedtime -> adventure, lgbtq/motivational/spirituality -> contemporary, thriller -> mystery, contemporary -> sliceOfLife, poetry -> folktale, romantasy/darkRomance/paranormalRomance -> romance, cozyFantasy -> fantasy.
 
 ### Quality Rules (enforced in every generation)
 
@@ -385,7 +386,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 
 `FocalImage` component in `expo/src/components/KathaPrimitives.tsx` renders web via raw `<img>` with `object-position` (RN Web's Image ignores it) and native via standard RN Image with `resizeMode="cover"`.
 
-### 16 Genre Prompt Configs
+### 19 Genre Prompt Configs
 
 | Genre | Style | Palette | Characters |
 |-------|-------|---------|------------|
@@ -405,6 +406,9 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 | poetry | ethereal abstract, dreamy watercolor | soft lavender, misty grey-blue, pale rose | scene |
 | comedy | vibrant pop, bold outlines | sunshine yellow, electric blue, hot pink | scene |
 | bedtime | soft dreamy, moonlit glow | midnight navy, moonlight silver, warm amber | scene |
+| educational | clean editorial, crisp linework | chalkboard teal, warm marigold, cream paper white | scene |
+| fanfiction | vibrant fan-art, glossy digital-painting | saturated duotone accents, deep contrast background | portrait |
+| folktale | woodcut-inspired, bold flat shapes | burnt umber, mustard gold, forest green | silhouette |
 
 ### Moderation Rules
 

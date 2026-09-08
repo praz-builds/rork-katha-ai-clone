@@ -344,7 +344,7 @@ The implemented order is:
 
 1. Animated Create, Publish, and Read introduction.
 2. First name.
-3. At least two genre interests, with emoji chips. The first selected genre with a create mapping becomes the initial writer-genre chip.
+3. At least three genre interests (`MIN_GENRE_SELECTIONS` in `KathaOnboardingFlowV2.jsx`), with emoji chips. The first selected genre with a create mapping becomes the initial writer-genre chip.
 4. Purpose: Reading, Writing, or A bit of both.
 5. Adaptive persona question one.
 6. Adaptive persona question two. For Writing this opens the dedicated writer story flow; for Reading or Both the CTA is `Build my profile`.

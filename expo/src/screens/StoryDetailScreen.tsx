@@ -196,11 +196,20 @@ export default function StoryDetailScreen({
   const badges = badgeLabels(story);
   const [listenNotice, setListenNotice] = useState(false);
 
-  const [isLiked, setIsLiked] = useState(false);
+  // Seeded from the viewer's own state, not from `false`.
+  //
+  // Starting every control at `false` meant a reader who had already liked a
+  // story saw an unfilled heart, and their next tap sent `on: true` for a like
+  // that already existed -- removing nothing, adding nothing, and leaving the
+  // UI disagreeing with the server. Absent means not engaged, which is the safe
+  // reading while the endpoints supplying these are still rolling out.
+  const [isLiked, setIsLiked] = useState(story.viewerHasLiked ?? false);
   const [likeCount, setLikeCount] = useState(story.likes);
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(story.viewerHasBookmarked ?? false);
   const [saveCount, setSaveCount] = useState(story.bookmarks);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(
+    story.viewerFollowsAuthor ?? false,
+  );
   const [shareToast, setShareToast] = useState(false);
   const likeInFlight = useRef(false);
   const saveInFlight = useRef(false);

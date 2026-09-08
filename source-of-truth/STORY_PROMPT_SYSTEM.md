@@ -7,7 +7,7 @@
 > the product and engineering contract for the prompt architecture across
 > Supabase, Expo, cover prompts, and tests.
 >
-> Last revised 2026-09-04.
+> Last revised 2026-09-08.
 
 ## Product Goal
 
@@ -15,7 +15,7 @@ Katha should generate mobile-native fiction that feels written by a strong genre
 writer, not by a generic assistant. The prompt system must optimize for:
 
 - a complete story engine before surface prose
-- reliable genre promise across 15 supported genres
+- reliable genre promise across 19 supported genres (12 shown in the creation UI)
 - modular identity and spice layers
 - safe adult-content handling with account-level gating
 - A Kids mode that cannot inherit adult behavior
@@ -24,16 +24,38 @@ writer, not by a generic assistant. The prompt system must optimize for:
 
 ## Key v6 Decisions
 
-- **15 primary genres (13 in the creation UI).** LGBTQ+ is no longer a primary
-  genre. Queer context may be inferred from the visible brief; it is not a
-  creation toggle. cozyFantasy and paranormalRomance exist in the DB constraint
-  but are hidden from the UI.
+- **19 primary genres (12 in the creation UI as of 2026-09-08).** LGBTQ+ is no
+  longer a primary genre. Queer context may be inferred from the visible brief;
+  it is not a creation toggle.
+- **The v7 taxonomy change (2026-09-08) adds four genres and removes seven from
+  the UI — none from the database.** New: `educational`, `fanfiction`,
+  `folktale`, `sliceOfLife`. Removed from the creation surface but still valid,
+  storable `PrimaryGenre` values, on the `cozyFantasy`/`paranormalRomance`
+  precedent above: `romantasy`, `darkRomance`, `paranormalRomance`,
+  `cozyFantasy`, `poetry`, `thriller`, `contemporary`. A story already written
+  in a removed genre keeps reading, continuing and rendering in that genre's own
+  voice module forever — only a NEW submission of a removed genre is redirected,
+  by `GENRE_MIGRATION_MAP` in `_shared/types.ts`: `thriller` -> `mystery`,
+  `contemporary` -> `sliceOfLife`, `poetry` -> `folktale`,
+  `romantasy`/`darkRomance`/`paranormalRomance` -> `romance`, `cozyFantasy` ->
+  `fantasy`. See **User-Facing Taxonomy** for the full picture and
+  **Genre Modules** for the four new voice modules.
 - **Kids is an audience mode, not an adult genre peer.** Backend generation uses
   `adult | kids`; any future bedtime UX should map to kids-safe constraints
   unless a separate backend mode is introduced.
 - **Spice is a genre-aware layer with two tiers.** Backend enum values are
   `sweet` and `steamy`. The clamp is downward only: a genre may lower a
   requested tier, never raise it.
+- **Spice leaves the product surface (2026-09-08).** There is no longer a
+  user-facing spice picker; the product intent is to infer heat from the
+  writer's own story idea rather than a UI meter. `spiceLevel` is unchanged in
+  the request contract, the prompt system, and stored rows — `deriveContentRating`
+  still reads it and Kids mode still forces `sweet` — but an ABSENT `spice_level`
+  is now a first-class, always-safe path rather than merely tolerated:
+  `validateGenerationRequest` defaults it per genre (`GENRE_DEFAULT_SPICE`, or
+  `sweet` if a genre is somehow missing from that table) and never rejects a
+  request for omitting it. Inferring spice from the idea's prose is a stated
+  follow-up, not implemented by this change.
 - **`explicit` is retired, not deferred.** It was removed from `SpiceLevel` on
   2026-09-07. Sexual content is out of the product: at every tier, sex acts
   happen off the page and crude anatomical vocabulary is never written. This is
@@ -103,7 +125,11 @@ type PrimaryGenre =
   | "historical"
   | "adventure"
   | "comedy"
-  | "poetry";
+  | "poetry"
+  | "educational"
+  | "fanfiction"
+  | "folktale"
+  | "sliceOfLife";
 
 type AudienceMode = "adult" | "kids";
 type StoryMode = "standalone" | "series";
@@ -137,27 +163,42 @@ buildContinuationSystemPrompt({
 
 ## User-Facing Taxonomy
 
-These are the 15 backend genres. 13 ship as creation cards in the app;
-`cozyFantasy` and `paranormalRomance` are valid DB values but are not rendered
-as creation cards (see Key v6 Decisions).
+19 backend genres exist. 12 ship as creation cards in the app, in this exact
+display order (product decision, 2026-09-08; Romance is deliberately last).
+The other 7 are valid DB values, carried forward from v6, that are no longer
+offered on the creation screen (see Key v6 Decisions).
 
-| UI card # | UI Genre           | Internal genre      | Notes                                                                                          |
-| --------- | ------------------ | ------------------- | ---------------------------------------------------------------------------------------------- |
-| 1         | Romance            | `romance`           | Commercial relationship-forward stories                                                        |
-| 2         | Romantasy          | `romantasy`         | Romance and fantasy arcs have equal weight                                                     |
-| 3         | Dark Romance       | `darkRomance`       | Adult only, steamy default; intensity comes from power and consequence, never from crude prose |
-| -         | Cozy Fantasy       | `cozyFantasy`       | **Backend only, hidden from UI.** Low-stakes warmth, craft, community                          |
-| -         | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Supernatural romance                                         |
-| 4         | Fantasy            | `fantasy`           | Magic, world, cost, wonder                                                                     |
-| 5         | Sci-Fi             | `scifi`             | One speculative idea with human consequence                                                    |
-| 6         | Thriller           | `thriller`          | Urgency, threat, ticking clock                                                                 |
-| 7         | Mystery            | `mystery`           | Fair-play puzzle                                                                               |
-| 8         | Horror             | `horror`            | Dread, wrongness, restraint                                                                    |
-| 9         | Contemporary       | `contemporary`      | Absorbs Drama and Slice of Life registers                                                      |
-| 10        | Historical         | `historical`        | Period consciousness and constraints                                                           |
-| 11        | Adventure          | `adventure`         | Motion, environment, physical stakes                                                           |
-| 12        | Comedy             | `comedy`            | Observational or absurd, committed timing                                                      |
-| 13        | Poetry             | `poetry`            | Prose poetry / lyrical narrative mode                                                          |
+| UI card # | UI Genre      | Internal genre | Notes                                                                            |
+| --------- | ------------- | --------------- | --------------------------------------------------------------------------------- |
+| 1         | Adventure     | `adventure`     | Motion, environment, physical stakes                                              |
+| 2         | Comedy        | `comedy`        | Observational or absurd, committed timing                                         |
+| 3         | Educational   | `educational`   | New. A real story with load-bearing information, never a lesson wearing a plot    |
+| 4         | Fanfiction    | `fanfiction`    | New. Transformative-work register: heightened, trope-committed, devoted           |
+| 5         | Folktale      | `folktale`      | New. Oral-tradition cadence, archetypal roles, patterned repetition               |
+| 6         | Historical    | `historical`    | Period consciousness and constraints                                              |
+| 7         | Sci-Fi        | `scifi`         | One speculative idea with human consequence                                       |
+| 8         | Fantasy       | `fantasy`       | Magic, world, cost, wonder                                                        |
+| 9         | Mystery       | `mystery`       | Fair-play puzzle                                                                  |
+| 10        | Horror        | `horror`        | Dread, wrongness, restraint                                                       |
+| 11        | Slice of Life | `sliceOfLife`   | New. Quiet, observational, an ordinary day rather than a crisis                   |
+| 12        | Romance       | `romance`       | Commercial relationship-forward stories; deliberately last on the shelf           |
+
+Removed from the creation UI (2026-09-08), still valid DB values:
+
+| Removed UI genre  | Internal genre      | Migrates new submissions to | Notes                                                                                          |
+| ------------------ | -------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| Romantasy          | `romantasy`         | `romance`                    | Romance and fantasy arcs have equal weight                                                     |
+| Dark Romance       | `darkRomance`       | `romance`                    | Adult only, steamy default; intensity comes from power and consequence, never from crude prose |
+| Cozy Fantasy       | `cozyFantasy`       | `fantasy`                    | Low-stakes warmth, craft, community                                                             |
+| Paranormal Romance | `paranormalRomance` | `romance`                    | Supernatural romance                                                                            |
+| Thriller           | `thriller`          | `mystery`                    | Urgency, threat, ticking clock                                                                  |
+| Contemporary       | `contemporary`      | `sliceOfLife`                | Absorbed Drama and Slice of Life registers before Slice of Life existed on its own              |
+| Poetry             | `poetry`            | `folktale`                   | Prose poetry / lyrical narrative mode                                                           |
+
+A story stored with a removed genre keeps generating chapters in that genre's
+own voice module — the migration only redirects a NEW submission
+(`validateGenerationRequest`), never a stored value. See Key v6 Decisions for
+the exact `GENRE_MIGRATION_MAP` and the reasoning.
 
 Separate UI controls:
 
@@ -189,13 +230,18 @@ Separate UI controls:
 | adventure         | sweet         | sweet, steamy |
 | comedy            | sweet         | sweet         |
 | poetry            | sweet         | sweet         |
+| educational       | sweet         | sweet, steamy |
+| fanfiction        | sweet         | sweet, steamy |
+| folktale          | sweet         | sweet         |
+| sliceOfLife       | sweet         | sweet, steamy |
 
 This table is `GENRE_DEFAULT_SPICE` and `GENRE_ALLOWED_SPICE` in
 `_shared/types.ts`, and the two are pinned to each other by test. There is no
 third column and no footnoted tier: every allowed value here is a live member of
-`SpiceLevel`. `cozyFantasy` and `comedy` are sweet-only because their whole
-register is low-stakes warmth and timing respectively, and an on-page heat scene
-breaks both.
+`SpiceLevel`. `cozyFantasy`, `comedy`, `poetry` and `folktale` are sweet-only
+because their whole register is low-stakes warmth, timing, and (for poetry and
+its replacement folktale) a family-oral-tradition tone respectively, and an
+on-page heat scene breaks all four.
 
 ## Base Safety Rules
 
@@ -785,6 +831,61 @@ Reader promise: compressed, musical narrative.
 - Avoid abstract declarations, adjective stacking, rhyme-for-rhyme's-sake, and
   obscurity as a substitute for depth.
 
+### Educational (new, 2026-09-08)
+
+Reader promise: a real story where the information is load-bearing, not a
+lesson wearing a plot.
+
+- The protagonist needs the fact or skill to solve the actual problem; delete
+  it and the plot should break.
+- Learning happens through a mistake and its consequence, or through action,
+  never through a narrator or mentor explaining a concept.
+- No "takeaway" paragraph, no quiz-style dialogue, no textbook diction.
+- Avoid a narrator who stops to explain, a character who exists only to ask the
+  question an expert answers, and a moral stated directly at the end. If it
+  reads like a worksheet with a plot bolted on, it has failed.
+
+### Fanfiction (new, 2026-09-08)
+
+Reader promise: the known pleasures of a beloved dynamic, delivered faster and
+closer than original fiction would.
+
+- Heightened register: relationship history and shorthand between characters
+  can be assumed, not re-established.
+- Commit to the trope (enemies to lovers, found family, one bed) rather than
+  apologizing for it.
+- Compress the ordinary; dwell in the charged moment.
+- No real named public figures or identifiable private individuals, in any
+  pairing or scenario. Avoid fourth-wall winks and original-character worship
+  that sidelines the dynamic the reader came for.
+
+### Folktale (new, 2026-09-08; replaces Poetry for new submissions)
+
+Reader promise: an oral-cadenced tale told as if aloud, with a consequence that
+demonstrates its own lesson.
+
+- Archetypal roles are expected (youngest child, clever fool, trickster
+  animal) but each needs one specific, unexpected trait.
+- Repetition is structural: three trials, three attempts, each changing one
+  variable.
+- The consequence must fit the crime with folkloric symmetry; never narrate the
+  moral directly ("and so we learn that...").
+- Avoid modern brand names, technology or slang breaking the timeless setting,
+  and a trickster who wins through violence instead of wit.
+
+### Slice of Life (new, 2026-09-08; replaces Contemporary for new submissions)
+
+Reader promise: the story in a single ordinary day, found through noticing
+rather than crisis.
+
+- Real time, mostly: let an errand, shift or evening play out close to its
+  actual length.
+- A single small decision can be the whole climax.
+- Warmth includes friction — a good day can still hold an argument.
+- Avoid manufacturing a crisis (accident, diagnosis, breakup) to justify
+  stakes, and a tidy lesson in the final paragraph. The ordinariness is the
+  subject, not permission for the prose to go slack.
+
 ### Kids: day register
 
 > **Style guidance, not a contract.** The backend exposes a single `kids`
@@ -972,6 +1073,19 @@ stale client build or a replayed request body would otherwise fail a generation
 the user is waiting on. It maps down to `steamy`, then clamps against the genre
 row like any other value.
 
+Validation must likewise **normalize, not reject**, any of the seven genres
+removed from the UI in the 2026-09-08 taxonomy change — the same "old client, a
+retry, a stored draft" reasoning applies. See **User-Facing Taxonomy** for the
+mapping. A genre already stored on an existing row is a different case and is
+never touched: `story-prompts.ts` resolves it directly against its own voice
+module rather than through this migration.
+
+`spice_level` is optional and its absence must never be rejected: it defaults
+per genre (`GENRE_DEFAULT_SPICE`, with `sweet` as the final backstop), because
+spice is no longer a user-facing control (see Key v6 Decisions) and every
+caller that omits it — which, after 2026-09-08, is every caller — needs a safe,
+first-class result rather than an edge case that happens to work.
+
 ## App Store and Feed Compliance
 
 - `sweet` and `steamy` are the only tiers. There is no adult-content unlock to
@@ -1016,7 +1130,8 @@ The VS Code agent should inspect and update these areas together:
   reviewed primary-first list for shelf tags and compatibility.
 - `generate-story` accepts the primary genre plus up to two reviewed secondary
   genres, while every prompt module routes from the primary value.
-- Expo exposes the 13 creation genres and models Kids as an audience mode.
+- Expo exposes the 12 creation genres (2026-09-08 taxonomy) and models Kids as
+  an audience mode.
 - Strict provider schemas are the primary output contract. Plain-text parsing is
   retained only as a defensive compatibility fallback.
 - `shape-story` is free scaffolding, authenticated and rate-limited. Its failure

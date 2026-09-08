@@ -628,10 +628,20 @@ chapters.**
 
 Two things follow from §14 item 2, which is still open:
 
-1. **The word bands stay out of the interface.** They are unverified against
-   real generations, and a word count is a number the writer has to convert
-   before it means anything to them. It also invites optimising the one
-   variable that does not make a story better.
+1. **The word bands are now shown, hedged, against the reasoning below.**
+   Reversed on the product owner's instruction after testing the running app:
+   chapter length reads as an abstraction without a size beside it. The original
+   objection stands and is not dismissed, so the numbers are prefixed with a
+   tilde and paired with the minute estimate rather than printed as a bare
+   figure.
+
+   **The risk this accepts, stated plainly:** `AGENTS.md` records a measured
+   overshoot of 2,056 to 2,331 words against a 1,200-1,600 band. So the Standard
+   option currently advertises a size the generator does not hit. The hedge
+   makes it a target rather than a promise; it does not make it accurate. When
+   B11 measures the bands, these figures are corrected -- and if the overshoot
+   holds, the honest fix is to move the bands to what the model actually writes
+   rather than to keep advertising what it does not.
 2. **Minutes are safe to show now, and words are not**, because the minute
    figure is an estimate of the *reader's* experience carrying a hedge, while a
    word target printed beside a control reads as a contract the generator has

@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronRight,
   Edit3,
+  HelpCircle,
   Lightbulb,
   Plus,
   Sparkles,
@@ -29,15 +30,17 @@ import {
   X,
 } from "lucide-react-native";
 import { CreditPill } from "@/components/KathaPrimitives";
+import { Dropdown, DropdownGroup } from "@/components/create/Dropdown";
+import type { DropdownOption } from "@/components/create/Dropdown";
 import { PlanSection } from "@/components/create/PlanSection";
 import {
   GENRE_EMOJI,
-  GENRE_MOMENT_SUGGESTIONS,
   GENRE_STARTERS,
 } from "@/lib/genre-content";
 import * as storyApi from "@/lib/api";
 import { colors, fonts, genreLabels, radius, spacing } from "@/theme";
-import type { AudienceMode, CreateDraft, Genre, SpiceLevel } from "@/types/domain";
+import type { AudienceMode, CreateDraft, CreationLanguage, Genre } from "@/types/domain";
+import { KIDS_UI_GENRES, UI_GENRES } from "@/types/domain";
 
 type CharacterDraft = CreateDraft["characters"][number];
 
@@ -58,12 +61,6 @@ type Props = {
   onBack: () => void;
 };
 
-const ADULT_GENRES: Genre[] = [
-  "romance", "romantasy", "fantasy", "scifi", "thriller", "mystery",
-  "horror", "contemporary", "historical", "adventure", "comedy", "poetry",
-  "darkRomance",
-];
-const KIDS_GENRES: Genre[] = ["fantasy", "adventure", "mystery", "comedy", "contemporary", "poetry", "historical"];
 const VALUES = [
   { value: "kindness", label: "Kindness" },
   { value: "courage", label: "Courage" },
@@ -87,28 +84,58 @@ export const MIN_IDEA_LENGTH = 40;
 /**
  * Chapter length, labelled by the number a reader feels.
  *
- * Derived from the word bands in `_shared/types.ts` at 260 wpm, the measured
- * mean silent reading rate for adult English fiction (Brysbaert 2019, 190
- * studies, 18,573 participants). Word counts stay out of the interface: they
- * are unverified against real generations, and a number printed beside a
- * control is read as a promise.
+ * Minutes are derived from the word bands at 260 wpm, the measured mean
+ * silent reading rate for adult English fiction (Brysbaert 2019, 190 studies,
+ * 18,573 participants).
+ *
+ * The word figures are TARGETS, and they are hedged with a tilde on purpose.
+ * `AGENTS.md` records a measured overshoot -- 2,056 to 2,331 words against a
+ * 1,200-1,600 band -- so an unhedged number printed beside a control would read
+ * as a contract the generator has never been held to. Showing them at all is a
+ * deliberate reversal of STORY_GENERATION_FLOW.md section 9, made on the
+ * product owner's instruction; the risk is recorded there.
+ *
+ * `words` mirrors `wordBandFor()` in
+ * `backend/supabase/functions/_shared/types.ts`, the single source of truth
+ * for the bands -- short 600-900, standard 1200-1600, long 2000-2600. It is
+ * copied rather than imported because the Expo client cannot import a Deno
+ * edge function module; if that function's bands ever move, update this
+ * literal in the same change.
+ *
+ * Direct product-owner instruction (this file's task brief, 2026-09-07) asks
+ * for the word count to be visible per option inside the dropdown. That
+ * supersedes `source-of-truth/STORY_GENERATION_FLOW.md` section 9's current
+ * "word bands stay out of the interface" stance, which was written when the
+ * bands were unverified against real generations; that document should be
+ * reconciled with this change.
  */
 export const CHAPTER_LENGTHS = [
-  { id: "short", label: "Short", minutes: 3 },
-  { id: "standard", label: "Standard", minutes: 5 },
-  { id: "long", label: "Long", minutes: 9 },
+  { id: "short", label: "Short", minutes: 3, words: "~600-900 words" },
+  { id: "standard", label: "Standard", minutes: 5, words: "~1,200-1,600 words" },
+  { id: "long", label: "Long", minutes: 9, words: "~2,000-2,600 words" },
 ] as const;
 
-const LENGTHS = ["short", "standard", "long"] as const;
 const CHAPTER_COUNTS = [3, 7, 15] as const;
-// Two tiers, and there is no third. The greyed-out "Explicit" chip that used
-// to sit here advertised a tier the backend has retired: it promised the
-// writer something the product will not ship, which is worse than not showing
-// it at all. Heat above steamy is not a locked feature, it is not a feature.
-const SPICE_OPTIONS: { value: SpiceLevel; label: string; icon: string }[] = [
-  { value: "sweet", label: "Sweet", icon: "🍯" },
-  { value: "steamy", label: "Steamy", icon: "🔥" },
-];
+
+/**
+ * The real cap on a single moment's text is 300 characters --
+ * `MAX_BRIEF_FIELD_LENGTH` in `backend/supabase/functions/_shared/types.ts`,
+ * enforced again server-side by `validation.ts`'s `stringList()`. Mirrored
+ * here as the composer's own input cap so a moment is never silently cut down
+ * after the user believed they had written the whole thing.
+ */
+const MAX_MOMENT_CHARS = 300;
+/**
+ * How much of a moment's text a chip or the review row shows before an
+ * ellipsis. Purely cosmetic -- it is a display cap, not a data cap. The full
+ * text, up to `MAX_MOMENT_CHARS`, is still what gets sent.
+ */
+const MOMENT_DISPLAY_CHARS = 60;
+
+function truncateForDisplay(text: string, max: number) {
+  const trimmed = text.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max).trimEnd()}…` : trimmed;
+}
 
 function useMotionAndHaptics() {
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -143,7 +170,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   const [characterBuffer, setCharacterBuffer] = useState<CharacterDraft>({ name: "", description: "", background: "", appearance: "", isHero: false });
   const fade = useRef(new Animated.Value(1)).current;
   const { reduceMotion, select, confirm } = useMotionAndHaptics();
-  const allowedGenres = draft.audienceMode === "kids" ? KIDS_GENRES : ADULT_GENRES;
+  const allowedGenres = draft.audienceMode === "kids" ? KIDS_UI_GENRES : UI_GENRES;
   const maxMoments = 5;
   const strength = briefStrength(draft);
   const isCharacter = stage === "character";
@@ -158,7 +185,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   const chooseAudience = useCallback((audienceMode: AudienceMode) => {
     select();
     setDraft((previous) => {
-      const primaryGenre = audienceMode === "kids" && !KIDS_GENRES.includes(previous.primaryGenre) ? "adventure" : previous.primaryGenre;
+      const primaryGenre = audienceMode === "kids" && !KIDS_UI_GENRES.includes(previous.primaryGenre) ? "adventure" : previous.primaryGenre;
       return {
         ...previous,
         audienceMode,
@@ -284,6 +311,12 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      {/*
+        One shared group for every dropdown on this screen (Genre, Chapters,
+        Chapter length, Language), so opening any one of them closes whichever
+        other one was open -- see src/components/create/Dropdown.tsx.
+      */}
+      <DropdownGroup>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <Animated.View style={[styles.flex, { opacity: fade }]}>
           {isReview ? (
@@ -331,6 +364,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
           bottomInset={insets.bottom}
         />
       </Modal>
+      </DropdownGroup>
     </View>
   );
 }
@@ -356,7 +390,7 @@ function StorySetupScreen({
   onSelect,
 }: {
   draft: StudioCreateDraft;
-  allowedGenres: Genre[];
+  allowedGenres: readonly Genre[];
   maxMoments: number;
   moreOptionsOpen: boolean;
   momentInput: string;
@@ -374,11 +408,16 @@ function StorySetupScreen({
   onCreate: () => void;
   onSelect: () => void;
 }) {
-  const [genreOpen, setGenreOpen] = useState(false);
   const update = (patch: Partial<StudioCreateDraft>) => onSetDraft((previous) => ({ ...previous, ...patch }));
   const hasCredits = credits >= 3;
   const hasPendingCharacterImage = draft.characters.some((character) => character.portraitStatus === "generating");
   const ideaReady = draft.seed.trim().length >= MIN_IDEA_LENGTH;
+  const genreOptions: DropdownOption<Genre>[] = allowedGenres.map((genre) => ({
+    value: genre,
+    label: genreLabels[genre],
+    accessibilityLabel: `Choose ${genreLabels[genre]}`,
+    icon: GENRE_EMOJI[genre],
+  }));
   return (
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.topBar}>
@@ -393,18 +432,16 @@ function StorySetupScreen({
             <Text style={[styles.kidsModeText, draft.audienceMode === "kids" && styles.kidsModeTextActive]}>Kids Mode</Text>
           </View>
         </View>
-        <View style={styles.genreControl}>
-          <Pressable onPress={() => { onSelect(); setGenreOpen((open) => !open); }} accessibilityRole="button" accessibilityLabel="Genre" accessibilityState={{ expanded: genreOpen }} style={styles.genreButton}>
-            <Text style={styles.genreIcon}>{GENRE_EMOJI[draft.primaryGenre]}</Text>
-            <Text numberOfLines={1} style={styles.genreButtonText}>{genreLabels[draft.primaryGenre]}</Text>
-            <ChevronDown size={16} color={colors.accent} />
-          </Pressable>
-          {genreOpen ? (
-            <View style={styles.genreMenu}>
-              {allowedGenres.map((genre) => <Pressable key={genre} onPress={() => { update({ primaryGenre: genre }); setGenreOpen(false); onSelect(); }} accessibilityRole="button" accessibilityLabel={`Choose ${genreLabels[genre]}`} accessibilityState={{ selected: draft.primaryGenre === genre }} style={[styles.genreOption, draft.primaryGenre === genre && styles.genreOptionActive]}><View style={styles.genreOptionLabel}><Text style={styles.genreIcon}>{GENRE_EMOJI[genre]}</Text><Text style={[styles.genreOptionText, draft.primaryGenre === genre && styles.genreOptionTextActive]}>{genreLabels[genre]}</Text></View>{draft.primaryGenre === genre ? <Check size={16} color={colors.accent} /> : null}</Pressable>)}
-            </View>
-          ) : null}
-        </View>
+        <Dropdown
+          id="genre"
+          variant="pill"
+          label="Genre"
+          value={draft.primaryGenre}
+          options={genreOptions}
+          onChange={(primaryGenre) => update({ primaryGenre })}
+          onOpen={onSelect}
+          style={styles.genreControl}
+        />
       </View>
       <View style={styles.ideaHero}>
         <Text style={styles.eyebrow}>Create</Text>
@@ -456,7 +493,7 @@ function StorySetupScreen({
       </Section>
 
       <View style={styles.optionsFamily}>
-        <Pressable onPress={onToggleOptions} accessibilityRole="button" accessibilityLabel="More options" accessibilityState={{ expanded: moreOptionsOpen }} style={styles.optionsToggle}><Text style={styles.sectionTitle}>More options</Text><ChevronDown size={20} color={colors.ink} style={{ transform: [{ rotate: moreOptionsOpen ? "180deg" : "0deg" }] }} /></Pressable>
+        <Pressable onPress={onToggleOptions} accessibilityRole="button" accessibilityLabel="More options" accessibilityState={{ expanded: moreOptionsOpen }} style={styles.optionsToggle}><Text style={styles.sectionTitle}>More options</Text><ChevronDown size={16} color={colors.ink} style={{ transform: [{ rotate: moreOptionsOpen ? "180deg" : "0deg" }] }} /></Pressable>
         {moreOptionsOpen ? <MoreOptions draft={draft} isAnonymous={isAnonymous} maxMoments={maxMoments} momentInput={momentInput} onMomentInput={onMomentInput} onAddMoment={onAddMoment} update={update} onSelect={onSelect} /> : null}
       </View>
       <View style={styles.costCard}><View style={styles.costIcon}><Sparkles size={18} color={colors.accent} /></View><View style={styles.costCopy}><Text style={styles.costTitle}>Starting this story</Text><Text style={styles.costDetail}>Characters, chapter one, and its cover are 3 credits. Later chapters are charged as you create them.</Text></View></View>
@@ -497,7 +534,7 @@ function ReviewScreen({
   const hasPendingCharacterImage = draft.characters.some(
     (character) => character.portraitStatus === "generating",
   );
-  const chapterLength = draft.chapterLength ?? (draft.audienceMode === "kids" ? "short" : "standard");
+  const chapterLength = storyApi.effectiveChapterLength(draft);
   const chapterLengthLabel = chapterLength.charAt(0).toUpperCase() + chapterLength.slice(1);
   const chapterMinutes = CHAPTER_LENGTHS.find((item) => item.id === chapterLength)?.minutes;
   const plannedChapterCount = draft.plannedChapterCount ?? 3;
@@ -541,7 +578,9 @@ function ReviewScreen({
         <ReviewRow label="Who's in it" value={charactersValue} />
         <ReviewRow
           label="Moments to include"
-          value={draft.moments?.length ? draft.moments.join(" · ") : "None added"}
+          value={draft.moments?.length
+            ? draft.moments.map((moment) => truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)).join(" · ")
+            : "None added"}
         />
         <ReviewRow label="Chapters" value={String(plannedChapterCount)} />
         <ReviewRow
@@ -553,9 +592,8 @@ function ReviewScreen({
           value={draft.illustrateChapters ? "On for chapters 2 and later" : "Off"}
         />
         <ReviewRow label="Writing style" value={draft.writingStyle?.trim() || "Not set"} />
-        {draft.audienceMode === "adult" ? (
-          <ReviewRow label="Spice" value={draft.spiceLevel === "steamy" ? "Steamy" : "Sweet"} />
-        ) : null}
+        {/* Spice is inferred server-side from the idea now, never chosen here
+            -- see MoreOptions and CreateStudioScreen's initial draft. */}
         <ReviewRow label="Language" value={draft.language} />
         <ReviewRow label="Avoid" value={draft.avoid?.trim() || "Nothing excluded"} />
         <ReviewRow label="Visibility" value={visibilityLabel} />
@@ -607,9 +645,8 @@ function MoreOptions({
   update: (patch: Partial<StudioCreateDraft>) => void;
   onSelect: () => void;
 }) {
-  const [languageOpen, setLanguageOpen] = useState(false);
+  const [momentsHelpOpen, setMomentsHelpOpen] = useState(false);
   const moments = draft.moments ?? [];
-  const suggestions = GENRE_MOMENT_SUGGESTIONS[draft.primaryGenre].filter((item) => !moments.includes(item));
   // A moment that names someone from the cast is what the prompt links back to
   // that character, so the cast is offered here as one tap rather than left to
   // be retyped (and misspelled) into the box. A character sheet only requires a
@@ -621,30 +658,112 @@ function MoreOptions({
     onMomentInput(base ? `${base} ${name.trim()}` : name.trim());
     onSelect();
   };
+
+  const chapterCountOptions: DropdownOption<string>[] = CHAPTER_COUNTS.map((count) => ({
+    value: String(count),
+    label: `${count} chapters`,
+    valueLabel: String(count),
+    accessibilityLabel: `${count} chapters`,
+  }));
+  const chapterLength = storyApi.effectiveChapterLength(draft);
+  const chapterLengthOptions: DropdownOption<string>[] = CHAPTER_LENGTHS.map((item) => ({
+    value: item.id,
+    label: item.label,
+    detail: `About ${item.minutes} min · ${item.words}`,
+  }));
+  const languageOptions: DropdownOption<CreationLanguage>[] = [{ value: "English", label: "English" }];
+
   return <View style={styles.optionsPanel}>
-    <OptionLabel label="Moments to include" />
+    <View style={styles.labelRow}>
+      <OptionLabel label="Moments to include" />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="What are moments to include?"
+        accessibilityState={{ expanded: momentsHelpOpen }}
+        hitSlop={10}
+        onPress={() => { setMomentsHelpOpen((open) => !open); onSelect(); }}
+        style={styles.helpButton}
+      >
+        <HelpCircle size={15} color={colors.tertiary} />
+      </Pressable>
+    </View>
+    {momentsHelpOpen ? (
+      <Text style={styles.helpCaption}>
+        A scene you want somewhere in the story or series, like a conversation between two characters.
+      </Text>
+    ) : null}
     {namedCharacters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{namedCharacters.map((character) => <Pressable key={character.name} accessibilityRole="button" accessibilityLabel={`Add ${character.name.trim()} to this moment`} onPress={() => appendCharacterName(character.name)} style={styles.nameToken}><Text style={styles.nameTokenText}>{character.name.trim()}</Text></Pressable>)}</ScrollView> : null}
-    <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} style={styles.momentText}>{moment}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
-    {moments.length < maxMoments ? <><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalChips}>{suggestions.slice(0, 2).map((item) => <Pressable key={item} onPress={() => onAddMoment(item)} style={styles.suggestionChip}><Plus size={14} color={colors.accent} /><Text style={styles.suggestionText}>{item}</Text></Pressable>)}</ScrollView><View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" placeholder="Add a moment" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View></> : null}
+    <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.momentText}>{truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
+    {moments.length < maxMoments ? <View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" maxLength={MAX_MOMENT_CHARS} placeholder="Add a moment" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View> : null}
     {draft.beats?.length ? (
       <>
         <OptionLabel label="Chapter plan" />
         <PlanSection beats={draft.beats} onChange={(beats) => update({ beats })} />
       </>
     ) : null}
-    <OptionLabel label="Chapters" />
-    <View style={styles.optionChips}>{CHAPTER_COUNTS.map((count) => <MiniSegment key={count} label={String(count)} accessibilityLabel={`${count} chapters`} selected={draft.plannedChapterCount === count} onPress={() => { update({ plannedChapterCount: count, isSeries: true, beats: draft.beats?.slice(0, count) }); onSelect(); }} />)}</View>
-    <OptionLabel label="Chapter length" />
-    <View style={styles.optionChips}>{LENGTHS.map((length) => <MiniSegment key={length} label={length[0].toUpperCase() + length.slice(1)} selected={(draft.chapterLength ?? (draft.audienceMode === "kids" ? "short" : "standard")) === length} onPress={() => { update({ chapterLength: length }); onSelect(); }} />)}</View>
-    <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Chapter art</Text><Text style={styles.switchHint}>Illustrate chapters after the cover</Text></View><Switch value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Chapter art" /></View>
-    <OptionLabel label="Writing style" />
-    <TextInput accessibilityLabel="Writing style" value={draft.writingStyle ?? ""} onChangeText={(writingStyle) => update({ writingStyle })} placeholder="e.g. Warm, witty, first person" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
-    {draft.audienceMode === "adult" ? <><OptionLabel label="Spice" /><View style={styles.optionChips}>{SPICE_OPTIONS.map((option) => <MiniSegment key={option.value} label={option.label} icon={<Text style={styles.miniSegmentIcon}>{option.icon}</Text>} selected={draft.spiceLevel === option.value} onPress={() => { update({ spiceLevel: option.value }); onSelect(); }} />)}</View></> : null}
-    <Pressable onPress={() => setLanguageOpen((open) => !open)} accessibilityRole="button" accessibilityState={{ expanded: languageOpen }} accessibilityLabel="Language" style={styles.languageMenu}><View><Text style={styles.optionLabel}>Language</Text><Text style={styles.languageValue}>{draft.language}</Text></View><ChevronDown size={18} color={colors.tertiary} /></Pressable>
-    {languageOpen ? <View style={styles.optionChips}><MiniSegment label="English" selected={draft.language === "English"} onPress={() => { update({ language: "English" }); setLanguageOpen(false); onSelect(); }} /><MiniSegment label="Portuguese" selected={draft.language === "Portuguese"} onPress={() => { update({ language: "Portuguese" }); setLanguageOpen(false); onSelect(); }} /></View> : null}
-    <OptionLabel label="Avoid" />
-    <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
-    <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Visibility</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "This story can be shared after creation." : "Only you can see this story."}</Text></View><Switch value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Public visibility" /></View>
+
+    {/* One line, two dropdowns -- checked to fit at 390pt without overflow. */}
+    <View style={styles.chapterRow}>
+      <Dropdown
+        id="chapters"
+        label="Chapters"
+        value={String(draft.plannedChapterCount ?? 3)}
+        options={chapterCountOptions}
+        onChange={(value) => {
+          const count = Number(value) as 3 | 7 | 15;
+          update({ plannedChapterCount: count, isSeries: true, beats: draft.beats?.slice(0, count) });
+          onSelect();
+        }}
+        style={styles.chapterRowItem}
+      />
+      <Dropdown
+        id="chapterLength"
+        label="Chapter length"
+        value={chapterLength}
+        options={chapterLengthOptions}
+        onChange={(value) => { update({ chapterLength: value as "short" | "standard" | "long" }); onSelect(); }}
+        style={styles.chapterRowItem}
+      />
+    </View>
+
+    <View style={styles.switchRow}>
+      <View style={styles.switchCopy}>
+        <Text style={styles.switchLabel}>Chapter art</Text>
+        {/* CREDITS_AND_PRICING.md: illustrating a chapter is +1 credit on top
+            of its base 1 (so 2 total), matching every chapter from 2 onward --
+            chapter 1's art is compulsory and already the cover. */}
+        <Text style={styles.switchHint}>Adds an illustration to every chapter after the first, for 1 more credit each.</Text>
+      </View>
+      <Switch value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Chapter art" />
+    </View>
+
+    {/* Writing style and Avoid are both craft constraints on the prose, so
+        they read as one group rather than two unrelated fields. */}
+    <View style={styles.groupedFieldCard}>
+      <OptionLabel label="Writing style" />
+      <TextInput accessibilityLabel="Writing style" value={draft.writingStyle ?? ""} onChangeText={(writingStyle) => update({ writingStyle })} placeholder="e.g. Warm, witty, first person" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
+      <View style={styles.groupedFieldDivider} />
+      <OptionLabel label="Avoid" />
+      <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
+    </View>
+
+    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Visibility</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "This story can be shared after creation." : "Only you can see this story."}</Text></View><Switch value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Public visibility" /></View>
+
+    {/*
+      English only, at the bottom, for now. The spice control was removed
+      outright (see chooseAudience / CreateStudioScreen); language stays
+      visible on purpose so `draft.language` keeps flowing to the generation
+      payload -- existing stories and the backend contract still carry a
+      language, and Portuguese remains a valid stored value. This dropdown
+      just stops offering it as a creation choice until it is actually ready.
+    */}
+    <Dropdown
+      id="language"
+      label="Language"
+      value={draft.language}
+      options={languageOptions}
+      onChange={(language) => { update({ language }); onSelect(); }}
+    />
   </View>;
 }
 
@@ -718,7 +837,6 @@ function CharacterCraftScreen({
 function Section({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) { return <View style={styles.section}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{label}</Text>{hint ? <Text style={styles.sectionHint}>{hint}</Text> : null}</View>{children}</View>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <View style={styles.field}><Text style={styles.fieldLabel}>{label}</Text>{children}</View>; }
 function ChoiceChip({ label, selected, onPress }: { label: string; selected?: boolean; onPress: () => void }) { return <Pressable onPress={onPress} accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: Boolean(selected) }} style={[styles.choiceChip, selected && styles.choiceChipActive]}><Text style={[styles.choiceText, selected && styles.choiceTextActive]}>{label}</Text></Pressable>; }
-function MiniSegment({ label, accessibilityLabel, selected, disabled = false, icon, onPress }: { label: string; accessibilityLabel?: string; selected: boolean; disabled?: boolean; icon?: React.ReactNode; onPress: () => void }) { return <Pressable disabled={disabled} onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ selected, disabled }} style={[styles.miniSegment, selected && styles.miniSegmentActive, disabled && styles.miniSegmentDisabled]}>{icon}<Text style={[styles.miniSegmentText, selected && styles.miniSegmentTextActive, disabled && styles.miniSegmentTextDisabled]}>{label}</Text></Pressable>; }
 function OptionLabel({ label }: { label: string }) { return <Text style={styles.optionLabel}>{label}</Text>; }
 
 const styles = StyleSheet.create({
@@ -729,20 +847,11 @@ const styles = StyleSheet.create({
   topTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 20, flex: 1, textAlign: "center" },
   topSpacer: { width: 40 },
   parentControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, zIndex: 20 },
-  genreControl: { position: "relative", alignItems: "flex-end", zIndex: 30 },
-  genreButton: { minWidth: 128, maxWidth: 170, minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radius.pill, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent, paddingHorizontal: spacing.md },
-  genreIcon: { fontSize: 15 },
-  genreButtonText: { color: colors.accent, fontFamily: fonts.ui, fontSize: 13, fontWeight: "800", flexShrink: 1 },
+  genreControl: { alignSelf: "flex-start" },
   kidsMode: { flex: 1, minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: spacing.xs },
   kidsModeLabel: { flexDirection: "row", alignItems: "center", gap: spacing.xs, flexShrink: 1 },
   kidsModeText: { color: colors.muted, fontFamily: fonts.display, fontSize: 15 },
   kidsModeTextActive: { color: colors.accent },
-  genreMenu: { position: "absolute", top: 48, right: 0, width: 238, maxHeight: 316, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: "hidden", zIndex: 50, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
-  genreOption: { minHeight: 38, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  genreOptionActive: { backgroundColor: colors.accentSoft },
-  genreOptionLabel: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
-  genreOptionText: { color: colors.ink, fontFamily: fonts.ui, fontSize: 13, fontWeight: "700" },
-  genreOptionTextActive: { color: colors.accent, fontWeight: "800" },
   iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   ideaHero: { gap: spacing.sm, paddingTop: spacing.lg },
   eyebrow: { color: colors.accent, fontFamily: fonts.ui, fontWeight: "800", fontSize: 12, textTransform: "uppercase" },
@@ -767,7 +876,12 @@ const styles = StyleSheet.create({
   ctaStrength: { marginTop: -spacing.lg, color: colors.tertiary, fontFamily: fonts.ui, fontSize: 11, fontWeight: "700", textAlign: "center", textTransform: "lowercase" },
   section: { gap: spacing.sm },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: spacing.sm },
-  sectionTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 20 },
+  // Matches `sectionOverline` ("Try one") on purpose -- section 2 of this
+  // task asks for the same secondary heading treatment on Premise, Who's in
+  // it (the section that heads Add a character), and More options. Kept as a
+  // separate token from `sectionOverline` only so "Try one" itself is never
+  // touched by a future change to this one.
+  sectionTitle: { color: colors.ink, fontFamily: fonts.ui, fontSize: 13, fontWeight: "800", textTransform: "uppercase" },
   sectionHint: { color: colors.tertiary, fontFamily: fonts.ui, fontSize: 12, textAlign: "right", flexShrink: 1 },
   inlineField: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: spacing.md },
   inlineInput: { flex: 1, minHeight: 50, color: colors.ink, fontFamily: fonts.ui, fontSize: 15 },
@@ -795,8 +909,6 @@ const styles = StyleSheet.create({
   nameTokenText: { color: colors.accent, fontFamily: fonts.ui, fontWeight: "800", fontSize: 12 },
   momentChip: { maxWidth: "100%", flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 34, borderRadius: radius.pill, backgroundColor: colors.accentSoft, paddingHorizontal: spacing.md },
   momentText: { color: colors.accent, fontFamily: fonts.ui, fontSize: 13, fontWeight: "700", flexShrink: 1 },
-  suggestionChip: { maxWidth: 250, minHeight: 34, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  suggestionText: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, fontWeight: "600", flexShrink: 1 },
   momentComposer: { flexDirection: "row", minHeight: 44, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingLeft: spacing.md, overflow: "hidden" },
   momentInput: { flex: 1, color: colors.ink, fontFamily: fonts.ui, fontSize: 14 },
   momentAddButton: { width: 44, alignItems: "center", justifyContent: "center", backgroundColor: colors.accent },
@@ -811,19 +923,18 @@ const styles = StyleSheet.create({
   optionHint: { color: colors.tertiary, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17 },
   compactSegments: { flexDirection: "row", gap: spacing.xs },
   optionChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  miniSegment: { minHeight: 36, minWidth: 72, flexDirection: "row", gap: spacing.xs, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md },
-  miniSegmentActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  miniSegmentDisabled: { opacity: 0.62 },
-  miniSegmentIcon: { fontSize: 14 },
-  miniSegmentText: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, fontWeight: "700" },
-  miniSegmentTextActive: { color: colors.accent, fontWeight: "800" },
-  miniSegmentTextDisabled: { color: colors.tertiary },
   switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingVertical: spacing.xs },
+  switchCopy: { flex: 1, gap: 2 },
   switchLabel: { color: colors.ink, fontFamily: fonts.ui, fontWeight: "800", fontSize: 14 },
-  switchHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, marginTop: 2, maxWidth: 240 },
+  switchHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, marginTop: 2 },
   optionInput: { minHeight: 46, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, color: colors.ink, fontFamily: fonts.ui, fontSize: 14 },
-  languageMenu: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  languageValue: { color: colors.muted, fontFamily: fonts.ui, fontSize: 13, marginTop: 2 },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  helpButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
+  helpCaption: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, marginTop: -spacing.xs },
+  chapterRow: { flexDirection: "row", gap: spacing.sm },
+  chapterRowItem: { flex: 1 },
+  groupedFieldCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  groupedFieldDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   reviewHero: { gap: spacing.sm, paddingTop: spacing.lg },
   strengthCard: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.md, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: "#FFD8C0" },
   strengthHead: { flexDirection: "row", justifyContent: "space-between" },
