@@ -54,7 +54,14 @@ export type ReaderScreenProps = {
   /** Which chapter the story page sent the reader to. */
   initialChapterIndex?: number;
   /** Extension point for branching or end-of-chapter modules on the final page. */
-  renderChapterEnd?: () => ReactNode;
+  /**
+   * Rendered at the end of the last page, with the chapter ON SCREEN.
+   *
+   * The seam fires at the last page of EVERY chapter, not only the story's
+   * newest, so the callback needs the chapter actually being read rather than
+   * whatever a navigation-time closure captured.
+   */
+  renderChapterEnd?: (chapter: Chapter) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
   /**
@@ -603,7 +610,7 @@ export default function ReaderScreen({
               >
                 {renderedWords}
               </Text>
-              {isLastPage ? renderChapterEnd?.() : null}
+              {isLastPage ? renderChapterEnd?.(chapter) : null}
             </View>
             <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {pageIndex + 1} of {pages.length}</Text>
             {isLastPage ? (

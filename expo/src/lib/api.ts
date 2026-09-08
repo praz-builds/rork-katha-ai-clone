@@ -1235,6 +1235,22 @@ function mapContinuedChapter(
   };
 }
 
+/**
+ * The offline walkthrough's continuation, and it is canned prose.
+ *
+ * This exists so the app can be walked with no backend configured. It cannot
+ * honour a direction the reader typed or chose, because there is no model in
+ * this path to honour it with -- so a suggested or written next step is
+ * accepted by the UI and does not shape the text.
+ *
+ * That gap is REPORTED rather than hidden. The returned chapter is marked, and
+ * `isLocalStubChapter` lets a caller say so, because silently returning prose
+ * that ignores the reader's choice teaches them the feature does not work. The
+ * alternative of faking direction-sensitive text would be a worse lie.
+ *
+ * Against a configured backend none of this runs: the instruction reaches
+ * `continue-story` and does shape the chapter.
+ */
 async function localContinueStory(
   _storyId: string,
   isFinale?: boolean,
@@ -1264,8 +1280,27 @@ async function localContinueStory(
       chapterNumber: chapterNum,
       isPublished: false,
     },
-    model: "mock",
+    model: LOCAL_STUB_MODEL,
   };
+}
+
+/**
+ * The `model` value the offline continuation returns.
+ *
+ * Named rather than a bare string so a caller can recognise a stub chapter
+ * instead of pattern-matching prose, and so the two places that care cannot
+ * drift apart.
+ */
+export const LOCAL_STUB_MODEL = "mock";
+
+/**
+ * Did this chapter come from the offline stub rather than a model?
+ *
+ * Callers use it to tell the reader that a direction they chose was not applied,
+ * which is the honest thing to say when there was no model to apply it.
+ */
+export function isLocalStubChapter(result: { model: string }): boolean {
+  return result.model === LOCAL_STUB_MODEL;
 }
 
 // ---------------------------------------------------------------------------
