@@ -32,33 +32,6 @@ export const GENRE_EMOJI: Record<Genre, string> = {
 };
 
 /**
- * The genre bar, in two rows for a horizontal rail.
- *
- * Kids mode filters this further; see the call site.
- */
-export const GENRE_ROW_1: Genre[] = [
-  "fantasy",
-  "romance",
-  "thriller",
-  "mystery",
-  "horror",
-  "scifi",
-  "comedy",
-];
-
-export const GENRE_ROW_2: Genre[] = [
-  "romantasy",
-  "darkRomance",
-  "contemporary",
-  "historical",
-  "adventure",
-  "poetry",
-];
-
-/** Every genre in bar order, for a single-row rail. */
-export const GENRE_BAR: Genre[] = [...GENRE_ROW_1, ...GENRE_ROW_2];
-
-/**
  * Starter ideas, per genre.
  *
  * Each one is written as a prompt a person would actually type, not as a

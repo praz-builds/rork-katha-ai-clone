@@ -48,6 +48,41 @@ export const UI_GENRES = [
   "romance",
 ] as const satisfies readonly Genre[];
 
+/**
+ * The genres offered in kids mode, named one by one.
+ *
+ * An ALLOWLIST, deliberately, and it is the one place in this file where that
+ * is the right shape. Everywhere else a blocklist is safer, because a genre
+ * added later should appear rather than silently go missing.
+ *
+ * Kids mode inverts that. Here the failure of forgetting is not a genre quietly
+ * absent from a picker, it is a genre inappropriate for a child quietly
+ * PRESENT in one. A missing genre is a papercut someone reports; an unsuitable
+ * one shipped to a child is not. So a new genre stays out of kids mode until
+ * somebody adds it here on purpose, and the test below fails the moment
+ * `UI_GENRES` grows without that decision being made.
+ */
+const KIDS_ALLOWED_GENRES: ReadonlySet<Genre> = new Set([
+  "adventure",
+  "comedy",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "historical",
+  "scifi",
+  "fantasy",
+  "mystery",
+  "sliceOfLife",
+]);
+
+/** Whether `genre` is offered in kids mode. See `KIDS_ALLOWED_GENRES`. */
+export function isKidsGenre(genre: Genre): boolean {
+  return KIDS_ALLOWED_GENRES.has(genre);
+}
+
+/** The kids-mode subset of `UI_GENRES`, in the same fixed display order. */
+export const KIDS_UI_GENRES: readonly Genre[] = UI_GENRES.filter(isKidsGenre);
+
 export type AudienceMode = "adult" | "kids";
 export type SpiceLevel = "sweet" | "steamy";
 export type IdentityLens = "queer";

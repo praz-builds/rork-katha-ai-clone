@@ -23,7 +23,7 @@ jest.mock("lucide-react-native", () => {
 import { StoryCard } from "@/components/KathaPrimitives";
 import { GENRE_EMOJI } from "@/lib/genre-content";
 import { genreGradients, genreLabels } from "@/theme";
-import { GENRES, UI_GENRES } from "@/types/domain";
+import { GENRES, UI_GENRES, KIDS_UI_GENRES } from "@/types/domain";
 import type { Genre, Story } from "@/types/domain";
 /* eslint-enable import/first */
 
@@ -143,4 +143,31 @@ describe("every genre in the Genre type", () => {
       expect(genreLabels[genre]).toBeTruthy();
     }
   });
+});
+
+/**
+ * The genres deliberately kept out of kids mode. Romance carries adult
+ * relationship content; horror is built to frighten. Changing this list is a
+ * product decision, and the tests below make it a visible one.
+ */
+const EXPECTED_KIDS_EXCLUSIONS: readonly string[] = ["horror", "romance"];
+
+// Kids mode is the one place where forgetting must fail CLOSED.
+//
+// Everywhere else a genre added to `UI_GENRES` should appear by default, and a
+// blocklist gives that. Kids mode inverts it: the failure of forgetting is not
+// a genre quietly absent from a picker, it is a genre inappropriate for a child
+// quietly present in one. So the allowlist is named explicitly, and this test
+// fails the moment `UI_GENRES` grows without someone deciding.
+it("keeps a new genre out of kids mode until it is named", () => {
+  const undecided = UI_GENRES.filter((genre) =>
+    !KIDS_UI_GENRES.includes(genre) && !EXPECTED_KIDS_EXCLUSIONS.includes(genre)
+  );
+  expect(undecided).toEqual([]);
+});
+
+it("excludes exactly the genres that are unfit for a child", () => {
+  expect([...KIDS_UI_GENRES]).toEqual(
+    UI_GENRES.filter((genre) => !EXPECTED_KIDS_EXCLUSIONS.includes(genre)),
+  );
 });
