@@ -2,6 +2,112 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-08: Onboarding preview survives its own failures
+
+### Changed
+
+- The onboarding preview no longer dead-ends. Every empty shape used to land on
+  a "Preview needs one more try" screen whose only certain exit was Back to
+  details - after the writer had typed an idea, chosen a shelf, entered a cast,
+  verified an email and watched a loader. The preview is now built from their
+  own words when the model gives us nothing: `fallbackTitle` from the idea, the
+  shelf they chose, the cast they entered, and one line naming the chapter plan
+  as something written when the story starts.
+- A shape already in hand is reused when a later request is refused. The warm
+  request is keyed on the whole brief, so walking back to add one moment spends
+  another of the six shapes a minute the backend allows; `lastShape` keeps the
+  preview the writer already earned instead of losing it to the seventh.
+- The retry screen keeps Try again (it is now only reached when a retry can
+  succeed) and gains "Continue without it", so no provider outage can hold a
+  verified writer on an apology.
+- `shape-story` says why a shape is empty: `rate_limited`, `provider_failed` or
+  `unavailable`. A refused rate-limit claim used to be indistinguishable from a
+  model returning nothing, and the client read both as non-retryable content
+  failure - so a capacity ceiling was reported to the user as a bad idea.
+- The onboarding opening prompt asks for 90-120 words in exactly two
+  paragraphs, down from 120-180 in two or three. The preview renders
+  `slice(0, 2)` clamped to three lines and two, and `finish()` never carries
+  `opening` into the draft, so everything past the clamp was generated, paid
+  for, waited on and dropped. A test now holds the band and the clamp together.
+- `generateFastStructuredText` reserves a tail for the runner-up instead of
+  splitting its window evenly by model index. `OPENROUTER_MODELS[0]` is 404 by
+  account data policy today, so `[1]` inherits the window and the measured
+  8-11s shape lands; an even split would have handed `[0]` 13.5s of
+  onboarding's 45s the day that policy changes, aborting normal requests near
+  the finish. Leader now gets 21s, runner-up 27s.
+- Migration 00046 removes both anonymous ceilings on shaped previews: the 500
+  a day across the whole project, and the 30 a day per anonymous network scope.
+  Onboarding is anonymous, so the first was a cap on how many people could ever
+  be shown a shaped preview in a day and the second rationed one office or cafe
+  to thirty. Neither could stop an abuser - a shared ceiling only decides which
+  innocent user absorbs the abuse - so what survives is the per-user window of
+  six a minute, which is scoped to whoever is actually doing the damage.
+  `shape-story` stops computing an HMAC of a guest's address for a parameter
+  nothing reads any more, and the guest-without-a-scope path that silently
+  refused to shape at all is gone with it.
+
+### Loader
+
+- The crafting loader's hold-on-last-stage fix is not in this branch. The bar
+  used to fill to 100%, snap back to 4% and re-read stage one - at the 8-11s
+  this screen actually waits, a claim the screen then withdrew. The fix was
+  written here, picked up by the brand work rebuilding the same file, and
+  reached main in PR #82, which also retired the progress bar outright. That
+  answers the same complaint more completely than capping the bar did, so
+  nothing is owed here; recorded so the fix is not written a second time.
+
+### Still open
+
+- `anonymous_story_shape_rate_limits` and `anonymous_story_shape_global_limits`
+  are dead as of 00046 - nothing reads or writes them. Dropping them is a
+  destructive change and was deliberately not smuggled in behind a policy one.
+- Splitting the refusal reason by which window was hit needs the RPC to return
+  more than a boolean. With one window left this matters less than it did.
+
+### Verification
+
+- `pnpm typecheck` clean, `pnpm lint` no new findings, `pnpm test` 444 passed
+  across 51 suites (3 rewritten to the new contract, 3 added).
+- `deno test -A supabase/functions/` 553 passed, 0 failed (3 added).
+- `deno test -A supabase/migrations/` 83 passed, 0 failed (4 added; three in
+  00039 and one in 00034 retired with a note in place, because they asserted
+  ceilings 00046 deletes and every migration test runs the whole stack).
+
+## 2026-09-08: Writer onboarding preview warming
+
+### Changed
+
+- Warmed the onboarding preview `shape-story` request from the details CTA, as
+  soon as the complete writer brief is known, so email/code time overlaps the
+  model call and the wait screen only covers the remaining tail.
+- Fixed the warmed-request failure race so a failed warm result reaches the
+  retry screen once, then clears for a real retry.
+
+### Not shipped
+
+- A Katha app-icon draw/fill animation was built for the crafting loader and
+  then removed before this landed, on the product owner's instruction. The
+  loader keeps its existing rings, arcs and breathing disc. Recorded here rather
+  than silently dropped, so the next person does not rebuild it assuming it was
+  an oversight.
+
+### Measurement
+
+- Live onboarding `shape-story` smoke, n=5: shape-only min 10.3s, median 11.3s,
+  average 11.7s, max 14.2s.
+- End-to-end anonymous auth + bootstrap + shape ranged from 13.4s to 16.8s.
+- All five returned title and opening.
+
+### Verification
+
+- `pnpm test -- --runTestsByPath src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: 2 suites passing.
+- `pnpm typecheck` clean.
+- `pnpm lint` exits with 0 errors and the existing warning set.
+- `pnpm exec jest --runInBand`: 34 suites, 331 tests passing.
+- `pnpm exec expo-doctor`: 18/18 checks passing with local Node 22 in PATH.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-check` compiled the web bundle.
+- Local Expo web started at `http://localhost:8091/`; 8090 was already occupied by another Katha checkout.
+
 ## 2026-09-06: Writer onboarding consistency and paywall pass
 
 ### Changed

@@ -136,32 +136,17 @@ Deno.test("story starts debit and refund three credits while continuations stay 
   }
 });
 
-Deno.test("anonymous story shaping has network and shared daily budgets", async () => {
-  const db = await createDatabase();
-  const userId = "00000000-0000-4000-8000-000000000342";
-  const scope = "c".repeat(64);
-  try {
-    await db.query("insert into auth.users(id) values ($1)", [userId]);
-    await db.query("insert into profiles(id) values ($1)", [userId]);
-    const allowed = await db.query<{ claim_story_shape_request: boolean }>(
-      "select claim_story_shape_request($1, $2)",
-      [userId, scope],
-    );
-    assertEquals(allowed.rows[0].claim_story_shape_request, true);
-
-    await db.query(
-      `update anonymous_story_shape_global_limits
-       set request_count = 500 where window_key = now()::date`,
-    );
-    const denied = await db.query<{ claim_story_shape_request: boolean }>(
-      "select claim_story_shape_request($1, $2)",
-      [userId, "d".repeat(64)],
-    );
-    assertEquals(denied.rows[0].claim_story_shape_request, false);
-  } finally {
-    await db.close();
-  }
-});
+/*
+ * "anonymous story shaping has network and shared daily budgets" was here.
+ *
+ * It asserted the two ceilings this file introduced - 30 shapes a day per
+ * anonymous network scope and 500 a day across the project - and migration
+ * 00046 removed both. These test files run every migration in order before
+ * asserting, so this one was testing 00034's policy against 00046's function
+ * and could only ever fail. The policy that replaced it is asserted in
+ * `00046_story_shape_no_anonymous_ceiling_test.ts`; everything else 00034 set
+ * up, including the per-user window, is still covered above and in 00039.
+ */
 
 Deno.test("missing paid media refunds are component-idempotent and preserve bucket order", async () => {
   const db = await createDatabase();

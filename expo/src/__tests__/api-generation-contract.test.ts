@@ -380,7 +380,27 @@ describe("world and beats fields", () => {
     expect(body.where_and_when).toBeUndefined();
     expect(body.moments).toBeUndefined();
     expect(body.beats).toBeUndefined();
-    expect(body.chapter_length).toBeUndefined();
+  });
+
+  it("resolves an unset chapter length to the same default the setup screen displays, rather than leaving it for the backend to guess", async () => {
+    // The backend's own fallback for an absent chapter_length is "standard",
+    // audience-unaware -- see `effectiveChapterLength` in `lib/api.ts`. An
+    // adult draft's displayed default already happens to agree with that,
+    // but a kids draft's does not: the setup screen shows "Short" for a kids
+    // draft with no explicit choice, and the request must say the same
+    // thing, not "standard".
+    mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
+    await generateStory({ ...draft, audienceMode: "adult" }, "req-adult-default");
+    expect(bodyOf(mockInvoke.mock.calls[0]).chapter_length).toBe("standard");
+
+    mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
+    await generateStory({ ...draft, audienceMode: "kids" }, "req-kids-default");
+    expect(bodyOf(mockInvoke.mock.calls[1]).chapter_length).toBe("short");
+
+    // An explicit choice always wins, regardless of audience.
+    mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
+    await generateStory({ ...draft, audienceMode: "kids", chapterLength: "long" }, "req-kids-explicit");
+    expect(bodyOf(mockInvoke.mock.calls[2]).chapter_length).toBe("long");
   });
 });
 

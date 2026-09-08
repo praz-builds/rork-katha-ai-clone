@@ -252,6 +252,58 @@ it("renders the real content rating and omits absent flags", async () => {
 });
 
 /**
+ * A generated cover must survive leaving the create studio.
+ *
+ * This screen and the reader both read only `story.coverImage`, which names a
+ * BUNDLED asset and, by its own documentation in `domain.ts`, "only ever
+ * belongs to a seed story". `coverImageUrl` -- the cover actually generated for
+ * this story -- was ignored by both, and only the create studio read it.
+ *
+ * So a writer watched their cover appear during creation and then found the
+ * genre gradient in its place the moment they opened their own story. Nothing
+ * errored: the art was simply never asked for.
+ */
+describe("the generated cover", () => {
+  const GENERATED = "https://example.test/covers/story/cover.png";
+
+  /**
+   * Every image URI in the rendered tree.
+   *
+   * Read off the serialized tree rather than a query helper: RNTL 14 dropped
+   * `UNSAFE_queryAllByProps`, and what this test actually cares about is
+   * whether the URL reached the tree at all, not which node holds it.
+   */
+  const uris = (view: Awaited<ReturnType<typeof renderDetail>>): string =>
+    JSON.stringify(view.toJSON());
+
+  it("is rendered when the story has one", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      coverImageUrl: GENERATED,
+    } as Story);
+    await waitFor(() => expect(uris(view)).toContain(GENERATED));
+  });
+
+  it("is preferred over a bundled seed asset", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      coverImage: undefined,
+      coverImageUrl: GENERATED,
+    } as Story);
+    await waitFor(() => expect(uris(view)).toContain(GENERATED));
+  });
+
+  it("is absent, without crashing, when the story has no cover at all", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      coverImage: undefined,
+      coverImageUrl: undefined,
+    } as Story);
+    await waitFor(() => expect(uris(view)).not.toContain(GENERATED));
+  });
+});
+
+/**
  * Two findings from review, both about state this screen was inventing rather
  * than reading.
  *
@@ -289,5 +341,44 @@ describe("state the screen reads rather than assumes", () => {
     await fireEvent.press(view.getByLabelText("Read story"));
     await waitFor(() => expect(onRead).toHaveBeenCalled());
     expect(onRead.mock.calls[0][1]).toMatchObject({ mode: "read" });
+  });
+});
+
+/**
+ * An Educational story says it is unverified fiction.
+ *
+ * The genre's prompt module works hard at accuracy, but that is guidance to a
+ * generator, not a fact check: nothing in the pipeline verifies a claim, so a
+ * confident wrong date reaches a reader looking exactly like a correct one.
+ * Prompt engineering cannot close that; telling the reader can.
+ */
+describe("the Educational disclosure", () => {
+  const NOTE = /Facts in it are not\s+verified/;
+
+  it("is shown on an educational story", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      primaryGenre: "educational",
+    } as Story);
+    await waitFor(() => expect(view.getByText(NOTE)).toBeTruthy());
+  });
+
+  it("is shown for a legacy row that carries the genre in `genre` instead", async () => {
+    // A disclosure that appears on some educational stories and not others is
+    // worse than none: its absence would read as a statement.
+    const view = await renderDetail({
+      ...standalone!,
+      primaryGenre: undefined,
+      genre: "educational",
+    } as unknown as Story);
+    await waitFor(() => expect(view.getByText(NOTE)).toBeTruthy());
+  });
+
+  it("is absent on every other genre", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      primaryGenre: "adventure",
+    } as Story);
+    await waitFor(() => expect(view.queryByText(NOTE)).toBeNull());
   });
 });

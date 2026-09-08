@@ -1,7 +1,7 @@
 /**
- * Shared types and constants for the v6 story taxonomy.
+ * Shared types and constants for the v7 story taxonomy.
  *
- * 15 primary genres (13 in UI, 2 DB-only), audience modes,
+ * 19 primary genres (12 in UI, 7 DB-only), audience modes,
  * identity lenses and spice levels.
  */
 import type { EntityMention, GroundingCard } from "./grounding-types.ts";
@@ -25,7 +25,11 @@ export type PrimaryGenre =
   | "historical"
   | "adventure"
   | "comedy"
-  | "poetry";
+  | "poetry"
+  | "educational"
+  | "fanfiction"
+  | "folktale"
+  | "sliceOfLife";
 
 export const PRIMARY_GENRES: ReadonlySet<string> = new Set<PrimaryGenre>([
   "romance",
@@ -43,24 +47,60 @@ export const PRIMARY_GENRES: ReadonlySet<string> = new Set<PrimaryGenre>([
   "adventure",
   "comedy",
   "poetry",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "sliceOfLife",
 ]);
 
-/** 13 genres shown in the UI (excludes cozyFantasy, paranormalRomance). */
+/**
+ * 12 genres shown in the UI, per the v7 product decision (2026-09-08).
+ *
+ * `romantasy`, `darkRomance`, `paranormalRomance`, `cozyFantasy`, `poetry`,
+ * `thriller` and `contemporary` are removed from the creation surface but stay
+ * valid `PrimaryGenre` members: existing stories carry these values, and a
+ * removed genre must keep reading, continuing and rendering forever. Only
+ * `normalizeGenre` in `validation.ts` treats them differently now, mapping a
+ * NEW submission down to the surviving genre in `GENRE_MIGRATION_MAP` below.
+ * A stored story keeps its own value and its own genre voice module.
+ */
 export const UI_GENRES: ReadonlySet<string> = new Set<PrimaryGenre>([
   "romance",
-  "romantasy",
-  "darkRomance",
   "fantasy",
   "scifi",
-  "thriller",
   "mystery",
   "horror",
-  "contemporary",
   "historical",
   "adventure",
   "comedy",
-  "poetry",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "sliceOfLife",
 ]);
+
+/**
+ * The 12 UI genres in the product owner's exact display order (2026-09-08).
+ *
+ * `UI_GENRES` is a membership set; this is the ordering contract for whatever
+ * surface renders the creation shelf. Romance is deliberately last — it is the
+ * highest-volume genre, and the product decision is to lead with breadth
+ * (Adventure, Comedy) rather than the obvious choice.
+ */
+export const UI_GENRE_ORDER: readonly PrimaryGenre[] = [
+  "adventure",
+  "comedy",
+  "educational",
+  "fanfiction",
+  "folktale",
+  "historical",
+  "scifi",
+  "fantasy",
+  "mystery",
+  "horror",
+  "sliceOfLife",
+  "romance",
+];
 
 /** A shaped brief can offer a primary shelf plus two editable secondary tags. */
 export const MAX_STORY_GENRES = 3;
@@ -209,6 +249,15 @@ export const GENRE_DEFAULT_SPICE: Record<string, SpiceLevel> = {
   adventure: "sweet",
   comedy: "sweet",
   poetry: "sweet",
+  educational: "sweet",
+  fanfiction: "sweet",
+  // Oral-tradition register, same low-heat default as the poetry slot it
+  // replaces for new submissions (GENRE_MIGRATION_MAP.poetry).
+  folktale: "sweet",
+  // Inherits contemporary's old profile: it absorbed the Slice of Life
+  // register before this genre existed on its own (see
+  // source-of-truth/STORY_PROMPT_SYSTEM.md).
+  sliceOfLife: "sweet",
 };
 
 /**
@@ -234,16 +283,49 @@ export const GENRE_ALLOWED_SPICE: Record<string, ReadonlySet<string>> = {
   adventure: new Set(["sweet", "steamy"]),
   comedy: new Set(["sweet"]),
   poetry: new Set(["sweet"]),
+  educational: new Set(["sweet", "steamy"]),
+  fanfiction: new Set(["sweet", "steamy"]),
+  // Sweet-only, same register as comedy/cozyFantasy/poetry: an on-page heat
+  // scene breaks the family-oral-tradition register a folktale promises.
+  folktale: new Set(["sweet"]),
+  sliceOfLife: new Set(["sweet", "steamy"]),
 };
 
 // ---------------------------------------------------------------------------
 // Genre migration map (old genre names -> new primary genre)
 // ---------------------------------------------------------------------------
 
+/**
+ * Where a genre lands for a NEW submission.
+ *
+ * Two kinds of key share this table and neither is ever removed once added,
+ * because a value dropped from here is a value a stale client, a retry or a
+ * replayed request can no longer produce a story from:
+ *
+ * 1. Names that were never a `PrimaryGenre` (`drama`, `mythology`, `lgbtq`, ...).
+ *    These predate the v7 taxonomy change and are unaffected by it.
+ * 2. `PrimaryGenre` members removed from the UI in the v7 taxonomy change
+ *    (2026-09-08): `romantasy`, `darkRomance`, `paranormalRomance`,
+ *    `cozyFantasy`, `poetry`, `thriller`, `contemporary`. These stay valid
+ *    `PrimaryGenre` values — a stored story keeps its own value forever, and
+ *    `story-prompts.ts`'s own genre lookup resolves them directly, unmigrated,
+ *    so an existing series keeps writing in its original genre's voice. Only a
+ *    NEW submission (`validateGenerationRequest`) is redirected here, to the
+ *    genre the product owner named as its replacement.
+ *
+ * `normalizeGenre` in `validation.ts` checks this map before treating a raw
+ * value as an already-valid genre, so a removed `PrimaryGenre` migrates on a
+ * new request rather than passing through unchanged. The lookup is one hop,
+ * not chained: `drama` resolves straight to `contemporary`, not on again to
+ * `contemporary`'s own replacement, `sliceOfLife`.
+ *
+ * `sliceOfLife` (and its lowercase alias) is deliberately NOT a key here any
+ * more. It used to be an alias for `contemporary`; as of v7 it is a real,
+ * independent `PrimaryGenre`, and redirecting it would make the new genre
+ * unreachable.
+ */
 export const GENRE_MIGRATION_MAP: Record<string, PrimaryGenre> = {
   drama: "contemporary",
-  sliceOfLife: "contemporary",
-  sliceoflife: "contemporary",
   darkAcademia: "contemporary",
   darkacademia: "contemporary",
   mythology: "fantasy",
@@ -252,7 +334,35 @@ export const GENRE_MIGRATION_MAP: Record<string, PrimaryGenre> = {
   lgbtq: "contemporary",
   motivational: "contemporary",
   spirituality: "contemporary",
+  // v7 taxonomy (2026-09-08): removed-from-UI genres normalise to their
+  // documented replacement for new submissions.
+  thriller: "mystery",
+  contemporary: "sliceOfLife",
+  poetry: "folktale",
+  romantasy: "romance",
+  darkRomance: "romance",
+  paranormalRomance: "romance",
+  cozyFantasy: "fantasy",
 };
+
+/**
+ * `GENRE_MIGRATION_MAP`, re-keyed the way a caller might actually write a genre.
+ *
+ * The map is keyed in this codebase's camelCase (`darkRomance`), so a
+ * lowercased, separator-stripped lookup against it missed every multi-word
+ * retired genre: "dark romance" and "Dark Romance" both reduce to
+ * `darkromance`, which the map does not contain. Building the index once,
+ * here beside the map it derives from, keeps the map readable and gives every
+ * caller that has to migrate a raw string the same total lookup -- there are
+ * two of them (`validation.ts` for a request, `story-shape.ts` for a model
+ * response) and they used to disagree.
+ */
+export const GENRE_MIGRATION_BY_NORMALIZED_KEY: Record<string, PrimaryGenre> =
+  Object.fromEntries(
+    Object.entries(GENRE_MIGRATION_MAP).map((
+      [key, value],
+    ) => [key.toLowerCase().replace(/[\s_-]/g, ""), value]),
+  );
 
 // ---------------------------------------------------------------------------
 // Story shape: planned length, chapter length, cast size

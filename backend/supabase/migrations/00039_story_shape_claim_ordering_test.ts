@@ -44,113 +44,67 @@ async function claim(db: PGlite, userId: string, scope: string | null) {
   return result.rows[0].claim_story_shape_request;
 }
 
-async function globalCount(db: PGlite) {
-  const result = await db.query<{ request_count: number }>(
-    "select request_count from anonymous_story_shape_global_limits where window_key = now()::date",
-  );
-  return result.rows[0]?.request_count ?? 0;
-}
-
-Deno.test("a request rejected by the per-user limit does not spend the global anonymous budget", async () => {
+Deno.test("a request rejected by the per-user limit does not spend the budget", async () => {
   const db = await createDatabase();
   const userId = "00000000-0000-4000-8000-000000000391";
-  const scope = "a".repeat(64);
 
   try {
     await createUser(db, userId);
 
     for (let index = 0; index < 6; index++) {
-      assertEquals(await claim(db, userId, scope), true);
+      assertEquals(await claim(db, userId, null), true);
     }
-    assertEquals(await globalCount(db), 6);
 
-    // The seventh is over the six-per-minute per-user limit. Before the
-    // reorder this still incremented the global counter to 7 on its way to
-    // returning false, so a client retrying in a loop drained the project's
-    // shared daily budget without ever receiving a shape.
-    assertEquals(await claim(db, userId, scope), false);
-    assertEquals(await globalCount(db), 6);
+    // The seventh is over the six-per-minute window. 00039's fix was the
+    // ordering that gets here: decide first, write afterwards, so a claim that
+    // is going to be refused never moves a counter on its way to refusing.
+    assertEquals(await claim(db, userId, null), false);
 
-    const perScope = await db.query<{ request_count: number }>(
-      "select request_count from anonymous_story_shape_rate_limits where scope_hash = $1",
-      [scope],
+    const perUser = await db.query<{ request_count: number }>(
+      "select request_count from story_shape_rate_limits where user_id = $1",
+      [userId],
     );
-    assertEquals(perScope.rows[0].request_count, 6);
+    assertEquals(perUser.rows[0].request_count, 6);
   } finally {
     await db.close();
   }
 });
 
-Deno.test("the per-scope daily limit still stops before the global counter moves", async () => {
+Deno.test("the per-minute window reopens, and it is the only limit left", async () => {
   const db = await createDatabase();
-  const scope = "b".repeat(64);
+  const userId = "00000000-0000-4000-8000-000000000393";
 
   try {
-    // Thirty distinct users so only the shared network scope can reject.
-    for (let index = 0; index < 31; index++) {
-      const userId = `00000000-0000-4000-8000-0000000004${
-        String(index).padStart(2, "0")
-      }`;
-      await createUser(db, userId);
-      const granted = await claim(db, userId, scope);
-      assertEquals(granted, index < 30);
-    }
+    await createUser(db, userId);
 
-    assertEquals(await globalCount(db), 30);
-  } finally {
-    await db.close();
-  }
-});
-
-Deno.test("the global ceiling and the named-user path keep their original behaviour", async () => {
-  const db = await createDatabase();
-  const anonymousUser = "00000000-0000-4000-8000-000000000392";
-  const namedUser = "00000000-0000-4000-8000-000000000393";
-
-  try {
-    await createUser(db, anonymousUser);
-    await createUser(db, namedUser);
-
-    await db.query(
-      `insert into anonymous_story_shape_global_limits (window_key, request_count)
-       values (now()::date, 500)
-       on conflict (window_key) do update set request_count = excluded.request_count`,
-    );
-    assertEquals(await claim(db, anonymousUser, "c".repeat(64)), false);
-
-    // A signed-in caller passes no scope and is unaffected by the global
-    // ceiling; only the six-per-minute window applies.
     for (let index = 0; index < 6; index++) {
-      assertEquals(await claim(db, namedUser, null), true);
+      assertEquals(await claim(db, userId, null), true);
     }
-    assertEquals(await claim(db, namedUser, null), false);
+    assertEquals(await claim(db, userId, null), false);
 
     await db.query(
       `update story_shape_rate_limits
        set window_started_at = now() - interval '2 minutes'
        where user_id = $1`,
-      [namedUser],
+      [userId],
     );
-    assertEquals(await claim(db, namedUser, null), true);
+    assertEquals(await claim(db, userId, null), true);
   } finally {
     await db.close();
   }
 });
 
-Deno.test("an unparseable anonymous scope is still refused outright", async () => {
-  const db = await createDatabase();
-  const userId = "00000000-0000-4000-8000-000000000394";
-
-  try {
-    await createUser(db, userId);
-    let raised = false;
-    try {
-      await claim(db, userId, "not-a-hash");
-    } catch {
-      raised = true;
-    }
-    assertEquals(raised, true);
-  } finally {
-    await db.close();
-  }
-});
+/*
+ * Three tests were removed here rather than rewritten, and this note is what
+ * is left of them.
+ *
+ * They asserted the two anonymous ceilings 00046 deletes: that thirty claims
+ * from thirty different users sharing one network scope refused the
+ * thirty-first, that a global counter sitting at 500 refused everybody for the
+ * rest of the day, and that an unparseable scope hash raised. All three
+ * described a policy that no longer exists - not behaviour that regressed - so
+ * keeping them inverted ("assert the ceiling does NOT apply") would have left
+ * this file arguing with itself about which migration was in force.
+ * `00046_story_shape_no_anonymous_ceiling_test.ts` asserts the policy that
+ * replaced them.
+ */
