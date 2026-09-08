@@ -7,6 +7,7 @@
 // the thing worth proving now is that they are reachable only under the right
 // conditions -- never merely absent from the source.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { STATIC_VOICES } from "./voices.ts";
 import { handleRequest as generateAudio } from "../generate-audio/index.ts";
 import { handleRequest as audioStatus } from "../audio-status/index.ts";
 import { NARRATION_REFUSAL } from "./narration-audio.ts";
@@ -74,7 +75,18 @@ function makeFetchStub(
     if (url.pathname === "/rest/v1/chapters") {
       return scenario.chapter ? json(scenario.chapter) : pgrst116();
     }
-    if (url.pathname === "/rest/v1/voices") return json([]);
+    if (url.pathname === "/rest/v1/voices") {
+      // Serve the seeded registry: an empty answer from a reachable table now
+      // means "no active voices", not "the table is down".
+      const requested = url.searchParams.get("id")?.replace("eq.", "");
+      const rows = STATIC_VOICES.filter((voice) =>
+        !requested || voice.id === requested
+      );
+      const wantsObject = (request.headers.get("Accept") ?? "").includes(
+        "vnd.pgrst.object",
+      );
+      return wantsObject ? json(rows[0] ?? null) : json(rows);
+    }
     if (url.pathname === "/rest/v1/chapter_audio") {
       return scenario.chapterAudioRow
         ? json([scenario.chapterAudioRow])

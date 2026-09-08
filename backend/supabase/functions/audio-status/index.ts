@@ -16,7 +16,7 @@ import { logError } from "../_shared/errors.ts";
 import {
   DEFAULT_VOICE_ID,
   getVoiceRecord,
-  isValidVoiceId,
+  isKnownVoiceId,
 } from "../_shared/voices.ts";
 import {
   canReadChapter,
@@ -60,14 +60,20 @@ export async function handleRequest(req: Request): Promise<Response> {
     const voiceId = requestedVoiceId === null
       ? DEFAULT_VOICE_ID
       : requestedVoiceId;
-    if (!isValidVoiceId(voiceId)) {
-      return respond({ error: "Unknown voice_id" }, 400);
-    }
-
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // Asked of the registry, not of the ids compiled into this build. Gating on
+    // the static list rejected every voice added to `public.voices` after
+    // deploy, which makes the table pointless as a registry.
+    if (
+      typeof voiceId !== "string" ||
+      !(await isKnownVoiceId(serviceClient, voiceId))
+    ) {
+      return respond({ error: "Unknown voice_id" }, 400);
+    }
     const [storyResult, chapterResult] = await Promise.all([
       serviceClient.from("stories").select("author_id, is_public, is_curated")
         .eq("id", storyId).single(),

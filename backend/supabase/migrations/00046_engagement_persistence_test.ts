@@ -396,3 +396,67 @@ Deno.test("relationship RLS exposes only the caller's own rows", async () => {
     await db.close();
   }
 });
+
+// The counter and the row must move together, and the only way to guarantee
+// that is to make the RPC the only door.
+//
+// An earlier draft gave each relationship table an own-row insert policy, which
+// looks safe: a user may only write their own row. But a client holding an
+// ordinary JWT could then insert straight into `story_likes` while
+// `stories.like_count` stayed where it was, and nothing would raise. The
+// counter would simply be wrong for good.
+//
+// This pins the door shut. A user inserting THEIR OWN like is refused, not just
+// one impersonating somebody else.
+Deno.test("a user cannot write their own engagement rows directly, only through the RPC", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+    await asUser(db, READER);
+
+    for (
+      const statement of [
+        `insert into story_likes(user_id, story_id) values ('${READER}', '${STORY}')`,
+        `insert into bookmarks(user_id, story_id) values ('${READER}', '${STORY}')`,
+        `insert into story_followers(story_id, user_id) values ('${STORY}', '${READER}')`,
+        `insert into user_followers(author_id, follower_id) values ('${AUTHOR}', '${READER}')`,
+      ]
+    ) {
+      assertEquals(
+        await attempt(db, statement),
+        "42501",
+        `direct write should be refused: ${statement}`,
+      );
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+// And the mirror: with the door shut, the RPC still works and still moves the
+// counter. Without this, a migration that revoked everything would pass the
+// test above and have broken the feature.
+Deno.test("the RPC still likes and still moves the counter after the lockdown", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+    await asSuperuser(db);
+    await db.query("select public.toggle_story_like($1, $2, true)", [
+      READER,
+      STORY,
+    ]);
+
+    const counted = await db.query<{ like_count: number }>(
+      "select like_count from stories where id = $1",
+      [STORY],
+    );
+    assertEquals(counted.rows[0].like_count, 1);
+
+    const rows = await db.query<{ user_id: string }>(
+      "select user_id from story_likes",
+    );
+    assertEquals(rows.rows.length, 1);
+  } finally {
+    await db.close();
+  }
+});
