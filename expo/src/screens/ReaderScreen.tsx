@@ -33,6 +33,7 @@ import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
+import { captureError } from "@/lib/analytics";
 import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
@@ -491,12 +492,28 @@ export default function ReaderScreen({
         setIsPlaying(true);
         isLoadingAudioRef.current = false;
       }
-    } catch {
+    } catch (error) {
       isLoadingAudioRef.current = false;
+      // Identifiers and enums only -- never the story's own text. This is
+      // the client-visible half of narration alerting; the harder half (a
+      // RunPod job failing or timing out server-side) is reported from the
+      // edge functions themselves, since a backend timeout never reaches
+      // this catch block at all.
+      captureError({
+        bucket: "generation.audio",
+        severity: "medium",
+        errorCode: error instanceof Error ? error.name : "playback_error",
+        error,
+        context: {
+          story_id: story.id,
+          chapter_id: chapter.id,
+          voice_gender: voiceGender,
+        },
+      });
       Alert.alert("Playback error", "Could not play audio. Please try again.");
       setIsPlaying(false);
     }
-  }, [getAudioUrl, isPlaying]);
+  }, [getAudioUrl, isPlaying, story.id, chapter.id, voiceGender]);
 
 
   // Listen opens the reader already playing. Guarded by a ref so it fires once

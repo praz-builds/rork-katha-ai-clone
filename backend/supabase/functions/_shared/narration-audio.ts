@@ -47,10 +47,52 @@ export interface ChapterAudioRow {
   status: "pending" | "ready" | "failed";
   generated_at?: string | null;
   error_code?: string | null;
+  /**
+   * Set to `now()` by `claim_chapter_audio_generation` the moment a row is
+   * (re)claimed into `pending`, and left untouched thereafter until the row
+   * leaves `pending`. Nothing else in this codebase writes it, which is what
+   * makes it usable as "how long has this job been pending" -- see
+   * `isNarrationJobStale`.
+   */
+  updated_at?: string | null;
 }
 
 const CHAPTER_AUDIO_COLUMNS =
-  "id, chapter_id, voice_id, storage_path, duration_seconds, word_count, provider_job_id, status, generated_at, error_code";
+  "id, chapter_id, voice_id, storage_path, duration_seconds, word_count, provider_job_id, status, generated_at, error_code, updated_at";
+
+/**
+ * How long a `chapter_audio` row may sit `pending` before `audio-status`
+ * treats the job as timed out rather than still in flight.
+ *
+ * There is no push from RunPod: the only way this system learns a job
+ * finished is a reader's client calling `audio-status` again. So "timed out"
+ * here means "our own record of this job has been stuck in `pending` longer
+ * than any real MiniMax synthesis job plausibly takes" -- not a signal RunPod
+ * itself sent us. Ten minutes mirrors `COVER_GENERATING_STALE_MS` in
+ * `media.ts`, which exists for the same underlying reason (a background job
+ * whose owning isolate may have been reclaimed, deployed over, or simply
+ * never polled again): narrating even the longest chapter (the 1,500-word
+ * adult standalone ceiling in `wordBandFor()`) should complete in well under
+ * a minute of actual synthesis time, so ten minutes is generous headroom for
+ * provider cold starts while still being far short of "abandoned."
+ */
+export const NARRATION_JOB_STALE_MS = 10 * 60 * 1000;
+
+/**
+ * Whether a `pending` row has been sitting long enough to call it timed out.
+ * `updatedAt` is the row's `updated_at`; `null`/`undefined` (a row from
+ * before this column was read, or a malformed timestamp) is never treated as
+ * stale -- silence about age must not manufacture a false alarm.
+ */
+export function isNarrationJobStale(
+  updatedAt: string | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!updatedAt) return false;
+  const updatedAtMs = Date.parse(updatedAt);
+  if (!Number.isFinite(updatedAtMs)) return false;
+  return now - updatedAtMs > NARRATION_JOB_STALE_MS;
+}
 
 export interface ProviderJobStarter {
   (input: { text: string; voice: VoiceRecord }): Promise<string>;

@@ -81,6 +81,17 @@ The rules:
 
 `context` stores identifiers and enums only. Never story prose, seeds, prompts, or any free user text.
 
+### Sentry push alerts (narration)
+
+`error_events` stays the system of record for every failure -- Sentry, wired via `_shared/sentry.ts` (backend) and `captureError()` in `expo/src/lib/analytics.ts` (client), is a push notification layered on top of it, not a replacement. Both fire independently for the same failure; neither can make the other fail, and a Sentry outage never blocks or fails the response it is reporting on. The same PII rule applies to a Sentry event as to an `error_events` row: identifiers and enums only, never story prose, a seed, a prompt, or an entity name.
+
+**Two config values must both be set before any of this reaches Sentry:**
+
+1. `SENTRY_DSN` in Supabase secrets (backend, narration alerting).
+2. `sentryDsn` in `expo/app.json` (client).
+
+Neither is set today. A missing value is a hard no-op on that side -- the backend's SDK import is dynamic and is never even fetched without `SENTRY_DSN`, and the client's `captureError` checks whether `initSentry()` actually configured the SDK before doing anything. **Do not assume narration alerts are live without confirming both secrets are set** -- an agent (or the product owner) checking "is this wired" must check the secret, not just the code.
+
 ## Infrastructure & Services
 
 | Service | Purpose | Key / Config | Status |
@@ -93,7 +104,7 @@ The rules:
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **RevenueCat** | Subscriptions + credit packs + paywalls | Public SDK key in `expo/src/lib/revenuecat.ts`; webhook secret in Supabase secrets | Pending dashboard setup |
 | **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets | Not yet wired |
-| **Sentry** | Error tracking | DSN | Not yet set |
+| **Sentry** | Error tracking, incl. narration alerting (see Observability Gate above) | `SENTRY_DSN` in Supabase secrets (backend) + `sentryDsn` in `expo/app.json` (client) | Not yet set |
 | **AdMob** | Rewarded video for free credits | Needs server-side verification (SSV) | Not yet wired |
 
 ### LLM Fallback Chain

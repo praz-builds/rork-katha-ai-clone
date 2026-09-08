@@ -16,7 +16,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 import { parseUuid } from "../_shared/uuid.ts";
-import { logError } from "../_shared/errors.ts";
+import { type ErrorSeverity, logError } from "../_shared/errors.ts";
+import { reportError } from "../_shared/sentry.ts";
 import { canGenerateNarration } from "../_shared/narration-entitlement.ts";
 import {
   DEFAULT_VOICE_ID,
@@ -195,9 +196,9 @@ export async function handleRequest(req: Request): Promise<Response> {
     } catch (providerError) {
       const errorCode = providerErrorCode(providerError);
       await markChapterAudioFailed(serviceClient, claim.id!, errorCode);
-      await logError({
+      await reportError({
         bucket: "generation.audio",
-        severity: "high",
+        severity: classifyStartFailureSeverity(errorCode),
         errorCode,
         error: providerError,
         userId: user.id,
@@ -245,6 +246,22 @@ function providerErrorCode(error: unknown): string {
     return error.message.slice(0, 96) || "provider_error";
   }
   return "provider_error";
+}
+
+/**
+ * A single job's failure to start ("high") vs a sign that narration
+ * generation is broken for everyone ("critical"). A missing provider
+ * credential or a 5xx from RunPod's own `/run` endpoint are
+ * configuration/outage shaped -- true regardless of which chapter was being
+ * narrated -- unlike a 4xx, a missing job id, or an unimplemented provider,
+ * each of which is specific to this one request.
+ */
+function classifyStartFailureSeverity(errorCode: string): ErrorSeverity {
+  if (errorCode.includes("RUNPOD_API_KEY is not configured")) {
+    return "critical";
+  }
+  if (/RunPod start failed: 5\d\d/.test(errorCode)) return "critical";
+  return "high";
 }
 
 if (import.meta.main) {

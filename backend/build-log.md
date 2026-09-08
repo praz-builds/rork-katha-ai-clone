@@ -2749,3 +2749,173 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
 - Nothing pushed, deployed, or run against the live project
   `iafeuxgoiknncgyjmugd`. Migration 00051 is written but not applied. No git
   commit made, per instructions.
+
+## 2026-09-08: Sentry push alerts for narration failures, on top of error_events
+
+### Changed
+
+- `_shared/sentry.ts` (new): a Deno-compatible Sentry client, pinned to
+  `https://esm.sh/@sentry/deno@10.73.0` -- the same pinning convention as
+  every other remote import in `_shared/` (`https://deno.land/std@0.177.0/...`,
+  `https://esm.sh/@supabase/supabase-js@2`), no floating tag. The SDK import
+  is dynamic (`await import(...)`), not static, so a function that never sees
+  `SENTRY_DSN` never even fetches or evaluates the Sentry module graph on
+  cold start -- not just "no event sent", but zero added cost, matching the
+  instruction that every function must keep working *exactly* as it does now
+  while the DSN is unset.
+  - `captureError(input)`: sends one event, `false` without throwing when
+    `SENTRY_DSN` is absent, bounded by an outer timeout (3s) that is
+    deliberately larger than Sentry's own internal flush timeout (1.5s) --
+    two independent timers racing at the same duration is a coin flip under
+    load, not a bound; discovered by a real flake in the full 550+ test suite
+    and fixed by widening the outer one rather than shortening the inner one.
+    Sends `captureMessage`, never `captureException`: the reported message is
+    always `_shared/errors.ts`'s `safeErrorMessage()` (an errorCode or the
+    error's *name*, never its own `message`), and `extra` is
+    `sanitizeErrorContext()`'s allowlist output verbatim -- the exact same
+    functions `error_events` already uses, not a second implementation of the
+    same rule. `defaultIntegrations: false` + `sendDefaultPii: false` turn off
+    breadcrumbs, console capture, and request/IP capture.
+  - `reportError(input)`: calls `logError` (unmodified, still the durable
+    system of record) and `captureError` independently. Neither call's
+    failure affects the other.
+  - `resetSentryForTests()`: test-only, clears the module's "already
+    initialized for this DSN" memory.
+- `_shared/narration-audio.ts`: `CHAPTER_AUDIO_COLUMNS` now selects
+  `updated_at` (an existing column, no schema change). `NARRATION_JOB_STALE_MS`
+  (10 minutes) and `isNarrationJobStale(updatedAt, now?)`.
+- `_shared/narration-entitlement.ts`: a comment block on `canGenerateNarration`
+  explaining why "narration was never generated for a story" has no alert (see
+  below).
+- `generate-audio/index.ts`: the `startProviderJob` catch block now calls
+  `reportError` instead of `logError`, with severity from a new
+  `classifyStartFailureSeverity(errorCode)` -- `critical` for a missing
+  `RUNPOD_API_KEY` or a 5xx from RunPod's own `/run` endpoint (config/outage
+  shaped, true regardless of which chapter), `high` for everything else (a
+  4xx, a missing job id, an unimplemented provider -- specific to this one
+  request).
+- `audio-status/index.ts`:
+  - The provider-reported-failure branch (`poll.status === "failed"`) now
+    calls `reportError` at `high` (was `logError` at `medium` -- a
+    deliberate change: a paying feature failing outright is not a "medium").
+  - New: a `pending` row (with or without a `provider_job_id` yet) whose
+    `updated_at` is older than `NARRATION_JOB_STALE_MS` is marked `failed`
+    with `error_code: "generation_timed_out"` and reported once via
+    `reportError`. Severity comes from `classifyTimeoutSeverity`, a count
+    query against `chapter_audio` for other stale-pending rows right now
+    (`idx_chapter_audio_pending` already indexes `(status, updated_at) where
+    status = 'pending'` for exactly this) -- more than one stuck job at once
+    is `critical`, exactly one is `high`. Reports once, not on every poll,
+    because the row leaves `pending` on the first detection and every later
+    poll returns from the `row.status === "failed"` branch above the
+    provider call entirely.
+- `expo/src/lib/analytics.ts`: `captureError()` -- the export
+  `app-root.test.tsx` had been mocking since before this session, against a
+  function that did not exist. No-ops when `initSentry()` never actually
+  configured the SDK (tracked by a module-level `sentryReady` flag, since
+  `expo/app.json`'s `sentryDsn` is `""` today). Same shape as the backend:
+  `bucket`/`severity`/`errorCode`/`context`, a bounded/allowlist-shaped
+  `sanitizeClientContext`, a safe bounded message never the original error's
+  text, and a try/catch so reporting can never itself throw.
+- `expo/src/screens/ReaderScreen.tsx`: `handlePlayTap`'s catch block (the
+  `Alert.alert("Playback error", ...)` around what was line 496) now calls
+  `captureError` with `story_id`, `chapter_id`, `voice_gender` -- identifiers
+  and enums only, never chapter text.
+- `AGENTS.md`: a "Sentry push alerts (narration)" subsection under the
+  Observability Gate naming the two config values that must both be set
+  before any of this reaches Sentry (`SENTRY_DSN` in Supabase secrets,
+  `sentryDsn` in `expo/app.json`) and stating plainly that neither is set
+  today. The Infrastructure & Services Sentry row now names both values
+  instead of just "DSN".
+
+### The honest answer on "narration was never generated for a story"
+
+This was the product owner's first-named case and it does not get an alert.
+Generation is lazy (only runs when a reader presses Listen) and
+`canGenerateNarration` defaults closed, so on any given day almost every
+story correctly has zero narration -- nobody asked, or the gate was closed
+when they did. An alert on "no `chapter_audio` row exists" would fire for
+effectively every story ever published. The only two failures that are
+honestly observable today are the ones wired above, and both require a
+reader to have actually tried: a generation attempt that failed, and one
+that never reached a terminal state. "Nobody has tried yet" and "narration
+silently failed" are not distinguishable signals while generation stays
+demand-driven. This becomes buildable if generation ever moves from lazy to
+eager (the Inngest-on-publish integration already noted as
+planned-but-not-wired in the Audio Narration System section) -- then "story
+published > N minutes ago, no ready row, no matching failure" is a real
+absence signal. Full reasoning is in the comment on `canGenerateNarration` in
+`_shared/narration-entitlement.ts`.
+
+### What this does not do
+
+- Does not alert on `pollRunpodNarration` throwing (a RunPod status-endpoint
+  outage while polling, e.g. its own 5xx) -- that exception still falls
+  through to the generic top-level `catch` in `audio-status/index.ts`, which
+  writes `error_events` via the pre-existing unmodified `logError` call but
+  does not call `reportError`. In scope was "the narration paths
+  specifically"; the top-level catch-all is a general internal-error path
+  shared with unrelated bugs (auth, JSON parsing, ...), and routing it to
+  Sentry would be scope creep beyond what was asked. Worth revisiting if
+  RunPod status-endpoint outages turn out to be a real recurring failure
+  mode.
+- Does not escalate the provider-reported-failure branch's severity beyond a
+  flat `high` (no recent-failure-rate query). `classifyTimeoutSeverity`'s
+  count query works because `idx_chapter_audio_pending` already indexes
+  `status = 'pending'`; there is no equivalent index for `status = 'failed'`,
+  and adding one to distinguish "several jobs failed at once" from "one job
+  failed" felt like schema growth this task did not ask for.
+
+### Verification (real, observed)
+
+- Baseline before this change: `deno test --allow-env --allow-net
+  --allow-read supabase/functions` → 550 passed, 0 failed (~1m30s).
+  `supabase/migrations` → 82 passed, 0 failed (8m25s). `deno check` clean on
+  every function's `index.ts`. Client: `tsc --noEmit` clean; `jest` → 51
+  suites / 441 tests passed; `eslint .` → 0 errors, 18 warnings.
+- After: `supabase/functions` → **572 passed, 0 failed** (~1m20s, stable
+  across two consecutive runs) -- 22 new tests across
+  `_shared/sentry.test.ts` (9), `_shared/narration-audio.test.ts` (+4, stale
+  detection), `generate-audio/index.test.ts` (+3), `audio-status/index.test.ts`
+  (+6). `supabase/migrations` → **82 passed, 0 failed** (untouched, re-run to
+  confirm: 3m55s). `deno check` clean on every function's `index.ts` and on
+  every touched `_shared` module. `deno fmt --check` clean on all 9 touched
+  backend files. `deno lint` clean on every file this session touched (one
+  pre-existing `require-await` finding on `publicAudioUrl` in
+  `narration-audio.ts`, confirmed unrelated by diffing against `HEAD` --
+  `deno lint` is not part of the CI gate in `.github/workflows/ci.yml`
+  regardless).
+- Client: `tsc --noEmit` clean. `jest` → **52 suites / 447 tests passed**
+  (+6: 2 in `analytics.test.ts`'s new `captureError` block, 4 in the new
+  `analytics-capture-error.test.ts`). `eslint .` → 0 errors, 18 warnings --
+  identical set to baseline, no new findings.
+- Required-tests checklist, all run for real:
+  - No DSN configured → every narration path unchanged, nothing throws:
+    `sentry.test.ts` ("captureError is a true no-op..."),
+    `generate-audio/index.test.ts` ("without SENTRY_DSN, a start failure
+    still writes error_events..."), `audio-status/index.test.ts` ("without
+    SENTRY_DSN, a timeout is still detected...").
+  - A failed RunPod job reports to Sentry AND writes `error_events`:
+    `generate-audio/index.test.ts`'s 5xx/4xx tests assert both
+    `state.errorEventsInserts` and `state.sentryEvents`.
+  - A timed-out job reports once, not on every poll:
+    `audio-status/index.test.ts`'s two-call test ("...reported once, not on
+    every poll") polls twice against one mutated fixture and asserts
+    `sentryEvents.length` stays 1.
+  - A Sentry transport that throws does not fail the request or lose the
+    `error_events` row: `sentry.test.ts`'s two throwing-transport tests, plus
+    an end-to-end version isn't in the handler suites (the handler tests
+    don't simulate a throwing Sentry transport directly, only the DSN-present
+    and DSN-absent cases) -- covered at the `_shared/sentry.ts` unit level,
+    which is what both `generate-audio` and `audio-status` call through
+    unmodified.
+  - No reported payload contains story prose, a seed, a prompt, or an entity
+    name: `sentry.test.ts`'s "no reported payload ever contains..." test
+    asserts on a representative event built from forbidden strings passed
+    both as the Error's message and as disallowed context keys.
+  - The client's `captureError` is a no-op when Sentry was never initialised:
+    `analytics.test.ts`'s `captureError` block, against this file's existing
+    empty-DSN fixture.
+- Nothing pushed, deployed, or run against the live project
+  `iafeuxgoiknncgyjmugd`. `SENTRY_DSN` and `sentryDsn` remain unset. No git
+  commit made, per instructions.
