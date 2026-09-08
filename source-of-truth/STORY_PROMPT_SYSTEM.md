@@ -50,17 +50,18 @@ writer, not by a generic assistant. The prompt system must optimize for:
   direction produces timid, flat intimacy, which is a worse product than the
   thing it prevents. Both remaining tiers carry positive technique — longing,
   restraint, charged specificity, the cut — in the Spice Modules section.
-- **No auto-aging workaround for underage sexual content.** If the user's request
-  clearly asks for sexual content involving a minor, reject at validation. If age
-  is merely ambiguous in an adult romance, make adulthood clear in the story.
+- **No auto-aging workaround for underage sexual content.** If the user's
+  request clearly asks for sexual content involving a minor, reject at
+  validation. If age is merely ambiguous in an adult romance, make adulthood
+  clear in the story.
 - **Author touchstones stay in docs only.** Runtime prompts should use craft
   traits, not living author names or instructions that could imitate a style.
 - **Prompt-only JSON is not enough.** Use API-level structured output/schema
   enforcement where supported, with strict validation fallback.
 - **A Create story is planned, not mode-selected.** The user chooses 3, 7, or 15
   chapters in More options. New Create stories begin as Chapter 1 and persist
-  state, hooks, and chapter roles toward the planned finale. `standalone` remains
-  backend compatibility for legacy callers, not a creation control.
+  state, hooks, and chapter roles toward the planned finale. `standalone`
+  remains backend compatibility for legacy callers, not a creation control.
 - **Every prompt change needs evals.** Genre quality, banned patterns, safety,
   schema validity, series state, and continuation behavior must be tested before
   deployment.
@@ -79,6 +80,10 @@ The runtime prompt builder should assemble layers in this order:
 8. Continuation/finale module, when applicable
 9. Language module
 10. Output schema reminder
+
+The user prompt has its own optional brief layers. Grounding and phrase learning
+are both no-op layers when empty: omitting them or passing an empty array must
+produce a byte-identical prompt to the pre-layer path.
 
 Recommended builder signatures:
 
@@ -132,25 +137,27 @@ buildContinuationSystemPrompt({
 
 ## User-Facing Taxonomy
 
-These are the 15 backend genres. 13 ship as creation cards in the app; `cozyFantasy` and `paranormalRomance` are valid DB values but are not rendered as creation cards (see Key v6 Decisions).
+These are the 15 backend genres. 13 ship as creation cards in the app;
+`cozyFantasy` and `paranormalRomance` are valid DB values but are not rendered
+as creation cards (see Key v6 Decisions).
 
-| UI card # | UI Genre | Internal genre | Notes |
-|---|----------|----------------|-------|
-| 1 | Romance | `romance` | Commercial relationship-forward stories |
-| 2 | Romantasy | `romantasy` | Romance and fantasy arcs have equal weight |
-| 3 | Dark Romance | `darkRomance` | Adult only, steamy default; intensity comes from power and consequence, never from crude prose |
-| - | Cozy Fantasy | `cozyFantasy` | **Backend only, hidden from UI.** Low-stakes warmth, craft, community |
-| - | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Supernatural romance |
-| 4 | Fantasy | `fantasy` | Magic, world, cost, wonder |
-| 5 | Sci-Fi | `scifi` | One speculative idea with human consequence |
-| 6 | Thriller | `thriller` | Urgency, threat, ticking clock |
-| 7 | Mystery | `mystery` | Fair-play puzzle |
-| 8 | Horror | `horror` | Dread, wrongness, restraint |
-| 9 | Contemporary | `contemporary` | Absorbs Drama and Slice of Life registers |
-| 10 | Historical | `historical` | Period consciousness and constraints |
-| 11 | Adventure | `adventure` | Motion, environment, physical stakes |
-| 12 | Comedy | `comedy` | Observational or absurd, committed timing |
-| 13 | Poetry | `poetry` | Prose poetry / lyrical narrative mode |
+| UI card # | UI Genre           | Internal genre      | Notes                                                                                          |
+| --------- | ------------------ | ------------------- | ---------------------------------------------------------------------------------------------- |
+| 1         | Romance            | `romance`           | Commercial relationship-forward stories                                                        |
+| 2         | Romantasy          | `romantasy`         | Romance and fantasy arcs have equal weight                                                     |
+| 3         | Dark Romance       | `darkRomance`       | Adult only, steamy default; intensity comes from power and consequence, never from crude prose |
+| -         | Cozy Fantasy       | `cozyFantasy`       | **Backend only, hidden from UI.** Low-stakes warmth, craft, community                          |
+| -         | Paranormal Romance | `paranormalRomance` | **Backend only, hidden from UI.** Supernatural romance                                         |
+| 4         | Fantasy            | `fantasy`           | Magic, world, cost, wonder                                                                     |
+| 5         | Sci-Fi             | `scifi`             | One speculative idea with human consequence                                                    |
+| 6         | Thriller           | `thriller`          | Urgency, threat, ticking clock                                                                 |
+| 7         | Mystery            | `mystery`           | Fair-play puzzle                                                                               |
+| 8         | Horror             | `horror`            | Dread, wrongness, restraint                                                                    |
+| 9         | Contemporary       | `contemporary`      | Absorbs Drama and Slice of Life registers                                                      |
+| 10        | Historical         | `historical`        | Period consciousness and constraints                                                           |
+| 11        | Adventure          | `adventure`         | Motion, environment, physical stakes                                                           |
+| 12        | Comedy             | `comedy`            | Observational or absurd, committed timing                                                      |
+| 13        | Poetry             | `poetry`            | Prose poetry / lyrical narrative mode                                                          |
 
 Separate UI controls:
 
@@ -165,23 +172,23 @@ Separate UI controls:
 
 ## Genre and Spice Matrix
 
-| Internal genre | Default spice | Allowed spice |
-|----------------|---------------|---------------|
-| romance | steamy | sweet, steamy |
-| romantasy | steamy | sweet, steamy |
-| darkRomance | steamy | sweet, steamy |
-| cozyFantasy | sweet | sweet |
-| paranormalRomance | steamy | sweet, steamy |
-| fantasy | sweet | sweet, steamy |
-| scifi | sweet | sweet, steamy |
-| thriller | sweet | sweet, steamy |
-| mystery | sweet | sweet, steamy |
-| horror | sweet | sweet, steamy |
-| contemporary | sweet | sweet, steamy |
-| historical | sweet | sweet, steamy |
-| adventure | sweet | sweet, steamy |
-| comedy | sweet | sweet |
-| poetry | sweet | sweet |
+| Internal genre    | Default spice | Allowed spice |
+| ----------------- | ------------- | ------------- |
+| romance           | steamy        | sweet, steamy |
+| romantasy         | steamy        | sweet, steamy |
+| darkRomance       | steamy        | sweet, steamy |
+| cozyFantasy       | sweet         | sweet         |
+| paranormalRomance | steamy        | sweet, steamy |
+| fantasy           | sweet         | sweet, steamy |
+| scifi             | sweet         | sweet, steamy |
+| thriller          | sweet         | sweet, steamy |
+| mystery           | sweet         | sweet, steamy |
+| horror            | sweet         | sweet, steamy |
+| contemporary      | sweet         | sweet, steamy |
+| historical        | sweet         | sweet, steamy |
+| adventure         | sweet         | sweet, steamy |
+| comedy            | sweet         | sweet         |
+| poetry            | sweet         | sweet         |
 
 This table is `GENRE_DEFAULT_SPICE` and `GENRE_ALLOWED_SPICE` in
 `_shared/types.ts`, and the two are pinned to each other by test. There is no
@@ -192,10 +199,10 @@ breaks both.
 
 ## Base Safety Rules
 
-These rules override user seed, genre convention, spice level, and
-language. They are assembled in layer 1 (`buildBaseRules`), never in the spice
-layer, so that no heat tier, genre module, identity lens, audience mode or
-language can be the combination that drops them.
+These rules override user seed, genre convention, spice level, and language.
+They are assembled in layer 1 (`buildBaseRules`), never in the spice layer, so
+that no heat tier, genre module, identity lens, audience mode or language can be
+the combination that drops them.
 
 - **No sexual content, at any tier.** Sex acts happen off the page. Write to the
   threshold, cut, and return in the aftermath if the story needs what changed.
@@ -226,27 +233,29 @@ language can be the combination that drops them.
   parental role.
 - No bestiality. Shifter intimacy, if allowed, happens only in human form.
 - No child abuse or sexualized minors in any mode.
-- No detailed instructions for real-world harm, weapons, drug synthesis, evasion,
-  self-harm, or exploitation, even when embedded in fiction.
+- No detailed instructions for real-world harm, weapons, drug synthesis,
+  evasion, self-harm, or exploitation, even when embedded in fiction.
 - No harassment, defamation, or humiliating fiction about a real identifiable
   person.
-- Kids mode cannot contain sexual content, adult romantic tension,
-  graphic violence, substance use, or horror.
+- Kids mode cannot contain sexual content, adult romantic tension, graphic
+  violence, substance use, or horror.
 
 ## Title Generation
 
 The model generates the title as part of the structured output. Title rules:
 
-- **2-6 words.** Evocative, not descriptive. The title is a promise, not a summary.
+- **2-6 words.** Evocative, not descriptive. The title is a promise, not a
+  summary.
 - Genre-appropriate tone: a romance title feels different from a thriller title.
-- No generic AI titles: "The Journey Begins", "A New Dawn", "Shadows of the Past",
-  "Whispers of Fate", "Beyond the Horizon".
+- No generic AI titles: "The Journey Begins", "A New Dawn", "Shadows of the
+  Past", "Whispers of Fate", "Beyond the Horizon".
 - No spoilers. The title should intrigue, not reveal.
 - No subtitle or colon format ("Title: A Subtitle").
 - The title is user-editable in the editor. The LLM generates the first draft;
   the author has final say.
 
 Good examples by genre:
+
 - Romance: "The Vanilla Problem", "Letters Never Sent"
 - Fantasy: "The Cartographer's Mistake", "Where Rivers Forget"
 - Thriller: "Three Rings", "No Forwarding Address"
@@ -254,6 +263,7 @@ Good examples by genre:
 - Horror: "Tuesday's Hum", "What the Mirror Kept"
 
 Bad examples (too generic, too AI):
+
 - "The Enchanted Journey", "Love in the City", "Dark Secrets Revealed"
 
 ## Story Engine
@@ -284,11 +294,11 @@ Standalone structure:
 
 Word count is a hard rule, not a suggestion.
 
-| Selected length | Target words per chapter | Enforced by |
-|-----------------|--------------------------|-------------|
-| Short | 600 - 900 | Prompt + server validation |
-| Standard | 1,200 - 1,600 | Prompt + server validation |
-| Long | 2,000 - 2,600 | Prompt + server validation |
+| Selected length | Target words per chapter | Enforced by                |
+| --------------- | ------------------------ | -------------------------- |
+| Short           | 600 - 900                | Prompt + server validation |
+| Standard        | 1,200 - 1,600            | Prompt + server validation |
+| Long            | 2,000 - 2,600            | Prompt + server validation |
 
 The selected band applies to every chapter regardless of audience mode. The
 server owns the acceptance tolerance and refunds unusable output; the model's
@@ -296,9 +306,9 @@ reported `word_count` is never trusted as the count.
 
 ## Series Chapter Structure
 
-Every story created through the current Create flow starts as Chapter 1 of a
-3-, 7-, or 15-chapter planned series. The user does not choose a global writing
-mode: they can steer an individual continuation with *What happens next?* or
+Every story created through the current Create flow starts as Chapter 1 of a 3-,
+7-, or 15-chapter planned series. The user does not choose a global writing
+mode: they can steer an individual continuation with _What happens next?_ or
 leave it empty for Katha to decide. `standalone` is retained for backward
 compatibility and is not shown in Create.
 
@@ -323,9 +333,9 @@ When `story_mode` is `"series"`:
   irreversible change. End on a cliffhanger or hook. Shift relationships or
   power dynamics. Introduce new tension or deepen existing threads.
 - **`chapter_role: "finale"` (the planned final chapter, or an earlier chapter
-  requested with `is_finale: true`):** Resolve the central conflict.
-  Callback to a specific detail from Chapter 1. Land every major character arc.
-  Loose threads are acceptable if the main story is complete.
+  requested with `is_finale: true`):** Resolve the central conflict. Callback to
+  a specific detail from Chapter 1. Land every major character arc. Loose
+  threads are acceptable if the main story is complete.
 
 Every series stores a planned length of 3, 7 or 15 chapters. Its final planned
 chapter is automatically a finale. Each chapter uses the selected Short,
@@ -345,11 +355,34 @@ Continuation structure:
 
 The user prompt is assembled from the brief the writer approved, in this order:
 idea, setting, kids values, writing direction, reader direction, planned length,
-plan beats, series state, characters, moments, exclusion, language, schema
-reminder. Every free-text value is fenced as untrusted data (`<katha:...>`), and
-the fence delimiter is stripped from the value so it cannot be closed early.
+plan beats, series state, characters, grounded facts, reader phrase seeds,
+moments, exclusion, language, schema reminder. Every free-text value is fenced
+as untrusted data (`<katha:...>`), and the fence delimiter is stripped from the
+value so it cannot be closed early.
 
-Two of those layers carry rules of their own.
+Three of those layers carry rules of their own.
+
+### Reader Phrase Seeds
+
+The phrase-learning layer injects saved everyday English phrases into the user
+prompt after grounded facts and before moments. It returns `""` for an empty
+list, so prompts without saved phrases stay byte-identical to the path before
+phrase learning.
+
+The layer is capped at **8 phrases**. That is enough to give the model a useful
+recurrence signal without turning the brief into a checklist or making the story
+read like a lesson.
+
+Phrase seeds are dialogue-only. The prompt must say to weave any that fit into
+dialogue naturally, never force one, never gloss or explain it in the prose, and
+never let a phrase drive a scene that would not otherwise happen. A story that
+reads like a lesson has failed.
+
+The existing anti-slop ban lists still govern narration. A phrase that appears
+on `BANNED_WORDS` or `BANNED_PHRASES` is refused before it can become a
+`phrase_corpus` row, using the shared phrase predicate in
+`backend/supabase/functions/_shared/phrases.ts`; generation does not weaken the
+ban lists to accommodate phrase learning.
 
 ### Moments and Their Delivery
 
@@ -390,7 +423,7 @@ continuation prompt is assembled by `buildContinuationUserPrompt`
 (`story-prompts.ts`), which takes `series_state` as a **required** argument and
 passes it into the brief itself. It is a single function rather than four
 template literals in `continue-story/index.ts` because when it was the latter,
-the handler read the row's state, gave it to the *system* prompt, and left it
+the handler read the row's state, gave it to the _system_ prompt, and left it
 out of the brief — so `delivered_moments` was empty on every chapter of every
 story, the "already delivered" heading never rendered, and the runway line
 always claimed the entire brief was still owed.
@@ -545,10 +578,10 @@ make queer identity clear.
 - Queer identity is integrated, not explained.
 - Characters do not deliver identity lectures to the reader.
 - Coming out is not the default climax unless the seed explicitly asks.
-- Chosen family, community, dating context, family dynamics, and regional texture
-  matter when relevant.
-- Avoid stock archetypes: sassy best friend, tragic queer, wise older gay mentor,
-  tortured artist.
+- Chosen family, community, dating context, family dynamics, and regional
+  texture matter when relevant.
+- Avoid stock archetypes: sassy best friend, tragic queer, wise older gay
+  mentor, tortured artist.
 - Avoid bury-your-gays endings.
 - Avoid making queer identity a replaceable label with no effect on scene,
   social context, desire, or pressure.
@@ -715,7 +748,8 @@ Reader promise: recognizably real life with emotional precision.
 
 Reader promise: time travel with period consciousness.
 
-- Characters believe things people of their time, class, and place might believe.
+- Characters believe things people of their time, class, and place might
+  believe.
 - Period constraints create tension.
 - Use concrete period detail every scene.
 - Avoid modern slang, name-dropping historical figures for no reason, and modern
@@ -897,9 +931,9 @@ Required request fields:
   present, exactly one character is the lead. Appearance feeds the character
   portrait prompt, Background feeds voice and motivation, and the lead anchors
   the story engine.
-- `language`: optional `English | Portuguese`; Create defaults to `English`. Do not accept Spanish
-  from new Create submissions. Existing Spanish stories retain their stored
-  language for reading and continuation compatibility.
+- `language`: optional `English | Portuguese`; Create defaults to `English`. Do
+  not accept Spanish from new Create submissions. Existing Spanish stories
+  retain their stored language for reading and continuation compatibility.
 - `audience_mode`: defaults to `adult`
 - `identity_lenses`: optional, currently only `queer`
 - `spice_level`: optional, defaults by genre and account permissions
@@ -910,8 +944,8 @@ Required request fields:
   bound by the same exclusion as the text. See **Brief Layers**.
 - `story_values`: optional and meaningful only in Kids mode; the model explores
   them through action rather than delivering a lesson
-- `chapter_length`: `short | standard | long`, selecting 600-900,
-  1,200-1,600 or 2,000-2,600 words respectively
+- `chapter_length`: `short | standard | long`, selecting 600-900, 1,200-1,600 or
+  2,000-2,600 words respectively
 - `planned_chapter_count`: `3 | 7 | 15`; it drives continuation pacing and the
   automatic finale
 - `illustrate_chapters`: optional boolean for chapter art after Chapter 1;
@@ -923,8 +957,8 @@ The creation UI is exactly three screens: **Idea -> Shape -> Review and start**.
 The only required free-text value is the idea. Shape holds the full-width
 audience segmented control, inferred/editable genre and world, a dedicated
 full-screen Craft character editor, moments, and collapsed More options. Review
-shows the assembled brief and the price before the first paid action. There is no
-global `writing_mode` request field: steering is per continuation chapter.
+shows the assembled brief and the price before the first paid action. There is
+no global `writing_mode` request field: steering is per continuation chapter.
 
 Validation should reject:
 

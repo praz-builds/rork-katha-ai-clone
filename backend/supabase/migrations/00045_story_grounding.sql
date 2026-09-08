@@ -136,7 +136,10 @@ create index if not exists idx_stories_grounding_entities
 --
 -- IMMUTABLE so it can be used in the generated column below. It reads no
 -- tables, no settings and no clock, so the label is honest.
-create or replace function public.entity_grounding_key(p_name text)
+create or replace function public.entity_grounding_key(
+    p_name text,
+    p_entity_class text
+)
 returns text
 language sql
 immutable
@@ -154,11 +157,11 @@ as $$
             pg_catalog.lower(normalize(p_name, NFKC)),
             '[^[:alnum:]]+', ' ', 'g'
         )
-    )
+    ) || ':' || pg_catalog.lower(pg_catalog.btrim(p_entity_class))
 $$;
 
-comment on function public.entity_grounding_key(text) is
-  'Normalizes a canonical entity name to the entity_grounding cache key: NFKC, lowercased, non-alphanumerics folded to single spaces, trimmed. Diacritics are deliberately preserved -- folding them across Latin collides genuinely different names, and a cache that returns the wrong entity is worse than a miss. Mirrors groundingCacheKey() in _shared/grounding-types.ts.';
+comment on function public.entity_grounding_key(text, text) is
+  'Normalizes a canonical entity name and its class to the entity_grounding cache key: NFKC, lowercased, non-alphanumerics folded to single spaces, trimmed, then suffixed with the entity class. Diacritics are deliberately preserved -- folding them across Latin collides genuinely different names, and a cache that returns the wrong entity is worse than a miss. The class is part of the key for the same reason: Washington the person and Washington the place share a name and share nothing else, and without it one silently overwrites the other. Mirrors groundingCacheKey() in _shared/grounding-types.ts.';
 
 -- TTL by class, in one place. A caller that computed its own expiry would be a
 -- second policy, and the two would disagree the first time one was tuned.
@@ -193,7 +196,7 @@ create table if not exists public.entity_grounding (
     -- key could write a row that no read would ever find, and the miss would
     -- look like a cold cache forever.
     cache_key text not null generated always as (
-        public.entity_grounding_key(canonical_name)
+        public.entity_grounding_key(canonical_name, entity_class)
     ) stored,
     entity_class text not null,
     -- The validated card, same shape as one element of stories.grounding.
@@ -258,7 +261,8 @@ create index if not exists idx_entity_grounding_expires_at
 -- silent: a two-year-old card about a living person reads exactly like a fresh
 -- one and is instructed to the generator as true.
 create or replace function public.entity_grounding_lookup(
-    p_canonical_name text
+    p_canonical_name text,
+    p_entity_class text
 ) returns jsonb
 language sql
 stable
@@ -267,7 +271,7 @@ set search_path = ''
 as $$
     select e.card
     from public.entity_grounding e
-    where e.cache_key = public.entity_grounding_key(p_canonical_name)
+    where e.cache_key = public.entity_grounding_key(p_canonical_name, p_entity_class)
       and e.expires_at > pg_catalog.now()
 $$;
 
@@ -363,9 +367,9 @@ revoke all on table public.entity_grounding from public, anon, authenticated;
 grant select, insert, update, delete on table public.entity_grounding
     to service_role;
 
-revoke all on function public.entity_grounding_lookup(text)
+revoke all on function public.entity_grounding_lookup(text, text)
     from public, anon, authenticated;
-grant execute on function public.entity_grounding_lookup(text) to service_role;
+grant execute on function public.entity_grounding_lookup(text, text) to service_role;
 
 revoke all on function public.entity_grounding_upsert(text, text, jsonb, text)
     from public, anon, authenticated;
@@ -381,7 +385,7 @@ grant execute on function public.entity_grounding_prune() to service_role;
 -- generated `cache_key` column needs the key function to be callable in every
 -- context that touches the table.
 
-comment on function public.entity_grounding_lookup(text) is
+comment on function public.entity_grounding_lookup(text, text) is
   'Returns the cached grounding card for a canonical entity name, or null on a miss or an expired row. Expiry is applied here so no caller can forget it.';
 comment on function public.entity_grounding_upsert(text, text, jsonb, text) is
   'Write-through cache insert for a validated grounding card. Last writer wins -- two generations racing on the same entity have each produced a valid card. Recomputes expires_at from the entity class on every write.';
