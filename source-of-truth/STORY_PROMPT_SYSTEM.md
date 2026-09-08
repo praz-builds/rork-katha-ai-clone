@@ -1277,6 +1277,48 @@ The VS Code agent should inspect and update these areas together:
   retained only as a defensive compatibility fallback.
 - `shape-story` is free scaffolding, authenticated and rate-limited. Its failure
   is silent in Create and never blocks manual completion of Shape.
+- **A shaping response is a new submission, so it migrates.** `story-shape.ts`
+  normalises the model's `genres` with migration checked before recognition,
+  at both precisions — the same order `validation.ts` uses, and unlike
+  `story-prompts.ts`, which recognises first on purpose so a stored series
+  written in a retired genre keeps its own voice module. Prompting for the
+  twelve UI genres is guidance; this is the enforcement.
+
+### Educational: unverified by design, and disclosed
+
+The `educational` module instructs the model to state a mechanism only when it
+is certain and to prefer the plainer true version over the impressive specific
+one. That is guidance to a generator, not a fact check. **Nothing in the
+pipeline verifies a single claim**, and a confident wrong date or mechanism
+reaches a reader through the ordinary publication path looking exactly like a
+correct one.
+
+Prompt guidance cannot close that gap. So the story page carries a disclosure
+on every educational story — "fiction written by AI, facts are not verified" —
+placed where the reader decides whether to read it. That is the honest limit of
+what the product can promise today. Closing it properly needs a retrieval or
+verification pass against a source of truth, which does not exist here yet; the
+disclosure is not a substitute for one and is not described as if it were.
+
+### Fanfiction: original cast, by rule
+
+Fanfiction is the one genre whose premise collides with a Safety Rule ("No real
+brand names or copyrighted characters"). The collision used to be unresolved:
+the model was told both to serve a fandom request and to refuse the cast it
+names, with nothing stating which wins or what the writer should get instead.
+
+The precedence is now explicit in both places the model reads — the base Safety
+Rules and the genre module. If the idea names a cast from an existing work, the
+story is written with an **original cast** in the same situation and dynamic:
+the trope, the relationship, the premise and the tone are all delivered as
+asked, the names and trademarked specifics are changed, and the substitution is
+never announced inside the prose.
+
+What that makes the genre, plainly: fanfiction *craft* — the tropes, the
+compression, the assumption of shared history with the reader — not
+reproduction of a protected cast. Allowing named canon casts is a legal and
+product decision rather than a prompt-engineering one. If it is ever made, this
+rule is the first thing to change.
 
 ## QA and Evals
 

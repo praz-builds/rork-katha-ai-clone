@@ -364,7 +364,6 @@ export const GENRE_MIGRATION_BY_NORMALIZED_KEY: Record<string, PrimaryGenre> =
     ) => [key.toLowerCase().replace(/[\s_-]/g, ""), value]),
   );
 
-
 // ---------------------------------------------------------------------------
 // Story shape: planned length, chapter length, cast size
 // ---------------------------------------------------------------------------

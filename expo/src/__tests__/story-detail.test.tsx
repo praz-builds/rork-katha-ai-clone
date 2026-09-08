@@ -299,3 +299,42 @@ describe("state the screen reads rather than assumes", () => {
     expect(onRead.mock.calls[0][1]).toMatchObject({ mode: "read" });
   });
 });
+
+/**
+ * An Educational story says it is unverified fiction.
+ *
+ * The genre's prompt module works hard at accuracy, but that is guidance to a
+ * generator, not a fact check: nothing in the pipeline verifies a claim, so a
+ * confident wrong date reaches a reader looking exactly like a correct one.
+ * Prompt engineering cannot close that; telling the reader can.
+ */
+describe("the Educational disclosure", () => {
+  const NOTE = /Facts in it are not\s+verified/;
+
+  it("is shown on an educational story", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      primaryGenre: "educational",
+    } as Story);
+    await waitFor(() => expect(view.getByText(NOTE)).toBeTruthy());
+  });
+
+  it("is shown for a legacy row that carries the genre in `genre` instead", async () => {
+    // A disclosure that appears on some educational stories and not others is
+    // worse than none: its absence would read as a statement.
+    const view = await renderDetail({
+      ...standalone!,
+      primaryGenre: undefined,
+      genre: "educational",
+    } as unknown as Story);
+    await waitFor(() => expect(view.getByText(NOTE)).toBeTruthy());
+  });
+
+  it("is absent on every other genre", async () => {
+    const view = await renderDetail({
+      ...standalone!,
+      primaryGenre: "adventure",
+    } as Story);
+    await waitFor(() => expect(view.queryByText(NOTE)).toBeNull());
+  });
+});
