@@ -276,10 +276,17 @@ export default function ReaderScreen({
   }, [searchQuery]);
 
   // Restores the story's saved music choice (or "None") when the reader opens it.
+  //
+  // A reader can choose a track before this read resolves, and the restore then
+  // overwrote their newer choice with the older saved one -- their music
+  // changing under them a moment after they picked it. A choice made by the
+  // person beats a value read from disk, always.
+  const musicChosenByUserRef = useRef(false);
   useEffect(() => {
     let alive = true;
+    musicChosenByUserRef.current = false;
     void getStoryMusicTrackId(story.id).then((trackId) => {
-      if (alive) setMusicTrackId(trackId);
+      if (alive && !musicChosenByUserRef.current) setMusicTrackId(trackId);
     });
     return () => {
       alive = false;
@@ -314,6 +321,14 @@ export default function ReaderScreen({
           return;
         }
         musicSoundRef.current = sound;
+        // Narration can start while `createAsync` is still pending. The ducking
+        // effect keyed on `isPlaying` would have run already and found no sound
+        // to duck, so the track then began at full volume over the narration.
+        // Re-reading the current state here closes that window.
+        const volumeNow = isNarrationPlayingRef.current
+          ? MUSIC_DUCKED_VOLUME
+          : MUSIC_FULL_VOLUME;
+        await sound.setStatusAsync({ volume: volumeNow });
       } catch {
         // A catalogue row without a working asset (development-time state)
         // fails silently rather than breaking the reader.
@@ -402,6 +417,8 @@ export default function ReaderScreen({
   }, [voiceGender]);
 
   const handleMusicSelect = useCallback((trackId: string | null) => {
+    // Marks the choice as the reader's, so a slower restore cannot undo it.
+    musicChosenByUserRef.current = true;
     setMusicTrackId(trackId);
     void setStoryMusicTrackId(story.id, trackId);
   }, [story.id]);

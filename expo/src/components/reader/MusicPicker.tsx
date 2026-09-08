@@ -39,7 +39,13 @@ export function MusicPicker({ visible, genre, selectedTrackId, onSelect, onClose
               <X size={18} color={colors.strong} />
             </Pressable>
           </View>
-          {hasTracks ? (
+          {/* A stale selection must always be clearable.
+              With an empty catalogue this rendered only the empty state, so a
+              reader whose saved track had been removed from the catalogue was
+              left with a selection and no control to clear it -- music they
+              could not turn off. None is offered whenever there is something to
+              clear, catalogue or not. */}
+          {hasTracks || selectedTrackId !== null ? (
             <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
               <TrackRow
                 label="None"
@@ -47,6 +53,14 @@ export function MusicPicker({ visible, genre, selectedTrackId, onSelect, onClose
                 selected={selectedTrackId === null}
                 onPress={() => onSelect(null)}
               />
+              {!hasTracks
+                ? (
+                  <Text style={styles.emptyBody}>
+                    The track you chose is no longer available. Ambient music
+                    returns once Katha adds licensed tracks.
+                  </Text>
+                )
+                : null}
               {orderedTracks.map((track) => (
                 <TrackRow
                   key={track.id}
