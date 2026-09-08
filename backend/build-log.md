@@ -7,6 +7,78 @@
 
 ---
 
+## 2026-09-08 UTC — Eight review findings: an SSRF-by-redirect close, a read-count gate, and a practice vocabulary that finally agrees
+
+**Session:** Verified and fixed eight findings from an automated review pass
+(`codex/review-hardening`), plus one test that could not fail regardless of
+whether the code it covered was correct. All eight were confirmed real
+against the working tree; none were refuted. Not committed -- left for
+review.
+
+1. **SSRF via redirect (narration audio).** `fetchAllowedAudioUrl` in
+   `_shared/narration-audio.ts` now fetches with `redirect: "manual"` and
+   re-validates the host allowlist on every hop (capped at 5), instead of
+   checking only the URL it was first handed and letting `fetch` follow
+   redirects on its own past the check.
+2. **Unbounded base64 decode.** `decodeBase64Audio` now refuses a payload
+   over `MAX_AUDIO_BASE64_CHARS` (the 50 MB ceiling expressed in encoded
+   characters) before calling `atob`, mirroring the URL path's existing cap.
+3. **Read counts inflatable by any authenticated caller.** New migration
+   `00052_read_visibility_gate.sql` redefines `record_story_read` (00046) to
+   fold in the same readability predicate `save_phrase` (00047) already
+   uses -- `is_public or is_curated or author_id = caller` -- plus a
+   non-author additionally needing the specific chapter published. An
+   unreadable story fails with the identical "Story not found" a missing one
+   would, so the message cannot be used to probe for a private story's
+   existence. The author's own unpublished-story path is unchanged.
+4. **Practice outcome vocabulary mismatch.** Canonical vocabulary is the
+   backend's four-value `again | hard | good | easy`
+   (`record-practice`'s `OUTCOMES` set and the `record_phrase_practice` SQL
+   check constraint in 00047 already agreed on it, with real
+   spaced-repetition math keyed off those exact values). The client's
+   two-button UI keeps its `know | again` vocabulary but now maps onto the
+   canonical one at the wire boundary (`PRACTICE_OUTCOME_WIRE_VALUE` in
+   `expo/src/lib/phrases.ts`): `again -> again`, `know -> good`.
+5. **Saved-phrase id contract.** `save-phrase/index.ts` now returns
+   `phrase_id` at the response root as the `saved_phrases` row's own `id`
+   (the column `unsave-phrase` deletes by), not nested under `phrase` and
+   not the row's unrelated `phrase_id` foreign-key column into
+   `phrase_corpus`.
+6. **Remote list hiding local phrases.** `listSavedPhrases` in
+   `expo/src/lib/phrases.ts` now unions the remote answer with any local-only
+   entry the remote list omits (`mergeSavedPhrases`), instead of replacing
+   the local cache outright.
+7. **Untracked provider job.** `generate-audio/index.ts` now separates
+   "provider accepted a job" from "we recorded it": if
+   `markChapterAudioJobStarted` fails after RunPod already accepted the job,
+   the new `cancelRunpodNarration` (`_shared/narration-audio.ts`, backed by
+   `runpodCancelUrl` in `_shared/runpod.ts`) best-effort cancels it before the
+   row is marked failed, so a retry cannot race a still-running untracked job.
+8. **Concurrent preview seedings.** `seed-voice-previews/index.ts` adds a
+   module-level in-flight `Map` (`ensureVoicePreviewOnce`) so a second
+   caller for a voice already being generated on the same warm instance
+   reuses the first caller's promise instead of starting a second provider
+   job. Judged proportionate to a service-role, idempotent-outcome, rarely
+   concurrent endpoint -- no lock table added.
+9. **A test that could not fail.** `voices/index.test.ts`'s fixture held
+   only active voices, so the endpoint's `is_active` filtering could regress
+   to nothing and the suite would still pass. Added an inactive voice to the
+   fixture and made the stub honor the `is_active=eq.true` filter the way a
+   real table would, so the test now fails if filtering regresses (verified
+   by temporarily removing the filter from `_shared/voices.ts` and watching
+   it fail, then restoring it).
+
+**Verification:** `deno test --allow-env --allow-net --allow-read
+supabase/functions`: **621 passed, 0 failed** (607 baseline, +14 new).
+`deno test --allow-env --allow-net --allow-read supabase/migrations`: **90
+passed, 0 failed** (84 baseline, +6 new, all in the new
+`00052_read_visibility_gate_test.ts`). `deno check` and `deno fmt --check`
+clean on every touched file. Expo `tsc --noEmit`: clean. Expo `jest`: **451
+passed, 0 failed** (447 baseline, +4 new). Every new test that asserts a fix
+was confirmed to fail against the pre-fix code by temporarily reverting just
+that file with `git stash` and re-running.
+
+---
 ## 2026-09-08: Onboarding preview survives its own failures
 
 ### Changed

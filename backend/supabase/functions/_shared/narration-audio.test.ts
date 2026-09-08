@@ -212,6 +212,41 @@ function withFetch(
   });
 }
 
+/**
+ * Like `withFetch`, but actually follows a 3xx the way a real HTTP client
+ * does when `redirect` is not `"manual"` -- `withFetch`'s handler just
+ * returns whatever `Response` it is given for the exact request made, so it
+ * cannot exercise the difference between "the code asked to follow
+ * redirects" and "the code asked to see them," which is exactly the
+ * distinction the redirect-allowlist fix depends on.
+ */
+function withRedirectFollowingFetch(
+  handler: (request: Request) => Promise<Response> | Response,
+  run: () => Promise<void>,
+) {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const manual = init?.redirect === "manual";
+    let request = new Request(input as RequestInfo, init);
+    for (let hop = 0; hop < 10; hop += 1) {
+      const response = await handler(request);
+      if (manual || response.status < 300 || response.status >= 400) {
+        return response;
+      }
+      const location = response.headers.get("location");
+      if (!location) return response;
+      request = new Request(new URL(location, request.url).toString(), init);
+    }
+    throw new Error("test stub: too many redirects");
+  }) as typeof fetch;
+  return run().finally(() => {
+    globalThis.fetch = original;
+  });
+}
+
 Deno.test("startRunpodNarration posts text and the voice's provider params, and returns the job id", async () => {
   const captured: Array<{ url: string; body: unknown; auth: string | null }> =
     [];
@@ -459,6 +494,148 @@ Deno.test("pollRunpodNarration refuses an audio_url on an unexpected host", asyn
         const result = await pollRunpodNarration("job-ssrf");
         assertEquals(audioFetched, false);
         assertEquals(result.audioBytes, undefined);
+      },
+    ));
+});
+
+// A denylist misses redirects by construction: `fetch` follows them on its
+// own, after any allowlist check has already run against the URL it started
+// at. An allowed host that 302s to an internal address used to sail straight
+// through -- the allowlist never saw where the request actually landed.
+Deno.test("pollRunpodNarration refuses a redirect from an allowed host to an internal address, and the target is never fetched", async () => {
+  let metadataFetched = false;
+
+  await withEnv(
+    { RUNPOD_API_KEY: "test-key" },
+    () =>
+      withRedirectFollowingFetch(
+        (request) => {
+          if (request.url.includes("/status/")) {
+            return new Response(
+              JSON.stringify({
+                status: "COMPLETED",
+                output: { audio_url: "https://api.runpod.ai/clip.mp3" },
+              }),
+              { status: 200 },
+            );
+          }
+          if (request.url === "https://api.runpod.ai/clip.mp3") {
+            // The allowed host itself redirects off the allowlist.
+            return new Response(null, {
+              status: 302,
+              headers: {
+                Location: "http://169.254.169.254/latest/meta-data/",
+              },
+            });
+          }
+          metadataFetched = true;
+          return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+        },
+        async () => {
+          const result = await pollRunpodNarration("job-redirect");
+          assertEquals(result.status, "failed");
+          assertEquals(result.audioBytes, undefined);
+        },
+      ),
+  );
+  assertEquals(
+    metadataFetched,
+    false,
+    "the redirect target must never be fetched",
+  );
+});
+
+Deno.test("pollRunpodNarration follows a redirect that lands on another allowed host", async () => {
+  const mp3Bytes = new Uint8Array([4, 5, 6]);
+  let finalHostFetched = false;
+
+  await withEnv(
+    { RUNPOD_API_KEY: "test-key" },
+    () =>
+      withRedirectFollowingFetch(
+        (request) => {
+          if (request.url.includes("/status/")) {
+            return new Response(
+              JSON.stringify({
+                status: "COMPLETED",
+                output: { audio_url: "https://api.runpod.ai/clip.mp3" },
+              }),
+              { status: 200 },
+            );
+          }
+          if (request.url === "https://api.runpod.ai/clip.mp3") {
+            return new Response(null, {
+              status: 302,
+              headers: { Location: "https://runpod.ai/clip-final.mp3" },
+            });
+          }
+          if (request.url === "https://runpod.ai/clip-final.mp3") {
+            finalHostFetched = true;
+            return new Response(mp3Bytes, { status: 200 });
+          }
+          throw new Error(`unexpected fetch: ${request.url}`);
+        },
+        async () => {
+          const result = await pollRunpodNarration("job-redirect-ok");
+          assertEquals(result.status, "ready");
+          assertEquals(
+            Array.from(result.audioBytes ?? []),
+            Array.from(mp3Bytes),
+          );
+        },
+      ),
+  );
+  assert(finalHostFetched);
+});
+
+// The URL path has always capped the response body at 50 MB, checked before
+// the bytes are read into memory. The base64 path had no equivalent: a
+// provider (or anything spoofing one) could hand back an arbitrarily large
+// encoded string and have it fully decoded regardless.
+Deno.test("pollRunpodNarration refuses an oversized base64 payload before decoding it", async () => {
+  // Comfortably over the 50 MB decoded ceiling once base64's ~4/3 expansion
+  // is undone, without needing to allocate hundreds of megabytes in the test.
+  const oversized = "A".repeat(70_000_000);
+
+  await withEnv({ RUNPOD_API_KEY: "test-key" }, () =>
+    withFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            status: "COMPLETED",
+            output: { audio_base64: oversized },
+          }),
+          { status: 200 },
+        ),
+      async () => {
+        const result = await pollRunpodNarration("job-oversized");
+        assertEquals(result.status, "failed");
+        assertEquals(result.errorCode, "missing_audio_output");
+      },
+    ));
+});
+
+Deno.test("pollRunpodNarration still decodes a base64 payload within the size cap", async () => {
+  const mp3Bytes = new Uint8Array([7, 8, 9, 10]);
+  const base64 = btoa(String.fromCharCode(...mp3Bytes));
+
+  await withEnv({ RUNPOD_API_KEY: "test-key" }, () =>
+    withFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            status: "COMPLETED",
+            output: { audio_base64: base64 },
+          }),
+          { status: 200 },
+        ),
+      async () => {
+        const result = await pollRunpodNarration("job-normal");
+        assertEquals(result.status, "ready");
+        assertEquals(
+          Array.from(result.audioBytes ?? []),
+          Array.from(mp3Bytes),
+        );
       },
     ));
 });

@@ -30,9 +30,26 @@ export function isValidRunpodJobId(value: unknown): value is string {
  * because the cost of the first one being subtly wrong is the whole account.
  */
 export function runpodStatusUrl(jobId: unknown): string | null {
+  return runpodJobActionUrl("status", jobId);
+}
+
+/**
+ * Build the cancel URL for a job, under the same guarantees as
+ * `runpodStatusUrl`. Used to best-effort stop a job RunPod has already
+ * accepted but that this system failed to record -- see
+ * `cancelRunpodNarration` in `_shared/narration-audio.ts`.
+ */
+export function runpodCancelUrl(jobId: unknown): string | null {
+  return runpodJobActionUrl("cancel", jobId);
+}
+
+function runpodJobActionUrl(
+  action: "status" | "cancel",
+  jobId: unknown,
+): string | null {
   if (!isValidRunpodJobId(jobId)) return null;
 
-  const prefix = `${RUNPOD_ENDPOINT}/status/`;
+  const prefix = `${RUNPOD_ENDPOINT}/${action}/`;
   const expected = new URL(prefix);
 
   let candidate: URL;

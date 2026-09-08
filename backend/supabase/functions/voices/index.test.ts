@@ -30,6 +30,18 @@ const DB_VOICES = [
     sort_order: 6,
     is_active: true,
   },
+  {
+    id: "testvoice-en-retired",
+    display_name: "Test EN Retired",
+    language: "en",
+    gender: "male",
+    tier: "premium",
+    provider: "runpod_minimax",
+    provider_voice_params: { voice_id: "testvoice-en-retired" },
+    preview_path: "voice-previews/testvoice-en-retired.mp3",
+    sort_order: 7,
+    is_active: false,
+  },
 ];
 
 function json(value: unknown, status = 200): Response {
@@ -61,9 +73,17 @@ function makeFetchStub(): typeof fetch {
         /^eq\./,
         "",
       );
-      const rows = DB_VOICES.filter((voice) =>
-        !languageFilter || voice.language === languageFilter
-      );
+      // `listVoices` (`_shared/voices.ts`) always filters on `is_active=eq.true`
+      // -- honoring that here, the way a real PostgREST table would, is what
+      // makes a fixture containing an inactive voice actually exercise the
+      // endpoint's filtering rather than passing regardless of whether it
+      // filters at all.
+      const activeFilter = url.searchParams.get("is_active");
+      const rows = DB_VOICES.filter((voice) => {
+        if (languageFilter && voice.language !== languageFilter) return false;
+        if (activeFilter === "eq.true" && !voice.is_active) return false;
+        return true;
+      });
       return json(rows);
     }
 
@@ -136,6 +156,25 @@ Deno.test("with no language filter, every active voice is returned", async () =>
     assertEquals(voices.length, 2);
     const tiers = voices.map((v) => v.tier).sort();
     assertEquals(tiers, ["premium", "standard"]);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// The fixture this used to run against contained only active voices, so it
+// passed whether or not the endpoint actually filtered on `is_active` --
+// removing the filter entirely would not have failed this suite. This test
+// exists specifically to fail if that filtering regresses.
+Deno.test("an inactive voice is filtered out even though it is in the table", async () => {
+  const env = setTestEnv();
+  try {
+    const { status, json: body } = await run("");
+    assertEquals(status, 200);
+    const voices = body.voices as Array<Record<string, unknown>>;
+    const ids = voices.map((v) => v.id);
+    assertEquals(ids.includes("testvoice-en-retired"), false);
+    assertEquals(ids.includes("testvoice-en"), true);
+    assertEquals(ids.includes("testvoice-es"), true);
   } finally {
     restoreEnv(env);
   }

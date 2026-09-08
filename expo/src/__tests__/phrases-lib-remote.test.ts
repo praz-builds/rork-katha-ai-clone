@@ -103,6 +103,73 @@ describe("savePhrase against a reachable backend", () => {
   });
 });
 
+describe("listSavedPhrases against a reachable backend", () => {
+  /**
+   * A row shaped the way `phrases` ACTUALLY returns one.
+   *
+   * This fixture used to be camelCase, matching the client's model rather than
+   * the wire. That is why the contract mismatch survived: the endpoint selects
+   * database columns and returns `phrase_text` and `story_id`, so every real
+   * response was discarded while this test passed against a shape the server
+   * never sends.
+   */
+  function remotePhrase(overrides: Partial<Record<string, unknown>> = {}) {
+    const now = new Date().toISOString();
+    return {
+      id: "remote-1",
+      phrase_text: "harbor",
+      sentence: "The harbor was quiet.",
+      story_id: "story-9",
+      chapter_id: "chapter-9",
+      language: "English",
+      saved_at: now,
+      ...overrides,
+    };
+  }
+
+  it("does not let an empty remote list hide a phrase saved locally that the server has not got", async () => {
+    // Saved while the backend was unreachable (404) - local-only, never synced.
+    mockInvoke.mockResolvedValueOnce({ data: null, error: httpError(404) });
+    const saved = await savePhrase(INPUT);
+    expect(saved).not.toBeNull();
+
+    // Now the backend IS reachable, but it knows nothing about this phrase.
+    mockInvoke.mockResolvedValueOnce({ data: { phrases: [] }, error: null });
+    const all = await listSavedPhrases();
+
+    expect(all.map((entry) => entry.id)).toContain(saved!.id);
+  });
+
+  it("does not let a partial remote list drop a locally saved phrase it omits", async () => {
+    mockInvoke.mockResolvedValueOnce({ data: null, error: httpError(404) });
+    const saved = await savePhrase(INPUT);
+    expect(saved).not.toBeNull();
+
+    // The server answers with a phrase saved on another device, but not the
+    // one this device saved locally and never synced.
+    mockInvoke.mockResolvedValueOnce({
+      data: { phrases: [remotePhrase()] },
+      error: null,
+    });
+    const all = await listSavedPhrases();
+
+    const ids = all.map((entry) => entry.id);
+    expect(ids).toContain(saved!.id);
+    expect(ids).toContain("remote-1");
+  });
+
+  it("still adopts a phrase the remote list has that the local cache does not", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: { phrases: [remotePhrase()] },
+      error: null,
+    });
+
+    const all = await listSavedPhrases();
+
+    expect(all.map((entry) => entry.id)).toEqual(["remote-1"]);
+  });
+});
+
 describe("unsavePhrase against a reachable backend", () => {
   async function seedSavedPhrase() {
     mockInvoke.mockResolvedValueOnce({ data: { phrase_id: "server-1" }, error: null });
@@ -140,7 +207,35 @@ describe("recordPracticeOutcome", () => {
 
     expect(mockInvoke).toHaveBeenCalledTimes(1);
     expect(mockInvoke).toHaveBeenCalledWith("record-practice", {
-      body: { phraseId: saved!.id, outcome: "know" },
+      body: { phraseId: saved!.id, outcome: "good" },
     });
+  });
+
+  // `record-practice`'s OUTCOMES set (and the `record_phrase_practice` SQL
+  // check constraint behind it) only ever accepted
+  // again/hard/good/easy - the wire value this call used to send, "know",
+  // was rejected on every single successful practice answer. This is the
+  // regression test for that: the literal outcome value the real client puts
+  // on the wire must be one the server actually accepts.
+  it("maps the two-button UI vocabulary onto the server's accepted outcome values", async () => {
+    mockInvoke.mockResolvedValueOnce({ data: { phrase_id: "server-1" }, error: null });
+    const saved = await savePhrase(INPUT);
+    mockInvoke.mockClear();
+
+    const SERVER_OUTCOMES = new Set(["again", "hard", "good", "easy"]);
+
+    mockInvoke.mockResolvedValueOnce({ data: {}, error: null });
+    await recordPracticeOutcome(saved!.id, "know");
+    const knowCall = mockInvoke.mock.calls.at(-1)!;
+    expect(knowCall[0]).toBe("record-practice");
+    const knowOutcome = (knowCall[1] as { body: { outcome: string } }).body.outcome;
+    expect(SERVER_OUTCOMES.has(knowOutcome)).toBe(true);
+
+    mockInvoke.mockResolvedValueOnce({ data: {}, error: null });
+    await recordPracticeOutcome(saved!.id, "again");
+    const againCall = mockInvoke.mock.calls.at(-1)!;
+    const againOutcome = (againCall[1] as { body: { outcome: string } }).body.outcome;
+    expect(SERVER_OUTCOMES.has(againOutcome)).toBe(true);
+    expect(againOutcome).toBe("again");
   });
 });

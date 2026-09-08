@@ -8,6 +8,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { ensureVoicePreview, handleRequest } from "./index.ts";
+import type { PreviewResult } from "./index.ts";
 import type { VoiceRecord } from "../_shared/voices.ts";
 
 const VOICE_WITH_PREVIEW = {
@@ -313,5 +314,85 @@ Deno.test("a missing service role secret refuses rather than falling open", asyn
     if (previous !== undefined) {
       Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", previous);
     }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Two concurrent seedings of the same voice must not both start a job.
+// ---------------------------------------------------------------------------
+
+// Only one voice, missing its preview, so both concurrent requests' very
+// first (and only) loop iteration lands on the same voice id -- the exact
+// race two overlapping seedings would hit in production. Both `handleRequest`
+// calls share one fetch stub and one `calls` counter, unlike `run()` above,
+// so a shared count is meaningful evidence of what actually reached the
+// provider, not an artifact of two independent stubs.
+Deno.test("two concurrent seedings of the same missing voice start exactly one provider job", async () => {
+  const calls: Calls = { list: [], run: 0, status: 0, upload: 0 };
+  const env = setTestEnv();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const request = new Request(input as RequestInfo, init);
+    const url = new URL(request.url);
+
+    if (url.pathname === "/rest/v1/voices") {
+      return json([VOICE_MISSING_PREVIEW]);
+    }
+    if (url.pathname === "/storage/v1/object/list/audio") {
+      calls.list.push((await request.json() as { search: string }).search);
+      return json([]);
+    }
+    if (
+      url.href.startsWith("https://api.runpod.ai/v2/minimax-speech-02-hd/run")
+    ) {
+      calls.run += 1;
+      return json({ id: "preview-job-1" });
+    }
+    if (
+      url.href.startsWith(
+        "https://api.runpod.ai/v2/minimax-speech-02-hd/status/",
+      )
+    ) {
+      calls.status += 1;
+      return json({
+        status: "COMPLETED",
+        output: { audio_base64: btoa("clip") },
+      });
+    }
+    if (url.pathname.startsWith("/storage/v1/object/audio/")) {
+      calls.upload += 1;
+      return json({ Key: "audio/uploaded.mp3" });
+    }
+    if (url.pathname === "/rest/v1/error_events") return json([]);
+    throw new Error(`unexpected request: ${request.method} ${request.url}`);
+  }) as typeof fetch;
+
+  try {
+    const req = () =>
+      handleRequest(
+        new Request("https://katha.test/seed-voice-previews", {
+          method: "POST",
+          headers: { Authorization: "Bearer test-service-role-key" },
+        }),
+      );
+    const [first, second] = await Promise.all([req(), req()]);
+
+    assertEquals(first.status, 200);
+    assertEquals(second.status, 200);
+    assertEquals(calls.run, 1, "exactly one provider job must start");
+    assertEquals(calls.upload, 1, "exactly one upload must happen");
+
+    const firstBody = await first.json() as { results: PreviewResult[] };
+    const secondBody = await second.json() as { results: PreviewResult[] };
+    // Both callers see the voice as accounted for -- neither is left
+    // reporting nothing for it just because it lost the race to register.
+    assertEquals(firstBody.results[0].status, "generated");
+    assertEquals(secondBody.results[0].status, "generated");
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv(env);
   }
 });
