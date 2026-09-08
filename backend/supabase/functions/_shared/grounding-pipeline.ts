@@ -182,8 +182,17 @@ export async function resolveGrounding(
   // Concurrent, not sequential. At most `MAX_GROUNDING_CARDS` of them, each
   // independent, and the writer is waiting: run serially and three entities
   // cost three round trips of the one budget they have to share.
+  // An absolute instant, not a duration. `remaining` was previously handed to
+  // every card call as a fresh budget, but each call spends wall-clock on a
+  // cache lookup and (in phase 2) a search before it reaches the model, so the
+  // model call then started its own full timer and the pipeline could overrun
+  // the grounding deadline by however long retrieval had taken. A deadline that
+  // is a point in time cannot be restarted by accident.
+  const deadlineAt = started + totalBudget;
   const settled = await Promise.all(
-    candidates.map((entity) => cardFor(entity, input.cache ?? null, remaining)),
+    candidates.map((entity) =>
+      cardFor(entity, input.cache ?? null, deadlineAt)
+    ),
   );
 
   return {
@@ -200,7 +209,8 @@ export async function resolveGrounding(
 async function cardFor(
   entity: EntityMention,
   cache: GroundingCacheClient | null,
-  deadlineMs: number,
+  /** Absolute instant the whole grounding attempt must be finished by. */
+  deadlineAt: number,
 ): Promise<GroundingCard | null> {
   const cached = await lookupCard(cache, entity);
   if (cached) return cached;
@@ -213,6 +223,9 @@ async function cardFor(
       ? await searchEntity(entity, createSearchProvider())
       : [];
     const searched = passages.length > 0;
+    // Retrieval may have eaten the budget outright. Sending a request with no
+    // time left just pays for a response nobody will wait for.
+    if (Date.now() >= deadlineAt) return null;
 
     const result = await generateFastStructuredText(
       searched ? GROUNDING_EXTRACT_SYSTEM_PROMPT : GROUNDING_CARD_SYSTEM_PROMPT,
@@ -221,7 +234,9 @@ async function cardFor(
         : buildGroundingCardPrompt(entity),
       { name: "grounding_card", schema: GROUNDING_CARD_OUTPUT_SCHEMA },
       CARD_MAX_TOKENS,
-      deadlineMs,
+      // Whatever is genuinely left after the cache read and any search, rather
+      // than the budget this call would have had if it were the only work.
+      Math.max(0, deadlineAt - Date.now()),
     );
     const card = parseGroundingCard(
       result.text,
@@ -243,6 +258,10 @@ async function lookupCard(
   try {
     const { data, error } = await cache.rpc("entity_grounding_lookup", {
       p_canonical_name: entity.canonicalName,
+      // The class is part of the key. Two entities can share a name and share
+      // nothing else -- Washington the person and Washington the place -- and
+      // keying on the name alone let one silently answer for the other.
+      p_entity_class: entity.entityClass,
     });
     if (error || !data) return null;
     // Re-validated on the way out, not trusted because it is ours. A row

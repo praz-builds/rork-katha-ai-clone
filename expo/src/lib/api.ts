@@ -26,6 +26,11 @@ export type LibraryResult = {
   source: "mock" | "supabase";
 };
 
+export type EngagementMutationResult = {
+  on: boolean;
+  count: number;
+};
+
 export class GenerationRequestError extends Error {
   constructor(message: string, readonly resetRequestId: boolean) {
     super(message);
@@ -225,6 +230,86 @@ export async function inferOnboardingStoryBrief(
 
 // Retain the original name for callers that landed before the Create flow.
 export const shapeStoryIdea = inferStoryBrief;
+
+// ---------------------------------------------------------------------------
+// Story engagement
+// ---------------------------------------------------------------------------
+
+const engagementEndpointsEnabled =
+  process.env.EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS === "true";
+const inFlightEngagement = new Map<string, Promise<EngagementMutationResult>>();
+
+async function setEngagementState(
+  endpoint: "like" | "bookmark" | "follow-story" | "follow-user",
+  idKey: "storyId" | "authorId",
+  id: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  if (!isSupabaseConfigured || !engagementEndpointsEnabled) {
+    return { on, count: optimisticCount };
+  }
+
+  const key = `${endpoint}:${id}`;
+  const existing = inFlightEngagement.get(key);
+  if (existing) return existing;
+
+  const request = (async () => {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke(endpoint, {
+      body: { [idKey]: id, on },
+    });
+    if (error || !data || typeof data !== "object") {
+      throw error ?? new Error(`${endpoint} returned no result`);
+    }
+    const payload = data as Record<string, unknown>;
+    if (typeof payload.on !== "boolean" || typeof payload.count !== "number") {
+      throw new Error(`${endpoint} returned an invalid result`);
+    }
+    return { on: payload.on, count: payload.count };
+  })();
+
+  inFlightEngagement.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (inFlightEngagement.get(key) === request) {
+      inFlightEngagement.delete(key);
+    }
+  }
+}
+
+export async function setStoryLike(
+  storyId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("like", "storyId", storyId, on, optimisticCount);
+}
+
+export async function setStoryBookmark(
+  storyId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("bookmark", "storyId", storyId, on, optimisticCount);
+}
+
+export async function setStoryFollow(
+  storyId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("follow-story", "storyId", storyId, on, optimisticCount);
+}
+
+export async function setAuthorFollow(
+  authorId: string,
+  on: boolean,
+  optimisticCount: number,
+): Promise<EngagementMutationResult> {
+  return setEngagementState("follow-user", "authorId", authorId, on, optimisticCount);
+}
 
 export type CharacterImageInput = {
   requestId: string;
