@@ -101,10 +101,13 @@ export const CHAPTER_LENGTHS = [
 
 const LENGTHS = ["short", "standard", "long"] as const;
 const CHAPTER_COUNTS = [3, 7, 15] as const;
-const SPICE_OPTIONS: { value: SpiceLevel | "explicit"; label: string; icon: string; disabled?: boolean }[] = [
+// Two tiers, and there is no third. The greyed-out "Explicit" chip that used
+// to sit here advertised a tier the backend has retired: it promised the
+// writer something the product will not ship, which is worse than not showing
+// it at all. Heat above steamy is not a locked feature, it is not a feature.
+const SPICE_OPTIONS: { value: SpiceLevel; label: string; icon: string }[] = [
   { value: "sweet", label: "Sweet", icon: "🍯" },
   { value: "steamy", label: "Steamy", icon: "🔥" },
-  { value: "explicit", label: "Explicit", icon: "🌶️", disabled: true },
 ];
 
 function useMotionAndHaptics() {
@@ -488,7 +491,7 @@ function MoreOptions({
     <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Chapter art</Text><Text style={styles.switchHint}>Illustrate chapters after the cover</Text></View><Switch value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Chapter art" /></View>
     <OptionLabel label="Writing style" />
     <TextInput accessibilityLabel="Writing style" value={draft.writingStyle ?? ""} onChangeText={(writingStyle) => update({ writingStyle })} placeholder="e.g. Warm, witty, first person" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
-    {draft.audienceMode === "adult" ? <><OptionLabel label="Spice" /><View style={styles.optionChips}>{SPICE_OPTIONS.map((option) => <MiniSegment key={option.value} label={option.label} icon={<Text style={styles.miniSegmentIcon}>{option.icon}</Text>} selected={draft.spiceLevel === option.value} disabled={option.disabled} onPress={() => { if (option.value === "explicit") return; update({ spiceLevel: option.value }); onSelect(); }} />)}</View></> : null}
+    {draft.audienceMode === "adult" ? <><OptionLabel label="Spice" /><View style={styles.optionChips}>{SPICE_OPTIONS.map((option) => <MiniSegment key={option.value} label={option.label} icon={<Text style={styles.miniSegmentIcon}>{option.icon}</Text>} selected={draft.spiceLevel === option.value} onPress={() => { update({ spiceLevel: option.value }); onSelect(); }} />)}</View></> : null}
     <Pressable onPress={() => setLanguageOpen((open) => !open)} accessibilityRole="button" accessibilityState={{ expanded: languageOpen }} accessibilityLabel="Language" style={styles.languageMenu}><View><Text style={styles.optionLabel}>Language</Text><Text style={styles.languageValue}>{draft.language}</Text></View><ChevronDown size={18} color={colors.tertiary} /></Pressable>
     {languageOpen ? <View style={styles.optionChips}><MiniSegment label="English" selected={draft.language === "English"} onPress={() => { update({ language: "English" }); setLanguageOpen(false); onSelect(); }} /><MiniSegment label="Portuguese" selected={draft.language === "Portuguese"} onPress={() => { update({ language: "Portuguese" }); setLanguageOpen(false); onSelect(); }} /></View> : null}
     <OptionLabel label="Avoid" />

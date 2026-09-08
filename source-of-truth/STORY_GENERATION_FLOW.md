@@ -914,6 +914,29 @@ The publish sheet confirms title, cover, and visibility. Publishing is the only
 step that changes visibility; Private stories can be published later from
 Library.
 
+**Private is the default, everywhere, including on the wire.** A story is
+written for its author first; going public is a later, deliberate act. So:
+
+- `stories.is_public` defaults to false in the schema (00001).
+- `publish-story` reads an **absent** `visibility` field as `private`. It used
+  to read it as `public`, which made the public feed the destination of any
+  caller that merely forgot the field — an older client build, a retry
+  reconstructed from a story id, a future integration. Publishing has to be
+  something a caller *said*, not something that happens when it says nothing.
+- A `private` publish is a save: hand edits are persisted, the story stays out
+  of every feed, and the chapters stay unpublished. Nothing about it is
+  discarded, so choosing it later costs the writer nothing.
+- **There is no second route to public.** Only `publish-story`, running as the
+  service role, may set `is_public`. Migration 00034 revoked `insert, update`
+  on `public.stories` from `authenticated` and dropped the matching RLS
+  policies, so a client cannot publish over PostgREST and skip the account gate
+  in §9, the `complete`-status gate, or the chapter publication that must
+  happen in the same operation. The invariant is pinned by the
+  "clients cannot bypass the service-owned story publication path" test in
+  `00034_story_shape_and_genres_test.ts` — any later migration that re-grants
+  `INSERT` or `UPDATE` on this table fails that test, which is exactly what it
+  is for.
+
 ### 10.6 What this requires of CREDITS_AND_PRICING.md
 
 > **Resolved 2026-09-02.** `CREDITS_AND_PRICING.md` has been amended — decision
@@ -1010,6 +1033,11 @@ Three items for the pricing owner, plus two added 2026-09-05:
 **The rule: anything the user paid for lives on the server.** Local autosave is
 correct before the first credit is spent and never after it. Losing a phone must
 not lose a story someone bought.
+
+**`complete` is the resting state, not a waiting room.** A finished story that
+was saved privately is durable, fully edited, readable by its author, and
+public to nobody — see §10.5. `published` is a separate, deliberate step a
+writer takes afterwards, and never a state a story arrives in by default.
 
 > **Bug risk to close:** the current draft system is AsyncStorage with a **7-day
 > expiry**. That expiry must never apply to a `drafting` or `complete` story.

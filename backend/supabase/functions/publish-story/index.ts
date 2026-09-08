@@ -3,7 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
-serve(async (req) => {
+/**
+ * Publish a story, or save it privately.
+ *
+ * Exported and separated from `serve` so the visibility contract can be driven
+ * directly from a test. `serve` only runs when this module is the entrypoint;
+ * importing it must never bind a port.
+ */
+export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
   const respond = (body: unknown, status = 200) =>
@@ -30,10 +37,23 @@ serve(async (req) => {
 
     const storyId = parseUuid(body.story_id);
     if (!storyId) return respond({ error: "Invalid story_id" }, 400);
-    const visibility = body.visibility === undefined
-      ? "public"
-      : body.visibility;
-    if (visibility !== "private" && visibility !== "public") {
+    // Absent means private, and it has to mean private.
+    //
+    // This defaulted to "public", which made publishing to the world the
+    // consequence of a *missing field* rather than of a decision: an older
+    // client build still in the wild, a retry that rebuilt the body from a
+    // story id alone, or any future integration that never learned about the
+    // field would put a user's story on the public feed without the user ever
+    // asking. Going public is deliberate and irreversible in the way that
+    // matters - other people have already read it - so the failure modes are
+    // not symmetric. A story that stayed private when it should have been
+    // published is one more tap; a story that went public when it should have
+    // stayed private cannot be taken back.
+    //
+    // The column default (`stories.is_public boolean default false`, 00001)
+    // has always agreed with this. The endpoint was the one place that did not.
+    const visibility = resolveVisibility(body.visibility);
+    if (visibility === null) {
       return respond({ error: "visibility must be private or public" }, 400);
     }
     if (user.is_anonymous === true && visibility === "public") {
@@ -186,8 +206,8 @@ serve(async (req) => {
     }
 
     // Private is a save operation. Edits are durable, but neither chapters nor
-    // the story enter public feeds. Omitting visibility preserves the legacy
-    // public-publish behavior above.
+    // the story enter public feeds - and this is the branch a request that
+    // omitted `visibility` takes.
     if (visibility === "private") {
       return respond({ saved: true, published: false, story_id: storyId });
     }
@@ -216,7 +236,26 @@ serve(async (req) => {
     console.error("publish-story error:", error);
     return respond({ error: "Internal server error" }, 500);
   }
-});
+}
+
+if (import.meta.main) {
+  serve(handleRequest);
+}
+
+/**
+ * Resolve the requested visibility, or null if the field is unusable.
+ *
+ * Kept as its own function so the default has a name and a test, rather than
+ * living as a ternary inside a 200-line handler where flipping it back would
+ * read as a typo.
+ */
+export function resolveVisibility(
+  value: unknown,
+): "private" | "public" | null {
+  if (value === undefined || value === null) return "private";
+  if (value === "private" || value === "public") return value;
+  return null;
+}
 
 /**
  * Longest a hand-edited chapter may be, in characters.

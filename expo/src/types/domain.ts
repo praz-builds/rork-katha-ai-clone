@@ -226,6 +226,13 @@ export type CreateDraft = {
    * planned chapter count.
    */
   beats?: string[];
+  /**
+   * Fact cards and the entity classification behind them, resolved by the free
+   * shaping call and carried through to generation untouched. Opaque on the
+   * client by design - see the note on `StoryShape` in `lib/api.ts`.
+   */
+  grounding?: unknown[];
+  groundingEntities?: unknown[];
   /** Kids mode only: values explored through the story, never as a lesson. */
   storyValues?: string[];
   writingStyle?: string;

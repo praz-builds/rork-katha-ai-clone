@@ -39,7 +39,13 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import {
+  GENERATION_GROUNDING_DEADLINE_MS,
+  resolveGrounding,
+} from "../_shared/grounding-pipeline.ts";
+import { claimGroundingFallback } from "../_shared/grounding-rate-limit.ts";
 import {
   AllProvidersFailedError,
   generateFastStructuredText,
@@ -131,15 +137,44 @@ serve(async (req) => {
       plannedChapterCount,
       illustrateChapters,
       notifyOnReady,
+      grounding,
+      groundingEntities,
     } = input;
     const chapterRole: ChapterRole = storyMode === "series"
       ? "series_opening"
       : "standalone";
 
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      serviceRoleKey,
     );
+
+    // Same fallback as the buffered path, started before the opening round
+    // trip so it overlaps it, and gated by the same cheap per-caller rate
+    // limit before `resolveGrounding` ever runs - see the long note in
+    // `generate-story/index.ts` for why the Create studio needs the fallback,
+    // why the shaped path never reaches this branch, and why the limit check
+    // does not change the ordering against `begin_story_generation` below.
+    const needsGroundingFallback = grounding.length === 0 &&
+      groundingEntities.length === 0;
+    const groundingFallback = needsGroundingFallback
+      ? claimGroundingFallback({
+        user,
+        request: req,
+        serviceRoleKey,
+        client: serviceClient,
+      }).then((allowed) =>
+        allowed
+          ? resolveGrounding({
+            idea: seed,
+            characterNames: characters?.map((c) => c.name).filter(Boolean),
+            cache: serviceClient,
+            deadlineMs: GENERATION_GROUNDING_DEADLINE_MS,
+          }).catch(() => null)
+          : null
+      ).catch(() => null)
+      : Promise.resolve(null);
 
     const { data: begun, error: beginError } = await serviceClient.rpc(
       "begin_story_generation",
@@ -285,6 +320,14 @@ serve(async (req) => {
             chapterLength,
             plannedChapterCount,
           };
+          const fallback = await groundingFallback;
+          const resolvedGrounding = fallback?.cards.length
+            ? fallback.cards
+            : grounding;
+          const resolvedEntities = fallback?.entities.length
+            ? fallback.entities
+            : groundingEntities;
+
           const systemPrompt = buildStoryProsePrompt(promptParams);
           const userPrompt = buildUserPrompt({
             ...promptParams,
@@ -298,6 +341,7 @@ serve(async (req) => {
             storyValues,
             writingStyle,
             avoid,
+            grounding: resolvedGrounding,
           });
 
           const band = wordBandFor(storyMode, audienceMode, chapterLength);
@@ -352,6 +396,13 @@ serve(async (req) => {
             output.series_state,
             moments,
           );
+          // The reader has already been shown this prose, so the scan can only
+          // report - see the module comment in content-scan.ts.
+          await reportCrudeLexicon(prose.text, {
+            feature: "generate_story_stream",
+            storyId: story.id,
+            userId: observedUserId,
+          });
           const verdict = chapterLengthVerdict(prose.text, band);
           if (!verdict.usable) {
             // Not a failure: the reader has already read this chapter, so
@@ -406,6 +457,34 @@ serve(async (req) => {
             });
           if (completionError || !chapter) {
             throw completionError ?? new Error("Story persistence failed");
+          }
+
+          // Same rationale as the buffered path: outside the credit
+          // transaction, because a card that fails to store must not roll back
+          // a chapter the reader is already looking at.
+          if (resolvedGrounding.length || resolvedEntities.length) {
+            const { error: groundingError } = await serviceClient
+              .from("stories")
+              .update({
+                grounding: resolvedGrounding,
+                grounding_entities: resolvedEntities,
+              })
+              .eq("id", story.id);
+            if (groundingError) {
+              console.error(
+                "generate-story-stream grounding persist failed:",
+                safeErrorMessage(groundingError),
+              );
+              await logError({
+                bucket: "generation.story",
+                severity: "low",
+                source: "runtime",
+                errorCode: "grounding_persist_failed",
+                error: groundingError,
+                context: { feature: "grounding", story_id: story.id },
+                userId: user.id,
+              });
+            }
           }
 
           send("stage", { stage: "art" });

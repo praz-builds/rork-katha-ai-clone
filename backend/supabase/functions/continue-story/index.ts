@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { notifyInBackground } from "../_shared/notify.ts";
 import { runInBackground } from "../_shared/media.ts";
+import { reportCrudeLexicon } from "../_shared/content-scan.ts";
+import { validateGroundingCards } from "../_shared/grounding-card.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
   AllProvidersFailedError,
@@ -145,7 +147,7 @@ serve(async (req) => {
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count",
+        "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding",
       )
       .eq("id", story_id)
       .single();
@@ -355,6 +357,12 @@ serve(async (req) => {
         title: story.title,
         previousChapters: `${previousText}${earliestContext}`,
         isFinale,
+        // Replayed from chapter one, not re-derived. Re-classifying per chapter
+        // would spend two LLM calls on every continuation and still let the
+        // name forms drift between chapters, which is the failure the cards
+        // exist to prevent. Re-validated on read because a row written by an
+        // older build carries an older card shape.
+        grounding: validateGroundingCards(story.grounding),
       });
 
     // Persisting a finished continuation is identical whether the prose
@@ -367,6 +375,13 @@ serve(async (req) => {
       const chapterTitle = output.chapter_title || output.title;
       const content = output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
+      // Both the buffered and streamed continuations land here, so the scan
+      // covers each of them exactly once.
+      await reportCrudeLexicon(content, {
+        feature: "continue_story",
+        storyId: story_id,
+        userId: observedUserId,
+      });
       const wordCount = content.split(/\s+/).length;
 
       // A finale ends the series, so there is no next chapter to build pressure

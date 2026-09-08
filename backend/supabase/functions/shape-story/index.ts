@@ -7,6 +7,10 @@ import {
   hashAnonymousGrantScope,
   isAnonymousUser,
 } from "../_shared/guest-bootstrap.ts";
+import {
+  EMPTY_RESOLVED_GROUNDING,
+  resolveGrounding,
+} from "../_shared/grounding-pipeline.ts";
 import { generateFastStructuredText } from "../_shared/llm.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 import {
@@ -127,16 +131,55 @@ serve(async (req) => {
     if (allowed !== true) return respond({ shape: null });
 
     try {
-      const result = await generateFastStructuredText(
-        onboarding ? ONBOARDING_SHAPE_SYSTEM_PROMPT : STORY_SHAPE_SYSTEM_PROMPT,
-        buildStoryShapePrompt(idea, genre || undefined, brief),
-        onboarding ? ONBOARDING_SHAPE_OUTPUT : STORY_SHAPE_OUTPUT,
-        onboarding ? ONBOARDING_SHAPE_MAX_TOKENS : SHAPE_MAX_TOKENS,
-        onboarding ? ONBOARDING_SHAPE_DEADLINE_MS : SHAPE_DEADLINE_MS,
-      );
+      // Shaping and grounding run together, not in sequence.
+      //
+      // They share this call's deadline but need nothing from each other: the
+      // classifier reads the raw idea, not the shaped brief. Chaining them
+      // would add the grounding latency to a call the writer is already
+      // waiting on, and this is the one moment in the flow where that latency
+      // is free - the writer spends it editing chips, and onboarding prefetches
+      // this call and warms it through three more screens.
+      //
+      // `allSettled`, because grounding must not be able to take shaping down
+      // with it. A rejected grounding promise here would cost the writer their
+      // shaped brief for a convenience they never asked for.
+      const [shapeResult, groundingResult] = await Promise.allSettled([
+        generateFastStructuredText(
+          onboarding
+            ? ONBOARDING_SHAPE_SYSTEM_PROMPT
+            : STORY_SHAPE_SYSTEM_PROMPT,
+          buildStoryShapePrompt(idea, genre || undefined, brief),
+          onboarding ? ONBOARDING_SHAPE_OUTPUT : STORY_SHAPE_OUTPUT,
+          onboarding ? ONBOARDING_SHAPE_MAX_TOKENS : SHAPE_MAX_TOKENS,
+          onboarding ? ONBOARDING_SHAPE_DEADLINE_MS : SHAPE_DEADLINE_MS,
+        ),
+        resolveGrounding({
+          idea,
+          // The writer's own cast, forced to `private_individual` by the
+          // parser. This is the enforcement half of the rule that a user's
+          // named family never becomes a search query.
+          characterNames: brief.characters?.map((c) => c.name).filter(Boolean),
+          cache: serviceClient,
+          deadlineMs: onboarding
+            ? ONBOARDING_SHAPE_DEADLINE_MS
+            : SHAPE_DEADLINE_MS,
+        }),
+      ]);
+
+      const grounding = groundingResult.status === "fulfilled"
+        ? groundingResult.value
+        : EMPTY_RESOLVED_GROUNDING;
+
+      if (shapeResult.status === "rejected") throw shapeResult.reason;
+
       return respond({
-        shape: parseStoryShape(result.text),
-        model: result.model,
+        shape: parseStoryShape(shapeResult.value.text),
+        model: shapeResult.value.model,
+        // Echoed to the client, which carries both into the generation request.
+        // They are re-validated there; see the note in validation.ts on why
+        // client transport is safe for this particular payload.
+        grounding: grounding.cards,
+        grounding_entities: grounding.entities,
       });
     } catch (error) {
       // Shape is optional scaffolding. Record the provider condition without

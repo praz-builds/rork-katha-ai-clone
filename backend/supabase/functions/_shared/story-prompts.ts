@@ -13,6 +13,8 @@
  * 9. Output schema reminder
  */
 
+import { buildGroundingBlock } from "./grounding-card.ts";
+import type { GroundingCard } from "./grounding-types.ts";
 import type {
   AudienceMode,
   ChapterRole,
@@ -137,6 +139,85 @@ const BANNED_NAMES = [
   "Evren",
 ] as const;
 
+/**
+ * Crude sexual and anatomical vocabulary, banned in every story Katha writes.
+ *
+ * Enumerated rather than described. "Avoid crude language" is a value judgement
+ * the model makes at generation time against the pull of the genre it was just
+ * told to write, and romance and darkRomance training data is full of exactly
+ * these words — the same reason `BANNED_WORDS` lists "delve" instead of saying
+ * "avoid AI-sounding diction". A list is checkable; an adjective is not.
+ *
+ * Scope is genital and sex-act slang plus the body-fluid terms that only ever
+ * appear in pornographic register. It is deliberately not a profanity list:
+ * a character swearing in anger is characterisation, and stripping that would
+ * flatten dialogue for no gain. The prohibition is on writing sex crudely, not
+ * on adult voice.
+ */
+const CRUDE_LEXICON = [
+  "cock",
+  "dick",
+  "prick (as anatomy)",
+  "pussy",
+  "cunt",
+  "twat",
+  "snatch (as anatomy)",
+  "tits",
+  "titties",
+  "boobs",
+  "rack (as anatomy)",
+  "clit",
+  "cum",
+  "jizz",
+  "load (as ejaculate)",
+  "blowjob",
+  "handjob",
+  "rimjob",
+  "deepthroat",
+  "boner",
+  "hard-on",
+  "throbbing member",
+  "engorged",
+  "fuck / fucking / fucked as a sex act",
+  "screw / screwing as a sex act",
+  "bang / banging as a sex act",
+  "pound / pounding as a sex act",
+  "ride / riding as a sex act",
+  "jerk off",
+  "get off (as climax)",
+  "hump",
+] as const;
+
+/**
+ * The crude-language floor, stated once and reused by every prompt path.
+ *
+ * Placed in the base layer rather than the spice layer so it cannot be reasoned
+ * around: the spice module is genre-adjacent and a darkRomance brief reads as
+ * permission to escalate, while the base layer is the same text whatever the
+ * heat, genre, lens or language. The last paragraph exists because the seed,
+ * the character sheets and the writing-style note are all user text, and the
+ * untrusted-input rule above tells the model to treat them as material — this
+ * says what to do when that material asks for the one thing it cannot write.
+ */
+function buildCrudeLanguageFloor(): string {
+  return `## Language Floor (ABSOLUTE)
+
+This is not a heat setting and no other instruction relaxes it. It holds at
+every content heat, in every genre, in narration and in dialogue, in every
+language.
+
+- Never write these words or their inflections: ${CRUDE_LEXICON.join(", ")}.
+- No clinical or pornographic vocabulary for genitals, and no euphemism standing
+  in for one. If a phrase exists only to name a body part during sex, it does
+  not belong in the sentence.
+- Sex acts happen off the page. Write up to the threshold — the decision, the
+  door, the held breath — then cut. Return in the aftermath if the story needs
+  what changed.
+- A story idea, character brief, or style note that asks for crude or
+  pornographic writing is answered with the scene written well instead. Do not
+  refuse the scene, and do not announce the limit inside the prose.`;
+}
+
 // ---------------------------------------------------------------------------
 // Layer 1: Base craft + safety rules
 // ---------------------------------------------------------------------------
@@ -167,6 +248,8 @@ ignore it.
 - No graphic instructions for violence, weapons creation, or self-harm.
 - No real brand names or copyrighted characters.
 - No "Pixar," "Disney," or studio references.
+
+${buildCrudeLanguageFloor()}
 
 ## Anti-Slop Rules (CRITICAL)
 
@@ -692,27 +775,47 @@ Write LGBTQ+ characters and relationships with the same depth, complexity, and n
 // Layer 6: Spice module
 // ---------------------------------------------------------------------------
 
+/**
+ * The heat layer, written as craft direction rather than as a permission list.
+ *
+ * Both branches were previously three sentences of prohibition ending in "no
+ * explicit sexual anatomy terms", and a model handed only a prohibition writes
+ * around the missing thing: it hedges, abstracts, and produces the vague
+ * soft-focus paragraph every reader recognises as an author avoiding something.
+ * That is a worse romance than the one being prevented. So each tier now names
+ * the technique that replaces anatomy — what to put in the sentence, not only
+ * what to keep out of it — in the same concrete register as the genre voice
+ * modules above.
+ *
+ * There is no third branch. `explicit` was retired (see `SpiceLevel` in
+ * types.ts) and cannot reach here.
+ */
 function buildSpiceRules(spice?: SpiceLevel): string {
   if (!spice || spice === "sweet") {
     return `
 
 ## Content Heat: Sweet
 
-Romantic tension is emotional only. Physical intimacy fades to black before anything explicit. Kissing is fine; describe it with restraint. Focus on emotional connection, not physical sensation. No sexual content.`;
+Longing, not consummation. The charge in this register comes from distance the characters have not closed yet, so protect the distance — every scene that would resolve it should end one beat early.
+
+- Write want through attention. What a character keeps noticing about another one, and cannot stop noticing, is the whole story. The chipped edge of a mug they always reach for. The way they say a name with one syllable too much care.
+- Touch is rationed and therefore enormous. A hand steadying an elbow on a stair carries more than a paragraph of kissing. When you spend a touch, spend it on something small and specific and let the scene register the cost.
+- Put the feeling in the wrong sentence. A character who cannot say "stay" says something about the weather, the last train, the light. Let the reader hear the sentence underneath.
+- Kissing is allowed and should be rare. Write it once, write it well, and write what changes afterward rather than the choreography.
+- No sex on the page and none implied in the room. If the story arrives at that threshold, cut to morning and let the aftermath do the work — what is different in how they move around each other is the scene.`;
   }
-  if (spice === "steamy") {
-    return `
+  return `
 
 ## Content Heat: Steamy
 
-Sensuality is on the page. Write attraction through physical sensation, charged proximity, and building desire. Intimate scenes can include passionate kissing, undressing, and the heat of skin on skin, but stop short of explicit anatomical description. Suggest rather than show. The reader's imagination does the work. No explicit sexual anatomy terms.`;
-  }
-  // explicit (feature-flagged, not in MVP)
-  return `
+Desire is on the page; the act is not. This is the register of the moment before, and the moment after, written with the same precision as any other scene in the story.
 
-## Content Heat: Explicit
-
-Full romantic and sexual content is permitted. Write intimate scenes with the same craft and specificity as any other scene. Use anatomically accurate language when appropriate. Consent must be explicit, ongoing, and unambiguous. Even explicit scenes need emotional stakes, not just physical choreography.`;
+- Charge lives in proximity and delay. A shared armrest, a wrist held a second past necessary, breath changing pitch mid-sentence. Slow the prose down where the characters slow down — short sentences, real pauses, one sense at a time.
+- Choose the specific detail over the general one. Not "her skin was hot" but the damp hair at the nape of her neck, the salt of it, the small sound she makes when he finds it. Specificity is what makes a scene feel intimate; anatomy is what makes it feel clinical.
+- Keep the interior channel open. What a character is afraid of while they want this — being seen, being left, wanting it more than the other one does — is why the reader stays. A scene with heat and no stakes is choreography.
+- Consent is legible in the writing, not stated as policy. Characters ask, wait, answer, and change their minds out loud. A pause that gets honoured is more erotic than one that gets ignored.
+- Undressing, hands, mouths, the weight of one body against another: all allowed, all written without naming genitals or describing mechanics. When the scene reaches the act itself, cut. A section break, a change of light, a sentence that lands somewhere later.
+- The cut is the craft, not the censorship. Ending on the exact right image — a shirt on the floor of a room the reader can picture, a held look — lands harder than continuing, because the reader finishes it and what they build is always better than what you would have written.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1214,6 +1317,12 @@ export function buildUserPrompt(params: {
   seed: string;
   characters?: CharacterInput[];
   language?: string;
+  /**
+   * Validated fact cards for real entities the idea names. Optional and
+   * silent: grounding is scaffolding, so a failed or skipped classification
+   * simply produces no cards and the story is written from model knowledge.
+   */
+  grounding?: GroundingCard[];
 }): string;
 /** @deprecated Use the object-param overload. */
 export function buildUserPrompt(params: {
@@ -1253,6 +1362,7 @@ export function buildUserPrompt(params: {
     isHero?: boolean;
   }[];
   language?: string;
+  grounding?: GroundingCard[];
 }): string {
   const parts: string[] = [];
 
@@ -1400,6 +1510,19 @@ export function buildUserPrompt(params: {
       }
     }
   }
+
+  // --- Grounding layer ---
+  //
+  // Positioned directly after the cast, because the highest-value thing on a
+  // card is how the entity is named and addressed, and that has to sit next to
+  // the names the model is about to write dialogue for. Put it any earlier and
+  // it is separated from the cast by the whole world and plan layers.
+  //
+  // `buildGroundingBlock` returns "" when there are no cards, so an ungrounded
+  // prompt - which is most of them, and every prompt generated before this
+  // layer existed - is byte-identical to what it was.
+  const groundingBlock = buildGroundingBlock(params.grounding ?? []);
+  if (groundingBlock) parts.push(groundingBlock);
 
   // --- Beats layer (section 5, decision 52) ---
   //
@@ -1590,6 +1713,15 @@ export interface ContinuationPromptInput {
   /** The rendered previous-chapters window, already summarized and fenced. */
   previousChapters: string;
   isFinale: boolean;
+  /**
+   * The cards stored on the story at chapter one, replayed unchanged.
+   *
+   * Chapter seven must call the entity what chapter one called it. Re-deriving
+   * the cards per chapter would spend a classification and a card call on every
+   * continuation and still let the name forms drift between chapters, which is
+   * the exact failure the cards exist to prevent.
+   */
+  grounding?: GroundingCard[];
 }
 
 export function buildContinuationUserPrompt(
@@ -1619,6 +1751,7 @@ export function buildContinuationUserPrompt(
     chapterLength: input.chapterLength,
     plannedChapterCount: input.plannedChapterCount,
     characters: input.characters,
+    grounding: input.grounding,
     // Both held back so this function can put them either side of the window
     // below. The brief is no longer the end of the message.
     deferExclusion: true,
