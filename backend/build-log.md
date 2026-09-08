@@ -2650,3 +2650,102 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
   `seed-voice-previews`, plus the shared modules) are deployed. No production-
   level test ran, so no `public.error_events` rows were written this session.
 - Not committed. Changes are left in the working tree per instructions.
+## 2026-09-08: Rate-limit the grounding fallback, without reordering it
+
+### Changed
+
+- Closed the residual finding on `generate-story` / `generate-story-stream`:
+  `resolveGrounding`'s fallback branch (the unshaped Create-studio path, where
+  the client sent no cards) now runs behind a cheap per-caller rate limit
+  instead of unconditionally. The finding was that a request
+  `begin_story_generation` was about to reject - no credits, a replay - had
+  already paid for an LLM classification call by the time that rejection was
+  known, and a caller with no credits could replay that for free.
+- The fix does NOT move `resolveGrounding` after `begin_story_generation`. That
+  ordering is deliberate and stays: the fallback promise is still created and
+  running before `begin_story_generation` is awaited, so it still overlaps that
+  RPC's measured 1.4-2.2s round trip. What changed is what the promise does
+  first internally - a rate-limit check, then (only if allowed) the
+  classification - rather than adding latency to the line that starts it.
+- New migration `00051_grounding_fallback_rate_limit.sql`: table
+  `grounding_fallback_rate_limits` (per `user_id`, 8 requests / 10 minutes) and
+  `anonymous_grounding_fallback_rate_limits` (per hashed network scope, 15
+  requests / 60 minutes, reusing the `anonymousGrantScope` fingerprint 00035
+  already computes for guest bootstrap - a fresh anonymous JWT is free to mint,
+  so a per-`user_id` counter alone does not bound that). RPC
+  `claim_grounding_fallback_request(p_user_id, p_anonymous_scope_hash)` checks
+  the network scope first, then the per-user counter, so a request already
+  refused at the network level never consumes per-user budget it cannot use.
+  No global daily table, unlike 00034/00035: those protect a paid resource
+  (a free credit grant, a shaping call open to every visitor); this protects an
+  LLM call that still sits in front of the credit check the caller has to pass
+  to get anything paid-for, and the per-network cap is already the bound that
+  matters.
+- New `_shared/grounding-rate-limit.ts`: `claimGroundingFallback()` wraps the
+  RPC, computing the anonymous scope hash the same way `shape-story` already
+  does via `guest-bootstrap.ts`. Never throws. Fails CLOSED (skip grounding,
+  generate ungrounded) on a missing anonymous network header, an RPC error, or
+  a thrown exception - the same posture every other failure path in the
+  grounding system already has, and the correct default for a guard that must
+  never cost more than the thing it protects. Telemetry on a DB error is fired
+  without being awaited (`void logError(...)`), so a broken check cannot itself
+  add up to logError's 1.5s timeout to a promise chain the writer is waiting on.
+- Both call sites gate the fallback with `needsGroundingFallback` (the same
+  "client sent no cards" condition the code already had) before ever calling
+  `claimGroundingFallback`, so a client that supplied grounding cards makes
+  zero rate-limit RPC calls, exactly as it made zero `resolveGrounding` calls
+  before this change.
+
+### Numbers chosen, and why
+
+- Per-user: 8 requests / 10 minutes. The fallback fires at most once per
+  `generate-story` call, and most real Create-studio generations do not repeat
+  eight times in ten minutes even accounting for retries after a failure;
+  eight caps a credit-less loop at 48/hour on one session.
+- Anonymous network scope: 15 requests / 60 minutes. Wider window and slightly
+  higher count than the per-user limit because it has to cover several genuine
+  people sharing one connection, not one caller - but it still caps a script
+  that mints a fresh anonymous session per request to 15 classification calls
+  per hour per network, regardless of how many sessions it mints.
+- Both numbers are comments in the migration, next to the reasoning above, not
+  just this log entry.
+
+### Verification (real, observed)
+
+- Baseline before this change: `deno test --allow-env --allow-net --allow-read
+  supabase/functions` → 467 passed, 0 failed (45s). `deno test --allow-env
+  --allow-net --allow-read supabase/migrations` → 45 passed, 0 failed (1m32s).
+- After: `supabase/functions` → 473 passed, 0 failed (1m1s) - 6 new tests in
+  `_shared/grounding-rate-limit.test.ts`. `supabase/migrations` → 53 passed,
+  0 failed (1m35s) - 8 new tests in
+  `00051_grounding_fallback_rate_limit_test.ts`.
+- New migration test covers: under-limit caller keeps getting grounding;
+  over-limit caller is refused (`false`, never an error); the limit is scoped
+  per caller (exhausting user A's budget leaves user B untouched); the per-user
+  window resets after 10 minutes; an anonymous caller is capped by hashed
+  network scope even when each request mints a fresh anonymous `user_id`; the
+  anonymous window resets after 60 minutes; a malformed scope hash is rejected
+  rather than silently ungated; both new tables and the RPC are service-role
+  only.
+- New `_shared` test covers: a signed-in caller is checked with a null
+  anonymous scope; an anonymous caller's scope hash matches
+  `hashAnonymousGrantScope` byte for byte; a guest behind a proxy that omits
+  the trusted network header fails closed WITHOUT spending an RPC call; an RPC
+  error and a thrown rejection both fail closed and never reject the caller;
+  a non-boolean truthy RPC payload is treated as a denial, not coerced.
+- `deno check` and `deno fmt --check` clean on every touched/added file:
+  `generate-story/index.ts`, `generate-story-stream/index.ts`,
+  `_shared/grounding-rate-limit.ts`, `_shared/grounding-rate-limit.test.ts`,
+  `00051_grounding_fallback_rate_limit.sql`,
+  `00051_grounding_fallback_rate_limit_test.ts`.
+- Not independently verified: the "client supplied cards → zero rate-limit
+  calls" behavior at the live HTTP entrypoint. There is no `index.test.ts` for
+  `generate-story` or `generate-story-stream` in this repo (same gap noted in
+  the 2026-09-06 comments/feed entry - PGlite speaks Postgres, not the edge
+  runtime), so this is verified by code inspection: `needsGroundingFallback`
+  is the exact pre-existing `grounding.length || groundingEntities.length`
+  condition that already gated `resolveGrounding`, now also gating
+  `claimGroundingFallback`, with no other path into either call.
+- Nothing pushed, deployed, or run against the live project
+  `iafeuxgoiknncgyjmugd`. Migration 00051 is written but not applied. No git
+  commit made, per instructions.

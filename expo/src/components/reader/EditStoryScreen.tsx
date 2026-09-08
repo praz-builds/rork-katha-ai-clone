@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -91,6 +92,7 @@ export function EditStoryScreen({
 
   const selectionRef = useRef({ start: 0, end: 0 });
   const inputRef = useRef<TextInput>(null);
+  const closingRef = useRef(false);
 
   const matches = useMemo(
     () => findMatches(editor.text, searchQuery),
@@ -116,9 +118,42 @@ export function EditStoryScreen({
     editor.regenerate(paragraphIndex, trimmed);
   }, [editor, prompt]);
 
-  const handleClose = useCallback(() => {
-    onClose(editor.text);
-  }, [editor.text, onClose]);
+  const handleClose = useCallback(async () => {
+    // Guards against a double tap (or the header button and the hardware
+    // back button firing together) racing two flush attempts.
+    if (closingRef.current) return;
+    closingRef.current = true;
+    try {
+      // Closing must flush a pending debounced edit rather than cancel it -
+      // waiting here is what turns "the debounce timer never got to fire"
+      // into an actual save attempt before the editor goes away.
+      const saved = await editor.flushPendingSave();
+      if (!saved) {
+        // The flush failed (or an earlier save had already failed and was
+        // still waiting to be retried). Closing anyway would hand the
+        // reader screen text that was never actually persisted, with no
+        // indication anything went wrong - the exact illusion of a
+        // successful save this must not create. Ask, rather than assume.
+        closingRef.current = false;
+        Alert.alert(
+          "Couldn't save your edit",
+          "Your last change couldn't be saved. Keep editing to try again, or discard it and close.",
+          [
+            { text: "Keep Editing", style: "cancel" },
+            {
+              text: "Discard & Close",
+              style: "destructive",
+              onPress: () => onClose(editor.getLastSavedText()),
+            },
+          ],
+        );
+        return;
+      }
+      onClose(editor.text);
+    } finally {
+      closingRef.current = false;
+    }
+  }, [editor, onClose]);
 
   return (
     <Modal

@@ -206,3 +206,44 @@ it("renders the real content rating and omits absent flags", async () => {
   expect(view.getAllByText("sweet").length).toBeGreaterThan(0);
   expect(view.queryByText("Kids")).toBeNull();
 });
+
+/**
+ * Two findings from review, both about state this screen was inventing rather
+ * than reading.
+ *
+ * Every engagement control started at `false`, so a reader who had already
+ * liked a story saw an unfilled heart and their next tap sent `on: true` for a
+ * like that already existed. And `onRead` has always carried a mode, but the
+ * call site dropped it, so Listen opened the reader silently and was
+ * indistinguishable from Read.
+ */
+describe("state the screen reads rather than assumes", () => {
+  it("shows a story the viewer already saved as saved", async () => {
+    const saved = await renderDetail({
+      ...standalone!,
+      viewerHasBookmarked: true,
+    } as Story);
+    // The label is the state: "Remove saved story" only renders when the
+    // screen believes this viewer has already saved it.
+    await waitFor(() =>
+      expect(saved.getByLabelText("Remove saved story")).toBeTruthy()
+    );
+
+    const unsaved = await renderDetail({
+      ...standalone!,
+      viewerHasBookmarked: false,
+    } as Story);
+    await waitFor(() =>
+      expect(unsaved.getByLabelText("Save story")).toBeTruthy()
+    );
+  });
+
+  it("tells the caller which of Read and Listen was pressed", async () => {
+    const onRead = jest.fn();
+    const view = await renderDetail(standalone! as Story, onRead);
+
+    await fireEvent.press(view.getByLabelText("Read story"));
+    await waitFor(() => expect(onRead).toHaveBeenCalled());
+    expect(onRead.mock.calls[0][1]).toMatchObject({ mode: "read" });
+  });
+});
