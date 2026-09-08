@@ -338,11 +338,16 @@ export default function App() {
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
             onBack={() => goTabs(tab)}
-            onRead={(chapterIndex) =>
+            onRead={(chapterIndex, options) =>
               setScreen({
                 name: "reader",
                 storyId: screen.storyId,
                 chapterIndex,
+                // Listen and Read are different intents. The detail screen has
+                // always said which one it meant; this call site dropped the
+                // options, so Listen opened the reader silently and the reader
+                // had no way to know narration had been asked for.
+                autoplay: options?.mode === "listen",
               })}
             onAuthor={(authorId) => setScreen({ name: "author", authorId })}
           />
@@ -353,6 +358,7 @@ export default function App() {
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
             initialChapterIndex={screen.chapterIndex ?? 0}
+            autoplay={screen.autoplay ?? false}
             onBack={() => goTabs(tab)}
           />
         )

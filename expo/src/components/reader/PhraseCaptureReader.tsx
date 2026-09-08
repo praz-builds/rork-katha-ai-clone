@@ -24,6 +24,13 @@ export type PhraseCaptureReaderProps = {
   story: Story;
   onBack: () => void;
   initialChapterIndex?: number;
+  /**
+   * Forwarded to `ReaderScreen`. This wrapper sits between App and the reader,
+   * so a seam it does not pass through silently stops working the moment phrase
+   * capture is enabled -- here that would mean Listen quietly opening the reader
+   * without starting narration.
+   */
+  autoplay?: boolean;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -55,6 +62,7 @@ export default function PhraseCaptureReader({
   story,
   onBack,
   initialChapterIndex = 0,
+  autoplay = false,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
   const savedPhrasesRef = useRef<SavedPhrase[]>([]);
@@ -270,6 +278,7 @@ export default function PhraseCaptureReader({
         initialChapterIndex={initialChapterIndex}
         renderWord={renderWord}
         onChapterChange={onChapterChange}
+        autoplay={autoplay}
       />
       {toast ? (
         <Animated.View

@@ -159,7 +159,16 @@ export function ReaderChrome({
         </Pressable>
       </Animated.View>
 
-      {searchOpen ? (
+      {/*
+        Gated on `visible` too, not just `searchOpen`: the find bar is part
+        of the chrome, so hiding the chrome must hide it with it rather than
+        leaving it as an orphaned, still-interactive control on the page.
+        `searchOpen` (and the query inside it) is left untouched by this --
+        it lives in the reader screen's state, not here -- so the bar comes
+        back exactly as the reader left it when the chrome reappears,
+        instead of the in-progress search being silently dropped.
+      */}
+      {visible && searchOpen ? (
         <View style={styles.findBar}>
           <TextInput
             value={searchQuery}

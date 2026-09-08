@@ -329,7 +329,13 @@ export function validateGroundingCards(value: unknown): GroundingCard[] {
       MAX_CARD_DETAILS,
       MAX_DETAIL_LENGTH,
     );
-    if (!details.length) continue;
+    // The same floor `parseGroundingCard` applies, for the same reason. This
+    // path guards cards arriving from the cache or from a stored row rather
+    // than straight from the model, and it only required one detail -- so a
+    // thin card that would have been rejected on the way in could still reach
+    // the prompt on the way back out. A card with an era, a role and nothing
+    // else spends a card slot and changes no sentence of the output.
+    if (details.length < MIN_CARD_DETAILS) continue;
 
     const key = canonicalName.toLowerCase();
     if (seen.has(key)) continue;

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { viewerStateForStories } from "../_shared/engagement.ts";
 
 /**
  * The client type as `createClient(url, key)` actually instantiates it.
@@ -125,9 +126,22 @@ serve(async (req) => {
       total = result.total;
     }
 
+    const [feedWithViewerState, continueWithViewerState] = await Promise.all([
+      viewerStateForStories(
+        serviceClient,
+        user.id,
+        feed as Record<string, unknown>[],
+      ),
+      viewerStateForStories(
+        serviceClient,
+        user.id,
+        continueReading as Record<string, unknown>[],
+      ),
+    ]);
+
     return respond({
-      feed,
-      continue_reading: continueReading,
+      feed: feedWithViewerState,
+      continue_reading: continueWithViewerState,
       is_new_user: isNewUser,
       pagination: {
         page,
