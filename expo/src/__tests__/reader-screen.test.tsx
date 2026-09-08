@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React from "react";
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 import { stories } from "@/data/seed";
 import ReaderScreen from "@/screens/ReaderScreen";
 
@@ -98,6 +98,61 @@ it("search finds, counts and cycles matches", async () => {
   await waitFor(() => {
     expect(view.getByText("2 of 5")).toBeTruthy();
   });
+});
+
+it("maps a search match to the page that actually contains it, in a chapter with leading whitespace and a blank line between paragraphs", async () => {
+  const filler = (count: number, start: number) =>
+    Array.from(
+      { length: count },
+      (_, index) => `Filler sentence number ${start + index} exists only to occupy space on the page and push the story further along its plot without saying much of anything new.`,
+    ).join(" ");
+  // Leading whitespace (trimmed away entirely) and a blank line with
+  // trailing spaces before it (also collapsed) between paragraphs shift
+  // every later character index relative to the raw, un-normalized text.
+  const leadingPadding = " \n".repeat(1100);
+  const needle = "BEACON";
+  const paragraphs = [
+    leadingPadding + filler(3, 1),
+    `   \n\nthe lighthouse keeper found a ${needle} burning steady in the fog.` + " " + filler(60, 100),
+  ];
+  const messyStory = {
+    ...story,
+    chapters: [{ ...story.chapters[0], paragraphs }, ...story.chapters.slice(1)],
+  };
+
+  const view = await render(<ReaderScreen story={messyStory} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Search chapter"));
+  });
+  await act(async () => {
+    await fireEvent.changeText(view.getByLabelText("Find in chapter"), needle);
+  });
+  await waitFor(() => {
+    expect(view.getByText("1 of 1")).toBeTruthy();
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Next search match"));
+  });
+
+  await waitFor(() => {
+    expect(view.getByText(new RegExp(needle))).toBeTruthy();
+  });
+});
+
+it("lets a tap in the reading area reach the page instead of only the chrome toggle", async () => {
+  const view = await render(<ReaderScreen story={story} onBack={jest.fn()} />);
+
+  const toggle = view.getByLabelText("Toggle reader controls");
+
+  // The toggle must be an ancestor of the reading content (so a nested
+  // touch target -- a word, a button, selectable text -- gets first refusal
+  // during touch negotiation), not a separate layer floating on top of it
+  // with nothing underneath.
+  expect(within(toggle).getByText(story.title)).toBeTruthy();
 });
 
 it("reads a persisted preference after remount", async () => {

@@ -26,12 +26,17 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { MusicPicker } from "@/components/reader/MusicPicker";
+import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
-import { pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
+import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
+import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
+import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
+import { isOwnStory } from "@/lib/ownership";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
@@ -48,15 +53,23 @@ export type ReaderScreenProps = {
   onBack: () => void;
   /** Which chapter the story page sent the reader to. */
   initialChapterIndex?: number;
+  /** Extension point for branching or end-of-chapter modules on the final page. */
   /**
-   * Extension point for branching or end-of-chapter modules on the final
-   * page. Fires at the last page of every chapter (not only the story's
-   * newest one), so it is handed the chapter actually on screen rather than
-   * whichever chapter the reader started on.
+   * Rendered at the end of the last page, with the chapter ON SCREEN.
+   *
+   * The seam fires at the last page of EVERY chapter, not only the story's
+   * newest, so the callback needs the chapter actually being read rather than
+   * whatever a navigation-time closure captured.
    */
   renderChapterEnd?: (chapter: Chapter) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
+  /**
+   * The reader was opened by Listen rather than Read, so narration starts on
+   * arrival. Without it the story page's two buttons did the same thing and
+   * Listen was indistinguishable from Read.
+   */
+  autoplay?: boolean;
 };
 
 type ReaderTheme = {
@@ -71,6 +84,10 @@ type ReaderTheme = {
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
 const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: "paper" };
+/** Full-volume level for background music when narration is not playing. */
+const MUSIC_FULL_VOLUME = 1;
+/** Ducked level while narration plays, so the two never compete at equal volume. */
+const MUSIC_DUCKED_VOLUME = 0.18;
 const TYPE_SIZES = [16, 18, 20, 22];
 const LINE_HEIGHTS = [26, 30, 34, 38];
 
@@ -125,8 +142,33 @@ const INITIAL_COMMENTS: ReaderComment[] = [
   },
 ];
 
+/**
+ * Chapter text in the canonical, normalized coordinate space (see the
+ * module comment above `normalizeText` in `@/lib/paginate`). `paginateChapter`
+ * normalizes internally, so page offsets are already in this space; search
+ * matches and sentence anchors are computed against this same normalized
+ * string so an offset from one is safe to compare against a `PageSlice`
+ * from the other. Normalizing here, once, keeps that in sync even when a
+ * chapter's raw paragraphs carry leading whitespace or CRLF line endings.
+ */
 function chapterText(chapter: Chapter): string {
-  return chapter.paragraphs.join("\n\n");
+  return normalizeText(chapter.paragraphs.join("\n\n"));
+}
+
+/**
+ * The exact inverse of `chapterText`'s `join("\n\n")`.
+ *
+ * A regex split that also drops empty results (the previous implementation
+ * used `/\n\s*\n/` plus `.filter(Boolean)`) treats an intentionally blank
+ * paragraph as noise to discard, which shifts the index of every paragraph
+ * after it. The AI editor addresses paragraphs by that index
+ * (`useChapterEditor.regenerate`), so a shifted index silently rewrites the
+ * wrong paragraph. Splitting on the exact separator `join` used, with no
+ * filtering, round-trips every paragraph - blank ones included - at its
+ * original index.
+ */
+function splitChapterParagraphs(text: string): string[] {
+  return text.split("\n\n");
 }
 
 function clampIndex(index: number, count: number): number {
@@ -195,12 +237,26 @@ export default function ReaderScreen({
   initialChapterIndex = 0,
   renderChapterEnd,
   renderWord = (word) => word,
+  autoplay = false,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 768;
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex);
-  const chapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  const baseChapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  // A chapter this reading session has edited, keyed by chapter id. Ephemeral:
+  // it lives only in this component's state, exactly like the AI editor's
+  // one-step revert it is fed by - nothing here is a second source of truth
+  // for what the server holds.
+  const [chapterEdits, setChapterEdits] = useState<Record<string, string>>({});
+  const chapter = useMemo(() => {
+    const edited = chapterEdits[baseChapter.id];
+    if (edited === undefined) return baseChapter;
+    return { ...baseChapter, paragraphs: splitChapterParagraphs(edited) };
+  }, [baseChapter, chapterEdits]);
+  const isAuthor = isOwnStory(story);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editWandOpen, setEditWandOpen] = useState(false);
   const [preferences, setPreferences] = useState<ReaderPreferences>(DEFAULT_PREFS);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
@@ -215,6 +271,17 @@ export default function ReaderScreen({
   const [isPlaying, setIsPlaying] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoadingAudioRef = useRef(false);
+  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
+  const [musicTrackId, setMusicTrackId] = useState<string | null>(null);
+  const musicSoundRef = useRef<Audio.Sound | null>(null);
+  const isNarrationPlayingRef = useRef(isPlaying);
+  /**
+   * Bumped whenever the in-flight audio load is no longer wanted (the
+   * chapter changed, or the screen unmounted) so a `createAsync` that
+   * resolves late can tell it is stale and unload itself instead of being
+   * assigned as the live sound and started.
+   */
+  const audioGenerationRef = useRef(0);
   const fullText = useMemo(() => chapterText(chapter), [chapter]);
   const theme = READER_THEMES[preferences.theme];
   const pageViewport = useMemo(() => ({
@@ -253,7 +320,11 @@ export default function ReaderScreen({
     });
     return () => {
       alive = false;
+      audioGenerationRef.current += 1;
       if (soundRef.current) void soundRef.current.unloadAsync();
+      // Leaving the story stops music too. This unmount cleanup is the only
+      // place playback is torn down; a chapter or page change never reaches it.
+      if (musicSoundRef.current) void musicSoundRef.current.unloadAsync();
     };
   }, []);
 
@@ -265,6 +336,78 @@ export default function ReaderScreen({
   useEffect(() => {
     setActiveSearchMatch(0);
   }, [searchQuery]);
+
+  // Restores the story's saved music choice (or "None") when the reader opens it.
+  //
+  // A reader can choose a track before this read resolves, and the restore then
+  // overwrote their newer choice with the older saved one -- their music
+  // changing under them a moment after they picked it. A choice made by the
+  // person beats a value read from disk, always.
+  const musicChosenByUserRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    musicChosenByUserRef.current = false;
+    void getStoryMusicTrackId(story.id).then((trackId) => {
+      if (alive && !musicChosenByUserRef.current) setMusicTrackId(trackId);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [story.id]);
+
+  useEffect(() => {
+    isNarrationPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  // Loads (or clears) the background-music sound whenever the chosen track
+  // changes. Deliberately does not depend on chapterIndex or pageIndex, so
+  // music keeps looping across page turns and chapter navigation.
+  useEffect(() => {
+    let cancelled = false;
+    async function syncMusicTrack() {
+      if (musicSoundRef.current) {
+        const previous = musicSoundRef.current;
+        musicSoundRef.current = null;
+        await previous.unloadAsync();
+      }
+      const track = findMusicTrack(musicTrackId, MUSIC_TRACKS);
+      if (!track) return;
+      try {
+        const { sound } = await Audio.Sound.createAsync(track.source, {
+          shouldPlay: true,
+          isLooping: true,
+          volume: isNarrationPlayingRef.current ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME,
+        });
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        musicSoundRef.current = sound;
+        // Narration can start while `createAsync` is still pending. The ducking
+        // effect keyed on `isPlaying` would have run already and found no sound
+        // to duck, so the track then began at full volume over the narration.
+        // Re-reading the current state here closes that window.
+        const volumeNow = isNarrationPlayingRef.current
+          ? MUSIC_DUCKED_VOLUME
+          : MUSIC_FULL_VOLUME;
+        await sound.setStatusAsync({ volume: volumeNow });
+      } catch {
+        // A catalogue row without a working asset (development-time state)
+        // fails silently rather than breaking the reader.
+      }
+    }
+    void syncMusicTrack();
+    return () => {
+      cancelled = true;
+    };
+  }, [musicTrackId]);
+
+  // Ducks music under narration and restores it when narration stops.
+  useEffect(() => {
+    const music = musicSoundRef.current;
+    if (!music) return;
+    void music.setStatusAsync({ volume: isPlaying ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME });
+  }, [isPlaying]);
 
   const updatePreferences = useCallback((next: ReaderPreferences) => {
     setPreferences(next);
@@ -279,6 +422,7 @@ export default function ReaderScreen({
 
   const switchChapter = useCallback((nextIndex: number) => {
     if (nextIndex === chapterIndex) return;
+    audioGenerationRef.current += 1;
     if (soundRef.current) {
       void soundRef.current.unloadAsync();
       soundRef.current = null;
@@ -311,9 +455,18 @@ export default function ReaderScreen({
         setIsPlaying(true);
       } else {
         isLoadingAudioRef.current = true;
+        const generation = audioGenerationRef.current;
         const { sound } = await Audio.Sound.createAsync({ uri: audioUrl }, { shouldPlay: true }, (status) => {
           if (status.isLoaded && status.didJustFinish) setIsPlaying(false);
         });
+        if (generation !== audioGenerationRef.current) {
+          // The chapter changed (or the screen unmounted) while this load was
+          // in flight. Discard it instead of assigning it as the live sound,
+          // so the reader never hears narration for a chapter they left.
+          isLoadingAudioRef.current = false;
+          await sound.unloadAsync();
+          return;
+        }
         soundRef.current = sound;
         setIsPlaying(true);
         isLoadingAudioRef.current = false;
@@ -325,6 +478,18 @@ export default function ReaderScreen({
     }
   }, [getAudioUrl, isPlaying]);
 
+
+  // Listen opens the reader already playing. Guarded by a ref so it fires once
+  // per arrival, and it reuses `handlePlayTap` on purpose so autoplay cannot
+  // drift from what the control does, including its honest answer for a story
+  // whose narration does not exist yet.
+  const autoplayFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoplay || autoplayFiredRef.current) return;
+    autoplayFiredRef.current = true;
+    setListenOpen(true);
+    void handlePlayTap();
+  }, [autoplay, handlePlayTap]);
   const handleVoiceChange = useCallback(async (gender: "female" | "male") => {
     if (gender === voiceGender || isLoadingAudioRef.current) return;
     if (soundRef.current) {
@@ -334,6 +499,22 @@ export default function ReaderScreen({
     setIsPlaying(false);
     setVoiceGender(gender);
   }, [voiceGender]);
+
+  const handleMusicSelect = useCallback((trackId: string | null) => {
+    // Marks the choice as the reader's, so a slower restore cannot undo it.
+    musicChosenByUserRef.current = true;
+    setMusicTrackId(trackId);
+    void setStoryMusicTrackId(story.id, trackId);
+  }, [story.id]);
+  const openEditor = useCallback((wandOpen: boolean) => {
+    setEditWandOpen(wandOpen);
+    setEditOpen(true);
+  }, []);
+
+  const closeEditor = useCallback((content: string) => {
+    setChapterEdits((prev) => ({ ...prev, [baseChapter.id]: content }));
+    setEditOpen(false);
+  }, [baseChapter.id]);
 
   const handleLike = useCallback(() => {
     setIsLiked((prev) => {
@@ -386,107 +567,118 @@ export default function ReaderScreen({
 
   return (
     <View style={[styles.reader, { backgroundColor: theme.background }]}>
+      {/*
+        This wraps the scrollable page instead of floating an absolutely
+        positioned layer on top of it. A sibling overlay in front of the
+        content would intercept every touch in its bounds before it ever
+        reached the text underneath, which broke word-level tap targets and
+        native text selection. As the ScrollView's ancestor, this Pressable
+        only fires when nothing inside it (a word, a button, a text field)
+        has already claimed the touch, so it captures a background tap
+        without capturing taps meant for the page.
+      */}
       <Pressable
         accessibilityLabel="Toggle reader controls"
         accessibilityRole="button"
-        style={styles.centerTapZone}
+        style={styles.readingArea}
         onPress={() => setChromeVisible((visible) => !visible)}
-      />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
-          <View style={styles.coverWrap}>
-            {coverImage ? (
-              <FocalImage source={coverImage} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
-            ) : (
-              <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
-            )}
-          </View>
-          <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
-          <Text style={[styles.title, { color: theme.text }]}>{story.title}</Text>
-          <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
-          <Text style={[styles.chapterTitle, { color: theme.text }]}>{chapter.title}</Text>
-          <View style={styles.pageFrame}>
-            <Text
-              selectable
-              style={[
-                styles.pageText,
-                {
-                  color: theme.text,
-                  fontSize: preferences.typeSize,
-                  lineHeight: preferences.lineHeight,
-                },
-              ]}
-            >
-              {renderedWords}
-            </Text>
-            {isLastPage ? renderChapterEnd?.(chapter) : null}
-          </View>
-          <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {pageIndex + 1} of {pages.length}</Text>
-          {isLastPage ? (
-            <View>
-              {shareToast ? (
-                <View style={styles.shareToast}>
-                  <Text style={styles.shareToastText}>Copied to clipboard!</Text>
-                </View>
-              ) : null}
-              <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-              <View style={styles.engagementRow}>
-                <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" style={styles.engagementAction}>
-                  <Heart size={16} color={isLiked ? colors.heart : theme.text} fill={isLiked ? colors.heart : "none"} />
-                  <Text style={[styles.engagementCount, { color: theme.text }]}>{formatNumber(likeCount)}</Text>
-                </Pressable>
-                <View style={styles.engagementAction}>
-                  <MessageCircle size={16} color={theme.text} />
-                  <Text style={[styles.engagementCount, { color: theme.text }]}>{comments.length}</Text>
-                </View>
-                <Pressable onPress={() => setIsSaved((prev) => !prev)} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" style={styles.engagementAction}>
-                  {isSaved ? <BookmarkCheck size={16} color={theme.text} /> : <Bookmark size={16} color={theme.text} />}
-                </Pressable>
-                <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
-                  <Share2 size={16} color={theme.text} />
-                </Pressable>
-              </View>
-              <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-              <View style={styles.authorCard}>
-                <View style={styles.avatar}><Text style={styles.avatarText}>{author.displayName.charAt(0)}</Text></View>
-                <View style={styles.authorInfo}>
-                  <Text style={[styles.authorName, { color: theme.text }]}>{author.displayName}</Text>
-                  <Text style={[styles.authorBio, { color: theme.muted }]} numberOfLines={2}>{author.bio}</Text>
-                </View>
-                <Pressable onPress={() => setIsFollowing((prev) => !prev)} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" style={styles.followButton}>
-                  <Text style={styles.followText}>{isFollowing ? "Following" : "Follow"}</Text>
-                </Pressable>
-              </View>
-              <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-              <View style={styles.commentsSection}>
-                <Text style={[styles.commentsTitle, { color: theme.text }]}>Comments ({comments.length})</Text>
-                <View style={styles.commentInputRow}>
-                  <TextInput
-                    value={commentText}
-                    onChangeText={setCommentText}
-                    placeholder="Add a comment..."
-                    placeholderTextColor={theme.muted}
-                    style={[styles.commentInput, { color: theme.text, borderColor: theme.divider }]}
-                    multiline
-                    maxLength={500}
-                    accessibilityLabel="Add a comment"
-                  />
-                  <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
-                    <Send size={16} color={colors.surface} />
+      >
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
+            <View style={styles.coverWrap}>
+              {coverImage ? (
+                <FocalImage source={coverImage} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
+              ) : (
+                <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
+              )}
+            </View>
+            <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
+            <Text style={[styles.title, { color: theme.text }]}>{story.title}</Text>
+            <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
+            <Text style={[styles.chapterTitle, { color: theme.text }]}>{chapter.title}</Text>
+            <View style={styles.pageFrame}>
+              <Text
+                selectable
+                style={[
+                  styles.pageText,
+                  {
+                    color: theme.text,
+                    fontSize: preferences.typeSize,
+                    lineHeight: preferences.lineHeight,
+                  },
+                ]}
+              >
+                {renderedWords}
+              </Text>
+              {isLastPage ? renderChapterEnd?.(chapter) : null}
+            </View>
+            <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {pageIndex + 1} of {pages.length}</Text>
+            {isLastPage ? (
+              <View>
+                {shareToast ? (
+                  <View style={styles.shareToast}>
+                    <Text style={styles.shareToastText}>Copied to clipboard!</Text>
+                  </View>
+                ) : null}
+                <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+                <View style={styles.engagementRow}>
+                  <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" style={styles.engagementAction}>
+                    <Heart size={16} color={isLiked ? colors.heart : theme.text} fill={isLiked ? colors.heart : "none"} />
+                    <Text style={[styles.engagementCount, { color: theme.text }]}>{formatNumber(likeCount)}</Text>
+                  </Pressable>
+                  <View style={styles.engagementAction}>
+                    <MessageCircle size={16} color={theme.text} />
+                    <Text style={[styles.engagementCount, { color: theme.text }]}>{comments.length}</Text>
+                  </View>
+                  <Pressable onPress={() => setIsSaved((prev) => !prev)} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" style={styles.engagementAction}>
+                    {isSaved ? <BookmarkCheck size={16} color={theme.text} /> : <Bookmark size={16} color={theme.text} />}
+                  </Pressable>
+                  <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
+                    <Share2 size={16} color={theme.text} />
                   </Pressable>
                 </View>
-                {comments.map((comment) => (
-                  <View key={comment.id} style={[styles.commentItem, { borderTopColor: theme.divider }]}>
-                    <Text style={[styles.commentUser, { color: theme.text }]}>{comment.user}</Text>
-                    <Text style={[styles.commentTime, { color: theme.muted }]}>{comment.time}</Text>
-                    <Text style={[styles.commentText, { color: theme.text }]}>{comment.text}</Text>
+                <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+                <View style={styles.authorCard}>
+                  <View style={styles.avatar}><Text style={styles.avatarText}>{author.displayName.charAt(0)}</Text></View>
+                  <View style={styles.authorInfo}>
+                    <Text style={[styles.authorName, { color: theme.text }]}>{author.displayName}</Text>
+                    <Text style={[styles.authorBio, { color: theme.muted }]} numberOfLines={2}>{author.bio}</Text>
                   </View>
-                ))}
+                  <Pressable onPress={() => setIsFollowing((prev) => !prev)} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" style={styles.followButton}>
+                    <Text style={styles.followText}>{isFollowing ? "Following" : "Follow"}</Text>
+                  </Pressable>
+                </View>
+                <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+                <View style={styles.commentsSection}>
+                  <Text style={[styles.commentsTitle, { color: theme.text }]}>Comments ({comments.length})</Text>
+                  <View style={styles.commentInputRow}>
+                    <TextInput
+                      value={commentText}
+                      onChangeText={setCommentText}
+                      placeholder="Add a comment..."
+                      placeholderTextColor={theme.muted}
+                      style={[styles.commentInput, { color: theme.text, borderColor: theme.divider }]}
+                      multiline
+                      maxLength={500}
+                      accessibilityLabel="Add a comment"
+                    />
+                    <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
+                      <Send size={16} color={colors.surface} />
+                    </Pressable>
+                  </View>
+                  {comments.map((comment) => (
+                    <View key={comment.id} style={[styles.commentItem, { borderTopColor: theme.divider }]}>
+                      <Text style={[styles.commentUser, { color: theme.text }]}>{comment.user}</Text>
+                      <Text style={[styles.commentTime, { color: theme.muted }]}>{comment.time}</Text>
+                      <Text style={[styles.commentText, { color: theme.text }]}>{comment.text}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
-            </View>
-          ) : null}
-        </View>
-      </ScrollView>
+            ) : null}
+          </View>
+        </ScrollView>
+      </Pressable>
       <ReaderChrome
         visible={chromeVisible}
         storyTitle={story.title}
@@ -506,10 +698,28 @@ export default function ReaderScreen({
         onSearchNext={() => jumpToMatch(1)}
         onSearchPrevious={() => jumpToMatch(-1)}
         onPageChange={goToPage}
+        // `onHistory` is deliberately left unwired. There is no persisted
+        // version history to show it - the AI editor holds exactly one prior
+        // version, in memory, scoped to that editor being open - so wiring
+        // this control to the same one-step revert would surface it a
+        // navigation away from the wand it belongs beside, reading as a
+        // history feature that does not exist. See `EditStoryScreen` for
+        // where that revert control actually lives.
+        onEdit={isAuthor ? () => openEditor(false) : undefined}
+        onReimagine={isAuthor ? () => openEditor(true) : undefined}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
         onListen={() => setListenOpen(true)}
+        onMusic={() => setMusicPickerOpen(true)}
       />
+      {editOpen ? (
+        <EditStoryScreen
+          story={story}
+          chapter={chapter}
+          initialWandOpen={editWandOpen}
+          onClose={closeEditor}
+        />
+      ) : null}
       <PreferencesSheet
         visible={prefsOpen}
         preferences={preferences}
@@ -533,6 +743,13 @@ export default function ReaderScreen({
         onVoiceChange={handleVoiceChange}
         onPlay={handlePlayTap}
         onClose={() => setListenOpen(false)}
+      />
+      <MusicPicker
+        visible={musicPickerOpen}
+        genre={story.genre}
+        selectedTrackId={musicTrackId}
+        onSelect={handleMusicSelect}
+        onClose={() => setMusicPickerOpen(false)}
       />
     </View>
   );
@@ -645,13 +862,8 @@ function ListenSheet({ visible, isPlaying, hasBothVoices, femaleVoiceName, maleV
 
 const styles = StyleSheet.create({
   reader: { flex: 1 },
-  centerTapZone: {
-    position: "absolute",
-    top: "22%",
-    bottom: "22%",
-    left: "24%",
-    right: "24%",
-    zIndex: 10,
+  readingArea: {
+    flex: 1,
   },
   scrollContent: {
     paddingTop: spacing.xxl,

@@ -337,11 +337,16 @@ export default function App() {
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
             onBack={() => goTabs(tab)}
-            onRead={(chapterIndex) =>
+            onRead={(chapterIndex, options) =>
               setScreen({
                 name: "reader",
                 storyId: screen.storyId,
                 chapterIndex,
+                // Listen and Read are different intents. The detail screen has
+                // always said which one it meant; this call site dropped the
+                // options, so Listen opened the reader silently and the reader
+                // had no way to know narration had been asked for.
+                autoplay: options?.mode === "listen",
               })}
             onAuthor={(authorId) => setScreen({ name: "author", authorId })}
           />
@@ -352,12 +357,40 @@ export default function App() {
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
             initialChapterIndex={screen.chapterIndex ?? 0}
+            autoplay={screen.autoplay ?? false}
             onBack={() => goTabs(tab)}
             renderChapterEnd={(chapter) => (
               <ChapterEnd
                 story={allStories.find((story) =>
                   story.id === screen.storyId) ?? allStories[0]}
                 chapter={chapter}
+                // Without this the continuation succeeded, showed a
+                // confirmation, and then went nowhere: the new chapter was
+                // never added to app state, so it could not be read and the
+                // reader still ended where it had ended before. A "What's
+                // next?" that produces a chapter you cannot reach is worse than
+                // no button at all.
+                onChapterReady={(next) =>
+                  setGeneratedStories((current) => {
+                    const target = allStories.find((story) =>
+                      story.id === screen.storyId
+                    );
+                    if (!target) return current;
+                    const alreadyHeld = current.some((story) =>
+                      story.id === target.id
+                    );
+                    const withChapter: Story = {
+                      ...target,
+                      chapters: [...target.chapters, next],
+                    };
+                    // A seed story being continued is not in `generatedStories`
+                    // yet, so it is added rather than mapped over.
+                    return alreadyHeld
+                      ? current.map((story) =>
+                        story.id === target.id ? withChapter : story
+                      )
+                      : [withChapter, ...current];
+                  })}
               />
             )}
           />
