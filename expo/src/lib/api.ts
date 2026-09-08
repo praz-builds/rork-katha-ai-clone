@@ -38,8 +38,29 @@ export class GenerationRequestError extends Error {
   }
 }
 
+/**
+ * Why a shape request produced nothing.
+ *
+ * `rate_limited` is the one worth naming. It is not a failure of the model or
+ * of the user's idea - it is one of three capacity windows in
+ * `claim_story_shape_request` refusing the claim - and retrying does not help
+ * within the window. Onboarding uses it to fall back to the writer's own
+ * details instead of offering a Try again that cannot succeed.
+ */
+const SHAPE_FAILURE_REASONS = [
+  "rate_limited",
+  "provider_failed",
+  "unavailable",
+] as const;
+
+export type StoryShapeFailureReason = typeof SHAPE_FAILURE_REASONS[number];
+
 export class StoryShapeRequestError extends Error {
-  constructor(message: string, readonly retryable: boolean) {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+    readonly reason: StoryShapeFailureReason = "unavailable",
+  ) {
     super(message);
     this.name = "StoryShapeRequestError";
   }
@@ -59,7 +80,7 @@ export type StoryShape = {
   beats: string[];
   /** Onboarding variant only: the title the blueprint card carries. */
   title?: string;
-  /** Onboarding variant only: 120-180 words of real opening. */
+  /** Onboarding variant only: the opening prose the preview screen shows. */
   opening?: string;
   /**
    * Grounding resolved alongside the shape, carried opaquely.
@@ -104,9 +125,13 @@ export async function inferStoryBrief(
   brief?: StoryShapeBrief,
   options: { throwOnError?: boolean } = {},
 ): Promise<StoryShape | null> {
-  const fail = (message: string, retryable: boolean) => {
+  const fail = (
+    message: string,
+    retryable: boolean,
+    reason: StoryShapeFailureReason = "unavailable",
+  ) => {
     if (options.throwOnError) {
-      throw new StoryShapeRequestError(message, retryable);
+      throw new StoryShapeRequestError(message, retryable, reason);
     }
     return null;
   };
@@ -118,7 +143,11 @@ export async function inferStoryBrief(
   try {
     await bootstrapUser();
   } catch {
-    return fail("Unable to set up your story account. Please try again.", true);
+    return fail(
+      "Unable to set up your story account. Please try again.",
+      true,
+      "provider_failed",
+    );
   }
 
   const { data, error } = await supabase.functions.invoke("shape-story", {
@@ -136,11 +165,35 @@ export async function inferStoryBrief(
   });
   if (error) {
     const message = error.message || "Story shaping failed.";
-    const retryable = !/(rate|limit|quota|429|too many)/i.test(message);
-    return fail(message, retryable);
+    const rateLimited = /(rate|limit|quota|429|too many)/i.test(message);
+    return fail(
+      message,
+      !rateLimited,
+      rateLimited ? "rate_limited" : "provider_failed",
+    );
   }
   if (!data?.shape || typeof data.shape !== "object") {
-    return fail("Story shaping returned an empty response.", false);
+    /**
+     * The server says why now, and the difference matters upstream.
+     *
+     * Every empty answer used to arrive here as one non-retryable condition
+     * called "returned an empty response", including a refused rate-limit
+     * claim - so a user who hit a capacity ceiling was told their idea had
+     * produced nothing usable, on a screen with no way forward. `reason` comes
+     * from `shape-story`, which is the only place that knows the difference.
+     */
+    const reason = SHAPE_FAILURE_REASONS.includes(
+        data?.reason as StoryShapeFailureReason,
+      )
+      ? data.reason as StoryShapeFailureReason
+      : "unavailable";
+    return fail(
+      reason === "rate_limited"
+        ? "We are shaping a lot of stories right now."
+        : "Story shaping returned an empty response.",
+      reason === "provider_failed",
+      reason,
+    );
   }
 
   const shape = data.shape as Record<string, unknown>;
@@ -223,7 +276,11 @@ export async function inferOnboardingStoryBrief(
     { throwOnError: true },
   );
   if (!shape) {
-    throw new StoryShapeRequestError("Story shaping returned an empty response.", false);
+    throw new StoryShapeRequestError(
+      "Story shaping returned an empty response.",
+      false,
+      "unavailable",
+    );
   }
   return shape;
 }
