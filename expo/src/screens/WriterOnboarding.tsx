@@ -503,7 +503,20 @@ export default function WriterOnboarding(
     // The brief is complete here. Warm the single onboarding shape request
     // while the user saves their story, so the branded wait only covers the
     // unresolved tail instead of the full model latency.
-    void startShaping(shapeRequest);
+    //
+    // Warming only the FIRST time this brief is submitted. Going back, editing
+    // the brief and submitting again changes the request key, and the previous
+    // warm call is still in flight: shaping is rate limited per user, so a
+    // second warm request can take the slot the real one then needs and make
+    // the preview fail for someone who did nothing but change their mind.
+    //
+    // Deliberately not "abort the old one": `inferOnboardingStoryBrief` takes
+    // no abort signal, and the request has already reached the server and
+    // already spent its slot, so cancelling the client promise would hide the
+    // problem rather than fix it. Not starting the second one is the fix.
+    if (!pendingShape.current) {
+      void startShaping(shapeRequest);
+    }
     go(authenticated ? "crafting" : "email");
   }, [authenticated, go, shapeRequest, startShaping]);
 
