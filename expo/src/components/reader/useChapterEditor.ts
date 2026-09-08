@@ -71,6 +71,18 @@ export function useChapterEditor({
   debounceMs = DEFAULT_DEBOUNCE_MS,
 }: UseChapterEditorParams): UseChapterEditorResult {
   const [text, setText] = useState(initialContent);
+  /**
+   * The text as it stands right now, readable from inside an async callback.
+   *
+   * A regeneration captured the text when it started and rebuilt the chapter
+   * from that snapshot when it resolved, so anything the writer typed while the
+   * rewrite was in flight was silently discarded on arrival. State is stale
+   * inside that closure; this ref is not.
+   */
+  const textRef = useRef(initialContent);
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [regenerateStatus, setRegenerateStatus] = useState<RegenerateStatus>(
@@ -241,7 +253,19 @@ export function useChapterEditor({
             "The AI returned an empty rewrite. Please try again.",
           );
         }
-        const nextParagraphs = [...paragraphs];
+        // Rebuilt from the text as it is NOW, not from the snapshot taken when
+        // the rewrite started. Using the snapshot threw away whatever the
+        // writer typed while waiting.
+        //
+        // If the paragraph count changed under us the indexes no longer line
+        // up, and writing into position N could overwrite the wrong paragraph.
+        // The snapshot is the safe base in that case, and the reader keeps
+        // their rewrite rather than losing it to an ambiguity.
+        const currentParagraphs = textRef.current.split("\n\n");
+        const base = currentParagraphs.length === paragraphs.length
+          ? currentParagraphs
+          : paragraphs;
+        const nextParagraphs = [...base];
         nextParagraphs[paragraphIndex] = updated;
         // Exactly one prior version is held, and this replaces whatever was
         // held before - it is never pushed onto a stack.

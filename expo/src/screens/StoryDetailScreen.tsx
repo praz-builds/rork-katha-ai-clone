@@ -165,9 +165,28 @@ function storyHook(story: Story): string {
     "";
 }
 
+/**
+ * Can this story be listened to right now, or become listenable by opening it?
+ *
+ * Narration used to exist only if a chapter already carried an audio URL. The
+ * voice library changed that: narration is generated on first play and cached,
+ * so a published chapter with no URL yet is ELIGIBLE rather than unavailable,
+ * and reporting it unavailable sends the reader away from a story they could
+ * have listened to.
+ *
+ * Existing audio is still what makes Listen instant. A published chapter with
+ * none is offered too, and the reader meets the generation gate in the reader
+ * where the honest answer about it already lives -- rather than being told "no"
+ * by a screen that cannot know.
+ */
 function hasNarration(story: Story): boolean {
   return story.chapters.some((chapter) =>
-    Boolean(chapter.audioUrl || chapter.audioUrls?.female || chapter.audioUrls?.male)
+    Boolean(
+      chapter.audioUrl ||
+        chapter.audioUrls?.female ||
+        chapter.audioUrls?.male ||
+        chapter.isPublished,
+    )
   );
 }
 

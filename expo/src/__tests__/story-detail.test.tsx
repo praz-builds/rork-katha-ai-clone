@@ -150,12 +150,16 @@ it("falls back to the opening paragraph when the first line is absent", async ()
     .toBeTruthy();
 });
 
+// Narration is generated on first play now, so a PUBLISHED chapter with no
+// audio yet is eligible rather than unavailable. Only an unpublished chapter
+// with no audio genuinely has nothing to offer.
 it("explains unavailable narration without crashing", async () => {
   const story = withStory({
     chapters: [{
       ...standalone!.chapters[0],
       audioUrl: undefined,
       audioUrls: undefined,
+      isPublished: false,
     }],
   });
   const view = await renderDetail(story);
@@ -164,6 +168,29 @@ it("explains unavailable narration without crashing", async () => {
 
   expect(view.getByText("Narration is not ready for this story yet."))
     .toBeTruthy();
+});
+
+// The regression this pairs with: reporting a published chapter unavailable
+// sent the reader away from a story they could have listened to, because the
+// check predated generation-on-first-play.
+it("offers Listen for a published chapter that has no audio yet", async () => {
+  const onRead = jest.fn();
+  const story = withStory({
+    chapters: [{
+      ...standalone!.chapters[0],
+      audioUrl: undefined,
+      audioUrls: undefined,
+      isPublished: true,
+    }],
+  });
+  const view = await renderDetail(story, onRead);
+
+  await fireEvent.press(view.getByLabelText("Listen to story"));
+
+  await waitFor(() => expect(onRead).toHaveBeenCalled());
+  expect(onRead.mock.calls[0][1]).toMatchObject({ mode: "listen" });
+  expect(view.queryByText("Narration is not ready for this story yet."))
+    .toBeNull();
 });
 
 it("deduplicates a double tap on save and settles on one saved state", async () => {
