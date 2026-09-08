@@ -6,6 +6,20 @@ export type PaginationTypography = {
 export type PaginationViewport = {
   width: number;
   height: number;
+  /**
+   * Vertical space, in the same units as `height`, that something other than
+   * body text occupies on the FIRST page only -- in the reader, the chapter
+   * opener (cover, story title, byline, chapter title).
+   *
+   * Without this every page got the same character budget, so the first page
+   * was handed a full screen's worth of prose and then had the opener pushed
+   * in above it. In a reader you scroll that is merely a longer first screen;
+   * in a reader you turn page by page it means page one, the first thing
+   * anyone sees, is the one page that does not fit and has to be scrolled --
+   * the exact behaviour horizontal paging exists to remove. Optional, and
+   * `0`/absent reproduces the uniform-page behaviour exactly.
+   */
+  firstPageOffset?: number;
 };
 
 export type PageSlice = {
@@ -71,19 +85,20 @@ export function paginateChapter(
     18,
     Math.floor(readableWidth / (typography.fontSize * AVERAGE_READER_CHAR_WIDTH)),
   );
-  const linesPerPage = Math.max(
-    4,
-    Math.floor(readableHeight / typography.lineHeight),
-  );
-  const targetChars = Math.max(
-    140,
-    Math.floor(charsPerLine * linesPerPage * PAGE_FILL),
-  );
-  const minChars = Math.max(80, Math.floor(targetChars * 0.55));
+  // The budget is per page rather than one value for the chapter, because the
+  // first page has less room for prose than the rest of them.
+  const targetCharsFor = (available: number) => {
+    const linesPerPage = Math.max(4, Math.floor(Math.max(120, available) / typography.lineHeight));
+    return Math.max(140, Math.floor(charsPerLine * linesPerPage * PAGE_FILL));
+  };
+  const bodyTargetChars = targetCharsFor(readableHeight);
+  const firstTargetChars = targetCharsFor(readableHeight - Math.max(0, viewport.firstPageOffset ?? 0));
   const pages: PageSlice[] = [];
   let start = 0;
 
   while (start < normalized.length) {
+    const targetChars = pages.length === 0 ? firstTargetChars : bodyTargetChars;
+    const minChars = Math.max(80, Math.floor(targetChars * 0.55));
     const remaining = normalized.length - start;
     if (remaining <= targetChars * 1.12) {
       pages.push({

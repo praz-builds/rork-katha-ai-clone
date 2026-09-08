@@ -90,3 +90,36 @@ it("keeps search offsets in the same coordinate space paginateChapter produces, 
   expect(rawPage).not.toBe(canonicalPage);
   expect(pages[rawPage].text).not.toContain(needle);
 });
+
+it("gives the first page a smaller prose budget when a chapter opener sits above it", () => {
+  const viewport = { width: 350, height: 420 };
+  const typography = { fontSize: 18, lineHeight: 30 };
+  const uniform = paginateChapter(chapter, viewport, typography);
+  // 240 of the first page's 420 points are spent on the chapter opener.
+  const withOpener = paginateChapter(chapter, { ...viewport, firstPageOffset: 240 }, typography);
+
+  // Page one carries noticeably less text, because that is the page the
+  // opener is competing with...
+  expect(withOpener[0].end).toBeLessThan(uniform[0].end);
+  // ...and no other page pays for it: page two onwards is budgeted for a full
+  // screen, so the whole chapter is not re-cut into short pages.
+  expect(withOpener[1].end - withOpener[1].start).toBeGreaterThan(withOpener[0].end - withOpener[0].start);
+
+  // The pages still tile the chapter exactly, with no text lost or repeated.
+  expect(withOpener[0].start).toBe(0);
+  expect(withOpener[withOpener.length - 1].end).toBe(chapter.length);
+  withOpener.slice(1).forEach((page, index) => {
+    expect(page.start).toBeGreaterThanOrEqual(withOpener[index].end);
+  });
+});
+
+it("paginates identically when no opener offset is given", () => {
+  const viewport = { width: 350, height: 420 };
+  const typography = { fontSize: 18, lineHeight: 30 };
+
+  // The offset is opt-in: an absent or zero value must reproduce the uniform
+  // page budget every existing caller and stored reading position relies on.
+  expect(paginateChapter(chapter, { ...viewport, firstPageOffset: 0 }, typography)).toEqual(
+    paginateChapter(chapter, viewport, typography),
+  );
+});

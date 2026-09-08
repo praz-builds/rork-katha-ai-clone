@@ -12,41 +12,62 @@
  *
  * ## The provider chain
  *
- * OpenAI `gpt-image-1` stays first — it is the quality bar the covers were
- * designed against. Behind it sit OpenRouter's Gemini image models, which
- * previously did not exist as a position at all: a single OpenAI outage, quota
- * exhaustion or per-project entitlement gap took cover generation to zero with
- * no fallback, and `OPENAI_API_KEY` is shared with story generation, so the two
- * had one blast radius.
+ * Every position is Google's Gemini image family through OpenRouter, with
+ * `gemini-2.5-flash-image` — "nano banana" — first, for covers and character
+ * portraits alike. One credential (`OPENROUTER_API_KEY`) serves both.
+ *
+ * OpenAI `gpt-image-1` used to hold first place and is gone entirely. The key
+ * was revoked (2026-09-08) and is not coming back, and a provider whose
+ * credential does not exist is not a fallback — it is a position in the chain
+ * that costs a branch, a timeout budget and a paragraph of explanation to skip
+ * itself. Removing it also removes the shared-blast-radius problem that
+ * `OPENAI_API_KEY` created between covers and story generation, because there
+ * is no longer a shared key to have a blast radius.
  *
  * **There is no free image model on OpenRouter.** Every model advertising
  * `image` in `output_modalities` is priced (verified against
  * `GET https://openrouter.ai/api/v1/models`, 2026-09-03). The free tier that
- * `llm.ts` uses for prose has no equivalent here, so this chain is a
- * cheaper-and-independent fallback, not a free one. Per generated image, at
+ * `llm.ts` uses for prose has no equivalent here. Per generated image, at
  * Gemini's fixed 1,290 output tokens:
  *
  * | position | model                             | ≈ per image |
  * |----------|-----------------------------------|-------------|
- * | 1        | openai/gpt-image-1 (direct)        | $0.063      |
- * | 2        | google/gemini-3.1-flash-image      | ~$0.077     |
- * | 3        | google/gemini-2.5-flash-image      | ~$0.039     |
+ * | 1        | google/gemini-2.5-flash-image     | ~$0.039     |
+ * | 2        | google/gemini-3.1-flash-image     | ~$0.077     |
  *
- * 2.5-flash-image is the cheapest of the three and sits last only because
- * 3.1-flash is the stronger model; a deployment optimising for the
- * `CREDITS_AND_PRICING.md` margin constraint should reorder these two, and
- * §10.6's per-cast portrait cost hole is the reason that decision matters.
+ * Nano banana leads on both cost and product decision. 3.1-flash is the
+ * stronger model and stays as the fallback, so an outage or a moderation
+ * refusal on the cheap model still produces art rather than a concept card —
+ * at roughly twice the price, for the minority of images that need it.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCoverPrompt } from "./cover-prompts.ts";
 
 /** Read lazily, never at module load — see the note at the top of `llm.ts`. */
-const openaiKey = () => Deno.env.get("OPENAI_API_KEY")?.trim();
 const openRouterKey = () => Deno.env.get("OPENROUTER_API_KEY")?.trim();
 
 /** Prompt simplification levels, applied in order on moderation rejection. */
 const MAX_SAFETY_LEVELS = 3;
+
+/**
+ * Does an attached style reference survive this rung of the safety ladder?
+ *
+ * It does not survive the last one. Level 2 exists to be the request that
+ * cannot be refused, and an attached photo is the likeliest thing in the
+ * payload for a moderation filter to have objected to -- so it goes before the
+ * character does, rather than letting the optional half of the request fail
+ * the whole ladder.
+ *
+ * This is a named function with one caller pair on purpose. The image and the
+ * sentence describing it must be dropped by the SAME decision: a prompt that
+ * says "an attached image is provided" with no image attached is a request
+ * that describes itself wrongly, and that is worse than either dropping both
+ * or keeping both.
+ */
+function referenceSurvivesLevel(safetyLevel: number): boolean {
+  return safetyLevel < MAX_SAFETY_LEVELS - 1;
+}
 const REQUEST_TIMEOUT_MS = 60_000;
 /**
  * The whole chain is bounded, not just each request.
@@ -68,44 +89,39 @@ interface ImageProvider {
     apiKey: string,
     aspect: ImageAspect,
     deadline: number,
+    /** Optional style reference, as a `data:` URL. See `STYLE_REFERENCE_CLAUSE`. */
+    referenceImage?: string,
   ) => Promise<Uint8Array>;
 }
 
 const PROVIDERS: readonly ImageProvider[] = [
   {
-    name: "openai",
-    model: "gpt-image-1",
-    key: openaiKey,
-    generate: generateWithOpenAI,
+    name: "openrouter",
+    // "Nano banana". First for covers and portraits both, by product
+    // decision and by price.
+    model: "google/gemini-2.5-flash-image",
+    key: openRouterKey,
+    generate: (p, k, a, d, ref) =>
+      generateWithOpenRouter("google/gemini-2.5-flash-image", p, k, a, d, ref),
   },
   {
     name: "openrouter",
     model: "google/gemini-3.1-flash-image",
     key: openRouterKey,
-    generate: (p, k, a, d) =>
-      generateWithOpenRouter("google/gemini-3.1-flash-image", p, k, a, d),
-  },
-  {
-    name: "openrouter",
-    model: "google/gemini-2.5-flash-image",
-    key: openRouterKey,
-    generate: (p, k, a, d) =>
-      generateWithOpenRouter("google/gemini-2.5-flash-image", p, k, a, d),
+    generate: (p, k, a, d, ref) =>
+      generateWithOpenRouter("google/gemini-3.1-flash-image", p, k, a, d, ref),
   },
 ];
 
 export type ImageAspect = "cover" | "portrait";
 
 /** Both are portrait-orientation; the cover is taller. */
-const ASPECT: Record<ImageAspect, { openaiSize: string; words: string }> = {
-  cover: {
-    openaiSize: "1024x1536",
-    words: "portrait orientation, 2:3 aspect ratio",
-  },
-  portrait: {
-    openaiSize: "1024x1536",
-    words: "full-body portrait orientation, 2:3 aspect ratio",
-  },
+const ASPECT: Record<ImageAspect, { words: string }> = {
+  // Gemini takes no size parameter, so the aspect ratio is carried in the
+  // prompt text. `openaiSize` lived here for the images endpoint OpenAI
+  // exposed and had no equivalent on this chain; it is gone with it.
+  cover: { words: "portrait orientation, 2:3 aspect ratio" },
+  portrait: { words: "full-body portrait orientation, 2:3 aspect ratio" },
 };
 
 export interface ImageResult {
@@ -325,7 +341,18 @@ export async function generateCharacterPortrait(
 export async function generateDraftCharacterPortrait(
   userId: string,
   requestId: string,
-  character: { name: string; description?: string; appearance?: string },
+  character: {
+    name: string;
+    description?: string;
+    appearance?: string;
+    /**
+     * A photo the writer attached to steer the LOOK of this character, as a
+     * `data:` URL. It is a style reference, never a likeness target -- see
+     * `STYLE_REFERENCE_CLAUSE` for what the model is told, and note that the
+     * prompt is the weakest of the three layers holding that line.
+     */
+    referenceImage?: string;
+  },
 ): Promise<ImageResult | null> {
   const appearance = sanitizeForPrompt(character.appearance ?? "");
   const description = sanitizeForPrompt(character.description ?? "");
@@ -339,20 +366,55 @@ export async function generateDraftCharacterPortrait(
   const storagePath = `draft-characters/${safePathSegment(userId)}/${
     safePathSegment(requestId)
   }.png`;
+  const referenceImage = character.referenceImage;
   return await runImageChain({
     label: `draft portrait ${requestId}`,
     bucket: "covers",
     storagePath,
     aspect: "portrait",
+    referenceImage,
     promptFor: (safetyLevel) =>
-      buildPortraitPrompt(appearance, description, safetyLevel),
+      buildPortraitPrompt(
+        appearance,
+        description,
+        safetyLevel,
+        // Same predicate the chain uses to decide whether to send the image,
+        // so the prompt can never describe an attachment that is not there.
+        Boolean(referenceImage) && referenceSurvivesLevel(safetyLevel),
+      ),
   });
 }
+
+/**
+ * What an attached reference image is allowed to do, said to the model directly.
+ *
+ * The product decision (2026-09-08) is that a writer may attach a photo to steer
+ * a character's LOOK -- build, hair, posture, palette, wardrobe -- and that the
+ * output is an original illustration of a fictional character. What it is not
+ * allowed to be is a portrait of the person in the photo. That distinction is
+ * the whole basis on which the feature is allowed to exist, so it is stated to
+ * the model in the prompt rather than left to the model's own judgement.
+ *
+ * This does not stand alone. The base Safety Rules in `story-prompts.ts` already
+ * forbid real people, and naming a real person in a character sheet routes
+ * through `entity-classify.ts`, which forcibly reclassifies that name as
+ * `private_individual` and locks the story private (migration 00050). Prompt
+ * text is the weakest of those three layers and is treated as such: it is the
+ * one that shapes the output, not the one that enforces the rule.
+ */
+const STYLE_REFERENCE_CLAUSE =
+  "An attached image is provided as a STYLE AND APPEARANCE REFERENCE ONLY. " +
+  "Take general build, hair, posture, colour palette and wardrobe from it. " +
+  "Do NOT reproduce the face or likeness of any real person, and do not " +
+  "attempt a recognisable portrait of anyone in the reference. The result " +
+  "must be an original illustrated character, not a depiction of a real " +
+  "individual.";
 
 function buildPortraitPrompt(
   appearance: string,
   description: string,
   safetyLevel: number,
+  hasReference = false,
 ): string {
   // The ladder drops the free-text fields in the order they are likely to have
   // caused a rejection: appearance carries the physical detail, description the
@@ -379,6 +441,7 @@ function buildPortraitPrompt(
     `Painterly book-illustration style, soft even lighting, no background scenery.`,
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.`,
     `Full-body portrait orientation, subject centered in frame, high quality.`,
+    ...(hasReference ? [STYLE_REFERENCE_CLAUSE] : []),
   ].join(" ");
 }
 
@@ -414,6 +477,8 @@ async function runImageChain(input: {
   storagePath: string;
   aspect: ImageAspect;
   promptFor: (safetyLevel: number) => string;
+  /** Optional style reference, as a `data:` URL. See `STYLE_REFERENCE_CLAUSE`. */
+  referenceImage?: string;
 }): Promise<ImageResult | null> {
   const deadline = Date.now() + CHAIN_DEADLINE_MS;
 
@@ -462,6 +527,7 @@ async function runImageChain(input: {
           apiKey,
           input.aspect,
           deadline,
+          referenceSurvivesLevel(level) ? input.referenceImage : undefined,
         );
         const url = await uploadToStorage(
           input.bucket,
@@ -507,43 +573,11 @@ async function runImageChain(input: {
 // Providers
 // ---------------------------------------------------------------------------
 
-async function generateWithOpenAI(
-  prompt: string,
-  apiKey: string,
-  aspect: ImageAspect,
-  deadline: number,
-): Promise<Uint8Array> {
-  const payload = await postJson(
-    "https://api.openai.com/v1/images/generations",
-    apiKey,
-    {
-      model: "gpt-image-1",
-      prompt,
-      n: 1,
-      size: ASPECT[aspect].openaiSize,
-      quality: "medium",
-    },
-    deadline,
-    "OpenAI image",
-  );
-
-  const entry = (payload as {
-    data?: { b64_json?: string; url?: string; revised_prompt?: string }[];
-  })?.data?.[0];
-
-  if (entry?.revised_prompt) console.log("[image] prompt revised by OpenAI");
-  if (entry?.b64_json) return decodeBase64(entry.b64_json);
-  if (entry?.url) return await downloadImage(entry.url, deadline);
-  throw new Error("OpenAI returned no image data");
-}
-
 /**
  * OpenRouter returns images through chat completions, not an images endpoint.
  *
  * The model is asked for image output via `modalities`, and the result arrives
- * on `choices[0].message.images[].image_url.url` as a `data:` URL — a different
- * response shape from OpenAI's `data[0].b64_json`, which is why this cannot
- * reuse the OpenAI reader.
+ * on `choices[0].message.images[].image_url.url` as a `data:` URL.
  */
 async function generateWithOpenRouter(
   model: string,
@@ -551,21 +585,27 @@ async function generateWithOpenRouter(
   apiKey: string,
   aspect: ImageAspect,
   deadline: number,
+  referenceImage?: string,
 ): Promise<Uint8Array> {
+  const text = `${prompt} Render as a single image, ${ASPECT[aspect].words}.`;
+  // With a reference attached the content becomes the multimodal array form.
+  // The text part is sent FIRST deliberately: it carries
+  // `STYLE_REFERENCE_CLAUSE`, and a model that reads the image before it has
+  // been told what the image is for is being invited to copy it.
+  const content = referenceImage
+    ? [
+      { type: "text", text },
+      { type: "image_url", image_url: { url: referenceImage } },
+    ]
+    : text;
+
   const payload = await postJson(
     "https://openrouter.ai/api/v1/chat/completions",
     apiKey,
     {
       model,
       modalities: ["image", "text"],
-      messages: [
-        {
-          role: "user",
-          content: `${prompt} Render as a single image, ${
-            ASPECT[aspect].words
-          }.`,
-        },
-      ],
+      messages: [{ role: "user", content }],
     },
     deadline,
     `OpenRouter image (${model})`,

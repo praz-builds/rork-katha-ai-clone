@@ -98,7 +98,6 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 | Service | Purpose | Key / Config | Status |
 |---------|---------|-------------|--------|
 | **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
-| **OpenAI** | Cover images (gpt-image-1) | `OPENAI_API_KEY` in Supabase secrets + `backend/.env` | Set |
 | **Gemini** | Story generation fallback (Gemini 3.1 Pro Preview) | `GEMINI_API_KEY` in Supabase secrets | Set, currently quota-blocked (`429 RESOURCE_EXHAUSTED`) |
 | **OpenRouter** | Story generation primary (Muse Spark) + free-router last resort | `OPENROUTER_API_KEY` in Supabase secrets | Set, serving all generation |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
@@ -110,29 +109,15 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 
 ### LLM Fallback Chain
 
-OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
+OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
 
 **Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` was re-balanced with the reorder — cumulative shares are openrouter 0.5, gemini 0.65, openai 0.93, free 1.0 — because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last.
 
 **The contributor tier is `404` until an account setting changes.** `meta/muse-spark-1.3-contributor` is ~17x cheaper because it trains on prompts and completions, and the OpenRouter account's privacy setting blocks training-tier endpoints: `"Paid model training violation (account settings): 1 endpoint excluded"`. Change it at https://openrouter.ai/settings/privacy — that is a data decision (users' story ideas and generated prose go to the provider for training), and no deploy is involved either way. Until then `meta/muse-spark-1.3` serves; it was measured on 2026-09-05 returning schema-valid JSON in ~11s.
 
-**Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_STORY_API_KEY` falling back to `OPENAI_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored.
+**Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored, and so are `OPENAI_API_KEY` / `OPENAI_STORY_API_KEY` — see below.
 
-**Set `OPENAI_STORY_API_KEY` to stop stories and covers sharing a blast radius.** `OPENAI_API_KEY` also authenticates `gpt-image-1` in `_shared/image.ts`. While it is the only key set, one spend cap, rate limit, revocation or rotation takes down covers *and* stories together — and with Gemini and OpenRouter unavailable, every position that can serve authenticates with it. The code already prefers the dedicated key; setting the secret is the whole change, and leaving it unset preserves current behaviour.
-
-**Model IDs:** `meta/muse-spark-1.3-contributor`, `meta/muse-spark-1.3`, `gemini-3.1-pro-preview`, `gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`, `nvidia/nemotron-3-ultra-550b-a55b:free`, `openrouter/free`. (`google/gemini-2.5-flash` held the OpenRouter position until 2026-09-05.)
-
-**The OpenAI position is an ordered list, not one model.** `OPENAI_MODELS` in `_shared/llm.ts` tries `gpt-5.6-luna`, then `gpt-5-mini`, then `gpt-4o-mini`. Model access is granted per OpenAI **project**, not just per org — granting at org level alone still leaves `403 ... does not have access to model`. `/v1/models` lists models the project cannot call, so it is useless as an access probe; the only reliable check is an actual completion request. Granting access upstream needs no deploy — the 403 stops happening and the better model takes over, which is exactly how Luna went live on 2026-08-31.
-
-**Reasoning models take a different chat-completions contract.** `gpt-5.6-luna` and `gpt-5-mini` require `max_completion_tokens`, reject `max_tokens`, and ignore `temperature`; they also take `reasoning_effort: "low"`, because prose does not benefit from long deliberation and every reasoning token is latency the reader waits through. Reasoning tokens are counted *inside* that budget, so the reasoning path carries 2x headroom over the visible story length — without it a long story is truncated by the budget its own reasoning consumed. `gpt-4o-mini` and the OpenRouter path keep the legacy `max_tokens` + `temperature` shape, because OpenRouter still routes to models that only understand it. The `reasoning` flag on each `OpenAIModelSpec` selects the shape; never assume a new model shares the old one.
-
-**The Muse Spark models reason inside `max_tokens`, and that is how they fail silently.** Measured 2026-09-05: `max_tokens: 1200` with no reasoning control returned HTTP `200`, `finish_reason: "length"`, 1,197 reasoning tokens and an **empty content string**; `max_tokens: 8000` with `reasoning: {effort: "low"}` returned clean JSON on 957 reasoning + 1,408 completion tokens. So `openRouterRequestShape` sends an explicit `reasoning: { effort: "low" }` and floors the budget at `OPENROUTER_MIN_OUTPUT_TOKENS` (8,000) on top of a 2x multiplier — a multiplier alone leaves the paragraph editor at 4,000 and the onboarding shaping call at 1,800, which is the failing row. An empty-content `200` is rejected at the provider boundary by `openAICompatibleContent` and falls through to the next model; it must never be treated as a usable result. Reasoning tokens bill at the completion rate, so cost per call is far above prompt-plus-visible-output.
-
-**Every model whose identity is known in advance is tried before the free router.** `openrouter/free` routes to a random free model per request, so its output cap, latency and prose quality are not repeatable, and free-tier daily caps apply. Production has seen it hand a *code* model a prose rewrite, and a routed model whose output cap is under `max_tokens` returns `finish_reason: "length"`, which the parser rejects. It is the last-ditch attempt before the caller refunds the credit — never a position production leans on.
-
-**Each provider gets a bounded slice of the deadline.** `PHASE_END_SHARE` in `_shared/llm.ts` caps each phase at a cumulative fraction of `deadlineMs` (35% / 50% / 90% / 100%). Moderation retries are otherwise bounded only by the shared deadline, so one slow provider would consume the whole budget and every fallback would abort before sending a request.
-
-**The OpenAI window is split again, per model.** The models in `OPENAI_MODELS` share the OpenAI phase, so a stalled preferred model would spend the whole window and `remainingDuration` would abort the model behind it before `fetch` was called — the same starvation, one level down. The window is divided evenly across the list so the last model is always reachable. Covered by a regression test that stalls the preferred model and asserts the fallback is still sent.
+**OpenAI is removed from every chain (2026-09-08).** The credential was revoked and is not returning, so the position it authenticated is gone from `_shared/llm.ts` and `_shared/image.ts` rather than left dormant. This matters because a keyless provider does not fail loudly — `key()` returning undefined means *skip* throughout this codebase — so a half-removed position would sit in the chain costing a branch and a slice of the generation deadline while never being able to answer. `OPENAI_API_KEY` and `OPENAI_STORY_API_KEY` are now read by nothing; a test asserts that setting either does not resurrect a provider. Its 0.28 share of the generation deadline went to the leader and to Gemini, because an unclaimed slice is not saved time, it is time the remaining phases are forbidden from using.
 
 **Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once. Gemini receives it as `responseSchema`; OpenRouter and OpenAI receive it through `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
 
@@ -155,7 +140,6 @@ OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Ge
 # backend/.env (never committed)
 GEMINI_API_KEY=xxx
 OPENROUTER_API_KEY=xxx
-OPENAI_API_KEY=xxx
 REVENUECAT_WEBHOOK_SECRET=xxx
 SUBSCRIPTION_GRANT_CRON_SECRET=xxx
 FIREBASE_SERVICE_ACCOUNT_KEY=xxx
@@ -354,19 +338,19 @@ Chapter 1's art **is** the story's cover, and it is generated with chapter 1 rat
 
 ### Model & Output
 
-- **Provider**: OpenAI `gpt-image-1` first, then OpenRouter as fallback.
+- **Provider**: OpenRouter only — `google/gemini-2.5-flash-image` ("nano banana") first, then `google/gemini-3.1-flash-image`. One credential, `OPENROUTER_API_KEY`, for covers and character portraits alike.
 
-  **This rule changed on 2026-09-03.** It read "OpenAI API only. Never use other image providers", and that was correct while covers were unwired: there was nothing to keep running. Now that chapter 1's art is compulsory and generated on the paid path, a single-provider image pipeline means one OpenAI outage, spend cap or per-project entitlement gap takes cover generation to zero — and `OPENAI_API_KEY` is shared with story generation, so the two have one blast radius.
+  **This rule has changed twice.** It read "OpenAI API only. Never use other image providers", which was correct while covers were unwired: there was nothing to keep running. On 2026-09-03 OpenRouter was added behind OpenAI, because chapter 1's art is compulsory and generated on the paid path, so a single-provider pipeline meant one outage took cover generation to zero. On 2026-09-08 OpenAI was removed entirely: its key was revoked, and both positions now run on `OPENROUTER_API_KEY`. Higgsfield and any provider not named here remain banned.
 
   The fallback is `google/gemini-3.1-flash-image`, then `google/gemini-2.5-flash-image`, both through OpenRouter. **There is no free image model on OpenRouter** — every model advertising `image` in `output_modalities` is priced — so this is a cheaper and independent fallback, not a free one.
 
   **Still banned: Higgsfield, and any provider not named here.** Adding a position is a deliberate change to this rule, not an implementation detail.
 
   **Providers do not agree on output format, and the same provider need not stay consistent.** During evaluation, `gemini-3.1-flash-lite-image` returned JPEG for a request that `gemini-3.1-flash-image` and `gemini-2.5-flash-image` answered with PNG. Content type is therefore sniffed from magic bytes rather than assumed, the stored extension follows the actual format, and an unrecognised payload is refused rather than stored — it is far likelier to be an error body than a fourth image format. Never hardcode `image/png`.
-- **Model**: `gpt-image-1`.
+- **Model**: `google/gemini-2.5-flash-image` ("nano banana"), with `google/gemini-3.1-flash-image` behind it.
 - **Output size**: `1024x1536` portrait (2:3 ratio, native book cover format).
 - **Quality**: `"medium"`.
-- **Response format**: OpenAI returns base64 (`b64_json`); OpenRouter returns a `data:` URL on `choices[0].message.images[0].image_url.url`. Two shapes, two readers — do not reuse one for the other.
+- **Response format**: OpenRouter returns a `data:` URL on `choices[0].message.images[0].image_url.url`, not an images-endpoint `b64_json`. The decoded bytes are sniffed for their real format, never assumed — the models disagree (2.5 and 3.1 flash return PNG; 3.1-flash-lite returns JPEG).
 - **Storage**: Supabase Storage `covers/{story_id}/cover.<ext>`, public read, where the extension follows the sniffed format (`png`, `jpg` or `webp`). Character portraits sit at `covers/{story_id}/characters/{character_id}.<ext>`. The public URL is authoritative for the stored path — do not reconstruct it from the requested one.
 
 ### Prompt Construction
@@ -426,7 +410,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 
 ### Moderation Rules
 
-- "Pixar-inspired" is a HARD BLOCK in OpenAI moderation. Use "3D CGI animated film style".
+- "Pixar-inspired" is a HARD BLOCK in image-model moderation. Use "3D CGI animated film style".
 - Never include "AI", "generated", "artificial intelligence" in public-facing image metadata.
 
 ### Checklist for New Genres
@@ -568,7 +552,7 @@ supabase secrets set GEMINI_API_KEY=xxx OPENROUTER_API_KEY=xxx  # Set story-gene
 
 ### Required Supabase Secrets
 
-`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`, `SUBSCRIPTION_GRANT_CRON_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
+`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`, `SUBSCRIPTION_GRANT_CRON_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
 
 ### Expo
 
@@ -588,7 +572,7 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists.
 | Phase | Focus |
 |-------|-------|
 | **A** | Supabase project + fix critical bugs + deploy existing functions |
-| **B** | Wire gpt-image-1 cover images + MiniMax/edge-tts audio narration |
+| **B** | Wire nano-banana cover images + MiniMax/edge-tts audio narration |
 | **C** | RevenueCat webhook verification + AdMob SSV verification |
 | **D** | Follow/bookmark/like toggles + publish-chapter with FCM |
 | **E** | record-read endpoint + creator earnings curve + pending credits |

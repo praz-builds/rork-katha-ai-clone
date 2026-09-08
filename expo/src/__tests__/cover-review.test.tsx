@@ -187,10 +187,13 @@ async function renderAtReview(
 ) {
   const view = await renderAtEditor(cover, credits, onPublished);
 
-  // The editor's "Next" is one press from review now. There is no cover step
+  // The editor's "Review" is one press from review now. There is no cover step
   // in between, and this failing is how a reintroduced one would be caught.
+  // (The control used to say "Next"; it was renamed because on a screen that
+  // writes chapter after chapter, a forward chevron labelled "Next" reads as
+  // "next chapter" — see the note beside it in `CreateStudioScreen`.)
   await act(async () => {
-    fireEvent.press(view.getAllByText("Next")[0]);
+    fireEvent.press(view.getAllByTestId("editor-review-button")[0]);
   });
   await view.findByTestId("regenerate-cover-button");
   return view;
@@ -502,11 +505,56 @@ describe("the cover watch", () => {
     }
   });
 
+  it("keeps watching while the writer is off writing the next chapter", async () => {
+    // The regression this replaces: the watch was gated on
+    // `step === "editor" || step === "review"`, so the one activity that takes
+    // minutes — continuing the story, or a whole "Write the rest" run, both of
+    // which sit on `generating` — was also the one activity during which
+    // nobody asked whether the cover had landed. A writer continued, came
+    // back, and found the studio still saying "painting chapter one's art"
+    // about an image that had been finished in Storage for minutes.
+    //
+    // §10.4's promise is that the cover happens *behind* what the writer is
+    // doing. A watch that stops whenever they do something is not a background
+    // watch, so this drives the screen into `generating` with a continuation
+    // that never resolves and asserts the asking carries on.
+    jest.useFakeTimers();
+    try {
+      mockFetchCoverState.mockReset().mockResolvedValue(null);
+
+      const view = await renderAtEditor({
+        cover_status: "generating",
+        cover_regen_count: 0,
+      });
+
+      // A continuation whose response never arrives. The screen stays on
+      // `generating` for as long as this test wants it to.
+      mockExpoFetch.mockReset().mockReturnValue(new Promise(() => {}));
+      await act(async () => {
+        fireEvent.press(view.getByTestId("continue-chapter-button"));
+      });
+
+      const before = mockFetchCoverState.mock.calls.length;
+      for (let tick = 0; tick < 3; tick += 1) {
+        await act(async () => {
+          jest.advanceTimersByTime(COVER_POLL_INTERVAL_MS + 100);
+        });
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+      }
+
+      expect(mockFetchCoverState.mock.calls.length).toBe(before + 3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("keeps its attempt budget across a move between the editor and review", async () => {
-    // `step` is a dependency of the watch, so the interval is rebuilt on every
-    // editor-review toggle. An attempt counter local to the effect would reset
-    // with it, and a writer flicking between the two screens would poll a dead
-    // job forever.
+    // The watch is rebuilt whenever its effect re-runs. An attempt counter
+    // local to the effect would reset with it, and a writer flicking between
+    // the editor and review would poll a dead job forever.
     jest.useFakeTimers();
     try {
       mockFetchCoverState.mockReset().mockResolvedValue(null);
@@ -533,7 +581,7 @@ describe("the cover watch", () => {
       expect(mockFetchCoverState).toHaveBeenCalledTimes(half);
 
       await act(async () => {
-        fireEvent.press(view.getAllByText("Next")[0]);
+        fireEvent.press(view.getAllByTestId("editor-review-button")[0]);
       });
       await view.findByTestId("regenerate-cover-button");
 

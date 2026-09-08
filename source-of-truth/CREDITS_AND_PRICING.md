@@ -291,30 +291,38 @@ it is still an order of magnitude under the cheapest image in the table below.
 > only path. The cushion was already noted as narrowed on the standard tier, and
 > this widens the gap between the two tiers rather than closing it.
 
-**Images.** `gpt-image-1` ([OpenAI](https://developers.openai.com/api/docs/models/gpt-image-1),
-tiers via [calculator](https://langcopilot.com/gpt-image-1-pricing)):
+**Images.** `google/gemini-2.5-flash-image` — "nano banana" — through OpenRouter,
+with `google/gemini-3.1-flash-image` behind it.
 
-| Size | low | medium | high |
-|---|---|---|---|
-| 1024×1024 | **$0.011** | $0.042 | $0.167 |
-| 1024×1536 | $0.016 | **$0.063** ← covers | $0.250 |
+| model | ≈ per image |
+|---|---|
+| google/gemini-2.5-flash-image ("nano banana") | **$0.039** |
+| google/gemini-3.1-flash-image (fallback) | ~$0.077 |
 
-**Three render tiers, and they are constraints rather than defaults.** Changing
-one is a pricing change and returns to this file.
+> **This replaces `gpt-image-1`, and the tier model with it (2026-09-08).** The
+> OpenAI credential was revoked, so the whole size×quality price matrix that the
+> three render tiers below were derived from no longer applies to anything this
+> codebase can call. Gemini charges a **flat 1,290 output tokens per image**: it
+> takes no `size` and no `quality` parameter, so a cover, a chapter illustration
+> and a character portrait all cost the same.
+>
+> That is straightforwardly better for the two cheap tiers and worse for none —
+> a cover falls from $0.063 to $0.039 — but it removes the lever the tiering was
+> built on. **The three tiers below are retained as a record of the intent, not
+> as a live constraint**, and the per-cast portrait arithmetic in §10.6 needs
+> redoing against a flat rate before the portrait path is priced. Aspect ratio
+> is now carried in the prompt text rather than a parameter (`ASPECT` in
+> `_shared/image.ts`), so it is a request, not a guarantee.
 
-> **Implementation status, stated honestly.** Only the cover tier exists in code
-> today: `_shared/image.ts` requests `gpt-image-1` at 1024×1536 `medium` — and
-> `generateCoverImage()` is **not yet called by any edge function**, so no cover
-> has ever been generated in production. The chapter-art and portrait tiers below
-> are the **contract for the image pipeline still to be built** (bucket B4), not
-> a description of shipped behaviour. Each is to be pinned with a test when that
-> path lands.
+**Three render tiers, retained as intent.** Changing one is a pricing change and
+returns to this file — but see the note above: none of them is currently
+enforceable, because the provider does not price by size or quality.
 
-| Image | Tier | Cost | Why |
-|---|---|---|---|
-| **Cover** — chapter 1's art | 1024×1536 medium | **$0.063** | The 390×340 hero, the 108×152 card and the 74×96 mini. Quality is visible everywhere. |
-| **Chapter art** — chapters 2–N | 1024×1024 medium | **$0.042** | An inline illustration at ~350pt in a reading column, seen once, in flow. Square suits the placement; it is not a shelf image. |
-| **Character portraits** | 1024×1024 low | **$0.011** | Displayed inline and small. The 6× reduction against the cover tier is what lets a whole cast be one credit. |
+| Image | Intended tier | Old cost | Cost today | Why the tier existed |
+|---|---|---|---|---|
+| **Cover** — chapter 1's art | 1024×1536 medium | $0.063 | **$0.039** | The 390×340 hero, the 108×152 card and the 74×96 mini. Quality is visible everywhere. |
+| **Chapter art** — chapters 2–N | 1024×1024 medium | $0.042 | **$0.039** | An inline illustration at ~350pt in a reading column, seen once, in flow. Square suits the placement; it is not a shelf image. |
+| **Character portraits** | 1024×1024 low | $0.011 | **$0.039** | Displayed inline and small. The 6× reduction against the cover tier is what let a whole cast be one credit — **that reduction is gone**, and this is the number to recheck. |
 
 A cast is capped at **3 characters**. That is a product bound, not a margin one —
 four portraits still clear the floor on a blended basis — chosen so the cast
@@ -1406,8 +1414,16 @@ economy is tuned on evidence rather than argued about.
 47. **Launch instrumentation per §11**, with the load-bearing triggers being
     Writer-yearly credit utilization, pack attach rate, and the audio catalog hit
     rate.
-48. **Note, no decision required:** `_shared/image.ts:108` uses `gpt-image-1` at
-    1024×1536 `quality: "medium"`, not DALL·E 3 at 1024×1024 as older notes state.
-    All costing here uses the code.
+48. **Superseded (2026-09-08).** This recorded that `_shared/image.ts` used
+    `gpt-image-1` at 1024×1536 `quality: "medium"`. The OpenAI credential was
+    revoked and the provider removed; every image now comes from
+    `google/gemini-2.5-flash-image` ("nano banana") through OpenRouter, with
+    `google/gemini-3.1-flash-image` behind it. **This is a live open item, not
+    just a substitution:** Gemini charges a flat ~1,290 output tokens per image
+    and takes no size or quality parameter, so the per-tier costing above no
+    longer has a mechanism behind it. The cover got cheaper ($0.063 → $0.039);
+    the character portrait got ~3.5× dearer ($0.011 → $0.039), which is exactly
+    the number the "a whole cast is one credit" claim rests on. Re-run §10.6
+    before the portrait path is priced.
 
 <!-- markdownlint-enable MD029 -->

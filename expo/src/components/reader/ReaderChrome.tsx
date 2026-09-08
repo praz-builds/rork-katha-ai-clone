@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, {
   Easing,
@@ -49,6 +49,40 @@ export type ReaderChromeProps = {
   onMusic?: () => void;
 };
 
+/**
+ * Screen-reader adjust actions. Declared once so the array identity is stable
+ * across renders rather than rebuilt on every one.
+ */
+/**
+ * The chrome is dark, on every reading theme.
+ *
+ * It used to be `colors.bg` / `colors.surface` -- light chrome, which was
+ * defensible while the page was near-white and indefensible the moment the
+ * default page became warm cream: light controls on a light page, with no
+ * edge between the thing you are reading and the thing you are operating. It
+ * also stayed light in Night mode, which is the one theme where that is a
+ * physical problem rather than an aesthetic one.
+ *
+ * Dark on every theme is deliberate rather than theme-following. The chrome is
+ * a transient overlay summoned by a tap; making it recede on some themes and
+ * assert on others would mean the same gesture produced a different-feeling
+ * surface depending on a preference set weeks ago. A consistently dark sheet
+ * reads as "the app", and the page underneath stays "the book" -- which is
+ * exactly the separation the reference design draws.
+ */
+const CHROME = {
+  surface: "#1C1A17",
+  border: "#332F2A",
+  text: "#F4F1EC",
+  muted: "#B5ADA2",
+  track: "#3A352F",
+} as const;
+
+const ADJUSTABLE_ACTIONS = [
+  { name: "increment" as const },
+  { name: "decrement" as const },
+];
+
 type ChromeAction = {
   label: string;
   icon: React.ComponentType<{ size: number; color: string }>;
@@ -68,7 +102,7 @@ function ChromeButton({ action }: { action: ChromeAction }) {
         pressed && styles.chromeButtonPressed,
       ]}
     >
-      <Icon size={19} color={colors.strong} />
+      <Icon size={19} color={CHROME.text} />
       <Text style={styles.chromeButtonText}>{action.label}</Text>
     </Pressable>
   );
@@ -138,6 +172,20 @@ export function ReaderChrome({
     { label: "Music", icon: Music, onPress: onMusic },
   ];
   const sliderPercent = pageCount <= 1 ? 0 : pageIndex / (pageCount - 1);
+
+  // Measured, not assumed: the track is a flexed child, so its width is only
+  // known after layout. 0 means "not measured yet" and `seekTo` refuses to act
+  // on it -- guessing a width here would send the first touch to the wrong page.
+  const [trackWidth, setTrackWidth] = useState(0);
+  const seekTo = useCallback(
+    (locationX: number) => {
+      if (trackWidth <= 0 || pageCount <= 1) return;
+      const ratio = Math.min(1, Math.max(0, locationX / trackWidth));
+      const next = Math.round(ratio * (pageCount - 1));
+      if (next !== pageIndex) onPageChange(next);
+    },
+    [trackWidth, pageCount, pageIndex, onPageChange],
+  );
   const matchText = searchQuery.trim()
     ? `${searchMatchCount === 0 ? 0 : activeSearchMatch + 1} of ${searchMatchCount}`
     : "Find";
@@ -152,7 +200,7 @@ export function ReaderChrome({
           hitSlop={8}
           style={styles.headerIconButton}
         >
-          <ChevronLeft size={22} color={colors.ink} />
+          <ChevronLeft size={22} color={CHROME.text} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={2}>{storyTitle}</Text>
         <Pressable
@@ -162,7 +210,7 @@ export function ReaderChrome({
           hitSlop={8}
           style={styles.headerIconButton}
         >
-          {searchOpen ? <X size={20} color={colors.ink} /> : <Search size={20} color={colors.ink} />}
+          {searchOpen ? <X size={20} color={CHROME.text} /> : <Search size={20} color={CHROME.text} />}
         </Pressable>
       </Animated.View>
 
@@ -195,7 +243,7 @@ export function ReaderChrome({
             hitSlop={8}
             style={styles.findButton}
           >
-            <ChevronLeft size={18} color={colors.strong} />
+            <ChevronLeft size={18} color={CHROME.muted} />
           </Pressable>
           <Pressable
             onPress={onSearchNext}
@@ -204,7 +252,7 @@ export function ReaderChrome({
             hitSlop={8}
             style={styles.findButton}
           >
-            <ChevronLeft size={18} color={colors.strong} style={{ transform: [{ rotate: "180deg" }] }} />
+            <ChevronLeft size={18} color={CHROME.muted} style={{ transform: [{ rotate: "180deg" }] }} />
           </Pressable>
         </View>
       ) : null}
@@ -226,21 +274,59 @@ export function ReaderChrome({
               hitSlop={8}
               style={styles.pageStepButton}
             >
-              <ChevronLeft size={19} color={colors.strong} />
+              <ChevronLeft size={19} color={CHROME.muted} />
             </Pressable>
-            <Pressable
-              onPress={() => {
-                const next = pageIndex >= pageCount - 1 ? 0 : pageIndex + 1;
-                onPageChange(next);
-              }}
+            {/*
+              A real positional control, not a stepper wearing a track.
+
+              This used to advance ONE page per tap and wrap back to page 1
+              once it reached the end. It looked exactly like a slider, so
+              tapping three-quarters along a forty-page chapter moved you a
+              single page, and tapping at the end threw you back to the
+              beginning -- the two things a scrubber must never do. A control
+              that draws a filled track and a thumb is making a promise about
+              position, and this one did not keep it.
+
+              Touch x is mapped to a page across the measured width, on press
+              and on drag, so tap-to-jump and scrub are the same gesture.
+              `onLayout` supplies that width; until it arrives `trackWidth` is
+              0 and the handler no-ops rather than dividing by zero and
+              jumping to page 1.
+            */}
+            <View
+              testID="page-scrubber"
+              accessible
               accessibilityRole="adjustable"
               accessibilityLabel="Pages"
               accessibilityValue={{ min: 1, max: pageCount, now: pageIndex + 1 }}
+              accessibilityActions={ADJUSTABLE_ACTIONS}
+              onAccessibilityAction={(event) => {
+                // The screen-reader path stays a stepper on purpose: "increment"
+                // has no position to map, and one page per swipe is what a
+                // VoiceOver user expects from an adjustable.
+                if (event.nativeEvent.actionName === "increment") {
+                  onPageChange(Math.min(pageCount - 1, pageIndex + 1));
+                } else if (event.nativeEvent.actionName === "decrement") {
+                  onPageChange(Math.max(0, pageIndex - 1));
+                }
+              }}
+              onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={(event) => seekTo(event.nativeEvent.locationX)}
+              onResponderMove={(event) => seekTo(event.nativeEvent.locationX)}
               style={styles.sliderTrack}
             >
+              {/*
+                The unfilled remainder was invisible: the track had no
+                background, so only the filled portion was drawn and the
+                control gave no clue how much chapter was left. On a scrubber
+                the empty half is the information.
+              */}
+              <View style={styles.sliderTrackLine} />
               <View style={[styles.sliderFill, { width: `${Math.max(3, sliderPercent * 100)}%` }]} />
               <View style={[styles.sliderThumb, { left: `${sliderPercent * 100}%` }]} />
-            </Pressable>
+            </View>
             <Pressable
               onPress={() => onPageChange(Math.min(pageCount - 1, pageIndex + 1))}
               accessibilityRole="button"
@@ -248,7 +334,7 @@ export function ReaderChrome({
               hitSlop={8}
               style={styles.pageStepButton}
             >
-              <ChevronLeft size={19} color={colors.strong} style={{ transform: [{ rotate: "180deg" }] }} />
+              <ChevronLeft size={19} color={CHROME.muted} style={{ transform: [{ rotate: "180deg" }] }} />
             </Pressable>
           </View>
         </View>
@@ -271,9 +357,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
-    backgroundColor: colors.bg,
+    backgroundColor: CHROME.surface,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: CHROME.border,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
@@ -290,7 +376,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 18,
     lineHeight: 22,
-    color: colors.ink,
+    color: CHROME.text,
     letterSpacing: 0,
   },
   findBar: {
@@ -301,9 +387,9 @@ const styles = StyleSheet.create({
     zIndex: 25,
     minHeight: 50,
     borderRadius: radius.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: CHROME.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: CHROME.border,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -314,14 +400,14 @@ const styles = StyleSheet.create({
     minHeight: 44,
     fontFamily: fonts.ui,
     fontSize: 15,
-    color: colors.ink,
+    color: CHROME.text,
     letterSpacing: 0,
   },
   findCount: {
     minWidth: 48,
     fontFamily: fonts.ui,
     fontSize: 12,
-    color: colors.muted,
+    color: CHROME.muted,
     textAlign: "right",
     letterSpacing: 0,
   },
@@ -337,11 +423,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 20,
-    backgroundColor: colors.surface,
+    backgroundColor: CHROME.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderTopWidth: 1,
-    borderColor: colors.border,
+    borderColor: CHROME.border,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
@@ -362,13 +448,13 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   chromeButtonPressed: {
-    backgroundColor: colors.surface2,
+    backgroundColor: CHROME.track,
   },
   chromeButtonText: {
     fontFamily: fonts.ui,
     fontSize: 11,
     fontWeight: "700",
-    color: colors.strong,
+    color: CHROME.text,
     letterSpacing: 0,
   },
   pageSliderGroup: {
@@ -384,13 +470,13 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 13,
     fontWeight: "800",
-    color: colors.ink,
+    color: CHROME.text,
     letterSpacing: 0,
   },
   sliderValue: {
     fontFamily: fonts.ui,
     fontSize: 12,
-    color: colors.muted,
+    color: CHROME.muted,
     letterSpacing: 0,
   },
   pageStepRow: {
@@ -402,7 +488,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.surface2,
+    backgroundColor: CHROME.track,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -411,12 +497,20 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: "center",
   },
+  sliderTrackLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: CHROME.track,
+  },
   sliderFill: {
     position: "absolute",
     left: 0,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.accent,
+    backgroundColor: CHROME.text,
   },
   sliderThumb: {
     position: "absolute",
@@ -424,6 +518,6 @@ const styles = StyleSheet.create({
     height: 18,
     marginLeft: -9,
     borderRadius: 9,
-    backgroundColor: colors.accent,
+    backgroundColor: CHROME.text,
   },
 });

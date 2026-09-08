@@ -15,7 +15,10 @@ import {
 import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  BackHandler,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -39,11 +42,16 @@ import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage"
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { splitWords } from "@/lib/sentence";
 import { isOwnStory } from "@/lib/ownership";
+import {
+  READER_THEMES,
+  READING_THEME_ORDER,
+  type ReadingThemeName,
+} from "@/lib/reading-themes";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
 type ReaderComment = { id: number; user: string; text: string; time: string };
-type ReadingThemeName = "paper" | "sepia" | "night";
+
 type ReaderPreferences = {
   typeSize: number;
   lineHeight: number;
@@ -81,18 +89,44 @@ export type ReaderScreenProps = {
   autoplay?: boolean;
 };
 
-type ReaderTheme = {
-  name: ReadingThemeName;
-  label: string;
-  background: string;
-  text: string;
-  muted: string;
-  divider: string;
-  highlight: string;
-};
-
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
-const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: "paper" };
+/**
+ * The reader opens in a reading mode, not on a white page.
+ *
+ * `paper` (#FAF7F2) is a near-white surface: on a phone at night it reads as
+ * the same bright rectangle as every other screen in the app, which is the
+ * specific complaint -- no differentiation, no sense of a page. `sepia` is
+ * the warm cream this app's reading surface is supposed to be, so it is what
+ * a reader who has never opened Preferences gets. `paper` stays as the
+ * near-white option for anyone who prefers it; a stored preference always
+ * wins over this default, so nobody's existing choice is overridden.
+ */
+const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: "sepia" };
+/**
+ * How many pages either side of the current one are rendered with real text.
+ *
+ * Every page of the chapter is mounted so the pager's scroll offsets line up
+ * with the page indices, but only this neighbourhood renders words. A word is
+ * a `TappableWord` with its own press handlers (phrase capture), so mounting a
+ * whole 12-page chapter's worth at once would put roughly a thousand live
+ * touch targets on screen to make two of them visible. One page either side
+ * is enough for the next page to be drawn before the swipe lands on it.
+ */
+const PAGE_RENDER_WINDOW = 1;
+/**
+ * Roughly how tall the chapter opener is: the cover thumbnail (94 wide at 3:4,
+ * so ~125), the genre line, the story title, the byline, the "Chapter N"
+ * eyebrow, the chapter title, its rule, and the `spacing.sm` gaps the shell
+ * puts between all of them.
+ *
+ * It is an estimate on purpose -- the real height depends on how many lines a
+ * particular title wraps to, which is not known until layout. Handing it to
+ * the paginator means page one gets a prose budget for the space it actually
+ * has left rather than for a whole empty screen, so it fits instead of being
+ * the one page the reader has to scroll. The per-page vertical scroller
+ * absorbs whatever this estimate gets wrong.
+ */
+const CHAPTER_OPENER_HEIGHT = 300;
 /** Full-volume level for background music when narration is not playing. */
 const MUSIC_FULL_VOLUME = 1;
 /** Ducked level while narration plays, so the two never compete at equal volume. */
@@ -100,35 +134,7 @@ const MUSIC_DUCKED_VOLUME = 0.18;
 const TYPE_SIZES = [16, 18, 20, 22];
 const LINE_HEIGHTS = [26, 30, 34, 38];
 
-const READER_THEMES: Record<ReadingThemeName, ReaderTheme> = {
-  paper: {
-    name: "paper",
-    label: "Paper",
-    background: "#FAF7F2",
-    text: colors.ink,
-    muted: colors.muted,
-    divider: colors.border,
-    highlight: colors.accentSoft,
-  },
-  sepia: {
-    name: "sepia",
-    label: "Sepia",
-    background: colors.sepia,
-    text: colors.sepiaText,
-    muted: colors.sepiaMuted,
-    divider: colors.sepiaPlaceholder,
-    highlight: colors.accentSoft,
-  },
-  night: {
-    name: "night",
-    label: "Night",
-    background: "#171512",
-    text: "#F2EEE8",
-    muted: "#B8AEA3",
-    divider: "#3A3632",
-    highlight: "#5C351F",
-  },
-};
+
 
 const INITIAL_COMMENTS: ReaderComment[] = [
   {
@@ -305,6 +311,7 @@ export default function ReaderScreen({
   const pageViewport = useMemo(() => ({
     width: Math.min(width, 680) - spacing.xl * 2,
     height: Math.max(260, height - (isDesktop ? 190 : 230)),
+    firstPageOffset: CHAPTER_OPENER_HEIGHT,
   }), [height, isDesktop, width]);
   const pages = useMemo(
     () => paginateChapter(fullText, pageViewport, {
@@ -313,9 +320,7 @@ export default function ReaderScreen({
     }),
     [fullText, pageViewport.height, pageViewport.width, preferences.lineHeight, preferences.typeSize],
   );
-  const page = pages[clampIndex(pageIndex, pages.length)] ?? pages[0];
   const searchMatches = useMemo(() => findMatches(fullText, searchQuery), [fullText, searchQuery]);
-  const pageMatches = searchMatches.filter((match) => match.start < page.end && match.end > page.start);
   // The generated cover first, the bundled seed asset second.
   //
   // Both screens read only `story.coverImage`, which names a bundled asset and
@@ -452,6 +457,79 @@ export default function ReaderScreen({
     setPageIndex(next);
     setAnchorOffset(pages[next]?.start ?? 0);
   }, [pages]);
+
+  /**
+   * The chapter is turned page by page, horizontally, not scrolled.
+   *
+   * The reader used to render one page inside a vertical `ScrollView`, so a
+   * chapter read as a document you scroll to the bottom of and the "Pages"
+   * control was the only way to move between pages at all. Now every page of
+   * the chapter is laid out side by side in a `pagingEnabled` horizontal
+   * scroller, one screen wide each, so a right-to-left swipe advances a page
+   * and snaps.
+   *
+   * `pageIndex` stays the single source of truth for which page the reader is
+   * on -- the slider, search jumps and chapter switches all still write to it,
+   * and this ref records where the pager has actually been scrolled so the two
+   * can be told apart. A swipe settles, reports its offset, and updates
+   * `pageIndex`; without the ref the effect below would then treat that as an
+   * external jump and animate the pager to where it already is.
+   */
+  const pagerRef = useRef<ScrollView | null>(null);
+  const pagerPageRef = useRef(0);
+
+  useEffect(() => {
+    const target = clampIndex(pageIndex, pages.length);
+    // Animated only when something other than the pager moved the page --
+    // the Pages slider, a search hit, a chapter switch. Re-running for a
+    // page the pager already sits on is a deliberate no-op scroll that keeps
+    // the offset correct after a re-pagination (a type-size change) has
+    // moved every page boundary underneath it.
+    const animated = pagerPageRef.current !== target;
+    pagerPageRef.current = target;
+    pagerRef.current?.scrollTo({ x: target * width, y: 0, animated });
+  }, [chapter.id, pageIndex, pages.length, width]);
+
+  const handlePagerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    // The pager's own width, not the window's: they are the same on a phone,
+    // but reading the measured value means a rotation or a split-view resize
+    // mid-swipe still resolves to the right page instead of an offset
+    // divided by a stale width.
+    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
+    if (layoutWidth <= 0) return;
+    const next = clampIndex(Math.round(event.nativeEvent.contentOffset.x / layoutWidth), pages.length);
+    pagerPageRef.current = next;
+    if (next === pageIndex) return;
+    setPageIndex(next);
+    // Keeps the anchor in the same coordinate space the slider and search
+    // write to, so a type-size change after a swipe re-lands on the sentence
+    // the reader had actually reached rather than on page 0.
+    setAnchorOffset(pages[next]?.start ?? 0);
+  }, [pageIndex, pages, width]);
+
+  /**
+   * Android's hardware back dismisses the controls overlay before it leaves
+   * the story. A reader who taps to open the controls and then presses back
+   * means "put those away", and falling straight through to the navigator
+   * threw them out of the chapter instead, costing a trip back in to carry
+   * on reading. Returning `false` when nothing is open hands the press back
+   * to the navigator unchanged.
+   */
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (searchOpen) {
+        setSearchOpen(false);
+        return true;
+      }
+      if (chromeVisible) {
+        setChromeVisible(false);
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [chromeVisible, searchOpen]);
 
   const switchChapter = useCallback((nextIndex: number) => {
     if (nextIndex === chapterIndex) return;
@@ -607,19 +685,37 @@ export default function ReaderScreen({
   }, [activeSearchMatch, fullText, pages, searchMatches]);
 
   const activeGlobalMatch = searchMatches[activeSearchMatch];
-  const activePageMatch = activeGlobalMatch
-    ? pageMatches.findIndex((match) => match.start === activeGlobalMatch.start && match.end === activeGlobalMatch.end)
-    : -1;
 
-  // Words before this page, so `renderWord` can be handed a chapter-absolute
-  // index. Derived from the page's own character offset using the shared
+  // Words before each page, so `renderWord` can be handed a chapter-absolute
+  // index. Derived from each page's own character offset using the shared
   // tokenizer, so it cannot disagree with how the words are actually split.
-  const pageWordStart = useMemo(
-    () => splitWords(fullText.slice(0, page.start)).length,
-    [fullText, page.start],
+  //
+  // This is an array rather than a single value because the pager mounts
+  // several pages at once: a page-local index would make two simultaneously
+  // mounted pages both start their words at 0, and phrase capture keys its
+  // saved-word state on that index.
+  const pageWordStarts = useMemo(
+    () => pages.map((slice) => splitWords(fullText.slice(0, slice.start)).length),
+    [fullText, pages],
   );
-  const renderedWords = renderPageWords(page.text, page.start, pageWordStart, pageMatches, activePageMatch, renderWord);
-  const isLastPage = pageIndex === pages.length - 1;
+  const lastPageIndex = pages.length - 1;
+  const isLastPage = pageIndex === lastPageIndex;
+
+  const renderPageBody = (index: number) => {
+    const slice = pages[index];
+    const matchesOnPage = searchMatches.filter((match) => match.start < slice.end && match.end > slice.start);
+    const activeOnPage = activeGlobalMatch
+      ? matchesOnPage.findIndex((match) => match.start === activeGlobalMatch.start && match.end === activeGlobalMatch.end)
+      : -1;
+    return renderPageWords(
+      slice.text,
+      slice.start,
+      pageWordStarts[index] ?? 0,
+      matchesOnPage,
+      activeOnPage,
+      renderWord,
+    );
+  };
 
   return (
     <View style={[styles.reader, { backgroundColor: theme.background }]}>
@@ -639,100 +735,144 @@ export default function ReaderScreen({
         style={styles.readingArea}
         onPress={() => setChromeVisible((visible) => !visible)}
       >
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
-            <View style={styles.coverWrap}>
-              {coverSource ? (
-                <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
-              ) : (
-                <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
-              )}
-            </View>
-            <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
-            <Text style={[styles.title, { color: theme.text }]}>{story.title}</Text>
-            <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
-            <Text style={[styles.chapterTitle, { color: theme.text }]}>{chapter.title}</Text>
-            <View style={styles.pageFrame}>
-              <Text
-                selectable
-                style={[
-                  styles.pageText,
-                  {
-                    color: theme.text,
-                    fontSize: preferences.typeSize,
-                    lineHeight: preferences.lineHeight,
-                  },
-                ]}
-              >
-                {renderedWords}
-              </Text>
-              {isLastPage ? renderChapterEnd?.(chapter) : null}
-            </View>
-            <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {pageIndex + 1} of {pages.length}</Text>
-            {isLastPage ? (
-              <View>
-                {shareToast ? (
-                  <View style={styles.shareToast}>
-                    <Text style={styles.shareToastText}>Copied to clipboard!</Text>
-                  </View>
-                ) : null}
-                <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-                <View style={styles.engagementRow}>
-                  <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" style={styles.engagementAction}>
-                    <Heart size={16} color={isLiked ? colors.heart : theme.text} fill={isLiked ? colors.heart : "none"} />
-                    <Text style={[styles.engagementCount, { color: theme.text }]}>{formatNumber(likeCount)}</Text>
-                  </Pressable>
-                  <View style={styles.engagementAction}>
-                    <MessageCircle size={16} color={theme.text} />
-                    <Text style={[styles.engagementCount, { color: theme.text }]}>{comments.length}</Text>
-                  </View>
-                  <Pressable onPress={() => setIsSaved((prev) => !prev)} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" style={styles.engagementAction}>
-                    {isSaved ? <BookmarkCheck size={16} color={theme.text} /> : <Bookmark size={16} color={theme.text} />}
-                  </Pressable>
-                  <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
-                    <Share2 size={16} color={theme.text} />
-                  </Pressable>
-                </View>
-                <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-                <View style={styles.authorCard}>
-                  <View style={styles.avatar}><Text style={styles.avatarText}>{author.displayName.charAt(0)}</Text></View>
-                  <View style={styles.authorInfo}>
-                    <Text style={[styles.authorName, { color: theme.text }]}>{author.displayName}</Text>
-                    <Text style={[styles.authorBio, { color: theme.muted }]} numberOfLines={2}>{author.bio}</Text>
-                  </View>
-                  <Pressable onPress={() => setIsFollowing((prev) => !prev)} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" style={styles.followButton}>
-                    <Text style={styles.followText}>{isFollowing ? "Following" : "Follow"}</Text>
-                  </Pressable>
-                </View>
-                <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-                <View style={styles.commentsSection}>
-                  <Text style={[styles.commentsTitle, { color: theme.text }]}>Comments ({comments.length})</Text>
-                  <View style={styles.commentInputRow}>
-                    <TextInput
-                      value={commentText}
-                      onChangeText={setCommentText}
-                      placeholder="Add a comment..."
-                      placeholderTextColor={theme.muted}
-                      style={[styles.commentInput, { color: theme.text, borderColor: theme.divider }]}
-                      multiline
-                      maxLength={500}
-                      accessibilityLabel="Add a comment"
-                    />
-                    <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
-                      <Send size={16} color={colors.surface} />
-                    </Pressable>
-                  </View>
-                  {comments.map((comment) => (
-                    <View key={comment.id} style={[styles.commentItem, { borderTopColor: theme.divider }]}>
-                      <Text style={[styles.commentUser, { color: theme.text }]}>{comment.user}</Text>
-                      <Text style={[styles.commentTime, { color: theme.muted }]}>{comment.time}</Text>
-                      <Text style={[styles.commentText, { color: theme.text }]}>{comment.text}</Text>
+        <ScrollView
+          ref={pagerRef}
+          testID="reader-pager"
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={handlePagerMomentumEnd}
+          scrollEventThrottle={16}
+        >
+          {pages.map((slice, index) => {
+            const withinWindow = Math.abs(index - pageIndex) <= PAGE_RENDER_WINDOW;
+            // The end-of-chapter seam fires on ARRIVAL at the last page, not
+            // on the last page merely being mounted. Every page of the chapter
+            // is mounted for the pager's benefit, so gating on `index ===
+            // lastPageIndex` alone would open the branching module the instant
+            // the chapter opened, before the reader had read a word of it.
+            const showsChapterEnd = index === lastPageIndex && isLastPage;
+            return (
+              <View key={`${chapter.id}-page-${index}`} style={[styles.page, { width }]}>
+                {/*
+                  Each page keeps a vertical scroller of its own purely as an
+                  overflow valve: pagination is an estimate from character
+                  counts, and the last page also carries the end-of-chapter
+                  module, engagement bar and comments, which cannot fit a
+                  single screen. Body text on a normal page is sized to fit,
+                  so this never actually scrolls there.
+                */}
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                  <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
+                    {index === 0 ? (
+                      <>
+                        <View style={styles.coverWrap}>
+                          {coverSource ? (
+                            <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
+                          ) : (
+                            <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
+                          )}
+                        </View>
+                        <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
+                        <Text style={[styles.title, { color: theme.text }]}>{story.title}</Text>
+                        <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
+                        {/*
+                          The chapter opener. The chapter used to drop the
+                          reader straight into prose with no indication of
+                          which chapter they were in; this names it, in the
+                          display face with a rule under it, so it reads as a
+                          title page rather than as a first line of the story.
+                        */}
+                        <Text style={[styles.chapterEyebrow, { color: theme.muted }]}>Chapter {chapter.chapterNumber}</Text>
+                        <Text style={[styles.chapterTitle, { color: theme.text }]}>{chapter.title}</Text>
+                        <View style={[styles.chapterRule, { backgroundColor: theme.divider }]} />
+                      </>
+                    ) : null}
+                    <View style={styles.pageFrame}>
+                      <Text
+                        selectable
+                        style={[
+                          styles.pageText,
+                          {
+                            color: theme.text,
+                            fontSize: preferences.typeSize,
+                            lineHeight: preferences.lineHeight,
+                          },
+                        ]}
+                      >
+                        {withinWindow ? renderPageBody(index) : null}
+                      </Text>
+                      {showsChapterEnd ? renderChapterEnd?.(chapter) : null}
                     </View>
-                  ))}
-                </View>
+                    <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {index + 1} of {pages.length}</Text>
+                    {showsChapterEnd ? (
+                      <View>
+                      {shareToast ? (
+                        <View style={styles.shareToast}>
+                          <Text style={styles.shareToastText}>Copied to clipboard!</Text>
+                        </View>
+                      ) : null}
+                      <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+                      <View style={styles.engagementRow}>
+                        <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" style={styles.engagementAction}>
+                          <Heart size={16} color={isLiked ? colors.heart : theme.text} fill={isLiked ? colors.heart : "none"} />
+                          <Text style={[styles.engagementCount, { color: theme.text }]}>{formatNumber(likeCount)}</Text>
+                        </Pressable>
+                        <View style={styles.engagementAction}>
+                          <MessageCircle size={16} color={theme.text} />
+                          <Text style={[styles.engagementCount, { color: theme.text }]}>{comments.length}</Text>
+                        </View>
+                        <Pressable onPress={() => setIsSaved((prev) => !prev)} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" style={styles.engagementAction}>
+                          {isSaved ? <BookmarkCheck size={16} color={theme.text} /> : <Bookmark size={16} color={theme.text} />}
+                        </Pressable>
+                        <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
+                          <Share2 size={16} color={theme.text} />
+                        </Pressable>
+                      </View>
+                      <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+                      <View style={styles.authorCard}>
+                        <View style={styles.avatar}><Text style={styles.avatarText}>{author.displayName.charAt(0)}</Text></View>
+                        <View style={styles.authorInfo}>
+                          <Text style={[styles.authorName, { color: theme.text }]}>{author.displayName}</Text>
+                          <Text style={[styles.authorBio, { color: theme.muted }]} numberOfLines={2}>{author.bio}</Text>
+                        </View>
+                        <Pressable onPress={() => setIsFollowing((prev) => !prev)} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" style={styles.followButton}>
+                          <Text style={styles.followText}>{isFollowing ? "Following" : "Follow"}</Text>
+                        </Pressable>
+                      </View>
+                      <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+                      <View style={styles.commentsSection}>
+                        <Text style={[styles.commentsTitle, { color: theme.text }]}>Comments ({comments.length})</Text>
+                        <View style={styles.commentInputRow}>
+                          <TextInput
+                            value={commentText}
+                            onChangeText={setCommentText}
+                            placeholder="Add a comment..."
+                            placeholderTextColor={theme.muted}
+                            style={[styles.commentInput, { color: theme.text, borderColor: theme.divider }]}
+                            multiline
+                            maxLength={500}
+                            accessibilityLabel="Add a comment"
+                          />
+                          <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
+                            <Send size={16} color={colors.surface} />
+                          </Pressable>
+                        </View>
+                        {comments.map((comment) => (
+                          <View key={comment.id} style={[styles.commentItem, { borderTopColor: theme.divider }]}>
+                            <Text style={[styles.commentUser, { color: theme.text }]}>{comment.user}</Text>
+                            <Text style={[styles.commentTime, { color: theme.muted }]}>{comment.time}</Text>
+                            <Text style={[styles.commentText, { color: theme.text }]}>{comment.text}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      </View>
+                    ) : null}
+                  </View>
+                </ScrollView>
               </View>
-            ) : null}
-          </View>
+            );
+          })}
         </ScrollView>
       </Pressable>
       <ReaderChrome
@@ -834,19 +974,50 @@ function PreferencesSheet({ visible, preferences, onChange, onClose }: { visible
     <SheetFrame visible={visible} title="Preferences" onClose={onClose}>
       <PreferenceRow label="Type size" values={TYPE_SIZES} value={preferences.typeSize} format={(value) => `${value}`} onChange={(typeSize) => onChange({ ...preferences, typeSize })} />
       <PreferenceRow label="Line height" values={LINE_HEIGHTS} value={preferences.lineHeight} format={(value) => `${value}`} onChange={(lineHeight) => onChange({ ...preferences, lineHeight })} />
-      <Text style={styles.preferenceLabel}>Reading theme</Text>
-      <View style={styles.segmentRow}>
-        {Object.values(READER_THEMES).map((theme) => (
-          <Pressable
-            key={theme.name}
-            onPress={() => onChange({ ...preferences, theme: theme.name })}
-            accessibilityLabel={`Use ${theme.label} reading theme`}
-            accessibilityRole="button"
-            style={[styles.segmentButton, preferences.theme === theme.name && styles.segmentButtonActive]}
-          >
-            <Text style={[styles.segmentText, preferences.theme === theme.name && styles.segmentTextActive]}>{theme.label}</Text>
-          </Pressable>
-        ))}
+      <Text style={styles.preferenceLabel}>Reading mode</Text>
+      {/*
+        Each mode shows its own page, not just its name.
+
+        Five equal text buttons in a row would each be about 60pt wide and
+        would tell a reader nothing: "Forest" and "Calm" are not words anyone
+        can picture. A swatch painted in the mode's real background and text
+        colours IS the preview, and it is honest by construction -- it cannot
+        drift from what the page looks like, because it is drawn from the same
+        two tokens the page is.
+      */}
+      <View style={styles.themeRow}>
+        {READING_THEME_ORDER.map((name) => {
+          const theme = READER_THEMES[name];
+          const selected = preferences.theme === name;
+          return (
+            <Pressable
+              key={name}
+              onPress={() => onChange({ ...preferences, theme: name })}
+              accessibilityLabel={`${theme.label} reading mode`}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              style={styles.themeOption}
+            >
+              <View
+                style={[
+                  styles.themeSwatch,
+                  { backgroundColor: theme.background, borderColor: theme.divider },
+                  selected && styles.themeSwatchSelected,
+                ]}
+              >
+                {/* "Aa" in the mode's own text colour: the contrast the reader
+                    is choosing, shown rather than described. */}
+                <Text style={[styles.themeSwatchSample, { color: theme.text }]}>Aa</Text>
+              </View>
+              <Text
+                numberOfLines={1}
+                style={[styles.themeOptionLabel, selected && styles.themeOptionLabelSelected]}
+              >
+                {theme.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </SheetFrame>
   );
@@ -921,6 +1092,14 @@ const styles = StyleSheet.create({
   readingArea: {
     flex: 1,
   },
+  // One screen-wide column per page. The width is applied inline from
+  // `useWindowDimensions` rather than `flex: 1`, because a horizontal
+  // `pagingEnabled` scroller snaps to its own width and a flexed child would
+  // collapse to its content instead of filling a page.
+  page: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   scrollContent: {
     paddingTop: spacing.xxl,
     paddingBottom: spacing.huge * 2,
@@ -965,13 +1144,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 0,
   },
-  chapterTitle: {
+  chapterEyebrow: {
     marginTop: spacing.xl,
+    fontFamily: fonts.ui,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  chapterTitle: {
     marginBottom: spacing.sm,
     fontFamily: fonts.display,
-    fontSize: 22,
-    lineHeight: 27,
+    fontSize: 26,
+    lineHeight: 31,
     letterSpacing: 0,
+  },
+  chapterRule: {
+    width: 56,
+    height: 2,
+    borderRadius: 1,
+    marginBottom: spacing.lg,
   },
   pageFrame: {
     minHeight: 280,
@@ -1221,6 +1413,42 @@ const styles = StyleSheet.create({
   segmentRow: {
     flexDirection: "row",
     gap: spacing.sm,
+  },
+  themeRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+  themeOption: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+  },
+  themeSwatch: {
+    width: "100%",
+    height: 52,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  themeSwatchSelected: {
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  themeSwatchSample: {
+    fontFamily: fonts.display,
+    fontSize: 17,
+  },
+  themeOptionLabel: {
+    fontFamily: fonts.ui,
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.muted,
+    letterSpacing: 0,
+  },
+  themeOptionLabelSelected: {
+    color: colors.accentPressed,
   },
   segmentButton: {
     flex: 1,

@@ -152,3 +152,123 @@ describe("Dropdown", () => {
     expect(view.getByRole("button", { name: "English" })).toBeTruthy();
   });
 });
+
+/**
+ * Every option is reachable, wherever on the screen the trigger sits.
+ *
+ * The reported bug: the Genre dropdown showed "four to five" of its twelve
+ * genres, Horror and Romance were simply not there, and a genre scrolled past
+ * could not be selected again. The cause was not the option list -- that has
+ * had all twelve in it throughout -- but where the menu was drawn. It opened
+ * downward from the trigger with a flat 320px height and no knowledge of where
+ * the screen ends, so for a trigger low on the page most of the menu hung off
+ * the bottom edge. That part was not merely clipped, it was UNREACHABLE: a
+ * ScrollView cannot be scrolled through a region that is not on screen.
+ *
+ * These assert the two properties that make the list usable: the menu never
+ * extends past the viewport, and it never renders fewer rows than it was given.
+ */
+const TWELVE = [
+  "adventure", "comedy", "educational", "fanfiction", "folktale", "historical",
+  "scifi", "fantasy", "mystery", "horror", "sliceOfLife", "romance",
+].map((value) => ({ value, label: value }));
+
+/** The menu's own style, found by the maxHeight/top pair only it carries. */
+function menuFrame(node: unknown): { top: number; maxHeight: number } | null {
+  if (!node || typeof node !== "object") return null;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = menuFrame(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  const { props, children } = node as { props?: Record<string, unknown>; children?: unknown };
+  const style = props?.style;
+  const flat = Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean)) : style;
+  if (flat && typeof flat === "object") {
+    const candidate = flat as { top?: unknown; maxHeight?: unknown; position?: unknown };
+    if (
+      candidate.position === "absolute" &&
+      typeof candidate.top === "number" &&
+      typeof candidate.maxHeight === "number"
+    ) {
+      return { top: candidate.top, maxHeight: candidate.maxHeight };
+    }
+  }
+  return menuFrame(children);
+}
+
+function GenreDropdown() {
+  const [value, setValue] = React.useState("fantasy");
+  return (
+    <DropdownGroup>
+      <Dropdown
+        id="genre"
+        label="Genre"
+        value={value}
+        options={TWELVE}
+        onChange={setValue}
+        testID="genre-dropdown"
+      />
+    </DropdownGroup>
+  );
+}
+
+it("renders every option it was given, not the handful that fit", async () => {
+  const view = await render(<GenreDropdown />);
+  await fireEvent.press(view.getByTestId("genre-dropdown"));
+
+  // Horror and Romance are the two the report named by name; they sit 10th
+  // and 12th, which is precisely why they were the ones that went missing.
+  for (const option of TWELVE) {
+    expect(
+      view.getAllByText(option.label, { includeHiddenElements: true }).length,
+    ).toBeGreaterThan(0);
+  }
+});
+
+it("keeps the menu inside the viewport instead of running off the bottom", async () => {
+  // `measureInWindow` never resolves in the test host, so the trigger anchor
+  // is the null fallback and the menu is positioned at the top of the root.
+  // A short window reproduces the same arithmetic the real bug came from --
+  // a menu taller than the space it has -- without needing a real layout
+  // pass. Against the old code this fails: it asked for a flat 320 regardless.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Dimensions } = require("react-native");
+  const real = Dimensions.get;
+  Dimensions.get = (dim: string) =>
+    dim === "window" ? { width: 390, height: 220, scale: 2, fontScale: 1 } : real(dim);
+  try {
+    const view = await render(<GenreDropdown />);
+    await fireEvent.press(view.getByTestId("genre-dropdown"));
+
+    const frame = menuFrame(view.toJSON());
+    expect(frame).not.toBeNull();
+    expect(frame!.top + frame!.maxHeight).toBeLessThanOrEqual(220);
+    // Still a usable list, not a sliver: the clamp has a floor.
+    expect(frame!.maxHeight).toBeGreaterThanOrEqual(160);
+  } finally {
+    Dimensions.get = real;
+  }
+});
+
+it("re-selects a genre that was previously scrolled past", async () => {
+  // The second half of the report: after switching away from Fantasy it could
+  // not be found again. Fantasy is 8th of twelve.
+  const view = await render(<GenreDropdown />);
+
+  await fireEvent.press(view.getByTestId("genre-dropdown"));
+  await fireEvent.press(
+    view.getAllByLabelText("horror", { includeHiddenElements: true })[0],
+  );
+
+  await fireEvent.press(view.getByTestId("genre-dropdown"));
+  const fantasy = view.getAllByLabelText("fantasy", { includeHiddenElements: true })[0];
+  expect(fantasy).toBeTruthy();
+  await fireEvent.press(fantasy);
+
+  expect(
+    view.getAllByText("fantasy", { includeHiddenElements: true }).length,
+  ).toBeGreaterThan(0);
+});

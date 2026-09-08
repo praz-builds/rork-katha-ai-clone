@@ -41,6 +41,40 @@ const LOOP_DELAY_MS = 600;
 
 const PHRASE_INTERVAL = 3200;
 
+/**
+ * The phrase block's height is fixed, and this is why the mark stops moving.
+ *
+ * `getGeneratingPhrases` **shuffles** its pool, so the phrase this screen opens
+ * on is a different one every single time it mounts, and the phrases are not
+ * the same length — "Darkening the edges" is one line, "Sharpening the tension
+ * between danger and want" is three at 22pt. The block used to be
+ * `minHeight: 64` (two lines) inside a column with `justifyContent: "center"`,
+ * so the column's height was a function of which phrase the shuffle happened to
+ * deal: a one-line phrase made the column 32pt shorter and pushed the mark
+ * *down* by 16, a three-line phrase pulled it *up* by 16. That is the K landing
+ * somewhere different on every load — and, because the phrase rotates every
+ * 3.2s, drifting up and down while the user waits.
+ *
+ * So the slot is reserved rather than measured: three lines at the 32pt line
+ * height, always, whatever is in it. `numberOfLines` on the text is the other
+ * half of the same guarantee — without it a fourth line would overflow the
+ * fixed box and the clipping would be a worse bug than the drift. Three lines
+ * clears the longest phrase in the catalogue with room to spare.
+ *
+ * `CraftingLoader` already did this (its headline is `height: 34`, not
+ * `minHeight`), which is why the K holds still there and not here.
+ */
+const PHRASE_LINE_HEIGHT = 32;
+const PHRASE_MAX_LINES = 3;
+const PHRASE_BLOCK_HEIGHT = PHRASE_LINE_HEIGHT * PHRASE_MAX_LINES;
+
+/**
+ * The status line gets a reserved slot for the same reason: it is also picked
+ * at random per mount, and a two-line status under a one-line status is the
+ * same reflow by a smaller amount.
+ */
+const STATUS_LINE_HEIGHT = 20;
+
 export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
   const [data] = useState(() => getGeneratingPhrases(genre, mode));
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -102,8 +136,15 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
         />
 
         {/* Main phrase with keyword highlight */}
-        <Animated.View style={[styles.phraseWrap, { opacity: phraseFade }]}>
-          <Text style={styles.phraseText}>
+        <Animated.View
+          style={[styles.phraseWrap, { opacity: phraseFade }]}
+          testID="generating-phrase"
+        >
+          <Text
+            style={styles.phraseText}
+            numberOfLines={PHRASE_MAX_LINES}
+            testID="generating-phrase-text"
+          >
             {currentPhrase.prefix}
             {currentPhrase.keyword && (
               <Text style={styles.phraseKeyword}>
@@ -116,7 +157,9 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
         </Animated.View>
 
         {/* Secondary status line */}
-        <Text style={styles.statusLine}>{data.statusLine}</Text>
+        <Text style={styles.statusLine} numberOfLines={1}>
+          {data.statusLine}
+        </Text>
       </View>
     </View>
   );
@@ -136,7 +179,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxxl,
   },
   phraseWrap: {
-    minHeight: 64,
+    // Fixed, never `minHeight`. See PHRASE_BLOCK_HEIGHT: the phrase is chosen
+    // by a shuffle, so a block that sizes to its content moves everything
+    // above it — including the mark — by a different amount on every load.
+    height: PHRASE_BLOCK_HEIGHT,
     justifyContent: "center",
   },
   phraseText: {
@@ -144,7 +190,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 22,
     textAlign: "center",
-    lineHeight: 32,
+    lineHeight: PHRASE_LINE_HEIGHT,
   },
   phraseKeyword: {
     fontFamily: fonts.readerItalic,
@@ -159,6 +205,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     color: colors.muted,
     fontSize: 14,
+    lineHeight: STATUS_LINE_HEIGHT,
+    height: STATUS_LINE_HEIGHT,
     fontWeight: "500",
+    textAlign: "center",
   },
 });

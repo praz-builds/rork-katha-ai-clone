@@ -13,9 +13,6 @@ import {
   generateFastStructuredText,
   generateStoryText,
   isProviderDisabled,
-  OPENAI_MODEL,
-  OPENAI_MODELS,
-  openAIKeyForTest,
   openAIRequestShape,
   OPENROUTER_FREE_MODEL,
   OPENROUTER_FREE_MODELS,
@@ -184,15 +181,11 @@ Deno.test("story requests constrain output on all provider shapes", () => {
   // the same strict story schema the Gemini path sends via `responseSchema`.
   assertEquals(r.response_format, OPENAI_RESPONSE_FORMAT);
 
-  // The direct OpenAI model is a reasoning model: it rejects `max_tokens` and
-  // ignores `temperature`, and its reasoning tokens are counted inside
-  // `max_completion_tokens`, so the budget carries headroom above the visible
-  // story length.
+  // The plain chat-completions dialect, still exercised because it is the
+  // default any future OpenAI-compatible provider inherits.
   const o = openAIRequestShape(STORY_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_completion_tokens, 32_000);
-  assert(!("max_tokens" in o), "a reasoning model rejects max_tokens");
-  assert(!("temperature" in o), "a reasoning model does not take temperature");
-  assertEquals(o.reasoning_effort, "low");
+  assertEquals(o.max_tokens, 16_000);
+  assertEquals(o.temperature, 0.8);
   assertEquals(o.response_format, OPENAI_RESPONSE_FORMAT);
 });
 
@@ -238,8 +231,7 @@ Deno.test("paragraph edits are never constrained to the story schema", () => {
   assert(!("response_format" in r), "an edit must not request JSON");
 
   const o = openAIRequestShape(EDIT_OPTS) as Record<string, unknown>;
-  assertEquals(o.max_completion_tokens, 4_000);
-  assert(!("max_tokens" in o), "a reasoning model rejects max_tokens");
+  assertEquals(o.max_tokens, 2_000);
   assert(!("response_format" in o), "an edit must not request JSON");
 });
 
@@ -322,8 +314,8 @@ Deno.test("classifyLlmError: unknown errors are retryable", () => {
 Deno.test("classifyLlmError: an abort is a retryable timeout", () => {
   const f = classifyLlmError(
     new DOMException("aborted", "AbortError"),
-    "openai",
-    OPENAI_MODEL,
+    "openrouter",
+    OPENROUTER_MODELS[0],
   );
   assertEquals(f.code, "timeout");
   assertEquals(f.retryable, true);
@@ -354,9 +346,9 @@ Deno.test("classifyLlmError: HTTP statuses map to stable codes", () => {
   assertEquals(serverError.retryable, true);
 
   const throttled = classifyLlmError(
-    new ProviderHttpError("OpenAI request failed (429): slow down", 429),
-    "openai",
-    OPENAI_MODEL,
+    new ProviderHttpError("OpenRouter request failed (429): slow down", 429),
+    "openrouter",
+    OPENROUTER_MODELS[0],
   );
   assertEquals(throttled.status, 429);
   assertEquals(throttled.code, "rate_limited");
@@ -486,15 +478,13 @@ Deno.test("Anthropic and Claude credential names are ignored", async () => {
   assertEquals(error.failures.map((f) => f.provider), [
     ...OPENROUTER_MODELS.map(() => "openrouter"),
     "gemini",
-    ...OPENAI_MODELS.map(() => "openai"),
     ...OPENROUTER_FREE_MODELS.map(() => "openrouter"),
   ]);
   assertEquals(
     error.failures.map((f) => f.code),
-    // both Muse Sparks + gemini + every OpenAI model + the free tier
+    // both Muse Sparks + gemini + the free tier
     new Array(
-      OPENROUTER_MODELS.length + 1 + OPENAI_MODELS.length +
-        OPENROUTER_FREE_MODELS.length,
+      OPENROUTER_MODELS.length + 1 + OPENROUTER_FREE_MODELS.length,
     ).fill("not_configured"),
   );
 });
@@ -523,7 +513,6 @@ Deno.test("the free tier is the last phase in the chain", async () => {
   assertEquals(error.failures.map((f) => f.model), [
     ...OPENROUTER_MODELS,
     GEMINI_MODEL,
-    ...OPENAI_MODELS.map((m) => m.model),
     ...OPENROUTER_FREE_MODELS,
   ]);
   // The blind router must remain last within the free phase: it is the only
@@ -545,131 +534,24 @@ Deno.test("a missing provider credential is not_configured and never retried", (
   assert(!failure.status);
 });
 
-Deno.test("the OpenAI position falls back past an unentitled model", () => {
-  // gpt-5.6-luna is granted per OpenAI project. An unentitled project gets
-  // `403 does not have access to model`, so a second model has to stand behind
-  // it or the whole position is dead for that project.
-  assert(OPENAI_MODELS.length >= 2, "the OpenAI position needs a fallback");
-  assertEquals(OPENAI_MODELS[0].model, "gpt-5.6-luna");
-  assertEquals(OPENAI_MODELS[0].reasoning, true);
-  assertEquals(OPENAI_MODEL, OPENAI_MODELS[0].model);
-
-  // The last entry is the safety net and must not itself be entitlement-gated,
-  // or an unentitled project has no working OpenAI position at all.
-  const last = OPENAI_MODELS[OPENAI_MODELS.length - 1];
-  assertEquals(last.model, "gpt-4o-mini");
-  assertEquals(last.reasoning, false);
+// OpenAI is gone from the chain, and this is what keeps it gone.
+//
+// The credential was revoked on 2026-09-08 and is not returning. A provider
+// with no key does not fail loudly -- `key()` returning undefined means "skip"
+// throughout this codebase -- so a half-removed OpenAI position would sit in
+// the chain costing a branch and a slice of the deadline while never being
+// able to answer. These assert the removal is total rather than dormant.
+Deno.test("the chat-completions shape is the plain OpenAI dialect, with no reasoning branch", () => {
+  // OpenRouter speaks this contract too, which is why the shape outlived the
+  // provider. What went with OpenAI is `max_completion_tokens` /
+  // `reasoning_effort`: no remaining provider takes them, and emitting them
+  // would be sending a model a field it rejects.
+  const shape = openAIRequestShape(STORY_OPTS) as Record<string, unknown>;
+  assertEquals(shape.max_tokens, 16_000);
+  assertEquals(shape.temperature, 0.8);
+  assert(!("max_completion_tokens" in shape));
+  assert(!("reasoning_effort" in shape));
 });
-
-Deno.test("each OpenAI model gets the contract its dialect requires", () => {
-  const reasoning = openAIRequestShape(STORY_OPTS, {
-    model: "gpt-5.6-luna",
-    reasoning: true,
-  }) as Record<string, unknown>;
-  assertEquals(reasoning.max_completion_tokens, 32_000);
-  assert(!("max_tokens" in reasoning));
-  assert(!("temperature" in reasoning));
-
-  // A non-reasoning model rejects `max_completion_tokens`-only phrasing and
-  // still wants a temperature, so it must keep the legacy shape.
-  const legacy = openAIRequestShape(STORY_OPTS, {
-    model: "gpt-4o-mini",
-    reasoning: false,
-  }) as Record<string, unknown>;
-  assertEquals(legacy.max_tokens, 16_000);
-  assertEquals(legacy.temperature, 0.8);
-  assert(!("max_completion_tokens" in legacy));
-});
-
-// Runs for ~27s by design: it waits out the real slice gpt-5.6-luna is given
-// from the edit deadline. That wall-clock wait is the assertion - a shorter
-// stub would not prove the fallback survives a genuine stall.
-Deno.test("a stalled preferred OpenAI model still leaves room for the fallback", async () => {
-  // Regression guard: the OpenAI window is split per model, not shared. With a
-  // shared deadline a stalled gpt-5.6-luna spends the whole window and
-  // remainingDuration() aborts gpt-4o-mini before fetch() is called, so the
-  // fallback that exists for exactly this case never runs.
-  const realFetch = globalThis.fetch;
-  const attempted: string[] = [];
-
-  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
-    const model = body.model ?? "";
-    attempted.push(model);
-    // Luna never answers; only the abort signal ends it.
-    if (model === "gpt-5.6-luna") {
-      return new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => {
-          reject(new DOMException("Aborted", "AbortError"));
-        }, { once: true });
-      });
-    }
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({ error: { message: "stub: no fallback content" } }),
-        { status: 503, headers: { "content-type": "application/json" } },
-      ),
-    );
-  }) as typeof fetch;
-
-  try {
-    const error = await withEnv(
-      {
-        GEMINI_API_KEY: null,
-        OPENROUTER_API_KEY: null,
-        OPENAI_API_KEY: "test-key",
-      },
-      async () => {
-        try {
-          await editParagraph("system", "user");
-          return null;
-        } catch (e) {
-          return e;
-        }
-      },
-    );
-
-    assert(error instanceof AllProvidersFailedError);
-    assert(
-      attempted.includes("gpt-4o-mini"),
-      `the fallback was never sent; attempted: ${attempted.join(", ")}`,
-    );
-    const luna = error.failures.find((f) => f.model === "gpt-5.6-luna");
-    assertEquals(luna?.code, "timeout");
-  } finally {
-    globalThis.fetch = realFetch;
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Chapter length contract
-// ---------------------------------------------------------------------------
-
-function storyOf(words: number): string {
-  return JSON.stringify({
-    title: "T",
-    chapter_title: "C",
-    chapter_body: new Array(words).fill("word").join(" "),
-    // Deliberately wrong: the validator must count the body, not trust this.
-    word_count: 700,
-    themes: [],
-    first_line: "A",
-    previously_summary: "",
-    series_state: {
-      central_conflict: "",
-      protagonist_want: "",
-      character_changes: [],
-      relationship_state: "",
-      open_hooks: [],
-      resolved_hooks: [],
-      promised_payoffs: [],
-      world_facts: [],
-      next_chapter_pressure: "",
-    },
-    hook_type: "none",
-    hook_text: "",
-  });
-}
 
 Deno.test("wordBandFor: chapter length controls the band in every mode", () => {
   assertEquals(wordBandFor("series", "adult", "short"), { min: 600, max: 900 });
@@ -744,6 +626,32 @@ Deno.test("series chapters are held to their selected short band", () => {
   );
 });
 
+function storyOf(words: number): string {
+  return JSON.stringify({
+    title: "T",
+    chapter_title: "C",
+    chapter_body: new Array(words).fill("word").join(" "),
+    // Deliberately wrong: the validator must count the body, not trust this.
+    word_count: 700,
+    themes: [],
+    first_line: "A",
+    previously_summary: "",
+    series_state: {
+      central_conflict: "",
+      protagonist_want: "",
+      character_changes: [],
+      relationship_state: "",
+      open_hooks: [],
+      resolved_hooks: [],
+      promised_payoffs: [],
+      world_facts: [],
+      next_chapter_pressure: "",
+    },
+    hook_type: "none",
+    hook_text: "",
+  });
+}
+
 Deno.test("a request with no band is not length-checked", () => {
   // Paragraph edits have no chapter contract, and a story request that never
   // supplied a band must not start failing because of one.
@@ -757,27 +665,44 @@ Deno.test("a request with no band is not length-checked", () => {
   );
 });
 
-Deno.test("story generation prefers its own OpenAI credential", async () => {
-  // OPENAI_API_KEY also authenticates DALL-E covers. Setting the dedicated key
-  // must take precedence so the two stop sharing a blast radius; leaving it
-  // unset must preserve the previous behaviour.
-  const dedicated = await withEnv(
-    { OPENAI_STORY_API_KEY: "story-key", OPENAI_API_KEY: "shared-key" },
-    () => Promise.resolve(openAIKeyForTest()),
+Deno.test("an OpenAI credential is never read, however it is named", async () => {
+  // This replaces a test that asserted `OPENAI_STORY_API_KEY` took precedence
+  // over `OPENAI_API_KEY`. Both keys are revoked (2026-09-08) and the position
+  // they authenticated is gone from the chain. What matters now is the
+  // opposite property: a stale key left in the environment must not resurrect
+  // a provider, quietly or otherwise.
+  //
+  // A key that is present but unread is exactly the case that would go
+  // unnoticed -- `key()` returning undefined means "skip" throughout this
+  // codebase, so a dormant position produces no error of its own.
+  const error = await withEnv(
+    {
+      GEMINI_API_KEY: null,
+      OPENROUTER_API_KEY: null,
+      OPENAI_STORY_API_KEY: "sk-revoked-story",
+      OPENAI_API_KEY: "sk-revoked-shared",
+    },
+    async () => {
+      try {
+        await generateStoryText("system", "user");
+        return null;
+      } catch (e) {
+        return e;
+      }
+    },
   );
-  assertEquals(dedicated, "story-key");
 
-  const shared = await withEnv(
-    { OPENAI_STORY_API_KEY: null, OPENAI_API_KEY: "shared-key" },
-    () => Promise.resolve(openAIKeyForTest()),
+  assert(error instanceof AllProvidersFailedError);
+  assert(
+    !error.failures.some((f) => (f.provider as string) === "openai"),
+    "an OpenAI position is still in the chain",
   );
-  assertEquals(shared, "shared-key");
-
-  const neither = await withEnv(
-    { OPENAI_STORY_API_KEY: null, OPENAI_API_KEY: null },
-    () => Promise.resolve(openAIKeyForTest()),
+  // Every remaining position reported itself unconfigured, which is only true
+  // if none of them fell back to an OpenAI key.
+  assert(
+    error.failures.every((f) => f.code === "not_configured"),
+    "a provider attempted a request with no credential of its own",
   );
-  assertEquals(neither, undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -908,7 +833,6 @@ Deno.test("phase shares are cumulative, ordered, and end at the deadline", () =>
   const shares = [
     PHASE_END_SHARE.openrouter,
     PHASE_END_SHARE.gemini,
-    PHASE_END_SHARE.openai,
     PHASE_END_SHARE.openrouterFree,
   ];
   for (const [index, share] of shares.entries()) {

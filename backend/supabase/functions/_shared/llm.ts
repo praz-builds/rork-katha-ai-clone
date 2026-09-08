@@ -144,58 +144,8 @@ export const OPENROUTER_FREE_MODELS: readonly string[] = [
 
 /** The preferred free model; the rest of the list is fallback. */
 export const OPENROUTER_FREE_MODEL = OPENROUTER_FREE_MODELS[0];
-/**
- * The OpenAI position, in preference order.
- *
- * `gpt-5.6-luna` is the model we want: far stronger prose than `gpt-4o-mini` at
- * $0.20/$1.20 per M. Access to it is granted per OpenAI *project* - the org
- * grant alone is not enough - and a project without it gets
- * `403 ... does not have access to model`, not a degraded result. Note that
- * `/v1/models` still lists Luna for an unentitled project: that endpoint returns
- * the catalogue, not the entitlement, so it cannot be used to probe access.
- *
- * The models behind it keep generating meanwhile, and enabling Luna upstream
- * needs no deploy - the 403 simply stops happening and the better model wins.
- *
- * `reasoning` selects the chat-completions contract: a reasoning model takes
- * `max_completion_tokens` and rejects `temperature`. See the request shapes.
- */
-export interface OpenAIModelSpec {
-  model: string;
-  reasoning: boolean;
-}
-
-export const OPENAI_MODELS: readonly OpenAIModelSpec[] = [
-  { model: "gpt-5.6-luna", reasoning: true },
-  // Added while Luna was unentitled; kept as the second tier now that Luna is
-  // entitled. Per ~1k-word story: luna ~$0.004, gpt-5-mini ~$0.006,
-  // gpt-4o-mini ~$0.002. Luna is both cheaper and better than this model, so
-  // in the normal case the position costs nothing and is pure redundancy.
-  { model: "gpt-5-mini", reasoning: true },
-  // The safety net. Not gated behind any entitlement, so it always answers.
-  { model: "gpt-4o-mini", reasoning: false },
-];
-
-/** The preferred OpenAI model; the rest of the list is fallback. */
-export const OPENAI_MODEL = OPENAI_MODELS[0].model;
-
 const geminiKey = () => Deno.env.get("GEMINI_API_KEY")?.trim();
 const openRouterKey = () => Deno.env.get("OPENROUTER_API_KEY")?.trim();
-/**
- * Story generation prefers its own OpenAI credential and falls back to the
- * shared one.
- *
- * `OPENAI_API_KEY` also authenticates DALL-E 3 cover generation in
- * `_shared/image.ts`, so while it is the only key set, one spend cap, rate
- * limit, revocation or rotation takes down covers and stories together - and
- * with Gemini and OpenRouter both unavailable, every position that can serve
- * authenticates with it. Setting `OPENAI_STORY_API_KEY` separates the two blast
- * radii with no code change; leaving it unset preserves today's behaviour.
- */
-const openaiKey = () =>
-  Deno.env.get("OPENAI_STORY_API_KEY")?.trim() ||
-  Deno.env.get("OPENAI_API_KEY")?.trim();
-
 /**
  * Providers to skip entirely, as a comma-separated env value.
  *
@@ -233,8 +183,6 @@ export function isProviderDisabled(
   return disabled.has(provider.toLowerCase());
 }
 
-/** Test seam: which credential story generation would use right now. */
-export const openAIKeyForTest = () => openaiKey();
 const GENERATION_DEADLINE_MS = 120_000;
 
 /**
@@ -257,7 +205,6 @@ const GEMINI_TIMEOUT_MS = 70_000;
  */
 const OPENROUTER_TIMEOUT_MS = 70_000;
 /** A reasoning model thinks before it writes, so it needs a longer window. */
-const OPENAI_TIMEOUT_MS = 60_000;
 
 /**
  * Reasoning tokens are counted and billed inside `max_completion_tokens`, so the
@@ -265,7 +212,6 @@ const OPENAI_TIMEOUT_MS = 60_000;
  * `MAX_OUTPUT_TOKENS` describes. Without it a long story is truncated by the
  * budget its own reasoning consumed, and surfaces as `finish_reason: "length"`.
  */
-const OPENAI_REASONING_TOKEN_MULTIPLIER = 2;
 
 /**
  * The Muse Spark models reason inside `max_tokens`, so the OpenRouter budget
@@ -301,12 +247,16 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  *
  * | phase          | slice | window | per model                        |
  * |----------------|-------|--------|----------------------------------|
- * | openrouter     | 0.50  | 60s    | 30s each across two Muse Sparks  |
- * | gemini         | 0.15  | 18s    | 18s                              |
- * | openai         | 0.28  | 33.6s  | 11.2s each across three models   |
- * | openrouterFree | 0.07  | 8.4s   | 4.2s each                        |
+ * | openrouter     | 0.70  | 84s    | 42s each across two Muse Sparks  |
+ * | gemini         | 0.20  | 24s    | 24s                              |
+ * | openrouterFree | 0.10  | 12s    | 6s each                          |
  *
- * The leader takes half because it is the only phase expected to succeed and
+ * OpenAI held 0.28 of this budget until its credential was revoked
+ * (2026-09-08). Its share went to the leader and to Gemini rather than being
+ * left unallocated: an unclaimed slice is not saved time, it is time the phases
+ * that remain are forbidden from using.
+ *
+ * The leader takes the largest share because it is the only phase expected to succeed and
  * because two models share it, one of which is `404` by policy today and returns
  * in a round trip. Gemini keeps a real but small slice: it has hard-failed with
  * `429` since 2026-08-31, and a quota-blocked provider needs enough time to say
@@ -315,9 +265,8 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  * refunding the credit.
  */
 export const PHASE_END_SHARE = {
-  openrouter: 0.5,
-  gemini: 0.65,
-  openai: 0.93,
+  openrouter: 0.7,
+  gemini: 0.9,
   openrouterFree: 1,
 } as const;
 
@@ -333,7 +282,7 @@ interface GenerationResult {
  * hand `context` straight to `logError` without having to sanitize it.
  */
 export interface LlmFailure {
-  provider: "gemini" | "openrouter" | "openai";
+  provider: "gemini" | "openrouter";
   model: string;
   /** Stable slug for grouping recurrences, e.g. "rate_limited". */
   code: string;
@@ -578,28 +527,6 @@ export async function generateFastStructuredText(
     }
   }
 
-  const spec = isProviderDisabled("openai", disabled)
-    ? undefined
-    : OPENAI_MODELS.find((model) => !model.reasoning);
-  if (spec) {
-    try {
-      const text = await generateOpenAIText(
-        spec,
-        OPENAI_TIMEOUT_MS,
-        options,
-        systemPrompt,
-        userPrompt,
-        deadline,
-        0,
-        () => undefined,
-      );
-      return { text, model: spec.model };
-    } catch (error) {
-      console.error(`${spec.model} failed:`, error);
-      failures.push(classifyLlmError(error, "openai", spec.model));
-    }
-  }
-
   throw new AllProvidersFailedError(failures);
 }
 
@@ -713,13 +640,18 @@ export function openRouterTokenBudget(maxTokens: number): number {
   );
 }
 
-export function openAIRequestShape(
-  options: ChainOptions,
-  spec: OpenAIModelSpec = OPENAI_MODELS[0],
-) {
-  return spec.reasoning
-    ? openAIReasoningRequestShape(options)
-    : openAICompatibleRequestShape(options);
+/**
+ * The chat-completions request body, in the OpenAI dialect.
+ *
+ * The name is the wire protocol, not the vendor: OpenRouter speaks the same
+ * chat-completions contract, which is why this outlives OpenAI's removal from
+ * the chain. It used to take a model spec and branch on `reasoning`, because
+ * OpenAI's reasoning models take `max_completion_tokens` and reject
+ * `temperature`. No remaining provider needs that shape, so the branch, the
+ * spec argument and `openAIReasoningRequestShape` are gone with it.
+ */
+export function openAIRequestShape(options: ChainOptions) {
+  return openAICompatibleRequestShape(options);
 }
 
 async function runProviderChain(
@@ -815,50 +747,12 @@ async function runProviderChain(
     return { text: geminiResult, model: GEMINI_MODEL };
   }
 
-  // Each OpenAI model records its own failure, so telemetry shows whether the
-  // preferred model was merely unentitled or actually broken.
-  //
-  // The OpenAI window is split evenly across the models rather than shared. A
-  // shared deadline lets a stalled preferred model spend the whole window, and
-  // `remainingDuration` then aborts the model behind it before `fetch` is even
-  // called - the same starvation the per-provider phases exist to prevent,
-  // recurring one level down. An even split guarantees the last model a slice.
-  const openAIPhaseEnd = phaseDeadline(PHASE_END_SHARE.openai);
-  const openAIPhaseStart = Date.now();
-  const openAIWindow = Math.max(0, openAIPhaseEnd - openAIPhaseStart);
-  const openAIModels = isProviderDisabled("openai", disabled)
-    ? []
-    : OPENAI_MODELS;
-  for (const [index, spec] of openAIModels.entries()) {
-    const modelDeadline = openAIPhaseStart +
-      Math.floor((openAIWindow * (index + 1)) / openAIModels.length);
-    const openAIText = await tryProvider({
-      failures,
-      provider: "openai",
-      model: spec.model,
-      run: () =>
-        generateOpenAIText(
-          spec,
-          OPENAI_TIMEOUT_MS,
-          options,
-          systemPrompt,
-          userPrompt,
-          modelDeadline,
-          safetyLevel,
-          recordModerationRetry,
-        ).then((text) => requireUsableStoryOutput(text, options)),
-    });
-    if (openAIText) {
-      return { text: openAIText, model: spec.model };
-    }
-  }
-
   // The free tier, last. Every model whose identity is known in advance and
   // whose output is paid for has now been tried; what remains is free capacity,
   // which is still strictly better than refunding the credit.
   //
-  // The window is split evenly across the list for the same reason the OpenAI
-  // window is: a stalled first entry would otherwise spend the whole slice and
+  // The window is split evenly across the list because a stalled first entry
+  // would otherwise spend the whole slice and
   // `remainingDuration` would abort the models behind it before `fetch` was
   // called. Free models are the most likely of all to stall or throttle, so an
   // even split matters more here than anywhere else in the chain.
@@ -1126,55 +1020,6 @@ async function generateOpenRouterText(
   );
 }
 
-async function generateOpenAIText(
-  spec: OpenAIModelSpec,
-  timeoutMs: number,
-  options: ChainOptions,
-  systemPrompt: string,
-  userPrompt: string,
-  deadline: number,
-  initialSafetyLevel: number,
-  onModerationRetry: (level: number) => void,
-): Promise<string> {
-  const model = spec.model;
-  const apiKey = openaiKey();
-  if (!apiKey) {
-    throw new ProviderNotConfiguredError(
-      "OPENAI_STORY_API_KEY / OPENAI_API_KEY is not configured",
-    );
-  }
-
-  for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
-    try {
-      const payload = await chatCompletionRequest({
-        providerName: "OpenAI",
-        url: "https://api.openai.com/v1/chat/completions",
-        apiKey,
-        model,
-        reasoning: spec.reasoning,
-        timeoutMs,
-        options,
-        systemPrompt,
-        userPrompt: moderationSafePrompt(userPrompt, attempt),
-        deadline,
-      });
-      return openAICompatibleContent(payload, "OpenAI");
-    } catch (error) {
-      if (!isModerationRejection(error)) throw error;
-      onModerationRetry(Math.min(attempt + 1, 2));
-      if (attempt === 2) throw error;
-      console.warn(
-        `${model} moderation retry ${attempt + 1} of 2:`,
-        failureMessage(error),
-      );
-    }
-  }
-
-  throw new ProviderModerationRejectedError(
-    "OpenAI moderation retries exhausted",
-  );
-}
-
 async function chatCompletionRequest(input: {
   providerName: string;
   url: string;
@@ -1186,12 +1031,10 @@ async function chatCompletionRequest(input: {
   userPrompt: string;
   deadline: number;
   headers?: Record<string, string>;
-  /** OpenAI reasoning models take a different chat-completions contract. */
-  reasoning?: boolean;
   /**
-   * Overrides the OpenAI-dialect shaping above. OpenRouter has its own
+   * Overrides the default OpenAI-dialect shaping. OpenRouter has its own
    * `reasoning` control and its own budget floor, so it supplies its own shape
-   * rather than inheriting a contract written for api.openai.com.
+   * rather than inheriting the plain chat-completions contract.
    */
   requestShape?: (options: ChainOptions) => Record<string, unknown>;
 }): Promise<unknown> {
@@ -1214,8 +1057,6 @@ async function chatCompletionRequest(input: {
           ],
           ...(input.requestShape
             ? input.requestShape(input.options)
-            : input.reasoning
-            ? openAIReasoningRequestShape(input.options)
             : openAICompatibleRequestShape(input.options)),
         }),
       });
@@ -1238,25 +1079,6 @@ function openAICompatibleRequestShape(options: ChainOptions) {
   return {
     temperature: 0.8,
     max_tokens: options.maxTokens,
-    ...(responseFormat ? { response_format: responseFormat } : {}),
-  };
-}
-
-/**
- * The chat-completions contract for an OpenAI reasoning model.
- *
- * These models reject `max_tokens` outright and ignore `temperature`, so the
- * shape shared with OpenRouter cannot be reused: OpenRouter still routes to
- * older models that only understand `max_tokens`. `reasoning_effort` is held low
- * because prose does not benefit from long deliberation, and every reasoning
- * token is latency the reader waits through and budget the story cannot spend.
- */
-function openAIReasoningRequestShape(options: ChainOptions) {
-  const responseFormat = structuredResponseFormatFor(options);
-  return {
-    max_completion_tokens: options.maxTokens *
-      OPENAI_REASONING_TOKEN_MULTIPLIER,
-    reasoning_effort: "low",
     ...(responseFormat ? { response_format: responseFormat } : {}),
   };
 }

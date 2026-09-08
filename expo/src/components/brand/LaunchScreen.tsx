@@ -32,6 +32,24 @@ import { colors } from "@/theme";
  */
 const LAUNCH_DOT_OPACITY = 0.16;
 
+/**
+ * The mark's position is measurement-free, and it has to stay that way.
+ *
+ * Everything that could make the K land somewhere different on a second launch
+ * is deliberately absent here: no safe-area inset (this renders before
+ * `SafeAreaProvider` is even mounted, so an inset arriving a frame late cannot
+ * shift it), no percentage offset resolved against a window size that is not
+ * known yet, no sibling whose height depends on content — the ground is
+ * absolutely positioned and the mark is a fixed 96pt box. The centre of a
+ * `flex: 1` root is the same point on the first frame as on the hundredth.
+ *
+ * That matters because the *other* wait screen got this wrong. `GeneratingOverlay`
+ * centres a column containing the mark and a phrase block that sized itself to
+ * whichever phrase a shuffle dealt, so its K moved on every load. If anything
+ * is ever added under the mark here, give it a fixed height rather than letting
+ * it size to its content, or this screen acquires the same bug.
+ */
+
 export function LaunchScreen() {
   return (
     <View style={styles.root}>

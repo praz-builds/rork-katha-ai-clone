@@ -1,5 +1,6 @@
 const mockGetSession = jest.fn();
 const mockSignInAnonymously = jest.fn();
+const mockSignOut = jest.fn();
 const mockInvoke = jest.fn();
 const mockVerifyOtp = jest.fn();
 const mockSignInWithOtp = jest.fn();
@@ -19,6 +20,7 @@ jest.mock("@/lib/supabase", () => ({
     auth: {
       getSession: (...args: unknown[]) => mockGetSession(...args),
       signInAnonymously: (...args: unknown[]) => mockSignInAnonymously(...args),
+      signOut: (...args: unknown[]) => mockSignOut(...args),
       signInWithOtp: (...args: unknown[]) => mockSignInWithOtp(...args),
       verifyOtp: (...args: unknown[]) => mockVerifyOtp(...args),
     },
@@ -42,6 +44,7 @@ function bootstrapResponse() {
 beforeEach(() => {
   mockGetSession.mockReset();
   mockSignInAnonymously.mockReset();
+  mockSignOut.mockReset().mockResolvedValue({ error: null });
   mockInvoke.mockReset();
   mockVerifyOtp.mockReset();
   mockSignInWithOtp.mockReset();
@@ -202,5 +205,98 @@ describe("verifyEmailCode", () => {
 
     await expect(verifyEmailCode("writer@example.com", "000000"))
       .rejects.toThrow("Token has expired or is invalid");
+  });
+});
+
+/**
+ * A stored session the server refuses is a permanent zero, not a bad request.
+ *
+ * Observed on 2026-09-08: a guest identity sat in local storage whose token
+ * `bootstrap-user` answered 401 to. `bootstrapUser` threw, `App.tsx` left
+ * credits at 0, nothing was shown, and every reload restored the same dead
+ * session and repeated it. The user could not create a story and had no way
+ * out short of clearing site data. Worse, the function's 401 returns before
+ * `logError`, so there was no server-side trace either -- the only evidence
+ * was an auth user with no `profiles` row.
+ */
+describe("recovering from a session the server will not accept", () => {
+  // Matches the pattern the rest of this file uses: the module is loaded
+  // inside the suite so each case sees the mocks as configured for it.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { bootstrapUser } = require("@/lib/session");
+
+  function dead(status: number) {
+    return { data: null, error: { context: { status } } };
+  }
+
+  it("starts a fresh guest when bootstrap rejects the stored session", async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: "stale-token" } },
+      error: null,
+    });
+    mockSignInAnonymously.mockResolvedValue({
+      data: { session: { access_token: "fresh-token" } },
+      error: null,
+    });
+    mockInvoke
+      .mockResolvedValueOnce(dead(401))
+      .mockResolvedValueOnce(bootstrapResponse());
+
+    const user = await bootstrapUser();
+
+    expect(user).toMatchObject({ balance: 3, isAnonymous: true });
+    // The dead session is cleared locally. Revoking server-side would need the
+    // very token being refused, so asking for it would fail and take the
+    // recovery down with it.
+    expect(mockSignOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(mockInvoke.mock.calls[1][1].headers.Authorization).toBe(
+      "Bearer fresh-token",
+    );
+  });
+
+  it("does the same for a 403", async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: "stale-token" } },
+      error: null,
+    });
+    mockSignInAnonymously.mockResolvedValue({
+      data: { session: { access_token: "fresh-token" } },
+      error: null,
+    });
+    mockInvoke
+      .mockResolvedValueOnce(dead(403))
+      .mockResolvedValueOnce(bootstrapResponse());
+
+    await expect(bootstrapUser()).resolves.toMatchObject({ balance: 3 });
+  });
+
+  it("keeps the session when the failure is not about identity", async () => {
+    // A 500, a timeout or an offline device all mean "this same session, later".
+    // Burning the identity there would throw away any credits attached to it
+    // because the network blipped.
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: "good-token" } },
+      error: null,
+    });
+    mockInvoke.mockResolvedValue(dead(500));
+
+    await expect(bootstrapUser()).rejects.toBeDefined();
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockSignInAnonymously).not.toHaveBeenCalled();
+  });
+
+  it("does not retry forever: a fresh session that is also refused fails", async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: "stale-token" } },
+      error: null,
+    });
+    mockSignInAnonymously.mockResolvedValue({
+      data: { session: { access_token: "fresh-token" } },
+      error: null,
+    });
+    mockInvoke.mockResolvedValue(dead(401));
+
+    await expect(bootstrapUser()).rejects.toBeDefined();
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
   });
 });

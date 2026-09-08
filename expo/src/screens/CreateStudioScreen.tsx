@@ -42,6 +42,7 @@ import {
   regenerateCover,
 } from "@/lib/api";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/draft-storage";
+import { normalizeText, paginateChapter } from "@/lib/paginate";
 import {
   CHAPTER_TEXT_CREDITS,
   COVER_POLL_INTERVAL_MS,
@@ -228,6 +229,131 @@ const INITIAL_DRAFT: StudioDraft = {
 };
 
 // ---------------------------------------------------------------------------
+// When the reader is shown the chapter
+// ---------------------------------------------------------------------------
+
+/**
+ * Streaming is the transport. It is no longer the presentation.
+ *
+ * What shipped before: the moment the first token landed, `StreamingProse`
+ * replaced the loader and the reader watched their chapter assemble itself
+ * word by word, mid-sentence, for the whole generation. That is a real
+ * property of the transport being shown as if it were a feature, and product
+ * ruled against it: a reader should be handed a finished page, not watched
+ * over the model's shoulder while it types.
+ *
+ * What replaced it is *not* buffering. The stream still runs, the chunks still
+ * arrive as fast as they ever did, and nothing waits for the response to
+ * close. What changed is the gate on the door: prose is shown only once enough
+ * of it has *settled* to be read as finished pages, and only ever in whole
+ * pages.
+ *
+ * Two rules make "finished" mean something:
+ *
+ * 1. **Only whole paragraphs are settled.** The tail of the stream is always a
+ *    half-written sentence, so everything after the last blank line is held
+ *    back. This alone kills the letter-by-letter effect: a paragraph appears
+ *    complete or not at all.
+ * 2. **Only whole pages are shown.** The last page of the settled text is the
+ *    one still filling up, so it is dropped too, and the cut is then pulled
+ *    back to the nearest paragraph boundary — pages break on sentences, so a
+ *    page boundary lands mid-paragraph most of the time, and handing that over
+ *    verbatim would put a paragraph cut off in the middle on screen, which is
+ *    the exact thing rule 1 exists to prevent. So: the *threshold* is measured
+ *    in finished pages, and the *content* handed over is the whole paragraphs
+ *    inside them. A page the reader is looking at can therefore never grow
+ *    underneath them — the pages behind it can, which is the point.
+ *
+ * Both are prefix-stable, which is the property the whole thing rests on:
+ * `paginateChapter` walks forward greedily from character zero, so once page
+ * *k* has a boundary, more text arriving after it cannot move that boundary.
+ * Page 1 is finished and fixed at the instant it is revealed and stays that
+ * way for the rest of the generation.
+ */
+
+/**
+ * A nominal phone page, deliberately not the real device viewport.
+ *
+ * The threshold is a claim about the chapter ("five of its ten pages exist"),
+ * not about the handset, and measuring the real window would make the same
+ * chapter reveal at a different point on a tablet than on a phone — and, worse,
+ * reveal at a different point depending on whether the keyboard happened to be
+ * up. 390x640 is the reference geometry this app is designed against
+ * (`expo/CLAUDE.md`: 390x844) minus the chrome above and below the prose.
+ *
+ * The typography is `StreamingProse`'s own, so a "page" here is the same
+ * quantity of words the reader will actually get on a page.
+ */
+const REVEAL_PAGE_VIEWPORT = { width: 390, height: 640 };
+const REVEAL_PAGE_TYPOGRAPHY = { fontSize: 18, lineHeight: 31 };
+
+/**
+ * How many finished pages must exist before the chapter is revealed.
+ *
+ * The product owner's illustration was "if a chapter is ten pages, they give
+ * you the first five" — half the chapter, with the rest arriving behind you.
+ * Ten pages is not this product's chapter, so the number is derived rather
+ * than copied. A series chapter is held to 600-900 words by `wordBandFor()` in
+ * the backend — call it 3,300 to 5,000 characters — and at the geometry above
+ * `paginateChapter` fits about 650 characters on a page. So a chapter is five
+ * to eight pages, and the product owner's "first five of ten" is, in this
+ * product's units, three.
+ *
+ * Three is also the smallest number that keeps the promise for more than an
+ * instant. At three finished pages the reader lands on page 1 with two more
+ * already written behind it, so they can turn twice before they could possibly
+ * outrun the writer — and the generation is still running the whole time,
+ * filling in further ahead.
+ *
+ * **The other half of the rule is "or the chapter is complete, whichever comes
+ * first", and it needs no code here.** A completed generation resolves
+ * `generateStoryStreaming` / `continueStoryStreaming`, which moves the screen
+ * to the editor with the server's own persisted chapter. So a chapter too short
+ * to reach three pages is never left behind a loader: it goes straight from the
+ * crafting screen to the finished text, which is the same experience one beat
+ * earlier.
+ */
+export const REVEAL_MIN_PAGES = 3;
+
+/**
+ * The prose the reader may be shown, given everything received so far.
+ *
+ * Returns `""` while the chapter is still below the threshold — that is the
+ * signal to keep the crafting loader up. Once non-empty it only ever grows,
+ * and always by whole pages, so a caller can render it directly without
+ * tracking whether a reveal has already happened.
+ *
+ * Exported for `expo/src/__tests__/chapter-reveal.test.ts`, which is where the
+ * page arithmetic is pinned; a threshold that can only be observed by driving a
+ * whole generation is a threshold nobody will check again.
+ */
+export function revealableChapterProse(raw: string): string {
+  // Everything after the last blank line is a paragraph still being written.
+  const lastBreak = raw.lastIndexOf("\n\n");
+  if (lastBreak < 0) return "";
+  const settled = normalizeText(raw.slice(0, lastBreak));
+  if (!settled) return "";
+
+  const pages = paginateChapter(
+    settled,
+    REVEAL_PAGE_VIEWPORT,
+    REVEAL_PAGE_TYPOGRAPHY,
+  );
+  // Drop the last page: it is the one the next chunk lands in.
+  const finished = pages.slice(0, -1);
+  if (finished.length < REVEAL_MIN_PAGES) return "";
+
+  // Back off to the last paragraph that ends inside those pages. A page
+  // boundary is a sentence boundary, so cutting at it directly would end the
+  // reveal in the middle of a paragraph.
+  const pageEnd = finished[finished.length - 1].end;
+  const paragraphEnd = settled.lastIndexOf("\n\n", pageEnd);
+  if (paragraphEnd <= 0) return "";
+
+  return settled.slice(0, paragraphEnd);
+}
+
+// ---------------------------------------------------------------------------
 // Local paragraph edit fallback (used when backend is unreachable)
 // ---------------------------------------------------------------------------
 
@@ -273,18 +399,27 @@ export default function CreateStudioScreen({
   initialDraft,
 }: CreateStudioProps) {
   const [step, setStep] = useState<StudioStep>("setup");
-  // The prose arriving from the server, and what it is doing.
+  // Everything received from the server so far, raw, mid-word tail and all.
   //
-  // Held as one string rather than a paragraph array because chunks arrive
-  // mid-word and mid-paragraph; splitting is a render concern, not a state one.
-  const [streamedProse, setStreamedProse] = useState("");
-  // The same text as `streamedProse`, readable synchronously.
-  //
-  // The error handler runs in a closure created before any chunk arrived, so it
-  // sees the initial state value and cannot tell "failed before the reader saw
-  // anything" from "failed halfway through their story" - which are two
-  // different screens. The ref is what it reads instead.
+  // A ref and not state, because nothing renders it. It is the input to
+  // `revealableChapterProse`, which decides how much of it a person may see;
+  // re-rendering the screen for a chunk that does not change that answer was
+  // the old letter-by-letter behaviour.
   const streamedProseRef = useRef("");
+  // The part of it the reader is actually shown: whole paragraphs, whole
+  // pages, never the sentence being typed. Empty until the chapter clears
+  // `REVEAL_MIN_PAGES`, which is what keeps the crafting loader up.
+  const [revealedProse, setRevealedProse] = useState("");
+  // The same value, readable synchronously by the error handler.
+  //
+  // That handler runs in a closure created before any chunk arrived, so it
+  // sees the initial state value and cannot tell "failed before the reader saw
+  // anything" from "failed after they were handed finished pages" - which are
+  // two different screens. Note this is now keyed off what was *revealed*, not
+  // off what arrived: prose that never cleared the threshold was never on
+  // screen, so keeping the reader on it would be showing them a fragment for
+  // the first time as an epitaph.
+  const revealedProseRef = useRef("");
   const [streamStage, setStreamStage] = useState<string>("context");
   // Set only when generation failed after prose had already been shown. The
   // text stays on screen; erasing what somebody has read is the worse outcome.
@@ -294,6 +429,30 @@ export default function CreateStudioScreen({
   );
   const [busy, setBusy] = useState(false);
   const requestIdRef = useRef<string | null>(null);
+
+  /**
+   * Take one chunk off the wire and decide whether it changed what is visible.
+   *
+   * Both generation paths share it so the reveal rule cannot drift between
+   * "the first chapter" and "every chapter after it". The length comparison is
+   * what keeps this cheap: `revealableChapterProse` re-paginates, but the
+   * result only changes when a whole new page has settled, so the screen
+   * re-renders a handful of times per chapter instead of once per token.
+   */
+  const acceptStreamChunk = useCallback((chunk: string) => {
+    streamedProseRef.current += chunk;
+    const next = revealableChapterProse(streamedProseRef.current);
+    if (next.length === revealedProseRef.current.length) return;
+    revealedProseRef.current = next;
+    setRevealedProse(next);
+  }, []);
+
+  /** Start (or restart) a chapter with nothing received and nothing shown. */
+  const resetStreamState = useCallback(() => {
+    streamedProseRef.current = "";
+    revealedProseRef.current = "";
+    setRevealedProse("");
+  }, []);
 
   // Editor state
   const [story, setStory] = useState<Story | null>(null);
@@ -587,18 +746,14 @@ export default function CreateStudioScreen({
       groundingEntities: draft.groundingEntities,
     };
 
-    streamedProseRef.current = "";
-    setStreamedProse("");
+    resetStreamState();
     setStreamStage("context");
     setStreamError(null);
 
     try {
       const generated = await generateStoryStreaming(createDraft, requestId, {
         onStage: setStreamStage,
-        onDelta: (chunk) => {
-          streamedProseRef.current += chunk;
-          setStreamedProse(streamedProseRef.current);
-        },
+        onDelta: acceptStreamChunk,
       });
       const firstChapter = generated.chapters[0];
       if (!firstChapter) {
@@ -629,8 +784,7 @@ export default function CreateStudioScreen({
           isProcessing: false,
         })),
       );
-      streamedProseRef.current = "";
-      setStreamedProse("");
+      resetStreamState();
       setStep("editor");
     } catch (error) {
       if (
@@ -642,11 +796,15 @@ export default function CreateStudioScreen({
       const message = error instanceof Error
         ? error.message
         : "Please try again.";
-      // A failure before any prose arrived is an ordinary error: back to setup
-      // with an alert. A failure after it is not, because the reader is looking
-      // at part of their story. Keep them on the text, say what happened
-      // underneath it, and let them decide - the credit is already refunded.
-      if (streamedProseRef.current.trim()) {
+      // A failure before the chapter was ever revealed is an ordinary error:
+      // back to setup with an alert. A failure after it is not, because the
+      // reader is looking at finished pages of their story. Keep them on the
+      // text, say what happened underneath it, and let them decide - the credit
+      // is already refunded. The condition reads `revealedProseRef`, not the
+      // raw stream: text that never cleared the reveal threshold was never on
+      // screen, and dumping a half-page fragment on somebody at the moment it
+      // fails is worse than an honest alert.
+      if (revealedProseRef.current.trim()) {
         setStreamError(message);
       } else {
         setStep("setup");
@@ -655,7 +813,15 @@ export default function CreateStudioScreen({
     } finally {
       setBusy(false);
     }
-  }, [busy, canGenerate, credits, draft, onCreditUsed]);
+  }, [
+    acceptStreamChunk,
+    busy,
+    canGenerate,
+    credits,
+    draft,
+    onCreditUsed,
+    resetStreamState,
+  ]);
 
   // -----------------------------------------------------------------------
   // Step 2: Paragraph AI actions
@@ -875,12 +1041,22 @@ export default function CreateStudioScreen({
    * server-side claim that died leaves the writer with the concept card rather
    * than a spinner that never resolves.
    *
-   * Two things the bound has to survive to mean anything. `step` is a
-   * dependency — moving between the editor and review re-creates the interval —
-   * so the attempt count lives in a ref rather than in the effect body; a local
-   * `let` would reset to zero on every toggle and a writer flicking between the
-   * two screens would poll a dead job forever. And the callback is `async`, so
-   * a fetch slower than the interval would otherwise be re-entered while the
+   * **It is deliberately not gated on `step` any more.** It used to run only on
+   * `editor` and `review`, which meant the one activity that takes minutes —
+   * writing the next chapter, or a whole "Write the rest" run, both of which
+   * sit on `generating` — was also the one activity during which the cover was
+   * not being watched for. A writer would continue their story, come back, and
+   * find the studio still saying "painting chapter one\u2019s art" about an image
+   * that had been sitting finished in Storage for several minutes, because
+   * nobody asked while they were away. The whole promise of §10.4 is that the
+   * cover happens *behind* what the writer is doing, and a watch that stops
+   * whenever they do something is not a background watch.
+   *
+   * Two things the bound has to survive to mean anything. The attempt count
+   * lives in a ref rather than in the effect body, so it survives every re-run
+   * of this effect; a local `let` would reset to zero and a writer moving
+   * between screens would poll a dead job forever. And the callback is `async`,
+   * so a fetch slower than the interval would otherwise be re-entered while the
    * previous one is still out, stacking requests and burning attempts on
    * answers nobody waited for. The in-flight flag makes a tick that arrives
    * during a fetch a no-op instead.
@@ -889,7 +1065,6 @@ export default function CreateStudioScreen({
     const storyId = story?.id;
     if (!storyId) return;
     if (cover.coverStatus !== "generating") return;
-    if (step !== "editor" && step !== "review") return;
 
     let cancelled = false;
     let inFlight = false;
@@ -914,7 +1089,27 @@ export default function CreateStudioScreen({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [story?.id, cover.coverStatus, step]);
+  }, [story?.id, cover.coverStatus]);
+
+  /**
+   * Only the author gets to change the cover, and in this screen "the author"
+   * is not a comparison — it is a fact about how the story got here.
+   *
+   * The studio has no open-an-existing-story path (see the unmount note above:
+   * `story` is only ever set by a generation inside the current mount), so any
+   * story these controls can reach is one this session just paid for and
+   * created. That is stronger evidence of authorship than anything the client
+   * could check today: `isOwnStory` compares `authorId` against the `"me"`
+   * sentinel that only the *offline mock* stamps, so a real server-generated
+   * story fails it, and there is still no signed-in user id in the client to
+   * compare a real `author_id` against.
+   *
+   * It is named rather than left implicit because the day the studio can open
+   * someone else's story — a shared draft, a co-write — this is the line that
+   * has to start doing real work, and a bare `!story` in the disabled prop
+   * would not have told anybody that.
+   */
+  const viewerIsAuthor = story !== null;
 
   /** 1 free retry, then 1 credit — `CREDITS_AND_PRICING.md`, §10.4. */
   const coverRegenCostsCredit = cover.coverRegenCount >= 1;
@@ -935,7 +1130,10 @@ export default function CreateStudioScreen({
   const coverActionBusy = coverBusy || coverGenerating;
 
   const handleRegenerateCover = useCallback(async () => {
-    if (!story || coverActionBusy) return;
+    // `viewerIsAuthor` is `story !== null`, so this is also the null guard.
+    // Written as the authorship check rather than as a null check because that
+    // is the rule being enforced; the two only happen to coincide today.
+    if (!story || !viewerIsAuthor || coverActionBusy) return;
     if (coverRegenCostsCredit && credits < 1) {
       Alert.alert(
         "Credits needed",
@@ -980,6 +1178,7 @@ export default function CreateStudioScreen({
     }
   }, [
     story,
+    viewerIsAuthor,
     coverActionBusy,
     coverRegenCostsCredit,
     credits,
@@ -1167,8 +1366,7 @@ export default function CreateStudioScreen({
     const nextChapterNum = baseStory.chapters.length + 1;
     const shouldFinale = isFinale || nextChapterNum >= maxChapters;
 
-    streamedProseRef.current = "";
-    setStreamedProse("");
+    resetStreamState();
     setStreamStage("context");
     setStreamError(null);
 
@@ -1178,10 +1376,7 @@ export default function CreateStudioScreen({
         requestId,
         {
           onStage: setStreamStage,
-          onDelta: (chunk) => {
-            streamedProseRef.current += chunk;
-            setStreamedProse(streamedProseRef.current);
-          },
+          onDelta: acceptStreamChunk,
         },
         shouldFinale,
         nextChapterNum,
@@ -1205,8 +1400,7 @@ export default function CreateStudioScreen({
           isProcessing: false,
         })),
       );
-      streamedProseRef.current = "";
-      setStreamedProse("");
+      resetStreamState();
 
       // Cleared only on success, and only for the caller that sent it. A
       // direction that survived into the next chapter would keep steering
@@ -1226,16 +1420,17 @@ export default function CreateStudioScreen({
         ? error.message
         : "Please try again.";
       setAddingChapter(false);
-      // Same rule as the first chapter: prose the reader has already seen stays
-      // on screen, and only a failure before that returns them to the editor.
-      if (streamedProseRef.current.trim()) {
+      // Same rule as the first chapter: pages the reader has already been
+      // handed stay on screen, and only a failure before the reveal returns
+      // them to the editor.
+      if (revealedProseRef.current.trim()) {
         setStreamError(message);
         return { status: "failed", message, keptPartial: true };
       }
       setStep("editor");
       return { status: "failed", message, keptPartial: false };
     }
-  }, [maxChapters, onCreditUsed]);
+  }, [acceptStreamChunk, maxChapters, onCreditUsed, resetStreamState]);
 
   const handleContinueStory = useCallback(async (isFinale = false) => {
     if (!story || addingChapter) return;
@@ -1576,25 +1771,29 @@ export default function CreateStudioScreen({
   ) : null;
 
   if (step === "generating") {
-    // The handoff. The loader holds only until the first token exists; from
-    // that moment the reader is reading their own story instead of watching a
-    // placeholder, which is the entire point of the streamed path. There is
-    // deliberately no minimum time on this: if prose arrives at three seconds,
-    // the reader starts at three seconds.
-    if (streamedProse.length > 0) {
+    // The handoff, and the one line in this screen the streaming rework is
+    // about. It used to read `streamedProse.length > 0` — the loader stepped
+    // aside for the very first token and the reader watched the rest of the
+    // chapter be typed. It now waits for `revealableChapterProse` to say that
+    // whole, finished pages exist, and hands over only those.
+    //
+    // So the reader sees the crafting screen for the whole time the chapter is
+    // being *written*, and then lands on page 1 of prose that is already
+    // finished, with more of it already written behind them. There is still no
+    // artificial minimum: the moment the pages exist, they get them.
+    if (revealedProse.length > 0) {
       return (
         <SafeAreaView style={styles.flex}>
           {runBar}
           <StreamingProse
             testID="streaming-prose"
-            text={streamedProse}
+            text={revealedProse}
             stage={streamStage}
             title={addingChapter ? undefined : storyTitle || undefined}
             errorMessage={streamError}
             dismissLabel={addingChapter ? "Back to editor" : "Start over"}
             onDismissError={() => {
-              streamedProseRef.current = "";
-              setStreamedProse("");
+              resetStreamState();
               setStreamError(null);
               // A failed continuation still has a story to go back to; a failed
               // first chapter does not, so it returns to the brief the writer
@@ -1700,7 +1899,21 @@ export default function CreateStudioScreen({
 
           {/* Cover controls. Never a permanently disabled button: the price is
             * stated, the note is sent, and the only thing that turns the
-            * control off is a request already in flight. */}
+            * control off is a request already in flight.
+            *
+            * Author-only, per §10.4 — regenerating spends the story owner's
+            * credits and replaces the image every reader sees, so it is not a
+            * control that belongs to whoever happens to have the screen open.
+            * Today that is everyone who can reach this screen; see
+            * `viewerIsAuthor` for why it is written down anyway.
+            *
+            * There is no *Upload your own* here, and it is not an oversight.
+            * §10.4 lists it as free and prominent, and its own implementation
+            * note records that it does not ship: it needs a storage +
+            * signed-URL surface the client cannot invent. A disabled Upload
+            * button beside a working Regenerate would be exactly the dead
+            * control that section deleted the cover step for. */}
+          {viewerIsAuthor && (
           <View style={styles.coverActions}>
             <TextInput
               value={coverPrompt}
@@ -1758,6 +1971,7 @@ export default function CreateStudioScreen({
               {"\n"}Keeping the concept card costs nothing.
             </Text>
           </View>
+          )}
 
           {/* Chapter list (only for series with multiple chapters) */}
           {story && story.chapters.length > 1 && (
@@ -1853,11 +2067,23 @@ export default function CreateStudioScreen({
             <Text style={styles.editorBackText}>Back</Text>
           </Pressable>
           <Text style={styles.editorHeaderTitle}>Edit Draft</Text>
+          {/* "Review", not "Next".
+            *
+            * This has never advanced the chapter — it leaves the editor for the
+            * review step — but on a screen whose other job is writing chapter
+            * after chapter, a forward chevron labelled "Next" reads as "next
+            * chapter", and it sat directly above a chapter strip that until now
+            * had an Add button in it. Naming the destination removes the last
+            * thing on this screen that looks like a second way to continue the
+            * story. */}
           <Pressable
             onPress={handleDoneWriting}
             style={styles.publishHeaderBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Review your story"
+            testID="editor-review-button"
           >
-            <Text style={styles.publishHeaderBtnText}>Next</Text>
+            <Text style={styles.publishHeaderBtnText}>Review</Text>
             <ChevronRight size={14} color={colors.surface} />
           </Pressable>
         </View>
@@ -1877,7 +2103,7 @@ export default function CreateStudioScreen({
             * at, and never a modal: this is a reveal, not an interruption to
             * somebody who is reading. */}
           <View style={styles.storyInfoCard}>
-            {cover.coverImageUrl && (
+            {cover.coverImageUrl ? (
               <Image
                 source={{ uri: cover.coverImageUrl }}
                 style={styles.editorCoverThumb}
@@ -1886,7 +2112,29 @@ export default function CreateStudioScreen({
                 accessibilityLabel="Your story's cover"
                 testID="editor-cover-thumb"
               />
-            )}
+            ) : cover.coverStatus === "generating" ? (
+              /* Still coming, and said so in words. Not a spinner sitting on
+               * top of a picture that is not there: a spinner over an empty
+               * box is a claim that something is nearly ready, and until the
+               * watch answers, this screen does not know that. The line is
+               * what the watch is for, and it now keeps running while the
+               * writer continues the story rather than stopping the moment
+               * they do. */
+              <View style={styles.editorCoverStatusRow} testID="editor-cover-pending">
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={styles.editorCoverStatusText}>
+                  Painting chapter one&apos;s art. It will appear here.
+                </Text>
+              </View>
+            ) : cover.coverStatus === "failed" ? (
+              /* Failed is stated, never spun over. The concept card is a real
+               * published look (§10.4), so this is information rather than an
+               * error the writer has to clear. */
+              <Text style={styles.editorCoverStatusText} testID="editor-cover-failed">
+                The cover didn&apos;t come through. Your concept card goes out
+                instead, or make another one at the next step.
+              </Text>
+            ) : null}
             {editingTitle ? (
               <TextInput
                 autoFocus
@@ -1943,21 +2191,19 @@ export default function CreateStudioScreen({
                   </Text>
                 </Pressable>
               ))}
-              {story.chapters.length < maxChapters && (
-                <Pressable
-                  onPress={() => handleContinueStory(false)}
-                  disabled={addingChapter}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: addingChapter, busy: addingChapter }}
-                  accessibilityLabel="Add the next chapter, 1 credit"
-                  style={styles.chapterTabAdd}
-                >
-                  <Plus size={14} color={colors.accent} />
-                  <Text style={styles.chapterTabAddText}>
-                    {addingChapter ? "..." : "Add"}
-                  </Text>
-                </Pressable>
-              )}
+              {/* No "+ Add" chip here any more.
+                *
+                * It was a second door onto `handleContinueStory`, sitting at
+                * the top of the screen where the reader has no opinion yet
+                * about what happens next — so it bought a chapter without ever
+                * showing them the "What happens next?" box that steers one.
+                * Two controls for one paid action, one of which quietly
+                * discards the only input that makes it personal, is the
+                * duplication this removal is about: continuation is now
+                * reached exactly once, at the end of the chapter, where the
+                * direction is asked for first. The tabs stay, because
+                * navigating between written chapters is a different act from
+                * buying a new one. */}
             </ScrollView>
           )}
 
@@ -2284,8 +2530,11 @@ export default function CreateStudioScreen({
           <Pressable
             onPress={handleDoneWriting}
             style={styles.bottomPublishBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Review your story"
+            testID="editor-review-button-bottom"
           >
-            <Text style={styles.bottomPublishBtnText}>Next</Text>
+            <Text style={styles.bottomPublishBtnText}>Review</Text>
             <ChevronRight size={16} color={colors.surface} />
           </Pressable>
         </View>
@@ -2971,23 +3220,6 @@ const styles = StyleSheet.create({
     color: colors.surface,
     fontWeight: "800",
   },
-  chapterTabAdd: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderStyle: "dashed",
-  },
-  chapterTabAddText: {
-    fontFamily: fonts.ui,
-    color: colors.accent,
-    fontWeight: "800",
-    fontSize: 13,
-  },
 
   // End-of-chapter continuation
   continueBlock: {
@@ -3461,6 +3693,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     lineHeight: 17,
+    flexShrink: 1,
+  },
+  // The editor's cover row, in the two states where there is no image yet.
+  // Sized to sit where the thumbnail sits, so the header does not jump when
+  // the picture finally lands.
+  editorCoverStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  editorCoverStatusText: {
+    fontFamily: fonts.ui,
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 17,
+    marginBottom: spacing.sm,
     flexShrink: 1,
   },
   editorCoverThumb: {

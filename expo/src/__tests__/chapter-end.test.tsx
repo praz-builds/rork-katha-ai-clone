@@ -2,10 +2,17 @@
  * "What's next?" end-of-chapter branching.
  *
  * `ChapterEnd` is handed a `Story` and the `Chapter` on screen and must, from
- * that alone: offer two concrete AI-suggested directions plus a write-your-own
- * escape hatch, degrade honestly when suggestions cannot be resolved, refuse
- * to offer more chapters once the story has reached its planned ending, and
- * never fire a continuation request twice for one tap-happy reader.
+ * that alone: lead with concrete directions drawn from THIS chapter's own
+ * plan and series state, keep write-your-own as a small collapsed escape
+ * hatch behind it, degrade honestly when suggestions cannot be resolved,
+ * refuse to offer more chapters once the story has reached its planned
+ * ending, and never fire a continuation request twice for one tap-happy
+ * reader.
+ *
+ * The hierarchy is the thing under test here. A previous version gave the
+ * free-text box equal billing and threw away a lone suggestion unless it
+ * could find two, so a thinly-stated story showed the box alone - which asks
+ * the reader to do the work the feature exists to do for them.
  */
 
 import React from "react";
@@ -101,18 +108,47 @@ afterEach(() => {
 });
 
 describe("deriveContinuationOptions", () => {
-  it("reads the next planned beat and an open thread off the story", () => {
+  it("reads the next planned beat and the open threads off the story", () => {
     const story = makeStory();
     const chapter = story.chapters[1];
     const options = deriveContinuationOptions(story, chapter);
 
-    expect(options).toHaveLength(2);
-    expect(options[0].prompt).toBe(
+    // Every one of these is a sentence the backend wrote about THIS story -
+    // the approved beat for the next chapter, an open hook the model is
+    // tracking, and the pressure it recorded at the end of this chapter.
+    // Nothing here is a generic line the component made up.
+    expect(options.map((option) => option.prompt)).toEqual([
       "Ask Aaji to open the stuck page and share the old fort song.",
-    );
-    expect(options[1].prompt).toBe(
       "Follow the map fragment found under the floorboard.",
-    );
+      "The storm is closing in on the fort.",
+    ]);
+  });
+
+  it("never offers the same sentence twice under two labels", () => {
+    const story = makeStory({
+      seriesState: makeSeriesState({
+        open_hooks: ["Ask Aaji to open the stuck page and share the old fort song."],
+        next_chapter_pressure: "The storm is closing in on the fort.",
+      }),
+    });
+    const options = deriveContinuationOptions(story, story.chapters[1]);
+    const prompts = options.map((option) => option.prompt);
+    expect(new Set(prompts).size).toBe(prompts.length);
+  });
+
+  it("still offers a direction when the story yields only one", () => {
+    // The old rule discarded this and left the reader facing the free-text
+    // box alone. One real direction is worth showing.
+    const story = makeStory({
+      beats: undefined,
+      seriesState: makeSeriesState({
+        open_hooks: [],
+        promised_payoffs: [],
+        next_chapter_pressure: "The storm is closing in on the fort.",
+      }),
+    });
+    const chapter = makeChapter({ hookText: undefined });
+    expect(deriveContinuationOptions(story, chapter)).toHaveLength(1);
   });
 
   it("returns nothing usable when the story carries no series data", () => {
@@ -123,7 +159,7 @@ describe("deriveContinuationOptions", () => {
 });
 
 describe("ChapterEnd", () => {
-  it("renders the two suggestions plus write-your-own, always last", async () => {
+  it("leads with tappable direction cards and keeps write-your-own small and last", async () => {
     const story = makeStory();
     const chapter = story.chapters[1];
     const view = await render(
@@ -132,24 +168,144 @@ describe("ChapterEnd", () => {
 
     await waitFor(() => {
       expect(view.getByTestId("chapter-end-option-0")).toBeTruthy();
-      expect(view.getByTestId("chapter-end-option-1")).toBeTruthy();
     });
 
-    const cards = [
-      view.getByTestId("chapter-end-option-0"),
-      view.getByTestId("chapter-end-option-1"),
-      view.getByTestId("chapter-end-write-own"),
-    ];
-    // The write-your-own card is the last of the three, every time.
-    expect(cards[2].props.accessibilityLabel).toBe(
-      "Write your own or get a surprise",
-    );
+    // Every derived direction is on screen as its own card, each carrying the
+    // exact prose the request will send.
     expect(view.getByText(
       "Ask Aaji to open the stuck page and share the old fort song.",
     )).toBeTruthy();
     expect(view.getByText(
       "Follow the map fragment found under the floorboard.",
     )).toBeTruthy();
+    expect(view.getByText("The storm is closing in on the fort.")).toBeTruthy();
+
+    // Each card is a labelled button, not a bare pressable box: a grid of
+    // unlabelled tap targets is unusable with a screen reader.
+    expect(view.getByTestId("chapter-end-option-0").props.accessibilityLabel)
+      .toBe("Continue: Ask Aaji to open the stuck page and share the old fort song.");
+    expect(view.getByTestId("chapter-end-option-1").props.accessibilityRole)
+      .toBe("button");
+
+    // The free-text path is a small CTA now, and the input behind it is not
+    // rendered until it is tapped.
+    expect(view.getByTestId("chapter-end-write-own").props.accessibilityLabel)
+      .toBe("Write your own direction");
+    expect(view.queryByTestId("chapter-end-composer-input")).toBeNull();
+  });
+
+  it("continues with the exact prose of the card that was tapped", async () => {
+    const story = makeStory();
+    // Spelled out with parameters so `mock.calls[0][4]` is a typed slot rather
+    // than an index into an empty tuple: position 4 is `nextInstruction`, and
+    // this is the argument the whole surface exists to send.
+    const continueChapter = jest.fn(async (
+      _storyId: string,
+      _requestId: string,
+      _isFinale: boolean,
+      _expectedChapterNumber: number,
+      _nextInstruction?: string,
+    ) => ({
+      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      model: "meta/muse-spark-1.3",
+    }));
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={continueChapter as never}
+      />,
+    );
+    await waitFor(() => expect(view.getByTestId("chapter-end-option-1")).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId("chapter-end-option-1"));
+    });
+
+    await waitFor(() => expect(continueChapter).toHaveBeenCalled());
+    // Position 4 is `nextInstruction`. The card's own sentence, unaltered -
+    // what the reader read is what the model is told.
+    expect(continueChapter.mock.calls[0][4]).toBe(
+      "Follow the map fragment found under the floorboard.",
+    );
+  });
+
+  it("expands the composer only when the write-your-own CTA is tapped", async () => {
+    const story = makeStory();
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={jest.fn()}
+      />,
+    );
+    await waitFor(() => expect(view.getByTestId("chapter-end-write-own")).toBeTruthy());
+
+    expect(view.queryByTestId("chapter-end-composer-input")).toBeNull();
+    expect(view.getByTestId("chapter-end-write-own").props.accessibilityState)
+      .toMatchObject({ expanded: false });
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId("chapter-end-write-own"));
+    });
+
+    const input = await view.findByTestId("chapter-end-composer-input");
+    expect(input).toBeTruthy();
+    // The cards do not go away when the composer opens - the suggestions stay
+    // the primary surface.
+    expect(view.getByTestId("chapter-end-option-0")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.changeText(input, "She climbs down to meet the storm.");
+    });
+    expect(view.getByTestId("chapter-end-composer-input").props.value)
+      .toBe("She climbs down to meet the storm.");
+
+    // And it collapses again on a second tap.
+    await act(async () => {
+      fireEvent.press(view.getByTestId("chapter-end-write-own"));
+    });
+    await waitFor(() =>
+      expect(view.queryByTestId("chapter-end-composer-input")).toBeNull()
+    );
+  });
+
+  it("sends no instruction at all when the reader lets Katha decide", async () => {
+    // There is no hardcoded filler behind this control. Sending `undefined`
+    // lets the model use the plan and series state it already holds; pasting
+    // an invented generic line would tell the model something the story never
+    // said.
+    const story = makeStory();
+    // Spelled out with parameters so `mock.calls[0][4]` is a typed slot rather
+    // than an index into an empty tuple: position 4 is `nextInstruction`, and
+    // this is the argument the whole surface exists to send.
+    const continueChapter = jest.fn(async (
+      _storyId: string,
+      _requestId: string,
+      _isFinale: boolean,
+      _expectedChapterNumber: number,
+      _nextInstruction?: string,
+    ) => ({
+      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      model: "meta/muse-spark-1.3",
+    }));
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={continueChapter as never}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.getByTestId("chapter-end-let-katha-decide")).toBeTruthy()
+    );
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId("chapter-end-let-katha-decide"));
+    });
+
+    await waitFor(() => expect(continueChapter).toHaveBeenCalled());
+    expect(continueChapter.mock.calls[0][4]).toBeUndefined();
   });
 
   it("shows a finished state and offers no continuation at the final planned chapter", async () => {
@@ -229,11 +385,27 @@ describe("ChapterEnd", () => {
     expect(continueChapter).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts typed input in the composer and fills one in with the surprise control", async () => {
+  it("submits what was typed in the composer", async () => {
     const story = makeStory();
-    const chapter = story.chapters[1];
+    // Spelled out with parameters so `mock.calls[0][4]` is a typed slot rather
+    // than an index into an empty tuple: position 4 is `nextInstruction`, and
+    // this is the argument the whole surface exists to send.
+    const continueChapter = jest.fn(async (
+      _storyId: string,
+      _requestId: string,
+      _isFinale: boolean,
+      _expectedChapterNumber: number,
+      _nextInstruction?: string,
+    ) => ({
+      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      model: "meta/muse-spark-1.3",
+    }));
     const view = await render(
-      <ChapterEnd story={story} chapter={chapter} continueChapter={jest.fn()} />,
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        continueChapter={continueChapter as never}
+      />,
     );
     await waitFor(() => expect(view.getByTestId("chapter-end-write-own")).toBeTruthy());
 
@@ -241,19 +413,19 @@ describe("ChapterEnd", () => {
       fireEvent.press(view.getByTestId("chapter-end-write-own"));
     });
     const input = await view.findByTestId("chapter-end-composer-input");
-
     await act(async () => {
-      fireEvent.changeText(input, "She climbs down to meet the storm.");
+      fireEvent.changeText(input, "  She climbs down to meet the storm.  ");
     });
-    expect(input.props.value).toBe("She climbs down to meet the storm.");
-
     await act(async () => {
-      fireEvent.press(view.getByTestId("chapter-end-surprise"));
+      fireEvent.press(view.getByTestId("chapter-end-composer-submit"));
     });
-    await waitFor(() => {
-      const updated = view.getByTestId("chapter-end-composer-input");
-      expect(updated.props.value.length).toBeGreaterThan(0);
-    });
+
+    await waitFor(() => expect(continueChapter).toHaveBeenCalled());
+    // Trimmed, and never the empty string: `""` still renders the
+    // reader-direction block in the prompt and claims a steer that is not there.
+    expect(continueChapter.mock.calls[0][4]).toBe(
+      "She climbs down to meet the storm.",
+    );
   });
 });
 

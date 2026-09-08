@@ -53,6 +53,20 @@ export type DropdownOption<T extends string = string> = {
   detail?: string;
 };
 
+/** Gap between the trigger and the menu, on whichever side it opens. */
+const MENU_GAP = 6;
+/** Tallest the menu ever gets, even with room to spare. */
+const MENU_MAX_HEIGHT = 320;
+/**
+ * Shortest the menu is allowed to be before it flips to the other side.
+ *
+ * Roughly three rows: enough that a list still reads as a list and still
+ * scrolls usefully. Below this, opening downward is worse than opening up.
+ */
+const MENU_MIN_HEIGHT = 160;
+/** Matches `styles.option.minHeight`; used only to decide if scrolling is possible. */
+const OPTION_MIN_HEIGHT = 44;
+
 type Anchor = { x: number; y: number; width: number; height: number };
 
 type OpenMenuDescriptor = {
@@ -124,6 +138,17 @@ function DropdownOverlayHost({
     rootRef.current?.measureInWindow((x, y) => setOrigin({ x, y }));
   }, []);
 
+  // Re-measured on every open, not only on layout.
+  //
+  // The original comment here reasoned that the root "sits still once laid
+  // out", which is true of scrolling but not of everything: a rotation, a
+  // keyboard opening, or a browser window resize all move it, and a stale
+  // origin puts the menu somewhere the trigger is not. Measuring on open
+  // costs one call per interaction and removes the whole class.
+  useEffect(() => {
+    if (openId) measureOrigin();
+  }, [openId, measureOrigin]);
+
   useEffect(() => {
     if (Platform.OS !== "android" || !openId) return undefined;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -165,12 +190,49 @@ function DropdownMenu({
   onDone: () => void;
 }) {
   const { anchor, options, value, onChange } = descriptor;
-  const screenWidth = Dimensions.get("window").width;
+  const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
   const menuWidth = Math.min(Math.max(anchor?.width ?? 0, 220), screenWidth - SCREEN_MARGIN * 2);
   const left = anchor
     ? Math.min(Math.max(anchor.x - originX, SCREEN_MARGIN), screenWidth - menuWidth - SCREEN_MARGIN)
     : SCREEN_MARGIN;
-  const top = anchor ? anchor.y - originY + anchor.height + 6 : 0;
+
+  /*
+    The menu is placed against the VIEWPORT, not merely below the trigger.
+
+    It used to be `top = trigger bottom` with a flat `maxHeight: 320` and no
+    awareness of where the screen ends. A trigger sitting low on the page --
+    which Genre does, inside More options -- put most of the menu below the
+    bottom edge, and the part that hung off was not merely ugly, it was
+    UNREACHABLE: a ScrollView cannot be scrolled through a region that is not
+    on screen. With twelve genres and roughly five of them visible, the
+    reported symptom was exactly that -- Horror and Romance simply did not
+    exist, and a genre already scrolled past could not be selected again.
+
+    So: measure the room actually available on each side, open upward when
+    there is meaningfully more room above, and cap the height at what fits.
+    The menu now always ends on screen, and the scroll happens inside a box
+    the user can actually reach.
+  */
+  const anchorTop = anchor ? anchor.y : 0;
+  const anchorBottom = anchor ? anchor.y + anchor.height : 0;
+  const roomBelow = screenHeight - anchorBottom - MENU_GAP - SCREEN_MARGIN;
+  const roomAbove = anchorTop - MENU_GAP - SCREEN_MARGIN;
+  // Only flip when it is a real improvement. Flipping for a few pixels would
+  // make the menu jump sides between two visually identical triggers.
+  const openUpward = roomBelow < MENU_MIN_HEIGHT && roomAbove > roomBelow;
+  const available = Math.max(openUpward ? roomAbove : roomBelow, MENU_MIN_HEIGHT);
+  const maxHeight = Math.min(MENU_MAX_HEIGHT, available);
+  const top = anchor
+    ? openUpward
+      ? anchorTop - originY - MENU_GAP - maxHeight
+      : anchorBottom - originY + MENU_GAP
+    : 0;
+
+  // Worth stating because it is the difference between a scrollable list and
+  // a truncated one: `showsVerticalScrollIndicator` is ON here. With it off,
+  // a list that is cut off looks identical to a list that has ended, and a
+  // user has no reason to try scrolling something they believe is complete.
+  const scrolls = options.length * OPTION_MIN_HEIGHT > maxHeight;
 
   return (
     <View
@@ -178,13 +240,14 @@ function DropdownMenu({
       accessibilityRole={Platform.OS === "web" ? "menu" : undefined}
       style={[
         styles.menu,
-        { top, left, minWidth: menuWidth, maxWidth: screenWidth - SCREEN_MARGIN * 2 },
+        { top, left, minWidth: menuWidth, maxWidth: screenWidth - SCREEN_MARGIN * 2, maxHeight },
       ]}
     >
       <ScrollView
         style={styles.menuScroll}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={scrolls}
+        persistentScrollbar={scrolls}
       >
         {options.map((option) => {
           const isSelected = option.value === value;
@@ -492,7 +555,6 @@ const styles = StyleSheet.create({
     // zIndex elsewhere in the create flow is 20), so the menu -- and only
     // the menu -- reliably paints above everything else it might overlap.
     zIndex: 1000,
-    maxHeight: 320,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,

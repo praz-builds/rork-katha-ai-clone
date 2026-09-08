@@ -167,6 +167,39 @@ beforeEach(() => {
   mockClearDraft.mockReset();
 });
 
+describe("there is one way to continue, not two", () => {
+  it("offers no chapter-forward control outside the end-of-chapter block", async () => {
+    // The chapter strip used to carry a "+ Add" chip that called the same
+    // handler as Continue. Two controls for one paid action would be merely
+    // redundant; what made it wrong is *where* it was. It sat at the top of
+    // the screen, where the reader has formed no opinion yet about what should
+    // happen next, and it bought a chapter without ever showing them the
+    // "What happens next?" box — so the one input that makes continuation
+    // personal was silently discarded by half the doors onto it.
+    //
+    // Continuation is now reached exactly once, at the foot of the chapter,
+    // where the direction is asked for first.
+    const view = await renderAtEditor();
+
+    expect(view.getByTestId("continue-chapter-button")).toBeTruthy();
+    expect(view.getByTestId("next-instruction-input")).toBeTruthy();
+
+    // Nothing else on the screen adds a chapter. "Add paragraph" is an edit to
+    // the chapter in hand and is free, which is a different act entirely.
+    expect(view.queryByText("Add")).toBeNull();
+    expect(
+      view.queryByLabelText("Add the next chapter, 1 credit"),
+    ).toBeNull();
+
+    // And nothing here reads as "next" any more: the control that leaves the
+    // editor says where it goes.
+    expect(view.queryByText("Next")).toBeNull();
+    expect(view.getAllByTestId(/^editor-review-button/).length).toBeGreaterThan(
+      0,
+    );
+  });
+});
+
 describe("What happens next?", () => {
   it("sends no direction at all when the box is left blank", async () => {
     const view = await renderAtEditor();

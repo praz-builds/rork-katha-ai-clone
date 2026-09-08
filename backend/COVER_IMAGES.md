@@ -44,28 +44,26 @@ Example for "The Vanilla Problem" (`focalY: 0.22`):
 
 ### Model & Output
 
-- **Provider**: OpenAI `gpt-image-1`, with OpenRouter (`google/gemini-3.1-flash-image`, then `google/gemini-2.5-flash-image`) behind it. **Higgsfield and any provider not named here remain banned.** See `AGENTS.md` for why the single-provider rule changed on 2026-09-03, and note that providers disagree on output format — content type is sniffed from magic bytes rather than assumed.
-- **Model**: `gpt-image-1` (successor to dall-e-3; check available models if this changes).
+- **Provider**: OpenRouter only — `google/gemini-2.5-flash-image` ("nano banana"), with `google/gemini-3.1-flash-image` behind it. **Higgsfield and any provider not named here remain banned.** See `AGENTS.md` for why the single-provider rule changed on 2026-09-03, and note that providers disagree on output format — content type is sniffed from magic bytes rather than assumed.
+- **Model**: `google/gemini-2.5-flash-image`, known as "nano banana". OpenAI `gpt-image-1` was removed on 2026-09-08 when its credential was revoked; see `AGENTS.md`.
 - **Output size**: `1024x1536` portrait (2:3 ratio, native book cover format).
-- **Quality**: `"medium"` (balances cost and detail).
-- **Response format**: OpenAI returns base64 (`b64_json`); OpenRouter returns a `data:` URL on `choices[0].message.images[0].image_url.url`. The format of the decoded bytes is sniffed, never assumed — see `AGENTS.md`.
+- **Quality**: not a parameter. Gemini takes no `size` or `quality` field, so the aspect ratio rides in the prompt text (`ASPECT` in `_shared/image.ts`).
+- **Response format**: OpenRouter returns a `data:` URL on `choices[0].message.images[0].image_url.url`. The format of the decoded bytes is sniffed, never assumed — see `AGENTS.md`.
 
 ```typescript
-const res = await fetch("https://api.openai.com/v1/images/generations", {
+const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${OPENAI_API_KEY}`,
+    Authorization: `Bearer ${OPENROUTER_API_KEY}`,
   },
   body: JSON.stringify({
-    model: "gpt-image-1",
-    prompt,
-    n: 1,
-    size: "1024x1536",
-    quality: "medium",
+    model: "google/gemini-2.5-flash-image",
+    modalities: ["image", "text"],
+    messages: [{ role: "user", content: prompt }],
   }),
 });
-// Response: { data: [{ b64_json: "..." }] }
+// Response: { choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,..." } }] } }] }
 ```
 
 ### Prompt Construction

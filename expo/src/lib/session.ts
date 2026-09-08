@@ -26,23 +26,74 @@ export function bootstrapUser(): Promise<BootstrappedUser | null> {
 }
 
 async function bootstrapCurrentUser(): Promise<BootstrappedUser> {
+  const session = await currentSession();
+  try {
+    return await callBootstrap(session.access_token);
+  } catch (error) {
+    if (!isUnusableSessionError(error)) throw error;
+    // A stored session the server will not accept is a dead end that outlives
+    // every reload, because the dead session is what gets restored.
+    //
+    // Observed: a guest identity sat in local storage whose token the edge
+    // function answered 401 to. `bootstrapUser` threw, `App.tsx` left credits
+    // at 0, nothing was shown, and refreshing restored the same dead session
+    // and did it again. The user was permanently at zero credits with no
+    // error and no way out short of clearing site data -- and the server-side
+    // 401 returns before `logError`, so there was not even a trace of it.
+    //
+    // Signing the dead session out and starting a fresh guest is the only
+    // recovery that does not require the user to know what local storage is.
+    // It costs one extra round trip on a path that was previously a
+    // permanent failure, and it happens once: the new session is stored.
+    const fresh = await restartGuestSession();
+    return await callBootstrap(fresh.access_token);
+  }
+}
+
+type UsableSession = { access_token: string };
+
+/** The stored session, or a new guest one. Never returns a tokenless session. */
+async function currentSession(): Promise<UsableSession> {
   const { data: current, error: sessionError } = await supabase.auth
     .getSession();
   if (sessionError) throw sessionError;
+  if (current.session?.access_token) return current.session;
+  return restartGuestSession();
+}
 
-  let session = current.session;
-  if (!session) {
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) throw error;
-    session = data.session;
-  }
-  if (!session?.access_token) {
+/** Discard whatever is stored and sign in as a brand-new guest. */
+async function restartGuestSession(): Promise<UsableSession> {
+  // `scope: "local"` clears this device's stored session without trying to
+  // revoke server-side. Revocation needs the very token that is not being
+  // accepted, so asking for it would fail and take the recovery with it.
+  await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  if (!data.session?.access_token) {
     throw new Error("Unable to establish a guest session");
   }
+  return data.session;
+}
 
+/**
+ * Is this the server refusing the identity, rather than anything else failing?
+ *
+ * Only 401 and 403 are worth burning a new guest identity over. A 500, a
+ * timeout or an offline device all mean "try this same session again later",
+ * and signing out on those would throw away a perfectly good identity -- along
+ * with any credits attached to it -- because the network blipped.
+ */
+function isUnusableSessionError(error: unknown): boolean {
+  const status = (error as { context?: { status?: number } } | null)?.context
+    ?.status;
+  return status === 401 || status === 403;
+}
+
+async function callBootstrap(accessToken: string): Promise<BootstrappedUser> {
   const { data, error } = await supabase.functions.invoke("bootstrap-user", {
     body: {},
-    headers: { Authorization: `Bearer ${session.access_token}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (error) throw error;
   if (!data || typeof data !== "object") {

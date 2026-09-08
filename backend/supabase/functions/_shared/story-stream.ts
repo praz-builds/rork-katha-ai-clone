@@ -57,7 +57,6 @@ import {
   classifyLlmError,
   isProviderDisabled,
   type LlmFailure,
-  OPENAI_MODELS,
   OPENROUTER_MODELS,
   ProviderHttpError,
   ProviderMalformedResponseError,

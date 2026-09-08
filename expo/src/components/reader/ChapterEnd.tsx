@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -47,13 +47,6 @@ const UNAVAILABLE_REASON = {
   failed: "We couldn't load suggested directions for this chapter.",
 } as const;
 
-const FALLBACK_SURPRISE_PROMPTS = [
-  "Introduce a complication no one saw coming.",
-  "Have a secondary character reveal something they have been hiding.",
-  "Send the protagonist somewhere they have been avoiding.",
-  "Let a promise made earlier finally come due.",
-];
-
 /** The resolver is given this long before its result is treated as failed. */
 const RESOLVE_TIMEOUT_MS = 4000;
 
@@ -62,15 +55,32 @@ function nonEmpty(value: string | undefined | null): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+/** How many direction cards the reader is offered at once. */
+const MAX_OPTIONS = 3;
+
 /**
- * Reads the two concrete continuation directions straight off data the
- * backend already generated - the approved chapter plan and the series
- * state - rather than making a fresh network call. `story.beats[n]` briefs
- * chapter `n + 1`, so the beat at the next chapter's index is exactly what
- * the writer already approved happens next; `series_state.open_hooks` is an
- * unresolved thread the model itself is tracking. Both travel on the `Story`
- * object the reader already has, because §10 makes chapter 1's generation
- * (and every continuation after it) the place series state is written.
+ * Reads the concrete continuation directions straight off data the backend
+ * already generated - the approved chapter plan and the series state - rather
+ * than making a fresh network call. `story.beats[n]` briefs chapter `n + 1`,
+ * so the beat at the next chapter's index is exactly what the writer already
+ * approved happens next; `series_state.open_hooks` and `promised_payoffs` are
+ * unresolved threads the model itself is tracking; `next_chapter_pressure` is
+ * the model's own statement of what the chapter that just ended is pushing
+ * toward; `chapter.hookText` is the line this chapter actually closed on. All
+ * five travel on the `Story`/`Chapter` the reader already has, because §10
+ * makes chapter 1's generation (and every continuation after it) the place
+ * series state is written.
+ *
+ * NOTHING GENERIC IS EVER SYNTHESISED HERE. A previous version kept a list of
+ * hardcoded filler ("Introduce a complication no one saw coming") to pad the
+ * surface out when the story carried little state. That is worse than showing
+ * nothing: a suggestion that could sit under any story in the app advertises
+ * that the app did not read this one. If the story carries no usable state the
+ * caller degrades to the write-your-own path and says why.
+ *
+ * The previous version also stopped at exactly two and threw everything away
+ * unless it found two, which is why readers of a thinly-stated story saw only
+ * the free-text box. One real direction is worth showing.
  *
  * Exported so it can be tested in isolation from the async/loading shell
  * around it.
@@ -79,23 +89,29 @@ export function deriveContinuationOptions(
   story: Story,
   chapter: Chapter,
 ): ContinuationOption[] {
-  const plannedBeat = nonEmpty(story.beats?.[chapter.chapterNumber]);
-  const pressure = nonEmpty(story.seriesState?.next_chapter_pressure);
-  const first = plannedBeat ?? pressure;
+  const candidates: ContinuationOption[] = [];
+  const push = (id: string, value: string | undefined | null) => {
+    const prompt = nonEmpty(value);
+    if (!prompt) return;
+    // Two sources often carry the same sentence - the plan's next beat and the
+    // pressure the model recorded, most commonly. Deduping on the prose (not
+    // the source) keeps the reader from being offered the same step twice
+    // wearing two different labels.
+    if (candidates.some((existing) => existing.prompt === prompt)) return;
+    candidates.push({ id, prompt });
+  };
 
-  const openHook = story.seriesState?.open_hooks
-    ?.map((hook) => nonEmpty(hook))
-    .find((hook): hook is string => !!hook && hook !== first);
-  const payoff = story.seriesState?.promised_payoffs
-    ?.map((entry) => nonEmpty(entry))
-    .find((entry): entry is string => !!entry && entry !== first);
-  const hookText = nonEmpty(chapter.hookText);
-  const second = openHook ?? payoff ?? (hookText !== first ? hookText : undefined);
+  push("planned-beat", story.beats?.[chapter.chapterNumber]);
+  story.seriesState?.open_hooks?.forEach((hook, index) => {
+    push(`open-hook-${index}`, hook);
+  });
+  story.seriesState?.promised_payoffs?.forEach((payoff, index) => {
+    push(`promised-payoff-${index}`, payoff);
+  });
+  push("next-chapter-pressure", story.seriesState?.next_chapter_pressure);
+  push("chapter-hook", chapter.hookText);
 
-  const options: ContinuationOption[] = [];
-  if (first) options.push({ id: "planned-beat", prompt: first });
-  if (second) options.push({ id: "open-thread", prompt: second });
-  return options;
+  return candidates.slice(0, MAX_OPTIONS);
 }
 
 async function defaultResolveOptions(
@@ -189,6 +205,9 @@ export default function ChapterEnd({
   const [unavailableReason, setUnavailableReason] = useState<string>(
     UNAVAILABLE_REASON.failed,
   );
+  // The composer starts closed on purpose. Suggested directions are the
+  // primary surface; typing your own is the escape hatch, and an escape hatch
+  // that is open by default reads as the main path.
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [phase, setPhase] = useState<SubmitPhase>("idle");
@@ -204,8 +223,11 @@ export default function ChapterEnd({
     withTimeout(resolveOptions(story, chapter), RESOLVE_TIMEOUT_MS)
       .then((resolved) => {
         if (cancelled) return;
-        if (resolved.length >= 2) {
-          setOptions(resolved.slice(0, 2));
+        // One real direction beats none. Requiring two used to discard a
+        // perfectly good single suggestion and leave the reader facing only
+        // the free-text box - the defect this surface was rebuilt to fix.
+        if (resolved.length >= 1) {
+          setOptions(resolved.slice(0, MAX_OPTIONS));
           setStatus("ready");
         } else {
           setUnavailableReason(UNAVAILABLE_REASON.insufficient);
@@ -221,11 +243,6 @@ export default function ChapterEnd({
       cancelled = true;
     };
   }, [story, chapter, isLatestChapter, seriesComplete, resolveOptions]);
-
-  const surprisePool = useMemo(
-    () => (options.length ? options.map((option) => option.prompt) : FALLBACK_SURPRISE_PROMPTS),
-    [options],
-  );
 
   const submit = useCallback(async (instruction?: string) => {
     if (submittingRef.current) return;
@@ -263,11 +280,6 @@ export default function ChapterEnd({
       submittingRef.current = false;
     }
   }, [chapter.chapterNumber, continueChapter, onChapterReady, plannedChapterCount, story.id]);
-
-  const handleSurprise = useCallback(() => {
-    const pick = surprisePool[Math.floor(Math.random() * surprisePool.length)];
-    if (pick) setComposerText(pick);
-  }, [surprisePool]);
 
   if (!isLatestChapter) return null;
 
@@ -333,65 +345,18 @@ export default function ChapterEnd({
     );
   }
 
-  if (composerOpen) {
-    return (
-      <View style={styles.wrap}>
-        <Text style={styles.heading}>Write your own</Text>
-        <TextInput
-          multiline
-          value={composerText}
-          onChangeText={setComposerText}
-          maxLength={MAX_NEXT_INSTRUCTION_CHARS}
-          placeholder="Type what happens next, or get a surprise below."
-          placeholderTextColor={colors.tertiary}
-          style={styles.composerInput}
-          accessibilityLabel="Write your own direction"
-          accessibilityHint="Optional. Leave blank and Katha decides what happens next."
-          testID="chapter-end-composer-input"
-        />
-        <View style={styles.composerRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Fill in a surprise direction"
-            style={styles.surpriseButton}
-            onPress={handleSurprise}
-            testID="chapter-end-surprise"
-          >
-            <Shuffle size={18} color={colors.ink} />
-            <Text style={styles.surpriseButtonText}>Surprise me</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to suggested directions"
-            style={styles.backButton}
-            onPress={() => setComposerOpen(false)}
-            testID="chapter-end-composer-back"
-          >
-            <Text style={styles.backButtonText}>Back</Text>
-          </Pressable>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            composerText.trim()
-              ? "Continue with your direction"
-              : "Continue and let Katha decide"
-          }
-          style={styles.primaryButton}
-          onPress={() => submit(nonEmpty(composerText))}
-          testID="chapter-end-composer-submit"
-        >
-          <Text style={styles.primaryButtonText}>
-            Continue · {CHAPTER_TEXT_CREDITS} credit
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.wrap}>
       <Text style={styles.heading}>What&apos;s next?</Text>
+      {/* The price rides with the surface, not with one button, because every
+        * path out of here - a suggested direction, a typed one, or letting
+        * Katha decide - writes one chapter and costs the same. §10.2 requires
+        * the continuation to carry its own price; putting it only on the
+        * composer's submit button hid it from the cards, which are now the
+        * path most readers will take. */}
+      <Text style={styles.priceNote}>
+        Any of these writes the next chapter · {CHAPTER_TEXT_CREDITS} credit
+      </Text>
       {status === "loading" ? (
         <View
           style={styles.loadingRow}
@@ -404,12 +369,23 @@ export default function ChapterEnd({
       {status === "unavailable" ? (
         <Text style={styles.mutedBody}>{unavailableReason}</Text>
       ) : null}
+      {/* The suggested directions ARE the surface. They were previously one
+        * card among equals next to a full-width free-text box, and a reader
+        * whose story yielded fewer than two suggestions saw the box alone -
+        * which reads as "tell us what to write", the opposite of what this
+        * feature is for. Each card is the whole tap target and fires the
+        * continuation immediately; the prose on it is the exact
+        * `next_instruction` the request sends, so what the reader reads is
+        * what the model is told. */}
       {status === "ready"
         ? options.map((option, index) => (
           <Pressable
             key={option.id}
             accessibilityRole="button"
             accessibilityLabel={`Continue: ${option.prompt}`}
+            accessibilityHint={
+              `Writes chapter ${chapter.chapterNumber + 1} in this direction`
+            }
             style={({ pressed }) => [
               styles.optionCard,
               pressed && !reduceMotion && styles.optionCardPressed,
@@ -422,20 +398,78 @@ export default function ChapterEnd({
           </Pressable>
         ))
         : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Write your own or get a surprise"
-        style={({ pressed }) => [
-          styles.optionCard,
-          styles.writeOwnCard,
-          pressed && !reduceMotion && styles.optionCardPressed,
-        ]}
-        onPress={() => setComposerOpen(true)}
-        testID="chapter-end-write-own"
-      >
-        <PenLine size={16} color={colors.ink} />
-        <Text style={styles.optionText}>Write your own or get a surprise</Text>
-      </Pressable>
+      {/* Two small text CTAs, deliberately lighter than the cards above: an
+        * icon, a label, no card, no fill. The free-text input is not rendered
+        * until "Write your own" is tapped. */}
+      <View style={styles.ctaRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            composerOpen ? "Hide your own direction" : "Write your own direction"
+          }
+          accessibilityState={{ expanded: composerOpen }}
+          style={({ pressed }) => [
+            styles.textCta,
+            pressed && !reduceMotion && styles.textCtaPressed,
+          ]}
+          onPress={() => setComposerOpen((open) => !open)}
+          testID="chapter-end-write-own"
+        >
+          <PenLine size={16} color={colors.muted} />
+          <Text style={styles.textCtaLabel}>Write your own</Text>
+        </Pressable>
+        {/* §10.2: leaving the direction blank means Katha decides. This is that
+          * sentence as a control. It replaces a "Surprise me" button that
+          * pasted one of four hardcoded generic lines into the box - filler
+          * that fit any story in the app and so proved the app had read none
+          * of them. Sending no instruction at all lets the model use the plan
+          * and series state it already has, which is the honest version of the
+          * same offer. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Let Katha decide what happens next"
+          style={({ pressed }) => [
+            styles.textCta,
+            pressed && !reduceMotion && styles.textCtaPressed,
+          ]}
+          onPress={() => submit(undefined)}
+          testID="chapter-end-let-katha-decide"
+        >
+          <Shuffle size={16} color={colors.muted} />
+          <Text style={styles.textCtaLabel}>Let Katha decide</Text>
+        </Pressable>
+      </View>
+      {composerOpen ? (
+        <View style={styles.composer}>
+          <TextInput
+            multiline
+            value={composerText}
+            onChangeText={setComposerText}
+            maxLength={MAX_NEXT_INSTRUCTION_CHARS}
+            placeholder="Type what happens next."
+            placeholderTextColor={colors.tertiary}
+            style={styles.composerInput}
+            accessibilityLabel="Write your own direction"
+            accessibilityHint="Optional. Leave blank and Katha decides what happens next."
+            testID="chapter-end-composer-input"
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              composerText.trim()
+                ? "Continue with your direction"
+                : "Continue and let Katha decide"
+            }
+            style={styles.primaryButton}
+            onPress={() => submit(nonEmpty(composerText))}
+            testID="chapter-end-composer-submit"
+          >
+            <Text style={styles.primaryButtonText}>
+              Continue · {CHAPTER_TEXT_CREDITS} credit
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -484,8 +518,37 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
     borderColor: colors.accent,
   },
-  writeOwnCard: {
-    backgroundColor: colors.surface2,
+  priceNote: {
+    ...type.caption,
+    color: colors.muted,
+    marginTop: -spacing.related,
+  },
+  ctaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.lg,
+  },
+  // Deliberately not a card: no border, no fill, muted icon and label. The
+  // weight difference between this and `optionCard` is the whole point of the
+  // rebuild, so it must stay visible at a glance.
+  textCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    minHeight: 44,
+    paddingRight: spacing.xs,
+  },
+  textCtaPressed: {
+    opacity: 0.6,
+  },
+  textCtaLabel: {
+    ...type.subhead,
+    color: colors.muted,
+    fontWeight: "600",
+  },
+  composer: {
+    gap: spacing.md,
   },
   optionText: {
     ...type.body,
@@ -503,37 +566,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 15,
     textAlignVertical: "top",
-  },
-  composerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  surpriseButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  surpriseButtonText: {
-    ...type.subhead,
-    color: colors.ink,
-  },
-  backButton: {
-    minHeight: 44,
-    minWidth: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-  },
-  backButtonText: {
-    ...type.subhead,
-    color: colors.muted,
   },
   primaryButton: {
     minHeight: 48,

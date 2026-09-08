@@ -2,7 +2,11 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { generateCoverImage, isModerationError } from "./image.ts";
+import {
+  generateCoverImage,
+  generateDraftCharacterPortrait,
+  isModerationError,
+} from "./image.ts";
 
 /**
  * The chain's job is to keep trying. These tests are about the ways it could
@@ -18,6 +22,8 @@ interface Attempt {
   model: string;
   /** The prompt as the provider received it, however that provider shapes it. */
   prompt: string;
+  /** The style reference, when one was attached to this attempt. */
+  referenceImage?: string;
 }
 
 /** Replace fetch, record every provider call, and answer with `respond`. */
@@ -25,11 +31,10 @@ async function withStubbedProviders(
   respond: (attempt: Attempt, index: number) => Response,
   run: () => Promise<unknown>,
   /** Per-provider credential override; `null` removes the credential. */
-  keys: { openai?: string | null; openrouter?: string | null } = {},
+  keys: { openrouter?: string | null } = {},
 ): Promise<Attempt[]> {
   const attempts: Attempt[] = [];
   const previous = {
-    openai: Deno.env.get("OPENAI_API_KEY"),
     openrouter: Deno.env.get("OPENROUTER_API_KEY"),
   };
   const apply = (
@@ -40,7 +45,6 @@ async function withStubbedProviders(
     if (value === null) Deno.env.delete(name);
     else Deno.env.set(name, value ?? fallback);
   };
-  apply("OPENAI_API_KEY", keys.openai, "test-openai");
   apply("OPENROUTER_API_KEY", keys.openrouter, "test-openrouter");
 
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -48,14 +52,29 @@ async function withStubbedProviders(
     const body = JSON.parse(String(init?.body ?? "{}")) as {
       model?: string;
       prompt?: string;
-      messages?: { content?: string }[];
+      messages?: { content?: unknown }[];
     };
-    // OpenAI takes `prompt`; OpenRouter wraps the same string in a chat
-    // message. Both are read so a prompt assertion covers the whole chain.
+    // Every provider is OpenRouter now, which wraps the prompt in a chat
+    // message. `prompt` is still read so a provider added later with an
+    // images-endpoint dialect is covered without touching this stub.
+    // Positions are told apart by `model`, not by URL: they share a host.
+    // With a style reference attached the content is the multimodal array
+    // form, so the prompt is the text part rather than the whole content.
+    const raw = body.messages?.[0]?.content;
+    const parts = Array.isArray(raw) ? raw : [];
     const attempt = {
       url,
       model: body.model ?? "",
-      prompt: body.prompt ?? body.messages?.[0]?.content ?? "",
+      prompt: body.prompt ??
+        (typeof raw === "string" ? raw : String(
+          (parts.find((p) => (p as { type?: string }).type === "text") as
+            | { text?: string }
+            | undefined)?.text ?? "",
+        )),
+      referenceImage:
+        (parts.find((p) => (p as { type?: string }).type === "image_url") as
+          | { image_url?: { url?: string } }
+          | undefined)?.image_url?.url,
     };
     attempts.push(attempt);
     return Promise.resolve(respond(attempt, attempts.length - 1));
@@ -67,7 +86,6 @@ async function withStubbedProviders(
     globalThis.fetch = realFetch;
     for (
       const [key, value] of [
-        ["OPENAI_API_KEY", previous.openai],
         ["OPENROUTER_API_KEY", previous.openrouter],
       ] as const
     ) {
@@ -76,6 +94,29 @@ async function withStubbedProviders(
     }
   }
   return attempts;
+}
+
+/** Nano banana: the first position. */
+const NANO_BANANA = "google/gemini-2.5-flash-image";
+/** The stronger, pricier fallback behind it. */
+const FALLBACK_IMAGE_MODEL = "google/gemini-3.1-flash-image";
+
+/** Attempts made against one model. Positions share a host, so filter by model. */
+function forModel(attempts: Attempt[], model: string): Attempt[] {
+  return attempts.filter((a) => a.model === model);
+}
+
+/** An OpenRouter chat-completions response carrying one base64 image. */
+function openRouterImage(b64: string): Response {
+  return new Response(
+    JSON.stringify({
+      choices: [{
+        message: {
+          images: [{ image_url: { url: `data:image/png;base64,${b64}` } }],
+        },
+      }],
+    }),
+  );
 }
 
 function moderationRejection(): Response {
@@ -108,18 +149,19 @@ Deno.test("a provider exhausting every safety level does not skip the fallbacks"
     () => generateCoverImage(cover),
   );
 
-  const openai = attempts.filter((a) => a.url.includes("api.openai.com"));
-  const openrouter = attempts.filter((a) => a.url.includes("openrouter.ai"));
-
-  assertEquals(openai.length, 3, "OpenAI should walk all three safety levels");
+  assertEquals(
+    forModel(attempts, NANO_BANANA).length,
+    3,
+    "nano banana should walk all three safety levels",
+  );
   assert(
-    openrouter.length >= 2,
-    `both OpenRouter models must still be tried, saw ${openrouter.length}`,
+    forModel(attempts, FALLBACK_IMAGE_MODEL).length >= 1,
+    "the fallback model must still be tried after the first exhausts its ladder",
   );
   assertEquals(
-    new Set(openrouter.map((a) => a.model)).size,
+    new Set(attempts.map((a) => a.model)).size,
     2,
-    "the second OpenRouter model must not be skipped",
+    "both positions must be reached",
   );
 });
 
@@ -134,28 +176,24 @@ Deno.test("a non-moderation failure moves to the next provider with the prompt u
 
   // Auth, quota and 5xx are provider problems, not prompt problems: retrying a
   // simplified prompt on a provider that is out of quota wastes the deadline.
-  assertEquals(
-    attempts.filter((a) => a.url.includes("api.openai.com")).length,
-    1,
-  );
-  assertEquals(attempts.length, 3, "one attempt per provider, no ladder");
+  assertEquals(forModel(attempts, NANO_BANANA).length, 1);
+  assertEquals(attempts.length, 2, "one attempt per provider, no ladder");
 });
 
-Deno.test("a provider with no credential is skipped, not failed", async () => {
+Deno.test("a chain with no credential at all makes no request and returns null", async () => {
+  // Every position now authenticates with the same key, so removing it empties
+  // the chain rather than shortening it. That must still be a `null` and a
+  // concept cover -- never a throw, and never a request sent without a key.
+  let result: unknown = "unset";
   const attempts = await withStubbedProviders(
     () => moderationRejection(),
-    () => generateCoverImage(cover),
+    async () => {
+      result = await generateCoverImage(cover);
+    },
     { openrouter: null },
   );
-  assertEquals(
-    attempts.filter((a) => a.url.includes("openrouter.ai")).length,
-    0,
-  );
-  // Skipping is not failing: OpenAI still walks its full ladder.
-  assertEquals(
-    attempts.filter((a) => a.url.includes("api.openai.com")).length,
-    3,
-  );
+  assertEquals(attempts.length, 0);
+  assertEquals(result, null);
 });
 
 Deno.test("total failure returns null rather than throwing", async () => {
@@ -214,8 +252,8 @@ Deno.test("the stored content type follows the bytes, not the path", async () =>
   ) {
     const attempts = await withStubbedProviders(
       (attempt) =>
-        attempt.url.includes("api.openai.com")
-          ? new Response(JSON.stringify({ data: [{ b64_json: b64(bytes) }] }))
+        attempt.model === NANO_BANANA
+          ? openRouterImage(b64(bytes))
           : moderationRejection(),
       () => generateCoverImage(cover),
     );
@@ -224,7 +262,7 @@ Deno.test("the stored content type follows the bytes, not the path", async () =>
     // rejected by the sniffer — the extension mapping itself is asserted by the
     // sniffer's own contract below.
     assertEquals(
-      attempts.filter((a) => a.url.includes("api.openai.com")).length,
+      forModel(attempts, NANO_BANANA).length,
       1,
       `${name} should be accepted on the first attempt (-> .${expectExtension})`,
     );
@@ -234,8 +272,8 @@ Deno.test("the stored content type follows the bytes, not the path", async () =>
   // image format, so it must not reach storage as an image at all.
   const attempts = await withStubbedProviders(
     (attempt) =>
-      attempt.url.includes("api.openai.com")
-        ? new Response(JSON.stringify({ data: [{ b64_json: b64(garbage) }] }))
+      attempt.model === NANO_BANANA
+        ? openRouterImage(b64(garbage))
         : moderationRejection(),
     () => generateCoverImage(cover),
   );
@@ -264,7 +302,7 @@ Deno.test("the Avoid exclusion survives every safety level and every provider", 
   );
 
   assert(
-    attempts.length >= 5,
+    attempts.length >= 4,
     `expected a full ladder, saw ${attempts.length}`,
   );
   for (const [index, attempt] of attempts.entries()) {
@@ -275,7 +313,7 @@ Deno.test("the Avoid exclusion survives every safety level and every provider", 
   }
   // Level 2 is genre and title only, so this is the rung that proves the
   // exclusion is carried rather than merely surviving in the cast or themes.
-  const last = attempts.filter((a) => a.url.includes("api.openai.com")).at(-1);
+  const last = forModel(attempts, NANO_BANANA).at(-1);
   assert(last);
   assert(
     !last.prompt.includes("themes of"),
@@ -305,17 +343,17 @@ Deno.test("the regeneration steer is dropped at the last safety level", async ()
       }),
   );
 
-  const openai = attempts.filter((a) => a.url.includes("api.openai.com"));
-  assert(openai.length === 3, `expected three rungs, saw ${openai.length}`);
-  assert(openai[0].prompt.includes("a red door at dusk"));
-  assert(openai[1].prompt.includes("a red door at dusk"));
+  const rungs = forModel(attempts, NANO_BANANA);
+  assert(rungs.length === 3, `expected three rungs, saw ${rungs.length}`);
+  assert(rungs[0].prompt.includes("a red door at dusk"));
+  assert(rungs[1].prompt.includes("a red door at dusk"));
   assert(
-    !openai[2].prompt.includes("a red door at dusk"),
+    !rungs[2].prompt.includes("a red door at dusk"),
     "level 2 must be reachable without the caller's own text in it",
   );
   // The exclusion is not the steer and still survives: it is a negative
   // constraint, so it cannot be what a filter objected to.
-  assert(openai[2].prompt.includes("Do not depict: graphic violence."));
+  assert(rungs[2].prompt.includes("Do not depict: graphic violence."));
 });
 
 Deno.test("no Avoid means no exclusion clause at any level", async () => {
@@ -325,5 +363,85 @@ Deno.test("no Avoid means no exclusion clause at any level", async () => {
   );
   for (const attempt of attempts) {
     assert(!attempt.prompt.includes("Do not depict"));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The style reference
+// ---------------------------------------------------------------------------
+
+const REFERENCE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
+
+Deno.test("an attached reference reaches the model, after the text that governs it", async () => {
+  // Order matters and is not cosmetic: the text part carries the clause saying
+  // the image is a STYLE reference and not a likeness target. A model shown the
+  // photo before it has been told what the photo is for is being invited to
+  // copy it.
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-1", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+        referenceImage: REFERENCE,
+      }),
+  );
+
+  const first = attempts[0];
+  assertEquals(first.referenceImage, REFERENCE);
+  assert(
+    first.prompt.includes("STYLE AND APPEARANCE REFERENCE ONLY"),
+    "the reference clause must travel with the reference",
+  );
+  assert(
+    first.prompt.includes("Do NOT reproduce the face or likeness"),
+    "the likeness ban must be stated to the model, not merely assumed",
+  );
+});
+
+Deno.test("the reference is dropped at the last safety rung, so a portrait stays reachable", async () => {
+  // Level 2 exists to be the request that cannot be refused. An attached photo
+  // is the likeliest thing in the payload for a filter to have objected to, so
+  // it goes before the character does -- otherwise the optional half of the
+  // request fails the whole ladder.
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-2", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+        referenceImage: REFERENCE,
+      }),
+  );
+
+  const withRef = attempts.filter((a) => a.referenceImage);
+  const withoutRef = attempts.filter((a) => !a.referenceImage);
+  assert(withRef.length > 0, "the reference must be tried at all");
+  assert(
+    withoutRef.length > 0,
+    "the last rung must retry without the reference",
+  );
+  // The clause is pointless without the image, so it goes with it.
+  for (const attempt of withoutRef) {
+    assert(!attempt.prompt.includes("STYLE AND APPEARANCE REFERENCE ONLY"));
+  }
+});
+
+Deno.test("a portrait with no reference is byte-for-byte the request it always was", async () => {
+  // The feature is additive. A character sheet with no photo must produce the
+  // single-string content form, with no clause about a reference that is not
+  // there.
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-3", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+      }),
+  );
+
+  for (const attempt of attempts) {
+    assertEquals(attempt.referenceImage, undefined);
+    assert(!attempt.prompt.includes("STYLE AND APPEARANCE REFERENCE ONLY"));
   }
 });

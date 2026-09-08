@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Animated,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -32,7 +34,6 @@ import {
 import { CreditPill } from "@/components/KathaPrimitives";
 import { Dropdown, DropdownGroup } from "@/components/create/Dropdown";
 import type { DropdownOption } from "@/components/create/Dropdown";
-import { PlanSection } from "@/components/create/PlanSection";
 import {
   GENRE_EMOJI,
   GENRE_STARTERS,
@@ -118,6 +119,22 @@ export const CHAPTER_LENGTHS = [
 const CHAPTER_COUNTS = [3, 7, 15] as const;
 
 /**
+ * Every Switch on this screen, in design-system colour.
+ *
+ * Spread rather than repeated because the Lead-character toggle in Craft
+ * character was the one that got missed and rendered iOS's default GREEN
+ * thumb-and-track under an orange track colour -- reported from a screenshot
+ * as "the toggle looks wrong". `ios_backgroundColor` is the piece that is easy
+ * to forget: without it iOS paints its own off-state fill behind the track
+ * during the toggle animation, so `trackColor.false` alone does not hold.
+ */
+const SWITCH_COLORS = {
+  trackColor: { false: colors.borderStrong, true: colors.accent },
+  thumbColor: colors.surface,
+  ios_backgroundColor: colors.borderStrong,
+} as const;
+
+/**
  * The real cap on a single moment's text is 300 characters --
  * `MAX_BRIEF_FIELD_LENGTH` in `backend/supabase/functions/_shared/types.ts`,
  * enforced again server-side by `validation.ts`'s `stringList()`. Mirrored
@@ -137,6 +154,26 @@ function truncateForDisplay(text: string, max: number) {
   return trimmed.length > max ? `${trimmed.slice(0, max).trimEnd()}…` : trimmed;
 }
 
+/**
+ * How a character sheet is compared against the state it was opened in.
+ *
+ * Trimmed, because trailing whitespace the user never sees must not be able to
+ * raise a "you have unsaved changes" dialog. `portraitStatus` is deliberately
+ * NOT part of it: it moves idle -> generating -> ready on its own while the
+ * user sits there, and a status transition is not an edit. `portraitUrl` is,
+ * because a portrait that finished generating is real work to lose.
+ */
+function characterFingerprint(character: CharacterDraft) {
+  return JSON.stringify({
+    name: character.name.trim(),
+    description: character.description.trim(),
+    background: (character.background ?? "").trim(),
+    appearance: (character.appearance ?? "").trim(),
+    isHero: character.isHero,
+    portraitUrl: character.portraitUrl ?? "",
+  });
+}
+
 function useMotionAndHaptics() {
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
@@ -153,6 +190,12 @@ function useMotionAndHaptics() {
   return { reduceMotion, select, confirm };
 }
 
+/**
+ * How many slots `briefStrength()` scores out of. Named so the review meter's
+ * denominator and its accessible value cannot drift from the score itself.
+ */
+const STRENGTH_SLOTS = 4;
+
 function briefStrength(draft: StudioCreateDraft) {
   const slots = [draft.seed.trim(), draft.whereAndWhen?.trim(), draft.characters.some((item) => item.name.trim()), draft.moments?.length].filter(Boolean).length;
   if (slots >= 4) return { label: "Rich", detail: "Katha has plenty to work with.", slots };
@@ -168,6 +211,13 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   const [momentInput, setMomentInput] = useState("");
   const [editingCharacterIndex, setEditingCharacterIndex] = useState<number | null>(null);
   const [characterBuffer, setCharacterBuffer] = useState<CharacterDraft>({ name: "", description: "", background: "", appearance: "", isHero: false });
+  /**
+   * The sheet exactly as it was opened, so Back can tell an untouched visit
+   * from an edited one. A ref, not state: nothing renders from it, and putting
+   * it in state would re-render the sheet on every open for no reason.
+   */
+  const openedCharacterRef = useRef<CharacterDraft | null>(null);
+  const [unsavedPromptOpen, setUnsavedPromptOpen] = useState(false);
   const fade = useRef(new Animated.Value(1)).current;
   const { reduceMotion, select, confirm } = useMotionAndHaptics();
   const allowedGenres = draft.audienceMode === "kids" ? KIDS_UI_GENRES : UI_GENRES;
@@ -198,14 +248,18 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   }, [select, setDraft]);
 
   const startCharacter = useCallback((index?: number) => {
+    let opened: CharacterDraft;
     if (typeof index === "number") {
+      opened = draft.characters[index];
       setEditingCharacterIndex(index);
-      setCharacterBuffer(draft.characters[index]);
     } else {
       if (draft.characters.length >= 3) return;
+      opened = { name: "", description: "", background: "", appearance: "", isHero: draft.characters.length === 0 };
       setEditingCharacterIndex(null);
-      setCharacterBuffer({ name: "", description: "", background: "", appearance: "", isHero: draft.characters.length === 0 });
     }
+    setCharacterBuffer(opened);
+    openedCharacterRef.current = opened;
+    setUnsavedPromptOpen(false);
     confirm();
     setStage("character");
   }, [confirm, draft.characters]);
@@ -232,6 +286,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
         })),
       };
     });
+    setUnsavedPromptOpen(false);
     confirm();
     setStage("main");
   }, [characterBuffer, confirm, editingCharacterIndex, setDraft]);
@@ -248,10 +303,25 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
         })),
       };
     });
+    setUnsavedPromptOpen(false);
     confirm();
     setStage("main");
   }, [confirm, setDraft]);
 
+  /**
+   * Generate (or regenerate) the portrait from the sheet AS IT STANDS.
+   *
+   * The dependency array is `[characterBuffer, confirm]`, so every Reimagine
+   * re-reads the current buffer rather than the values that were present when
+   * the sheet opened -- `create-flow-character-portrait.test.tsx` asserts that
+   * with an edit between two taps, because a stale closure here would silently
+   * regenerate the OLD description and look like the model ignoring the user.
+   *
+   * `background` is not sent: the `generate-character-image` edge function
+   * accepts `name`, `description` and `appearance` only and 400s on nothing
+   * else, so adding it here would need the function and `CharacterImageInput`
+   * to move first. Background still reaches the story prompt.
+   */
   const createCharacterImage = useCallback(async () => {
     const name = characterBuffer.name.trim();
     if (!name || characterBuffer.portraitStatus === "generating") return;
@@ -279,6 +349,32 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
       }));
     }
   }, [characterBuffer, confirm]);
+
+  /**
+   * Back out of Craft character, with friction when there is something to lose.
+   *
+   * The sheet holds everything in a local buffer and only `Save` writes it into
+   * the draft, so leaving any other way silently threw away every field the
+   * user had typed -- including a portrait that had just cost twelve seconds
+   * of waiting. An untouched visit still closes on the first tap; the dialog
+   * only appears when the buffer actually differs from what was opened.
+   */
+  const requestCloseCharacter = useCallback(() => {
+    const opened = openedCharacterRef.current;
+    const dirty = opened !== null && characterFingerprint(opened) !== characterFingerprint(characterBuffer);
+    if (dirty) {
+      setUnsavedPromptOpen(true);
+      return;
+    }
+    select();
+    setStage("main");
+  }, [characterBuffer, select]);
+
+  const discardCharacter = useCallback(() => {
+    setUnsavedPromptOpen(false);
+    select();
+    setStage("main");
+  }, [select]);
 
   const addMoment = useCallback((value: string) => {
     const next = value.trim();
@@ -352,14 +448,17 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
           )}
         </Animated.View>
       </KeyboardAvoidingView>
-      <Modal animationType="slide" presentationStyle="fullScreen" visible={isCharacter} onRequestClose={() => setStage("main")}>
+      <Modal animationType="slide" presentationStyle="fullScreen" visible={isCharacter} onRequestClose={requestCloseCharacter}>
         <CharacterCraftScreen
           character={characterBuffer}
           onChange={setCharacterBuffer}
-          onBack={() => setStage("main")}
+          onBack={requestCloseCharacter}
           onSave={saveCharacter}
           onDelete={editingCharacterIndex === null ? undefined : () => deleteCharacter(editingCharacterIndex)}
           onCreateImage={createCharacterImage}
+          unsavedPromptOpen={unsavedPromptOpen}
+          onKeepEditing={() => setUnsavedPromptOpen(false)}
+          onDiscard={discardCharacter}
           topInset={insets.top}
           bottomInset={insets.bottom}
         />
@@ -426,7 +525,7 @@ function StorySetupScreen({
       </View>
       <View style={styles.parentControls}>
         <View style={styles.kidsMode}>
-          <Switch value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Kids Mode" />
+          <Switch value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} {...SWITCH_COLORS} accessibilityLabel="Kids Mode" />
           <View style={styles.kidsModeLabel}>
             <Sparkles size={15} color={draft.audienceMode === "kids" ? colors.accent : colors.tertiary} />
             <Text style={[styles.kidsModeText, draft.audienceMode === "kids" && styles.kidsModeTextActive]}>Kids Mode</Text>
@@ -485,9 +584,15 @@ function StorySetupScreen({
 
       {draft.audienceMode === "kids" ? <Section label="Values" hint="Woven into the story, never taught at the reader"><View style={styles.wrapChips}>{VALUES.map(({ value, label }) => <ChoiceChip key={value} label={label} selected={draft.storyValues?.includes(value)} onPress={() => { update({ storyValues: draft.storyValues?.includes(value) ? draft.storyValues.filter((item) => item !== value) : [...(draft.storyValues ?? []), value] }); onSelect(); }} />)}</View></Section> : null}
 
+      {/*
+        The cast rows show the generated portrait, not the initial. This card
+        had the same bug as the Craft character panel -- it drew
+        `character.name[0]` whichever portrait state the row was in, so a cast
+        with three finished images was indistinguishable from one with none.
+      */}
       <Section label="Who's in it" hint={draft.characters.length ? `${draft.characters.length} of 3` : undefined}>
         <View style={styles.characterList}>
-          {draft.characters.map((character, index) => <Pressable key={`${character.name}-${index}`} onPress={() => onEditCharacter(index)} accessibilityRole="button" accessibilityLabel={`Edit ${character.name || "character"}`} style={styles.characterCard}><View style={[styles.avatar, character.isHero && styles.avatarLead, character.portraitStatus === "ready" && styles.avatarReady]}><Text style={styles.avatarText}>{character.name.trim().slice(0, 1).toUpperCase() || "?"}</Text></View><View style={styles.characterCopy}><Text style={styles.characterName}>{character.name || "Untitled character"}{character.isHero ? " · Lead" : ""}</Text><Text numberOfLines={1} style={styles.characterDescription}>{character.portraitStatus === "ready" ? "Image ready" : character.portraitStatus === "failed" ? "Image failed" : character.description || "Details waiting"}</Text></View><ChevronRight size={18} color={colors.tertiary} /></Pressable>)}
+          {draft.characters.map((character, index) => <Pressable key={`${character.name}-${index}`} onPress={() => onEditCharacter(index)} accessibilityRole="button" accessibilityLabel={`Edit ${character.name || "character"}`} style={styles.characterCard}><View style={[styles.avatar, character.isHero && styles.avatarLead, character.portraitStatus === "ready" && styles.avatarReady]}>{character.portraitStatus === "ready" && character.portraitUrl ? <Image source={{ uri: character.portraitUrl }} resizeMode="cover" style={styles.avatarImage} accessible accessibilityLabel={`Portrait of ${character.name.trim() || "this character"}`} /> : character.portraitStatus === "generating" ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={styles.avatarText}>{character.name.trim().slice(0, 1).toUpperCase() || "?"}</Text>}</View><View style={styles.characterCopy}><Text style={styles.characterName}>{character.name || "Untitled character"}{character.isHero ? " · Lead" : ""}</Text><Text numberOfLines={1} style={styles.characterDescription}>{character.portraitStatus === "ready" ? "Image ready" : character.portraitStatus === "failed" ? "Image failed" : character.description || "Details waiting"}</Text></View><ChevronRight size={18} color={colors.tertiary} /></Pressable>)}
           {draft.characters.length < 3 ? <Pressable onPress={onAddCharacter} accessibilityRole="button" accessibilityLabel="Add a character" style={styles.addCharacter}><View style={styles.addCharacterIcon}><UserPlus size={20} color={colors.accent} /></View><View style={styles.addCharacterCopy}><Text style={styles.addCharacterTitle}>Add a character</Text></View><Plus size={20} color={colors.accent} /></Pressable> : null}
         </View>
       </Section>
@@ -561,12 +666,29 @@ function ReviewScreen({
         <Text style={styles.title}>Here is what Katha will write</Text>
         <Text style={styles.subtitle}>Check every choice below. Go back to change anything before generating.</Text>
       </View>
-      <View style={styles.strengthCard}>
-        <View style={styles.strengthHead}>
-          <Text style={styles.strengthLabel}>{strength.label}</Text>
-          <Text style={styles.strengthSlots}>{strength.slots} of 4 filled</Text>
+      {/*
+        A meter, not a card. The same `briefStrength()` score as before -- this
+        is presentation only -- but the old block spent a full padded card and
+        three lines of type on four bits of information, above the review list
+        it was meant to introduce. The bar is the reading; the label carries
+        the meaning for anyone who cannot see the bar, which is why the
+        accessible name states the level and the count rather than leaving a
+        screen reader with a coloured rectangle.
+      */}
+      <View
+        style={styles.strengthMeter}
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel={`Brief strength: ${strength.label}, ${strength.slots} of 4 details added. ${strength.detail}`}
+        accessibilityValue={{ min: 0, max: STRENGTH_SLOTS, now: strength.slots }}
+      >
+        <View style={styles.strengthMeterHead}>
+          <Text style={styles.strengthMeterLabel}>Brief strength · {strength.label}</Text>
+          <Text style={styles.strengthMeterCount}>{strength.slots}/{STRENGTH_SLOTS}</Text>
         </View>
-        <Text style={styles.strengthDetail}>{strength.detail}</Text>
+        <View style={styles.strengthTrack}>
+          <View style={[styles.strengthFill, { width: `${(strength.slots / STRENGTH_SLOTS) * 100}%` }]} />
+        </View>
       </View>
       <View style={styles.reviewCard}>
         <ReviewRow label="Your idea" value={draft.seed.trim() || "Not written yet"} />
@@ -653,6 +775,10 @@ function MoreOptions({
   // name eventually, so unnamed rows have nothing to insert and the row is
   // hidden entirely rather than rendered empty.
   const namedCharacters = draft.characters.filter((character) => character.name.trim());
+  // The chip reads "@Naina" so it is obviously a tag, but what it INSERTS is
+  // still the bare name. The moment text goes to the prompt, where an "@" is
+  // noise the model has to ignore, and the review screen and the moment chips
+  // both echo that text back verbatim.
   const appendCharacterName = (name: string) => {
     const base = momentInput.trimEnd();
     onMomentInput(base ? `${base} ${name.trim()}` : name.trim());
@@ -692,15 +818,16 @@ function MoreOptions({
         A scene you want somewhere in the story or series, like a conversation between two characters.
       </Text>
     ) : null}
-    {namedCharacters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{namedCharacters.map((character) => <Pressable key={character.name} accessibilityRole="button" accessibilityLabel={`Add ${character.name.trim()} to this moment`} onPress={() => appendCharacterName(character.name)} style={styles.nameToken}><Text style={styles.nameTokenText}>{character.name.trim()}</Text></Pressable>)}</ScrollView> : null}
+    {namedCharacters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{namedCharacters.map((character) => <Pressable key={character.name} accessibilityRole="button" accessibilityLabel={`Add ${character.name.trim()} to this moment`} onPress={() => appendCharacterName(character.name)} style={styles.nameToken}><Text style={styles.nameTokenText}>@{character.name.trim()}</Text></Pressable>)}</ScrollView> : null}
     <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.momentText}>{truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
     {moments.length < maxMoments ? <View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" maxLength={MAX_MOMENT_CHARS} placeholder="Add a moment" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View> : null}
-    {draft.beats?.length ? (
-      <>
-        <OptionLabel label="Chapter plan" />
-        <PlanSection beats={draft.beats} onChange={(beats) => update({ beats })} />
-      </>
-    ) : null}
+    {/*
+      No "Chapter plan" here. The beats are still in the draft and still go to
+      generation, and the blueprint screen is where they are shown and edited --
+      but surfacing chapter summaries inside More options, before the user has
+      pressed Create at all, showed them the story's plan as a settings field
+      and read as a leak rather than a control.
+    */}
 
     {/* One line, two dropdowns -- checked to fit at 390pt without overflow. */}
     <View style={styles.chapterRow}>
@@ -734,7 +861,7 @@ function MoreOptions({
             chapter 1's art is compulsory and already the cover. */}
         <Text style={styles.switchHint}>Adds an illustration to every chapter after the first, for 1 more credit each.</Text>
       </View>
-      <Switch value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Chapter art" />
+      <Switch value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} {...SWITCH_COLORS} accessibilityLabel="Chapter art" />
     </View>
 
     {/* Writing style and Avoid are both craft constraints on the prose, so
@@ -747,7 +874,7 @@ function MoreOptions({
       <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
     </View>
 
-    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Visibility</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "This story can be shared after creation." : "Only you can see this story."}</Text></View><Switch value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Public visibility" /></View>
+    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Visibility</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "This story can be shared after creation." : "Only you can see this story."}</Text></View><Switch value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} {...SWITCH_COLORS} accessibilityLabel="Public visibility" /></View>
 
     {/*
       English only, at the bottom, for now. The spice control was removed
@@ -774,6 +901,9 @@ function CharacterCraftScreen({
   onSave,
   onDelete,
   onCreateImage,
+  unsavedPromptOpen,
+  onKeepEditing,
+  onDiscard,
   topInset,
   bottomInset,
 }: {
@@ -783,6 +913,9 @@ function CharacterCraftScreen({
   onSave: () => void;
   onDelete?: () => void;
   onCreateImage: () => void;
+  unsavedPromptOpen: boolean;
+  onKeepEditing: () => void;
+  onDiscard: () => void;
   topInset: number;
   bottomInset: number;
 }) {
@@ -794,6 +927,7 @@ function CharacterCraftScreen({
       (character.description.trim() || character.appearance?.trim()) &&
       !imageBusy,
   );
+  const canSave = Boolean(character.name.trim()) && !imageBusy;
   return (
     <View style={styles.screen}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -810,18 +944,60 @@ function CharacterCraftScreen({
           <Field label="Appearance"><TextInput accessibilityLabel="Appearance" value={character.appearance ?? ""} onChangeText={(value) => set("appearance", value)} placeholder="Face, build, clothing, accessories. e.g. Curly hair, flour on her sleeves, her grandmother's signet ring." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
           <View style={styles.portraitPanel}>
             <View style={[styles.portraitPreview, imageReady && styles.portraitPreviewReady]}>
-              {imageReady ? <Text style={styles.portraitInitial}>{character.name.trim().slice(0, 1).toUpperCase()}</Text> : <Text style={styles.portraitHint}>Character image will appear here.</Text>}
+              {/*
+                Render the portrait the user just paid ~12s of waiting for.
+
+                This branch used to draw the first letter of the character's
+                NAME in a 42pt display face whenever the image was ready, and
+                never mounted an <Image> at all -- so a successful generation
+                and a failed one looked identical. It was reported as "the
+                character isn't getting generated, tried 2 times", with a
+                screenshot of a big "P"; the backend had been returning a real
+                public URL the whole time and the UI was throwing it away.
+                The hint below is now only what a genuinely EMPTY card shows.
+              */}
+              {imageReady ? (
+                <Image
+                  source={{ uri: character.portraitUrl }}
+                  // The stored asset is 2:3 portrait and so is this card, but
+                  // cover (not contain) so a provider that returns a slightly
+                  // different ratio still fills the frame instead of letterboxing.
+                  resizeMode="cover"
+                  style={styles.portraitImage}
+                  accessible
+                  accessibilityLabel={`Portrait of ${character.name.trim() || "this character"}`}
+                />
+              ) : (
+                <Text style={styles.portraitHint}>Character image will appear here.</Text>
+              )}
+              {/*
+                The busy state belongs on the CARD, not only on the button.
+                Generation takes about twelve seconds; a card that sits
+                completely idle for that long is exactly what got read as
+                broken, whatever the button label said.
+              */}
+              {imageBusy ? (
+                <View style={styles.portraitBusy} accessibilityLiveRegion="polite">
+                  <ActivityIndicator color={colors.accent} />
+                  <Text style={styles.portraitBusyText}>Creating image…</Text>
+                </View>
+              ) : null}
             </View>
             <View style={styles.portraitActions}>
+              {/*
+                Reimagine is the only image action. The "Edit" button that used
+                to sit beside it simply deleted `portraitUrl` to get back to an
+                empty card, which is not an edit -- and Reimagine already
+                covers regenerating from the current fields.
+              */}
               <Pressable disabled={!canCreateImage} onPress={onCreateImage} accessibilityRole="button" accessibilityState={{ disabled: !canCreateImage, busy: imageBusy }} style={[styles.outlineButton, !canCreateImage && styles.outlineButtonDisabled]}>
                 <Text style={styles.outlineButtonText}>{imageBusy ? "Creating..." : imageReady ? "Reimagine" : "Create image"}</Text>
               </Pressable>
-              {imageReady ? <Pressable onPress={() => onChange((previous) => ({ ...previous, portraitUrl: undefined, portraitStatus: "idle" }))} accessibilityRole="button" style={styles.outlineButton}><Text style={styles.outlineButtonText}>Edit</Text></Pressable> : null}
               {character.portraitStatus === "failed" ? <Text style={styles.portraitError}>Image failed. Check the character details and try again.</Text> : null}
             </View>
           </View>
           <Text style={styles.optionHint}>No real people or characters you do not have rights to.</Text>
-          <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Lead character</Text><Text style={styles.switchHint}>Katha follows this character most closely.</Text></View><Switch value={character.isHero} onValueChange={(value) => set("isHero", value)} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} accessibilityLabel="Lead character" /></View>
+          <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Lead character</Text><Text style={styles.switchHint}>Katha follows this character most closely.</Text></View><Switch value={character.isHero} onValueChange={(value) => set("isHero", value)} {...SWITCH_COLORS} accessibilityLabel="Lead character" /></View>
           {onDelete ? <Pressable onPress={onDelete} accessibilityRole="button" style={styles.deleteButton}><Text style={styles.deleteText}>Delete character</Text></Pressable> : null}
         </ScrollView>
         <View style={[styles.stickyFooter, { paddingBottom: Math.max(bottomInset, spacing.md) }]}>
@@ -829,6 +1005,53 @@ function CharacterCraftScreen({
             <Text style={styles.primaryCtaText}>Save</Text><Check size={20} color={colors.surface} />
           </Pressable>
         </View>
+      {/*
+        Rendered as an overlay inside this screen rather than as a second
+        React Native modal. Craft character is ALREADY a fullScreen modal, and
+        nesting one inside another is the RN case that intermittently renders
+        nothing on iOS. An absolutely-positioned sibling of the scroll view
+        sits above everything here anyway, and it cannot be dismissed by an
+        accidental swipe the way a sheet can.
+
+        (create-flow-more-options.test.tsx counts modal elements in this file
+        by source scan, so the literal tag name is deliberately not written
+        here even in prose.)
+      */}
+      {unsavedPromptOpen ? (
+        <View style={styles.dialogRoot}>
+          <Pressable style={styles.dialogBackdrop} onPress={onKeepEditing} accessibilityRole="button" accessibilityLabel="Keep editing this character" />
+          <View style={[styles.dialogCard, { paddingBottom: Math.max(bottomInset, spacing.xl) }]}>
+            <Text style={styles.dialogTitle}>Save this character?</Text>
+            <Text style={styles.dialogBody}>
+              You have changes that are not saved yet. Discarding loses everything you typed on this screen{character.portraitUrl ? ", including the image you generated" : ""}.
+            </Text>
+            {/*
+              The safe action is the big filled one and the destructive action
+              says exactly what it destroys -- "Discard changes", never "Go
+              back", because a user who taps the wrong control here loses the
+              whole sheet. When the name is still empty there is nothing that
+              CAN be saved, so the primary offers the other safe way out
+              instead of sitting disabled with no explanation.
+            */}
+            <Pressable
+              onPress={canSave ? onSave : onKeepEditing}
+              accessibilityRole="button"
+              accessibilityLabel={canSave ? "Save character" : "Keep editing this character"}
+              style={styles.dialogPrimary}
+            >
+              <Text style={styles.dialogPrimaryText}>{canSave ? "Save character" : "Keep editing"}</Text>
+            </Pressable>
+            <Pressable
+              onPress={onDiscard}
+              accessibilityRole="button"
+              accessibilityLabel="Discard changes to this character"
+              style={styles.dialogDestructive}
+            >
+              <Text style={styles.dialogDestructiveText}>Discard changes</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       </KeyboardAvoidingView>
     </View>
   );
@@ -897,7 +1120,8 @@ const styles = StyleSheet.create({
   addCharacterTitle: { color: colors.accent, fontFamily: fonts.ui, fontSize: 16, fontWeight: "800" },
   addCharacterHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17 },
   characterCard: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface2, alignItems: "center", justifyContent: "center" },
+  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface2, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  avatarImage: { width: "100%", height: "100%" },
   avatarLead: { backgroundColor: colors.accentSoft },
   avatarReady: { borderWidth: 1, borderColor: colors.accent },
   avatarText: { color: colors.accent, fontFamily: fonts.display, fontSize: 17 },
@@ -936,14 +1160,15 @@ const styles = StyleSheet.create({
   groupedFieldCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   groupedFieldDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   reviewHero: { gap: spacing.sm, paddingTop: spacing.lg },
-  strengthCard: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.md, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: "#FFD8C0" },
-  strengthHead: { flexDirection: "row", justifyContent: "space-between" },
-  strengthLabel: { color: colors.accent, fontFamily: fonts.display, fontSize: 19 },
-  strengthSlots: { color: colors.accent, fontFamily: fonts.ui, fontWeight: "800", fontSize: 13 },
-  strengthTrack: { flexDirection: "row", gap: spacing.xs },
-  strengthBar: { height: 5, flex: 1, borderRadius: 3, backgroundColor: "#FFD8C0" },
-  strengthBarActive: { backgroundColor: colors.accent },
-  strengthDetail: { color: colors.muted, fontFamily: fonts.ui, fontSize: 13, lineHeight: 18 },
+  // spacing.related is the label-to-control gap: the caption and the bar are
+  // one unit, so they hug, and the meter as a whole is parted from the review
+  // card by the scroll container's own larger gap.
+  strengthMeter: { gap: spacing.related },
+  strengthMeterHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: spacing.sm },
+  strengthMeterLabel: { color: colors.ink, fontFamily: fonts.ui, fontWeight: "800", fontSize: 13 },
+  strengthMeterCount: { color: colors.tertiary, fontFamily: fonts.ui, fontWeight: "800", fontSize: 13 },
+  strengthTrack: { height: 6, borderRadius: 3, backgroundColor: colors.borderStrong, overflow: "hidden" },
+  strengthFill: { height: "100%", borderRadius: 3, backgroundColor: colors.accent },
   reviewCard: { borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
   reviewRow: { minHeight: 68, flexDirection: "row", alignItems: "center", padding: spacing.md, gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   reviewCopy: { flex: 1, gap: 3 },
@@ -964,7 +1189,11 @@ const styles = StyleSheet.create({
   portraitPanel: { flexDirection: "row", alignItems: "center", gap: spacing.lg, paddingVertical: spacing.sm },
   portraitPreview: { width: 128, height: 192, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   portraitPreviewReady: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
-  portraitInitial: { color: colors.accent, fontFamily: fonts.display, fontSize: 42 },
+  portraitImage: { width: "100%", height: "100%" },
+  // Sits over the card rather than replacing it, so a Reimagine keeps the
+  // previous portrait visible underneath while the new one is generating.
+  portraitBusy: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: colors.accentSoft, opacity: 0.94 },
+  portraitBusyText: { color: colors.accent, fontFamily: fonts.ui, fontSize: 12, fontWeight: "800" },
   portraitHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, textAlign: "center", paddingHorizontal: spacing.md },
   portraitActions: { flex: 1, gap: spacing.md, alignItems: "flex-start" },
   outlineButton: { minHeight: 46, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.accent, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
@@ -973,5 +1202,14 @@ const styles = StyleSheet.create({
   portraitError: { color: colors.heart, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17 },
   deleteButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   deleteText: { color: colors.heart, fontFamily: fonts.ui, fontWeight: "800", fontSize: 14 },
+  dialogRoot: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end" },
+  dialogBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.ink, opacity: 0.5 },
+  dialogCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.xl, gap: spacing.related },
+  dialogTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 22 },
+  dialogBody: { color: colors.muted, fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, marginBottom: spacing.sm },
+  dialogPrimary: { minHeight: 52, borderRadius: radius.md, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
+  dialogPrimaryText: { color: colors.surface, fontFamily: fonts.ui, fontWeight: "800", fontSize: 16 },
+  dialogDestructive: { minHeight: 52, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  dialogDestructiveText: { color: colors.heart, fontFamily: fonts.ui, fontWeight: "800", fontSize: 15 },
   stickyFooter: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg, paddingHorizontal: spacing.xl, paddingTop: spacing.md },
 });
