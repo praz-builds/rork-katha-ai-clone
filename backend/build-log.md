@@ -7,6 +7,40 @@
 
 ---
 
+## 2026-09-08 IST — Onboarding preview wait timing and loader polish
+
+### Changed
+
+- Expo-only change: the writer onboarding details CTA now warms the single
+  onboarding `shape-story` request as soon as the complete brief is known, so
+  the email/code steps overlap the model latency and the wait screen only covers
+  the unresolved tail.
+- Replaced the generic center mark in the crafting loader with a simplified
+  Katha app-icon draw/fill animation, porting the SwiftUI LogoDraw behaviour to
+  React Native SVG + Reanimated for iOS and Android.
+- Fixed the warmed-request failure race: a failed warm result is retained until
+  the crafting screen consumes it, then cleared so an explicit retry performs a
+  fresh request.
+
+### Live Smoke
+
+- Ran 5 live onboarding `shape-story` requests against the configured Supabase
+  project using anonymous sessions.
+- Shape latency: min 10.3s, median 11.3s, average 11.7s, max 14.2s.
+- End-to-end anonymous auth + bootstrap + shape latency: 13.4s to 16.8s.
+- All 5 returned usable shapes with title and opening. No production-level
+  failures occurred, so no `public.error_events` rows were written.
+
+### Verification
+
+- `pnpm test -- --runTestsByPath src/__tests__/crafting-loader.test.tsx src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: 3 suites, 91 tests passing.
+- `pnpm typecheck` clean.
+- `pnpm lint` exits with 0 errors and the existing warning set.
+- `pnpm exec jest --runInBand`: 34 suites, 331 tests passing.
+- `pnpm exec expo-doctor`: 18/18 checks passing with local Node 22 in PATH.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-check` compiled the web bundle.
+- Local Expo web started on `http://localhost:8091/` because 8090 was occupied by another Katha checkout.
+
 ## 2026-09-07 UTC — Entity grounding, a retired spice tier, and private by default
 
 **Session:** Three tracks built in parallel by sub-agents against disjoint file

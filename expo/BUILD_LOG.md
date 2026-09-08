@@ -2,6 +2,41 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-08: Writer onboarding preview warming
+
+### Changed
+
+- Warmed the onboarding preview `shape-story` request from the details CTA, as
+  soon as the complete writer brief is known, so email/code time overlaps the
+  model call and the wait screen only covers the remaining tail.
+- Fixed the warmed-request failure race so a failed warm result reaches the
+  retry screen once, then clears for a real retry.
+
+### Not shipped
+
+- A Katha app-icon draw/fill animation was built for the crafting loader and
+  then removed before this landed, on the product owner's instruction. The
+  loader keeps its existing rings, arcs and breathing disc. Recorded here rather
+  than silently dropped, so the next person does not rebuild it assuming it was
+  an oversight.
+
+### Measurement
+
+- Live onboarding `shape-story` smoke, n=5: shape-only min 10.3s, median 11.3s,
+  average 11.7s, max 14.2s.
+- End-to-end anonymous auth + bootstrap + shape ranged from 13.4s to 16.8s.
+- All five returned title and opening.
+
+### Verification
+
+- `pnpm test -- --runTestsByPath src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: 2 suites passing.
+- `pnpm typecheck` clean.
+- `pnpm lint` exits with 0 errors and the existing warning set.
+- `pnpm exec jest --runInBand`: 34 suites, 331 tests passing.
+- `pnpm exec expo-doctor`: 18/18 checks passing with local Node 22 in PATH.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-check` compiled the web bundle.
+- Local Expo web started at `http://localhost:8091/`; 8090 was already occupied by another Katha checkout.
+
 ## 2026-09-06: Writer onboarding consistency and paywall pass
 
 ### Changed

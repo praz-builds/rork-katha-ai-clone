@@ -61,10 +61,10 @@ import type { CreateDraft, Genre, WriterEntryContext } from "@/types/domain";
  * is reserved. The real story is created afterwards, from the Create studio's
  * review screen, on either the purchased plan or the welcome grant.
  *
- * That call is now started when the user LEAVES the idea step rather than when
- * they reach the wait, because it needs only the idea and the shelf and both
- * are final at that point. See `startShaping` for what that costs and where
- * `ONBOARDING_FLOW.md`'s budget needs rewording.
+ * That call is now started when the user submits the details screen rather
+ * than when they reach the wait. At that point the complete brief is known, so
+ * the one allowed request can warm while the user saves and verifies email;
+ * the loader only covers the unresolved tail.
  *
  * ## Why the user presses Create rather than us
  *
@@ -438,9 +438,6 @@ export default function WriterOnboarding(
           );
           return { failed: false, retryable: true, shaped };
         } catch (error) {
-          if (pendingShape.current?.key === key) {
-            pendingShape.current = null;
-          }
           return {
             failed: true,
             retryable: storyShapeRetryable(error),
@@ -456,6 +453,7 @@ export default function WriterOnboarding(
   );
 
   const craft = useCallback(async (alive: () => boolean) => {
+    const requestKey = shapeRequestKey(shapeRequest);
     const { failed, message, retryable, shaped } = await startShaping(shapeRequest);
     // The request outlives a user who backgrounds the app or taps Back while it
     // is in flight. Writing state and navigating from a dead screen is at best
@@ -463,6 +461,9 @@ export default function WriterOnboarding(
     if (!alive()) return;
 
     if (failed || !shaped) {
+      if (pendingShape.current?.key === requestKey) {
+        pendingShape.current = null;
+      }
       setShapeRetryable(retryable);
       setShapeError(message ??
         (retryable
@@ -497,6 +498,14 @@ export default function WriterOnboarding(
     setBeats(resolved.beats ?? []);
     go("preview");
   }, [genre, go, seed, shapeRequest, startShaping, typedCast]);
+
+  const submitDetails = useCallback(() => {
+    // The brief is complete here. Warm the single onboarding shape request
+    // while the user saves their story, so the branded wait only covers the
+    // unresolved tail instead of the full model latency.
+    void startShaping(shapeRequest);
+    go(authenticated ? "crafting" : "email");
+  }, [authenticated, go, shapeRequest, startShaping]);
 
   useEffect(() => {
     if (step !== "crafting") return;
@@ -1211,10 +1220,7 @@ export default function WriterOnboarding(
 
               {/* Auth is one-way. Walking back to change the idea must not
                   send a verified address a second code. */}
-              <Primary
-                label="Create my story"
-                onPress={() => go(authenticated ? "crafting" : "email")}
-              />
+              <Primary label="Create my story" onPress={submitDetails} />
             </StepScroll>
           )
           : step === "email"
