@@ -157,7 +157,7 @@ async function scalar<T>(
 // The seeded voice registry
 // ---------------------------------------------------------------------------
 
-Deno.test("seeds exactly today's 8 voices, in sort order, all active", async () => {
+Deno.test("seeds exactly today's 8 voices, in sort order, with only the backed ones active", async () => {
   const db = await createDatabase();
   try {
     await asService(db);
@@ -170,7 +170,20 @@ Deno.test("seeds exactly today's 8 voices, in sort order, all active", async () 
       result.rows.map((r) => r.id),
       ["aria", "kai", "elvira", "alvaro", "onyx", "nova", "echo", "fable"],
     );
-    assertEquals(result.rows.every((r) => r.is_active), true);
+    // All eight rows still exist -- 00053 deactivates `elvira` and `alvaro`
+    // rather than deleting them, because `chapter_audio.voice_id` references
+    // this table and a narration already generated in one of those voices must
+    // keep playing. What it changes is reachability: their provider
+    // (`edge_tts`) has no implementation, so offering them meant a reader
+    // choosing a voice that could only ever fail.
+    assertEquals(
+      result.rows.filter((r) => !r.is_active).map((r) => r.id),
+      ["elvira", "alvaro"],
+    );
+    assertEquals(
+      result.rows.filter((r) => r.is_active).map((r) => r.id),
+      ["aria", "kai", "onyx", "nova", "echo", "fable"],
+    );
     assertEquals(
       result.rows.filter((r) => r.tier === "standard").map((r) => r.id),
       ["aria", "kai", "elvira", "alvaro"],
@@ -196,8 +209,13 @@ Deno.test("voices: anon has no grant at all, authenticated can read active voice
     assertEquals(await attempt(db, "select 1 from voices limit 1"), "42501");
 
     await asUser(db, AUTHOR);
+    // Six, not eight: the policy is `is_active = true`, and 00053 deactivated
+    // the two `edge_tts` voices that have no implementation behind them. That
+    // the number here tracks the seed's active count rather than its row count
+    // is the point -- a voice deactivated in a later migration must actually
+    // stop being offered, not merely stop being recommended.
     const count = await scalar<string>(db, "select count(*)::text from voices");
-    assertEquals(count, "8");
+    assertEquals(count, "6");
   } finally {
     await db.close();
   }

@@ -165,6 +165,20 @@ function storyHook(story: Story): string {
     "";
 }
 
+/**
+ * Does this story have narration a reader can actually hear right now?
+ *
+ * This was briefly widened to treat any PUBLISHED chapter as listenable, on the
+ * reasoning that narration generates on first play. That was wrong in practice:
+ * generation sits behind `canGenerateNarration`, which defaults CLOSED, and the
+ * reader has no path that triggers it -- so Listen opened a playback flow that
+ * could only ever show an alert. Promising something the product cannot deliver
+ * is worse than saying no.
+ *
+ * So the check is what it was: audio that exists. When it does not, Listen says
+ * so plainly rather than opening a dead end. It widens again the day generation
+ * is enabled AND the reader can trigger it, and not before.
+ */
 function hasNarration(story: Story): boolean {
   return story.chapters.some((chapter) =>
     Boolean(chapter.audioUrl || chapter.audioUrls?.female || chapter.audioUrls?.male)

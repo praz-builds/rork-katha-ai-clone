@@ -61,7 +61,16 @@ export default function PracticeScreen({ onBack, onStory }: PracticeScreenProps)
 
   const removePhrase = useCallback(async (phraseId: string) => {
     setPhrases((prev) => prev ? prev.filter((entry) => entry.id !== phraseId) : prev);
-    setDueQueue((prev) => prev.filter((entry) => entry.id !== phraseId));
+    // Removing an entry the cursor has already passed shifts the queue left
+    // under it, so the cursor then points one PAST the next due phrase and that
+    // phrase is silently skipped for the rest of the session. The cursor moves
+    // with the queue rather than staying put.
+    setDueQueue((prev) => {
+      const removedAt = prev.findIndex((entry) => entry.id === phraseId);
+      if (removedAt === -1) return prev;
+      setCursor((index) => (removedAt < index ? index - 1 : index));
+      return prev.filter((entry) => entry.id !== phraseId);
+    });
     const ok = await unsavePhrase(phraseId);
     if (!ok) await load();
   }, [load]);

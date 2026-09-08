@@ -71,6 +71,18 @@ export function useChapterEditor({
   debounceMs = DEFAULT_DEBOUNCE_MS,
 }: UseChapterEditorParams): UseChapterEditorResult {
   const [text, setText] = useState(initialContent);
+  /**
+   * The text as it stands right now, readable from inside an async callback.
+   *
+   * A regeneration captured the text when it started and rebuilt the chapter
+   * from that snapshot when it resolved, so anything the writer typed while the
+   * rewrite was in flight was silently discarded on arrival. State is stale
+   * inside that closure; this ref is not.
+   */
+  const textRef = useRef(initialContent);
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [regenerateStatus, setRegenerateStatus] = useState<RegenerateStatus>(
@@ -241,7 +253,28 @@ export function useChapterEditor({
             "The AI returned an empty rewrite. Please try again.",
           );
         }
-        const nextParagraphs = [...paragraphs];
+        // Rebuilt from the text as it is NOW, not from the snapshot taken when
+        // the rewrite started. Using the snapshot threw away whatever the
+        // writer typed while waiting.
+        //
+        // The current text is ALWAYS the base, even when the paragraph count
+        // changed. An earlier version fell back to the snapshot in that case,
+        // which fixed the ambiguity by discarding every manual edit the writer
+        // had made -- including edits to paragraphs the rewrite never touched.
+        // Losing the untouched paragraphs to protect the touched one is a worse
+        // trade than losing the rewrite.
+        //
+        // So when the target index no longer exists, the rewrite is dropped and
+        // reported as a failure. The writer keeps everything they typed, and is
+        // told the rewrite could not be placed rather than silently losing
+        // either one.
+        const currentParagraphs = textRef.current.split("\n\n");
+        if (paragraphIndex >= currentParagraphs.length) {
+          throw new Error(
+            "That paragraph moved while the rewrite was running. Your text is unchanged. Please try again.",
+          );
+        }
+        const nextParagraphs = [...currentParagraphs];
         nextParagraphs[paragraphIndex] = updated;
         // Exactly one prior version is held, and this replaces whatever was
         // held before - it is never pushed onto a stack.
