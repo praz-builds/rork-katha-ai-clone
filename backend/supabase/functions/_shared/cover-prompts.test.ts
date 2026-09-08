@@ -2,7 +2,8 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { buildCoverPrompt } from "./cover-prompts.ts";
+import { buildCoverPrompt, hasCoverPromptConfig } from "./cover-prompts.ts";
+import { PRIMARY_GENRES } from "./types.ts";
 
 /**
  * The cover prompt is the one prompt in the system with no schema, no parser
@@ -280,4 +281,30 @@ Deno.test("a trailing separator in Avoid does not double the clause period", () 
   );
   assert(prompt.includes("Do not depict: blood."));
   assert(!prompt.includes("blood,."));
+});
+
+// ---------------------------------------------------------------------------
+// v7 taxonomy (2026-09-08): four new genres, none missing a cover config
+// ---------------------------------------------------------------------------
+
+Deno.test("each new v7 genre has its own cover prompt config", () => {
+  for (
+    const genre of ["educational", "fanfiction", "folktale", "sliceOfLife"]
+  ) {
+    assert(hasCoverPromptConfig(genre), `${genre} has no cover prompt config`);
+    const prompt = buildCoverPrompt(genre, "T", []);
+    assert(
+      prompt.includes(`Book cover illustration for a ${genre} story.`),
+      `${genre} did not render its own genre line`,
+    );
+  }
+});
+
+// No genre in the full taxonomy — including the seven removed from the UI,
+// which still need a cover when an existing story's chapter art regenerates —
+// may be missing its own config and silently fall back to contemporary's look.
+Deno.test("no genre in the taxonomy is missing a cover prompt config", () => {
+  for (const genre of PRIMARY_GENRES) {
+    assert(hasCoverPromptConfig(genre), `${genre} has no cover prompt config`);
+  }
 });

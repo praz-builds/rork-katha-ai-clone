@@ -22,6 +22,7 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 const mockInferStoryBrief = jest.fn();
 const mockRegenerateCover = jest.fn();
 const mockFetchCoverState = jest.fn();
+const mockPublishStory = jest.fn();
 const mockLoadDraft = jest.fn();
 const mockSaveDraft = jest.fn();
 const mockClearDraft = jest.fn();
@@ -59,6 +60,7 @@ jest.mock("@/lib/api", () => {
     inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
     regenerateCover: (...args: unknown[]) => mockRegenerateCover(...args),
     fetchCoverState: (...args: unknown[]) => mockFetchCoverState(...args),
+    publishStory: (...args: unknown[]) => mockPublishStory(...args),
     createGenerationRequestId: () => "cover-request",
   };
 });
@@ -138,7 +140,11 @@ function completedStream(frame: string) {
 }
 
 /** Drives Create through chapter 1 and leaves the screen in the editor. */
-async function renderAtEditor(cover: Record<string, unknown>, credits = 12) {
+async function renderAtEditor(
+  cover: Record<string, unknown>,
+  credits = 12,
+  onPublished: (story: unknown) => void = jest.fn(),
+) {
   mockExpoFetch.mockResolvedValue({
     ok: true,
     status: 200,
@@ -150,7 +156,7 @@ async function renderAtEditor(cover: Record<string, unknown>, credits = 12) {
     <CreateStudioScreen
       credits={credits}
       onCreditUsed={jest.fn()}
-      onPublished={jest.fn()}
+      onPublished={onPublished}
       onBack={jest.fn()}
     />,
   );
@@ -174,8 +180,12 @@ async function renderAtEditor(cover: Record<string, unknown>, credits = 12) {
 }
 
 /** Drives Create through chapter 1 and on to the review step. */
-async function renderAtReview(cover: Record<string, unknown>, credits = 12) {
-  const view = await renderAtEditor(cover, credits);
+async function renderAtReview(
+  cover: Record<string, unknown>,
+  credits = 12,
+  onPublished: (story: unknown) => void = jest.fn(),
+) {
+  const view = await renderAtEditor(cover, credits, onPublished);
 
   // The editor's "Next" is one press from review now. There is no cover step
   // in between, and this failing is how a reintroduced one would be caught.
@@ -195,6 +205,7 @@ beforeEach(() => {
     suggestedMoments: [],
   });
   mockFetchCoverState.mockReset().mockResolvedValue(null);
+  mockPublishStory.mockReset().mockResolvedValue({ published: true });
   mockRegenerateCover.mockReset().mockResolvedValue({
     coverImageUrl: "https://cdn.test/covers/story/cover-r1.png",
     coverStatus: "ready",
@@ -530,6 +541,65 @@ describe("the cover watch", () => {
       // bound rather than start counting again from zero.
       await advance(COVER_POLL_MAX_ATTEMPTS);
       expect(mockFetchCoverState).toHaveBeenCalledTimes(COVER_POLL_MAX_ATTEMPTS);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+/**
+ * The cover the writer watched arrive is the cover the published story gets.
+ *
+ * The image is made asynchronously and reaches the screen through a poll, into
+ * `cover` state -- which is correct, because `setStory` last ran long before
+ * the image existed. But the story handed to `onPublished` was built from
+ * `story` alone, so it carried whatever `generate-story` answered with, which
+ * for a cover that was not finished yet is nothing at all. The writer watched
+ * their cover appear in the studio, published, and landed on a story showing
+ * the placeholder gradient, with the real image sitting in Storage the whole
+ * time. Reopening the story later fetched it and it came back, which made a
+ * certainty look like a fluke.
+ */
+describe("publishing a story whose cover arrived while the writer was editing", () => {
+  it("hands on the cover the poll delivered, not the empty one the story arrived with", async () => {
+    jest.useFakeTimers();
+    try {
+      const onPublished = jest.fn();
+      // Arrives with no image and work in progress -- the ordinary case, since
+      // the cover is scheduled the moment chapter 1 persists.
+      const view = await renderAtReview(
+        { cover_status: "generating", cover_regen_count: 0 },
+        12,
+        onPublished,
+      );
+      expect(view.getByTestId("cover-generating")).toBeTruthy();
+
+      mockFetchCoverState.mockResolvedValue({
+        coverImageUrl: "https://cdn.test/covers/story/arrived.png",
+        coverStatus: "ready",
+        coverRegenCount: 0,
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(COVER_POLL_INTERVAL_MS + 10);
+      });
+      await waitFor(() =>
+        expect(view.getByTestId("review-cover-image").props.source).toEqual({
+          uri: "https://cdn.test/covers/story/arrived.png",
+        })
+      );
+
+      await act(async () => {
+        fireEvent.press(view.getByText("Save to library"));
+      });
+
+      await waitFor(() => expect(onPublished).toHaveBeenCalledTimes(1));
+      expect(onPublished.mock.calls[0][0]).toMatchObject({
+        coverImageUrl: "https://cdn.test/covers/story/arrived.png",
+        // The status travels with the url. A story whose status still said
+        // "generating" over an image that had arrived would draw the reader's
+        // placeholder on top of a real cover.
+        coverStatus: "ready",
+      });
     } finally {
       jest.useRealTimers();
     }

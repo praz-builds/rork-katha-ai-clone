@@ -165,6 +165,20 @@ function storyHook(story: Story): string {
     "";
 }
 
+/**
+ * Does this story have narration a reader can actually hear right now?
+ *
+ * This was briefly widened to treat any PUBLISHED chapter as listenable, on the
+ * reasoning that narration generates on first play. That was wrong in practice:
+ * generation sits behind `canGenerateNarration`, which defaults CLOSED, and the
+ * reader has no path that triggers it -- so Listen opened a playback flow that
+ * could only ever show an alert. Promising something the product cannot deliver
+ * is worse than saying no.
+ *
+ * So the check is what it was: audio that exists. When it does not, Listen says
+ * so plainly rather than opening a dead end. It widens again the day generation
+ * is enabled AND the reader can trigger it, and not before.
+ */
 function hasNarration(story: Story): boolean {
   return story.chapters.some((chapter) =>
     Boolean(chapter.audioUrl || chapter.audioUrls?.female || chapter.audioUrls?.male)
@@ -176,6 +190,19 @@ function badgeLabels(story: Story): string[] {
     story.contentRating?.trim(),
     story.audienceMode === "kids" ? "Kids" : undefined,
   ].filter((label): label is string => Boolean(label));
+}
+
+/**
+ * Is this story shelved as Educational?
+ *
+ * `primaryGenre` is the authoritative single genre and is what the picker
+ * sets; `genre` is the legacy array a seeded or older row may carry instead.
+ * Checking only one of them would miss whichever kind of row the reader
+ * happened to open, and a disclosure that appears on some educational stories
+ * and not others is worse than none -- its absence would read as a statement.
+ */
+function isEducational(story: { primaryGenre?: string; genre?: string }): boolean {
+  return story.primaryGenre === "educational" || story.genre === "educational";
 }
 
 export default function StoryDetailScreen({
@@ -351,7 +378,12 @@ export default function StoryDetailScreen({
     }
   }, [story.id]);
 
-  const coverImage = story.coverImage
+  // The generated cover first, the bundled seed asset second. See the note in
+  // ReaderScreen: reading only `coverImage` meant a story the user generated
+  // showed its art in the studio and lost it everywhere else.
+  const coverImage = story.coverImageUrl
+    ? { uri: story.coverImageUrl }
+    : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;
   const focalX = story.focalX ?? 0.5;
@@ -630,6 +662,29 @@ export default function StoryDetailScreen({
               <MetaRow label="Content rating" value={story.contentRating} />
             )}
             <MetaRow label="Chapters" value={String(story.chapters.length)} />
+            {isEducational(story) && (
+              /*
+                An Educational story is fiction, and says so.
+
+                The genre's prompt module works hard at accuracy -- it tells the
+                model to state a mechanism only when it is certain and to choose
+                the plainer true version over the impressive specific one -- but
+                that is guidance to a generator, not a fact check, and nothing
+                in the pipeline verifies a single claim. A confident wrong date
+                or mechanism reaches a reader through the ordinary publication
+                path looking exactly like a correct one.
+
+                Prompt guidance cannot close that gap; only a reader who knows
+                what they are holding can. So the one thing the product can
+                honestly promise -- that this was written by a model and is not
+                checked -- is stated where the reader decides whether to read
+                it, rather than left for them to assume.
+              */
+              <Text style={styles.educationalNote} accessibilityRole="text">
+                This story is fiction written by AI. Facts in it are not
+                verified — check anything you plan to rely on.
+              </Text>
+            )}
           </View>
 
           {/*
@@ -925,6 +980,12 @@ const styles = StyleSheet.create({
   /* Chapter list */
   chapterGroup: {
     gap: 0,
+  },
+  educationalNote: {
+    ...type.caption,
+    color: colors.muted,
+    marginTop: spacing.md,
+    lineHeight: 18,
   },
   sectionEyebrow: {
     ...type.caption,

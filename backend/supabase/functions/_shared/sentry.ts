@@ -115,7 +115,6 @@ interface SentryModule {
   flush(timeoutMs?: number): Promise<boolean>;
 }
 
-
 /**
  * An error code safe to send to a third party, or undefined.
  *

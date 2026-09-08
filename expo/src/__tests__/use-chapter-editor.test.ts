@@ -162,3 +162,91 @@ it("does not silently discard a failed save when the editor closes (finding 7)",
   // original text, not the never-saved edit.
   expect(result.current.getLastSavedText()).toBe("Original text.");
 });
+
+
+
+// A manual edit made WHILE a rewrite is in flight must survive its arrival.
+//
+// `regenerate` captured the text when it started and rebuilt the chapter from
+// that snapshot when it resolved, so anything typed during the wait was
+// silently discarded the moment the rewrite came back. The writer watched their
+// own sentence disappear with no reason to connect it to the wand.
+it("keeps an edit typed while a rewrite is in flight", async () => {
+  let resolveRewrite: ((value: string) => void) | undefined;
+  mockEditParagraph.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveRewrite = resolve;
+      }),
+  );
+
+  const { result } = await renderHook(() =>
+    useChapterEditor({
+      ...baseParams,
+      initialContent: "First paragraph.\n\nSecond paragraph.",
+    })
+  );
+
+  await act(async () => {
+    result.current.regenerate(0, "make it colder");
+  });
+
+  // The writer keeps working while the model thinks.
+  await act(async () => {
+    result.current.onChangeText(
+      "First paragraph.\n\nSecond paragraph, edited.",
+    );
+  });
+
+  await act(async () => {
+    resolveRewrite?.("A colder first paragraph.");
+    await Promise.resolve();
+  });
+
+  // Both survive: the rewrite landed on paragraph one, the manual edit on two.
+  await waitFor(() =>
+    expect(result.current.text).toContain("A colder first paragraph.")
+  );
+  expect(result.current.text).toContain("Second paragraph, edited.");
+});
+
+// The paragraph-count fallback must not be a worse loss than the one it avoids.
+//
+// An earlier version of this fix fell back to the pre-rewrite snapshot whenever
+// the paragraph count had changed, which protected the target paragraph by
+// discarding EVERY manual edit the writer had made -- including edits to
+// paragraphs the rewrite never touched. The current text is now always the base.
+it("keeps edits to untouched paragraphs when a paragraph is added mid-rewrite", async () => {
+  let resolveRewrite: ((value: string) => void) | undefined;
+  mockEditParagraph.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveRewrite = resolve;
+      }),
+  );
+
+  const { result } = await renderHook(() =>
+    useChapterEditor({
+      ...baseParams,
+      initialContent: "One.\n\nTwo.",
+    })
+  );
+
+  await act(async () => {
+    result.current.regenerate(0, "colder");
+  });
+
+  // The writer edits paragraph two AND adds a third while waiting.
+  await act(async () => {
+    result.current.onChangeText("One.\n\nTwo, edited.\n\nThree, new.");
+  });
+
+  await act(async () => {
+    resolveRewrite?.("A colder one.");
+    await Promise.resolve();
+  });
+
+  await waitFor(() => expect(result.current.text).toContain("A colder one."));
+  expect(result.current.text).toContain("Two, edited.");
+  expect(result.current.text).toContain("Three, new.");
+});

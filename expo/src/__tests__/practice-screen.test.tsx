@@ -147,3 +147,34 @@ it("removes a phrase from the list", async () => {
     expect(mockUnsavePhrase).toHaveBeenCalledWith("p1");
   });
 });
+
+
+// Removing a phrase the cursor has already passed shifted the due queue left
+// under it, so the cursor then pointed one PAST the next due phrase and that
+// phrase was silently skipped for the rest of the session. The reader never saw
+// it come up, and nothing indicated why.
+it("does not skip the next due phrase when an earlier one is removed", async () => {
+  mockListSavedPhrases.mockResolvedValue([
+    phrase({ id: "p1", phrase: "first" }),
+    phrase({ id: "p2", phrase: "second" }),
+    phrase({ id: "p3", phrase: "third" }),
+  ]);
+
+  const view = await render(<PracticeScreen onBack={jest.fn()} />);
+  await waitFor(() => expect(view.getAllByText("first").length).toBeGreaterThan(0));
+
+  // Answer the first, so the cursor sits at index 1.
+  await fireEvent.press(view.getByLabelText("Got this phrase"));
+  await waitFor(() => expect(view.getAllByText("second").length).toBeGreaterThan(0));
+
+  // Remove the ALREADY-ANSWERED phrase, which sits before the cursor.
+  await act(async () => {
+    fireEvent.press(
+      view.getByLabelText('Remove "first" from saved phrases'),
+    );
+  });
+
+  // The queue shifted left, so without moving the cursor with it the screen
+  // would jump from "second" to "third" and never show "second" again.
+  await waitFor(() => expect(view.getAllByText("second").length).toBeGreaterThan(0));
+});

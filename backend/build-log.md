@@ -7,6 +7,183 @@
 
 ---
 
+## 2026-09-08 UTC — Eight review findings: an SSRF-by-redirect close, a read-count gate, and a practice vocabulary that finally agrees
+
+**Session:** Verified and fixed eight findings from an automated review pass
+(`codex/review-hardening`), plus one test that could not fail regardless of
+whether the code it covered was correct. All eight were confirmed real
+against the working tree; none were refuted. Not committed -- left for
+review.
+
+1. **SSRF via redirect (narration audio).** `fetchAllowedAudioUrl` in
+   `_shared/narration-audio.ts` now fetches with `redirect: "manual"` and
+   re-validates the host allowlist on every hop (capped at 5), instead of
+   checking only the URL it was first handed and letting `fetch` follow
+   redirects on its own past the check.
+2. **Unbounded base64 decode.** `decodeBase64Audio` now refuses a payload
+   over `MAX_AUDIO_BASE64_CHARS` (the 50 MB ceiling expressed in encoded
+   characters) before calling `atob`, mirroring the URL path's existing cap.
+3. **Read counts inflatable by any authenticated caller.** New migration
+   `00052_read_visibility_gate.sql` redefines `record_story_read` (00046) to
+   fold in the same readability predicate `save_phrase` (00047) already
+   uses -- `is_public or is_curated or author_id = caller` -- plus a
+   non-author additionally needing the specific chapter published. An
+   unreadable story fails with the identical "Story not found" a missing one
+   would, so the message cannot be used to probe for a private story's
+   existence. The author's own unpublished-story path is unchanged.
+4. **Practice outcome vocabulary mismatch.** Canonical vocabulary is the
+   backend's four-value `again | hard | good | easy`
+   (`record-practice`'s `OUTCOMES` set and the `record_phrase_practice` SQL
+   check constraint in 00047 already agreed on it, with real
+   spaced-repetition math keyed off those exact values). The client's
+   two-button UI keeps its `know | again` vocabulary but now maps onto the
+   canonical one at the wire boundary (`PRACTICE_OUTCOME_WIRE_VALUE` in
+   `expo/src/lib/phrases.ts`): `again -> again`, `know -> good`.
+5. **Saved-phrase id contract.** `save-phrase/index.ts` now returns
+   `phrase_id` at the response root as the `saved_phrases` row's own `id`
+   (the column `unsave-phrase` deletes by), not nested under `phrase` and
+   not the row's unrelated `phrase_id` foreign-key column into
+   `phrase_corpus`.
+6. **Remote list hiding local phrases.** `listSavedPhrases` in
+   `expo/src/lib/phrases.ts` now unions the remote answer with any local-only
+   entry the remote list omits (`mergeSavedPhrases`), instead of replacing
+   the local cache outright.
+7. **Untracked provider job.** `generate-audio/index.ts` now separates
+   "provider accepted a job" from "we recorded it": if
+   `markChapterAudioJobStarted` fails after RunPod already accepted the job,
+   the new `cancelRunpodNarration` (`_shared/narration-audio.ts`, backed by
+   `runpodCancelUrl` in `_shared/runpod.ts`) best-effort cancels it before the
+   row is marked failed, so a retry cannot race a still-running untracked job.
+8. **Concurrent preview seedings.** `seed-voice-previews/index.ts` adds a
+   module-level in-flight `Map` (`ensureVoicePreviewOnce`) so a second
+   caller for a voice already being generated on the same warm instance
+   reuses the first caller's promise instead of starting a second provider
+   job. Judged proportionate to a service-role, idempotent-outcome, rarely
+   concurrent endpoint -- no lock table added.
+9. **A test that could not fail.** `voices/index.test.ts`'s fixture held
+   only active voices, so the endpoint's `is_active` filtering could regress
+   to nothing and the suite would still pass. Added an inactive voice to the
+   fixture and made the stub honor the `is_active=eq.true` filter the way a
+   real table would, so the test now fails if filtering regresses (verified
+   by temporarily removing the filter from `_shared/voices.ts` and watching
+   it fail, then restoring it).
+
+**Verification:** `deno test --allow-env --allow-net --allow-read
+supabase/functions`: **621 passed, 0 failed** (607 baseline, +14 new).
+`deno test --allow-env --allow-net --allow-read supabase/migrations`: **90
+passed, 0 failed** (84 baseline, +6 new, all in the new
+`00052_read_visibility_gate_test.ts`). `deno check` and `deno fmt --check`
+clean on every touched file. Expo `tsc --noEmit`: clean. Expo `jest`: **451
+passed, 0 failed** (447 baseline, +4 new). Every new test that asserts a fix
+was confirmed to fail against the pre-fix code by temporarily reverting just
+that file with `git stash` and re-running.
+
+---
+## 2026-09-08: Onboarding preview survives its own failures
+
+### Changed
+
+- The onboarding preview no longer dead-ends. Every empty shape used to land on
+  a "Preview needs one more try" screen whose only certain exit was Back to
+  details - after the writer had typed an idea, chosen a shelf, entered a cast,
+  verified an email and watched a loader. The preview is now built from their
+  own words when the model gives us nothing: `fallbackTitle` from the idea, the
+  shelf they chose, the cast they entered, and one line naming the chapter plan
+  as something written when the story starts.
+- A shape already in hand is reused when a later request is refused. The warm
+  request is keyed on the whole brief, so walking back to add one moment spends
+  another of the six shapes a minute the backend allows; `lastShape` keeps the
+  preview the writer already earned instead of losing it to the seventh.
+- The retry screen keeps Try again (it is now only reached when a retry can
+  succeed) and gains "Continue without it", so no provider outage can hold a
+  verified writer on an apology.
+- `shape-story` says why a shape is empty: `rate_limited`, `provider_failed` or
+  `unavailable`. A refused rate-limit claim used to be indistinguishable from a
+  model returning nothing, and the client read both as non-retryable content
+  failure - so a capacity ceiling was reported to the user as a bad idea.
+- The onboarding opening prompt asks for 90-120 words in exactly two
+  paragraphs, down from 120-180 in two or three. The preview renders
+  `slice(0, 2)` clamped to three lines and two, and `finish()` never carries
+  `opening` into the draft, so everything past the clamp was generated, paid
+  for, waited on and dropped. A test now holds the band and the clamp together.
+- `generateFastStructuredText` reserves a tail for the runner-up instead of
+  splitting its window evenly by model index. `OPENROUTER_MODELS[0]` is 404 by
+  account data policy today, so `[1]` inherits the window and the measured
+  8-11s shape lands; an even split would have handed `[0]` 13.5s of
+  onboarding's 45s the day that policy changes, aborting normal requests near
+  the finish. Leader now gets 21s, runner-up 27s.
+- Migration 00046 removes both anonymous ceilings on shaped previews: the 500
+  a day across the whole project, and the 30 a day per anonymous network scope.
+  Onboarding is anonymous, so the first was a cap on how many people could ever
+  be shown a shaped preview in a day and the second rationed one office or cafe
+  to thirty. Neither could stop an abuser - a shared ceiling only decides which
+  innocent user absorbs the abuse - so what survives is the per-user window of
+  six a minute, which is scoped to whoever is actually doing the damage.
+  `shape-story` stops computing an HMAC of a guest's address for a parameter
+  nothing reads any more, and the guest-without-a-scope path that silently
+  refused to shape at all is gone with it.
+
+### Loader
+
+- The crafting loader's hold-on-last-stage fix is not in this branch. The bar
+  used to fill to 100%, snap back to 4% and re-read stage one - at the 8-11s
+  this screen actually waits, a claim the screen then withdrew. The fix was
+  written here, picked up by the brand work rebuilding the same file, and
+  reached main in PR #82, which also retired the progress bar outright. That
+  answers the same complaint more completely than capping the bar did, so
+  nothing is owed here; recorded so the fix is not written a second time.
+
+### Still open
+
+- `anonymous_story_shape_rate_limits` and `anonymous_story_shape_global_limits`
+  are dead as of 00046 - nothing reads or writes them. Dropping them is a
+  destructive change and was deliberately not smuggled in behind a policy one.
+- Splitting the refusal reason by which window was hit needs the RPC to return
+  more than a boolean. With one window left this matters less than it did.
+
+### Verification
+
+- `pnpm typecheck` clean, `pnpm lint` no new findings, `pnpm test` 444 passed
+  across 51 suites (3 rewritten to the new contract, 3 added).
+- `deno test -A supabase/functions/` 553 passed, 0 failed (3 added).
+- `deno test -A supabase/migrations/` 83 passed, 0 failed (4 added; three in
+  00039 and one in 00034 retired with a note in place, because they asserted
+  ceilings 00046 deletes and every migration test runs the whole stack).
+
+## 2026-09-08 IST — Onboarding preview wait timing and loader polish
+
+### Changed
+
+- Expo-only change: the writer onboarding details CTA now warms the single
+  onboarding `shape-story` request as soon as the complete brief is known, so
+  the email/code steps overlap the model latency and the wait screen only covers
+  the unresolved tail.
+- Replaced the generic center mark in the crafting loader with a simplified
+  Katha app-icon draw/fill animation, porting the SwiftUI LogoDraw behaviour to
+  React Native SVG + Reanimated for iOS and Android.
+- Fixed the warmed-request failure race: a failed warm result is retained until
+  the crafting screen consumes it, then cleared so an explicit retry performs a
+  fresh request.
+
+### Live Smoke
+
+- Ran 5 live onboarding `shape-story` requests against the configured Supabase
+  project using anonymous sessions.
+- Shape latency: min 10.3s, median 11.3s, average 11.7s, max 14.2s.
+- End-to-end anonymous auth + bootstrap + shape latency: 13.4s to 16.8s.
+- All 5 returned usable shapes with title and opening. No production-level
+  failures occurred, so no `public.error_events` rows were written.
+
+### Verification
+
+- `pnpm test -- --runTestsByPath src/__tests__/crafting-loader.test.tsx src/__tests__/writer-onboarding.test.tsx src/__tests__/writer-onboarding-interactions.test.tsx`: 3 suites, 91 tests passing.
+- `pnpm typecheck` clean.
+- `pnpm lint` exits with 0 errors and the existing warning set.
+- `pnpm exec jest --runInBand`: 34 suites, 331 tests passing.
+- `pnpm exec expo-doctor`: 18/18 checks passing with local Node 22 in PATH.
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-check` compiled the web bundle.
+- Local Expo web started on `http://localhost:8091/` because 8090 was occupied by another Katha checkout.
+
 ## 2026-09-07 UTC — Entity grounding, a retired spice tier, and private by default
 
 **Session:** Three tracks built in parallel by sub-agents against disjoint file
@@ -2650,6 +2827,255 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
   `seed-voice-previews`, plus the shared modules) are deployed. No production-
   level test ran, so no `public.error_events` rows were written this session.
 - Not committed. Changes are left in the working tree per instructions.
+
+## 2026-09-08 UTC — The v7 genre taxonomy: four new genres, seven quietly retired from the UI, and spice off the surface
+
+### Changed
+
+- **Taxonomy.** `_shared/types.ts` `PrimaryGenre` grows from 15 to 19 members:
+  `educational`, `fanfiction`, `folktale`, `sliceOfLife` are new. Per product
+  decision, the creation UI now shows exactly 12 genres in this order --
+  Adventure, Comedy, Educational, Fanfiction, Folktale, Historical, Sci-Fi,
+  Fantasy, Mystery, Horror, Slice of Life, Romance (Romance deliberately last)
+  -- captured as `UI_GENRE_ORDER`. `UI_GENRES` (the membership set) drops
+  `romantasy`, `darkRomance`, `paranormalRomance`, `cozyFantasy`, `poetry`,
+  `thriller`, `contemporary`. None of the seven were removed from
+  `PRIMARY_GENRES`, the check constraint, or `GENRE_VOICES` / `GENRE_PROMPTS` --
+  they follow the precedent this repo already set for `cozyFantasy` and
+  `paranormalRomance` before today: DB-valid, UI-hidden. A story already
+  written in one keeps reading, continuing and rendering in that genre's own
+  voice module forever.
+- **The migration map is now the enforcement point, not a passthrough.**
+  `GENRE_MIGRATION_MAP` gained seven entries for NEW submissions only: `thriller`
+  -> `mystery`, `contemporary` -> `sliceOfLife`, `poetry` -> `folktale`,
+  `romantasy`/`darkRomance`/`paranormalRomance` -> `romance`, `cozyFantasy` ->
+  `fantasy`. `validation.ts`'s `normalizeGenre` had to change precedence to make
+  this work: it now checks the migration map *before* the already-valid-genre
+  shortcut, because all seven removed genres are still members of
+  `PRIMARY_GENRES` and the old precedence (exact match wins) would have let
+  every one of them pass straight through unmigrated. The two stale
+  `sliceOfLife`/`sliceoflife` -> `contemporary` migration-map entries were
+  deleted, since `sliceOfLife` is now a real genre and redirecting it would make
+  the new genre unreachable. Same fix applied to the `sliceoflife` alias inside
+  `cover-prompts.ts`'s own, separate `normalizeGenre`.
+- **Kids-mode blocking had to be decoupled from the migration on purpose.**
+  `darkRomance`, `paranormalRomance` and `thriller` are exactly the genres the
+  new migration redirects away from their own identity, so the pre-existing
+  kids-mode safety check (which ran on the *migrated* `primaryGenre`) would
+  have gone silently unreachable -- a kids-mode request for `darkRomance` would
+  have quietly become a sweet romance story instead of being refused. Added
+  `kidsBlockedLabel()`, which checks the RAW pre-migration genre string
+  (primary and secondary) instead, so an explicit ask for a genre the kids
+  interface never offered is still rejected, not softened. This is what keeps
+  the pre-existing `darkRomance rejected in kids mode` test passing unchanged.
+- **Four new genre voice modules** in `story-prompts.ts`'s `GENRE_VOICES`, same
+  shape as the existing 15 (voice/pacing/whatWorks/whatToAvoid), matched for
+  length and specificity. `educational` in particular states its own guardrail
+  in-module ("if it reads like a worksheet with a plot bolted on, it has
+  failed") rather than relying on the universal anti-slop rules by omission --
+  the existing show-don't-tell and anti-lecture rules still govern every genre,
+  but a genre whose whole premise risks becoming a lesson needed the reminder
+  stated where the model reads it.
+- **Four new cover prompt configs** in `cover-prompts.ts`'s `GENRE_PROMPTS`
+  (style/palette/composition/mood/characterApproach). Exported
+  `hasCoverPromptConfig()` so a test can assert no genre in the full taxonomy --
+  removed-from-UI genres included, since an existing story's cover can still
+  regenerate -- is missing one.
+- **Spice leaves the product surface.** No code change was needed for the
+  omitted-`spice_level` path -- `validateGenerationRequest` already defaulted
+  it per genre (`GENRE_DEFAULT_SPICE[primaryGenre] ?? "sweet"`) and never
+  rejected its absence -- but this session pins that behaviour with tests
+  across all 19 genres and documents it as a deliberate, permanent contract
+  rather than an accident of the existing code path. Spice inference from the
+  story idea's own prose is a stated follow-up, not implemented here.
+- **Migration `00049_genre_taxonomy_v7.sql`.** Widens
+  `stories_primary_genre_check` to the 19-value set. Drops and re-adds the
+  constraint (`NOT VALID` then `VALIDATE`), following `00014`'s precedent for
+  this exact constraint. A widened CHECK constraint can never fail `VALIDATE`
+  against existing data, so add-and-validate in one migration is safe here.
+  Does not touch `spice_level` or `content_rating`, which are unaffected by a
+  genre change. Migrations `00045`-`00048` were left untouched per instructions.
+- `story-shape.ts`'s hardcoded genre list (fed to the free shaping LLM call) now
+  renders from `UI_GENRE_ORDER` instead of a stale literal string, so shaping
+  never suggests a shelf the creator cannot see or edit into, and this list
+  cannot drift from the taxonomy again.
+- `source-of-truth/STORY_PROMPT_SYSTEM.md` and `AGENTS.md`'s Taxonomy section
+  updated in the same session: genre counts, the UI table split into "shown"
+  and "removed, still valid" halves, the spice-and-genre matrix, four new
+  Genre Modules subsections, the migration map, and the spice-off-the-surface
+  decision. `AGENTS.md`'s Cover Image System genre-config table also gained the
+  three genres it was missing (the fourth, `sliceOfLife`, already had a stale
+  but strikingly on-target row from an earlier draft of this same idea).
+
+### What this does not do
+
+- No spice inference from prose. `spiceLevel` stays exactly where it was in the
+  contract, the prompt system, and stored rows; only its required-ness changed
+  (it already wasn't required, and now that is documented and tested as
+  intentional rather than incidental).
+- No UI change. `expo/` was explicitly out of scope for this session and was
+  not touched; the sibling client-side bucket is responsible for the actual
+  12-card creation shelf, its labels, and its icons.
+- No data migration or backfill. Every existing story keeps its stored genre
+  value exactly as it was; nothing was UPDATEd.
+
+### Verification
+
+Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
+`export PATH="/Users/mac16/.deno/bin:$PATH"`:
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  **571 passed, 0 failed** (measured baseline before this session: 544 --
+  the task brief's stated baseline of 476 does not match this worktree, which
+  already carries the entity-grounding, phrase-pillar and voice-library
+  buckets merged into `integration/all`; 544 is the real number this session
+  started from and is reported instead of the brief's stale figure).
+- `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  **78 passed, 0 failed** (measured baseline before this session: 74, same
+  caveat as above against the brief's stated 66). The 4 new tests are all in
+  `00049_genre_taxonomy_v7_test.ts`, run against real Postgres via PGlite --
+  each new genre plus each removed-from-UI genre inserts cleanly, an
+  unaffected genre still inserts cleanly, and a genre outside the full
+  taxonomy still gets `23514` (check_violation).
+- `deno check` and `deno fmt --check` clean on every file this session touched
+  or added (11 TypeScript/SQL files: `types.ts`, `types.test.ts` (new),
+  `validation.ts`, `validation.test.ts`, `story-prompts.ts`,
+  `story-prompts.test.ts`, `cover-prompts.ts`, `cover-prompts.test.ts`,
+  `story-shape.ts`, `00049_genre_taxonomy_v7.sql` (new),
+  `00049_genre_taxonomy_v7_test.ts` (new)).
+- NOTHING was run against the live project `iafeuxgoiknncgyjmugd`. Migration
+  `00049` is written but not applied there, and no function was deployed. No
+  production-level test ran, so no `public.error_events` rows were written
+  this session.
+- Not committed. Changes are left in the working tree per instructions.
+
+## 2026-09-08 UTC — Genre craft research applied: folktale, educational, fanfiction rewritten; mystery absorbs thriller; sliceOfLife inherits contemporary
+
+### Context
+
+Three research memos (`docs/research/folktale.md`, `docs/research/educational.md`,
+`docs/research/fanfiction.md`) evaluated the first-pass `GENRE_VOICES` modules
+the v7 taxonomy change shipped for these genres against actual folklore
+scholarship, craft-research literature on didactic fiction, and fifty years of
+fandom's own critical vocabulary. This session applies the three revised
+modules, plus two product-owner-approved inheritances, and documents both.
+
+### Changed
+
+- **`.gitignore`.** `docs/research/` and `docs/design/` were caught by the
+  blanket `research/`/`design/` rule added for "agent working artifacts...
+  local only" (2026-09-03). Narrowed, not removed: added
+  `!docs/research/`, `docs/research/*`, `!docs/research/*.md` so the three
+  memos (and any future markdown memo placed there) are tracked, while any
+  non-markdown file in `docs/research/` and everything under `docs/design/`
+  stay gitignored exactly as before.
+- **`GENRE_VOICES.folktale`, `.educational`, `.fanfiction`** replaced with the
+  modules each memo proposed, adjusted only for house style: no em dashes, no
+  live `BANNED_WORDS` entries quoted verbatim (the shipped educational module
+  quoted "delve" as an example of textbook diction; the new whatToAvoid
+  describes the failure mode instead of naming the banned word). Folktale's
+  module additionally names, in its own text, each global craft rule it
+  suspends and why (Show Don't Tell for interiority, Sentence Rhythm for
+  patterned repetition, the general anti-cliche instinct and the "don't
+  resolve too neatly" pacing rule for a formulaic open/close) rather than
+  silently contradicting them -- the research documented these as genuine,
+  citable collisions (Propp, Luthi, oral-formulaic theory) where folktale
+  should win, and the brief required the carve-out to be visible in the
+  assembled prompt, not just implied.
+- **`GENRE_VOICES.mystery`** rewritten to merge in thriller's engine.
+  Thriller is retired from the picker and `GENRE_MIGRATION_MAP.thriller` now
+  points new submissions at mystery, so mystery had to cover both engines
+  (puzzle-and-revelation, dread-and-momentum) or a migrated thriller idea
+  would land on puzzle-only craft it wasn't written for. This was craft
+  editing, not concatenation: four fields, same length and register as every
+  neighbouring module, each one carrying both engines rather than listing
+  them side by side. `GENRE_VOICES.thriller` itself is untouched -- it is
+  dead code for new submissions but still the only module an existing
+  thriller story reads (`story-prompts.ts`'s own genre lookup resolves a
+  stored genre before ever consulting the migration map).
+- **`CONTEMPORARY_VOICE`** extracted as a standalone constant, referenced by
+  both `GENRE_VOICES.contemporary` and `GENRE_VOICES.sliceOfLife` (product
+  decision: sliceOfLife inherits contemporary's module, they are not two
+  texts that happen to match). Its four em dashes were replaced with colons
+  while relocating it, for the same house-style reason as the three
+  researched modules; the craft content is unchanged.
+- **`GENRE_VOICES` and the `GenreVoice` interface are now exported** from
+  `story-prompts.ts` (test-only use: equality and content assertions over
+  genre craft; nothing else imports them).
+- **`story-prompts.test.ts`**: updated the one pre-existing test whose
+  distinguishing phrases no longer matched the rewritten text
+  ("load-bearing", "already loves these characters", "oral and cadenced" were
+  specific to the retired first-pass modules), and added nine new tests --
+  each researched genre carries its own module text; sliceOfLife and
+  contemporary are the same object (`===`) and render identical prompts;
+  mystery's module names both engines; a migrated thriller submission
+  (`GENRE_MIGRATION_MAP.thriller`) renders the mystery module; thriller keeps
+  its own unmerged module; folktale names each suspended rule by the base
+  layer's own rule names; and a scoped scan of the six modules this session
+  touched for a literal em dash or a `BANNED_WORDS` entry (word-boundary
+  match, case-insensitive). That last test is deliberately scoped to the six
+  modules this session wrote or relocated (folktale, educational, fanfiction,
+  mystery, contemporary, sliceOfLife) -- the twelve untouched legacy modules
+  (romance, fantasy, romantasy, darkRomance, cozyFantasy, paranormalRomance,
+  horror, scifi, adventure, historical, comedy, poetry) and thriller predate
+  this house rule, still contain em dashes, and were explicitly out of scope
+  for this session.
+- **`source-of-truth/STORY_PROMPT_SYSTEM.md`**: Key v6 Decisions gained two
+  bullets naming the research pass and the two inheritances; the Thriller,
+  Mystery, Contemporary, Educational, Fanfiction, Folktale, and Slice of Life
+  Genre Modules subsections were rewritten to describe the actual shipped
+  text and cite their source memo; a new "Deferred Research Recommendations"
+  section records the two recommendations this session did not implement
+  (below).
+- **`AGENTS.md`**: Repository Map gained a line for `docs/research/*.md`;
+  the Taxonomy section gained two bullets mirroring the source-of-truth
+  changes, at contract-summary length rather than full detail.
+
+### What this does not do
+
+- **Does not implement the educational memo's fact/fiction closing-disclosure
+  mechanism** (docs/research/educational.md §3 Position 4, §4 Decision 4).
+  The memo's own framing: prompt craft can reduce how often the model states
+  something false with confidence, but only a visible, separately labeled
+  fact/fiction seam protects a reader who cannot tell the difference from
+  inside the story. That is a schema and product change (a new field,
+  rendered outside the reading experience), not a prompt change, and is
+  recorded as deferred in both source-of-truth docs rather than dropped.
+- **Does not implement the fanfiction memo's grounding extension**
+  (docs/research/fanfiction.md §3, §6 Decisions 3-5): a new
+  `fandom_canon_character` `EntityClass`, a `needs_grounding` test tuned to
+  OOC risk instead of obscurity, and new `GroundingCard` fields (speech
+  pattern, canon-versus-fanon, relationship state). This is real, scoped work
+  a sibling agent owns separately. Per the task's hard constraint, this
+  session did not touch `grounding-types.ts`, `entity-classify.ts`,
+  `grounding-card.ts`, `grounding-pipeline.ts`, or `publish-story/`.
+- **Does not touch `GENRE_VOICES.thriller`** or any of the twelve untouched
+  legacy modules. Only the six modules named above were edited.
+- **Does not apply any migration.** No `.sql` file was added or changed;
+  this session's scope was `_shared/story-prompts.ts`, its test file,
+  `.gitignore`, and documentation.
+
+### Verification
+
+Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
+`export PATH="/Users/mac16/.deno/bin:$PATH"`:
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  **baseline 571 passed, 0 failed** (measured before any change this
+  session) -> **580 passed, 0 failed** after (the nine new tests listed
+  above; no test count dropped, no existing test was weakened to pass).
+- `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  **78 passed, 0 failed**, unchanged from baseline -- this session touched
+  no migration.
+- `deno check` and `deno fmt --check` clean on both files this session
+  touched: `supabase/functions/_shared/story-prompts.ts` and
+  `supabase/functions/_shared/story-prompts.test.ts`.
+- `git status`: `docs/research/folktale.md`, `docs/research/educational.md`
+  and `docs/research/fanfiction.md` are staged (`git add`), no longer
+  gitignored or untracked.
+- No `any`, no `@ts-ignore` in either touched file (checked by grep; the only
+  matches are the English word "any" inside prose strings).
+- Not committed, per instructions.
 ## 2026-09-08: Rate-limit the grounding fallback, without reordering it
 
 ### Changed

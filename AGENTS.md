@@ -14,6 +14,7 @@
   - `ONBOARDING_FLOW.md` -- onboarding, both paywalls, the one-time offer, the blocked-credits sheet.
 - `expo/` -- approved and active Expo SDK 54 application.
 - `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
+- `docs/research/*.md` -- tracked craft-research memos backing specific `GENRE_VOICES` modules (an explicit exception in `.gitignore`; the rest of `docs/research/` and all of `docs/design/` stay gitignored, local-only agent working artifacts).
 - `ios-katha-ai-create-stories/` -- preserved Rork-generated iOS reference client.
 - `android-katha-ai/` -- preserved Rork-generated Android reference client.
 - `katha-critique/` -- critique prototype.
@@ -264,7 +265,7 @@ The generation pipeline lives in `backend/supabase/functions/_shared/story-promp
 System prompts are assembled from 9 layers:
 1. **Base craft + safety** -- anti-slop, show-don't-tell, rhythm, dialogue, formatting, safety rules
 2. **Story engine** -- protagonist, want, obstacle, stakes, irreversible choice, emotional turn, genre payoff, final image
-3. **Primary genre module** -- 15 voice modules with voice/pacing/what-works/what-to-avoid
+3. **Primary genre module** -- 19 voice modules with voice/pacing/what-works/what-to-avoid
 4. **Audience mode** -- kids constraints (ages 4-10, 500-1200 words, safe content)
 5. **Identity lens** -- queer lens guidance
 6. **Spice module** -- sweet (fade to black), steamy (sensuality on-page), explicit (feature-flagged)
@@ -280,12 +281,15 @@ API:
 
 ### Taxonomy
 
-- **15 primary genres**: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry.
-- **13 UI genres** (cozyFantasy + paranormalRomance are DB-only, hidden from UI).
+- **19 primary genres**: romance, romantasy, darkRomance, cozyFantasy, paranormalRomance, fantasy, scifi, thriller, mystery, horror, contemporary, historical, adventure, comedy, poetry, educational, fanfiction, folktale, sliceOfLife.
+- **12 UI genres** (2026-09-08 taxonomy), in display order: adventure, comedy, educational, fanfiction, folktale, historical, scifi, fantasy, mystery, horror, sliceOfLife, romance (romance deliberately last). `UI_GENRE_ORDER` in `_shared/types.ts` is the canonical order.
+- **7 DB-only genres, removed from the UI but never from the database**: romantasy, darkRomance, paranormalRomance, cozyFantasy, poetry, thriller, contemporary. A story already written in one keeps reading, continuing and rendering in that genre's own voice module forever -- only a NEW submission of one is migrated (see below). This follows the precedent this same rule set before 2026-09-08 for cozyFantasy and paranormalRomance.
 - **2 audience modes**: adult (default), kids (full-width segmented control in Shape).
-- **Spice levels**: sweet (default), steamy, explicit (feature-flagged off).
+- **Spice levels**: sweet (default), steamy. `explicit` was retired 2026-09-07 (not merely feature-flagged) -- see `source-of-truth/STORY_PROMPT_SYSTEM.md`. Spice itself left the product surface 2026-09-08: there is no user-facing spice picker any more, and an ABSENT `spice_level` is a first-class safe path that defaults per genre (`GENRE_DEFAULT_SPICE`, `sweet` as the final backstop) rather than an edge case. Inferring spice from the story idea's own prose is a stated follow-up, not yet implemented.
 - **Identity lenses**: queer.
-- **Genre migration map**: drama/sliceOfLife/darkAcademia -> contemporary, mythology -> fantasy, kids/bedtime -> adventure, lgbtq/motivational/spirituality -> contemporary.
+- **Genre migration map** (`GENRE_MIGRATION_MAP` in `_shared/types.ts`, applied only to new submissions, never to a stored value): drama/darkAcademia -> contemporary, mythology -> fantasy, kids/bedtime -> adventure, lgbtq/motivational/spirituality -> contemporary, thriller -> mystery, contemporary -> sliceOfLife, poetry -> folktale, romantasy/darkRomance/paranormalRomance -> romance, cozyFantasy -> fantasy.
+- **Researched voice modules (2026-09-08)**: educational, fanfiction and folktale's first-pass `GENRE_VOICES` modules were revised against a dedicated craft-research pass (`docs/research/educational.md`, `docs/research/fanfiction.md`, `docs/research/folktale.md`; tracked, not gitignored -- see `.gitignore`'s `docs/research/*.md` exception). Folktale's module explicitly names, in its own text, each global craft rule it suspends (Show Don't Tell for interiority, Sentence Rhythm for repetition, the anti-cliche instinct and the pacing "don't resolve too neatly" rule for formulaic open/close) rather than silently contradicting them -- no other genre gets these carve-outs, and the base rules are unchanged for everyone else. Two memo recommendations are deliberately NOT implemented yet: educational's fact/fiction closing-disclosure mechanism (a schema change, not a prompt change) and fanfiction's grounding extension (a new `EntityClass` and `GroundingCard` fields, owned by a separate workstream -- do not implement alongside unrelated genre-module work). Full detail in `source-of-truth/STORY_PROMPT_SYSTEM.md`'s Genre Modules and Deferred Research Recommendations sections.
+- **Mystery absorbs Thriller's engine for new submissions; Slice of Life inherits Contemporary's module by reference** (2026-09-08). Mystery and Thriller have different engines (puzzle-and-revelation vs. dread-and-momentum); `GENRE_VOICES.mystery` was rewritten to cover both rather than concatenated, and `GENRE_VOICES.thriller` stays untouched so an existing thriller story keeps its own module. `GENRE_VOICES.sliceOfLife` and `GENRE_VOICES.contemporary` point at the same `CONTEMPORARY_VOICE` object in `story-prompts.ts` rather than duplicating the text, so the two genres cannot silently drift apart.
 
 ### Quality Rules (enforced in every generation)
 
@@ -396,7 +400,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 
 `FocalImage` component in `expo/src/components/KathaPrimitives.tsx` renders web via raw `<img>` with `object-position` (RN Web's Image ignores it) and native via standard RN Image with `resizeMode="cover"`.
 
-### 16 Genre Prompt Configs
+### 19 Genre Prompt Configs
 
 | Genre | Style | Palette | Characters |
 |-------|-------|---------|------------|
@@ -416,6 +420,9 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 | poetry | ethereal abstract, dreamy watercolor | soft lavender, misty grey-blue, pale rose | scene |
 | comedy | vibrant pop, bold outlines | sunshine yellow, electric blue, hot pink | scene |
 | bedtime | soft dreamy, moonlit glow | midnight navy, moonlight silver, warm amber | scene |
+| educational | clean editorial, crisp linework | chalkboard teal, warm marigold, cream paper white | scene |
+| fanfiction | vibrant fan-art, glossy digital-painting | saturated duotone accents, deep contrast background | portrait |
+| folktale | woodcut-inspired, bold flat shapes | burnt umber, mustard gold, forest green | silhouette |
 
 ### Moderation Rules
 

@@ -374,23 +374,27 @@ Deno.test("severity maps onto Sentry's level vocabulary without inventing a seco
 // text through in future. Sentry is a third party and retains what it is sent,
 // so this is enforced at the boundary rather than assumed from the call sites.
 Deno.test("safeErrorCode passes identifiers through and replaces anything else", () => {
-  for (const identifier of [
-    "runpod_start_5xx",
-    "job_not_recorded",
-    "cover_regeneration_rate_limited",
-    "generation.audio:timeout",
-    "unhandled",
-  ]) {
+  for (
+    const identifier of [
+      "runpod_start_5xx",
+      "job_not_recorded",
+      "cover_regeneration_rate_limited",
+      "generation.audio:timeout",
+      "unhandled",
+    ]
+  ) {
     assertEquals(safeErrorCode(identifier), identifier);
   }
 
-  for (const freeText of [
-    "RunPod start failed: 500",
-    "RUNPOD_API_KEY is not configured",
-    '{"error":"invalid input","prompt":"the story text"}',
-    "https://api.runpod.ai/v2/abc/run returned 401",
-    "TypeError: Cannot read properties of undefined",
-  ]) {
+  for (
+    const freeText of [
+      "RunPod start failed: 500",
+      "RUNPOD_API_KEY is not configured",
+      '{"error":"invalid input","prompt":"the story text"}',
+      "https://api.runpod.ai/v2/abc/run returned 401",
+      "TypeError: Cannot read properties of undefined",
+    ]
+  ) {
     assertEquals(
       safeErrorCode(freeText),
       "unclassified_error",

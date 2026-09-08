@@ -21,3 +21,8 @@ GoogleService-Info.plist
 # Agent working artifacts (research memos, design specs) — local only
 research/
 design/
+
+# Exception: reviewed genre-craft research memos live in the repo (docs/research/)
+!docs/research/
+docs/research/*
+!docs/research/*.md

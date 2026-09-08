@@ -32,7 +32,7 @@ import {
   spacing,
   type,
 } from "@/theme";
-import { GENRES } from "@/types/domain";
+import { UI_GENRES } from "@/types/domain";
 import type { Genre, Story } from "@/types/domain";
 
 /** How the list is sorted. `newest` reads `publishedOffset` ascending - the
@@ -132,6 +132,24 @@ export default function ExploreScreen({
     clearFilters();
   }, [clearFilters]);
 
+  // How many stories exist in the selected genre before search or tags narrow
+  // anything further. This is what tells "nobody has published here yet" (a
+  // catalogue gap - honest, and expected to close as writers publish) apart
+  // from "your search matched nothing" (a search problem the reader can fix
+  // themselves). Computed from the live `stories` prop rather than a
+  // hardcoded genre list, so it reads correctly for every genre in
+  // `UI_GENRES` today and for any genre added later - a genre only reads as
+  // empty here because the catalogue it was actually checked against is
+  // empty, never because of a name on a list.
+  const genreCatalogueCount = useMemo(() => {
+    if (genreFilter === "all") return null;
+    return stories.filter((story) => story.genre === genreFilter).length;
+  }, [stories, genreFilter]);
+
+  const clearGenre = useCallback(() => {
+    setGenreFilter("all");
+  }, []);
+
   const filteredStories = useMemo(() => {
     const q = query.trim().toLowerCase();
     const matches = stories.filter((story) => {
@@ -170,21 +188,45 @@ export default function ExploreScreen({
     </View>
   ), [density, onStory]);
 
-  const listEmpty = useMemo(() => (
-    <View style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>No stories match</Text>
-      <Text style={styles.emptyBody}>
-        Try a different search, or clear your filters to see everything again.
-      </Text>
-      <Pressable
-        onPress={clearAll}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-      >
-        <Text style={styles.emptyButtonText}>Clear filters</Text>
-      </Pressable>
-    </View>
-  ), [clearAll]);
+  const listEmpty = useMemo(() => {
+    // The catalogue itself has nothing in this genre - not a search problem,
+    // so the copy and the way out are both different from a search miss.
+    // Search and tags cannot be why the list is empty here: if they narrowed
+    // a non-empty genre to nothing, `genreCatalogueCount` above zero would
+    // have caught that case and this branch would not run.
+    if (genreFilter !== "all" && genreCatalogueCount === 0) {
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>No {genreLabels[genreFilter]} stories yet</Text>
+          <Text style={styles.emptyBody}>
+            This genre is new here. More stories will appear as writers publish in it - you could be the first.
+          </Text>
+          <Pressable
+            onPress={clearGenre}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.emptyButtonText}>See every story</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyTitle}>No stories match</Text>
+        <Text style={styles.emptyBody}>
+          Try a different search, or clear your filters to see everything again.
+        </Text>
+        <Pressable
+          onPress={clearAll}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.emptyButtonText}>Clear filters</Text>
+        </Pressable>
+      </View>
+    );
+  }, [clearAll, clearGenre, genreCatalogueCount, genreFilter]);
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
@@ -314,7 +356,7 @@ function ExploreListHeader({
           selected={genreFilter === "all"}
           onPress={() => onGenreChange("all")}
         />
-        {GENRES.map((genre) => (
+        {UI_GENRES.map((genre) => (
           <Chip
             key={genre}
             label={genreLabels[genre]}

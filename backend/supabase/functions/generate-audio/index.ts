@@ -12,7 +12,10 @@
  * reports the job the winner already started.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 import { parseUuid } from "../_shared/uuid.ts";
@@ -27,6 +30,7 @@ import {
 } from "../_shared/voices.ts";
 import { generateWithEdgeTts } from "../_shared/edge-tts.ts";
 import {
+  cancelRunpodNarration,
   canReadChapter,
   claimChapterAudioGeneration,
   findReadyChapterAudio,
@@ -182,20 +186,17 @@ export async function handleRequest(req: Request): Promise<Response> {
       }, 202);
     }
 
+    let jobId: string;
     try {
-      const jobId = await startProviderJob(voice, chapter.content);
-      await markChapterAudioJobStarted(serviceClient, claim.id!, jobId);
-      return respond({
-        status: "PENDING",
+      jobId = await startProviderJob(voice, chapter.content);
+    } catch (providerError) {
+      // The provider never accepted a job, so there is nothing to reconcile
+      // -- this is the ordinary "generation failed to start" path.
+      const errorCode = providerErrorCode(providerError);
+      await releaseClaim(serviceClient, claim.id!, errorCode, {
         story_id: storyId,
         chapter_id: chapterId,
-        voice_id: voiceId,
-        job_id: jobId,
-        cached: false,
-      }, 202);
-    } catch (providerError) {
-      const errorCode = providerErrorCode(providerError);
-      await markChapterAudioFailed(serviceClient, claim.id!, errorCode);
+      });
       await reportError({
         bucket: "generation.audio",
         severity: classifyStartFailureSeverity(errorCode),
@@ -206,6 +207,45 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
       return respond({ error: "Narration generation failed to start" }, 502);
     }
+
+    try {
+      await markChapterAudioJobStarted(serviceClient, claim.id!, jobId);
+    } catch (recordError) {
+      // RunPod already accepted `jobId` and is generating on it -- this
+      // write is what would have let anything ever learn that id again. A
+      // retry now would reclaim this same row and start a second job on top
+      // of one already running unseen, exactly the duplicate spend the
+      // (chapter, voice) claim exists to prevent. Cancel what we can, then
+      // fail the row so a retry gets a clean claim instead of an untracked
+      // race.
+      await cancelRunpodNarration(jobId);
+      await releaseClaim(serviceClient, claim.id!, "job_not_recorded", {
+        story_id: storyId,
+        chapter_id: chapterId,
+      });
+      await logError({
+        bucket: "generation.audio",
+        severity: "critical",
+        errorCode: "job_not_recorded",
+        error: recordError,
+        userId: user.id,
+        context: {
+          story_id: storyId,
+          chapter_id: chapterId,
+          provider: voice.provider,
+        },
+      });
+      return respond({ error: "Narration generation failed to start" }, 502);
+    }
+
+    return respond({
+      status: "PENDING",
+      story_id: storyId,
+      chapter_id: chapterId,
+      voice_id: voiceId,
+      job_id: jobId,
+      cached: false,
+    }, 202);
   } catch (error) {
     console.error("generate-audio error:", error);
     await logError({
@@ -276,7 +316,9 @@ function providerErrorCode(error: unknown): string {
   if (message.includes("edge_tts_not_implemented")) {
     return "edge_tts_not_implemented";
   }
-  if (message.startsWith("unsupported_provider:")) return "unsupported_provider";
+  if (message.startsWith("unsupported_provider:")) {
+    return "unsupported_provider";
+  }
   return "provider_error";
 }
 
@@ -292,6 +334,43 @@ function classifyStartFailureSeverity(errorCode: string): ErrorSeverity {
   return errorCode === "runpod_key_missing" || errorCode === "runpod_start_5xx"
     ? "critical"
     : "high";
+}
+
+/**
+ * Mark a claimed `chapter_audio` row failed, and never throw doing it.
+ *
+ * Both callers are already inside a failure path, and both reach this after
+ * something else has gone wrong with the same database connection -- which is
+ * precisely when this write is most likely to fail as well. Letting it throw
+ * sent the request to the handler's outer catch, which logs `errorCode:
+ * "unhandled"`: the specific reason the narration failed (`job_not_recorded`,
+ * a provider 4xx) was replaced by the least useful code in the vocabulary, and
+ * the alert that should have named the cause named nothing.
+ *
+ * The row is left `pending` when this fails, which used to strand the
+ * (chapter, voice) pair forever. It no longer does: migration 00054 lets
+ * `claim_chapter_audio_generation` re-claim a `pending` row that has sat
+ * untouched for ten minutes, so the worst case is a delay rather than a
+ * chapter that can never be narrated again. That is what makes swallowing this
+ * error safe, and it is the only reason it is.
+ */
+async function releaseClaim(
+  serviceClient: SupabaseClient,
+  audioId: string,
+  errorCode: string,
+  context: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await markChapterAudioFailed(serviceClient, audioId, errorCode);
+  } catch (releaseError) {
+    await logError({
+      bucket: "generation.audio",
+      severity: "high",
+      errorCode: "audio_claim_release_failed",
+      error: releaseError,
+      context: { ...context, original_error_code: errorCode },
+    });
+  }
 }
 
 if (import.meta.main) {

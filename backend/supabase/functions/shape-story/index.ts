@@ -3,11 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
-  anonymousGrantScope,
-  hashAnonymousGrantScope,
-  isAnonymousUser,
-} from "../_shared/guest-bootstrap.ts";
-import {
   EMPTY_RESOLVED_GROUNDING,
   resolveGrounding,
 } from "../_shared/grounding-pipeline.ts";
@@ -109,26 +104,43 @@ serve(async (req) => {
       plannedChapterCount: body?.planned_chapter_count,
     });
 
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      serviceRoleKey,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const guest = isAnonymousUser(user);
-    const scope = guest ? anonymousGrantScope(req) : null;
-    if (guest && !scope) return respond({ shape: null });
-    const scopeHash = scope
-      ? await hashAnonymousGrantScope(scope, serviceRoleKey)
-      : null;
+    /**
+     * The one limit left, and it is not a ceiling on the product.
+     *
+     * There were three. Two of them counted anonymous users against a shared
+     * budget - 500 shapes a day across the whole project and 30 a day per
+     * network - and onboarding is anonymous, so both were caps on how many
+     * people could be shown a shaped preview at all. Migration 00046 removed
+     * them. What is left is six requests a minute for this one caller, which
+     * stops a client stuck in a retry loop and is never reached by somebody
+     * writing a story.
+     *
+     * The scope hash goes with them. It existed to identify a network for the
+     * per-network ceiling, and computing an HMAC of a guest's address to feed
+     * a parameter the function now ignores would be keeping the fingerprint
+     * and throwing away the only reason it was taken. `p_anonymous_scope_hash`
+     * stays in the RPC signature, accepted and ignored, so that a migration
+     * and a function deploy in either order are both correct.
+     */
     const { data: allowed, error: rateLimitError } = await serviceClient.rpc(
       "claim_story_shape_request",
-      {
-        p_user_id: user.id,
-        p_anonymous_scope_hash: scopeHash,
-      },
+      { p_user_id: user.id },
     );
     if (rateLimitError) throw rateLimitError;
-    if (allowed !== true) return respond({ shape: null });
+    /**
+     * A refused claim is capacity, not content, and the client could not tell.
+     *
+     * This answered a bare `{shape: null}`, which the client reads as "the
+     * model returned something unusable" - a non-retryable condition that put
+     * onboarding on its error screen with no way past it. Onboarding now falls
+     * back to a preview built from what the writer typed, which is the right
+     * answer whether they hit the per-minute window or the model failed.
+     */
+    if (allowed !== true) return respond({ shape: null, reason: "rate_limited" });
 
     try {
       // Shaping and grounding run together, not in sequence.
@@ -194,7 +206,7 @@ serve(async (req) => {
         context: { feature: "story_shape" },
         userId,
       });
-      return respond({ shape: null });
+      return respond({ shape: null, reason: "provider_failed" });
     }
   } catch (error) {
     console.error("shape-story error:", safeErrorMessage(error));
@@ -207,7 +219,7 @@ serve(async (req) => {
       context: { feature: "story_shape" },
       userId,
     });
-    return respond({ shape: null });
+    return respond({ shape: null, reason: "unavailable" });
   }
 });
 
