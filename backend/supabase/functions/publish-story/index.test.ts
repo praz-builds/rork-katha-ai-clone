@@ -38,7 +38,10 @@ interface Recorded {
  * story that stays private stayed private *because of the default* and not
  * because some earlier gate refused the call.
  */
-async function publish(body: Record<string, unknown>): Promise<{
+async function publish(
+  body: Record<string, unknown>,
+  storyIsPublic = false,
+): Promise<{
   status: number;
   json: Record<string, unknown>;
   requests: Recorded[];
@@ -84,11 +87,18 @@ async function publish(body: Record<string, unknown>): Promise<{
         id: STORY_ID,
         author_id: AUTHOR_ID,
         status: "complete",
-        is_public: false,
+        is_public: storyIsPublic,
       });
     }
     if (url.includes("/rest/v1/chapters")) {
       if (request.method === "PATCH") return json([]);
+      // The ownership pre-check reads chapter ids with `id=in.(...)` and
+      // expects a JSON array back. It is a different query from the count
+      // below, and answering it with the count's empty body made every
+      // edited chapter look like it belonged to another story.
+      if (url.includes("id=in.")) {
+        return json([{ id: CHAPTER_ID }]);
+      }
       // `select("id", { count: "exact", head: true })` reads the count out of
       // the Content-Range header, not the body.
       return new Response(null, {
@@ -258,3 +268,97 @@ function restoreEnv(previous: Record<string, string | undefined>): void {
     else Deno.env.set(key, value);
   }
 }
+
+// A save against an already-published story used to be answered
+// `published: true` and then thrown away.
+//
+// The handler returned as soon as it saw `is_public`, and that return sat
+// *above* the block that persists `edits`. The guard was written to stop a
+// stale client retry silently demoting a live story, which is a real risk, but
+// it was placed where it also swallowed every edit an author made after
+// publishing. The editor kept the text on screen, so nothing looked wrong
+// until a refresh.
+//
+// These tests pin both halves: edits reach the database, and visibility is
+// still never demoted by a request that merely omitted the field.
+
+/** Did the handler write this chapter's new content? */
+function wroteChapterContent(requests: Recorded[], content: string): boolean {
+  return requests.some((r) =>
+    r.method === "PATCH" &&
+    r.url.includes("/rest/v1/chapters") &&
+    (r.body as Record<string, unknown> | undefined)?.content === content
+  );
+}
+
+/** Did the handler ask the database to make this story private? */
+function wentPrivate(requests: Recorded[]): boolean {
+  return requests.some((r) =>
+    r.method === "PATCH" &&
+    r.url.includes("/rest/v1/stories") &&
+    (r.body as Record<string, unknown> | undefined)?.is_public === false
+  );
+}
+
+const CHAPTER_ID = "33333333-3333-4333-8333-333333333333";
+
+Deno.test("an edit to an already-public story is persisted, not silently dropped", async () => {
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, json, requests } = await publish({
+      story_id: STORY_ID,
+      chapters: [{ id: CHAPTER_ID, content: "The revised opening line." }],
+    }, true);
+
+    assertEquals(status, 200);
+    assert(
+      wroteChapterContent(requests, "The revised opening line."),
+      "the edited chapter content never reached the database",
+    );
+    assertEquals(json.saved, true);
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a save that omits visibility never demotes a public story", async () => {
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, json, requests } = await publish({
+      story_id: STORY_ID,
+      chapters: [{ id: CHAPTER_ID, content: "Another revision." }],
+    }, true);
+
+    assertEquals(status, 200);
+    assertFalse(
+      wentPrivate(requests),
+      "a save request unpublished a live story",
+    );
+    assertEquals(json.published, true);
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a title edit on an already-public story is persisted", async () => {
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, requests } = await publish({
+      story_id: STORY_ID,
+      title: "A Better Title",
+    }, true);
+
+    assertEquals(status, 200);
+    assert(
+      requests.some((r) =>
+        r.method === "PATCH" &&
+        r.url.includes("/rest/v1/stories") &&
+        (r.body as Record<string, unknown> | undefined)?.title ===
+          "A Better Title"
+      ),
+      "the edited title never reached the database",
+    );
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
