@@ -2771,3 +2771,131 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
   production-level test ran, so no `public.error_events` rows were written
   this session.
 - Not committed. Changes are left in the working tree per instructions.
+
+## 2026-09-08 UTC — Genre craft research applied: folktale, educational, fanfiction rewritten; mystery absorbs thriller; sliceOfLife inherits contemporary
+
+### Context
+
+Three research memos (`docs/research/folktale.md`, `docs/research/educational.md`,
+`docs/research/fanfiction.md`) evaluated the first-pass `GENRE_VOICES` modules
+the v7 taxonomy change shipped for these genres against actual folklore
+scholarship, craft-research literature on didactic fiction, and fifty years of
+fandom's own critical vocabulary. This session applies the three revised
+modules, plus two product-owner-approved inheritances, and documents both.
+
+### Changed
+
+- **`.gitignore`.** `docs/research/` and `docs/design/` were caught by the
+  blanket `research/`/`design/` rule added for "agent working artifacts...
+  local only" (2026-09-03). Narrowed, not removed: added
+  `!docs/research/`, `docs/research/*`, `!docs/research/*.md` so the three
+  memos (and any future markdown memo placed there) are tracked, while any
+  non-markdown file in `docs/research/` and everything under `docs/design/`
+  stay gitignored exactly as before.
+- **`GENRE_VOICES.folktale`, `.educational`, `.fanfiction`** replaced with the
+  modules each memo proposed, adjusted only for house style: no em dashes, no
+  live `BANNED_WORDS` entries quoted verbatim (the shipped educational module
+  quoted "delve" as an example of textbook diction; the new whatToAvoid
+  describes the failure mode instead of naming the banned word). Folktale's
+  module additionally names, in its own text, each global craft rule it
+  suspends and why (Show Don't Tell for interiority, Sentence Rhythm for
+  patterned repetition, the general anti-cliche instinct and the "don't
+  resolve too neatly" pacing rule for a formulaic open/close) rather than
+  silently contradicting them -- the research documented these as genuine,
+  citable collisions (Propp, Luthi, oral-formulaic theory) where folktale
+  should win, and the brief required the carve-out to be visible in the
+  assembled prompt, not just implied.
+- **`GENRE_VOICES.mystery`** rewritten to merge in thriller's engine.
+  Thriller is retired from the picker and `GENRE_MIGRATION_MAP.thriller` now
+  points new submissions at mystery, so mystery had to cover both engines
+  (puzzle-and-revelation, dread-and-momentum) or a migrated thriller idea
+  would land on puzzle-only craft it wasn't written for. This was craft
+  editing, not concatenation: four fields, same length and register as every
+  neighbouring module, each one carrying both engines rather than listing
+  them side by side. `GENRE_VOICES.thriller` itself is untouched -- it is
+  dead code for new submissions but still the only module an existing
+  thriller story reads (`story-prompts.ts`'s own genre lookup resolves a
+  stored genre before ever consulting the migration map).
+- **`CONTEMPORARY_VOICE`** extracted as a standalone constant, referenced by
+  both `GENRE_VOICES.contemporary` and `GENRE_VOICES.sliceOfLife` (product
+  decision: sliceOfLife inherits contemporary's module, they are not two
+  texts that happen to match). Its four em dashes were replaced with colons
+  while relocating it, for the same house-style reason as the three
+  researched modules; the craft content is unchanged.
+- **`GENRE_VOICES` and the `GenreVoice` interface are now exported** from
+  `story-prompts.ts` (test-only use: equality and content assertions over
+  genre craft; nothing else imports them).
+- **`story-prompts.test.ts`**: updated the one pre-existing test whose
+  distinguishing phrases no longer matched the rewritten text
+  ("load-bearing", "already loves these characters", "oral and cadenced" were
+  specific to the retired first-pass modules), and added nine new tests --
+  each researched genre carries its own module text; sliceOfLife and
+  contemporary are the same object (`===`) and render identical prompts;
+  mystery's module names both engines; a migrated thriller submission
+  (`GENRE_MIGRATION_MAP.thriller`) renders the mystery module; thriller keeps
+  its own unmerged module; folktale names each suspended rule by the base
+  layer's own rule names; and a scoped scan of the six modules this session
+  touched for a literal em dash or a `BANNED_WORDS` entry (word-boundary
+  match, case-insensitive). That last test is deliberately scoped to the six
+  modules this session wrote or relocated (folktale, educational, fanfiction,
+  mystery, contemporary, sliceOfLife) -- the twelve untouched legacy modules
+  (romance, fantasy, romantasy, darkRomance, cozyFantasy, paranormalRomance,
+  horror, scifi, adventure, historical, comedy, poetry) and thriller predate
+  this house rule, still contain em dashes, and were explicitly out of scope
+  for this session.
+- **`source-of-truth/STORY_PROMPT_SYSTEM.md`**: Key v6 Decisions gained two
+  bullets naming the research pass and the two inheritances; the Thriller,
+  Mystery, Contemporary, Educational, Fanfiction, Folktale, and Slice of Life
+  Genre Modules subsections were rewritten to describe the actual shipped
+  text and cite their source memo; a new "Deferred Research Recommendations"
+  section records the two recommendations this session did not implement
+  (below).
+- **`AGENTS.md`**: Repository Map gained a line for `docs/research/*.md`;
+  the Taxonomy section gained two bullets mirroring the source-of-truth
+  changes, at contract-summary length rather than full detail.
+
+### What this does not do
+
+- **Does not implement the educational memo's fact/fiction closing-disclosure
+  mechanism** (docs/research/educational.md §3 Position 4, §4 Decision 4).
+  The memo's own framing: prompt craft can reduce how often the model states
+  something false with confidence, but only a visible, separately labeled
+  fact/fiction seam protects a reader who cannot tell the difference from
+  inside the story. That is a schema and product change (a new field,
+  rendered outside the reading experience), not a prompt change, and is
+  recorded as deferred in both source-of-truth docs rather than dropped.
+- **Does not implement the fanfiction memo's grounding extension**
+  (docs/research/fanfiction.md §3, §6 Decisions 3-5): a new
+  `fandom_canon_character` `EntityClass`, a `needs_grounding` test tuned to
+  OOC risk instead of obscurity, and new `GroundingCard` fields (speech
+  pattern, canon-versus-fanon, relationship state). This is real, scoped work
+  a sibling agent owns separately. Per the task's hard constraint, this
+  session did not touch `grounding-types.ts`, `entity-classify.ts`,
+  `grounding-card.ts`, `grounding-pipeline.ts`, or `publish-story/`.
+- **Does not touch `GENRE_VOICES.thriller`** or any of the twelve untouched
+  legacy modules. Only the six modules named above were edited.
+- **Does not apply any migration.** No `.sql` file was added or changed;
+  this session's scope was `_shared/story-prompts.ts`, its test file,
+  `.gitignore`, and documentation.
+
+### Verification
+
+Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
+`export PATH="/Users/mac16/.deno/bin:$PATH"`:
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  **baseline 571 passed, 0 failed** (measured before any change this
+  session) -> **580 passed, 0 failed** after (the nine new tests listed
+  above; no test count dropped, no existing test was weakened to pass).
+- `deno test --allow-env --allow-net --allow-read supabase/migrations`:
+  **78 passed, 0 failed**, unchanged from baseline -- this session touched
+  no migration.
+- `deno check` and `deno fmt --check` clean on both files this session
+  touched: `supabase/functions/_shared/story-prompts.ts` and
+  `supabase/functions/_shared/story-prompts.test.ts`.
+- `git status`: `docs/research/folktale.md`, `docs/research/educational.md`
+  and `docs/research/fanfiction.md` are staged (`git add`), no longer
+  gitignored or untracked.
+- No `any`, no `@ts-ignore` in either touched file (checked by grep; the only
+  matches are the English word "any" inside prose strings).
+- Not committed, per instructions.

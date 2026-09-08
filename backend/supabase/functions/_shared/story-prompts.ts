@@ -422,14 +422,31 @@ function formatSeriesState(state: SeriesState): string {
 // Layer 3: Genre voice modules
 // ---------------------------------------------------------------------------
 
-interface GenreVoice {
+export interface GenreVoice {
   voice: string;
   pacing: string;
   whatWorks: string;
   whatToAvoid: string;
 }
 
-const GENRE_VOICES: Record<string, GenreVoice> = {
+// Shared by `contemporary` and `sliceOfLife` below (product decision,
+// 2026-09-08): `contemporary`'s craft always was slice-of-life craft, and
+// `sliceOfLife` is what new submissions migrate to
+// (GENRE_MIGRATION_MAP.contemporary). Defined once, referenced twice, so an
+// edit to one cannot silently drift from the other.
+const CONTEMPORARY_VOICE: GenreVoice = {
+  voice:
+    "Honest, measured, emotionally precise. Contemporary fiction lives in the gap between what people say and what they mean, between what they want and what they do. The prose should be transparent: the reader should forget they're reading and feel like they're watching real life.",
+  pacing:
+    "Let scenes play out in near-real time. A dinner conversation where something breaks between two people can carry an entire story. Don't rush to the crisis: the tension of normality cracking is the drama. Small domestic details carry enormous emotional weight.",
+  whatWorks:
+    "Dialogue that sounds like real speech: interruptions, non-sequiturs, people talking past each other. Characters who are wrong about themselves. The specific over the abstract: not 'love' but the way someone always saves the last bite. Warm slice-of-life moments alongside heavier beats.",
+  whatToAvoid:
+    "Melodrama: characters who react bigger than the situation warrants. Trauma as a personality substitute. Characters who articulate their feelings perfectly in the moment of crisis (people don't do this). Tidy resolutions to messy human problems.",
+};
+
+/** Exported for tests only (equality/content assertions over genre craft). */
+export const GENRE_VOICES: Record<string, GenreVoice> = {
   romance: {
     voice:
       "Intimate, warm, grounded. Write attraction through small gestures — a caught glance across a table, fingers brushing when passing a cup, the way someone's name sounds different when said softly. The tension between what characters want to say and what they actually say is where romance lives.",
@@ -490,15 +507,24 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     whatToAvoid:
       "Vampires/werewolves as just humans with powers. Ignoring the implications of immortality or predator nature. Instalove without supernatural justification. Generic urban settings without atmospheric detail.",
   },
+  // v7 taxonomy (2026-09-08): `thriller` is retired from the picker and new
+  // thriller submissions migrate here (GENRE_MIGRATION_MAP.thriller). Mystery
+  // and thriller run on genuinely different engines, puzzle-and-revelation
+  // versus dread-and-momentum, so this module was rewritten to carry both
+  // rather than just keeping mystery's original puzzle-only craft. See
+  // docs/research/ for the source memos and source-of-truth/STORY_PROMPT_SYSTEM.md
+  // for the merge rationale. `GENRE_VOICES.thriller` below is untouched and
+  // keeps serving existing thriller stories directly (story-prompts.ts's own
+  // `normalizeGenre` resolves a stored `thriller` genre to itself, unmigrated).
   mystery: {
     voice:
-      "Precise, observational, controlled. The narrator notices what others miss — the wrong detail in the right place. Information is currency: what you reveal, what you withhold, and when you do each. Every sentence should either advance the plot or mislead the reader (ideally both).",
+      "Precise and controlled, built for two engines at once: the puzzle a careful reader can solve, and the dread of something closing in that will not politely wait for the puzzle to finish. The narrator notices the wrong detail in the right place. Information is currency, what you reveal, what you withhold, and when you do each. Every sentence should advance the plot, mislead the reader, or tighten the pressure, ideally more than one at once.",
     pacing:
-      "Plant 3 genuine clues and 1 red herring in the first half. The reveal should make the reader flip back mentally to earlier moments. Short sentences build tension. Long ones lull the reader before a surprise.",
+      "Plant genuine clues early and let a clock, literal or felt, run underneath them. Alternate between the reveal that sends the reader back to reread an earlier scene and a burst of pure momentum: a chase, a countdown, a confrontation forcing a decision now. Short sentences build tension. Long ones lull the reader just before either kind of surprise, the reveal or the danger.",
     whatWorks:
-      "A detective who has a specific, unusual method of observation. Clues hidden in plain sight inside ordinary description. Dialogue where the liar says something technically true but misleading. The moment when the detective connects two unrelated details.",
+      "A detective, witness, or target with one specific, unusual method of observation. Clues hidden in plain sight inside ordinary description, with a ticking clock running underneath so the puzzle cannot be solved at leisure. Dialogue where the liar says something technically true but misleading. A competent antagonist, and a smart decision that still goes wrong.",
     whatToAvoid:
-      "Characters conveniently overhearing the key information. The detective explaining their reasoning in a monologue. Evidence that appears only when the plot needs it. Mysteries where the reader has no chance of solving it because key facts were withheld.",
+      "Characters who conveniently overhear the key information, or who don't call for help when any reasonable person would. The detective, or the villain, explaining the whole plan in a monologue. Evidence, or danger, that appears only when the plot needs it. A reader with no real chance to solve the puzzle, and no reason to feel the clock running.",
   },
   thriller: {
     voice:
@@ -550,16 +576,6 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     whatToAvoid:
       "Modern slang in historical mouths. Characters who are anachronistically progressive (unless that's the point and it has consequences). Wikipedia-style historical exposition. Treating the past as a costume party for modern sensibilities.",
   },
-  contemporary: {
-    voice:
-      "Honest, measured, emotionally precise. Contemporary fiction lives in the gap between what people say and what they mean, between what they want and what they do. The prose should be transparent — the reader should forget they're reading and feel like they're watching real life.",
-    pacing:
-      "Let scenes play out in near-real time. A dinner conversation where something breaks between two people can carry an entire story. Don't rush to the crisis — the tension of normality cracking is the drama. Small domestic details carry enormous emotional weight.",
-    whatWorks:
-      "Dialogue that sounds like real speech: interruptions, non-sequiturs, people talking past each other. Characters who are wrong about themselves. The specific over the abstract: not 'love' but the way someone always saves the last bite. Warm slice-of-life moments alongside heavier beats.",
-    whatToAvoid:
-      "Melodrama — characters who react bigger than the situation warrants. Trauma as a personality substitute. Characters who articulate their feelings perfectly in the moment of crisis (people don't do this). Tidy resolutions to messy human problems.",
-  },
   comedy: {
     voice:
       "Specific, observational, deadpan or absurd (pick one and commit). Comedy comes from precision — the exact right word, the unexpected detail, the truth stated so plainly it becomes funny. The narrator's voice is everything.",
@@ -580,46 +596,65 @@ const GENRE_VOICES: Record<string, GenreVoice> = {
     whatToAvoid:
       "Purple prose masquerading as poetry (more adjectives does not equal more poetic). Abstract statements about feelings. Rhyming prose. Being obscure for its own sake — compression is not the same as confusion.",
   },
+  // Researched module (docs/research/educational.md). Adjusted from the memo's
+  // proposed text only for house style: the shipped module's "Textbook
+  // diction (delve, ...)" example quoted a live BANNED_WORDS entry, so
+  // whatToAvoid now describes the failure mode instead of naming it.
   educational: {
     voice:
-      "A real story first, with a fact, a skill, or a way of thinking embedded in what the protagonist does to get what they want. The information should be load-bearing: the character needs it to solve the actual problem, not a side note the narration pauses to deliver. If you can delete a sentence and the plot still works, the sentence was a lesson, not a story, and it goes.",
+      "A real story first. A fact, a mechanism, or a skill lives inside what the protagonist does to get what they want, and the character needs it to solve the actual problem, not to fill a pause in the narration. State a mechanism only when you are certain of it. When you are not certain, choose the truer, plainer version over the more impressive, more specific one. A vague sentence that holds up is worth more here than a vivid one that doesn't.",
     pacing:
-      "Let the protagonist attempt something, get it wrong for a real reason, and figure out the correct approach through consequence — not through a mentor explaining it in a paragraph. Curiosity drives scenes forward the way a clue drives a mystery: a specific question the character needs answered before they can act.",
+      "Let the protagonist attempt something, get it wrong for a real reason, and reach the correct approach through consequence, not through a mentor explaining it in one paragraph. Break a large idea into the two or three moments the plot already needs, rather than one scene carrying the whole concept. Curiosity should drive the story the way a clue drives a mystery: a specific question the character must answer before they can act.",
     whatWorks:
-      "A protagonist whose ignorance costs them something concrete before they learn otherwise. Information delivered through action, dialogue with a stake in it, or a mistake and its fallout — never through narration stopping to explain. A closing image or scene that shows the change in what the character can now do, rather than stating what they learned.",
+      "A protagonist whose gap in knowledge costs them something concrete before they close it. Information spoken by a character who has an actual reason to say it out loud right now, not one who exists to ask the question an expert then answers. A mistake with a fair, visible cause, and a fix the reader can follow. A closing image or action that shows what the character can now do, instead of a line that states what they learned.",
     whatToAvoid:
-      "A narrator who explains a concept directly to the reader. A character who exists only to ask the question an expert then answers. A moral or 'takeaway' paragraph at the end. Textbook diction (delve, understand that, it is important to know). Dialogue where one character quizzes another. If it reads like a worksheet with a plot bolted on, it has failed.",
+      "A narrator who stops the story to explain a concept to the reader. A precise-sounding number, date, or claim you are not sure of; say less instead of guessing more. A quiz disguised as dialogue, where one character asks only so another can answer. A moral or 'lesson' paragraph at the end. Textbook diction: clinical explainer phrasing pulled straight from a lesson plan. If it reads like a worksheet with a plot bolted on, it has failed.",
   },
+  // Researched module (docs/research/fanfiction.md). The memo's verdict: this
+  // genre is a grounding problem first, and a shared voice module cannot
+  // supply characterisation fidelity to a specific canon. This module stops
+  // claiming that fidelity (the old text promised "voice and mannerism
+  // consistency for an established dynamic" with no mechanism behind it) and
+  // confines itself to what is genuinely genre-shaped: compression, trope
+  // delivery, and the assumption of shared history with the reader.
   fanfiction: {
     voice:
-      "Heightened and devoted. This is the register of someone who already loves these characters and is extending their story rather than introducing them — so voice, relationship history, and unspoken shorthand between characters can be assumed rather than re-established. Emotional beats can run bigger and closer together than in original fiction, because the reader arrived already invested.",
+      "Heightened, compressed, and written for a reader who already loves this cast. Skip the introductions a debut story would need and go straight to the dynamic the reader came for. This voice module cannot tell you how a specific character talks, what they call each other, or what already happened between them. That knowledge has to come from the grounding layer or from what the user wrote. Without it, name the characters and write a strong original scene rather than guessing at a voice you do not actually have.",
     pacing:
-      "Compress the ordinary and dwell in the charged moment. A fanfic reader is here for a specific dynamic or scenario, so get to it — the found-family reunion, the rivals forced together, the missing scene — faster than a debut story would, then slow down hard once you're inside it.",
+      "Get to the charged moment fast. A fanfic reader is not here for a slow first act, they are here for the reunion, the rivalry, the one bed, the missing scene, so spend little time on setup and dwell hard once you are inside the scene that was promised. Emotional beats can land closer together and bigger than in original fiction, because the reader arrived already invested in these people.",
     whatWorks:
-      "Trope commitment: pick the shape (enemies to lovers, found family, one bed, canon-divergence) and deliver its known pleasures with a fresh specific detail rather than apologizing for the trope. Voice and mannerism consistency for an established dynamic. A callback or in-joke between characters that rewards a reader who already knows them. Emotional payoff arriving sooner and landing harder than in original fiction.",
+      "Committing fully to the chosen trope (enemies to lovers, found family, canon divergence, one bed) and delivering its known pleasure with one fresh, specific detail, rather than winking at the reader or apologizing for the trope. A callback or in-joke that rewards a reader who already knows this cast. Letting an established relationship's history show through small, unexplained shorthand instead of re-introducing it. A clean, stated point of divergence when the story departs from canon, so the departure reads as a choice.",
     whatToAvoid:
-      "Real named public figures or identifiable private individuals, in any pairing or scenario. Extensive world re-explanation the audience does not need. A wink to the reader that breaks the fourth wall. Treating the trope as a joke instead of playing it straight. Original-character worship that sidelines the dynamic the reader came for.",
+      "Guessing at a character's voice, mannerisms, or relationship history when nothing in the prompt actually supplies them. That produces a generic protagonist wearing a familiar name, which is the single most common complaint fandom readers make about a story. A flawless, universally adored version of any character. Real named public figures or identifiable private individuals, in any pairing or scenario. Explaining canon the reader already knows. A wink at the reader that breaks the fourth wall. Treating the trope as a joke instead of playing it straight.",
   },
+  // Researched module (docs/research/folktale.md). Folktale collides with
+  // several global craft rules on purpose (Propp, Luthi, oral-formulaic
+  // theory: flat archetypes, structural repetition and formulaic open/close
+  // are the form, not a lapse). Rather than silently breaking those rules,
+  // each carve-out below names the specific base-layer rule it suspends and
+  // why, so a reader of the assembled prompt can see the exception being
+  // made. No other genre gets these carve-outs, and the base rules
+  // themselves are unchanged for everyone else.
   folktale: {
     voice:
-      "Oral and cadenced, as if told aloud across a fire or a kitchen table, not read silently off a page. Archetypal roles (the youngest child, the clever fool, the trickster animal) are allowed and expected, but give each one a single, specific, unexpected trait so the archetype doesn't collapse into a placeholder. Repetition is structural, not lazy: the same phrase returning three times is the folktale doing its job.",
+      "Oral, cadenced, and told by someone in the room with the listener, not read off a page. Address the listener directly at least once, a 'you know how this goes' or 'and if you had been there' aside is welcome. Characters are archetypes on purpose: the youngest child, the clever fool, the trickster animal, the proud king. This genre suspends the base layer's Show, Don't Tell rule where it demands interiority: do not give an archetype a psychology to explore. Give each one exactly one distinctive trait and let it play out through what they do at the moment the tale turns on them. Depth is not the goal here, a clean, memorable shape is.",
     pacing:
-      "Move in patterned units — three trials, three brothers, three attempts — with each repetition changing one variable so the third lands differently from the first two. Keep exposition minimal; a folktale trusts the listener to infer the world from what characters do in it.",
+      "Move in patterned units: three brothers, three trials, three attempts at the riddle. Repeat the phrasing across the pattern on purpose, changing exactly one detail each time so the third instance lands differently from the first two. This genre suspends the base layer's Sentence Rhythm rule against repeated structure for exactly these patterns: a refrain returning almost word for word is the tale doing its job, not a slip to smooth over. Keep exposition minimal and the world sparsely furnished; trust the listener to infer the setting from what characters do in it.",
     whatWorks:
-      "A concrete task or riddle with a fair, learnable rule. A small creature or overlooked character outwitting a larger, prouder one through cleverness rather than force. Consequences that fit the crime with folkloric symmetry (kindness returned, greed punished by its own logic). An ending that closes cleanly, often with a final image or turn of phrase that could be repeated aloud.",
+      "A stock opening and closing formula used straight, without irony ('once there was', 'and that is how it has been told ever since'). This genre also suspends the general anti-cliche instinct for exactly these formulas, and the base Pacing rule against resolving too neatly: the formula is the doorway here, not a tell to freshen up, and an ending that closes hard on one clean image is the genre working, not a standalone vignette to loosen. A concrete task, riddle, or bargain with a fair rule the listener could solve alongside the hero. A small, overlooked figure outwitting a larger, prouder one through wit rather than force. Dialogue that stays role-consistent rather than fully individuated: the trickster boasts the same way every time, the fool always answers literally.",
     whatToAvoid:
-      "Narrating the moral directly ('and so we learn that...') — the consequence must demonstrate the lesson, never announce it, or the story becomes a fable with the teeth pulled. Modern brand names, technology, or slang breaking the timeless setting. Overexplaining the magic's rules. A trickster who wins through violence instead of wit.",
+      "Interiority: a character who reflects on their own feelings or motives stops being an archetype and starts being a short story protagonist in the wrong genre. Narrating the moral outright ('and so we learn that'); the consequence has to demonstrate the lesson or the tale becomes a fable with the teeth pulled. Modern slang, brand names, or technology breaking the timeless setting. A trickster who wins by force instead of by wit. An ending that trails off or leaves a question open.",
   },
-  sliceOfLife: {
-    voice:
-      "Quiet and observational, finding the story in a single ordinary day rather than a crisis. The prose should notice what a character notices — the specific ritual of making coffee, the exact tone of a coworker's greeting — and trust that accumulated small truth over a dramatic turn. Nothing needs to be at stake in the plot sense; what's at stake is whether the character will let themselves notice something about their own life.",
-    pacing:
-      "Real time, mostly. Let an ordinary errand, shift, or evening play out close to its actual length, and let the emotional shift happen inside that mundane container rather than needing an external event to force it. A single small decision — texting back, staying five more minutes, finally throwing something away — can be the whole climax.",
-    whatWorks:
-      "Sensory specificity about routine (the particular squeak of a chair, a recurring order at a food stall). A character who is slightly wrong about their own feelings until a small moment corrects them. Warmth that includes friction — a good day can still have an argument in it. An ending that is a shift in noticing, not a resolution of a problem.",
-    whatToAvoid:
-      "Manufacturing a crisis (an accident, a diagnosis, a breakup) to justify the stakes — that is a different genre wearing this one's clothes. A tidy lesson stated in the final paragraph. Treating 'nothing happens' as permission for the prose itself to go slack; the ordinariness is the subject, not an excuse to stop working the sentence.",
-  },
+  // Product decision (2026-09-08): `sliceOfLife` inherits `contemporary`'s
+  // module wholesale rather than duplicating its text. `contemporary` was
+  // already slice-of-life craft ("the tension of normality cracking is the
+  // drama", the specific over the abstract), and `sliceOfLife` is its
+  // spiritual successor for new submissions (GENRE_MIGRATION_MAP.contemporary).
+  // Sharing one object reference means a future edit to either genre's craft
+  // cannot silently diverge from the other; see
+  // source-of-truth/STORY_PROMPT_SYSTEM.md.
+  contemporary: CONTEMPORARY_VOICE,
+  sliceOfLife: CONTEMPORARY_VOICE,
 };
 
 function buildGenreModule(genre: string): string {
