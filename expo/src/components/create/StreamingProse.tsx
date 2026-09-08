@@ -62,6 +62,14 @@ export interface StreamingProseProps {
   onDismissError?: () => void;
   /** Label for the dismiss action. */
   dismissLabel?: string;
+  /**
+   * Stick to the bottom as text arrives. Defaults to OFF.
+   *
+   * Only correct for a view that paints as the model writes. The studio
+   * reveals whole finished pages instead, and following the tail there scrolls
+   * the writer past the page they were meant to land on.
+   */
+  autoFollow?: boolean;
   testID?: string;
 }
 
@@ -72,10 +80,24 @@ export default function StreamingProse({
   errorMessage,
   onDismissError,
   dismissLabel = "Back",
+  autoFollow = false,
   testID,
 }: StreamingProseProps) {
   const scrollRef = useRef<ScrollView>(null);
-  const [following, setFollowing] = useState(true);
+  /**
+   * Follow the tail only when asked to.
+   *
+   * This defaulted to `true`, which was right while the view painted the model
+   * token by token -- the point was to watch it write. It is wrong now that
+   * the studio holds a chapter back until three pages are finished and then
+   * reveals them at once: the effect below fired on that reveal and scrolled
+   * the writer to the BOTTOM of the three pages, so the change made to land
+   * them on a finished first page landed them at the far end of it instead.
+   * Each later page settling yanked them again.
+   *
+   * `autoFollow` lets a caller still opt in. `CreateStudioScreen` does not.
+   */
+  const [following, setFollowing] = useState(autoFollow);
 
   // Splitting on blank lines matches how every other surface renders a chapter,
   // so the handoff from this view to the editor does not reflow the text.
@@ -85,6 +107,13 @@ export default function StreamingProse({
     if (!following) return;
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [text, following]);
+
+  // Reading starts at the top of what was revealed. Without this the very
+  // first reveal inherits whatever offset the ScrollView happened to have.
+  useEffect(() => {
+    if (autoFollow) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [autoFollow]);
 
   // A drag is the reader taking over. `onScroll` alone cannot be used for this:
   // it also fires for the programmatic scroll above, which would immediately

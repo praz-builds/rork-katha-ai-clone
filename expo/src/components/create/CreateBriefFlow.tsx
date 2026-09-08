@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   Animated,
   Image,
   KeyboardAvoidingView,
@@ -18,6 +19,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import {
   ArrowLeft,
   Check,
@@ -25,6 +27,7 @@ import {
   ChevronRight,
   Edit3,
   HelpCircle,
+  ImagePlus,
   Lightbulb,
   Plus,
   Sparkles,
@@ -322,6 +325,63 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
    * else, so adding it here would need the function and `CharacterImageInput`
    * to move first. Background still reaches the story prompt.
    */
+  /**
+   * Attach a photo that steers this character's look.
+   *
+   * Downscaled and re-encoded here rather than sent as the camera produced it:
+   * a modern phone photo is 3-8 MB, the endpoint caps a reference at 6 MB of
+   * base64, and a request that large is slow on the writer's connection before
+   * it is anything else. 1024px on the long edge is well beyond what an image
+   * model reads for build, hair and wardrobe.
+   *
+   * `base64: true` because the endpoint takes a data URL. The bytes never
+   * touch our storage: the reference exists only for the length of one
+   * portrait request and is dropped as soon as it has been used.
+   */
+  const pickCharacterReference = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Photo access needed",
+        "Katha needs permission to open your photos so you can attach a reference.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      base64: true,
+      allowsEditing: true,
+      aspect: [2, 3],
+    });
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert(
+        "Couldn't read that photo",
+        "Please pick a different image, or try a JPEG or PNG.",
+      );
+      return;
+    }
+
+    // The endpoint's allowlist is JPEG, PNG and WebP; anything else is refused
+    // there. Naming the type from the asset rather than assuming PNG is what
+    // keeps that refusal about the actual file.
+    const mime = asset.mimeType && /^image\/(jpeg|jpg|png|webp)$/.test(asset.mimeType)
+      ? asset.mimeType
+      : "image/jpeg";
+    setCharacterBuffer((previous) => ({
+      ...previous,
+      referenceImage: `data:${mime};base64,${asset.base64}`,
+    }));
+  }, []);
+
+  const clearCharacterReference = useCallback(() => {
+    setCharacterBuffer((previous) => ({ ...previous, referenceImage: undefined }));
+  }, []);
+
   const createCharacterImage = useCallback(async () => {
     const name = characterBuffer.name.trim();
     if (!name || characterBuffer.portraitStatus === "generating") return;
@@ -335,6 +395,7 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
         name,
         description: characterBuffer.description,
         appearance: characterBuffer.appearance,
+        referenceImage: characterBuffer.referenceImage,
       });
       setCharacterBuffer((previous) => ({
         ...previous,
@@ -456,6 +517,8 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
           onSave={saveCharacter}
           onDelete={editingCharacterIndex === null ? undefined : () => deleteCharacter(editingCharacterIndex)}
           onCreateImage={createCharacterImage}
+          onPickReference={pickCharacterReference}
+          onClearReference={clearCharacterReference}
           unsavedPromptOpen={unsavedPromptOpen}
           onKeepEditing={() => setUnsavedPromptOpen(false)}
           onDiscard={discardCharacter}
@@ -901,6 +964,8 @@ function CharacterCraftScreen({
   onSave,
   onDelete,
   onCreateImage,
+  onPickReference,
+  onClearReference,
   unsavedPromptOpen,
   onKeepEditing,
   onDiscard,
@@ -913,6 +978,8 @@ function CharacterCraftScreen({
   onSave: () => void;
   onDelete?: () => void;
   onCreateImage: () => void;
+  onPickReference: () => void;
+  onClearReference: () => void;
   unsavedPromptOpen: boolean;
   onKeepEditing: () => void;
   onDiscard: () => void;
@@ -993,6 +1060,34 @@ function CharacterCraftScreen({
               <Pressable disabled={!canCreateImage} onPress={onCreateImage} accessibilityRole="button" accessibilityState={{ disabled: !canCreateImage, busy: imageBusy }} style={[styles.outlineButton, !canCreateImage && styles.outlineButtonDisabled]}>
                 <Text style={styles.outlineButtonText}>{imageBusy ? "Creating..." : imageReady ? "Reimagine" : "Create image"}</Text>
               </Pressable>
+              {/*
+                A photo steers the LOOK. It is not a likeness target, and the
+                copy says so where the writer is deciding whether to attach one
+                -- not buried in a policy page. The backend states the same rule
+                to the model, and naming a real person locks the story private
+                regardless of what was attached.
+              */}
+              <Pressable
+                onPress={character.referenceImage ? onClearReference : onPickReference}
+                accessibilityRole="button"
+                accessibilityLabel={character.referenceImage
+                  ? "Remove the reference photo"
+                  : "Attach a reference photo"}
+                style={styles.referenceButton}
+              >
+                <ImagePlus size={15} color={colors.accent} />
+                <Text style={styles.referenceButtonText}>
+                  {character.referenceImage ? "Remove reference photo" : "Attach a reference photo"}
+                </Text>
+              </Pressable>
+              {character.referenceImage
+                ? (
+                  <Text style={styles.referenceHint}>
+                    Used for build, hair and wardrobe only. The face will be an
+                    original illustration, never a real person&apos;s likeness.
+                  </Text>
+                )
+                : null}
               {character.portraitStatus === "failed" ? <Text style={styles.portraitError}>Image failed. Check the character details and try again.</Text> : null}
             </View>
           </View>
@@ -1196,6 +1291,9 @@ const styles = StyleSheet.create({
   portraitBusyText: { color: colors.accent, fontFamily: fonts.ui, fontSize: 12, fontWeight: "800" },
   portraitHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, textAlign: "center", paddingHorizontal: spacing.md },
   portraitActions: { flex: 1, gap: spacing.md, alignItems: "flex-start" },
+  referenceButton: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
+  referenceButtonText: { fontFamily: fonts.ui, fontSize: 13, fontWeight: "700", color: colors.accent, letterSpacing: 0 },
+  referenceHint: { fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.tertiary, letterSpacing: 0 },
   outlineButton: { minHeight: 46, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.accent, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
   outlineButtonDisabled: { opacity: 0.45 },
   outlineButtonText: { color: colors.ink, fontFamily: fonts.ui, fontSize: 16, fontWeight: "800" },

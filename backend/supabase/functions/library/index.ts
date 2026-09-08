@@ -5,7 +5,11 @@ import { viewerStateForStories } from "../_shared/engagement.ts";
 
 const MAX_PAGE = 500;
 
-serve(async (req) => {
+/**
+ * Exported and separated from `serve` so the scope contract can be driven from
+ * a test without binding a port. Importing a module must never start a server.
+ */
+export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
   const respond = (body: unknown, status = 200) =>
@@ -48,6 +52,26 @@ serve(async (req) => {
       return respond({ error: "Invalid genre or search query" }, 400);
     }
 
+    /**
+     * `?scope=mine` — the caller's own stories, published or not.
+     *
+     * Without this a writer's own work was unreachable. Stories persist
+     * correctly, but the default query is `is_public OR is_curated`, and a
+     * fresh story is private (that is the column default, and the entity gate
+     * forces it), so no endpoint anywhere returned it. The client kept its
+     * stories in a `useState` array, which meant a browser reload erased every
+     * story a writer had ever made -- from the interface, while the rows sat
+     * safe in the database. They had paid credits for those.
+     *
+     * Ownership is enforced by `author_id = user.id` below, not by trusting the
+     * parameter: `scope=mine` from an unauthenticated caller returns the public
+     * library, never someone else's drafts.
+     */
+    const scope = url.searchParams.get("scope");
+    if (scope !== null && scope !== "mine" && scope !== "public") {
+      return respond({ error: "scope must be mine or public" }, 400);
+    }
+
     // The library is a public endpoint that becomes personalised when the
     // caller is signed in, so a token is optional. It must also be allowed to
     // be *bad*: an expired or malformed one is ordinary, not exceptional.
@@ -77,17 +101,29 @@ serve(async (req) => {
       })
       : createClient(supabaseUrl, anonKey);
 
+    const mine = scope === "mine" && user !== null;
+
     let query = supabase
       .from("stories")
       .select(
         "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating, author_id",
         { count: "planned" },
       )
-      .or("is_public.eq.true,is_curated.eq.true")
       .eq("status", "complete")
-      .neq("content_rating", "explicit")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (mine) {
+      // A writer sees their own work whatever its visibility, and the content
+      // rating filter does not apply to them either: refusing to show someone
+      // the story they wrote and paid for, because of how it was rated, is not
+      // a safety measure. RLS still scopes this to rows they may read.
+      query = query.eq("author_id", user!.id);
+    } else {
+      query = query
+        .or("is_public.eq.true,is_curated.eq.true")
+        .neq("content_rating", "explicit");
+    }
 
     if (genre) {
       query = query.eq("primary_genre", genre);
@@ -124,7 +160,11 @@ serve(async (req) => {
     console.error("library error:", error);
     return respond({ error: "Internal server error" }, 500);
   }
-});
+}
+
+if (import.meta.main) {
+  serve(handleRequest);
+}
 
 function parsePositiveInteger(
   value: string | null,

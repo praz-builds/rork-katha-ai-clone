@@ -45,6 +45,7 @@ import { isOwnStory } from "@/lib/ownership";
 import {
   READER_THEMES,
   READING_THEME_ORDER,
+  type ReaderTheme,
   type ReadingThemeName,
 } from "@/lib/reading-themes";
 import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
@@ -230,6 +231,20 @@ function renderPageWords(
   matches: readonly { start: number; end: number }[],
   activeMatch: number,
   renderWord: (word: string, index: number) => ReactNode,
+  /**
+   * The active reading mode, because a highlight is a pair with the page.
+   *
+   * The highlight used to be two hardcoded styles: `colors.accentSoft`
+   * (#FFEFE2) behind body text that inherits `theme.text`. In Night mode that
+   * is #F2EEE8 on #FFEFE2 -- a contrast ratio of 1.03:1, which is to say the
+   * word a reader just searched for became invisible at the moment it was
+   * found. The active match was 2.85:1, below AA in every mode.
+   *
+   * `reading-themes.test.ts` did not catch it because it checks the pairs the
+   * theme declares (`text`, `muted`, `divider`) and the reader never rendered
+   * body text on `theme.highlight` at all.
+   */
+  theme: ReaderTheme,
 ) {
   let wordIndex = 0;
   let cursor = 0;
@@ -243,10 +258,19 @@ function renderPageWords(
     const matchIndex = matches.findIndex((match) => absoluteStart < match.end && absoluteStart + word.length > match.start);
     const content = renderWord(word, pageWordStart + currentWordIndex);
     if (matchIndex < 0) return <Text key={`word-${index}`}>{content}</Text>;
+    const isActive = matchIndex === activeMatch;
     return (
       <Text
         key={`word-${index}`}
-        style={matchIndex === activeMatch ? styles.activeSearchHighlight : styles.searchHighlight}
+        style={[
+          styles.searchHighlight,
+          {
+            backgroundColor: isActive ? theme.activeHighlight : theme.highlight,
+            // The text colour is set explicitly on both. Inheriting
+            // `theme.text` is what made the Night highlight disappear.
+            color: isActive ? theme.activeHighlightText : theme.text,
+          },
+        ]}
       >
         {content}
       </Text>
@@ -512,8 +536,16 @@ export default function ReaderScreen({
    * the story. A reader who taps to open the controls and then presses back
    * means "put those away", and falling straight through to the navigator
    * threw them out of the chapter instead, costing a trip back in to carry
-   * on reading. Returning `false` when nothing is open hands the press back
-   * to the navigator unchanged.
+   * on reading.
+   *
+   * When nothing is open the press must LEAVE THE READER, not fall through.
+   * This returned `false` on the reasoning that the navigator would handle it
+   * -- but there is no navigator. Screens are a `useState` switch in
+   * `App.tsx`, so `false` runs Android's platform default, which finishes the
+   * activity: the reader's back button closed the whole app. That became much
+   * easier to hit in the same change that made the chrome start hidden, since
+   * the reader now opens with no visible back control at all and the hardware
+   * button is the first thing an Android reader reaches for.
    */
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -526,10 +558,11 @@ export default function ReaderScreen({
         setChromeVisible(false);
         return true;
       }
-      return false;
+      onBack();
+      return true;
     });
     return () => subscription.remove();
-  }, [chromeVisible, searchOpen]);
+  }, [chromeVisible, searchOpen, onBack]);
 
   const switchChapter = useCallback((nextIndex: number) => {
     if (nextIndex === chapterIndex) return;
@@ -714,6 +747,7 @@ export default function ReaderScreen({
       matchesOnPage,
       activeOnPage,
       renderWord,
+      theme,
     );
   };
 
@@ -1182,11 +1216,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   searchHighlight: {
-    backgroundColor: colors.accentSoft,
-  },
-  activeSearchHighlight: {
-    backgroundColor: colors.accent,
-    color: colors.surface,
+    borderRadius: 3,
   },
   divider: {
     height: StyleSheet.hairlineWidth,

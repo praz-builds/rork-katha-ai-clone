@@ -158,8 +158,22 @@ serve(async (req) => {
     // `generate-story/index.ts` for why the Create studio needs the fallback,
     // why the shaped path never reaches this branch, and why the limit check
     // does not change the ordering against `begin_story_generation` below.
-    const needsGroundingFallback = grounding.length === 0 &&
-      groundingEntities.length === 0;
+    // Deliberately NOT short-circuited by `groundingEntities`.
+    //
+    // That field arrives on the request body. It was introduced as a
+    // convenience -- the client echoes back what `shape-story` already
+    // classified, so the work is not repeated -- and while it only fed a
+    // prompt, a tampered entry mislabelled nobody but the tamperer's own
+    // story. The entity visibility gate changed that: the same field now
+    // decides whether a story may ever be published. A caller who sends any
+    // shape-valid `grounding_entities` array used to skip classification
+    // entirely and hand the gate its own answer.
+    //
+    // So the classification runs on its own account, and the gate below reads
+    // only what THIS server derived. The echoed entities still serve their
+    // original purpose (prompt grounding); they simply no longer get a vote on
+    // visibility.
+    const needsGroundingFallback = grounding.length === 0;
     const groundingFallback = needsGroundingFallback
       ? claimGroundingFallback({
         user,
@@ -339,7 +353,10 @@ serve(async (req) => {
           // grounding card (the model already writes them accurately) while
           // being exactly the entity this gate exists for - `resolvedGrounding`
           // alone would never see them.
-          const gateReason = deriveGatingReason(resolvedEntities);
+          // Server-derived entities only. `resolvedEntities` may contain the
+          // client's echoed classification, which is fine for a prompt and
+          // unacceptable for a gate -- see `needsGroundingFallback` above.
+          const gateReason = deriveGatingReason(fallback?.entities ?? []);
 
           // The reader's saved phrases seed their next story. Best-effort: an
           // empty list renders the prompt byte-identically, so a lookup failure

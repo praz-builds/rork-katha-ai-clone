@@ -95,6 +95,35 @@ export async function handleRequest(req: Request): Promise<Response> {
     if (!requestId) return respond({ error: "request_id is required" }, 400);
     observedRequestId = requestId;
 
+    // Bounded before anything is spent.
+    //
+    // One call here can become six paid provider requests (two models across
+    // three safety rungs), and this endpoint has no credit reservation and no
+    // idempotency key -- the client mints a fresh request id on every tap, so
+    // there is nothing for a replay to collide with. Without this an
+    // authenticated caller could loop it. See migration 00055 for the numbers
+    // and for the anonymous-session gap it does not close.
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: allowed, error: limitError } = await serviceClient.rpc(
+      "claim_character_portrait_request",
+      { p_user_id: user.id },
+    );
+    // A broken limiter must not become a free pass. If the claim cannot be
+    // made, refuse: the alternative is that a database blip turns the only
+    // bound on this endpoint off.
+    if (limitError || allowed !== true) {
+      return respond(
+        {
+          error:
+            "You have created a lot of character images recently. Try again in a little while.",
+        },
+        429,
+      );
+    }
+
     const name = stringField(body.name);
     const description = stringField(body.description);
     const appearance = stringField(body.appearance);

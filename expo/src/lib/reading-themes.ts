@@ -17,7 +17,20 @@ export type ReaderTheme = {
   text: string;
   muted: string;
   divider: string;
+  /**
+   * Behind a search match. Paired with `text`, which is drawn on top of it, so
+   * it must clear AA against `text` -- not against the page.
+   *
+   * This used to be `colors.accentSoft` on every theme, hardcoded in the
+   * reader. On the Night page that put #F2EEE8 text on a #FFEFE2 highlight:
+   * 1.03:1, so the word a reader had just searched for vanished at the moment
+   * it was found.
+   */
   highlight: string;
+  /** Behind the match the reader is currently on. */
+  activeHighlight: string;
+  /** Drawn on `activeHighlight`; must clear AA against it. */
+  activeHighlightText: string;
 };
 
 /**
@@ -65,7 +78,9 @@ export const READER_THEMES: Record<ReadingThemeName, ReaderTheme> = {
     text: "#1F1B16",
     muted: "#6B6259",
     divider: "#E2DAD0",
-    highlight: colors.accentSoft,
+    highlight: "#FFE3C7",
+    activeHighlight: "#B44708",
+    activeHighlightText: "#FFF7F0",
   },
   sepia: {
     name: "sepia",
@@ -79,7 +94,9 @@ export const READER_THEMES: Record<ReadingThemeName, ReaderTheme> = {
     // what was wrong was pairing it with this one.
     muted: colors.sepiaSecondary,
     divider: colors.sepiaPlaceholder,
-    highlight: colors.accentSoft,
+    highlight: "#F2D9A8",
+    activeHighlight: "#8A3A0B",
+    activeHighlightText: "#FFF6EC",
   },
   night: {
     name: "night",
@@ -90,7 +107,9 @@ export const READER_THEMES: Record<ReadingThemeName, ReaderTheme> = {
     text: "#F2EEE8",
     muted: "#B8AEA3",
     divider: "#3A3632",
-    highlight: "#5C351F",
+    highlight: "#4A3524",
+    activeHighlight: "#E58A45",
+    activeHighlightText: "#1A1208",
   },
 };
 

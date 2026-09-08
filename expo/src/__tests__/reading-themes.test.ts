@@ -77,6 +77,32 @@ describe("every reading mode", () => {
   );
 
   it.each(entries.map((theme) => [theme.label, theme] as const))(
+    "%s: a searched word stays readable once it is found",
+    (_label, theme) => {
+      // The gap this gate originally had. It checked the pairs a theme
+      // DECLARES (text/background, muted/background) and never the pair the
+      // reader actually renders body text on during a search. Night was
+      // #F2EEE8 on #FFEFE2 — 1.03:1 — so the match a reader had just searched
+      // for became invisible at the moment it was found.
+      expect(contrastRatio(theme.text, theme.highlight))
+        .toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+    },
+  );
+
+  it.each(entries.map((theme) => [theme.label, theme] as const))(
+    "%s: the active match is readable, and louder than the others",
+    (_label, theme) => {
+      // The active match was white on #FF6B1A: 2.85:1, below AA in every mode.
+      expect(contrastRatio(theme.activeHighlightText, theme.activeHighlight))
+        .toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+      // And it has to be distinguishable from the inactive ones, or "next
+      // match" moves something the reader cannot see move.
+      expect(theme.activeHighlight.toLowerCase())
+        .not.toBe(theme.highlight.toLowerCase());
+    },
+  );
+
+  it.each(entries.map((theme) => [theme.label, theme] as const))(
     "%s: the divider is visible without competing with the text",
     (_label, theme) => {
       // A divider nobody can see is decoration; one as strong as the prose is

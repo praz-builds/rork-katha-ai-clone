@@ -291,6 +291,19 @@ export type CreateDraft = {
     portraitUrl?: string;
     /** UI state for the separate character-image call. */
     portraitStatus?: "idle" | "generating" | "ready" | "failed";
+    /**
+     * A photo the writer attached to steer this character's look, as a `data:`
+     * URL. Never persisted with the story and never sent to story generation:
+     * it exists only long enough to condition the portrait image.
+     *
+     * It is a STYLE reference, not a likeness target. The backend states that
+     * to the model explicitly (`STYLE_REFERENCE_CLAUSE` in `_shared/image.ts`),
+     * the base Safety Rules forbid real people, and a real person's name typed
+     * into a cast is reclassified `private_individual` and locks the story
+     * private (migration 00050). Three layers, because prompt text alone is
+     * the weakest of them.
+     */
+    referenceImage?: string;
     isHero: boolean;
   }[];
   isSeries?: boolean;

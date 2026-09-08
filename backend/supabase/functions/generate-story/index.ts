@@ -145,8 +145,22 @@ serve(async (req) => {
     // held, concurrently with `begin_story_generation` exactly as before. A
     // caller over the limit still gets a story; they just get an ungrounded
     // one, same as any other grounding failure.
-    const needsGroundingFallback = grounding.length === 0 &&
-      groundingEntities.length === 0;
+    // Deliberately NOT short-circuited by `groundingEntities`.
+    //
+    // That field arrives on the request body. It was introduced as a
+    // convenience -- the client echoes back what `shape-story` already
+    // classified, so the work is not repeated -- and while it only fed a
+    // prompt, a tampered entry mislabelled nobody but the tamperer's own
+    // story. The entity visibility gate changed that: the same field now
+    // decides whether a story may ever be published. A caller who sends any
+    // shape-valid `grounding_entities` array used to skip classification
+    // entirely and hand the gate its own answer.
+    //
+    // So the classification runs on its own account, and the gate below reads
+    // only what THIS server derived. The echoed entities still serve their
+    // original purpose (prompt grounding); they simply no longer get a vote on
+    // visibility.
+    const needsGroundingFallback = grounding.length === 0;
     const groundingFallback = needsGroundingFallback
       ? claimGroundingFallback({
         user,
@@ -322,7 +336,10 @@ serve(async (req) => {
       // card (the model already writes them accurately) while being exactly
       // the entity this gate exists for - `resolvedGrounding` alone would
       // never see them.
-      const gateReason = deriveGatingReason(resolvedEntities);
+      // Server-derived entities only. `resolvedEntities` may contain the
+      // client's echoed classification, which is fine for a prompt and
+      // unacceptable for a gate -- see `needsGroundingFallback` above.
+      const gateReason = deriveGatingReason(fallback?.entities ?? []);
 
       const systemPrompt = buildStorySystemPrompt({
         primaryGenre,

@@ -3,6 +3,7 @@ import * as Font from "expo-font";
 import { useEffect, useMemo, useState } from "react";
 import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
+import { fetchMyStories } from "@/lib/api";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
@@ -172,6 +173,28 @@ export default function App() {
       // value. This never asks for permission; it re-registers a token the
       // user has already granted, and does nothing at all if they have not.
       void syncPushToken();
+
+      // A writer's own stories, restored.
+      //
+      // `generatedStories` is session state, so before this the interface
+      // forgot every story on reload -- while the rows sat safe in the
+      // database. Someone who wrote three stories, closed the tab and came
+      // back found an empty library and no way to reach work they had paid
+      // credits for.
+      //
+      // Merged by id rather than replacing: a story generated in THIS session
+      // is more complete than its library row (it carries beats and series
+      // state the list query does not select), so the local copy wins where
+      // both exist.
+      if (active) {
+        void fetchMyStories().then((mine) => {
+          if (!active || mine.length === 0) return;
+          setGeneratedStories((current) => {
+            const seen = new Set(current.map((story) => story.id));
+            return [...current, ...mine.filter((story) => !seen.has(story.id))];
+          });
+        });
+      }
     }).catch((error) => {
       // The visible app is intentionally sign-in-free. Leave paid actions
       // unavailable until a later retry can establish their server identity.

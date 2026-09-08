@@ -391,6 +391,8 @@ export type CharacterImageInput = {
   name: string;
   description?: string;
   appearance?: string;
+  /** Optional style reference as a `data:` URL. See `CreateDraft.characters`. */
+  referenceImage?: string;
 };
 
 /**
@@ -426,6 +428,12 @@ export async function generateCharacterImage(
         name: input.name,
         description: input.description,
         appearance: input.appearance,
+        // Omitted rather than sent as null when absent: the endpoint treats a
+        // present-but-unusable field as an error, which is right, and an
+        // explicit null is present.
+        ...(input.referenceImage
+          ? { reference_image: input.referenceImage }
+          : {}),
       },
     },
   );
@@ -475,6 +483,144 @@ export async function getLibrary(
   }
 
   return { stories: filterLocalStories(query), source: "supabase" };
+}
+
+/**
+ * The caller's own stories, with their chapters, so a reload does not erase them.
+ *
+ * This closes a gap that cost real work: stories persisted correctly, but no
+ * endpoint returned a writer's own PRIVATE ones (the library query is
+ * `is_public OR is_curated`, and a fresh story is private by column default and
+ * by the entity gate), and the client held its stories in a `useState` array.
+ * So every story a writer made vanished from the interface on reload while the
+ * rows sat safe in the database -- stories they had spent credits on.
+ *
+ * Failure is silent and returns `[]`. This runs on boot, and a writer opening
+ * the app to a network blip should get the app, not an error about a list.
+ */
+export async function fetchMyStories(): Promise<Story[]> {
+  if (!isSupabaseConfigured) return [];
+
+  let userId: string;
+  try {
+    const user = await bootstrapUser();
+    if (!user) return [];
+    userId = user.userId;
+  } catch {
+    return [];
+  }
+
+  // Read straight from PostgREST rather than through the `library` function.
+  //
+  // RLS already expresses exactly the right rule and has since 00002:
+  // `is_public = true or is_curated = true or auth.uid() = author_id`. An
+  // author can read their own stories whatever their visibility, and their own
+  // chapters through the matching policy on `chapters`. Going through an edge
+  // function would put a second implementation of that rule in front of the
+  // one the database already enforces -- and, more practically, would make
+  // this feature wait on a deploy to be usable at all.
+  //
+  // `author_id` is still filtered explicitly. RLS would scope the read anyway,
+  // but a query that relies on a policy to be correct reads as a bug to the
+  // next person, and the filter costs nothing.
+  const { data, error } = await supabase
+    .from("stories")
+    .select(
+      "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, like_count, bookmark_count, read_count, created_at",
+    )
+    .eq("author_id", userId)
+    .eq("status", "complete")
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  if (error || !Array.isArray(data)) return [];
+
+  const stories = await Promise.all(data.map((row) => hydrateStoryRow(row)));
+  return stories.filter((story): story is Story => story !== null);
+}
+
+/** One library row plus its chapters, or null when the row is unusable. */
+async function hydrateStoryRow(row: unknown): Promise<Story | null> {
+  if (!row || typeof row !== "object") return null;
+  const record = row as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id : null;
+  const title = typeof record.title === "string" ? record.title : null;
+  if (!id || !title) return null;
+
+  const { data: chapterRows } = await supabase
+    .from("chapters")
+    .select(
+      "id, story_id, chapter_number, title, content, first_line, previously_summary, hook_type, hook_text, is_published, audio_url",
+    )
+    .eq("story_id", id)
+    .order("chapter_number", { ascending: true });
+
+  const chapters = (chapterRows ?? []).map((chapter) => {
+    const c = chapter as Record<string, unknown>;
+    const content = typeof c.content === "string" ? c.content : "";
+    return {
+      id: typeof c.id === "string" ? c.id : `${id}-chapter`,
+      storyId: id,
+      title: typeof c.title === "string" && c.title.trim()
+        ? c.title
+        : "Chapter one",
+      paragraphs: content.split(/\n\s*\n/).filter(Boolean),
+      chapterNumber: typeof c.chapter_number === "number" ? c.chapter_number : 1,
+      chapterRole: parseChapterRole(c.chapter_role, "standalone"),
+      firstLine: stringOrUndefined(c.first_line),
+      previouslySummary: stringOrUndefined(c.previously_summary),
+      hookType: parseHookType(c.hook_type),
+      hookText: stringOrUndefined(c.hook_text),
+      isPublished: c.is_published === true,
+      audioUrl: typeof c.audio_url === "string" ? c.audio_url : undefined,
+    };
+  });
+
+  // A story with no readable chapter is not something to put in a library: the
+  // row exists but there is nothing to open. Better absent than a card that
+  // leads to an empty page.
+  if (chapters.length === 0) return null;
+
+  const serverGenres = Array.isArray(record.genre) ? record.genre : [];
+  const genre = isGenre(record.primary_genre)
+    ? record.primary_genre
+    : isGenre(serverGenres[0])
+    ? serverGenres[0]
+    : "adventure";
+
+  return {
+    id,
+    title,
+    authorId: typeof record.author_id === "string" ? record.author_id : "",
+    genre,
+    primaryGenre: genre,
+    storyMode: chapters.length > 1 ? "series" : "standalone",
+    plannedChapterCount: undefined,
+    chapterLength: isChapterLength(record.length_type)
+      ? record.length_type
+      : undefined,
+    beats: [],
+    seriesState: undefined,
+    audienceMode: record.audience_mode === "kids" ? "kids" : "adult",
+    spiceLevel: record.spice_level === "steamy" ? "steamy" : "sweet",
+    contentRating: typeof record.content_rating === "string"
+      ? record.content_rating
+      : undefined,
+    synopsis: typeof record.topic === "string" && record.topic.trim()
+      ? record.topic.trim()
+      : chapters[0].paragraphs[0]?.slice(0, 180) ?? "",
+    chapters,
+    likes: numberOrZero(record.like_count),
+    bookmarks: numberOrZero(record.bookmark_count),
+    views: numberOrZero(record.read_count),
+    tags: ["draft"],
+    publishedOffset: 0,
+    isFeatured: record.is_curated === true,
+    language: typeof record.language === "string" ? record.language : "English",
+    coverImageUrl: stringOrUndefined(record.cover_image_url),
+    coverStatus: parseCoverStatus(record.cover_status),
+    coverRegenCount: numberOrZero(record.cover_regen_count),
+  };
 }
 
 export async function generateStory(

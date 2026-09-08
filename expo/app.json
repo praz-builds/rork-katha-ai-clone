@@ -26,7 +26,13 @@
           "username": "katha-ai"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Katha uses a photo you choose as a style reference for a character illustration. The face is always original art, never a real person's likeness."
+        }
+      ]
     ],
     "updates": {
       "url": "https://u.expo.dev/UPDATE_PROJECT_ID",

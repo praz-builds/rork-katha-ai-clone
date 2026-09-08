@@ -225,7 +225,12 @@ it("keeps the controls hidden until the reader asks for them", async () => {
   expect(view.queryByLabelText("Find in chapter")).toBeNull();
 });
 
-it("Android hardware back dismisses the overlay before it leaves the story", async () => {
+it("Android hardware back peels off overlays, then leaves the reader — never the app", async () => {
+  // This test previously asserted `press()` returned `false` when nothing was
+  // open, on the reasoning that a navigator would take over. There is no
+  // navigator: screens are a `useState` switch in `App.tsx`, so `false` runs
+  // Android's platform default and finishes the activity. The reader's back
+  // button closed the whole app, and this test asserted that it did.
   jest.replaceProperty(Platform, "OS", "android");
   let handler: (() => boolean) | null = null;
   jest
@@ -235,11 +240,14 @@ it("Android hardware back dismisses the overlay before it leaves the story", asy
       return { remove: jest.fn() };
     }) as never);
 
-  const view = await render(<ReaderScreen story={story} onBack={jest.fn()} />);
+  const onBack = jest.fn();
+  const view = await render(<ReaderScreen story={story} onBack={onBack} />);
   const press = () => (handler as unknown as () => boolean)();
 
-  // Nothing open: the press is handed back to the navigator unchanged.
-  expect(press()).toBe(false);
+  // Nothing open: leave the reader, and tell Android we handled it. Returning
+  // false here is what closed the app.
+  expect(press()).toBe(true);
+  expect(onBack).toHaveBeenCalledTimes(1);
 
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Toggle reader controls"));
@@ -248,15 +256,21 @@ it("Android hardware back dismisses the overlay before it leaves the story", asy
     await fireEvent.press(view.getByLabelText("Search chapter"));
   });
 
-  // Search first, then the chrome, then out of the story.
+  // Search first, then the chrome — neither of which should leave the story.
   await act(async () => {
     expect(press()).toBe(true);
   });
   expect(view.queryByLabelText("Find in chapter")).toBeNull();
+  expect(onBack).toHaveBeenCalledTimes(1);
+
   await act(async () => {
     expect(press()).toBe(true);
   });
-  expect(press()).toBe(false);
+  expect(onBack).toHaveBeenCalledTimes(1);
+
+  // Only now, with everything closed, does the press exit the reader.
+  expect(press()).toBe(true);
+  expect(onBack).toHaveBeenCalledTimes(2);
 });
 
 it("a word is still tappable with the pager mounted, and each word keeps one index", async () => {
