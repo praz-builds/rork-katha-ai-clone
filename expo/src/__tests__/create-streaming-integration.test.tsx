@@ -1,35 +1,48 @@
 /**
  * The proof that a person is handed finished pages, not a typewriter.
  *
- * This file used to assert the opposite, and it was right to at the time: it
- * caught a client that streamed on the wire and painted once at the end. The
- * fix over-corrected. The first token replaced the loader, and the reader then
- * watched their chapter be typed out mid-sentence for the whole generation,
- * which product ruled against — you land on a page that is already written, and
- * the rest arrives behind you.
+ * Two different things get called "streaming" and this file is the boundary
+ * between them:
  *
- * Both of those failure modes are invisible to every other test here. A screen
- * that buffers and a screen that types look identical to a unit test of the SSE
- * reader, and identical to a type checker. So this file renders the real
- * `CreateStudioScreen`, drives a real stream one frame at a time, and asserts
- * the two things that separate the intended behaviour from both of them:
+ * - **Incremental delivery** is the transport, and it stays. Prose arrives from
+ *   the server in chunks as it is written, which is the only reason page 1 can
+ *   be on screen ~20 seconds in rather than after the whole 55-76 second
+ *   generation.
+ * - **A typewriter reveal** is a presentation, and it never ships. No text is
+ *   painted letter by letter or mid-sentence.
  *
- * 1. A partial paragraph is **never** on screen. Releasing half a sentence, and
- *    then a whole one, and then more, must not put any of it in front of the
- *    reader while the chapter is still under the reveal threshold.
- * 2. Once the threshold is cleared the reader gets whole, finished pages —
- *    including a complete page 1 — while the response is **still open**. That
- *    is what stops this from being a licence to go back to buffering.
+ * The settle rule is what separates them - whole paragraphs, whole finished
+ * pages, prefix-stable - and both failure modes it guards against are invisible
+ * to every other test here. A client that buffers the whole response and a
+ * client that types it out look identical to a unit test of the SSE reader, and
+ * identical to a type checker. So this file drives a REAL stream, one frame at
+ * a time, through the real `generateStoryStreaming`, the real SSE reader and
+ * the real session store, into the real reader, and asserts:
  *
- * The page arithmetic itself is pinned in `chapter-reveal.test.ts`; this file
- * is about what the screen does with it.
+ * 1. A partial paragraph is **never** on screen. Half a sentence, then a whole
+ *    one, then a whole paragraph, must all leave the reader on the crafting
+ *    screen while the chapter is under the reveal threshold.
+ * 2. Once the threshold is cleared the reader is looking at whole finished
+ *    pages while the response is **still open**. That is what stops rule 1 from
+ *    being a licence to go back to buffering.
+ * 3. What was revealed survives a failure, with the credit accounted for.
+ * 4. A chapter too short ever to reveal still lands, rather than stranding the
+ *    writer on the crafting screen.
+ *
+ * The page arithmetic itself is pinned in `chapter-reveal.test.ts`; this file is
+ * about what the screen does with it.
+ *
+ * WHERE THIS USED TO LIVE. It drove `CreateStudioScreen`, because the studio
+ * both ran the generation and painted the prose into a `StreamingProse` panel.
+ * Neither is true now: the session runs outside React so it survives the writer
+ * leaving the screen, and the prose is shown by the ordinary reader. The
+ * harness below is the two-line branch `App` makes between them.
  */
 
 /* eslint-disable import/first */
 import React from "react";
-import { act, fireEvent, render } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render } from "@testing-library/react-native";
 
-const mockInferStoryBrief = jest.fn();
 const mockLoadDraft = jest.fn();
 const mockSaveDraft = jest.fn();
 const mockClearDraft = jest.fn();
@@ -98,6 +111,26 @@ jest.mock("expo/fetch", () => ({
   fetch: (...args: unknown[]) => mockExpoFetch(...args),
 }));
 
+jest.mock(
+  "@react-native-async-storage/async-storage",
+  () =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
+);
+jest.mock("expo-av", () => ({
+  Audio: {
+    Sound: {
+      createAsync: jest.fn(() => Promise.resolve({
+        sound: {
+          pauseAsync: jest.fn(),
+          playAsync: jest.fn(),
+          unloadAsync: jest.fn(),
+        },
+      })),
+    },
+  },
+}));
+jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn() }));
 jest.mock("@/lib/notifications", () => ({
   pushPermissionGranted: jest.fn().mockResolvedValue(false),
@@ -115,15 +148,18 @@ jest.mock("@/lib/supabase", () => ({
   },
 }));
 
-// Only the brief inference is stubbed. Generation deliberately goes through the
-// real `generateStoryStreaming` and the real SSE reader, because those are part
-// of what is being verified.
+// Only the request id is stubbed, and only so the assertions can name the
+// session. Generation deliberately goes through the real
+// `generateStoryStreaming` and the real SSE reader, because those are part of
+// what is being verified. `publishStory` is stubbed because a public story
+// calls it unattended on completion and it is not what this file is about.
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
+  let n = 0;
   return {
     ...actual,
-    inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
-    createGenerationRequestId: () => "streaming-integration-request",
+    createGenerationRequestId: () => `streaming-integration-${++n}`,
+    publishStory: jest.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -133,38 +169,78 @@ jest.mock("@/lib/draft-storage", () => ({
   clearDraft: () => mockClearDraft(),
 }));
 
-jest.mock("@/components/GeneratingOverlay", () => () => null);
+jest.mock("@/components/GeneratingOverlay", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { View } = require("react-native");
+  return () => R.createElement(View, { testID: "generating-overlay" });
+});
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
   SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-jest.mock("@/components/KathaPrimitives", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const R = require("react");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pressable, Text } = require("react-native");
-  return {
-    CreditPill: ({ credits }: { credits: number }) =>
-      R.createElement(Text, null, `${credits} credits`),
-    PrimaryButton: (
-      { children, onPress }: { children: React.ReactNode; onPress: () => void },
-    ) =>
-      R.createElement(
-        Pressable,
-        { accessibilityRole: "button", onPress },
-        R.createElement(Text, null, children),
-      ),
-  };
-});
-
-import CreateStudioScreen from "@/screens/CreateStudioScreen";
+import GeneratingOverlay from "@/components/GeneratingOverlay";
+import {
+  __resetGenerationSessions,
+  getGeneration,
+  provisionalStory,
+  startStoryGeneration,
+  useGeneration,
+} from "@/lib/generation-session";
+import ReaderScreen from "@/screens/ReaderScreen";
+import type { CreateDraft } from "@/types/domain";
 /* eslint-enable import/first */
+
+/**
+ * The branch `App` makes between the two surfaces a generation lands on.
+ *
+ * While the chapter has no finished pages there is nothing to read, so the
+ * crafting screen holds the window. The moment whole settled pages exist the
+ * reader takes over on page 1 and the rest arrives behind it. Kept to those
+ * three lines deliberately: anything more here would be this test asserting
+ * against its own fixture rather than against the app.
+ */
+function LiveSurface({ sessionId }: { sessionId: string }) {
+  const session = useGeneration(sessionId);
+  if (!session) return null;
+  if (session.phase === "writing" && session.revealedProse.length === 0) {
+    return <GeneratingOverlay genre={session.genre} mode="story" />;
+  }
+  return (
+    <ReaderScreen
+      story={provisionalStory(session)!}
+      liveSessionId={session.id}
+      onBack={jest.fn()}
+      onReimagine={jest.fn()}
+    />
+  );
+}
+
+/** Every string the tree actually renders, in order. */
+function visibleText(view: Awaited<ReturnType<typeof render>>): string {
+  const out: string[] = [];
+  const walk = (node: unknown): void => {
+    if (node === null || node === undefined || node === false) return;
+    if (typeof node === "string") {
+      out.push(node);
+      return;
+    }
+    if (typeof node === "number") return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    walk((node as { children?: unknown }).children);
+  };
+  walk(view.toJSON());
+  return out.join("");
+}
 
 const DONE_EVENT =
   'event: done\ndata: {"story":{"id":"story-1","title":"The Quiet Door","author_id":"author-1","primary_genre":"adventure","story_mode":"standalone","themes":["doors"],"word_count":9,"status":"complete"},"chapter":{"id":"chapter-1","chapter_number":1,"title":"Chapter 1","content":"The door was not there yesterday.\\n\\nShe pushed it open."}}\n\n';
-
 
 /** One `delta` frame carrying exactly this text. */
 function delta(text: string): string {
@@ -191,191 +267,179 @@ const PARAGRAPH =
 /** No trailing blank line: the paragraph the model is still typing. */
 const TAIL = "She counted the lamps twice before she";
 
-async function renderCreate() {
-  return await render(
-    <CreateStudioScreen
-      credits={12}
-      onCreditUsed={jest.fn()}
-      onPublished={jest.fn()}
-      onBack={jest.fn()}
-    />,
-  );
+const DRAFT: CreateDraft = {
+  primaryGenre: "adventure",
+  audienceMode: "adult",
+  spiceLevel: "sweet",
+  identityLenses: [],
+  seed: "A child finds a door in an old library that was not there yesterday.",
+  language: "English",
+  visibility: "private",
+  characters: [],
+  isSeries: false,
+};
+
+function openStream() {
+  const stream = controllableStream();
+  mockExpoFetch.mockResolvedValue({
+    ok: true,
+    status: 200,
+    body: stream.body,
+    json: async () => ({}),
+  });
+  return stream;
 }
 
-/**
- * Main Create is one screen (idea, controls, Create) plus a pre-generation
- * review screen. This helper walks to the point where the review screen's own
- * Create button is the one still to press — the caller presses that one
- * itself, since what happens on that press is what each test here exists to
- * assert.
- */
-async function driveToCreate(view: Awaited<ReturnType<typeof render>>) {
-  await fireEvent.changeText(
-    view.getByLabelText("Story idea"),
-    "A child finds a door in an old library that was not there yesterday.",
-  );
-  await view.findByRole("button", { name: "Add a character" });
-  await act(async () => {
-    fireEvent.press(view.getByRole("button", { name: /create/i }));
-  });
-  await view.findByText("Here is what Katha will write");
+/** Starts the generation and renders the surface it lands on. */
+async function startAndRender() {
+  const session = startStoryGeneration({ draft: DRAFT });
+  const view = await render(<LiveSurface sessionId={session.id} />);
+  return { session, view };
 }
 
 beforeEach(() => {
+  __resetGenerationSessions();
   mockExpoFetch.mockReset();
-  mockInferStoryBrief.mockReset().mockResolvedValue({
-    genres: ["adventure"],
-    whereAndWhen: "A quiet library, present day",
-    characters: [],
-    suggestedMoments: [],
-  });
   mockLoadDraft.mockReset().mockResolvedValue(null);
   mockSaveDraft.mockReset();
   mockClearDraft.mockReset();
 });
 
-describe("Create Studio hands over finished pages, never a typewriter", () => {
-  it("shows nothing while the chapter is still being written", async () => {
-    const stream = controllableStream();
-    mockExpoFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: stream.body,
-      json: async () => ({}),
-    });
+afterEach(() => {
+  cleanup();
+  __resetGenerationSessions();
+});
 
-    const view = await renderCreate();
-    await driveToCreate(view);
+describe("a generation hands over finished pages, never a typewriter", () => {
+  it("shows nothing of the chapter while it is still under the threshold", async () => {
+    const stream = openStream();
+    const { view } = await startAndRender();
 
-    await act(async () => {
-      fireEvent.press(view.getByRole("button", { name: /create/i }));
-    });
-
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
+    expect(view.getByTestId("generating-overlay")).toBeTruthy();
 
     await stream.release(
       'event: meta\ndata: {"story_id":"story-1","balance":9}\n\n',
     );
 
-    // A sentence, then another, then a whole paragraph. This is exactly the
-    // shape of the behaviour that was removed: under the old rule the first of
-    // these chunks put "The door was not" on screen and the reader watched the
+    // A fragment, then the rest of the sentence, then a whole paragraph. This
+    // is exactly the shape of a typewriter: under a naive rule the first of
+    // these chunks puts "The door was not" on screen and the reader watches the
     // rest of the word arrive.
     await stream.release(delta("The door was not"));
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
-    expect(view.queryByText(/The door was not/)).toBeNull();
+    expect(view.getByTestId("generating-overlay")).toBeTruthy();
+    expect(visibleText(view)).not.toContain("The door was not");
 
     await stream.release(delta(" there yesterday.\n\n"));
-    // Even a *complete* paragraph is not enough. One settled paragraph is not
-    // a finished page, and a page that will keep growing under the reader is
-    // the thing the threshold exists to prevent.
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
+    // Even a COMPLETE paragraph is not enough. One settled paragraph is not a
+    // finished page, and a page that keeps growing under the reader is the
+    // thing the threshold exists to prevent.
+    expect(view.getByTestId("generating-overlay")).toBeTruthy();
 
     await stream.release(delta(PARAGRAPH));
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
+    expect(view.getByTestId("generating-overlay")).toBeTruthy();
 
     await stream.finishWith(DONE_EVENT);
   });
 
-  it("reveals whole finished pages while the response is still open", async () => {
-    const stream = controllableStream();
-    mockExpoFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: stream.body,
-      json: async () => ({}),
-    });
-
-    const view = await renderCreate();
-    await driveToCreate(view);
-    await act(async () => {
-      fireEvent.press(view.getByRole("button", { name: /create/i }));
-    });
+  it("opens the reader on whole finished pages while the response is still open", async () => {
+    const stream = openStream();
+    const { session, view } = await startAndRender();
 
     // Enough settled prose to clear REVEAL_MIN_PAGES with room to spare.
     await stream.release(delta(OPENING + PARAGRAPH.repeat(9)));
 
-    // THE ASSERTION THIS FILE EXISTS FOR, in its current form. `done` has not
-    // been sent - the response is still open, so this is not buffering - and
-    // the reader already has pages.
-    expect(view.getByTestId("streaming-prose")).toBeTruthy();
+    // THE ASSERTION THIS FILE EXISTS FOR. `done` has not been sent - the
+    // response is still open, so this is not buffering - and the reader is
+    // already reading.
+    expect(view.queryByTestId("generating-overlay")).toBeNull();
+    expect(view.getByTestId("reader-pager")).toBeTruthy();
 
-    // Page 1 opens on a complete paragraph, not a fragment.
-    const first = view.getByTestId("streaming-paragraph-0");
-    expect(first.props.children).toBe(OPENING.trim());
+    // Page 1 opens on a complete paragraph, and the revealed prose ends on a
+    // paragraph boundary rather than mid-sentence. Read back through the store:
+    // a session is an immutable snapshot, and the one `startStoryGeneration`
+    // returned is the empty first frame of it.
+    expect(getGeneration(session.id)!.revealedProse.startsWith(OPENING.trim()))
+      .toBe(true);
+    expect(visibleText(view)).toContain("The door was not there yesterday.");
 
-    // And the tail the model is still typing is not among them. `TAIL` has no
-    // blank line after it, so it is the paragraph in progress.
+    // The page count is honest about counting what EXISTS, and the last
+    // available page says so.
+    const writing = visibleText(view);
+    expect(writing).toMatch(/Page 1 of \d+ · writing/);
+    expect(writing).toContain("Still writing...");
+
+    // And the paragraph the model is mid-way through is not among them. `TAIL`
+    // has no blank line after it, so it is the one still being typed.
     await stream.release(delta(TAIL));
-    expect(view.queryByText(new RegExp(TAIL))).toBeNull();
+    expect(visibleText(view)).not.toContain(TAIL);
 
-    // Only now does the story land, and the screen moves on to the editor.
+    // Only now does the story land. The writing indicator goes, and the count
+    // stops calling itself provisional.
     await stream.finishWith(DONE_EVENT);
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
+    const complete = visibleText(view);
+    expect(complete).not.toContain("Still writing...");
+    expect(complete).not.toContain("· writing");
   });
 
-  it("keeps the revealed pages and offers a way out when generation fails", async () => {
-    // The reader has been handed finished pages of their story. Erasing them
-    // and returning them to an empty form is the outcome this path prevents.
-    const stream = controllableStream();
-    mockExpoFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: stream.body,
-      json: async () => ({}),
-    });
-
-    const view = await renderCreate();
-    await driveToCreate(view);
-    await act(async () => {
-      fireEvent.press(view.getByRole("button", { name: /create/i }));
-    });
+  it("cannot be opened underneath the reader: page 1 is fixed the moment it is revealed", async () => {
+    const stream = openStream();
+    const { session } = await startAndRender();
 
     await stream.release(delta(OPENING + PARAGRAPH.repeat(9)));
-    expect(view.getByTestId("streaming-prose")).toBeTruthy();
+    const firstReveal = getGeneration(session.id)!.revealedProse;
+    expect(firstReveal.length).toBeGreaterThan(0);
+
+    // Prefix stability is the whole promise. More prose may extend what is
+    // revealed; it may never rewrite a character of what already was.
+    await stream.release(delta(PARAGRAPH.repeat(4)));
+    const secondReveal = getGeneration(session.id)!.revealedProse;
+    expect(secondReveal.startsWith(firstReveal)).toBe(true);
+    expect(secondReveal.length).toBeGreaterThan(firstReveal.length);
+
+    await stream.finishWith(DONE_EVENT);
+  });
+
+  it("keeps the revealed pages, and accounts for the credit, when generation fails", async () => {
+    // The writer has been handed finished pages of their story. Erasing them
+    // and returning them to an empty form is the outcome this path prevents.
+    const stream = openStream();
+    const { view } = await startAndRender();
+
+    await stream.release(delta(OPENING + PARAGRAPH.repeat(9)));
+    expect(view.getByTestId("reader-pager")).toBeTruthy();
 
     await stream.release(
       'event: error\ndata: {"error":"Generation failed. Credit refunded.","partial_prose_shown":true,"refunded":true}\n\n',
     );
     await stream.finish();
 
-    expect(view.getByTestId("streaming-paragraph-0").props.children).toBe(
-      OPENING.trim(),
-    );
-    expect(view.getByText("Generation failed. Credit refunded.")).toBeTruthy();
-
-    // And the screen is not a dead end.
-    await act(async () => {
-      fireEvent.press(view.getByTestId("streaming-dismiss-error"));
-    });
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
+    const text = visibleText(view);
+    // The prose is still there.
+    expect(text).toContain("The door was not there yesterday.");
+    // And the one sentence a writer actually needs at that moment: the server's
+    // technical message is the right thing to log and the wrong thing to put
+    // under half a chapter somebody is reading.
+    expect(text).toContain("Katha stopped early. Your credit is back.");
+    expect(view.getByLabelText("Retry")).toBeTruthy();
+    // Not a dead end and not a spinner.
+    expect(text).not.toContain("Still writing...");
   });
 
-  it("never strands the reader on the loader when the chapter is too short to reveal", async () => {
-    // The other half of "N pages, or the whole chapter, whichever comes first".
-    // A chapter under the threshold is never revealed mid-stream at all - it
-    // goes from the crafting screen straight to the finished text in the
-    // editor, which is the same experience one beat earlier.
-    const stream = controllableStream();
-    mockExpoFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: stream.body,
-      json: async () => ({}),
-    });
-
-    const view = await renderCreate();
-    await driveToCreate(view);
-    await act(async () => {
-      fireEvent.press(view.getByRole("button", { name: /create/i }));
-    });
+  it("never strands the writer on the crafting screen when the chapter is too short to reveal", async () => {
+    // The other half of "three pages, or the whole chapter, whichever comes
+    // first". A chapter under the threshold is never revealed mid-stream at
+    // all - it goes from the crafting screen straight to the finished text.
+    const stream = openStream();
+    const { view } = await startAndRender();
 
     await stream.release(delta(OPENING));
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
+    expect(view.getByTestId("generating-overlay")).toBeTruthy();
 
     await stream.finishWith(DONE_EVENT);
-    // The editor, holding the server's chapter. No loader left behind.
-    expect(view.queryByTestId("streaming-prose")).toBeNull();
-    expect(await view.findByTestId("continue-chapter-button")).toBeTruthy();
+
+    expect(view.queryByTestId("generating-overlay")).toBeNull();
+    const text = visibleText(view);
+    expect(text).toContain("She pushed it open.");
+    expect(text).not.toContain("Still writing...");
   });
 });

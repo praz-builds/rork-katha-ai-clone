@@ -24,7 +24,7 @@
 import {
   REVEAL_MIN_PAGES,
   revealableChapterProse,
-} from "@/screens/CreateStudioScreen";
+} from "@/lib/generation-session";
 
 /** ~315 characters; the nominal page is ~650, so two of these is about a page. */
 const PARAGRAPH =

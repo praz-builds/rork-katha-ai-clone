@@ -163,7 +163,7 @@ describe("ChapterEnd", () => {
     const story = makeStory();
     const chapter = story.chapters[1];
     const view = await render(
-      <ChapterEnd story={story} chapter={chapter} continueChapter={jest.fn()} />,
+      <ChapterEnd story={story} chapter={chapter} onContinue={jest.fn()} />,
     );
 
     await waitFor(() => {
@@ -196,24 +196,12 @@ describe("ChapterEnd", () => {
 
   it("continues with the exact prose of the card that was tapped", async () => {
     const story = makeStory();
-    // Spelled out with parameters so `mock.calls[0][4]` is a typed slot rather
-    // than an index into an empty tuple: position 4 is `nextInstruction`, and
-    // this is the argument the whole surface exists to send.
-    const continueChapter = jest.fn(async (
-      _storyId: string,
-      _requestId: string,
-      _isFinale: boolean,
-      _expectedChapterNumber: number,
-      _nextInstruction?: string,
-    ) => ({
-      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
-      model: "meta/muse-spark-1.3",
-    }));
+    const onContinue = jest.fn();
     const view = await render(
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
-        continueChapter={continueChapter as never}
+        onContinue={onContinue}
       />,
     );
     await waitFor(() => expect(view.getByTestId("chapter-end-option-1")).toBeTruthy());
@@ -222,12 +210,12 @@ describe("ChapterEnd", () => {
       fireEvent.press(view.getByTestId("chapter-end-option-1"));
     });
 
-    await waitFor(() => expect(continueChapter).toHaveBeenCalled());
-    // Position 4 is `nextInstruction`. The card's own sentence, unaltered -
-    // what the reader read is what the model is told.
-    expect(continueChapter.mock.calls[0][4]).toBe(
+    // The card's own sentence, unaltered, is the direction handed upward - and
+    // the caller passes it straight through as `next_instruction`. What the
+    // reader read is what the model is told.
+    await waitFor(() => expect(onContinue).toHaveBeenCalledWith(
       "Follow the map fragment found under the floorboard.",
-    );
+    ));
   });
 
   it("expands the composer only when the write-your-own CTA is tapped", async () => {
@@ -236,7 +224,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
-        continueChapter={jest.fn()}
+        onContinue={jest.fn()}
       />,
     );
     await waitFor(() => expect(view.getByTestId("chapter-end-write-own")).toBeTruthy());
@@ -276,24 +264,12 @@ describe("ChapterEnd", () => {
     // an invented generic line would tell the model something the story never
     // said.
     const story = makeStory();
-    // Spelled out with parameters so `mock.calls[0][4]` is a typed slot rather
-    // than an index into an empty tuple: position 4 is `nextInstruction`, and
-    // this is the argument the whole surface exists to send.
-    const continueChapter = jest.fn(async (
-      _storyId: string,
-      _requestId: string,
-      _isFinale: boolean,
-      _expectedChapterNumber: number,
-      _nextInstruction?: string,
-    ) => ({
-      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
-      model: "meta/muse-spark-1.3",
-    }));
+    const onContinue = jest.fn();
     const view = await render(
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
-        continueChapter={continueChapter as never}
+        onContinue={onContinue}
       />,
     );
     await waitFor(() =>
@@ -304,8 +280,8 @@ describe("ChapterEnd", () => {
       fireEvent.press(view.getByTestId("chapter-end-let-katha-decide"));
     });
 
-    await waitFor(() => expect(continueChapter).toHaveBeenCalled());
-    expect(continueChapter.mock.calls[0][4]).toBeUndefined();
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0]).toBeUndefined();
   });
 
   it("shows a finished state and offers no continuation at the final planned chapter", async () => {
@@ -321,15 +297,15 @@ describe("ChapterEnd", () => {
         finalChapter,
       ],
     });
-    const continueChapter = jest.fn();
+    const onContinue = jest.fn();
     const view = await render(
-      <ChapterEnd story={story} chapter={finalChapter} continueChapter={continueChapter} />,
+      <ChapterEnd story={story} chapter={finalChapter} onContinue={onContinue} />,
     );
 
     expect(view.getByText("The story is complete")).toBeTruthy();
     expect(view.queryByTestId("chapter-end-option-0")).toBeNull();
     expect(view.queryByTestId("chapter-end-write-own")).toBeNull();
-    expect(continueChapter).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
   });
 
   it("degrades to the write-your-own path with a visible explanation when suggestions fail to resolve", async () => {
@@ -341,7 +317,7 @@ describe("ChapterEnd", () => {
         story={story}
         chapter={chapter}
         resolveOptions={resolveOptions}
-        continueChapter={jest.fn()}
+        onContinue={jest.fn()}
       />,
     );
 
@@ -358,13 +334,14 @@ describe("ChapterEnd", () => {
   it("fires exactly one continuation request on a double tap", async () => {
     const story = makeStory();
     const chapter = story.chapters[1];
-    let resolveCall: (value: { chapter: Chapter; model: string }) => void = () => {};
-    const continueChapter = jest.fn(() =>
-      new Promise<{ chapter: Chapter; model: string }>((resolve) => {
-        resolveCall = resolve;
-      }));
+    // The guard moved when the request did. This component used to make the
+    // call itself and could lean on its own pending state; it now hands the
+    // direction upward and the caller spends the credit, so a second tap that
+    // got through would be a second chapter and a second charge for one
+    // decision.
+    const onContinue = jest.fn();
     const view = await render(
-      <ChapterEnd story={story} chapter={chapter} continueChapter={continueChapter} />,
+      <ChapterEnd story={story} chapter={chapter} onContinue={onContinue} />,
     );
     await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
 
@@ -379,32 +356,23 @@ describe("ChapterEnd", () => {
       fireEvent.press(option);
     });
 
-    expect(continueChapter).toHaveBeenCalledTimes(1);
-    resolveCall({ chapter: makeChapter({ chapterNumber: 3 }), model: "test" });
-    await waitFor(() => expect(view.getByText("New chapter ready")).toBeTruthy());
-    expect(continueChapter).toHaveBeenCalledTimes(1);
+    expect(onContinue).toHaveBeenCalledTimes(1);
+
+    // And a third tap on a different control is still the same one decision.
+    await act(async () => {
+      fireEvent.press(view.getByTestId("chapter-end-let-katha-decide"));
+    });
+    expect(onContinue).toHaveBeenCalledTimes(1);
   });
 
   it("submits what was typed in the composer", async () => {
     const story = makeStory();
-    // Spelled out with parameters so `mock.calls[0][4]` is a typed slot rather
-    // than an index into an empty tuple: position 4 is `nextInstruction`, and
-    // this is the argument the whole surface exists to send.
-    const continueChapter = jest.fn(async (
-      _storyId: string,
-      _requestId: string,
-      _isFinale: boolean,
-      _expectedChapterNumber: number,
-      _nextInstruction?: string,
-    ) => ({
-      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
-      model: "meta/muse-spark-1.3",
-    }));
+    const onContinue = jest.fn();
     const view = await render(
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
-        continueChapter={continueChapter as never}
+        onContinue={onContinue}
       />,
     );
     await waitFor(() => expect(view.getByTestId("chapter-end-write-own")).toBeTruthy());
@@ -420,12 +388,11 @@ describe("ChapterEnd", () => {
       fireEvent.press(view.getByTestId("chapter-end-composer-submit"));
     });
 
-    await waitFor(() => expect(continueChapter).toHaveBeenCalled());
     // Trimmed, and never the empty string: `""` still renders the
     // reader-direction block in the prompt and claims a steer that is not there.
-    expect(continueChapter.mock.calls[0][4]).toBe(
+    await waitFor(() => expect(onContinue).toHaveBeenCalledWith(
       "She climbs down to meet the storm.",
-    );
+    ));
   });
 });
 
@@ -508,7 +475,7 @@ describe("agreeing with the server about where a series ends", () => {
     story.chapters = [...story.chapters, third];
 
     const view = await render(
-      <ChapterEnd story={story} chapter={third} continueChapter={jest.fn()} />,
+      <ChapterEnd story={story} chapter={third} onContinue={jest.fn()} />,
     );
 
     await waitFor(() =>
@@ -522,7 +489,7 @@ describe("agreeing with the server about where a series ends", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
-        continueChapter={jest.fn()}
+        onContinue={jest.fn()}
       />,
     );
     await waitFor(() =>
@@ -531,54 +498,19 @@ describe("agreeing with the server about where a series ends", () => {
   });
 });
 
-// The offline walkthrough cannot honour a direction, and must say so.
+// GONE WITH THE PANEL IT LIVED IN, deliberately.
 //
-// With no backend configured, `continueStory` returns canned prose, so a
-// suggested or typed next step is accepted by the UI and does not shape the
-// text. Silently returning prose that ignores the reader's choice teaches them
-// the feature does not work; saying so is the honest option, and faking
-// direction-sensitive text would be a worse lie.
-describe("the offline continuation is honest about itself", () => {
-  it("says the direction was not used when the chapter came from the stub", async () => {
-    const story = makeStory();
-    const stub = jest.fn(async () => ({
-      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
-      model: "mock",
-    }));
-
-    const view = await render(
-      <ChapterEnd
-        story={story}
-        chapter={story.chapters[1]}
-        continueChapter={stub as never}
-      />,
-    );
-
-    await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
-    await fireEvent.press(view.getByTestId("chapter-end-option-0"));
-
-    await waitFor(() => expect(view.getByText(/direction you chose was not used/i)).toBeTruthy());
-  });
-
-  it("says nothing extra when a real model wrote the chapter", async () => {
-    const story = makeStory();
-    const real = jest.fn(async () => ({
-      chapter: makeChapter({ id: "chapter-3", chapterNumber: 3 }),
-      model: "meta/muse-spark-1.3",
-    }));
-
-    const view = await render(
-      <ChapterEnd
-        story={story}
-        chapter={story.chapters[1]}
-        continueChapter={real as never}
-      />,
-    );
-
-    await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
-    await fireEvent.press(view.getByTestId("chapter-end-option-0"));
-
-    await waitFor(() => expect(view.getByText(/New chapter ready/i)).toBeTruthy());
-    expect(view.queryByText(/direction you chose was not used/i)).toBeNull();
-  });
-});
+// This file used to end with two tests on the offline walkthrough's honesty:
+// when no backend is configured the stub returns canned prose, so the
+// direction the reader chose cannot shape it, and the component said so in the
+// confirmation panel it showed after a successful continuation ("the direction
+// you chose was not used", under a "New chapter ready" heading).
+//
+// That confirmation panel is what the 2026-09-09 design decision removed. A
+// continuation no longer resolves at the bottom of the last page of the
+// previous chapter; it turns the reader to page 1 of the NEW chapter and the
+// prose arrives there. There is no panel left to carry the sentence, and the
+// component no longer makes the request, so it never learns which model
+// answered. The behaviour is gone from the product, not moved, and these tests
+// went with it rather than being left asserting a surface that no longer
+// exists.

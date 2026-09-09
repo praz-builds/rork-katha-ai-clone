@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -206,6 +206,27 @@ export default function ChapterEnd({
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState("");
 
+  /**
+   * One continuation per chapter end, however many times it is tapped.
+   *
+   * This component used to make the request itself and guard it with the
+   * request's own pending state; it now hands the direction upward and the
+   * caller starts the generation, so the guard has to be here or nowhere. It
+   * is not cosmetic: two taps in the same tick are two `startChapterGeneration`
+   * calls, which is two chapters written and two credits spent for one
+   * decision. A `ref` rather than state because the second press of a real
+   * double tap can arrive before a re-render.
+   */
+  const firedRef = useRef(false);
+  useEffect(() => {
+    firedRef.current = false;
+  }, [chapter.id]);
+  const continueOnce = useCallback((direction?: string) => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    onContinue(direction);
+  }, [onContinue]);
+
   useEffect(() => {
     if (seriesComplete || !isLatestChapter) return;
     let cancelled = false;
@@ -330,7 +351,7 @@ export default function ChapterEnd({
               styles.optionCard,
               pressed && !reduceMotion && styles.optionCardPressed,
             ]}
-            onPress={() => onContinue(option.prompt)}
+            onPress={() => continueOnce(option.prompt)}
             testID={`chapter-end-option-${index}`}
           >
             <Sparkles size={16} color={colors.accent} />
@@ -372,7 +393,7 @@ export default function ChapterEnd({
             styles.textCta,
             pressed && !reduceMotion && styles.textCtaPressed,
           ]}
-          onPress={() => onContinue(undefined)}
+          onPress={() => continueOnce(undefined)}
           testID="chapter-end-let-katha-decide"
         >
           <Shuffle size={16} color={colors.muted} />
@@ -401,7 +422,7 @@ export default function ChapterEnd({
                 : "Continue and let Katha decide"
             }
             style={styles.primaryButton}
-            onPress={() => onContinue(nonEmpty(composerText))}
+            onPress={() => continueOnce(nonEmpty(composerText))}
             testID="chapter-end-composer-submit"
           >
             <Text style={styles.primaryButtonText}>
