@@ -26,3 +26,11 @@ design/
 !docs/research/
 docs/research/*
 !docs/research/*.md
+
+# Exception: signed design handoff specs live in the repo (docs/design/)
+!docs/design/
+docs/design/*
+!docs/design/*.md
+
+# Harness worktrees for sub-agents
+.claude/worktrees/
