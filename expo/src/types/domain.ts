@@ -361,16 +361,12 @@ export type CreateDraft = {
      * paid for once, and link the story's `characters` row back to the saved
      * one. An id the caller does not own is dropped server-side rather than
      * failing the generation - see `_shared/saved-characters.ts`.
+     *
+     * On the client it also identifies the row exactly, so tapping the same
+     * saved-character chip a second time removes the one it added.
      */
     savedCharacterId?: string;
     isHero: boolean;
-    /**
-     * Set when this character was added from the saved library, so the
-     * request can reuse the stored description and portrait instead of
-     * re-sending them, and so tapping the same chip again removes exactly
-     * this row.
-     */
-    savedCharacterId?: string;
   }[];
   isSeries?: boolean;
   /** World and era — feeds the story prompt and the cover prompt. */
