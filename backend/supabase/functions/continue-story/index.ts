@@ -442,7 +442,17 @@ serve(async (req) => {
         throw chapterError ?? new Error("Chapter persistence failed");
       }
 
-      return chapter;
+      // The continuity the chapter just wrote, handed back with it.
+      //
+      // The chapter-end screen derives its "what happens next" chips from
+      // `series_state.open_hooks` / `promised_payoffs` /
+      // `next_chapter_pressure` and the chapter's own `hook_text`. Returning
+      // only the chapter row left the client holding the state from BEFORE
+      // this chapter, so the chips it offered for chapter 4 were derived from
+      // chapter 2. It is written to the stories row by
+      // `complete_continuation_generation`; this is the same value, saved a
+      // round trip.
+      return { chapter, seriesState: persistedState };
     };
 
     // Telling the reader their chapter is written.
@@ -615,10 +625,22 @@ serve(async (req) => {
               });
             }
 
-            const chapter = await persistContinuation(output);
+            const { chapter, seriesState: nextSeriesState } =
+              await persistContinuation(output);
             notifyChapterReady(chapter);
             send("done", {
               chapter,
+              story_id,
+              // Nested under `story` so this payload has the same shape as a
+              // first chapter's (`_shared/generation-done.ts`), rather than a
+              // second flat spelling of the same fields.
+              story: {
+                id: story_id,
+                series_state: nextSeriesState,
+                beats,
+                previously_summary: output.previously_summary ??
+                  story.previously_summary,
+              },
               model: prose.model,
               timings: { total: Date.now() - startedAt },
             });
@@ -687,9 +709,21 @@ serve(async (req) => {
         );
       }
 
-      const chapter = await persistContinuation(output);
+      const { chapter, seriesState: nextSeriesState } =
+        await persistContinuation(output);
       notifyChapterReady(chapter);
-      return respond({ chapter, model: result.model });
+      return respond({
+        chapter,
+        story_id,
+        story: {
+          id: story_id,
+          series_state: nextSeriesState,
+          beats,
+          previously_summary: output.previously_summary ??
+            story.previously_summary,
+        },
+        model: result.model,
+      });
     } catch (error) {
       console.error(
         "continue-story post-deduction error:",

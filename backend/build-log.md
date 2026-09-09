@@ -7,6 +7,196 @@
 
 ---
 
+## 2026-09-09 UTC — Reimagining a chapter, saved characters, and the generation deadline finally sized to the gateway
+
+**Session:** Backend lane of the "created" story flow (`docs/design/created-flow.md`,
+product decisions locked the same day). Resumed from a WIP commit after a rate
+limit, on `fable/backend-created-flow`. Nothing deployed; nothing run against
+`iafeuxgoiknncgyjmugd`.
+
+### Read this first: the blocking generation budget has a hard ceiling, and it is not the model
+
+The previous entry's diagnosis was right and its proposed fix was not big
+enough on one axis and far too big on another. Both halves are now settled.
+
+**The work.** A chapter takes **55.5s, 69.1s, 70s or 76.4s** — four production
+measurements, `meta/muse-spark-1.3-contributor`, 1,846–1,904 words. The 120s
+budget split its 84s paid window evenly across two models. 42s per attempt
+against a 70s job is not a fallback chain, it is four guaranteed timeouts, and
+production recorded exactly that: `all_providers_failed`,
+`codes: [timeout, timeout, timeout, timeout]`, credit correctly refunded after
+126.1 seconds.
+
+**The ceiling.** Supabase returns **504 after 150 seconds with no bytes sent,
+on every plan** (worker wall clock is 150s free / 400s paid; the *request idle
+timeout* is 150s regardless — <https://supabase.com/docs/guides/functions/limits>).
+A blocking handler sends nothing until it is finished, so 150s bounds the whole
+request: grounding, the reservation, the model, persistence and the response.
+Past it the caller gets a gateway error and **never sees the refund payload the
+handler built**. This never mattered while everything streamed, because a
+stream's first byte lands in seconds and every chunk resets the clock. It
+matters the moment a blocking caller waits on a chapter.
+
+**What was done, all pinned by `_shared/llm-deadline.test.ts`:**
+
+| | before | after |
+|---|---|---|
+| `GENERATION_DEADLINE_MS` | 120,000 | **125,000** (+ ~15s handler ⇒ 140s worst case, 10s of margin under 150s) |
+| `EDGE_REQUEST_IDLE_TIMEOUT_MS` | — | **150,000**, new, documented, and asserted against |
+| `PHASE_END_SHARE` | 0.70 / 0.90 / 1.0 | **0.86 / 0.96 / 1.0** (openrouter 107s, gemini ~5s, free ~5s) |
+| paid phase, per model | even halves | **8s probe** for every model but the last; the last owns the window |
+| `OPENROUTER_TIMEOUT_MS` | 70,000 | 90,000 — a 76s chapter against a 70s socket is a coin toss |
+
+The probe rule is the important one and it is deliberately blunt: under a 150s
+ceiling **exactly one model can be given a chapter's worth of time**, so the
+last model in `OPENROUTER_MODELS` gets all of it and the ones in front get long
+enough to refuse. That fits the account as it actually is —
+`meta/muse-spark-1.3-contributor` answers `404` in well under a second by data
+policy, so probing it is nearly free. If that tier is ever enabled, **reorder
+the models rather than widening the probe**; a chapter does not fit in 8s.
+
+**What is honestly not fixed.** There is no second real attempt on a blocking
+call, and the share table now says so instead of implying otherwise. A true
+fallback chain on a blocking path needs `202 Accepted` plus polling. Also worth
+knowing: Gemini is configured but disabled by `LLM_DISABLED_PROVIDERS`
+(429-exhausted since 2026-08-31), so the live chain is OpenRouter alone — and
+because the shares are cumulative offsets from one start, a disabled phase
+hands its time to the phases *after* it, never to the one in front. Re-enabling
+Gemini as a real fallback means moving its share, not just its secret.
+
+**Streaming stays the primary transport.** Mid-session the direction changed to
+"remove streaming everywhere" and then changed back; the code was carried
+through both. What was clarified is worth recording, because the two get
+conflated: *incremental delivery* (chunks over the wire, which is what puts
+page 1 in front of a reader ~20s in) is kept; *typewriter reveal* (text
+painting letter by letter) was never a backend concern and the client already
+gates prose behind whole settled pages.
+
+### Reimagining a chapter
+
+New function `reimagine-chapter`, both transports, opted into with
+`stream: true` exactly as `continue-story` is.
+
+Request: `{ story_id, chapter_number, request_id, prompt?, character_replacements[] }`,
+where each replacement is `{ from_name, to: { saved_character_id } | { name, role?, appearance?, background? }, apply_to_all_chapters }`.
+At least one of `prompt` and a replacement is required — a rewrite with no
+instruction is a credit spent on a coin toss. Response (the `done` event's data
+when streamed, one JSON body when not):
+`{ chapter, story_id, forked_from_story_id, balance, model, timings, renamed: { chapters, roster } }`.
+
+Three things distinguish it from a continuation, and only those three:
+
+1. **A non-author gets a private copy first.** `fork_story` (migration 00057)
+   copies the story, its chapters and its cast, sets
+   `stories.forked_from_story_id`, and the rewrite happens in the copy. The
+   fork is looked up before it is created, keyed on (source story, caller), so
+   a reader who reimagines three chapters ends up with one copy, and a retry
+   never mints a second story. The replay check accepts an operation whose
+   `story_id` is the caller's fork of the requested story, which is what makes
+   retrying a forked reimagine work at all.
+2. **The chapter already exists.** `complete_reimagine_generation` UPDATEs the
+   row rather than inserting, deletes `chapter_audio` and nulls `audio_url`
+   (the narration read prose that is gone), and rewrites `series_state` **only
+   when the rewritten chapter is the last one** — a chapter in the middle of a
+   series does not get to overwrite the state later chapters were written from.
+3. **`apply_to_all_chapters` renames, it does not regenerate.** Regenerating
+   every chapter would cost a credit each and rewrite prose the reader chose to
+   keep. `_shared/character-substitution.ts` does the rename: whole words,
+   Unicode-aware boundaries, possessives for free, ALL CAPS preserved, a first
+   name standing in for a full name, a surname alone left alone, and **pronouns
+   never touched** (a gender change is a job for reimagining, not for a
+   rename). The roster row and the story's `series_state` move with it, because
+   those are what the *next* continuation is written from — without that the
+   rename would hold in the prose and be undone by the next chapter. The whole
+   cross-chapter pass runs after the chapter is persisted and can never fail the
+   request: the reader has already paid for and received the rewrite, and losing
+   it because a rename could not be propagated is the worse trade. A failure
+   there is logged as `reimagine_rename_failed`.
+
+Cost is `CHAPTER_TEXT_CREDITS` — one credit, the same reservation, replay and
+refund lifecycle as a continuation, via a new `generation_operations.kind` of
+`reimagine`. A chapter that is still being written is refused with a typed
+`chapter_generating` before any credit is touched, and the `KTH01` the
+reservation would raise is mapped to the same code.
+
+The pure parts — reading the replacement list, applying it to the cast,
+deciding which renames escape the chapter — live in `_shared/reimagine.ts` so
+they can be tested without a server, a database or a model.
+
+### Everything else
+
+- **`continue-story` now returns the continuity it just wrote.** Both
+  transports answer with `story: { id, series_state, beats, previously_summary }`
+  beside the chapter. The chapter-end screen derives its "what happens next"
+  chips from the open hooks, promised payoffs and next-chapter pressure;
+  returning only the chapter row left the client offering chapter 4's chips
+  derived from chapter 2's state. Nested under `story` deliberately, so the
+  payload has the same shape a first chapter's does rather than a second flat
+  spelling of the same fields.
+- **`edit-story` accepts a whole-chapter save.** A body carrying
+  `chapter_body` (≤ 200,000 characters, with an optional `chapter_title`) takes
+  a no-model path before any paragraph-edit validation, and shares the
+  ownership check, the chapter lookup and the story word-count recompute with
+  the AI path. It deliberately does **not** use the compare-and-swap the AI
+  edit uses: an AI edit writes text derived from what it read, so a concurrent
+  write must invalidate it; a notepad save is the writer looking at the text
+  and typing, and refusing their copy because a cover job touched the row would
+  lose work they can see on screen. Narration is dropped, same rule as a
+  rewrite.
+- **`library` carries what the Home rail and the chapter end need.**
+  Confirmed `cover_image_url`, `cover_status`, `chapters(count)` and
+  `previously_summary` were already there; added `story_mode`, `beats`,
+  `series_state`, `planned_chapter_count` and `entity_gate_reason`.
+- **The reload bug behind "the chapter end only offers a text box."** This was
+  the complaint that started the session, and the backend was innocent: a real
+  series generation came back with 3 beats, 4 open hooks, 2 promised payoffs,
+  `next_chapter_pressure` and a real `hook_text`. `mapGeneratedStory` in
+  `expo/src/lib/api.ts` read all of it, so the chips worked immediately after
+  generating. `hydrateStoryRow` hardcoded `beats: []` and
+  `seriesState: undefined`, and `fetchMyStories`'s `.select(...)` never asked
+  for the columns — so the moment the app was reloaded and the story came back
+  from Library or Home, the chips vanished permanently. Fixed on both ends, plus
+  `storyMode` now comes from the row instead of being inferred from the chapter
+  count (a series whose second chapter is unwritten has exactly one chapter, and
+  counting called it a standalone and hid the continuation UI on precisely the
+  story that needed it). Three regression tests in `my-stories-restore.test.ts`.
+- **Client API additions** (`expo/src/lib/api.ts` and `types/domain.ts` only —
+  no screens, no components): `reimagineChapterStreaming`,
+  `listSavedCharacters`, `deleteSavedCharacter`, `saveChapterText`, and
+  `CreateDraft.characters[].savedCharacterId`, which is now sent as
+  `saved_character_id` on generation.
+
+### Known and unfixed
+
+**The word band overshoots on the streamed path**, and it is measurable: a
+standalone adult chapter came back at 1,904 words against a 500–1,500 band, and
+a series chapter at 2,116 against 600–900. The streamed path cannot retry what
+the reader has already read, so an out-of-band chapter is logged
+(`streamed_chapter_outside_band`) and kept. **Do not try to fix it by lowering
+`max_tokens`** — that was tried, and because reasoning and prose share one cap
+it produced a chapter with no ending. Nothing in this session makes it worse;
+the reimagine path applies exactly the same rule as the streamed continuation.
+
+### Verification
+
+- Backend, `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  700 passed before, **709 passed, 0 failed** after (+7 in the new
+  `_shared/reimagine.test.ts`, +2 from rewriting `llm-deadline.test.ts` around
+  the gateway ceiling).
+- `supabase/migrations`: 118 passed, 0 failed, unchanged — no migration was
+  touched this session; 00057 was written by the predecessor.
+- `deno fmt` run on every file touched; `deno check` clean on
+  `reimagine-chapter`, `continue-story`, `edit-story`, `library`,
+  `generate-story`, `generate-story-stream` and the new `_shared` modules.
+- Client, from `expo/` on Node v22.23.0: `pnpm typecheck` clean.
+  `my-stories-restore.test.ts` 8 passed (was 5).
+- **Nothing was deployed and nothing ran against `iafeuxgoiknncgyjmugd`.** The
+  production measurements quoted above were taken by the orchestrating session,
+  not by this one. No production-level test ran here, so no
+  `public.error_events` rows were written.
+
+---
+
 ## 2026-09-09 UTC — The reading experience pass, an adversarial review, and a generation deadline that cannot be met
 
 **Session:** Product-owner feedback from walking the running app, built by four

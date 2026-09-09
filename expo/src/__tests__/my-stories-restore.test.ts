@@ -137,3 +137,71 @@ it("skips rows missing an id or a title instead of rendering a blank card", asyn
 
   expect(await fetchMyStories()).toEqual([]);
 });
+
+/**
+ * The reload bug behind "the chapter end only offers a text box".
+ *
+ * `mapGeneratedStory` reads `beats` and `series_state` off the generation
+ * response, so the continuation chips worked immediately after writing a
+ * story. `hydrateStoryRow` hardcoded `beats: []` and `seriesState: undefined`,
+ * and the query above never even asked for the columns -- so the moment the
+ * app was reloaded and the story came back from Library or Home, the chips
+ * vanished for good and the writer saw a bare "type a direction" box. The
+ * backend was producing all of it correctly the whole time.
+ */
+const SERIES_ROW = {
+  ...LIBRARY_ROW,
+  story_mode: "series",
+  planned_chapter_count: 7,
+  beats: ["She finds the bottle", "The date is wrong", "Someone is waiting"],
+  series_state: {
+    open_hooks: ["Who wrote it?"],
+    promised_payoffs: ["The keeper's name"],
+    next_chapter_pressure: "The tide is coming back in",
+    central_conflict: "A message that has not been written yet",
+    world_facts: ["The lighthouse has been dark for thirty years"],
+    character_changes: ["She stops sleeping"],
+    delivered_moments: [],
+  },
+};
+
+it("keeps beats and series state on a story hydrated from a row", async () => {
+  stubTables([SERIES_ROW], [CHAPTER_ROW]);
+
+  const [story] = await fetchMyStories();
+
+  expect(story.beats).toEqual([
+    "She finds the bottle",
+    "The date is wrong",
+    "Someone is waiting",
+  ]);
+  expect(story.seriesState?.open_hooks).toEqual(["Who wrote it?"]);
+  expect(story.seriesState?.promised_payoffs).toEqual(["The keeper's name"]);
+  expect(story.seriesState?.next_chapter_pressure).toBe(
+    "The tide is coming back in",
+  );
+  // Everything `deriveContinuationOptions` needs is present, so the chapter
+  // end can offer real directions rather than an empty box.
+  expect(story.plannedChapterCount).toBe(7);
+});
+
+it("trusts the row's story_mode over the number of chapters it happens to have", async () => {
+  // A series whose second chapter has not been written yet has exactly one
+  // chapter. Counting chapters called it a standalone and hid the continuation
+  // UI on the one story that most needed it.
+  stubTables([SERIES_ROW], [CHAPTER_ROW]);
+
+  const [story] = await fetchMyStories();
+
+  expect(story.storyMode).toBe("series");
+});
+
+it("survives a row written before those columns existed", async () => {
+  stubTables([LIBRARY_ROW], [CHAPTER_ROW]);
+
+  const [story] = await fetchMyStories();
+
+  expect(story.beats).toEqual([]);
+  expect(story.seriesState).toBeUndefined();
+  expect(story.storyMode).toBe("standalone");
+});
