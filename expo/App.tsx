@@ -17,6 +17,7 @@ import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
 import { LaunchScreen } from "@/components/brand/LaunchScreen";
 import LoaderPreview from "@/screens/dev/LoaderPreview";
+import NarrationLoaderPreview from "@/screens/dev/NarrationLoaderPreview";
 import { ScreenScaffold } from "@/components/KathaPrimitives";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import AuthorScreen from "@/screens/AuthorScreen";
@@ -344,6 +345,7 @@ export default function App() {
   if (!fontsReady) return <LaunchScreen />;
 
   if (preview === "loader") return <LoaderPreview />;
+  if (preview === "narration-loader") return <NarrationLoaderPreview />;
 
   /**
    * A series gets a landing page; a standalone opens straight into its prose.

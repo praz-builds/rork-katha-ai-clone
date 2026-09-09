@@ -2,6 +2,58 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-10: Three ways of saying "a voice is being prepared"
+
+### Changed
+
+- **`src/components/reader/NarrationLoader.tsx` is new**, for the preparing
+  state of the full-screen narration player. It is deliberately not
+  `CraftingLoader`: that screen's brand mark says "Katha is writing", and a
+  reader who pressed Listen is waiting on something else entirely. Three
+  variants, chosen by a `variant` prop so product can compare them without the
+  player changing:
+  - `waveform` — seven bars breathing around a centre-weighted profile, the
+    shape a level meter makes on a spoken voice. Says: a voice, warming up.
+  - `halo` — a drawn headphone glyph with rings leaving the earcups and fading
+    outward. Says: sound on its way to you. The closest to the reference.
+  - `passage` — the chapter's own lines with a reading light travelling across
+    them, clipped to the block of text. Says: this is being read.
+- **The messages map to real pipeline stages, not to a timer.** `voice` (the
+  voice is resolved and cached narration looked up), `requesting` (the
+  (chapter, voice) row is claimed and a RunPod job started), `generating`
+  (`audio-status` is answering `PENDING`), `finishing` (bytes are back and
+  being stored). `NARRATION_STAGES` is exported so the player drives it from
+  status; `message` overrides a line when the player knows something truer.
+- **No screen here promises a duration.** The provider's queue depth is
+  invisible to the app and `audio-status` answers `PENDING` or `COMPLETED`
+  with nothing in between, so a countdown would be invented. A test asserts no
+  stage message contains a digit or the word "second".
+- **Reduced motion keeps saying something.** Each variant drops its
+  translation and scale and keeps a slow opacity breath
+  (`ReduceMotion.Never`, deliberately — Reanimated's default would snap the
+  one animation these users have to its final value), and the progress moves
+  to a discrete fill driven by the real stage: one more bar, one more ring,
+  one more line takes the accent every time a stage completes. Frozen art on a
+  wait screen is indistinguishable from a crash.
+- **`?preview=narration-loader`** renders all three stacked with their labels
+  and a stage switcher, at `src/screens/dev/NarrationLoaderPreview.tsx`. Two
+  lines in `App.tsx`, following the existing `?preview=loader` pattern; both
+  are `__DEV__` + web only and cannot reach a shipped build.
+
+### Verification
+
+- `pnpm typecheck` clean (Node 22.23.0).
+- `pnpm lint`: 0 errors, the existing 24 warnings unchanged.
+- `pnpm exec jest`: 75 suites, 642 tests passing (74/632 before, plus the new
+  `narration-loader` suite's 10). Each variant is asserted to render, and to
+  still render its message with reduced motion on.
+- `pnpm exec expo export --platform web` compiled the web bundle.
+- Looked at all three in Chrome at `localhost:8095/?preview=narration-loader`
+  (8090 was held by another session's dev server); no console errors. Motion
+  feel on device is unjudged — a laptop browser is not a verification
+  environment for a 620ms loop.
+- Not pushed. Not deployed.
+
 ## 2026-09-09: The story page goes dark, and a writer's own work leads Home
 
 ### Changed
