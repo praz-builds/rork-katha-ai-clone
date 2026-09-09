@@ -37,12 +37,15 @@ import { useSyncExternalStore } from "react";
 import {
   continueStoryStreaming,
   createGenerationRequestId,
+  fetchCoverState,
   generateStoryStreaming,
   GenerationRequestError,
   publishStory,
   StoryGatedPrivateError,
+  type CoverState,
   type StoryGatingReason,
 } from "@/lib/api";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { clearDraft } from "@/lib/draft-storage";
 import { normalizeText, paginateChapter } from "@/lib/paginate";
 import type { ReimagineRun } from "@/lib/reimagine-client";
@@ -222,6 +225,10 @@ type SessionRecord = {
   requestId: string;
   deferred: Deferred;
   start: () => void;
+  /** The pending cover poll, so it can be cancelled rather than leaked. */
+  coverTimer: ReturnType<typeof setTimeout> | null;
+  /** How many times the cover has been asked about on this session. */
+  coverAttempts: number;
 };
 
 const records = new Map<string, SessionRecord>();
@@ -254,8 +261,135 @@ function update(id: string, patch: Partial<GenerationSession>): void {
 function pruneFinished(now: number): void {
   for (const [id, record] of records) {
     const { finishedAt } = record.session;
-    if (finishedAt !== null && now - finishedAt > RETENTION_MS) records.delete(id);
+    if (finishedAt !== null && now - finishedAt > RETENTION_MS) {
+      stopCoverPoll(record);
+      records.delete(id);
+    }
   }
+}
+
+// ---------------------------------------------------------------------------
+// The cover, after the prose
+// ---------------------------------------------------------------------------
+
+/**
+ * A story's cover is painted AFTER its chapter is answered, on a background
+ * task the client never sees finish. The row goes `generating` -> `ready`
+ * tens of seconds later, and nothing pushes that transition down to the app.
+ *
+ * So the client has to ask. It used to: `CreateStudioScreen` ran a poll loop,
+ * and when generation moved out of that screen into this store the loop was
+ * not moved with it. The result was a cover that existed in the bucket, served
+ * over HTTP 200, and was invisible in the app until a full reload refetched
+ * the row - a freshly written story showed its genre-gradient placeholder
+ * forever, in the feed, on the story page and in the library at once.
+ *
+ * The poll lives here rather than in a screen for the same reason the stream
+ * does: it must outlive whichever screen happened to start it, and its answer
+ * has to reach every subscriber at once. Writing the state back onto the
+ * session's `story` is what does that - `App` upserts the session's story into
+ * `generatedStories` on every publish, so one `update()` here repaints the
+ * Home rail, the story page and the library together.
+ *
+ * NOTHING VISIBLE CHANGES WHILE IT RUNS. There is no spinner and no "Painting"
+ * copy anywhere: the placeholder rule is the genre gradient and silence, and
+ * the art fades in over `motion.base` when the URL lands.
+ */
+
+/** Wait before the first ask. The art is never ready the instant the prose is. */
+export const COVER_POLL_FIRST_DELAY_MS = 4000;
+/** Each wait is this much longer than the last. */
+const COVER_POLL_BACKOFF = 1.45;
+/** However long the backoff runs, never wait longer than this between asks. */
+const COVER_POLL_MAX_DELAY_MS = 20000;
+/**
+ * How many times to ask before giving up.
+ *
+ * Twelve asks under the backoff above spans a little over two minutes, which
+ * comfortably covers a cover that is merely slow. A cover that has not landed
+ * by then is not landing on this app session, and the honest thing is to stop:
+ * the placeholder is a finished design, not a failure state, and the row is
+ * re-read from the database on the next launch anyway.
+ */
+export const COVER_POLL_MAX_ATTEMPTS = 12;
+
+/** A cover that has settled, either way, is nothing left to ask about. */
+function coverIsSettled(status: CoverState["coverStatus"] | undefined): boolean {
+  return status === "ready" || status === "failed";
+}
+
+function stopCoverPoll(record: SessionRecord): void {
+  if (record.coverTimer === null) return;
+  clearTimeout(record.coverTimer);
+  record.coverTimer = null;
+}
+
+/** Put a fetched cover state onto the session's story, if it changed anything. */
+function applyCoverState(record: SessionRecord, state: CoverState): void {
+  const { story } = record.session;
+  if (!story) return;
+  const coverImageUrl = state.coverImageUrl ?? story.coverImageUrl;
+  if (
+    story.coverStatus === state.coverStatus
+    && story.coverImageUrl === coverImageUrl
+  ) {
+    return;
+  }
+  update(record.session.id, {
+    story: {
+      ...story,
+      coverImageUrl,
+      coverStatus: state.coverStatus,
+      coverRegenCount: state.coverRegenCount,
+    },
+  });
+}
+
+/**
+ * Ask about this story's cover until it settles, the attempts run out, or the
+ * session is forgotten. Safe to call twice: the second call cancels the first.
+ */
+function startCoverPoll(record: SessionRecord, storyId: string): void {
+  stopCoverPoll(record);
+  // Offline there is nobody to ask - `fetchCoverState` answers `null` for
+  // every call - so scheduling a dozen timers would only be a way to keep a
+  // test runner awake.
+  if (!isSupabaseConfigured) return;
+  if (coverIsSettled(record.session.story?.coverStatus)) return;
+  record.coverAttempts = 0;
+
+  const schedule = () => {
+    if (record.coverAttempts >= COVER_POLL_MAX_ATTEMPTS) return;
+    const delay = Math.min(
+      COVER_POLL_MAX_DELAY_MS,
+      Math.round(
+        COVER_POLL_FIRST_DELAY_MS * COVER_POLL_BACKOFF ** record.coverAttempts,
+      ),
+    );
+    record.coverTimer = setTimeout(ask, delay);
+  };
+
+  const ask = () => {
+    record.coverTimer = null;
+    record.coverAttempts += 1;
+    void fetchCoverState(storyId)
+      .then((state) => {
+        // Dismissed, pruned or restarted while the request was in flight.
+        if (records.get(record.session.id) !== record) return;
+        if (state) applyCoverState(record, state);
+        if (state && coverIsSettled(state.coverStatus)) return;
+        schedule();
+      })
+      // A null answer and a thrown one mean the same thing here - this ask
+      // learned nothing - and neither is worth surfacing to the writer, who
+      // did not request a cover status and is looking at a finished story.
+      .catch(() => {
+        if (records.get(record.session.id) !== record) return;
+        schedule();
+      });
+  };
+
+  schedule();
 }
 
 function failureMessage(error: unknown): string {
@@ -280,6 +414,9 @@ function acceptChunk(record: SessionRecord, chunk: string): void {
 }
 
 function beginRun(record: SessionRecord): void {
+  // A retry throws away the story the last run produced, so the poll that was
+  // watching that story's cover has nothing left to write onto.
+  stopCoverPoll(record);
   record.raw = "";
   record.deferred = defer();
   update(record.session.id, {
@@ -382,6 +519,8 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
     requestId: createGenerationRequestId(),
     deferred: defer(),
     start: () => {},
+    coverTimer: null,
+    coverAttempts: 0,
   };
   record.start = () => {
     beginRun(record);
@@ -407,6 +546,8 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
         creditsCharged: STORY_START_CREDITS,
       });
       applyVisibility(record, story.id);
+      // The chapter is persisted; the art is not. Start asking.
+      startCoverPoll(record, story.id);
     }).catch((error) => fail(record, error));
   };
   records.set(id, record);
@@ -452,6 +593,8 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
     requestId: createGenerationRequestId(),
     deferred: defer(),
     start: () => {},
+    coverTimer: null,
+    coverAttempts: 0,
   };
   record.start = () => {
     beginRun(record);
@@ -541,6 +684,8 @@ export function adoptReimagineGeneration(input: {
     // Not restartable in place: the run is already away and retrying it would
     // be a second charge. A failed rewrite is retried from the sheet.
     start: () => {},
+    coverTimer: null,
+    coverAttempts: 0,
   };
   records.set(id, record);
 
@@ -585,7 +730,11 @@ export function retryGeneration(id: string): void {
 
 /** Forget a session. Used when the reader leaves a failed generation behind. */
 export function dismissGeneration(id: string): void {
-  if (records.delete(id)) publish();
+  const record = records.get(id);
+  if (!record) return;
+  stopCoverPoll(record);
+  records.delete(id);
+  publish();
 }
 
 /** Acknowledge the entity gate, so its explanation is shown once and not again. */
@@ -671,6 +820,7 @@ export function useStoryGeneration(storyId: string): GenerationSession | null {
 
 /** Test seam: forget every session. */
 export function __resetGenerationSessions(): void {
+  for (const record of records.values()) stopCoverPoll(record);
   records.clear();
   publish();
 }
