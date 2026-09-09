@@ -41,6 +41,14 @@ import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import { captureError } from "@/lib/analytics";
+import {
+  chapterSaveState,
+  dismissChapterSave,
+  retryChapterSave,
+  subscribeToChapterSaves,
+  type ChapterSaveEntry,
+} from "@/lib/chapter-save-queue";
+import { fetchThread, formatRelativeTime } from "@/lib/comments";
 import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
@@ -58,10 +66,10 @@ import {
   type ReaderTheme,
   type ReadingThemeName,
 } from "@/lib/reading-themes";
-import { colors, fonts, genreGradients, genreLabels, motion, radius, spacing, type } from "@/theme";
+import { colors, fonts, genreGradients, genreLabels, motion, radius, shadows, spacing, type } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
-type ReaderComment = { id: number; user: string; text: string; time: string };
+type ReaderComment = { id: string; user: string; text: string; time: string };
 
 type ReaderPreferences = {
   typeSize: number;
@@ -131,6 +139,25 @@ export type ReaderScreenProps = {
    * page 1.
    */
   onReimagineStarted?: (run: ReimagineRun) => void;
+  /**
+   * The viewer has no account, so anything that writes to somebody else's
+   * story is gated.
+   *
+   * READING IS NEVER GATED. Turning pages, preferences, search, narration and
+   * phrase capture all stay open to a guest, because none of them puts the
+   * guest's name on anything. Liking, saving, following and commenting do, and
+   * a guest who taps one gets the sign-in prompt rather than a local state
+   * change that will be silently lost -- or worse, a control that appears to
+   * work and does nothing.
+   *
+   * The control stays VISIBLE and enabled in both cases. A hidden Like is a
+   * feature the guest never learns exists; a disabled one is a dead end. A
+   * prompt is a door.
+   *
+   * Supply `onRequireSignIn` to gate. Omitted, nothing is gated -- which is
+   * what a signed-in session passes.
+   */
+  onRequireSignIn?: () => void;
 };
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
@@ -180,26 +207,19 @@ const LINE_HEIGHTS = [26, 30, 34, 38];
 
 
 
-const INITIAL_COMMENTS: ReaderComment[] = [
-  {
-    id: 1,
-    user: "Mira R.",
-    text: "This story had me hooked from the first line. The lighthouse metaphor is beautiful.",
-    time: "2h ago",
-  },
-  {
-    id: 2,
-    user: "Dev S.",
-    text: "Beautiful writing. The ending was unexpected but satisfying.",
-    time: "5h ago",
-  },
-  {
-    id: 3,
-    user: "Aanya K.",
-    text: "I want a sequel to this. What happens to the lighthouse?",
-    time: "1d ago",
-  },
-];
+/*
+  THERE ARE NO SEEDED COMMENTS. DO NOT ADD ANY.
+
+  This module used to carry three hardcoded comments -- "Mira R.", "Dev S." and
+  "Aanya K." discussing a lighthouse metaphor -- and they rendered on the last
+  page of EVERY story. A brand-new story about a nurse in Kochi ended with
+  three strangers admiring a lighthouse that does not appear in it, while the
+  story detail page for the same story correctly said it had none. The reader
+  was the only surface lying.
+
+  Comments now come from `lib/comments.ts` (`fetchThread`), the same source the
+  detail page reads, and a story with none says so.
+*/
 
 /**
  * Chapter text in the canonical, normalized coordinate space (see the
@@ -332,6 +352,7 @@ export default function ReaderScreen({
   liveSessionId = null,
   onReimagine,
   onReimagineStarted,
+  onRequireSignIn,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
@@ -465,10 +486,35 @@ export default function ReaderScreen({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(story.likes);
   const [isSaved, setIsSaved] = useState(false);
-  const [comments, setComments] = useState<ReaderComment[]>(INITIAL_COMMENTS);
+  const [comments, setComments] = useState<ReaderComment[]>([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [isFollowing, setIsFollowing] = useState(false);
   const [shareToast, setShareToast] = useState(false);
+
+  /*
+    THE OTHER HALF OF THE OPTIMISTIC SAVE.
+
+    `EditStoryScreen` hands the writer their page back the instant they tap
+    Save and lets `lib/chapter-save.ts` finish the request in the background.
+    That is only honest if a refusal is shown, and by then the editor is gone --
+    so the reader is where it lands. The queue holds the exact text, so Retry
+    re-sends what the writer typed rather than what is on the page.
+
+    Only a FAILURE surfaces. A successful background save says nothing, because
+    the writer already saw the result: their words, on the page.
+  */
+  const [saveFailure, setSaveFailure] = useState<ChapterSaveEntry | null>(null);
+  useEffect(() => {
+    // Read once for the chapter being opened -- a save can fail while the
+    // writer is elsewhere in the story -- then follow it.
+    const current = chapterSaveState(chapter.id);
+    setSaveFailure(current?.state === "failed" ? current : null);
+    return subscribeToChapterSaves((entry) => {
+      if (entry.chapterId !== chapter.id) return;
+      setSaveFailure(entry.state === "failed" ? entry : null);
+    });
+  }, [chapter.id]);
 
   useEffect(() => {
     let alive = true;
@@ -835,12 +881,74 @@ export default function ReaderScreen({
     );
   }, [baseChapter.id, onReimagineStarted]);
 
+  /*
+    The real thread, for THIS story, from the same endpoint the detail page
+    reads. A story with no comments gets an empty state saying so rather than
+    three seeded strangers.
+
+    A failure is treated as "none yet" on purpose. This is a preview at the foot
+    of a page of prose, not the comments product; an error row here would be the
+    loudest thing on the page, and the reader loses nothing they were promised.
+  */
+  useEffect(() => {
+    let alive = true;
+    setCommentsLoaded(false);
+    setComments([]);
+    fetchThread(story.id).then(
+      (rows) => {
+        if (!alive) return;
+        const now = Date.now();
+        setComments(
+          rows
+            .filter((row) => !row.deleted)
+            .map((row) => ({
+              id: row.id,
+              user: row.authorName,
+              text: row.body,
+              time: formatRelativeTime(Date.parse(row.createdAt), now),
+            })),
+        );
+        setCommentsLoaded(true);
+      },
+      () => {
+        if (alive) setCommentsLoaded(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [story.id]);
+
+  /**
+   * Every engagement control routes through this.
+   *
+   * Returns true when the tap was swallowed by the sign-in prompt, so a caller
+   * reads as `if (requireSignIn()) return;` -- one line, impossible to leave off
+   * half a handler.
+   */
+  const requireSignIn = useCallback((): boolean => {
+    if (!onRequireSignIn) return false;
+    onRequireSignIn();
+    return true;
+  }, [onRequireSignIn]);
+
   const handleLike = useCallback(() => {
+    if (requireSignIn()) return;
     setIsLiked((prev) => {
       setLikeCount((count) => prev ? count - 1 : count + 1);
       return !prev;
     });
-  }, []);
+  }, [requireSignIn]);
+
+  const handleToggleSaved = useCallback(() => {
+    if (requireSignIn()) return;
+    setIsSaved((prev) => !prev);
+  }, [requireSignIn]);
+
+  const handleToggleFollow = useCallback(() => {
+    if (requireSignIn()) return;
+    setIsFollowing((prev) => !prev);
+  }, [requireSignIn]);
 
   const handleShare = useCallback(async () => {
     const text = `${story.title} by ${author.displayName}\n\nRead on Katha AI`;
@@ -860,12 +968,16 @@ export default function ReaderScreen({
   }, [author.displayName, story.title]);
 
   const handleSubmitComment = useCallback(() => {
+    if (requireSignIn()) return;
     const trimmed = commentText.trim();
     if (!trimmed) return;
-    setComments((prev) => [{ id: Date.now(), user: "You", text: trimmed, time: "just now" }, ...prev]);
+    setComments((prev) => [
+      { id: `local-${Date.now()}`, user: "You", text: trimmed, time: "just now" },
+      ...prev,
+    ]);
     setCommentText("");
     Alert.alert("Comment added", "Your comment is saved locally. Comments will persist after authentication is connected.");
-  }, [commentText]);
+  }, [commentText, requireSignIn]);
 
   const jumpToMatch = useCallback((direction: 1 | -1) => {
     if (searchMatches.length === 0) return;
@@ -969,7 +1081,15 @@ export default function ReaderScreen({
                   single screen. Body text on a normal page is sized to fit,
                   so this never actually scrolls there.
                 */}
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                {/* `keyboardShouldPersistTaps` so the chapter-end composer's
+                  * Continue button takes the first tap. Without it a tap with
+                  * the keyboard up is spent dismissing the keyboard, and the
+                  * reader has to press a paid button twice. */}
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.scrollContent}
+                >
                   <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
                     {index === 0 ? (
                       /*
@@ -1070,7 +1190,7 @@ export default function ReaderScreen({
                       ) : null}
                       <View style={[styles.divider, { backgroundColor: theme.divider }]} />
                       <View style={styles.engagementRow}>
-                        <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" style={styles.engagementAction}>
+                        <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" testID="reader-like" style={styles.engagementAction}>
                           <Heart size={16} color={isLiked ? colors.heart : theme.text} fill={isLiked ? colors.heart : "none"} />
                           <Text style={[styles.engagementCount, { color: theme.text }]}>{formatNumber(likeCount)}</Text>
                         </Pressable>
@@ -1078,7 +1198,7 @@ export default function ReaderScreen({
                           <MessageCircle size={16} color={theme.text} />
                           <Text style={[styles.engagementCount, { color: theme.text }]}>{comments.length}</Text>
                         </View>
-                        <Pressable onPress={() => setIsSaved((prev) => !prev)} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" style={styles.engagementAction}>
+                        <Pressable onPress={handleToggleSaved} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" testID="reader-save" style={styles.engagementAction}>
                           {isSaved ? <BookmarkCheck size={16} color={theme.text} /> : <Bookmark size={16} color={theme.text} />}
                         </Pressable>
                         <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
@@ -1092,7 +1212,7 @@ export default function ReaderScreen({
                           <Text style={[styles.authorName, { color: theme.text }]}>{author.displayName}</Text>
                           <Text style={[styles.authorBio, { color: theme.muted }]} numberOfLines={2}>{author.bio}</Text>
                         </View>
-                        <Pressable onPress={() => setIsFollowing((prev) => !prev)} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" style={styles.followButton}>
+                        <Pressable onPress={handleToggleFollow} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" testID="reader-follow" style={styles.followButton}>
                           <Text style={styles.followText}>{isFollowing ? "Following" : "Follow"}</Text>
                         </Pressable>
                       </View>
@@ -1110,10 +1230,21 @@ export default function ReaderScreen({
                             maxLength={500}
                             accessibilityLabel="Add a comment"
                           />
-                          <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
+                          <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" testID="reader-comment-send" style={styles.commentSendBtn}>
                             <Send size={16} color={colors.surface} />
                           </Pressable>
                         </View>
+                        {/* The honest empty state. It waits for the fetch to
+                          * settle rather than flashing "No comments yet" at a
+                          * story that has forty. */}
+                        {commentsLoaded && comments.length === 0 ? (
+                          <Text
+                            style={[styles.commentsEmpty, { color: theme.muted }]}
+                            testID="reader-comments-empty"
+                          >
+                            No comments yet. Be the first to say something.
+                          </Text>
+                        ) : null}
                         {comments.map((comment) => (
                           <View key={comment.id} style={[styles.commentItem, { borderTopColor: theme.divider }]}>
                             <Text style={[styles.commentUser, { color: theme.text }]}>{comment.user}</Text>
@@ -1203,6 +1334,36 @@ export default function ReaderScreen({
       {forkToast ? (
         <View style={styles.forkToast} accessibilityLiveRegion="polite">
           <Text style={styles.shareToastText}>Saved to Your stories</Text>
+        </View>
+      ) : null}
+      {saveFailure ? (
+        <View style={styles.saveFailure} accessibilityRole="alert" testID="reader-save-failed">
+          <Text style={styles.saveFailureText}>
+            {saveFailure.error ?? "Your edit is on this device but Katha could not save it."}
+          </Text>
+          <View style={styles.saveFailureActions}>
+            <Pressable
+              onPress={() => retryChapterSave(saveFailure.chapterId)}
+              accessibilityRole="button"
+              accessibilityLabel="Retry saving your edit"
+              testID="reader-save-retry"
+              style={styles.saveFailureAction}
+            >
+              <Text style={styles.saveFailureRetry}>Retry</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                dismissChapterSave(saveFailure.chapterId);
+                setSaveFailure(null);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss the save failure"
+              testID="reader-save-dismiss"
+              style={styles.saveFailureAction}
+            >
+              <Text style={styles.saveFailureDismiss}>Not now</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
       {editOpen ? (
@@ -1650,6 +1811,56 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 20,
     letterSpacing: 0,
+  },
+  saveFailure: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.huge,
+    zIndex: 40,
+    gap: spacing.sm,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.ink,
+    boxShadow: shadows.overlay,
+  },
+  saveFailureText: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.surface,
+    letterSpacing: 0,
+  },
+  saveFailureActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.lg,
+  },
+  saveFailureAction: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: "center",
+  },
+  saveFailureRetry: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.accent,
+    letterSpacing: 0,
+  },
+  saveFailureDismiss: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.tertiary,
+    letterSpacing: 0,
+  },
+  commentsEmpty: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0,
+    paddingVertical: spacing.sm,
   },
   commentInputRow: {
     flexDirection: "row",

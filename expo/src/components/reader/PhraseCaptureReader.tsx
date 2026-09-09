@@ -1,13 +1,38 @@
 import { Check } from "lucide-react-native";
-import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
+import { scheduleOnRN } from "react-native-worklets";
+import * as Haptics from "expo-haptics";
+import { SelectionToolbar, type SelectionAction } from "@/components/reader/SelectionToolbar";
 import { TappableWord, type TappableWordState } from "@/components/reader/TappableWord";
+import { copyText } from "@/lib/clipboard";
+import {
+  isWordInRange,
+  rangeFromAnchor,
+  rangeLength,
+  textForRange,
+  wordStepsForDrag,
+  type SelectionRange,
+} from "@/lib/text-selection";
 import {
   isPhraseSaved,
   listSavedPhrases,
@@ -52,9 +77,30 @@ export type PhraseCaptureReaderProps = {
    * being written behind it.
    */
   liveSessionId?: string | null;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason as `autoplay`: a seam this wrapper
+   * does not pass through silently stops working the moment phrase capture is
+   * enabled, and here that would mean a guest quietly liking and following into
+   * a void because the sign-in gate never reached the reader.
+   */
+  onRequireSignIn?: () => void;
 };
 
 const TOAST_VISIBLE_MS = 1800;
+
+/**
+ * How long the finger must be still before the drag gesture takes over.
+ *
+ * React Native's own `Text.onLongPress` fires at 500ms and it is what anchors
+ * the selection, so the pan must not steal the touch before then -- if it did,
+ * there would be a drag with nothing to drag from. 650ms leaves the anchor
+ * comfortably first and still feels like one continuous press-and-drag.
+ *
+ * Below this threshold nothing changes: a tap is a tap (word saved), and a
+ * horizontal flick is a page turn, because a pan waiting on a long press fails
+ * the moment the finger travels.
+ */
+const DRAG_ACTIVATION_MS = 650;
 
 function pendingKeyFor(storyId: string, phrase: string): string {
   return `${storyId}::${phrase.trim().toLowerCase()}`;
@@ -63,8 +109,10 @@ function pendingKeyFor(storyId: string, phrase: string): string {
 /**
  * Wires phrase capture into `ReaderScreen` through its `renderWord` seam.
  *
- * Tap a word to save it, long-press to save the sentence it sits in, tap a
- * saved word again to unsave it. Every save is optimistic: the tapped word
+ * Tap a word to save it, tap a saved word again to unsave it. Long-press starts
+ * a selection anchored on the sentence around that word, which a drag then
+ * grows or shrinks word by word before Save phrase / Copy / Share quote is
+ * chosen from the menu it raises. Every save is optimistic: the tapped word
  * reads as saved the instant it is tapped, and rolls back quietly - no
  * `Alert`, just the highlight clearing - only if a reachable server actually
  * refuses it. See `lib/phrases.ts` for why an absent backend is not treated
@@ -86,6 +134,7 @@ export default function PhraseCaptureReader({
   autoplay = false,
   renderChapterEnd,
   liveSessionId = null,
+  onRequireSignIn,
   onReimagineStarted,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
@@ -152,8 +201,8 @@ export default function PhraseCaptureReader({
     };
   }, []);
 
-  const showSavedToast = useCallback((phrase: string) => {
-    setToast(`Saved "${phrase}"`);
+  const showToast = useCallback((message: string) => {
+    setToast(message);
     toastOpacity.value = reducedMotion ? 1 : withTiming(1, { duration: motion.fast });
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => {
@@ -202,12 +251,12 @@ export default function PhraseCaptureReader({
     setPending(key, false);
     if (saved) {
       setSavedPhrases((prev) => prev.map((entry) => entry.id === optimisticId ? saved : entry));
-      showSavedToast(input.phrase);
+      showToast(`Saved "${input.phrase}"`);
     } else {
       // Rolled back quietly. No alert - the highlight simply clears.
       setSavedPhrases((prev) => prev.filter((entry) => entry.id !== optimisticId));
     }
-  }, [setPending, showSavedToast, story.id, story.title]);
+  }, [setPending, showToast, story.id, story.title]);
 
   const toggleUnsave = useCallback(async (existing: SavedPhrase, key: string) => {
     setPending(key, true);
@@ -235,26 +284,173 @@ export default function PhraseCaptureReader({
     void toggleSave({ phrase: cleaned, sentence, chapterId: activeChapterRef.current.id }, key);
   }, [story.id, toggleSave, toggleUnsave]);
 
-  const handleWordLongPress = useCallback((index: number) => {
-    const range = sentenceAroundWord(wordsRef.current, index);
-    const sentenceText = (range.text || wordsRef.current[index] || "").trim();
+  /*
+    LONG-PRESS AND DRAG SELECTION.
+
+    Long-pressing a word used to save the sentence around it outright -- one
+    gesture, one guess about how much of the sentence the reader meant, no way
+    to see it before it happened and no way to take a word off the end. It is
+    now the start of a selection instead: the word lights, a light impact says
+    the selection has begun, and dragging grows or shrinks the range with a
+    selection tick per word crossed. Nothing is written until the reader taps
+    Save phrase.
+
+    The sentence around the word is still the STARTING range, because that is
+    almost always what somebody long-pressing a line of prose wants, and a
+    selection that opens on one word makes the reader do work the app could
+    have done. The drag then adjusts it.
+
+    Word TAP is untouched: tap saves the word, tap again unsaves it.
+  */
+  const [selection, setSelection] = useState<SelectionRange | null>(null);
+  const selectionAnchor = useRef(0);
+  const selectionRef = useRef<SelectionRange | null>(null);
+  useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
+  const [selectionSaving, setSelectionSaving] = useState(false);
+  const [selectionSaved, setSelectionSaved] = useState(false);
+
+  // Read by the pan worklet, so the clamp happens on the UI runtime rather than
+  // being scheduled back to React just to find out the drag ran off the end.
+  const anchorShared = useSharedValue(0);
+  /** Where the focus already sits when the drag begins: the sentence's length. */
+  const baseStepsShared = useSharedValue(0);
+  const wordCountShared = useSharedValue(0);
+  const lastStepsShared = useSharedValue(0);
+  const selectingShared = useSharedValue(false);
+
+  const clearSelection = useCallback(() => {
+    selectingShared.value = false;
+    setSelection(null);
+    setSelectionSaved(false);
+  }, [selectingShared]);
+
+  const beginSelection = useCallback((index: number) => {
+    const words = wordsRef.current;
+    if (words.length === 0) return;
+    const sentence = sentenceAroundWord(words, index);
     // Punctuation-only surroundings (a lone dash, an empty page) have nothing
-    // worth saving.
-    if (!cleanWord(sentenceText)) return;
+    // worth selecting.
+    if (!cleanWord(sentence.text || words[index] || "")) return;
 
-    const key = pendingKeyFor(story.id, sentenceText);
-    if (pendingKeysRef.current.has(key)) return;
+    /*
+      The anchor is the sentence's FIRST word and the drag starts from its
+      LAST, not from the word under the finger.
 
-    const existing = isPhraseSaved(savedPhrasesRef.current, story.id, sentenceText);
-    if (existing) {
-      void toggleUnsave(existing, key);
+      The opening range is the whole sentence, so a drag that reset the focus to
+      the pressed word would collapse the highlight to two words on its first
+      tick -- the reader would watch their selection shrink as they pulled it
+      wider. Starting the focus where the highlight already ends means the first
+      tick moves it by one word, in the direction the finger went.
+    */
+    selectionAnchor.current = sentence.start;
+    anchorShared.value = sentence.start;
+    baseStepsShared.value = sentence.end - sentence.start;
+    wordCountShared.value = words.length;
+    lastStepsShared.value = sentence.end - sentence.start;
+    selectingShared.value = true;
+    setSelectionSaved(false);
+    setSelection({ start: sentence.start, end: sentence.end });
+    // Same frame as the highlight, and paired with it: the wash is the
+    // feedback, the impact is the confirmation. Haptics are off system-wide
+    // for many readers and silent on most Android hardware.
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [anchorShared, baseStepsShared, lastStepsShared, selectingShared, wordCountShared]);
+
+  /**
+   * Called from the pan worklet ONLY when the word count under the drag has
+   * actually changed -- a threshold crossing, never a frame. One tick, one
+   * re-render, one word.
+   */
+  const extendSelection = useCallback((steps: number) => {
+    setSelection(rangeFromAnchor(selectionAnchor.current, steps, wordsRef.current.length));
+    setSelectionSaved(false);
+    void Haptics.selectionAsync();
+  }, []);
+
+  const dragToSelect = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(DRAG_ACTIVATION_MS)
+        .onUpdate((event) => {
+          "worklet";
+          if (!selectingShared.value || wordCountShared.value <= 0) return;
+          const raw = baseStepsShared.value
+            + wordStepsForDrag(event.translationX, event.translationY);
+          // Clamped on the UI runtime so a drag that has run past the end of
+          // the chapter stops ticking instead of scheduling a no-op React
+          // update (and a haptic) on every further frame.
+          const last = wordCountShared.value - 1;
+          const focus = Math.min(Math.max(anchorShared.value + raw, 0), last);
+          const steps = focus - anchorShared.value;
+          if (steps === lastStepsShared.value) return;
+          lastStepsShared.value = steps;
+          scheduleOnRN(extendSelection, steps);
+        }),
+    [anchorShared, baseStepsShared, extendSelection, lastStepsShared, selectingShared, wordCountShared],
+  );
+
+  // `wordsRef` is a ref by design (it is seeded per chapter and filled during
+  // render by `renderWord`), so the range is the only thing that changes here.
+  const selectedText = useMemo(
+    () => textForRange(wordsRef.current, selection),
+    [selection],
+  );
+
+  const handleSelectionAction = useCallback(async (action: SelectionAction) => {
+    const phrase = selectedText;
+    if (!phrase) return;
+
+    if (action === "save") {
+      const key = pendingKeyFor(story.id, phrase);
+      if (pendingKeysRef.current.has(key)) return;
+      const existing = isPhraseSaved(savedPhrasesRef.current, story.id, phrase);
+      if (existing) {
+        setSelectionSaved(true);
+        return;
+      }
+      setSelectionSaving(true);
+      setSelectionSaved(true);
+      await toggleSave(
+        { phrase, sentence: phrase, chapterId: activeChapterRef.current.id },
+        key,
+      );
+      setSelectionSaving(false);
+      // `toggleSave` rolls its own optimistic entry back on a real refusal, so
+      // the honest read of "did this stick" is the saved list, not the call.
+      if (!isPhraseSaved(savedPhrasesRef.current, story.id, phrase)) {
+        setSelectionSaved(false);
+        return;
+      }
+      clearSelection();
       return;
     }
-    void toggleSave(
-      { phrase: sentenceText, sentence: sentenceText, chapterId: activeChapterRef.current.id },
-      key,
-    );
-  }, [story.id, toggleSave, toggleUnsave]);
+
+    if (action === "copy") {
+      const copied = await copyText(phrase);
+      // Never a success state for a write that failed: a browser or a build
+      // without the clipboard module says nothing rather than "Copied".
+      if (copied) showToast("Copied");
+      clearSelection();
+      return;
+    }
+
+    // Share quote. The attribution is the point -- a screenshot of the same
+    // line carries no way back to the story.
+    const message = `"${phrase}"\n\n${story.title} on Katha AI`;
+    if (Platform.OS === "web") {
+      const copied = await copyText(message);
+      if (copied) showToast("Quote copied");
+    } else {
+      try {
+        await Share.share({ message });
+      } catch {
+        // The reader dismissed the share sheet.
+      }
+    }
+    clearSelection();
+  }, [clearSelection, selectedText, showToast, story.id, story.title, toggleSave]);
 
   const renderWord = useCallback((word: string, index: number): ReactNode => {
     // `index` is chapter-absolute, and `wordsRef` holds the whole chapter's
@@ -273,7 +469,13 @@ export default function PhraseCaptureReader({
 
     const key = pendingKeyFor(story.id, cleaned);
     const existing = isPhraseSaved(savedPhrases, story.id, cleaned);
-    const state: TappableWordState = pendingKeys.has(key)
+    // A live selection outranks the saved highlight while it is on screen: the
+    // range under the finger is the thing the reader is steering, and letting a
+    // previously-saved word inside it keep its own colour would break the range
+    // into stripes.
+    const state: TappableWordState = isWordInRange(index, selection)
+      ? "selecting"
+      : pendingKeys.has(key)
       ? "pending"
       : existing
       ? "saved"
@@ -285,28 +487,62 @@ export default function PhraseCaptureReader({
         state={state}
         testID={`reader-word-${index}`}
         onPress={() => handleWordPress(index, cleaned)}
-        onLongPress={() => handleWordLongPress(index)}
+        onLongPress={() => beginSelection(index)}
       />
     );
-  }, [handleWordLongPress, handleWordPress, pendingKeys, savedPhrases, screenReaderEnabled, story.id]);
+  }, [beginSelection, handleWordPress, pendingKeys, savedPhrases, screenReaderEnabled, selection, story.id]);
 
   const onChapterChange = useCallback((chapter: Chapter) => {
     setActiveChapter(chapter);
-  }, []);
+    // A range is a set of indices into ONE chapter's word list. Carrying it
+    // across a chapter change would light an unrelated run of words in the new
+    // one.
+    clearSelection();
+  }, [clearSelection]);
 
   return (
-    <View style={styles.flex}>
-      <ReaderScreen
-        story={story}
-        onBack={onBack}
-        initialChapterIndex={initialChapterIndex}
-        renderWord={renderWord}
-        onChapterChange={onChapterChange}
-        autoplay={autoplay}
-        renderChapterEnd={renderChapterEnd}
-        liveSessionId={liveSessionId}
-        onReimagineStarted={onReimagineStarted}
-      />
+    <GestureHandlerRootView style={styles.flex}>
+      <GestureDetector gesture={dragToSelect}>
+        <View style={styles.flex}>
+          <ReaderScreen
+            story={story}
+            onBack={onBack}
+            initialChapterIndex={initialChapterIndex}
+            renderWord={renderWord}
+            onChapterChange={onChapterChange}
+            autoplay={autoplay}
+            renderChapterEnd={renderChapterEnd}
+            liveSessionId={liveSessionId}
+            onRequireSignIn={onRequireSignIn}
+            onReimagineStarted={onReimagineStarted}
+          />
+        </View>
+      </GestureDetector>
+      {/*
+        Tapping anywhere off the selection dismisses it, and that tap does
+        NOTHING else -- it does not also toggle the reader's chrome, which is
+        what the same tap does with no selection open. A scrim is how that is
+        made true without `ReaderScreen` having to know a selection exists:
+        while one is live this layer is in front of the page and eats the tap.
+        It is transparent, so the reader sees only their highlight.
+      */}
+      {selection ? (
+        <Pressable
+          testID="selection-dismiss"
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss selection"
+          onPress={clearSelection}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
+      {selection ? (
+        <SelectionToolbar
+          wordCount={rangeLength(selection)}
+          saving={selectionSaving}
+          saved={selectionSaved}
+          onAction={(action) => { void handleSelectionAction(action); }}
+        />
+      ) : null}
       {toast ? (
         <Animated.View
           pointerEvents="none"
@@ -317,7 +553,7 @@ export default function PhraseCaptureReader({
           <Text style={styles.toastText}>{toast}</Text>
         </Animated.View>
       ) : null}
-    </View>
+    </GestureHandlerRootView>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
 import { ChevronLeft } from "lucide-react-native";
-import { colors, fonts, motion, radius, spacing, type } from "@/theme";
+import { colors, fonts, radius, spacing, type } from "@/theme";
 import { useChapterEditor } from "@/components/reader/useChapterEditor";
 import type { Chapter, Story } from "@/types/domain";
 
@@ -32,9 +32,6 @@ export type SavedChapterEdit = {
   title: string;
 };
 
-/** How long "Saved" stays in the header before the editor closes itself. */
-const SAVED_DWELL_MS = motion.slow * 3;
-
 /**
  * The notepad. The whole chapter as one editable text, vertical, with Save.
  *
@@ -43,6 +40,14 @@ const SAVED_DWELL_MS = motion.slow * 3;
  * Reimagine's job, reached from the same chrome, and an editor that also
  * offered it read as two half-features in one screen. Here the writer goes to
  * a line, changes a word, and saves.
+ *
+ * SAVE IS OPTIMISTIC, AND THERE IS NO DWELL. Save used to await the round trip
+ * with every control disabled and then hold a `motion.slow * 3` "Saved" state
+ * before closing -- roughly 1.2 seconds of ceremony on top of a 2-3 second
+ * request, to confirm something the writer had just typed and could see. The
+ * edit is now accepted locally and the reader comes straight back with the new
+ * text on the page; the request runs in `lib/chapter-save-queue.ts` and only
+ * speaks up if it FAILS, in the reader, with a Retry that still holds the text.
  */
 export function EditStoryScreen({
   story,
@@ -64,31 +69,24 @@ export function EditStoryScreen({
     isPublished: chapter.isPublished,
   });
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [focusedField, setFocusedField] = useState<"title" | "body" | null>(null);
+  // One close per tap, however fast the second tap lands. `commit` is
+  // synchronous now, so a double tap would otherwise queue the same save twice
+  // and call `onClose` twice.
+  const closedRef = useRef(false);
 
-  useEffect(() => {
-    return () => {
-      if (closeTimer.current) clearTimeout(closeTimer.current);
-    };
-  }, []);
-
-  const handleSave = useCallback(async () => {
-    const saved = await editor.save();
-    if (!saved) return;
-    // "Saved" is shown where the button was, then the reader gets their page
-    // back on its own. A second tap on Save during the dwell is harmless: the
-    // text is already the saved text, so `save` resolves without a request.
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => {
-      onClose({
-        content: editor.getLastSavedText(),
-        title: editor.getLastSavedTitle(),
-      });
-    }, SAVED_DWELL_MS);
+  const handleSave = useCallback(() => {
+    if (closedRef.current) return;
+    const committed = editor.commit();
+    // `null` is a local refusal (an empty chapter). The editor stays open with
+    // the reason in its banner and every character still in the field.
+    if (!committed) return;
+    closedRef.current = true;
+    onClose(committed);
   }, [editor, onClose]);
 
   const handleBack = useCallback(() => {
-    if (editor.status === "saving") return;
+    if (closedRef.current) return;
     if (editor.dirty) {
       // Asked inline rather than with `Alert.alert`, which is a no-op on the
       // web build - a discard prompt that never appears would trap the writer
@@ -97,14 +95,13 @@ export function EditStoryScreen({
       return;
     }
     onClose(null);
-  }, [editor.dirty, editor.status, onClose]);
+  }, [editor.dirty, onClose]);
 
-  const saveLabel = editor.status === "saving"
-    ? "Saving"
-    : editor.status === "saved" && !editor.dirty
-    ? "Saved"
-    : "Save";
-  const saveDisabled = !editor.dirty || editor.status === "saving";
+  // There is no "Saving" and no "Saved" in this header any more. A label that
+  // says "Saved" the moment the button is tapped would be claiming a write
+  // succeeded before it had been attempted -- and the screen it would say it on
+  // is already gone. The reader shows the truth if the queued write fails.
+  const saveDisabled = !editor.dirty;
 
   return (
     <Modal
@@ -134,19 +131,13 @@ export function EditStoryScreen({
             disabled={saveDisabled}
             accessibilityRole="button"
             accessibilityLabel="Save chapter"
-            accessibilityState={{ disabled: saveDisabled, busy: editor.status === "saving" }}
+            accessibilityState={{ disabled: saveDisabled }}
             hitSlop={8}
             style={styles.saveButton}
             testID="edit-chapter-save"
           >
-            <Text
-              style={[
-                styles.saveText,
-                saveDisabled && styles.saveTextDisabled,
-                editor.status === "saved" && !editor.dirty && styles.saveTextDone,
-              ]}
-            >
-              {saveLabel}
+            <Text style={[styles.saveText, saveDisabled && styles.saveTextDisabled]}>
+              Save
             </Text>
           </Pressable>
         </View>
@@ -175,19 +166,14 @@ export function EditStoryScreen({
           </View>
         ) : null}
 
-        {editor.status === "error" ? (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>
-              {editor.error ?? "Could not save your edit."}
-            </Text>
-            <Pressable
-              onPress={handleSave}
-              accessibilityRole="button"
-              accessibilityLabel="Retry save"
-              style={styles.retry}
-            >
-              <Text style={styles.retryText}>Retry</Text>
-            </Pressable>
+        {/* The only failure this screen can still report is one it decided
+          * itself, with no server involved: an empty chapter. A network refusal
+          * arrives after the writer is back in the reader, so the reader is
+          * where it is shown -- there is no Retry here because there is nothing
+          * in flight to retry. */}
+        {editor.status === "error" && editor.error ? (
+          <View style={styles.errorBanner} accessibilityRole="alert">
+            <Text style={styles.errorText} testID="edit-chapter-error">{editor.error}</Text>
           </View>
         ) : null}
 
@@ -204,24 +190,45 @@ export function EditStoryScreen({
               onChangeText={editor.setTitle}
               placeholder="Chapter title"
               placeholderTextColor={colors.tertiary}
-              editable={editor.status !== "saving"}
+              onFocus={() => setFocusedField("title")}
+              onBlur={() => setFocusedField(null)}
               accessibilityLabel="Chapter title"
-              style={styles.chapterTitle}
+              style={[
+                styles.chapterTitle,
+                focusedField === "title" && styles.fieldFocused,
+              ]}
               maxLength={120}
               testID="edit-chapter-title"
             />
           )}
+          {/*
+            A QUIET FIELD.
+
+            The whole text area used to be framed, and a frame in the app's
+            accent is the loudest thing a screen can do to a rectangle that
+            holds nothing but the writer's own prose. The field is now the same
+            paper the rest of the app uses -- `colors.surface` inside a hairline
+            `colors.border` -- and focus is a single step of border weight
+            (`borderStrong`), not a colour change. `outlineWidth: 0` is
+            there because the web build otherwise draws the browser's own focus
+            ring on top of all of this.
+          */}
           <TextInput
             value={editor.text}
             onChangeText={editor.setText}
             multiline
             scrollEnabled
             autoCorrect
-            editable={editor.status !== "saving"}
+            onFocus={() => setFocusedField("body")}
+            onBlur={() => setFocusedField(null)}
             accessibilityLabel="Chapter text"
-            style={styles.chapterInput}
+            style={[
+              styles.chapterInput,
+              focusedField === "body" && styles.fieldFocused,
+            ]}
             textAlignVertical="top"
             keyboardType="default"
+            testID="edit-chapter-body"
           />
         </View>
       </KeyboardAvoidingView>
@@ -340,8 +347,13 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    paddingHorizontal: spacing.xl,
+    // The ground, so the field can be `colors.surface` and read as a field.
+    // The whole screen used to be `colors.surface`, which leaves a text area
+    // nothing to lift off and is the reason it needed a frame to exist.
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
     gap: spacing.sm,
   },
   storyTitle: {
@@ -356,7 +368,13 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     color: colors.ink,
     letterSpacing: 0,
-    marginBottom: spacing.sm,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    outlineWidth: 0,
   },
   chapterInput: {
     flex: 1,
@@ -365,6 +383,22 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     color: colors.ink,
     letterSpacing: 0,
-    paddingBottom: spacing.xxxl,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    outlineWidth: 0,
+  },
+  /**
+   * Focus, one step of weight and nothing else.
+   *
+   * `borderStrong` (#D7D5D0) over `border` (#E7E6E2) is a visible-but-quiet
+   * change on the same neutral ramp. It is deliberately NOT the accent: an
+   * accent frame around a field the writer is typing in competes with the
+   * prose, which is the whole complaint.
+   */
+  fieldFocused: {
+    borderColor: colors.borderStrong,
   },
 });
