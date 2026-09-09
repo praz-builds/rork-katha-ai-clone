@@ -242,3 +242,14 @@ If shaping has not finished when Generate is tapped, generate anyway; the server
 - **Generation must survive leaving the screen.** The live reader is rendered by `CreateStudioScreen`, but the writer may press back, switch tabs, or open the same story from Library while it is still being written. The stream and its settled pages therefore live in a module-level generation session (e.g. `expo/src/lib/generation-session.ts`: one active session keyed by story id, subscribable), not in component state. `CreateStudioScreen`, `ReaderScreen` (live mode) and Library all read from it.
 - **Reimagine wiring contract.** `ReaderScreen` exposes `onReimagine` (already on `ReaderChrome`); the Reimagine agent renders `ReimagineSheet` from `ReaderScreen` with the smallest possible edit (one state flag, one render block) so the live-reader agent's changes merge cleanly.
 - **Client API additions** for reimagine and saved characters go in `expo/src/lib/reimagine-client.ts` and `expo/src/lib/saved-characters.ts` (not `api.ts`, which the backend agent is editing); the orchestrator reconciles duplicates at merge.
+
+## Terminology (added 2026-09-09 after a misread cost a round of rework)
+
+The word "streaming" means two different things and they must never be conflated again:
+
+- **Incremental delivery — the transport. KEEP IT.** Prose arrives from the server in chunks as it is written. It is the only reason page 1 can appear roughly 20 seconds in rather than after the whole 55-76 second generation. Measured on production 2026-09-09: first token at 5.3-7.2s, chapter complete at 55.5-76.4s.
+- **Typewriter reveal — the presentation. NEVER SHIP IT.** Text painting on screen letter by letter, word by word, mid-sentence. This is what the product owner means when they say they do not want "streaming", and it is what the settle rule exists to prevent.
+
+The settle rule is the boundary between the two, and it is the feature: whole paragraphs only, whole finished pages only, prefix-stable. A page the reader is looking at can never grow underneath them; the pages behind it can.
+
+"All chapters are generated the same way" means uniform *behaviour* — first chapter, continuation and reimagine all use incremental delivery with page-by-page reveal. It does not mean making them uniformly blocking. Removing the transport would both make the reader wait out the full generation for page 1 and reintroduce Supabase's 150-second request idle timeout, which a blocking response trips with no refund payload reaching the client.
