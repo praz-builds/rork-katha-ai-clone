@@ -12,7 +12,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -36,12 +35,11 @@ import {
   X,
 } from "lucide-react-native";
 import { CreditPill } from "@/components/KathaPrimitives";
+import { Toggle } from "@/components/Toggle";
+import { IdeasSheet } from "@/components/create/IdeasSheet";
 import { Dropdown, DropdownGroup } from "@/components/create/Dropdown";
 import type { DropdownOption } from "@/components/create/Dropdown";
-import {
-  GENRE_EMOJI,
-  GENRE_STARTERS,
-} from "@/lib/genre-content";
+import { GENRE_EMOJI } from "@/lib/genre-content";
 import * as storyApi from "@/lib/api";
 import {
   draftCharacterFromSaved,
@@ -190,21 +188,16 @@ export const CHAPTER_LENGTHS = [
 
 const CHAPTER_COUNTS = [3, 7, 15] as const;
 
-/**
- * Every Switch on this screen, in design-system colour.
+/*
+ * There is no `SWITCH_COLORS` here any more, and no `Switch`.
  *
- * Spread rather than repeated because the Lead-character toggle in Craft
- * character was the one that got missed and rendered iOS's default GREEN
- * thumb-and-track under an orange track colour -- reported from a screenshot
- * as "the toggle looks wrong". `ios_backgroundColor` is the piece that is easy
- * to forget: without it iOS paints its own off-state fill behind the track
- * during the toggle animation, so `trackColor.false` alone does not hold.
+ * The four toggles on this screen used React Native's `Switch` with a spread
+ * of colour props. `Switch` paints its thumb and its off-state fill from the
+ * PLATFORM palette, so the Kids Mode row shipped an orange track under an iOS
+ * GREEN thumb -- a colour that appears in no token file in this repository.
+ * They are all `@/components/Toggle` now, which draws every pixel from
+ * `@/theme` and has no platform fallback to fall back to.
  */
-const SWITCH_COLORS = {
-  trackColor: { false: colors.borderStrong, true: colors.accent },
-  thumbColor: colors.surface,
-  ios_backgroundColor: colors.borderStrong,
-} as const;
 
 /**
  * The real cap on a single moment's text is 300 characters --
@@ -711,6 +704,10 @@ function StorySetupScreen({
   onSelect: () => void;
 }) {
   const update = (patch: Partial<StudioCreateDraft>) => onSetDraft((previous) => ({ ...previous, ...patch }));
+  // Opened by "View ideas", closed by picking, the close button, the scrim or
+  // hardware back. Never a value the brief persists: it is a detour off the
+  // idea box, not a step of the brief.
+  const [ideasOpen, setIdeasOpen] = useState(false);
   const hasCredits = credits >= 3;
   const hasPendingCharacterImage = draft.characters.some((character) => character.portraitStatus === "generating");
   const ideaReady = draft.seed.trim().length >= MIN_IDEA_LENGTH;
@@ -728,7 +725,7 @@ function StorySetupScreen({
       </View>
       <View style={styles.parentControls}>
         <View style={styles.kidsMode}>
-          <Switch value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} {...SWITCH_COLORS} accessibilityLabel="Kids Mode" />
+          <Toggle value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} accessibilityLabel="Kids Mode" accessibilityHint="Keeps the story safe for children and limits the genres offered." />
           <View style={styles.kidsModeLabel}>
             <Sparkles size={15} color={draft.audienceMode === "kids" ? colors.accent : colors.tertiary} />
             <Text style={[styles.kidsModeText, draft.audienceMode === "kids" && styles.kidsModeTextActive]}>Kids Mode</Text>
@@ -776,10 +773,29 @@ function StorySetupScreen({
             : "Add a little more so Katha has something to build on."}
         </Text>
       </View>
-      <View style={styles.tryOneHeader}><Lightbulb size={16} color={colors.accent} /><Text style={styles.sectionOverline}>Try one</Text></View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalChips}>
-        {GENRE_STARTERS[draft.primaryGenre].map((starter) => <Pressable key={starter} accessibilityRole="button" accessibilityLabel={`Use starter: ${starter}`} onPress={() => update({ seed: starter })} style={styles.starterChip}><Text numberOfLines={3} ellipsizeMode="tail" style={styles.starterText}>{starter}</Text></Pressable>)}
-      </ScrollView>
+      {/*
+        One control where three cards used to stack. The starters still exist
+        and are still keyed to the genre chip above -- they are just one tap
+        away instead of occupying most of the first screen. See
+        src/components/create/IdeasSheet.tsx.
+      */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`View ${genreLabels[draft.primaryGenre]} ideas`}
+        accessibilityHint="Opens starter ideas for the genre you picked."
+        onPress={() => { onSelect(); setIdeasOpen(true); }}
+        style={styles.viewIdeas}
+      >
+        <Lightbulb size={15} color={colors.accent} />
+        <Text style={styles.viewIdeasLabel}>View ideas</Text>
+        <ChevronRight size={15} color={colors.tertiary} />
+      </Pressable>
+      <IdeasSheet
+        visible={ideasOpen}
+        genre={draft.primaryGenre}
+        onClose={() => setIdeasOpen(false)}
+        onPick={(seed) => { update({ seed }); setIdeasOpen(false); onSelect(); }}
+      />
 
       <Section label="Premise" hint="Optional">
         <View style={styles.inlineField}><TextInput value={draft.whereAndWhen ?? ""} onChangeText={(whereAndWhen) => update({ whereAndWhen })} placeholder="A neighborhood grocery store, present day" placeholderTextColor={colors.tertiary} style={styles.inlineInput} /><Edit3 size={16} color={colors.tertiary} /></View>
@@ -1120,7 +1136,7 @@ function MoreOptions({
             chapter 1's art is compulsory and already the cover. */}
         <Text style={styles.switchHint}>Adds an illustration to every chapter after the first, for 1 more credit each.</Text>
       </View>
-      <Switch value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} {...SWITCH_COLORS} accessibilityLabel="Chapter art" />
+      <Toggle value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} accessibilityLabel="Chapter art" />
     </View>
 
     {/* Writing style and Avoid are both craft constraints on the prose, so
@@ -1133,7 +1149,7 @@ function MoreOptions({
       <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
     </View>
 
-    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Make it public</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "Anyone on Katha can read it once it's written." : "Only you can see this story."}</Text></View><Switch value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} {...SWITCH_COLORS} accessibilityLabel="Make it public" /></View>
+    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Make it public</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "Anyone on Katha can read it once it's written." : "Only you can see this story."}</Text></View><Toggle value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} accessibilityLabel="Make it public" /></View>
 
     {/*
       English only, at the bottom, for now. The spice control was removed
@@ -1288,7 +1304,7 @@ export function CharacterCraftScreen({
             </View>
           </View>
           <Text style={styles.optionHint}>No real people or characters you do not have rights to.</Text>
-          <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Lead character</Text><Text style={styles.switchHint}>Katha follows this character most closely.</Text></View><Switch value={character.isHero} onValueChange={(value) => set("isHero", value)} {...SWITCH_COLORS} accessibilityLabel="Lead character" /></View>
+          <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Lead character</Text><Text style={styles.switchHint}>Katha follows this character most closely.</Text></View><Toggle value={character.isHero} onValueChange={(value) => set("isHero", value)} accessibilityLabel="Lead character" /></View>
           {onDelete ? <Pressable onPress={onDelete} accessibilityRole="button" style={styles.deleteButton}><Text style={styles.deleteText}>Delete character</Text></Pressable> : null}
         </ScrollView>
         <View style={[styles.stickyFooter, { paddingBottom: Math.max(bottomInset, spacing.md) }]}>
@@ -1378,11 +1394,9 @@ const styles = StyleSheet.create({
   ideaState: { fontFamily: fonts.ui, fontSize: 13, fontWeight: "600", alignSelf: "flex-start" },
   ideaStateWaiting: { color: colors.tertiary },
   ideaStateReady: { color: colors.success },
-  tryOneHeader: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  sectionOverline: { color: colors.ink, fontFamily: fonts.ui, fontSize: 13, fontWeight: "800", textTransform: "uppercase" },
+  viewIdeas: { alignSelf: "flex-start", minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface2 },
+  viewIdeasLabel: { color: colors.ink, fontFamily: fonts.ui, fontSize: 14, fontWeight: "700" },
   horizontalChips: { gap: spacing.sm, paddingRight: spacing.xl },
-  starterChip: { width: 184, height: 78, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
-  starterText: { color: colors.muted, fontFamily: fonts.ui, fontSize: 13, lineHeight: 18, fontWeight: "600" },
   grow: { flex: 1, minHeight: spacing.lg },
   primaryCta: { minHeight: 54, borderRadius: radius.md, backgroundColor: colors.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
   primaryCtaDisabled: { opacity: 0.42 },
@@ -1390,11 +1404,11 @@ const styles = StyleSheet.create({
   ctaStrength: { marginTop: -spacing.lg, color: colors.tertiary, fontFamily: fonts.ui, fontSize: 11, fontWeight: "700", textAlign: "center", textTransform: "lowercase" },
   section: { gap: spacing.sm },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: spacing.sm },
-  // Matches `sectionOverline` ("Try one") on purpose -- section 2 of this
-  // task asks for the same secondary heading treatment on Premise, Who's in
-  // it (the section that heads Add a character), and More options. Kept as a
-  // separate token from `sectionOverline` only so "Try one" itself is never
-  // touched by a future change to this one.
+  // The one secondary heading treatment: Premise, Who's in it (the section
+  // that heads Add a character), and More options. It used to have a twin,
+  // `sectionOverline`, kept apart so a change here could not reach the "Try
+  // one" heading; that heading is gone -- the starters live behind "View
+  // ideas" now -- so there is one token again.
   sectionTitle: { color: colors.ink, fontFamily: fonts.ui, fontSize: 13, fontWeight: "800", textTransform: "uppercase" },
   sectionHint: { color: colors.tertiary, fontFamily: fonts.ui, fontSize: 12, textAlign: "right", flexShrink: 1 },
   inlineField: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: spacing.md },
