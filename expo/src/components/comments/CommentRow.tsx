@@ -484,7 +484,13 @@ export function ReportCommentSheet({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit?.(reason, details.trim());
+      // Not `onSubmit?.(...)`. Optional chaining made a missing handler look
+      // exactly like a successful write, and the sheet then said "Comment
+      // reported - our team will take a look" about a report that had gone
+      // nowhere at all. A sheet with nothing behind it fails like any other
+      // failure to write.
+      if (!onSubmit) throw new Error("No report handler");
+      await onSubmit(reason, details.trim());
       setSubmitted(true);
     } catch {
       // A report the reporter believes was filed and was not is worse than a

@@ -167,6 +167,16 @@ function printOnWeb(html: string): Promise<void> {
  * Both modules are loaded lazily so a test or a web bundle that never
  * downloads a PDF does not pay for them, and so this file has no native
  * import at module scope.
+ *
+ * `dialogTitle` IS NOT THE FILE NAME. It is the Android chooser's heading, and
+ * iOS ignores it entirely; the file keeps whatever `printToFileAsync` called
+ * it, which is a random name in the cache directory. Naming the file properly
+ * means copying it to `<cache>/<title>.pdf` first, which needs
+ * `expo-file-system` -- present in the tree only as a transitive dependency of
+ * `expo-print`, so it would have to be declared, and its SDK 54 API exercised
+ * on a device before it could be trusted here. Until then the heading at least
+ * tells the writer which story they are about to share, and this comment says
+ * plainly that the saved file will not be called that.
  */
 async function shareOnNative(html: string, fileName: string): Promise<void> {
   const Print = await import("expo-print");

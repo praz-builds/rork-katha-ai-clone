@@ -48,7 +48,7 @@ import {
   subscribeToChapterSaves,
   type ChapterSaveEntry,
 } from "@/lib/chapter-save-queue";
-import { fetchThread, formatRelativeTime } from "@/lib/comments";
+import { fetchThread, formatRelativeTime, postComment } from "@/lib/comments";
 import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
@@ -89,8 +89,17 @@ export type ReaderScreenProps = {
    * The seam fires at the last page of EVERY chapter, not only the story's
    * newest, so the callback needs the chapter actually being read rather than
    * whatever a navigation-time closure captured.
+   *
+   * `actions.reimagine` opens THIS screen's Reimagine sheet, and is null while
+   * the chapter is still being written. A standalone story's ending is the one
+   * place Reimagine is the only thing left to offer -- there is no next chapter
+   * -- and the caller has no handle on the sheet, so without this the pill at
+   * the end of a standalone was never rendered at all.
    */
-  renderChapterEnd?: (chapter: Chapter) => ReactNode;
+  renderChapterEnd?: (
+    chapter: Chapter,
+    actions: { reimagine: (() => void) | null },
+  ) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
   /**
@@ -891,6 +900,21 @@ export default function ReaderScreen({
     );
   }, [baseChapter.id, onReimagineStarted]);
 
+  /**
+   * Reimagine, as the chapter-end module may offer it.
+   *
+   * The same control the chrome carries, resolved the same way: the host's
+   * handler if it supplied one, otherwise this screen's own sheet. Null while
+   * the chapter is unfinished, because there is nothing complete to rewrite.
+   */
+  const chapterEndReimagine = useMemo(
+    () =>
+      chapterComplete
+        ? (onReimagine ?? (() => setReimagineOpen(true)))
+        : null,
+    [chapterComplete, onReimagine],
+  );
+
   /*
     The real thread, for THIS story, from the same endpoint the detail page
     reads. A story with no comments gets an empty state saying so rather than
@@ -977,17 +1001,53 @@ export default function ReaderScreen({
     }
   }, [author.displayName, story.title]);
 
+  /*
+    The comment is POSTED, not just prepended.
+
+    This composer read the real thread from `fetchThread` and then wrote
+    nowhere: the comment appeared, an alert explained it was "saved locally",
+    and it was gone on the next chapter change -- while `postComment`, the call
+    the comments product itself uses, sat in the same module. The row appears
+    immediately (optimistic, keyed `local-`) and is replaced by the server's
+    own row when it lands; a refusal takes the row back out and says so, rather
+    than leaving the reader looking at a comment nobody else will ever see.
+  */
   const handleSubmitComment = useCallback(() => {
     if (requireSignIn()) return;
     const trimmed = commentText.trim();
     if (!trimmed) return;
+    const localId = `local-${Date.now()}`;
     setComments((prev) => [
-      { id: `local-${Date.now()}`, user: "You", text: trimmed, time: "just now" },
+      { id: localId, user: "You", text: trimmed, time: "just now" },
       ...prev,
     ]);
     setCommentText("");
-    Alert.alert("Comment added", "Your comment is saved locally. Comments will persist after authentication is connected.");
-  }, [commentText, requireSignIn]);
+    void postComment(story.id, trimmed, undefined, baseChapter.id).then(
+      (posted) => {
+        if (!posted) return;
+        setComments((prev) =>
+          prev.map((comment) =>
+            comment.id === localId
+              ? {
+                id: posted.id,
+                user: posted.authorName,
+                text: posted.body,
+                time: formatRelativeTime(Date.parse(posted.createdAt), Date.now()),
+              }
+              : comment
+          )
+        );
+      },
+      () => {
+        setComments((prev) => prev.filter((comment) => comment.id !== localId));
+        setCommentText(trimmed);
+        Alert.alert(
+          "Comment not posted",
+          "Katha could not save your comment. Check your connection and try again.",
+        );
+      },
+    );
+  }, [baseChapter.id, commentText, requireSignIn, story.id]);
 
   const jumpToMatch = useCallback((direction: 1 | -1) => {
     if (searchMatches.length === 0) return;
@@ -1179,7 +1239,9 @@ export default function ReaderScreen({
                           </Pressable>
                         </View>
                       ) : null}
-                      {showsChapterEnd ? renderChapterEnd?.(chapter) : null}
+                      {showsChapterEnd
+                        ? renderChapterEnd?.(chapter, { reimagine: chapterEndReimagine })
+                        : null}
                     </View>
                     {/*
                       "Page 1 of 4 · writing" while the chapter is still being

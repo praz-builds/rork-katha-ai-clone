@@ -205,6 +205,15 @@ export type Story = {
    */
   coverImageUrl?: string;
   /**
+   * The story this one is a private copy OF.
+   *
+   * Set on the fork `reimagine-chapter` makes for a reader who does not own
+   * the story they rewrote (`stories.forked_from_story_id`). Absent on every
+   * original. The reader is moved onto the copy when it appears, and this is
+   * how the app recognises which story the copy replaced.
+   */
+  forkedFromStoryId?: string;
+  /**
    * What THIS viewer has already done to this story.
    *
    * The engagement endpoints return these alongside the story so a screen can

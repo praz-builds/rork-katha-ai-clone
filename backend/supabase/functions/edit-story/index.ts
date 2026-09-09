@@ -517,23 +517,21 @@ async function saveWholeChapter(
   if (!saved) return respond({ error: "Chapter not found" }, 404);
 
   // The story's word count is the sum of its chapters, and it is shown on
-  // every card. Recomputed rather than adjusted, because an adjustment needs
-  // the old value to have been read in the same transaction.
-  const { data: allChapters, error: chaptersError } = await serviceClient
-    .from("chapters")
-    .select("word_count")
-    .eq("story_id", storyId);
-  if (!chaptersError && allChapters) {
-    await serviceClient
-      .from("stories")
-      .update({
-        word_count: allChapters.reduce(
-          (sum: number, c: Record<string, unknown>) =>
-            sum + ((c.word_count as number) ?? 0),
-          0,
-        ),
-      })
-      .eq("id", storyId);
+  // every card. Summed and written by ONE statement (migration 00062) rather
+  // than read here and written back: this used to be a SELECT of every
+  // chapter followed by an UPDATE of the story, and a concurrent save landing
+  // between the two left the story holding a total that matched neither of
+  // them. Failure is not fatal -- the chapter is already saved, and the next
+  // save of any chapter in this story corrects the count.
+  const { error: recountError } = await serviceClient.rpc(
+    "recompute_story_word_count",
+    { p_story_id: storyId },
+  );
+  if (recountError) {
+    console.error(
+      "recompute_story_word_count failed:",
+      recountError.message ?? recountError,
+    );
   }
 
   // Narration read the old prose. Same rule as a reimagined chapter: drop the

@@ -60,21 +60,51 @@ export function chapterSaveState(chapterId: string): ChapterSaveEntry | undefine
   return entries.get(chapterId);
 }
 
+/**
+ * The save currently in flight for a chapter, if any.
+ *
+ * ONE AT A TIME, PER CHAPTER. Two saves of the same chapter used to be two
+ * unordered requests: the writer saves, reopens the notepad, fixes a word and
+ * saves again, and whichever round trip the network happens to finish last is
+ * what the server keeps -- which can be the OLDER text. `edit-story` writes
+ * the whole chapter with no compare-and-swap to notice, so the ordering has to
+ * be true before the requests leave. Chaining is enough: the second save waits
+ * for the first to settle, and a failed first save does not cancel the second
+ * (its `catch` is swallowed here, having already been reported to subscribers).
+ */
+const inFlight = new Map<string, Promise<void>>();
+
 function run(input: SaveChapterInput): void {
-  emit({ chapterId: input.chapterId, state: "saving", input });
-  saveChapter(input).then(
-    () => emit({ chapterId: input.chapterId, state: "saved", input }),
-    (caught: unknown) => {
-      emit({
-        chapterId: input.chapterId,
-        state: "failed",
-        input,
-        error: caught instanceof Error && caught.message
-          ? caught.message
-          : "Your edit is on this device but Katha could not save it.",
-      });
-    },
-  );
+  const { chapterId } = input;
+  emit({ chapterId, state: "saving", input });
+  const send = () =>
+    saveChapter(input).then(
+      () => {
+        emit({ chapterId, state: "saved", input });
+      },
+      (caught: unknown) => {
+        emit({
+          chapterId,
+          state: "failed",
+          input,
+          error: caught instanceof Error && caught.message
+            ? caught.message
+            : "Your edit is on this device but Katha could not save it.",
+        });
+      },
+    );
+  // Sent NOW when nothing is in flight for this chapter -- a save must not
+  // wait a microtask on the common path, and the whole point of this module is
+  // that the request is already away by the time the editor closes. Only a
+  // save that would overtake one still running has to queue behind it.
+  const previous = inFlight.get(chapterId);
+  const settled = previous ? previous.then(send) : send();
+  inFlight.set(chapterId, settled);
+  void settled.then(() => {
+    // Only the latest chain clears itself, so a save queued behind this one
+    // still finds its predecessor to wait for.
+    if (inFlight.get(chapterId) === settled) inFlight.delete(chapterId);
+  });
 }
 
 /**
@@ -108,4 +138,5 @@ export function dismissChapterSave(chapterId: string): void {
 export function __resetChapterSaveQueue(): void {
   entries.clear();
   listeners.clear();
+  inFlight.clear();
 }

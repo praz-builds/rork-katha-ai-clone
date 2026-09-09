@@ -790,22 +790,34 @@ export default function StoryDetailScreen({
 
           <View style={styles.divider} />
 
+          {/*
+            Follow is a SIBLING of the author row, not a child of it.
+
+            Nested, it was a button inside a button: on the web build a press
+            on Follow bubbles to the row's handler and the reader is followed
+            AND navigated away to the author's profile in one tap, and a
+            screen reader is read a button containing a button. The row and
+            the button are two controls, so they are two Pressables side by
+            side, and the row keeps the space the button does not use.
+          */}
           <View style={styles.authorGroup}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`View ${author.displayName}'s profile`}
-              onPress={() => onAuthor(story.authorId)}
-              style={({ pressed }) => [styles.authorRow, pressed && styles.pressed]}
-            >
-              <View style={styles.authorAvatar}>
-                <Text style={styles.authorAvatarInitial}>
-                  {author.displayName.charAt(0)}
-                </Text>
-              </View>
-              <View style={styles.authorInfo}>
-                <Text style={styles.authorName}>{author.displayName}</Text>
-                <Text style={styles.authorHandle}>@{author.username}</Text>
-              </View>
+            <View style={styles.authorRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`View ${author.displayName}'s profile`}
+                onPress={() => onAuthor(story.authorId)}
+                style={({ pressed }) => [styles.authorIdentity, pressed && styles.pressed]}
+              >
+                <View style={styles.authorAvatar}>
+                  <Text style={styles.authorAvatarInitial}>
+                    {author.displayName.charAt(0)}
+                  </Text>
+                </View>
+                <View style={styles.authorInfo}>
+                  <Text style={styles.authorName}>{author.displayName}</Text>
+                  <Text style={styles.authorHandle}>@{author.username}</Text>
+                </View>
+              </Pressable>
               {!isOwn && (
                 <Pressable
                   accessibilityRole="button"
@@ -823,7 +835,7 @@ export default function StoryDetailScreen({
                   </Text>
                 </Pressable>
               )}
-            </Pressable>
+            </View>
           </View>
 
           {hasMultipleChapters && (
@@ -1243,6 +1255,14 @@ const styles = StyleSheet.create({
     gap: spacing.related,
   },
   authorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  // The tappable half of the row: avatar and name, taking every pixel Follow
+  // leaves, so the target is the whole identity rather than only the text.
+  authorIdentity: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,

@@ -644,6 +644,42 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
  * The session is keyed to the chapter being rewritten, not to a new one, so
  * the reader stays where it is and the pages are replaced underneath it.
  */
+/**
+ * The private copy a reader's rewrite landed in, as the app should hold it.
+ *
+ * The server forked the whole story and rewrote one chapter of the copy; the
+ * client already has the source in full, so the copy is the source with the
+ * new identity, the rewritten chapter swapped in, and the counters that belong
+ * to the ORIGINAL left behind -- a copy nobody has read has no reads, and it
+ * is private whatever the story it came from was.
+ */
+export function forkOf(
+  source: Story,
+  forkId: string,
+  rewritten: Chapter,
+): Story {
+  const at = source.chapters.findIndex(
+    (item) => item.chapterNumber === rewritten.chapterNumber,
+  );
+  const chapters = at < 0
+    ? [...source.chapters, rewritten]
+    : source.chapters.map((item, index) => (index === at ? rewritten : item));
+  return {
+    ...source,
+    id: forkId,
+    forkedFromStoryId: source.id,
+    visibility: "private",
+    chapters,
+    likes: 0,
+    bookmarks: 0,
+    views: 0,
+    isFeatured: false,
+    isPublic: false,
+    viewerHasLiked: false,
+    viewerHasBookmarked: false,
+  };
+}
+
 export function adoptReimagineGeneration(input: {
   run: ReimagineRun;
   story: Story;
@@ -712,6 +748,17 @@ export function adoptReimagineGeneration(input: {
         chapterTitle: result.chapter.title,
         chapter: result.chapter,
         creditsCharged: CHAPTER_TEXT_CREDITS,
+        // A READER WHO IS NOT THE AUTHOR GETS A PRIVATE COPY, AND THE SESSION
+        // HAS TO SAY SO. The server writes the rewrite into a fork and returns
+        // its id; the session was keyed to the SOURCE story, so app state
+        // looked for the rewritten chapter on a story that does not have it,
+        // found chapter 3 already there, and dropped the result on the floor.
+        // The copy the reader now owns was invisible: not in their library,
+        // never opened, and charged for.
+        storyId: result.storyId,
+        story: result.forked && result.storyId !== story.id
+          ? forkOf(story, result.storyId, result.chapter)
+          : null,
       });
     },
     (error: unknown) => {

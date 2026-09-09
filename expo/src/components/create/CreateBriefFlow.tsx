@@ -82,14 +82,26 @@ export function emptyCharacterDraft(isHero: boolean): CharacterDraft {
 }
 
 /**
+ * The reference cap, as `generate-character-image` enforces it.
+ *
+ * Kept in step with `MAX_REFERENCE_IMAGE_CHARS` on the endpoint deliberately.
+ * A photo over it is refused there whatever this file believes, so measuring
+ * it here is the difference between "that photo is too large, pick another"
+ * and a portrait request that fails for reasons the writer cannot see.
+ */
+const MAX_REFERENCE_IMAGE_CHARS = 6 * 1024 * 1024;
+
+/**
  * Attach a photo that steers a character's look. Returns the `data:` URL, or
  * null when the writer cancelled or the photo could not be read.
  *
- * Downscaled and re-encoded here rather than sent as the camera produced it:
- * a modern phone photo is 3-8 MB, the endpoint caps a reference at 6 MB of
- * base64, and a request that large is slow on the writer's connection before
- * it is anything else. 1024px on the long edge is well beyond what an image
- * model reads for build, hair and wardrobe.
+ * Re-encoded at `quality: 0.8` and cropped to the portrait frame, then
+ * MEASURED against the endpoint's cap. It is not resized: doing that needs
+ * `expo-image-manipulator`, which is not a dependency of this app, and this
+ * comment used to claim a 1024px long edge that no line of code produced --
+ * so a large photo simply travelled, was refused by the endpoint, and the
+ * writer was told their portrait had failed. An honest refusal here, naming
+ * the photo, is worth more than a silent one two screens later.
  *
  * `base64: true` because the endpoint takes a data URL. The bytes never
  * touch our storage: the reference exists only for the length of one
@@ -129,7 +141,15 @@ export async function pickReferenceImage(): Promise<string | null> {
   const mime = asset.mimeType && /^image\/(jpeg|jpg|png|webp)$/.test(asset.mimeType)
     ? asset.mimeType
     : "image/jpeg";
-  return `data:${mime};base64,${asset.base64}`;
+  const dataUrl = `data:${mime};base64,${asset.base64}`;
+  if (dataUrl.length > MAX_REFERENCE_IMAGE_CHARS) {
+    Alert.alert(
+      "That photo is too large",
+      "Pick a smaller photo, or crop it tighter, and try again.",
+    );
+    return null;
+  }
+  return dataUrl;
 }
 
 const VALUES = [
@@ -433,13 +453,19 @@ export default function CreateBriefFlow({
     // Every character crafted here is also a saved character. Fire and forget:
     // a library write failing must not cost the writer their cast, and the
     // list simply refreshes when it lands.
+    // The row this save belongs to, decided BEFORE the round trip: the one
+    // being edited, or the one just appended. Matching by name afterwards
+    // stamped the library id onto every unsaved cast member sharing it, so a
+    // brief with two people called "Naina" ended up with both pointing at one
+    // library entry -- and editing either would have overwritten the other.
+    const savedIndex = editingCharacterIndex ?? draft.characters.length;
     saveSavedCharacter(savedCharacterInputFromDraft(next)).then(
       (saved) => {
         setSavedCharacters((previous) => [saved, ...(previous ?? []).filter((item) => item.id !== saved.id)]);
         setDraft((previous) => ({
           ...previous,
-          characters: previous.characters.map((item) =>
-            item.name.trim().toLowerCase() === saved.name.trim().toLowerCase() && !item.savedCharacterId
+          characters: previous.characters.map((item, index) =>
+            index === savedIndex && !item.savedCharacterId
               ? { ...item, savedCharacterId: saved.id }
               : item
           ),
@@ -447,7 +473,7 @@ export default function CreateBriefFlow({
       },
       () => {},
     );
-  }, [characterBuffer, confirm, editingCharacterIndex, saveSavedCharacter, setDraft]);
+  }, [characterBuffer, confirm, draft.characters.length, editingCharacterIndex, saveSavedCharacter, setDraft]);
 
   const deleteCharacter = useCallback((index: number) => {
     setDraft((previous) => {

@@ -103,6 +103,21 @@ const BE_AUX = /^(is|are|was|were)\s+/i;
 const PARTICIPLE = /^[\p{L}]+(ing|ed)$/u;
 
 /**
+ * Words after which an "-ing"/"-ed" word is part of the SUBJECT, not the verb.
+ *
+ * "Is the wedding planner hiding something" split at "wedding" -- the first
+ * participle-shaped word -- and produced "Find out whether the is wedding
+ * planner hiding something". A determiner or possessive is never the whole
+ * subject of one of these hooks, so a candidate pivot sitting directly after
+ * one is a noun modifier and is skipped; the next candidate ("hiding") is the
+ * real predicate. When no candidate survives, the question is dropped, which
+ * is the same answer this file already gives when there is no participle at
+ * all.
+ */
+const SUBJECT_CONTINUES_AFTER =
+  /^(the|a|an|this|that|these|those|his|her|their|its|my|our|your|no|every|each|some|any|another|one)$/i;
+
+/**
  * A pressure line's modal, which hands back a bare verb for free.
  *
  * "Anjali must decide whether to burn them" -> "Have Anjali decide whether to
@@ -161,6 +176,15 @@ export function toDirection(source: string | undefined | null): string | null {
   const text = tidy(source ?? "");
   if (text.length < 8) return null;
 
+  // Asked BEFORE `tidy` has stripped it. The drop below used to test
+  // `/[?]$/` against `tidy(source)`, which removes the very mark it was
+  // looking for, so the test could never be true: a declarative-looking
+  // question ("Anjali leaves tomorrow?") sailed past it and came back as the
+  // direction "Write it so Anjali leaves tomorrow." -- a thing the story never
+  // said. Only the wh- and be- frames above are allowed to convert a question;
+  // anything they decline is dropped.
+  const wasQuestion = /[?]\s*$/.test(source ?? "");
+
   if (ALREADY_IMPERATIVE.test(text)) return finish(text);
 
   // "What will happen if Anjali unfolds every sheet" -- taken before the
@@ -183,7 +207,9 @@ export function toDirection(source: string | undefined | null): string | null {
     const aux = be[1].toLowerCase();
     const rest = text.slice(be[0].length).trim();
     const words = rest.split(/\s+/);
-    const pivot = words.findIndex((word) => PARTICIPLE.test(word));
+    const pivot = words.findIndex((word, index) =>
+      PARTICIPLE.test(word) && !SUBJECT_CONTINUES_AFTER.test(words[index - 1] ?? "")
+    );
     // A pivot at 0 would leave no subject to put the auxiliary after.
     if (pivot > 0) {
       const subject = words.slice(0, pivot).join(" ");
@@ -198,7 +224,7 @@ export function toDirection(source: string | undefined | null): string | null {
 
   // Anything still ending in a question mark, or opening with an auxiliary this
   // file will not un-invert, is dropped rather than guessed at.
-  if (/[?]$/.test(tidy(source ?? "")) || /^(do|does|did|will|would|can|could|should|has|have|had|am)\b/i.test(text)) {
+  if (wasQuestion || /^(do|does|did|will|would|can|could|should|has|have|had|am)\b/i.test(text)) {
     return null;
   }
 

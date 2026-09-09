@@ -121,3 +121,54 @@ describe("shape", () => {
       .toBe("Find out who is writing the notes.");
   });
 });
+
+describe("a question mark is a question, whatever the words look like", () => {
+  /*
+    The drop used to test `/[?]$/` against the TIDIED text -- and `tidy` strips
+    the trailing `?` before the test runs, so it could never be true. A
+    declarative-looking question sailed past every frame above and came back
+    wrapped in "Write it so ...", turning something the story ASKED into
+    something it apparently stated.
+  */
+  it("drops a declarative-looking question instead of asserting it", () => {
+    expect(toDirection("Anjali leaves tomorrow?")).toBeNull();
+    expect(toDirection("The notes were hers all along?")).toBeNull();
+  });
+
+  it("still converts the questions the frames can actually handle", () => {
+    expect(toDirection("Who is writing the predictive linen notes?"))
+      .toBe("Find out who is writing the predictive linen notes.");
+    expect(toDirection("Is the casualty girl Divya lying about having no brother?"))
+      .toBe(
+        "Find out whether the casualty girl Divya is lying about having no brother.",
+      );
+  });
+
+  it("leaves an unmarked statement alone", () => {
+    expect(toDirection("Anjali leaves tomorrow morning"))
+      .toBe("Write it so Anjali leaves tomorrow morning.");
+  });
+});
+
+describe("where the subject of a be-question ends", () => {
+  /*
+    The pivot is the first participle-shaped word, and a noun modifier is
+    participle-shaped: "the wedding planner" split at "wedding" and produced
+    "Find out whether the is wedding planner hiding something" -- the app
+    speaking broken English about the reader's own story.
+  */
+  it("does not split a subject at a noun that merely ends in -ing", () => {
+    expect(toDirection("Is the wedding planner hiding something from Maya"))
+      .toBe("Find out whether the wedding planner is hiding something from Maya.");
+  });
+
+  it("does not split at a possessive's noun either", () => {
+    expect(toDirection("Is her painted door locked at midnight"))
+      .toBe("Find out whether her painted door is locked at midnight.");
+  });
+
+  it("still finds the real predicate in the hooks it was built for", () => {
+    expect(toDirection("Is Divya lying about having no brother"))
+      .toBe("Find out whether Divya is lying about having no brother.");
+  });
+});

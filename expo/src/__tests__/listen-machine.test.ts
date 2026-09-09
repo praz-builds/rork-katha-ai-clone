@@ -142,6 +142,64 @@ describe("every refusal has its own ending", () => {
     expect(missing.phase).toBe("checking");
     expect(shouldPoll(missing.phase)).toBe(false);
   });
+
+  /*
+    AND ASKS AGAIN. `checking` is not a polled phase, and the screen's
+    acquisition effect depends on `attempt` and nothing else -- so returning to
+    `checking` without bumping it changed the phase and re-ran nothing, and the
+    reader was left on a loader that would never move for as long as they were
+    willing to look at it.
+  */
+  it("bumps the attempt so the screen re-requests instead of sitting still", () => {
+    const before = generating();
+    const missing = listenReducer(before, {
+      type: "outcome",
+      outcome: { kind: "missing" },
+      at: T0 + 3000,
+    });
+    expect(missing.attempt).toBe(before.attempt + 1);
+    expect(missing.recoveries).toBe(1);
+  });
+
+  it("stops asking, and says so, after two vanished jobs", () => {
+    let state = generating();
+    for (let round = 0; round < 2; round += 1) {
+      state = listenReducer(state, {
+        type: "outcome",
+        outcome: { kind: "missing" },
+        at: T0 + 3000,
+      });
+      expect(state.phase).toBe("checking");
+      // The screen re-opens on the new attempt, which is where the loop would
+      // run away if `recoveries` were reset by it.
+      state = listenReducer(state, { type: "open", at: T0 + 3100 });
+      state = listenReducer(state, { type: "requesting", at: T0 + 3100 });
+      state = listenReducer(state, {
+        type: "outcome",
+        outcome: { kind: "pending" },
+        at: T0 + 3200,
+      });
+    }
+
+    const third = listenReducer(state, {
+      type: "outcome",
+      outcome: { kind: "missing" },
+      at: T0 + 4000,
+    });
+    expect(third.phase).toBe("failed");
+    expect(third.errorCode).toBe("narration_job_missing");
+    expect(canRetry(third.phase)).toBe(true);
+  });
+
+  it("a reader's own Try again restores the recovery allowance", () => {
+    const spent = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "missing" },
+      at: T0 + 3000,
+    });
+    const retried = listenReducer(spent, { type: "retry", at: T0 + 5000 });
+    expect(retried.recoveries).toBe(0);
+  });
 });
 
 describe("late answers cannot resurrect a finished screen", () => {

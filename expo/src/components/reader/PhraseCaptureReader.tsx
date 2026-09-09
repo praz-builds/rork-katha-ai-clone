@@ -62,7 +62,10 @@ export type PhraseCaptureReaderProps = {
    * does not pass through silently stops working the moment phrase capture is
    * enabled, and here that would mean end-of-chapter branching disappearing.
    */
-  renderChapterEnd?: (chapter: Chapter) => ReactNode;
+  renderChapterEnd?: (
+    chapter: Chapter,
+    actions: { reimagine: (() => void) | null },
+  ) => ReactNode;
   /**
    * Forwarded to `ReaderScreen`. Same reason as `autoplay`: a seam this wrapper
    * does not pass through silently stops working, and here that would mean a
@@ -524,25 +527,33 @@ export default function PhraseCaptureReader({
             onListen={onListen}
             onReimagineStarted={onReimagineStarted}
           />
+          {/*
+            Tapping anywhere off the selection dismisses it, and that tap does
+            NOTHING else -- it does not also toggle the reader's chrome, which
+            is what the same tap does with no selection open. A scrim is how
+            that is made true without `ReaderScreen` having to know a selection
+            exists: while one is live this layer is in front of the page and
+            eats the tap. It is transparent, so the reader sees only their
+            highlight.
+
+            INSIDE the gesture detector, not beside it. As a sibling it also
+            covered the view `dragToSelect` is attached to, so the moment a
+            selection appeared the reader could no longer drag to adjust its
+            range -- the one gesture the selection exists to be shaped by. A
+            descendant of the detector's view still hands the long-press drag
+            to the pan handler, and still swallows the plain tap.
+          */}
+          {selection ? (
+            <Pressable
+              testID="selection-dismiss"
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss selection"
+              onPress={clearSelection}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
         </View>
       </GestureDetector>
-      {/*
-        Tapping anywhere off the selection dismisses it, and that tap does
-        NOTHING else -- it does not also toggle the reader's chrome, which is
-        what the same tap does with no selection open. A scrim is how that is
-        made true without `ReaderScreen` having to know a selection exists:
-        while one is live this layer is in front of the page and eats the tap.
-        It is transparent, so the reader sees only their highlight.
-      */}
-      {selection ? (
-        <Pressable
-          testID="selection-dismiss"
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss selection"
-          onPress={clearSelection}
-          style={StyleSheet.absoluteFill}
-        />
-      ) : null}
       {selection ? (
         <SelectionToolbar
           wordCount={rangeLength(selection)}

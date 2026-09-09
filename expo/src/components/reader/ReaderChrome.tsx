@@ -279,15 +279,24 @@ export function ReaderChrome({
             <Text style={styles.headerChapter} numberOfLines={1}>{chapterTitle}</Text>
           ) : null}
         </View>
-        <Pressable
-          onPress={searchOpen ? onSearchClose : onSearchOpen}
-          accessibilityRole="button"
-          accessibilityLabel={searchOpen ? "Close search" : "Search chapter"}
-          hitSlop={8}
-          style={styles.headerIconButton}
-        >
-          {searchOpen ? <X size={20} color={CHROME.text} /> : <Search size={20} color={CHROME.text} />}
-        </Pressable>
+        {/* Search is a control on prose, so it belongs to `full` like every
+          * other one. `top-only` is the chrome of a chapter still being
+          * written: searching it would run over whatever fragment had
+          * settled and report matches that move under the reader. The empty
+          * view keeps the title centred between back and nothing. */}
+        {mode === "full" ? (
+          <Pressable
+            onPress={searchOpen ? onSearchClose : onSearchOpen}
+            accessibilityRole="button"
+            accessibilityLabel={searchOpen ? "Close search" : "Search chapter"}
+            hitSlop={8}
+            style={styles.headerIconButton}
+          >
+            {searchOpen ? <X size={20} color={CHROME.text} /> : <Search size={20} color={CHROME.text} />}
+          </Pressable>
+        ) : (
+          <View style={styles.headerIconButton} />
+        )}
       </Animated.View>
 
       {/*
@@ -299,7 +308,7 @@ export function ReaderChrome({
         back exactly as the reader left it when the chrome reappears,
         instead of the in-progress search being silently dropped.
       */}
-      {visible && searchOpen ? (
+      {mode === "full" && visible && searchOpen ? (
         <View style={styles.findBar}>
           <TextInput
             value={searchQuery}

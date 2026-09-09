@@ -323,20 +323,21 @@ serve(async (req) => {
     let storyId = requestedStoryId;
     let forkedFromStoryId: string | null = null;
     if (!isAuthor) {
-      const { data: existingFork, error: forkLookupError } = await serviceClient
-        .from("stories")
-        .select(STORY_COLUMNS)
-        .eq("forked_from_story_id", requestedStoryId)
-        .eq("author_id", user.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (forkLookupError) throw forkLookupError;
+      const readExistingFork = async () => {
+        const { data, error } = await serviceClient
+          .from("stories")
+          .select(STORY_COLUMNS)
+          .eq("forked_from_story_id", requestedStoryId)
+          .eq("author_id", user.id)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        return data as Record<string, unknown> | null;
+      };
 
-      if (existingFork) {
-        story = existingFork as Record<string, unknown>;
-        storyId = existingFork.id as string;
-      } else {
+      let fork = await readExistingFork();
+      if (!fork) {
         const { data: newStoryId, error: forkError } = await serviceClient.rpc(
           "fork_story",
           {
@@ -345,21 +346,34 @@ serve(async (req) => {
           },
         );
         if (forkError || !newStoryId) {
-          console.error("fork_story failed:", safeErrorMessage(forkError));
-          return respond({
-            error: "This story cannot be copied to your library yet.",
-            code: "fork_failed",
-          }, 409);
+          // A concurrent request from the same reader won the race and made
+          // the copy first. `stories_fork_owner_key` (migration 00062) is what
+          // turns that from two private copies into this one refusal, and the
+          // winner's story is exactly what this request would have found had
+          // it read a moment later -- so read it, rather than telling a reader
+          // whose fork demonstrably exists that it could not be made.
+          if ((forkError as { code?: string } | null)?.code === "23505") {
+            fork = await readExistingFork();
+          }
+          if (!fork) {
+            console.error("fork_story failed:", safeErrorMessage(forkError));
+            return respond({
+              error: "This story cannot be copied to your library yet.",
+              code: "fork_failed",
+            }, 409);
+          }
+        } else {
+          const { data: forked, error: forkedReadError } = await serviceClient
+            .from("stories")
+            .select(STORY_COLUMNS)
+            .eq("id", newStoryId)
+            .single();
+          if (forkedReadError || !forked) throw forkedReadError;
+          fork = forked as Record<string, unknown>;
         }
-        const { data: forked, error: forkedReadError } = await serviceClient
-          .from("stories")
-          .select(STORY_COLUMNS)
-          .eq("id", newStoryId)
-          .single();
-        if (forkedReadError || !forked) throw forkedReadError;
-        story = forked as Record<string, unknown>;
-        storyId = forked.id as string;
       }
+      story = fork;
+      storyId = fork.id as string;
       forkedFromStoryId = requestedStoryId;
       observedStoryId = storyId;
     }

@@ -263,7 +263,17 @@ export default function App() {
         if (session.phase !== "complete" || !chapter || !session.storyId) continue;
         const target = next.find((held) => held.id === session.storyId)
           ?? stories.find((held) => held.id === session.storyId);
-        if (!target) continue;
+        if (!target) {
+          // A reader who reimagines somebody else's story is rewriting a
+          // PRIVATE COPY the client has never seen, under an id no story in
+          // state carries. The session hands the whole copy over; without
+          // this it fell through here and the story the reader now owns (and
+          // paid for) existed only on the server.
+          if (session.story && session.story.id === session.storyId) {
+            upsert(session.story);
+          }
+          continue;
+        }
         if (
           target.chapters.some(
             (held) => held.chapterNumber === chapter.chapterNumber,
@@ -295,6 +305,25 @@ export default function App() {
       return session?.story
         ? { ...current, storyId: session.story.id }
         : current;
+    });
+  }, [generations]);
+
+  /**
+   * A rewrite by a reader who does not own the story moves them onto their copy.
+   *
+   * `reimagine-chapter` forks the story rather than editing somebody else's,
+   * so the prose on screen belongs to a story the reader now owns. Leaving the
+   * reader pointed at the ORIGINAL meant the rewrite vanished the moment the
+   * live session finished and the reader's own copy was never opened.
+   */
+  useEffect(() => {
+    setScreen((current) => {
+      if (current.name !== "reader") return current;
+      const fork = generations.find((item) =>
+        item.phase === "complete"
+        && item.story?.forkedFromStoryId === current.storyId
+      );
+      return fork?.story ? { ...current, storyId: fork.story.id } : current;
     });
   }, [generations]);
 
@@ -621,7 +650,7 @@ export default function App() {
                   });
                 }}
                 onBack={() => goTabs(tab)}
-                renderChapterEnd={(chapter) => {
+                renderChapterEnd={(chapter, { reimagine }) => {
                   const story =
                     allStories.find((item) => item.id === screen.storyId) ??
                       allStories[0];
@@ -629,6 +658,11 @@ export default function App() {
                     <ChapterEnd
                       story={story}
                       chapter={chapter}
+                      // A standalone, and a series that has reached its
+                      // planned ending, have no next chapter to offer. Rewriting
+                      // is the one thing left, so the pill has to be reachable
+                      // from the ending itself and not only from the chrome.
+                      onReimagine={reimagine ?? undefined}
                       onContinue={(direction) => {
                         const next = chapter.chapterNumber + 1;
                         startChapterGeneration({

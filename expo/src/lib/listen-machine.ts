@@ -52,6 +52,18 @@ export const NARRATION_EXPECTED_MS = 60_000;
  */
 export const NARRATION_OVERDUE_MS = 180_000;
 
+/**
+ * How many times a vanished narration job is silently re-requested.
+ *
+ * `missing` means the row being polled is not there -- reclaimed as stale, or
+ * never written. Asking again is the right answer, and it is what the screen
+ * now does; but a backend losing every job would otherwise leave this screen
+ * requesting forever behind a loader that never changes. Two recoveries, then
+ * the reader is told plainly and handed Try again, which is the same honesty
+ * `overdue` exists for.
+ */
+export const MAX_NARRATION_RECOVERIES = 2;
+
 export type ListenPhase =
   | "checking"
   | "requesting"
@@ -77,6 +89,14 @@ export type ListenState = {
   elapsedMs: number;
   /** How many times the reader has asked for this narration in this session. */
   attempt: number;
+  /**
+   * How many times a vanished job has sent this screen back to `checking`.
+   *
+   * Counted apart from `attempt`, which is the reader's own Try again presses:
+   * this one bounds an automatic loop, and sharing a counter would let someone
+   * who pressed Try again twice exhaust a recovery allowance they never used.
+   */
+  recoveries: number;
 };
 
 /** Outcome shape from `@/lib/narration`, restated structurally so this module stays dependency-free. */
@@ -110,6 +130,7 @@ export const initialListenState: ListenState = {
   startedAt: null,
   elapsedMs: 0,
   attempt: 0,
+  recoveries: 0,
 };
 
 /** Phases where work is still in flight and the loader is on screen. */
@@ -169,6 +190,7 @@ export function listenReducer(
         ...initialListenState,
         startedAt: event.at,
         attempt: state.attempt,
+        recoveries: state.recoveries,
       };
 
     case "retry":
@@ -176,6 +198,9 @@ export function listenReducer(
         ...initialListenState,
         startedAt: event.at,
         attempt: state.attempt + 1,
+        // A reader's own retry is a fresh start, allowance of automatic
+        // recoveries included.
+        recoveries: 0,
       };
 
     case "cached":
@@ -226,10 +251,28 @@ export function listenReducer(
             ),
             elapsedMs,
           };
-        case "missing":
-          // The job we were polling does not exist. Go back to `checking` so
-          // the screen re-requests rather than polling a row that is gone.
-          return { ...state, phase: "checking", elapsedMs };
+        case "missing": {
+          // The job being polled does not exist. Go back to `checking` AND
+          // bump `attempt`, because `attempt` is the only thing the screen's
+          // acquisition effect depends on: without the bump the phase changed
+          // and nothing re-ran, and `checking` is not a polled phase either,
+          // so the screen sat on a loader that would never move again.
+          if (state.recoveries >= MAX_NARRATION_RECOVERIES) {
+            return {
+              ...state,
+              phase: "failed",
+              errorCode: "narration_job_missing",
+              elapsedMs,
+            };
+          }
+          return {
+            ...state,
+            phase: "checking",
+            attempt: state.attempt + 1,
+            recoveries: state.recoveries + 1,
+            elapsedMs,
+          };
+        }
         case "failed":
           return {
             ...state,

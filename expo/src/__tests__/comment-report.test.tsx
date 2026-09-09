@@ -211,6 +211,30 @@ describe("reporting a comment", () => {
     );
     expect(view.queryByText("Comment reported")).toBeNull();
   });
+
+  /**
+   * The same rule, for the case where there is no handler at all. Optional
+   * chaining made "no `onReport` supplied" indistinguishable from "the write
+   * succeeded", so a host that had not wired reporting up yet showed the
+   * reporter a thank-you for a report that went nowhere.
+   */
+  it("does not thank the reporter when nothing is wired up to receive it", async () => {
+    const view = await openReport({});
+
+    await fireEvent.press(view.getByLabelText("Spam"));
+    await fireEvent.changeText(
+      view.getByTestId("report-details-input"),
+      "this is the same link posted twelve times",
+    );
+    await fireEvent.press(view.getByLabelText("Submit report"));
+
+    await waitFor(() =>
+      expect(
+        view.getByText("That report did not save. Check your connection and try again."),
+      ).toBeTruthy()
+    );
+    expect(view.queryByText("Comment reported")).toBeNull();
+  });
 });
 
 describe("isReportDescriptionValid", () => {

@@ -135,3 +135,59 @@ it("does not confuse two chapters of the same story", async () => {
   expect(chapterSaveState("chapter-1")?.state).toBe("failed");
   expect(chapterSaveState("chapter-2")?.state).toBe("saved");
 });
+
+/*
+  ONE SAVE OF A CHAPTER AT A TIME.
+
+  The writer saves, reopens the notepad, fixes a word and saves again. Both
+  requests used to leave at once, and `edit-story` writes the whole chapter with
+  no compare-and-swap to notice the order they arrive in -- so whichever round
+  trip the network finished last was what the server kept, which could be the
+  OLDER text. The queue now sends the second only after the first has settled.
+*/
+it("does not let a second save of the same chapter overtake the first", async () => {
+  let releaseFirst: (() => void) | null = null;
+  mockSaveChapter.mockImplementationOnce(() =>
+    new Promise<void>((resolve) => {
+      releaseFirst = () => resolve();
+    })
+  );
+
+  queueChapterSave({ ...input, body: "First." });
+  expect(mockSaveChapter).toHaveBeenCalledTimes(1);
+
+  queueChapterSave({ ...input, body: "Second, and newer." });
+  await flush();
+  // The newer text has NOT been sent: the older request is still open.
+  expect(mockSaveChapter).toHaveBeenCalledTimes(1);
+
+  releaseFirst?.();
+  await flush();
+
+  expect(mockSaveChapter).toHaveBeenCalledTimes(2);
+  expect(mockSaveChapter.mock.calls[1][0]).toMatchObject({
+    body: "Second, and newer.",
+  });
+  // The last thing written is the last thing typed.
+  expect(chapterSaveState("chapter-1")?.input.body).toBe("Second, and newer.");
+  expect(chapterSaveState("chapter-1")?.state).toBe("saved");
+});
+
+it("a failed save does not strand the one queued behind it", async () => {
+  mockSaveChapter.mockRejectedValueOnce(new Error("Offline"));
+  queueChapterSave({ ...input, body: "First." });
+  queueChapterSave({ ...input, body: "Second." });
+  await flush();
+  await flush();
+
+  expect(mockSaveChapter).toHaveBeenCalledTimes(2);
+  expect(chapterSaveState("chapter-1")?.state).toBe("saved");
+});
+
+it("saves of DIFFERENT chapters are not made to wait for each other", () => {
+  mockSaveChapter.mockImplementationOnce(() => new Promise(() => {}));
+  queueChapterSave(input);
+  queueChapterSave({ ...input, chapterId: "chapter-2", chapterNumber: 2 });
+
+  expect(mockSaveChapter).toHaveBeenCalledTimes(2);
+});

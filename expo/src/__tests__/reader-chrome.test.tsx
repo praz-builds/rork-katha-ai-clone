@@ -104,6 +104,28 @@ it("shows only the top bar while the chapter is still being written", async () =
   expect(view.getByLabelText("Back")).toBeTruthy();
   expect(view.queryByTestId("reader-chrome-sheet")).toBeNull();
   expect(view.queryByLabelText("Edit")).toBeNull();
+  // Search operates on prose too. Only the bottom sheet used to be gated, so
+  // the one control that escaped `top-only` was the one that runs over a
+  // chapter whose pages are still arriving.
+  expect(view.queryByLabelText("Search chapter")).toBeNull();
+});
+
+it("keeps the find bar out of an unfinished chapter even when a search was already open", async () => {
+  const view = await render(
+    <ReaderChrome
+      {...props({
+        mode: "top-only",
+        visible: true,
+        searchOpen: true,
+        searchQuery: "lighthouse",
+        searchMatchCount: 2,
+        activeSearchMatch: 0,
+      })}
+    />,
+  );
+
+  expect(view.queryByLabelText("Find in chapter")).toBeNull();
+  expect(view.queryByLabelText("Close search")).toBeNull();
 });
 
 it("hides the search bar along with the rest of the chrome, without discarding the in-progress query", async () => {

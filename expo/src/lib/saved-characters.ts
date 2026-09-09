@@ -7,7 +7,7 @@ import type { CreateDraft, SavedCharacter } from "@/types/domain";
 /**
  * The user's saved-character library.
  *
- * Backed by the `saved_characters` table (migration 00057, owner-only RLS)
+ * Backed by the `user_characters` table (migration 00057, owner-only RLS)
  * through PostgREST: there is no edge function in the path, because "list my
  * rows, add one, delete one" is exactly what row-level security expresses,
  * and an anonymous guest session created by `bootstrap-user` is a real
@@ -26,7 +26,35 @@ import type { CreateDraft, SavedCharacter } from "@/types/domain";
  */
 
 const LOCAL_KEY = "katha.saved-characters.v1";
-const TABLE = "saved_characters";
+// The table migration 00057 actually creates. It was `saved_characters` here,
+// which exists in no migration: every list and every save failed against a
+// configured backend, silently falling through to the offline store on read
+// and throwing on write.
+const TABLE = "user_characters";
+
+/**
+ * The column the library stores a character's role in.
+ *
+ * `description` in the database, `role` in the app's own vocabulary (a brief's
+ * cast list calls it a description, the library calls it a role, and
+ * `savedCharacterInputFromDraft` is where the two meet). Named once here so
+ * the select list and the write cannot drift apart again.
+ */
+const ROLE_COLUMN = "description";
+
+const SELECT_COLUMNS =
+  `id, name, ${ROLE_COLUMN}, background, appearance, portrait_url, source_story_id, created_at`;
+
+/**
+ * Escapes a name for a PostgREST `ilike` pattern.
+ *
+ * `%` and `_` are wildcards there, so a character called "Mr_Fox" would match
+ * -- and then UPDATE -- "MrsFox" instead. Postgres's default LIKE escape is a
+ * backslash, so the backslash itself has to go first.
+ */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
 
 type DraftCharacter = CreateDraft["characters"][number];
 
@@ -78,7 +106,7 @@ export function draftCharacterFromSaved(
 type Row = {
   id: string;
   name: string;
-  role: string | null;
+  description: string | null;
   background: string | null;
   appearance: string | null;
   portrait_url: string | null;
@@ -90,7 +118,7 @@ function fromRow(row: Row): SavedCharacter {
   return {
     id: row.id,
     name: row.name,
-    role: row.role ?? undefined,
+    role: row.description ?? undefined,
     background: row.background ?? undefined,
     appearance: row.appearance ?? undefined,
     portraitUrl: row.portrait_url ?? undefined,
@@ -102,7 +130,7 @@ function fromRow(row: Row): SavedCharacter {
 function toRow(input: SavedCharacterInput) {
   return {
     name: input.name.trim(),
-    role: input.role ?? null,
+    [ROLE_COLUMN]: input.role ?? null,
     background: input.background ?? null,
     appearance: input.appearance ?? null,
     portrait_url: input.portraitUrl ?? null,
@@ -151,7 +179,7 @@ export async function listSavedCharacters(): Promise<SavedCharacter[]> {
   await bootstrapUser();
   const { data, error } = await supabase
     .from(TABLE)
-    .select("id, name, role, background, appearance, portrait_url, source_story_id, created_at")
+    .select(SELECT_COLUMNS)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return ((data ?? []) as Row[]).map(fromRow);
@@ -193,7 +221,7 @@ export async function saveCharacterToLibrary(
   const { data: existingRows, error: lookupError } = await supabase
     .from(TABLE)
     .select("id, portrait_url")
-    .ilike("name", name)
+    .ilike("name", escapeLikePattern(name))
     .limit(1);
   if (lookupError) throw new Error(lookupError.message);
   const existing = (existingRows ?? [])[0] as { id: string; portrait_url: string | null } | undefined;
@@ -204,7 +232,7 @@ export async function saveCharacterToLibrary(
       .from(TABLE)
       .update({ ...row, portrait_url: row.portrait_url ?? existing.portrait_url })
       .eq("id", existing.id)
-      .select("id, name, role, background, appearance, portrait_url, source_story_id, created_at")
+      .select(SELECT_COLUMNS)
       .single();
     if (error) throw new Error(error.message);
     return fromRow(data as Row);
@@ -212,7 +240,7 @@ export async function saveCharacterToLibrary(
   const { data, error } = await supabase
     .from(TABLE)
     .insert({ ...row, owner_id: user.userId })
-    .select("id, name, role, background, appearance, portrait_url, source_story_id, created_at")
+    .select(SELECT_COLUMNS)
     .single();
   if (error) throw new Error(error.message);
   return fromRow(data as Row);

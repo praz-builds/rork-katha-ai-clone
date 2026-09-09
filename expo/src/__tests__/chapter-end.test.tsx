@@ -36,6 +36,11 @@ jest.mock("@/lib/notifications", () => ({
   pushPermissionGranted: jest.fn().mockResolvedValue(false),
 }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
+// The Reimagine sheet reads safe-area insets, and there is no provider in a
+// bare render. Only needed by the wiring test at the foot of this file.
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
+}));
 jest.mock("expo-av", () => ({
   Audio: { Sound: { createAsync: jest.fn() } },
 }));
@@ -573,6 +578,50 @@ describe("ReaderScreen renderChapterEnd wiring", () => {
       renderChapterEnd.mock.calls.length - 1
     ][0];
     expect(lastCallChapter.id).toBe(longChapter.id);
+  });
+
+  /*
+    A STANDALONE'S ENDING HAS ONLY ONE THING TO OFFER, AND IT HAS TO BE REACHABLE.
+
+    `ChapterEnd` renders the Reimagine pill only when it is handed `onReimagine`,
+    and the app's caller had nothing to hand it: the sheet lives inside
+    `ReaderScreen`, which never exposed it. So a standalone story ended on an
+    empty module. The reader now passes its own opener through the seam.
+  */
+  it("hands the chapter-end module a way to open Reimagine", async () => {
+    const renderChapterEnd = jest.fn(
+      (_chapter: Chapter, _actions: { reimagine: (() => void) | null }): React.ReactNode => null,
+    );
+    const view = await render(
+      <ReaderScreen
+        story={wiredStory}
+        onBack={jest.fn()}
+        renderChapterEnd={renderChapterEnd}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.press(view.getByLabelText("Toggle reader controls"));
+    });
+    for (let press = 0; press < 12; press += 1) {
+      await act(async () => {
+        fireEvent.press(view.getByLabelText("Next page"));
+      });
+    }
+
+    await waitFor(() => expect(renderChapterEnd).toHaveBeenCalled());
+    const actions = renderChapterEnd.mock.calls[
+      renderChapterEnd.mock.calls.length - 1
+    ][1];
+    expect(typeof actions.reimagine).toBe("function");
+
+    // And it really opens the sheet, rather than being a handle to nothing.
+    await act(async () => {
+      actions.reimagine?.();
+    });
+    await waitFor(() =>
+      expect(view.getByText("Reimagine this chapter")).toBeTruthy()
+    );
   });
 });
 

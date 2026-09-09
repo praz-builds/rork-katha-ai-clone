@@ -131,6 +131,67 @@ it("completes with the rewritten chapter", async () => {
   expect(settled?.chapterTitle).toBe("The Door, Again");
 });
 
+/*
+  A READER WHO IS NOT THE AUTHOR ENDS UP ON THEIR OWN COPY.
+
+  `reimagine-chapter` never edits somebody else's story: it forks it and writes
+  the rewrite into the fork, answering with the copy's id. The session was
+  keyed to the SOURCE story and threw that id away, so app state went looking
+  for the rewritten chapter on a story that does not have it, found the old
+  chapter already sitting at that number, and dropped the result. The reader
+  had paid a credit for a story that existed only on the server.
+*/
+describe("a rewrite that landed in a private copy", () => {
+  it("settles on the copy's id and carries the copy itself", async () => {
+    const fake = fakeRun();
+    const session = adoptReimagineGeneration({
+      run: fake.run,
+      story,
+      chapterNumber: 1,
+    });
+    const chapter = { ...story.chapters[0], title: "The Door, Again" };
+
+    fake.resolve(
+      { chapter, storyId: "fork-1", forked: true } as ReimagineResult,
+    );
+    await fake.run.promise;
+
+    const settled = getGeneration(session.id);
+    expect(settled?.storyId).toBe("fork-1");
+    const copy = settled?.story;
+    expect(copy?.id).toBe("fork-1");
+    expect(copy?.forkedFromStoryId).toBe(story.id);
+    // The rewritten chapter is IN the copy, in place of the one it replaced.
+    expect(copy?.chapters).toHaveLength(story.chapters.length);
+    expect(copy?.chapters[0].title).toBe("The Door, Again");
+    // A copy nobody has read has none of the original's numbers, and is
+    // private whatever the story it came from was.
+    expect(copy?.visibility).toBe("private");
+    expect(copy?.isPublic).toBe(false);
+    expect(copy?.likes).toBe(0);
+    expect(copy?.views).toBe(0);
+  });
+
+  it("carries no copy when the caller owned the story", async () => {
+    const fake = fakeRun();
+    const session = adoptReimagineGeneration({
+      run: fake.run,
+      story,
+      chapterNumber: 1,
+    });
+
+    fake.resolve({
+      chapter: story.chapters[0],
+      storyId: story.id,
+      forked: false,
+    } as ReimagineResult);
+    await fake.run.promise;
+
+    expect(getGeneration(session.id)?.storyId).toBe(story.id);
+    expect(getGeneration(session.id)?.story).toBeNull();
+  });
+});
+
 it("reports a failed rewrite as an error session rather than hanging", async () => {
   const fake = fakeRun();
   const session = adoptReimagineGeneration({ run: fake.run, story, chapterNumber: 1 });
