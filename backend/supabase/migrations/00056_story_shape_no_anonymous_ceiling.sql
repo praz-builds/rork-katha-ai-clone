@@ -1,4 +1,4 @@
--- Migration 00046: the preview is not a rationed resource
+-- Migration 00056 (was 00046, renumbered 2026-09-09: version collided with 00046_engagement_persistence in schema_migrations): the preview is not a rationed resource
 --
 -- 00034 gave story shaping three limits and 00039 fixed the order they were
 -- read in. Two of the three were ceilings on how many people could see a

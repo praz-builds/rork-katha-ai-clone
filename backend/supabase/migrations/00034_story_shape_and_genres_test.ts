@@ -144,7 +144,7 @@ Deno.test("story starts debit and refund three credits while continuations stay 
  * 00046 removed both. These test files run every migration in order before
  * asserting, so this one was testing 00034's policy against 00046's function
  * and could only ever fail. The policy that replaced it is asserted in
- * `00046_story_shape_no_anonymous_ceiling_test.ts`; everything else 00034 set
+ * `00056_story_shape_no_anonymous_ceiling_test.ts`; everything else 00034 set
  * up, including the per-user window, is still covered above and in 00039.
  */
 
