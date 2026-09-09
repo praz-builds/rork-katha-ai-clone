@@ -179,6 +179,13 @@ export type Story = {
   spiceLevel?: SpiceLevel;
   contentRating?: string;
   synopsis: string;
+  /**
+   * The story's cast as persisted in `characters` (name + the brief's
+   * detail). Optional because seed stories and older library rows carry no
+   * roster; the Reimagine sheet degrades to "no named characters found"
+   * rather than guessing names out of the prose.
+   */
+  characters?: StoryCharacter[];
   chapters: Chapter[];
   likes: number;
   bookmarks: number;
@@ -239,6 +246,37 @@ export type Story = {
 
 /** Mirrors the `stories_cover_status_check` constraint (migration 00029). */
 export type CoverStatus = "pending" | "generating" | "ready" | "failed";
+
+/** One member of a story's persisted cast. */
+export type StoryCharacter = {
+  id?: string;
+  name: string;
+  /** Role, age, who they are - the brief's `description`. */
+  role?: string;
+  background?: string;
+  appearance?: string;
+  portraitUrl?: string;
+  isHero?: boolean;
+};
+
+/**
+ * A character in the user's reusable library (`saved_characters`, migration
+ * 00057). Owned by the user, not by any one story: the same person can be
+ * dropped into a new brief with one tap, or swapped into someone else's
+ * chapter through Reimagine.
+ */
+export type SavedCharacter = {
+  id: string;
+  name: string;
+  /** Role, age, who they are. Maps to the brief's `description`. */
+  role?: string;
+  background?: string;
+  appearance?: string;
+  portraitUrl?: string;
+  /** The story this character was first written for, when known. */
+  sourceStoryId?: string;
+  createdAt: string;
+};
 
 export type ImageName =
   | "camp-midnight.jpg"
@@ -313,6 +351,13 @@ export type CreateDraft = {
      */
     referenceImage?: string;
     isHero: boolean;
+    /**
+     * Set when this character was added from the saved library, so the
+     * request can reuse the stored description and portrait instead of
+     * re-sending them, and so tapping the same chip again removes exactly
+     * this row.
+     */
+    savedCharacterId?: string;
   }[];
   isSeries?: boolean;
   /** World and era — feeds the story prompt and the cover prompt. */

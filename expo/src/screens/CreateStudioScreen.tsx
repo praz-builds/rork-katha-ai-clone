@@ -30,7 +30,9 @@ import {
 import CreateBriefFlow from "@/components/create/CreateBriefFlow";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import StreamingProse from "@/components/create/StreamingProse";
+import PublicEntityWarningModal from "@/components/create/PublicEntityWarningModal";
 import StoryGatedPrivateModal from "@/components/create/StoryGatedPrivateModal";
+import { pendingGatingReason } from "@/lib/entity-gate";
 import {
   continueStoryStreaming,
   type CoverState,
@@ -96,6 +98,8 @@ type DraftCharacter = {
   appearance?: string;
   portraitUrl?: string;
   portraitStatus?: "idle" | "generating" | "ready" | "failed";
+  /** Set when the row came from the saved library. See `CreateDraft`. */
+  savedCharacterId?: string;
 };
 
 type StudioDraft = {
@@ -137,6 +141,13 @@ type StudioDraft = {
    */
   grounding?: unknown[];
   groundingEntities?: unknown[];
+  /**
+   * The server's own visibility verdict, once `shape-story` returns one.
+   * Optional and untyped here because `api.ts` (owned by the backend branch)
+   * has yet to carry it; `pendingGatingReason` prefers it when present and
+   * falls back to reading `groundingEntities` the way the server does.
+   */
+  gatingReason?: unknown;
 };
 
 /**
@@ -702,8 +713,30 @@ export default function CreateStudioScreen({
   // Step 1: Generate draft
   // -----------------------------------------------------------------------
 
-  const handleGenerate = useCallback(async () => {
+  /**
+   * The pre-generation entity warning (spec §6).
+   *
+   * Set when the writer asked for a public story and shaping has already
+   * classified the idea as naming a living public figure or a private
+   * individual. The server would force the story private regardless
+   * (migration 00050); this says so before a credit is spent. Only ever set
+   * from a shape result that is already on the draft - when shaping has not
+   * run, generation proceeds and `StoryGatedPrivateModal` is the backstop.
+   */
+  const [publicEntityWarning, setPublicEntityWarning] = useState<StoryGatingReason | null>(null);
+
+  const handleGenerate = useCallback(async (options?: { forcePrivate?: boolean }) => {
     if (busy) return;
+    if (!options?.forcePrivate && draft.visibility === "public") {
+      const reason = pendingGatingReason({
+        gatingReason: draft.gatingReason,
+        groundingEntities: draft.groundingEntities,
+      });
+      if (reason) {
+        setPublicEntityWarning(reason);
+        return;
+      }
+    }
     if (!canGenerate) {
       Alert.alert(
         credits >= 3 ? "Add a story seed" : "Credits needed",
@@ -727,7 +760,7 @@ export default function CreateStudioScreen({
       identityLenses: draft.identityLenses,
       seed: draft.seed,
       language: draft.language,
-      visibility: draft.visibility,
+      visibility: options?.forcePrivate ? "private" : draft.visibility,
       // Belt and braces with the clamp in loadDraft: validation.ts enforces the
       // same cap, and a request over it is a 400 rather than a truncation.
       characters: draft.characters.slice(0, MAX_CHARACTERS),
@@ -1735,14 +1768,27 @@ export default function CreateStudioScreen({
 
   if (step === "setup") {
     return (
-      <CreateBriefFlow
-        credits={credits}
-        isAnonymous={isAnonymous}
-        draft={draft}
-        setDraft={setDraft}
-        onGenerate={handleGenerate}
-        onBack={onBack}
-      />
+      <>
+        <CreateBriefFlow
+          credits={credits}
+          isAnonymous={isAnonymous}
+          draft={draft}
+          setDraft={setDraft}
+          onGenerate={() => handleGenerate()}
+          onBack={onBack}
+        />
+        <PublicEntityWarningModal
+          reason={publicEntityWarning}
+          onKeepPrivate={() => {
+            setPublicEntityWarning(null);
+            // The toggle flips too, so the brief the writer comes back to
+            // after generation reads the same as what was written.
+            setDraft((previous) => ({ ...previous, visibility: "private" }));
+            void handleGenerate({ forcePrivate: true });
+          }}
+          onChangeIdea={() => setPublicEntityWarning(null)}
+        />
+      </>
     );
   }
 

@@ -96,6 +96,10 @@ function Harness({ initial = BASE_DRAFT }: { initial?: StudioCreateDraft }) {
 const PORTRAIT_URL = "https://cdn.example.test/covers/story/characters/naina.png";
 
 async function openCharacterSheet() {
+  // "Who's in it" has two tabs since the saved-character library landed, and
+  // a writer who already has saved characters opens on Saved. Craft lives on
+  // New, so select it before reaching for its row.
+  await fireEvent.press(screen.getByLabelText("New character"));
   await fireEvent.press(screen.getByLabelText("Add a character"));
 }
 

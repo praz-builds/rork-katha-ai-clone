@@ -82,6 +82,58 @@
   client and renders on nothing. Serving it is a join to
   `chapters.chapter_number` in that function's SELECT; no client change is
   needed when it lands.
+## 2026-09-09: Reimagine, saved characters, and being told before a credit is spent
+
+### Changed
+
+- **A chapter can be rewritten from the reader.** Reimagine was a button that
+  opened the paragraph editor with the wand bar showing — the same screen as
+  Edit, reached from a different door, and only ever for the author. It now
+  opens its own sheet: the characters the story's roster actually puts on this
+  page, a Replace pill per row, and a box for what should change. Either one is
+  enough to submit; with neither, the button stays off rather than spending a
+  credit on "rewrite this, no notes."
+- **Anyone can reimagine, not just the author.** A reader of someone else's
+  story gets the same sheet with the subtitle "Makes a private copy in your
+  library" and the button "Reimagine in my copy"; on success a toast says
+  "Saved to Your stories" and the original is untouched. Before, the control
+  was hidden for non-authors entirely.
+- **Swapping a character can run through the whole book.** A replaced row grows
+  an "Apply to all chapters" checkbox — "Renames them everywhere in this story
+  and in every chapter after this one." It is hidden for a standalone story,
+  where there is nowhere else for the name to go.
+- **Characters are reusable.** "Who's in it" has two tabs. **Saved** is a
+  one-tap library of everyone the writer has crafted before — a chip per
+  person, tapped again to remove, capped at three with "Up to three characters
+  per story." when the cast is full. **New** is the Craft character flow,
+  unchanged, and every character saved there is written to the library too, so
+  the second story never retypes the first story's cast. The library is decided
+  once per screen, not per render: finishing a character no longer yanks the
+  writer to the Saved tab with the "Add a character" row vanishing under their
+  thumb.
+- **A public story that names a real living person is explained before it is
+  written.** The writer used to turn on public, spend a credit, wait for a
+  chapter, and only then be told the story would stay private. Now tapping
+  Generate with a gating entity in the idea shows a card first: "This one can't
+  be public", the reason in the writer's own terms, and two ways out — **Keep
+  it private** (writes it, privately) or **Change my idea** (back to the brief,
+  nothing spent). Historical figures, real places and real events never trigger
+  it, which is the whole point of the grounding feature. The server gate stays
+  the backstop for the case where shaping had not finished in time.
+- The visibility toggle reads "Make it public", and says "Anyone on Katha can
+  read it once it's written." when it is on — the old "This story can be shared
+  after creation." described an action that no longer exists.
+
+### Notes
+
+- The client mirrors `_shared/entity-visibility-gate.ts` rather than importing
+  it (Deno), and prefers `shape-story`'s own `gating_reason` the moment the
+  backend returns one. `entity-gate.test.ts` pins both gating classes and a
+  historical figure that must never gate.
+- `reimagine-client.ts` and `saved-characters.ts` are deliberately outside
+  `lib/api.ts`, which the backend branch is editing in parallel.
+- Detected characters are the story roster filtered to names on the page; a
+  character the model invented has no roster entry and is not guessed at.
 
 ## 2026-09-09: The reading experience — pages, controls, portraits, and stories that survive a reload
 
