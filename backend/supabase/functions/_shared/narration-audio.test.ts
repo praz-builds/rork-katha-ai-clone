@@ -278,7 +278,7 @@ function withRedirectFollowingFetch(
   });
 }
 
-Deno.test("startRunpodNarration posts text and the voice's provider params, and returns the job id", async () => {
+Deno.test("startRunpodNarration posts the prompt MiniMax reads, and returns the job id", async () => {
   const captured: Array<{ url: string; body: unknown; auth: string | null }> =
     [];
   await withEnv({ RUNPOD_API_KEY: "test-key" }, () =>
@@ -303,9 +303,45 @@ Deno.test("startRunpodNarration posts text and the voice's provider params, and 
   assertEquals(captured.length, 1);
   assertEquals(captured[0].url, `${RUNPOD_ENDPOINT}/run`);
   assertEquals(captured[0].auth, "Bearer test-key");
+  // `prompt`, not `text`. MiniMax's handler computes cost from `len(prompt)`,
+  // so a body carrying `text` crashed inside RunPod with
+  // `object of type 'NoneType' has no len()` and every narration failed.
   assertEquals(captured[0].body, {
-    input: { text: "Hello there.", voice_id: "aria" },
+    input: {
+      prompt: "Hello there.",
+      speed: 1,
+      volume: 1,
+      pitch: 0,
+      english_normalization: true,
+      voice_id: "aria",
+    },
   });
+});
+
+Deno.test("a voice row can override any synthesis default", async () => {
+  // The row's params are spread last on purpose: a voice that should read
+  // slower, or in a different register, is a data change and never a deploy.
+  const captured: Array<Record<string, unknown>> = [];
+  await withEnv({ RUNPOD_API_KEY: "test-key" }, () =>
+    withFetch(
+      async (request) => {
+        captured.push((await request.json()) as Record<string, unknown>);
+        return new Response(JSON.stringify({ id: "job-9" }), { status: 200 });
+      },
+      async () => {
+        await startRunpodNarration({
+          text: "Slower, please.",
+          voice: {
+            ...VOICE,
+            provider_voice_params: { voice_id: "Calm_Woman", speed: 0.8 },
+          },
+        });
+      },
+    ));
+  const input = captured[0].input as Record<string, unknown>;
+  assertEquals(input.voice_id, "Calm_Woman");
+  assertEquals(input.speed, 0.8);
+  assertEquals(input.prompt, "Slower, please.");
 });
 
 Deno.test("startRunpodNarration refuses to run without a configured API key", async () => {
@@ -418,7 +454,7 @@ Deno.test("pollRunpodNarration reports a ready job with no usable audio as faile
       async () => {
         const result = await pollRunpodNarration("job-123");
         assertEquals(result.status, "failed");
-        assertEquals(result.errorCode, "missing_audio_output");
+        assertEquals(result.errorCode, "no_audio_field:none");
       },
     ));
 });
@@ -641,7 +677,7 @@ Deno.test("pollRunpodNarration refuses an oversized base64 payload before decodi
       async () => {
         const result = await pollRunpodNarration("job-oversized");
         assertEquals(result.status, "failed");
-        assertEquals(result.errorCode, "missing_audio_output");
+        assertEquals(result.errorCode, "base64_unusable");
       },
     ));
 });
