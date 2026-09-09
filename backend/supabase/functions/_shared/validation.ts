@@ -39,7 +39,8 @@ import {
   type StoryMode,
   type ValidatedGenerationParams,
 } from "./types.ts";
-import { parseRequestId } from "./operations.ts";
+import { parseRequestId, parseUuid } from "./operations.ts";
+import { parseVisibilityRequest } from "./publish.ts";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -227,6 +228,13 @@ export function validateGenerationRequest(
       ) {
         return { error: "Character portrait_url must be a URL string" };
       }
+      if (
+        item.saved_character_id !== undefined &&
+        item.saved_character_id !== null &&
+        !parseUuid(item.saved_character_id)
+      ) {
+        return { error: "Character saved_character_id must be a UUID" };
+      }
       characters.push({
         name: item.name.trim(),
         description: typeof item.description === "string"
@@ -242,6 +250,7 @@ export function validateGenerationRequest(
           ? item.portrait_url.trim()
           : undefined,
         isHero: item.isHero === true,
+        savedCharacterId: parseUuid(item.saved_character_id) ?? undefined,
       });
     }
     if (characters.length) {
@@ -256,6 +265,14 @@ export function validateGenerationRequest(
   // --- Request ID ---
   const requestId = parseRequestId(body.request_id);
   if (!requestId) return { error: "Invalid request_id" };
+
+  // --- Visibility ---
+  // The toggle is the publish button. Absent is private; a value that is
+  // neither word is a client bug, not a guess.
+  const visibility = parseVisibilityRequest(body.visibility);
+  if (visibility === null) {
+    return { error: "visibility must be private or public" };
+  }
 
   // --- Language ---
   let language: string | undefined;
@@ -375,6 +392,7 @@ export function validateGenerationRequest(
     notifyOnReady,
     grounding,
     groundingEntities,
+    visibility,
   };
 }
 

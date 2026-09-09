@@ -106,7 +106,11 @@ export async function handleRequest(req: Request): Promise<Response> {
     let query = supabase
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating, author_id",
+        // `cover_status`, `previously_summary` and the chapter count are what
+        // a "Your stories" rail needs to render a card without a second
+        // round trip per story: whether to show the cover or the concept
+        // card, the one-line summary under the title, and "3 chapters".
+        "id, title, genre, primary_genre, topic, cover_image_url, cover_status, previously_summary, length_type, word_count, created_at, content_rating, author_id, is_public, chapters(count)",
         { count: "planned" },
       )
       .eq("status", "complete")

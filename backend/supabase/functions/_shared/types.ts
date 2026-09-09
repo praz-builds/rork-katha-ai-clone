@@ -439,6 +439,12 @@ export interface CharacterInput {
   appearance?: string;
   portraitUrl?: string;
   isHero?: boolean;
+  /**
+   * The `user_characters` row (migration 00057) this character was pulled
+   * from, when the writer reused a saved character. Resolved server-side by
+   * `resolveSavedCharacters`; an id the caller does not own is dropped.
+   */
+  savedCharacterId?: string;
 }
 
 export interface StoryGenerationOutput {
@@ -501,6 +507,11 @@ export interface ValidatedGenerationParams {
   grounding: GroundingCard[];
   /** What the classifier saw. Recorded on the story; never used in a prompt. */
   groundingEntities: EntityMention[];
+  /**
+   * The visibility toggle from the brief. Applied the moment the first chapter
+   * is persisted (`_shared/publish.ts`); absent means private.
+   */
+  visibility: "private" | "public";
 }
 
 export interface SeriesState {

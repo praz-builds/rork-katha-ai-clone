@@ -4,6 +4,16 @@ import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { buildStoryDonePayload } from "../_shared/generation-done.ts";
+import {
+  applyRequestedVisibility,
+  type VisibilityClient,
+} from "../_shared/publish.ts";
+import {
+  rememberStoryCharacters,
+  resolveSavedCharacters,
+  type SavedCharacterClient,
+} from "../_shared/saved-characters.ts";
 import {
   GENERATION_GROUNDING_DEADLINE_MS,
   resolveGrounding,
@@ -87,7 +97,7 @@ serve(async (req) => {
       spiceLevel,
       storyMode,
       seed,
-      characters,
+      characters: requestedCharacters,
       requestId,
       language,
       whereAndWhen,
@@ -102,6 +112,7 @@ serve(async (req) => {
       notifyOnReady,
       grounding,
       groundingEntities,
+      visibility,
     } = input;
     const chapterRole = storyMode === "series"
       ? "series_opening"
@@ -112,6 +123,16 @@ serve(async (req) => {
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       serviceRoleKey,
+    );
+
+    // Saved characters referenced by id are filled in from the writer's
+    // library before anything is reserved or prompted. See
+    // `_shared/saved-characters.ts`.
+    const characterClient = serviceClient as unknown as SavedCharacterClient;
+    const characters = await resolveSavedCharacters(
+      characterClient,
+      user.id,
+      requestedCharacters,
     );
 
     // The grounding fallback, started here so it overlaps the opening round
@@ -305,6 +326,7 @@ serve(async (req) => {
               appearance: c.appearance,
               portrait_url: c.portraitUrl,
               is_hero: c.isHero ?? false,
+              saved_character_id: c.savedCharacterId ?? null,
             })),
           )
           // A rejection nothing is awaiting yet surfaces as an unhandled
@@ -494,6 +516,21 @@ serve(async (req) => {
         }
       }
 
+      // The visibility toggle is the publish button; the outcome rides in the
+      // response. After the grounding write so the gate reason is on the row
+      // before the 00050 CHECK is asked about `is_public`.
+      const visibilityOutcome = await applyRequestedVisibility(
+        serviceClient as unknown as VisibilityClient,
+        {
+          storyId: story.id,
+          requested: visibility,
+          isAnonymous: user.is_anonymous === true,
+          gateReason,
+        },
+      );
+      await rememberStoryCharacters(characterClient, user.id, story.id);
+      mark("visibility");
+
       // Chapter 1's art is the story's cover (section 10.4, decisions 38 and
       // 40), and the cast's portraits are generated once, now, because
       // Interactive mode has no later moment when the whole cast is known
@@ -577,32 +614,27 @@ serve(async (req) => {
         );
       }
 
-      return respond({
-        story: {
-          ...story,
-          // 'generating': in flight on a background task, so the client shows
-          // the concept card until it reads 'ready'. 'failed' when scheduling
-          // itself did not happen — the concept card is then final.
-          cover_status: coverStatus,
-          title: output.title,
-          word_count: wordCount,
-          status: "complete",
-          primary_genre: primaryGenre,
-          story_mode: storyMode,
-          series_state: storyMode === "series"
-            ? output.series_state ?? EMPTY_SERIES_STATE
-            : EMPTY_SERIES_STATE,
-          first_line: output.first_line,
-          previously_summary: output.previously_summary,
-          content_rating: contentRating,
-        },
+      // 'generating' cover: in flight on a background task, so the client
+      // shows the concept card until it reads 'ready'. 'failed' when
+      // scheduling itself did not happen - the concept card is then final.
+      // The same builder the streamed path uses; see `generation-done.ts`.
+      return respond(buildStoryDonePayload({
+        story,
         chapter,
+        output,
+        storyMode,
+        primaryGenre,
+        contentRating,
+        coverStatus,
+        words: wordCount,
+        beats,
         balance: operation.balance,
         model: result.model,
         // Cumulative milliseconds from the start of the handler. `llm` minus
         // `prompt_built` is the provider chain; everything else is ours.
         timings: { ...marks, total: Date.now() - t0 },
-      });
+        visibility: visibilityOutcome,
+      }));
     } catch (error) {
       console.error(
         "generate-story post-deduction error:",

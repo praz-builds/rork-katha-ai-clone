@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
   EMPTY_RESOLVED_GROUNDING,
@@ -192,6 +193,18 @@ serve(async (req) => {
         // client transport is safe for this particular payload.
         grounding: grounding.cards,
         grounding_entities: grounding.entities,
+        // The entity visibility gate's answer, BEFORE a credit is spent.
+        //
+        // Product decision 2026-09-09: the visibility toggle in the brief is
+        // the publish button, so a writer who switches it to public while
+        // their idea names a living public figure or someone from their own
+        // life must be told now - "this one will stay private; change the
+        // idea or keep it private" - rather than after the story exists.
+        // `generate-story` still derives the gate from its own server-side
+        // classification and records that; this is the same rule applied to
+        // the same classifier's output, one screen earlier. Null when nothing
+        // in the idea gates it, which is the common case.
+        gating_reason: deriveGatingReason(grounding.entities),
       });
     } catch (error) {
       // Shape is optional scaffolding. Record the provider condition without

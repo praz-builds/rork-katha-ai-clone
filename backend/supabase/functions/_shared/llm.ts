@@ -183,7 +183,21 @@ export function isProviderDisabled(
   return disabled.has(provider.toLowerCase());
 }
 
-const GENERATION_DEADLINE_MS = 120_000;
+/**
+ * The buffered generation budget, in milliseconds.
+ *
+ * **Raised from 120s on 2026-09-09.** A real chapter from the leading model
+ * was measured at 70 seconds (1,846 words), and at 120s the OpenRouter phase
+ * split evenly across two models gave each 42s - so the leader timed out
+ * before it had written a chapter, every time, and the caller saw
+ * `Story generation failed. Credit refunded.` after two minutes with a healthy
+ * credential. The budget is now sized so that BOTH paid models can each take
+ * a full measured chapter in sequence (see `openRouterPhaseDeadlines`), with
+ * Gemini and the free tier keeping small real slices behind them. 200s sits
+ * well under the Edge Function wall-clock limit and matches the streamed
+ * path, which already allowed 180s of prose plus a 45s metadata call.
+ */
+export const GENERATION_DEADLINE_MS = 200_000;
 
 /**
  * A story plus its series_state runs well past 4096 tokens.
@@ -199,11 +213,12 @@ const GEMINI_TIMEOUT_MS = 70_000;
  * now the primary, running a reasoning model over a 16,000-token visible budget,
  * and 30s is no longer defensible: the measured 11s was a ~1.4k-token shaping
  * call, and a full chapter emits roughly an order of magnitude more, reasoning
- * included. Raised to match `GEMINI_TIMEOUT_MS`, which makes the *phase share*
- * the binding constraint rather than this number - the point of a per-request
- * timeout here is to end a hung socket, not to second-guess the phase budget.
+ * included. Raised past `GEMINI_TIMEOUT_MS` on 2026-09-09, because a chapter
+ * measured at 70s against a 70s socket timeout is a coin toss: the point of a
+ * per-request timeout here is to end a hung socket, not to second-guess the
+ * phase budget, so it sits above the measured chapter with room to spare.
  */
-const OPENROUTER_TIMEOUT_MS = 70_000;
+const OPENROUTER_TIMEOUT_MS = 90_000;
 /** A reasoning model thinks before it writes, so it needs a longer window. */
 
 /**
@@ -240,16 +255,18 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  * every fallback aborts before it sends a request - the chain collapses to one
  * provider in exactly the slow case the fallbacks exist for.
  *
- * **Re-balanced 2026-09-05 for the new order.** These are cumulative, so moving
- * a phase without moving its share silently hands the new leader the old
- * leader's slice and starves whoever now runs last. Slices, against the 120s
- * generation deadline:
+ * **Re-balanced 2026-09-05 for the new order, and again 2026-09-09 for the
+ * 200s budget.** These are cumulative, so moving a phase without moving its
+ * share silently hands the new leader the old leader's slice and starves
+ * whoever now runs last. Slices, against the 200s generation deadline:
  *
- * | phase          | slice | window | per model                        |
- * |----------------|-------|--------|----------------------------------|
- * | openrouter     | 0.70  | 84s    | 42s each across two Muse Sparks  |
- * | gemini         | 0.20  | 24s    | 24s                              |
- * | openrouterFree | 0.10  | 12s    | 6s each                          |
+ * | phase          | slice | window | per model                                  |
+ * |----------------|-------|--------|--------------------------------------------|
+ * | openrouter     | 0.80  | 160s   | leader up to 90s, follower the rest (70s+) |
+ * | gemini         | 0.12  | 24s    | 24s                                        |
+ * | openrouterFree | 0.08  | 16s    | 8s each                                    |
+ *
+ * The paid phase is no longer split evenly - see `openRouterPhaseDeadlines`.
  *
  * OpenAI held 0.28 of this budget until its credential was revoked
  * (2026-09-08). Its share went to the leader and to Gemini rather than being
@@ -265,10 +282,50 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  * refunding the credit.
  */
 export const PHASE_END_SHARE = {
-  openrouter: 0.7,
-  gemini: 0.9,
+  openrouter: 0.8,
+  gemini: 0.92,
   openrouterFree: 1,
 } as const;
+
+/**
+ * How much of the paid OpenRouter window is held back for each model still
+ * to come, instead of halving the window.
+ *
+ * The phase used to be cut into equal slices by model index. That is the
+ * arithmetic that broke production: two models, 84s, 42s each, against a
+ * chapter that takes 70s. A slice is only worth having if a chapter fits in
+ * it, so the reserve IS a chapter - the measured 70s - and the leader gets
+ * everything the phase has minus one reserve per follower. With the 200s
+ * budget and the 0.8 share the paid window is 160s: the leader may take 90s
+ * (its own socket timeout) and the follower still has a full 70s if the
+ * leader burns its slice. When the leader fails fast - the contributor tier
+ * answers `404` in a round trip today - everything it did not use passes
+ * straight to the follower.
+ *
+ * Capped at an equal share for small budgets, so a 60s paragraph edit does
+ * not hand its leader a negative slice.
+ */
+export const OPENROUTER_CHAPTER_RESERVE_MS = 70_000;
+
+/**
+ * Per-model deadlines for the paid OpenRouter phase, as offsets from the
+ * phase start. Exported for `llm.test.ts`.
+ */
+export function openRouterPhaseDeadlines(
+  windowMs: number,
+  models: number,
+): number[] {
+  const window = Math.max(0, Math.floor(windowMs));
+  if (models <= 0) return [];
+  const reserve = Math.min(
+    OPENROUTER_CHAPTER_RESERVE_MS,
+    Math.floor(window / models),
+  );
+  return Array.from(
+    { length: models },
+    (_, index) => Math.max(0, window - reserve * (models - 1 - index)),
+  );
+}
 
 interface GenerationResult {
   text: string;
@@ -680,9 +737,10 @@ async function runProviderChain(
   // OpenRouter leads. The default model is configured in `OPENROUTER_MODEL` and
   // the standard tier stands immediately behind it, because the contributor tier
   // is `404`-by-data-policy on this account until the privacy setting changes -
-  // see the constant. The window is split evenly across the two for the same
-  // reason the OpenAI window is: a stalled first entry must not spend the slice
-  // its own fallback needs.
+  // see the constant. The window is NOT split evenly: the leader gets the
+  // phase minus a chapter-sized reserve per follower, so a stalled leader
+  // still cannot abort its fallback before `fetch` is called, and a leader
+  // that fails fast hands the follower everything it did not use.
   const openRouterModels = isProviderDisabled("openrouter", disabled)
     ? []
     : OPENROUTER_MODELS;
@@ -692,9 +750,12 @@ async function runProviderChain(
     0,
     openRouterPhaseEnd - openRouterPhaseStart,
   );
+  const openRouterDeadlines = openRouterPhaseDeadlines(
+    openRouterWindow,
+    openRouterModels.length,
+  );
   for (const [index, model] of openRouterModels.entries()) {
-    const modelDeadline = openRouterPhaseStart +
-      Math.floor((openRouterWindow * (index + 1)) / openRouterModels.length);
+    const modelDeadline = openRouterPhaseStart + openRouterDeadlines[index];
     let resolvedModel = model;
     const openRouterText = await tryProvider({
       failures,
