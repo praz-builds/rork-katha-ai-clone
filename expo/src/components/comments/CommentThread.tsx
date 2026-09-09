@@ -11,12 +11,13 @@ import {
 import { colors, radius, spacing, type } from "@/theme";
 import CommentRow, { COMMENT_PALETTES } from "./CommentRow";
 import type { CommentTone } from "./CommentRow";
-import type { CommentNode, SortMode } from "./types";
+import type { CommentNode, ReportReason, SortMode } from "./types";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   buildThread,
   fetchThread,
   postComment,
+  reportContent,
   voteOnComment,
 } from "@/lib/comments";
 import {
@@ -27,6 +28,7 @@ import {
   collapse,
   countAll,
   createComment,
+  removeComment,
   sortTopLevel,
 } from "./types";
 
@@ -189,6 +191,9 @@ export default function CommentThread({
   tone = "light",
   composerPosition = "top",
   onCountChange,
+  canEngage = true,
+  onRequireSignIn,
+  onAuthorPress,
 }: {
   storyId: string;
   /**
@@ -209,13 +214,27 @@ export default function CommentThread({
   composerPosition?: "top" | "bottom";
   /** Reports the total comment count whenever it changes, so a caller can show it elsewhere. */
   onCountChange?: (count: number) => void;
+  /**
+   * May this viewer write? False for an anonymous session.
+   *
+   * Reading a thread stays open to everyone. Writing does not, and the gate
+   * lives here rather than at the network edge on purpose: an anonymous viewer
+   * used to type a comment, watch it appear, and lose it - the write 401'd,
+   * the optimistic row stayed on screen, and nothing said otherwise. The
+   * control is still visible; pressing it asks them to sign in.
+   */
+  canEngage?: boolean;
+  /** Called instead of writing, when `canEngage` is false. */
+  onRequireSignIn?: () => void;
+  /** Route to a commenter's profile from their byline or avatar. */
+  onAuthorPress?: (authorId: string) => void;
 }) {
   const remote = isSupabaseConfigured;
   const palette = COMMENT_PALETTES[tone];
   const [tree, setTree] = useState<CommentNode[]>(remote ? [] : MOCK_COMMENTS);
   const [loading, setLoading] = useState(remote);
   const [failed, setFailed] = useState(false);
-  const [writeFailed, setWriteFailed] = useState(false);
+  const [writeFailed, setWriteFailed] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("top");
   const [composerText, setComposerText] = useState("");
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
@@ -250,17 +269,33 @@ export default function CommentThread({
   }, [onCountChange, total]);
 
   const handlePostRoot = () => {
+    if (!canEngage) {
+      onRequireSignIn?.();
+      return;
+    }
     const trimmed = composerText.trim();
     if (!trimmed) return;
-    setTree((current) => addRootComment(current, createComment("You", trimmed)));
+    const optimistic = createComment("You", trimmed);
+    setTree((current) => addRootComment(current, optimistic));
     setComposerText("");
     if (remote) {
       postComment(storyId, trimmed, undefined, chapterId)
         .then(() => {
-          setWriteFailed(false);
+          setWriteFailed(null);
           return reload();
         })
-        .catch(() => setWriteFailed(true));
+        .catch(() => {
+          // TAKE THE COMMENT BACK. Leaving it on screen is exactly what made a
+          // failed write look like a successful one: the writer saw their words
+          // in the thread, left, and came back to find them gone. The text goes
+          // back into the composer so they can send it again rather than
+          // retype it.
+          setTree((current) => removeComment(current, optimistic.id));
+          setComposerText(trimmed);
+          setWriteFailed(
+            "Your comment did not save. It is back in the box - try again.",
+          );
+        });
     }
   };
 
@@ -275,44 +310,89 @@ export default function CommentThread({
   };
 
   const handleSubmitReply = (parentId: string) => {
+    if (!canEngage) {
+      onRequireSignIn?.();
+      return;
+    }
     const trimmed = replyDraft.trim();
     if (!trimmed) return;
-    setTree((current) => addReply(current, parentId, createComment("You", trimmed)));
+    const optimistic = createComment("You", trimmed);
+    setTree((current) => addReply(current, parentId, optimistic));
     setReplyTargetId(null);
     setReplyDraft("");
     if (remote) {
       postComment(storyId, trimmed, parentId, chapterId)
         .then(() => {
-          setWriteFailed(false);
+          setWriteFailed(null);
           return reload();
         })
-        .catch(() => setWriteFailed(true));
+        .catch(() => {
+          setTree((current) => removeComment(current, optimistic.id));
+          setReplyTargetId(parentId);
+          setReplyDraft(trimmed);
+          setWriteFailed(
+            "Your reply did not save. It is back in the box - try again.",
+          );
+        });
     }
   };
 
-  const handleVote = (id: string, direction: "up" | "down") => {
+  /**
+   * File a report on one comment.
+   *
+   * It THROWS on failure rather than swallowing, because the sheet's
+   * confirmation screen is the reporter's only evidence the report exists and
+   * must not appear over a write that never happened. `reportContent` itself
+   * rejects a blank description, so the required-description rule holds even
+   * for a caller that forgets to check.
+   */
+  const handleReport = async (
+    commentId: string,
+    reason: ReportReason,
+    details: string,
+  ) => {
+    if (!canEngage) {
+      onRequireSignIn?.();
+      throw new Error("Sign in to report a comment.");
+    }
+    if (!remote) return;
+    await reportContent({ commentId }, reason, details);
+  };
+
+  /** One direction only. See the note on `CommentRowProps.onVote`. */
+  const handleVote = (id: string) => {
+    if (!canEngage) {
+      onRequireSignIn?.();
+      return;
+    }
     if (pendingVoteIds.current.has(id) || pendingVotes[id]) return;
     setTree((current) => {
-      const next = applyVote(current, id, direction);
+      const next = applyVote(current, id, "up");
       if (remote) {
-        // Send the vote the tree ARRIVED AT, not the direction pressed: the
-        // control is tri-state, so pressing "up" on an already-upvoted comment
-        // means "remove my vote" (0), and sending +1 there would leave the row
-        // set while the UI shows it cleared.
-        const node = findNode(next, id);
-        const value = node?.voteState === "up"
-          ? 1
-          : node?.voteState === "down"
-          ? -1
-          : 0;
+        // Send the vote the tree ARRIVED AT, not "I pressed up": the control is
+        // a toggle, so pressing it on an already-upvoted comment means "remove
+        // my vote" (0), and sending +1 there would leave the row set while the
+        // UI shows it cleared.
+        //
+        // The only two values this expression can produce are 1 and 0. There is
+        // no branch that yields -1, which is what makes a downvote impossible
+        // from this UI rather than merely absent from it.
+        const value = findNode(next, id)?.voteState === "up" ? 1 : 0;
         pendingVoteIds.current.add(id);
         setPendingVotes((all) => ({ ...all, [id]: true }));
         voteOnComment(id, value)
           .then(() => {
-            setWriteFailed(false);
+            setWriteFailed(null);
             return reload();
           })
-          .catch(() => setWriteFailed(true))
+          .catch(() => {
+            // Put the vote back. A score on screen must never claim a vote the
+            // server did not record; the toggle is its own inverse.
+            setTree((rolledBack) => applyVote(rolledBack, id, "up"));
+            setWriteFailed(
+              "That vote did not save. Check your connection and try again.",
+            );
+          })
           .finally(() => {
             pendingVoteIds.current.delete(id);
             setPendingVotes((all) => {
@@ -344,16 +424,21 @@ export default function CommentThread({
         multiline
         accessibilityLabel="Write a comment"
       />
+      {/*
+        Disabled ONLY for an empty box. An anonymous viewer keeps a live
+        button, because a dead control teaches nothing: pressing it is how they
+        find out that commenting needs an account.
+      */}
       <Pressable
         onPress={handlePostRoot}
-        disabled={!canPost}
+        disabled={canEngage && !canPost}
         style={[
           styles.postButton,
-          !canPost && { backgroundColor: palette.field },
+          canEngage && !canPost && { backgroundColor: palette.field },
         ]}
         accessibilityRole="button"
         accessibilityLabel="Post comment"
-        accessibilityState={{ disabled: !canPost }}
+        accessibilityState={{ disabled: canEngage && !canPost }}
       >
         <Text style={styles.postButtonLabel}>Post</Text>
       </Pressable>
@@ -393,8 +478,8 @@ export default function CommentThread({
       </View>
 
       {writeFailed ? (
-        <Text style={styles.writeError}>
-          That action did not save. Check your connection and try again.
+        <Text style={styles.writeError} accessibilityRole="alert">
+          {writeFailed}
         </Text>
       ) : null}
 
@@ -450,6 +535,8 @@ export default function CommentThread({
                 onSubmitReply={handleSubmitReply}
                 onVote={handleVote}
                 onToggleCollapse={handleToggleCollapse}
+                onAuthorPress={onAuthorPress}
+                onReport={handleReport}
               />
             </View>
           ))}

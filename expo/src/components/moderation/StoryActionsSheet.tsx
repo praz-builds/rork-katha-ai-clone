@@ -1,10 +1,21 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Ban, Download, Flag } from "lucide-react-native";
 
 import { colors, radius, shadows, spacing, type } from "@/theme";
 import { REPORT_REASONS } from "@/components/comments/types";
 import type { ReportReason } from "@/components/comments/types";
+import {
+  MAX_REPORT_DETAILS_LENGTH,
+  isReportDescriptionValid,
+} from "@/components/comments/CommentRow";
 
 type SheetView = "menu" | "reportReasons" | "reportDone" | "blockConfirm" | "blockDone";
 type MaybePromise<T> = T | Promise<T>;
@@ -31,10 +42,17 @@ export default function StoryActionsSheet({
   authorName: string;
   onBlockAuthor: () => MaybePromise<boolean | void>;
   /**
-   * Persist the report. Optional so the sheet still works in isolation and in
-   * tests; when absent the sheet shows its confirmation and files nothing.
+   * Persist the report. It receives the reason AND the reporter's description,
+   * which is required. Rejecting means the report did not save, and the sheet
+   * says so rather than thanking the reporter for nothing.
+   *
+   * Optional so the sheet still works in isolation and in tests; when absent
+   * the sheet shows its confirmation and files nothing.
    */
-  onSubmitReport?: (reason: ReportReason) => void;
+  onSubmitReport?: (
+    reason: ReportReason,
+    details: string,
+  ) => Promise<void> | void;
   /** "Download as PDF". The sheet closes first; the platform's dialog takes over. Absent hides the row. */
   onDownloadPdf?: () => void;
   /** False for the story's own author - you cannot block yourself, so the row is not offered. */
@@ -42,6 +60,9 @@ export default function StoryActionsSheet({
 }) {
   const [view, setView] = useState<SheetView>("menu");
   const [reason, setReason] = useState<ReportReason | null>(null);
+  const [details, setDetails] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [blockBusy, setBlockBusy] = useState(false);
   const [blockError, setBlockError] = useState<string | null>(null);
 
@@ -50,6 +71,9 @@ export default function StoryActionsSheet({
     if (visible) {
       setView("menu");
       setReason(null);
+      setDetails("");
+      setReportBusy(false);
+      setReportError(null);
       setBlockBusy(false);
       setBlockError(null);
     }
@@ -76,15 +100,32 @@ export default function StoryActionsSheet({
     }
   };
 
-  const handleSubmitReport = () => {
-    if (!reason) return;
-    // The confirmation is shown regardless of whether the write succeeds.
-    // A report is a one-way signal to moderators, not a transaction the
-    // reporter is waiting on, and telling someone their report failed invites
-    // them to file it repeatedly - which the duplicate constraint rejects
-    // anyway.
-    onSubmitReport?.(reason);
-    setView("reportDone");
+  const describedEnough = isReportDescriptionValid(details);
+  const canSubmitReport = Boolean(reason) && describedEnough && !reportBusy;
+
+  /**
+   * A report needs a reason AND a description, and the confirmation is shown
+   * only if the write actually happened.
+   *
+   * It used to show the "thanks" screen regardless, on the argument that a
+   * report is a one-way signal. That argument is fine for a report that
+   * reached the server and wrong for one that did not: the reporter walks away
+   * believing something is being looked at, and nothing is.
+   */
+  const handleSubmitReport = async () => {
+    if (!reason || !describedEnough || reportBusy) return;
+    setReportBusy(true);
+    setReportError(null);
+    try {
+      await onSubmitReport?.(reason, details.trim());
+      setView("reportDone");
+    } catch {
+      setReportError(
+        "That report did not save. Check your connection and try again.",
+      );
+    } finally {
+      setReportBusy(false);
+    }
   };
 
   return (
@@ -171,14 +212,38 @@ export default function StoryActionsSheet({
                   <Text style={styles.reasonLabel}>{option.label}</Text>
                 </Pressable>
               ))}
+              <Text style={styles.fieldLabel}>What happened?</Text>
+              <TextInput
+                value={details}
+                onChangeText={setDetails}
+                placeholder="Describe the problem in a sentence or two."
+                placeholderTextColor={colors.tertiary}
+                style={styles.detailsInput}
+                multiline
+                maxLength={MAX_REPORT_DETAILS_LENGTH}
+                accessibilityLabel="Describe the problem"
+                testID="story-report-details-input"
+              />
+              <Text style={styles.fieldHint}>
+                {describedEnough
+                  ? "Thanks - this is what a moderator reads first."
+                  : "A report needs a description before it can be sent."}
+              </Text>
+              {reportError ? <Text style={styles.error}>{reportError}</Text> : null}
               <Pressable
                 onPress={handleSubmitReport}
-                style={[styles.primaryButton, !reason && styles.primaryButtonDisabled]}
+                disabled={!canSubmitReport}
+                style={[
+                  styles.primaryButton,
+                  !canSubmitReport && styles.primaryButtonDisabled,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel="Submit report"
-                accessibilityState={{ disabled: !reason }}
+                accessibilityState={{ disabled: !canSubmitReport }}
               >
-                <Text style={styles.primaryButtonLabel}>Submit report</Text>
+                <Text style={styles.primaryButtonLabel}>
+                  {reportBusy ? "Sending..." : "Submit report"}
+                </Text>
               </Pressable>
               <Pressable
                 onPress={handleClose}
@@ -329,6 +394,27 @@ const styles = StyleSheet.create({
     ...type.body,
     fontSize: 15,
     color: colors.ink,
+  },
+  fieldLabel: {
+    ...type.subhead,
+    fontWeight: "700",
+    color: colors.ink,
+    marginTop: spacing.related,
+  },
+  detailsInput: {
+    ...type.body,
+    fontSize: 15,
+    color: colors.ink,
+    minHeight: 88,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.related,
+    textAlignVertical: "top",
+  },
+  fieldHint: {
+    ...type.caption,
+    color: colors.muted,
   },
   primaryButton: {
     marginTop: spacing.related,

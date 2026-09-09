@@ -191,6 +191,111 @@
   feel on device is unjudged — a laptop browser is not a verification
   environment for a 620ms loop.
 - Not pushed. Not deployed.
+## 2026-09-10: The story page comes back into the light, and a comment that was lost stops being lost
+
+The design handoff made the story page the one dark surface in the app so the
+cover would have nothing to dissolve against. The owner overruled that on the
+screenshot. What follows is his feedback, built.
+
+### Changed
+
+- **The page is light again, and the cover still has no edge.** The dark
+  ground was the wrong half of the idea. What the dissolve needs is for the
+  fade and the page to be the *same* colour, and that is as true of
+  `colors.bg` as it was of `#1C1A17` — so the cover still runs full-bleed for
+  62% of the window with no card, no border and no radius, and its bottom now
+  ends on exactly the warm ground every other screen uses. One dark page in a
+  light app read as a different product the moment you arrived at it.
+- **The floating controls are proven, not eyeballed.** Close, comments, save,
+  share and more sit on white discs at 92% over whatever the cover happens to
+  be. `story-page-light.test.tsx` composites the disc over a blown-out white
+  cover, a black night cover and a mid-brown one and asserts the glyph clears
+  WCAG AA on all three. It also found something: the saved star at
+  `colors.accent` measures **2.85:1** on that disc — under the 3:1 floor for a
+  graphical object, which meant the *saved* state was the state hardest to
+  see. It is `colors.accentPressed` now, which clears it over every cover.
+- **Three stat icons gone.** Reads / likes / saves sat under the CTAs as three
+  big numbers. Two of them duplicated the star at the top of the page, and a
+  read count on a product with no readers yet can only ever argue against
+  opening the story.
+- **"About this story" gone, the prompt block gone, the inline comment thread
+  gone.** The first two restated the chips and the summary as a two-column
+  table; the third put a whole thread at the bottom of a page whose only job is
+  to get someone into the story. The AI-fiction disclosure on an Educational
+  story survived the strip-down, because it is the one line here a reader needs
+  *before* they decide to read.
+- **The chips are genres and nothing else.** A romance was shelving itself as
+  `Romance · premonition · duty · compassion · fear · sweet`. Four of those are
+  notes the generator left about the plot and the fifth is a content setting.
+  A tag now has to name a real genre to appear at all.
+- **Comments moved to the top, behind an icon.** A speech bubble sits beside
+  the star in the floating cluster with the count on it, and opens the same
+  sheet, restyled light. The count comes from a new `fetchCommentCount` that
+  reads the exact total the GET already returns, so the page can label the door
+  without mounting the thread behind it.
+
+### The comment that was not saved
+
+The owner wrote a comment and it did not save. It was two failures stacked.
+
+1. **The session was anonymous, and the `comments` function requires auth.** So
+   the write was always going to 401.
+2. **The client kept the comment on screen anyway.** The optimistic row was
+   added and never taken back; the failure notice was a small line *above* the
+   list, and the comment underneath it was the thing he was looking at. He
+   closed the app believing it had gone somewhere.
+
+Both are fixed, and the second matters more than the first: it is the one that
+turned a refused write into a silent one.
+
+- **Engagement is gated for anonymous sessions.** Saving, following, voting,
+  replying and commenting now show a sign-in wall that names the thing you were
+  trying to do. Nothing is optimistically updated first. **Reading stays open to
+  everyone** — the wall is on writes, never on the story.
+- **A failed write takes the comment back and returns the text to the box.** Not
+  a toast over a comment that is still sitting there looking posted: the row is
+  removed, the words go back into the composer, and the message says so. Same
+  for a reply, and a failed vote is rolled back rather than left claiming a vote
+  the server never recorded.
+
+### Reporting
+
+- **Report is no longer a button on the row.** It was one tap away from a
+  stranger's opinion, and that is what it was used for. It lives behind a
+  three-dot menu per comment now.
+- **A report needs a description.** Reason-only reports are a bucket name a
+  moderator cannot act on. The reporter has to say what happened (10 characters
+  minimum — the floor under "x", not a quality bar), the submit button stays
+  disabled until they do, and `reportContent` itself rejects a blank
+  description so the rule cannot be routed around by a future caller. The
+  backend enforces it too.
+- **The confirmation is evidence now.** The sheet used to show "thanks, we'll
+  look at it" whether or not the write succeeded. It shows the failure instead,
+  with the description still in the field.
+- **Comment reports actually reach the server.** The old sheet set a `submitted`
+  flag and filed nothing at all. Nobody would have noticed until someone asked
+  where the reports were.
+
+### Removed
+
+- **The downvote.** Not disabled, not hidden — absent. The vote API still takes
+  `-1` for rows written before today, but there is no branch in this UI that can
+  produce one, and `onVote` no longer takes a direction argument to get wrong.
+
+### Also
+
+- **A commenter's name and avatar are tappable** and route to that person, via
+  the `author_id` the `comments` function was already returning and the client
+  was dropping. The profile screen itself is later work; this fires the existing
+  author navigation.
+- `chapter_number` per comment still works — the `Chapter n` tag keeps its own
+  test in `comment-thread-tone.test.tsx`.
+
+### Verification
+
+`pnpm typecheck` clean. `pnpm lint` 0 errors. `pnpm exec expo export --platform
+web` compiles. Backend: `deno test` 714 passed / 0 failed, `deno fmt --check`
+and `deno check` clean.
 
 ## 2026-09-09: The story page goes dark, and a writer's own work leads Home
 

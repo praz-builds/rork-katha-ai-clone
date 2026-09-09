@@ -94,15 +94,38 @@ export function validateReportReason(value: unknown): string | null {
   return typeof value === "string" && REPORT_REASONS.has(value) ? value : null;
 }
 
-/** `details` is optional; blank is treated the same as omitted. */
+/**
+ * The shortest description that is actually a description.
+ *
+ * Ten characters is not a quality bar; it is the floor under "x", "bad" and an
+ * accidental keypress. The point is to make the reporter type a sentence
+ * rather than to grade it.
+ */
+export const MIN_REPORT_DETAILS_LENGTH = 10;
+
+/**
+ * `details` is REQUIRED, and blank is the same as omitted - which is to say,
+ * rejected.
+ *
+ * It used to be optional, and what arrived was a reason enum and nothing else:
+ * a bucket name a moderator cannot act on, filed in one tap by whoever was
+ * most annoyed. Requiring a sentence costs a real reporter a few seconds and
+ * costs a rage-click the entire motive.
+ *
+ * The client enforces the same rule in its sheet, but the rule lives here too
+ * because a client-side check is a courtesy and this is the boundary.
+ */
 export function validateReportDetails(
   value: unknown,
-): { ok: true; value: string | null } | { ok: false } {
-  if (value === undefined || value === null) return { ok: true, value: null };
-  if (typeof value !== "string") return { ok: false };
+): { ok: true; value: string } | { ok: false; reason: "missing" | "length" } {
+  if (typeof value !== "string") return { ok: false, reason: "missing" };
   const trimmed = value.trim();
-  if (!trimmed) return { ok: true, value: null };
-  if (trimmed.length > MAX_REPORT_DETAILS_LENGTH) return { ok: false };
+  if (trimmed.length < MIN_REPORT_DETAILS_LENGTH) {
+    return { ok: false, reason: "missing" };
+  }
+  if (trimmed.length > MAX_REPORT_DETAILS_LENGTH) {
+    return { ok: false, reason: "length" };
+  }
   return { ok: true, value: trimmed };
 }
 
@@ -485,7 +508,9 @@ async function handleReport(
   if (!detailsResult.ok) {
     return {
       status: 400,
-      error: `details must be ${MAX_REPORT_DETAILS_LENGTH} characters or fewer`,
+      error: detailsResult.reason === "length"
+        ? `details must be ${MAX_REPORT_DETAILS_LENGTH} characters or fewer`
+        : `details is required and must be at least ${MIN_REPORT_DETAILS_LENGTH} characters describing the problem`,
     };
   }
 

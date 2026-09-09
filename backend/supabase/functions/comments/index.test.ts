@@ -57,20 +57,44 @@ Deno.test("validateReportReason only accepts the migration's enum", () => {
   assertEquals(validateReportReason(""), null);
 });
 
-Deno.test("validateReportDetails: optional, blank treated as absent, capped at 2000", () => {
-  assertEquals(validateReportDetails(undefined), { ok: true, value: null });
-  assertEquals(validateReportDetails(null), { ok: true, value: null });
-  assertEquals(validateReportDetails("   "), { ok: true, value: null });
-  assertEquals(validateReportDetails("  fraud  "), {
+/**
+ * A REPORT MUST SAY WHAT HAPPENED.
+ *
+ * `details` was optional, and the reports that arrived were a reason enum and
+ * nothing else - a bucket name a moderator cannot act on, filed in one tap by
+ * whoever was most annoyed. These pin the rule at the boundary, not only in
+ * the sheet that happens to enforce it in its UI today.
+ */
+Deno.test("validateReportDetails: required, trimmed, floored at 10 and capped at 2000", () => {
+  assertEquals(validateReportDetails(undefined), {
+    ok: false,
+    reason: "missing",
+  });
+  assertEquals(validateReportDetails(null), { ok: false, reason: "missing" });
+  assertEquals(validateReportDetails("   "), { ok: false, reason: "missing" });
+  assertEquals(validateReportDetails(123), { ok: false, reason: "missing" });
+  // A word is not a description. Ten characters is the floor under "x".
+  assertEquals(validateReportDetails("fraud"), {
+    ok: false,
+    reason: "missing",
+  });
+  // Whitespace does not pad it over the floor either.
+  assertEquals(validateReportDetails("  spam    "), {
+    ok: false,
+    reason: "missing",
+  });
+  assertEquals(validateReportDetails("  posted my address  "), {
     ok: true,
-    value: "fraud",
+    value: "posted my address",
   });
   assertEquals(validateReportDetails("a".repeat(2000)), {
     ok: true,
     value: "a".repeat(2000),
   });
-  assertEquals(validateReportDetails("a".repeat(2001)), { ok: false });
-  assertEquals(validateReportDetails(123), { ok: false });
+  assertEquals(validateReportDetails("a".repeat(2001)), {
+    ok: false,
+    reason: "length",
+  });
 });
 
 Deno.test("validateReportTarget requires exactly one of story_id / comment_id", () => {

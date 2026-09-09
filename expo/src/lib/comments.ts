@@ -24,6 +24,12 @@ import type {
 export type ServerComment = {
   id: string;
   parentId: string | null;
+  /**
+   * The author's user id, when the wire carried one. It is what makes a byline
+   * tappable: the row can route to that person's profile instead of being a
+   * dead name. Optional because a soft-deleted or legacy row may not have it.
+   */
+  authorId?: string;
   authorName: string;
   body: string;
   createdAt: string;
@@ -86,6 +92,7 @@ export function buildThread(
     const createdAtMs = Date.parse(row.createdAt);
     byId.set(row.id, {
       id: row.id,
+      ...(row.authorId ? { authorId: row.authorId } : {}),
       authorName: row.authorName,
       body: row.deleted ? "[deleted]" : row.body,
       createdAtMs: Number.isNaN(createdAtMs) ? 0 : createdAtMs,
@@ -162,6 +169,7 @@ export function sortThread(
 type WireComment = {
   id: string;
   parent_id: string | null;
+  author_id?: string | null;
   author_display_name: string | null;
   content: string;
   created_at: string;
@@ -193,6 +201,9 @@ export function fromWire(row: WireComment): ServerComment {
   return {
     id: row.id,
     parentId: row.parent_id,
+    ...(typeof row.author_id === "string" && row.author_id
+      ? { authorId: row.author_id }
+      : {}),
     // A guest has no profile display name. "Reader" is the neutral fallback;
     // rendering an empty byline or a raw uuid would be worse.
     authorName: row.author_display_name?.trim() || "Reader",
@@ -217,6 +228,24 @@ async function invokeComments<T>(
   );
   if (error) throw error;
   return data as T;
+}
+
+/**
+ * How many comments a story has, without pulling the thread.
+ *
+ * The story page shows the count on the comments icon before anyone opens the
+ * sheet, and mounting the whole thread to learn one number would fetch a page
+ * of rows nobody is going to read. The GET already returns an exact `total`
+ * in its pagination block, so asking for a single row is enough to read it.
+ */
+export async function fetchCommentCount(storyId: string): Promise<number> {
+  const params = new URLSearchParams({ story_id: storyId, limit: "1" });
+  const data = await invokeComments<{ pagination?: { total?: number } }>(
+    `comments?${params.toString()}`,
+    { method: "GET" },
+  );
+  const total = data?.pagination?.total;
+  return typeof total === "number" && total >= 0 ? total : 0;
 }
 
 export async function fetchThread(storyId: string): Promise<ServerComment[]> {
@@ -266,11 +295,31 @@ export function voteOnComment(
   });
 }
 
+/**
+ * File a report. THE DESCRIPTION IS REQUIRED.
+ *
+ * A reason on its own is a rage-click: four taps and the reporter is done,
+ * and a moderator gets a bucket name with nothing in it. Asking what actually
+ * happened costs the reporter a sentence, gives the moderator the only part
+ * of the report that can be acted on, and is enough friction that the button
+ * stops being a way to express annoyance.
+ *
+ * This function refuses a blank description rather than sending one, so the
+ * rule holds for every caller and not only for the sheet that happens to
+ * enforce it in its UI today. `backend/supabase/functions/comments/index.ts`
+ * enforces the same rule server-side.
+ */
 export function reportContent(
   target: { commentId?: string; storyId?: string },
   reason: ReportReason,
-  details?: string,
+  details: string,
 ): Promise<unknown> {
+  const description = typeof details === "string" ? details.trim() : "";
+  if (!description) {
+    return Promise.reject(
+      new Error("A report needs a description of the problem."),
+    );
+  }
   return invokeComments("comments", {
     method: "POST",
     body: {
@@ -278,7 +327,7 @@ export function reportContent(
       comment_id: target.commentId ?? null,
       story_id: target.storyId ?? null,
       reason,
-      details: details ?? null,
+      details: description,
     },
   });
 }

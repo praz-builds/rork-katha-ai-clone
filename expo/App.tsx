@@ -535,6 +535,10 @@ export default function App() {
                 autoplay: options?.mode === "listen",
               })}
             onAuthor={(authorId) => setScreen({ name: "author", authorId })}
+            // Reading is open to a guest; engaging is not. Every gated control
+            // on that page stays visible and routes here instead of writing.
+            canEngage={!isAnonymous}
+            onSignIn={() => setScreen({ name: "onboarding" })}
           />
         )
         : screen.name === "reader"

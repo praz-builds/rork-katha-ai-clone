@@ -125,7 +125,7 @@ it("offers a single-chapter story a start action, not a chapter list", async () 
 const metaText = (view: Awaited<ReturnType<typeof renderDetail>>): string =>
   JSON.stringify(view.toJSON()).replace(/\\"/g, '"');
 
-it("renders the meta line from author, date, likes, comments and chapter progress", async () => {
+it("renders the meta line from author, date and chapter progress", async () => {
   const story = withStory({
     storyMode: "series",
     plannedChapterCount: 7,
@@ -137,7 +137,6 @@ it("renders the meta line from author, date, likes, comments and chapter progres
 
   const rendered = metaText(view);
   expect(rendered).toContain(dated(story));
-  expect(rendered).toContain("232 likes");
   expect(rendered).toContain("2/7 chapters");
   expect(view.getByLabelText("Open comments")).toBeTruthy();
 });
@@ -176,7 +175,7 @@ it("links the author's handle on the meta line to their profile", async () => {
   expect(onAuthor).toHaveBeenCalledWith(standalone!.authorId);
 });
 
-it("opens the comments sheet from the meta line", async () => {
+it("opens the comments sheet from the icon in the floating cluster", async () => {
   const view = await renderDetail(standalone!);
 
   await fireEvent.press(view.getByLabelText("Open comments"));
@@ -330,7 +329,8 @@ it("deduplicates a double tap on save and settles on one saved state", async () 
   await fireEvent.press(save);
 
   expect(mockSetStoryBookmark).toHaveBeenCalledTimes(1);
-  expect(view.getByText(String(standalone!.bookmarks + 1))).toBeTruthy();
+  // The count is no longer printed anywhere - the star IS the state - so the
+  // label is what says which way the control settled.
   expect(view.getByLabelText("Remove saved story")).toBeTruthy();
   view.unmount();
 });
@@ -345,18 +345,31 @@ it("rolls back a failed save request", async () => {
 
   await waitFor(() => {
     expect(view.getByLabelText("Save story")).toBeTruthy();
-    expect(view.getByText(String(standalone!.bookmarks))).toBeTruthy();
   });
 });
 
-it("renders the real content rating and omits absent flags", async () => {
+/**
+ * The chip row is a shelf, and only genres go on a shelf.
+ *
+ * It used to carry the story's themes and its content rating too, so a
+ * romance labelled itself `Romance · premonition · duty · compassion · fear ·
+ * sweet`. Four of those are notes the generator left about the plot and the
+ * fifth is a setting; together they buried the one word that told a reader
+ * what they were looking at.
+ */
+it("shows only genres as chips, never themes or the content rating", async () => {
   const story = withStory({
+    primaryGenre: "romance",
+    tags: ["premonition", "duty", "compassion", "fear"],
     contentRating: "sweet",
     audienceMode: "adult",
   });
   const view = await renderDetail(story);
 
-  expect(view.getAllByText("sweet").length).toBeGreaterThan(0);
+  expect(view.getByText("Romance")).toBeTruthy();
+  for (const noise of ["premonition", "duty", "compassion", "fear", "sweet"]) {
+    expect(view.queryByText(noise)).toBeNull();
+  }
   expect(view.queryByText("Kids")).toBeNull();
 });
 
