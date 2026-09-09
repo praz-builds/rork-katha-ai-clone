@@ -22,6 +22,7 @@ import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
+import ListenScreen from "@/screens/ListenScreen";
 import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
 import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
@@ -533,6 +534,31 @@ export default function App() {
                 autoplay: options?.mode === "listen",
               })}
             onAuthor={(authorId) => setScreen({ name: "author", authorId })}
+            // Listen is its own screen now, not a reader with autoplay set: a
+            // story with no narration yet has a real wait, and the player owns
+            // it. Close comes back here.
+            onListen={() =>
+              setScreen({
+                name: "listen",
+                storyId: screen.storyId,
+                chapterIndex: 0,
+                returnTo: "story",
+              })}
+          />
+        )
+        : screen.name === "listen"
+        ? (
+          <ListenScreen
+            story={allStories.find((story) => story.id === screen.storyId) ??
+              allStories[0]}
+            initialChapterIndex={screen.chapterIndex ?? 0}
+            onClose={() => {
+              const { storyId, chapterIndex, returnTo } = screen;
+              if (returnTo === "story") setScreen({ name: "story", storyId });
+              else if (returnTo === "reader") {
+                setScreen({ name: "reader", storyId, chapterIndex });
+              } else goTabs(tab);
+            }}
           />
         )
         : screen.name === "reader"
@@ -560,6 +586,16 @@ export default function App() {
                 initialChapterIndex={screen.chapterIndex ?? 0}
                 autoplay={screen.autoplay ?? false}
                 liveSessionId={readerSession?.id ?? null}
+                // The chrome's Listen control opens the narration player on
+                // the chapter being read, and Close returns to this reader on
+                // that same chapter.
+                onListen={(chapterIndex) =>
+                  setScreen({
+                    name: "listen",
+                    storyId: screen.storyId,
+                    chapterIndex,
+                    returnTo: "reader",
+                  })}
                 // A rewrite becomes a live session like any other chapter, so
                 // it reveals page by page instead of waiting behind a cover.
                 // `findStoryGeneration` above then picks it up on the next

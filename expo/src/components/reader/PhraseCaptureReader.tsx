@@ -52,6 +52,12 @@ export type PhraseCaptureReaderProps = {
    * being written behind it.
    */
   liveSessionId?: string | null;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason again: without it the chrome's
+   * Listen control would quietly fall back to the reader's inline sheet the
+   * moment phrase capture is enabled, instead of opening the narration player.
+   */
+  onListen?: (chapterIndex: number) => void;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -87,6 +93,7 @@ export default function PhraseCaptureReader({
   renderChapterEnd,
   liveSessionId = null,
   onReimagineStarted,
+  onListen,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
   const savedPhrasesRef = useRef<SavedPhrase[]>([]);
@@ -306,6 +313,7 @@ export default function PhraseCaptureReader({
         renderChapterEnd={renderChapterEnd}
         liveSessionId={liveSessionId}
         onReimagineStarted={onReimagineStarted}
+        onListen={onListen}
       />
       {toast ? (
         <Animated.View

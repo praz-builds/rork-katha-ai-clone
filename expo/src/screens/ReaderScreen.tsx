@@ -131,6 +131,15 @@ export type ReaderScreenProps = {
    * page 1.
    */
   onReimagineStarted?: (run: ReimagineRun) => void;
+  /**
+   * Open the full-screen narration player on the chapter being read.
+   *
+   * Supplied and the chrome's Listen control hands off to `ListenScreen`, which
+   * owns the wait while narration is generated. Omitted and the reader keeps
+   * its own inline Listen sheet, which can only ever play narration that
+   * already exists.
+   */
+  onListen?: (chapterIndex: number) => void;
 };
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
@@ -332,6 +341,7 @@ export default function ReaderScreen({
   liveSessionId = null,
   onReimagine,
   onReimagineStarted,
+  onListen,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
@@ -1168,7 +1178,9 @@ export default function ReaderScreen({
           : undefined}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
-        onListen={() => setListenOpen(true)}
+        onListen={onListen
+          ? () => onListen(chapterIndex)
+          : () => setListenOpen(true)}
         onMusic={() => setMusicPickerOpen(true)}
       />
       {/*
