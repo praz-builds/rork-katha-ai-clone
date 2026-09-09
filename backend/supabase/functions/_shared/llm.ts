@@ -572,13 +572,32 @@ export function generateStoryText(
  * `shape-story` is the first generation a new user ever triggers, so it leads
  * with `OPENROUTER_MODEL` like every other path.
  *
- * The window is split rather than shared, and the split is why this is not just
- * a two-line change: the caller's default deadline is 8s because the user is
- * watching, so a stalled leader would otherwise abort the fallback before
- * `fetch` was called and the screen would render with no shape at all. The
- * leader gets `FAST_OPENROUTER_SHARE`, the OpenAI model gets the rest.
+ * The window used to be split rather than shared: the OpenRouter phase got
+ * `FAST_OPENROUTER_SHARE` of the caller's deadline and an OpenAI model behind
+ * it got the rest, so a stalled leader could not abort the fallback before
+ * `fetch` was called and leave the screen with no shape at all.
+ *
+ * **That fallback no longer exists.** OpenAI was removed from every chain on
+ * 2026-09-08 (revoked credential), and the loop below is now the whole of this
+ * function - there is no phase after it. The 0.4 that used to be held back was
+ * therefore not held back for anybody: it was 40% of every fast caller's
+ * budget that nothing in this process was permitted to spend.
+ *
+ * That is not an efficiency note, it is the entity-gate defect. Entity
+ * classification runs through this function, it takes ~25s against the live
+ * models (measured 2026-09-09: 23.4s on `meta/muse-spark-1.3-contributor`,
+ * 25.5s on `meta/muse-spark-1.3`), and with the old share the generation path's
+ * 9s grounding budget reached the leader as 0.6 * 9000 - 6000 = 0 ms. Every
+ * classification failed, silently, on every request, for weeks - so the entity
+ * visibility gate never fired once in production.
+ *
+ * The share is 1.0 while OpenRouter is the only phase. Restore a fraction here
+ * the same day a second provider is added behind the loop, and not before: an
+ * unclaimed slice is not saved time, it is time the remaining phase is
+ * forbidden to use. `FAST_OPENROUTER_RESERVE_MS` below still protects the
+ * runner-up *model*, which is the guarantee this split was really making.
  */
-const FAST_OPENROUTER_SHARE = 0.6;
+const FAST_OPENROUTER_SHARE = 1;
 
 /**
  * The tail held back for the runner-up, instead of halving the window.

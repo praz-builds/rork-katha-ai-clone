@@ -89,7 +89,9 @@ export async function handleRequest(req: Request): Promise<Response> {
     // Verify story exists and user is the author
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
-      .select("id, author_id, status, is_public, entity_gate_reason")
+      .select(
+        "id, author_id, status, is_public, entity_gate_reason, entity_classification_status",
+      )
       .eq("id", storyId)
       .single();
 
@@ -247,6 +249,29 @@ export async function handleRequest(req: Request): Promise<Response> {
     // directly reachable through the `authenticated` role's own UPDATE grant
     // (migration 00015), so this refusal is a courtesy that explains the
     // decision, not the only thing enforcing it.
+    // A story whose classification never answered cannot be published either,
+    // and it is checked before the gate reason for the same reason
+    // `_shared/publish.ts` checks it first: a null gate reason on a story
+    // nobody classified is an absence, not a clearance.
+    //
+    // The trigger is the explicit value `'unavailable'` (migration 00058), not
+    // a missing one. Every story generated before that column existed carries
+    // null, and those are not stories whose check failed - they are stories
+    // from before there was a column to record it in. Treating null as
+    // "unchecked" would retroactively lock the entire existing corpus out of
+    // publishing to close a hole that only new stories can be in.
+    if (
+      story.entity_classification_status === "unavailable" && !alreadyPublic
+    ) {
+      return respond({
+        error:
+          "Katha could not check this story in time, so it stays private for now. It's saved in your library, and you can publish it later.",
+        error_code: STORY_GATED_PRIVATE_ERROR_CODE,
+        gating_reason: "classification_unavailable",
+        story_id: storyId,
+      }, 403);
+    }
+
     const gatingReason = parseGatingReason(story.entity_gate_reason);
     if (gatingReason && !alreadyPublic) {
       return respond({

@@ -70,15 +70,34 @@ export class StoryShapeRequestError extends Error {
 export type StoryGatingReason = "living_public_figure" | "private_individual";
 
 /**
- * The server refused to make a story public because its idea names a real
- * living person - a public figure or a private individual - and kept the
- * story private instead. This is not a failed publish in the ordinary sense:
- * every edit was still saved, the story still exists and reads exactly as
- * before, and nothing needs to be retried. The caller's job is to explain
- * that, not to offer a retry button.
+ * Every reason a story the writer asked to publish came back private.
+ *
+ * The two gate reasons are decisions: the server read the idea, found a real
+ * living person in it, and applied the rule. `classification_unavailable` is
+ * the absence of a decision - the check itself did not finish - and it is a
+ * separate value because it means something different to the writer. The
+ * gated story will never be public; the unchecked one can be published later,
+ * unchanged, once the check runs.
+ *
+ * It exists at all because of the defect found on 2026-09-09: the check had
+ * never completed in production, and "no answer" arrived at the publish
+ * decision looking exactly like "nobody real in this idea". The backend now
+ * fails closed on that one decision and says which it was.
+ */
+export type StoryPrivateReason =
+  | StoryGatingReason
+  | "classification_unavailable";
+
+/**
+ * The server refused to make a story public - because its idea names a real
+ * living person, or because it could not finish checking - and kept the story
+ * private instead. This is not a failed publish in the ordinary sense: every
+ * edit was still saved, the story still exists and reads exactly as before,
+ * and nothing needs to be retried. The caller's job is to explain that, not to
+ * offer a retry button.
  */
 export class StoryGatedPrivateError extends Error {
-  constructor(readonly gatingReason: StoryGatingReason) {
+  constructor(readonly gatingReason: StoryPrivateReason) {
     super("This story stays private.");
     this.name = "StoryGatedPrivateError";
   }
@@ -891,7 +910,7 @@ function objectFailure(
  */
 async function storyGatedPrivateReason(
   error: unknown,
-): Promise<StoryGatingReason | null> {
+): Promise<StoryPrivateReason | null> {
   const context = error && typeof error === "object"
     ? (error as { context?: { json?: () => Promise<unknown> } }).context
     : undefined;
@@ -901,9 +920,17 @@ async function storyGatedPrivateReason(
     if (!body || typeof body !== "object") return null;
     const payload = body as Record<string, unknown>;
     if (payload.error_code !== "story_gated_private") return null;
-    return payload.gating_reason === "private_individual"
-      ? "private_individual"
-      : "living_public_figure";
+    // Matched explicitly rather than defaulted, now that there are three. The
+    // old two-way ternary would have rendered "this names a real living
+    // person" over a story that had simply not been checked - a claim about
+    // the writer's idea that the server never made.
+    if (payload.gating_reason === "private_individual") {
+      return "private_individual";
+    }
+    if (payload.gating_reason === "classification_unavailable") {
+      return "classification_unavailable";
+    }
+    return "living_public_figure";
   } catch {
     return null;
   }

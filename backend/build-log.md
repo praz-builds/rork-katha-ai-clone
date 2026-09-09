@@ -7,6 +7,158 @@
 
 ---
 
+## 2026-09-09 UTC — The entity visibility gate has never once fired, and the fix is a budget, a fail-closed publish, and a log line
+
+**Session:** `fable/entity-gate-fix`, backend plus the one client modal the new
+reason needs. Nothing deployed; nothing run against `iafeuxgoiknncgyjmugd`.
+Diagnosed by the owner on production the same day.
+
+### Read this first: a safety control that silently did nothing for weeks
+
+**Entity classification never succeeded in production, on any request, from the
+gate's first deploy.** Not intermittently — never. And every failure was
+silent, so the feature looked exactly like a gate that kept finding nothing to
+gate.
+
+The measurements the owner took against the live models, with a
+classification-shaped prompt for *"Taylor Swift secretly moves into a flat
+above a struggling Mumbai record shop…"*:
+
+| model | observed | answer |
+|---|---|---|
+| `meta/muse-spark-1.3-contributor` | **23.4s** | `Taylor Swift / living_public_figure / needs_grounding: true`, `Mumbai / real_place` |
+| `meta/muse-spark-1.3` | **25.5s** | the same |
+
+Both models get it exactly right. The code gave the call **~4.8 seconds**, and
+on the generation path it gave it **zero**:
+`generateFastStructuredText` defaults to `deadlineMs = 8_000`;
+`fastOpenRouterDeadlines` took `FAST_OPENROUTER_SHARE` (0.6) of that; the
+generation path passed `GENERATION_GROUNDING_DEADLINE_MS` (9s), of which the
+classifier's own `CLASSIFY_SHARE` (0.35) left 3.15s, 0.6 of which is 1.89s,
+minus a 6s reserve for the runner-up = **0 ms for the only model in front**.
+
+**The consequence, confirmed on production.** `shape-story` returned
+`grounding_entities: []` and `gating_reason: null` for every idea tried,
+including "Shivaji Maharaj plans the night march", which is precisely the case
+grounding exists to serve. Stories persisted `grounding: []`,
+`grounding_entities: []`, `entity_gate_reason: null`. A Taylor Swift story
+generated through the deployed backend with `visibility: "public"` on a real,
+non-anonymous account **was published publicly**. Migration 00050, its CHECK
+constraint, `publish-story`'s refusal — all of it inert.
+
+This got sharper the same week, because publishing became a toggle applied
+automatically when the first chapter lands (`_shared/publish.ts`) rather than a
+separate deliberate step.
+
+### The four changes, and why none of them is "raise the deadline"
+
+Raising the grounding deadline would have put ~25s in front of the first token,
+against a product requirement that prose appears as fast as possible. So:
+
+**1. Classification is split from cards, and runs on the generation's own
+clock.** `classifyIdea` (new, in `grounding-pipeline.ts`) gets
+`CLASSIFICATION_DEADLINE_MS = 40_000` — the 25.5s measurement plus room for a
+slow day, with the measurement in the comment. It is started before
+`begin_story_generation` and **awaited only when the chapter is persisted**,
+55-100s later, so the answer is already waiting and the budget costs the writer
+nothing. Grounding cards keep the 9s best-effort budget, because they must be
+in the prompt before the first token, and take whatever part of the *same*
+classification lands inside that window (`groundingCardsWithin`) — one
+classification, two consumers, rather than paying for a second short call that
+was only ever going to time out.
+
+Classification also now runs on **every** generation, not just the unshaped
+path. The old `needsGroundingFallback` short-circuit meant a caller who sent
+one shape-valid grounding card skipped server classification entirely and
+handed the gate an empty answer — the gate's own comment claimed it read "only
+what THIS server derived", and with no server call there was nothing derived.
+
+**2. `FAST_OPENROUTER_SHARE` is 1.0.** The 0.6 held 40% of every fast call's
+budget back for an OpenAI phase that was removed from `llm.ts` on 2026-09-08.
+Nothing was behind the OpenRouter loop to spend it, so it was not saved time,
+it was forbidden time — and at a 9s budget it was the difference between a
+working check and a 0 ms one. `FAST_OPENROUTER_RESERVE_MS` (6s) still protects
+the runner-up *model*, which is the guarantee the split was really making.
+Every other fast caller gets its budget back too: onboarding shape 21s → 39s,
+create-studio shape 12s → 24s.
+
+**3. The publish decision fails closed. Only that decision.**
+`_shared/publish.ts` gains `classification_unavailable`, checked in the order
+guest → classification unavailable → entity gate → database constraint, and
+`classificationAvailable` is a **required** parameter rather than an optional
+one defaulting to `true` — an optional field would let the next caller that
+forgets it publish unchecked, which is this bug's own shape.
+
+Grounding still fails open everywhere else: a story is still written from model
+knowledge when the classifier is down. But "we could not check whether this
+names a real person" must never resolve to "publish it".
+
+Migration **00058** carries the same fact to `publish-story`, which is how the
+deployed client actually publishes (it calls `publishStory` after generation,
+not the toggle). `stories.entity_classification_status` is `'ok'` /
+`'unavailable'` / null. Null means *generated before this column existed* and
+still publishes — treating it as unchecked would have locked the entire
+existing corpus out of publishing to close a hole only new stories can be in.
+
+**4. The failure is loud.** `reportClassificationFailure` writes an
+`error_events` row: `bucket: 'grounding'` (new), `severity: 'high'`,
+`errorCode: 'entity_classification_unavailable'`, context of `failure`
+(`provider_failed` / `unparseable` / `not_attempted`), the provider's own
+`code`, and `elapsed_ms`. Never the idea, never an entity name — asserted by a
+test that greps the serialized row.
+
+00058 also widens the `error_events.bucket` CHECK, and this is worth its own
+sentence: the constraint is an allow-list, so a row in an unlisted bucket is a
+**rejected insert** — telemetry about a silent failure, failing silently. While
+there, `engagement` and `phrase.learning` were added: both have been in the
+`ErrorBucket` union since 00046 and 00047 and **every row those two paths ever
+tried to write has been discarded by this constraint**.
+
+### What is honestly not fixed
+
+- **`shape-story`'s pre-generation warning still usually will not fire.** It
+  awaits shaping and grounding together in front of a waiting writer, so giving
+  the classifier 25s would make the preview crawl for everyone to warn a few.
+  It now answers only when classification is cheap, and `gating_reason: null`
+  there means *no warning to show*, never *checked and clear* — said in the
+  code, in AGENTS.md, and here. The failure is logged from that call site too.
+- **A completed classification cannot be cached for the later generation.**
+  `entity_grounding` is keyed `(canonical_name, entity_class)` — one row per
+  entity — and a classification is keyed by the idea. Reusing one would need a
+  new idea-keyed cache (a hash of the idea, an expiry, a new RPC), which is a
+  schema decision of its own and not something to smuggle in behind a safety
+  fix.
+- **`OPENROUTER_PROBE_MS` is now mis-sized.** The 8s probe in front of the
+  generation leader was justified by "the contributor tier answers 404 in under
+  a second". It does not any more (see below). The right fix is to reorder
+  `OPENROUTER_MODELS`, which belongs to a generation-chain change, not to this
+  one. Flagged in AGENTS.md, not done here.
+
+### Correcting the record: the contributor tier is serving
+
+AGENTS.md said `meta/muse-spark-1.3-contributor` was `404` by account data
+policy. It is not: it answered in 23.4s on 2026-09-09 and it is the model named
+in the successful chapter timings. The privacy setting has evidently changed.
+That is still a live data decision — story ideas and generated prose go to the
+provider for training at ~17x lower cost — but it is a decision about whether
+to keep using it, not about whether it works. Both places that reasoned from
+"the leader fails for free" are flagged.
+
+### Gates
+
+`deno test functions` **714 → 730**, `migrations` **118 → 120**, both green.
+`deno fmt` and `deno check` clean on everything touched. `pnpm typecheck` clean,
+`pnpm lint` 0 errors, `pnpm exec jest` 632 → 633 green.
+
+Client surface is the minimum the new reason needs: `StoryPrivateReason` in
+`api.ts`, the third case in `StoryGatedPrivateModal` ("Kept private for now" —
+an explanation, not a warning, and deliberately *not* the gate copy, which
+would tell a writer their idea names a real living person when nobody ever
+looked), and a two-line type widening in `generation-session.ts` so the reason
+can reach the modal.
+
+---
+
 ## 2026-09-09 UTC — Reimagining a chapter, saved characters, and the generation deadline finally sized to the gateway
 
 **Session:** Backend lane of the "created" story flow (`docs/design/created-flow.md`,

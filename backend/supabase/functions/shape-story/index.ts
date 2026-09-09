@@ -4,7 +4,9 @@ import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
+  type ClassificationOutcome,
   EMPTY_RESOLVED_GROUNDING,
+  reportClassificationFailure,
   resolveGrounding,
 } from "../_shared/grounding-pipeline.ts";
 import { generateFastStructuredText } from "../_shared/llm.ts";
@@ -25,13 +27,17 @@ import {
  * `generateFastStructuredText` defaults to an 8s deadline, and this call site
  * used to take it. That default is what made `shape-story` return
  * `{"shape": null}` in production for every request: the call is simply slower
- * than 8 seconds, and the deadline is split before it is spent. 60% goes to
- * OpenRouter (`FAST_OPENROUTER_SHARE`), divided again across the two models in
- * `OPENROUTER_MODELS`, so the leader actually got ~2.4s of an 8s budget while
- * needing four times that. Every provider aborted, the chain exhausted, and the
- * handler's own catch answered `null` - which onboarding renders as a title
- * derived from the user's own sentence. It looked like a missing deploy. It was
- * a deadline.
+ * than 8 seconds, and the deadline was split before it was spent - 60% to the
+ * OpenRouter phase, divided again across the two models in `OPENROUTER_MODELS`,
+ * so the leader actually got ~2.4s of an 8s budget while needing four times
+ * that. Every provider aborted, the chain exhausted, and the handler's own
+ * catch answered `null` - which onboarding renders as a title derived from the
+ * user's own sentence. It looked like a missing deploy. It was a deadline.
+ *
+ * The same arithmetic, on a tighter budget, is what kept entity classification
+ * from ever succeeding; `FAST_OPENROUTER_SHARE` is 1.0 as of 2026-09-09 (there
+ * is no phase behind OpenRouter to hold time back for) and the leader now gets
+ * the caller's deadline minus one reserve.
  *
  * Measured against the live model on 2026-09-05, `meta/muse-spark-1.3-contributor`
  * with `reasoning: { effort: "minimal" }` and a strict schema:
@@ -145,6 +151,13 @@ serve(async (req) => {
       return respond({ shape: null, reason: "rate_limited" });
     }
 
+    // Captured out of `resolveGrounding` so this handler can tell "the idea
+    // names nobody" from "the classifier never answered". Both leave
+    // `grounding.entities` empty, and only one of them is a verdict.
+    const classified: { outcome: ClassificationOutcome | null } = {
+      outcome: null,
+    };
+
     try {
       // Shaping and grounding run together, not in sequence.
       //
@@ -178,6 +191,9 @@ serve(async (req) => {
           deadlineMs: onboarding
             ? ONBOARDING_SHAPE_DEADLINE_MS
             : SHAPE_DEADLINE_MS,
+          onClassification: (outcome) => {
+            classified.outcome = outcome;
+          },
         }),
       ]);
 
@@ -186,6 +202,21 @@ serve(async (req) => {
         : EMPTY_RESOLVED_GROUNDING;
 
       if (shapeResult.status === "rejected") throw shapeResult.reason;
+
+      // A classification that did not answer is logged here too, and it is
+      // the same row the generation path writes - same bucket, same code, a
+      // different `feature`. This call site is a courtesy warning rather than
+      // a gate, so nothing about the response changes; what changes is that
+      // the failure is countable. Not awaited: onboarding is watching this
+      // response and a telemetry insert must never be in front of it.
+      const classification = classified.outcome;
+      if (classification && classification.status !== "ok") {
+        void reportClassificationFailure({
+          outcome: classification,
+          feature: "story_shape",
+          userId,
+        }).catch(() => {});
+      }
 
       return respond({
         shape: parseStoryShape(shapeResult.value.text),
@@ -204,9 +235,20 @@ serve(async (req) => {
         // idea or keep it private" - rather than after the story exists.
         // `generate-story` still derives the gate from its own server-side
         // classification and records that; this is the same rule applied to
-        // the same classifier's output, one screen earlier. Null when nothing
-        // in the idea gates it, which is the common case.
-        gating_reason: deriveGatingReason(grounding.entities),
+        // the same classifier's output, one screen earlier.
+        //
+        // Null here means "no warning to show", NOT "checked and clear", and
+        // the difference is load-bearing after 2026-09-09. This call is
+        // budgeted for a preview the writer is waiting on: classification
+        // measured 23-25s against the live models, and shaping and grounding
+        // are awaited together here, so giving the classifier the time it
+        // needs would make the preview crawl for every writer to warn a few.
+        // It answers when the answer is cheap - a fast day, a warm provider -
+        // and stays quiet otherwise. The gate that must not be quiet is the
+        // one at generation, which has its own budget and fails closed.
+        gating_reason: classification?.status === "ok"
+          ? deriveGatingReason(classification.entities)
+          : null,
       });
     } catch (error) {
       // Shape is optional scaffolding. Record the provider condition without

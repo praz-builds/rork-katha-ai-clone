@@ -140,10 +140,14 @@ OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Ge
 > 2. **The paid phase is not split evenly.** Under a 150s ceiling only one model
 >    can be given a chapter's worth of time, so the **last** model in
 >    `OPENROUTER_MODELS` owns the whole 115s window and every model in front of
->    it gets an 8s probe (`OPENROUTER_PROBE_MS`). That fits the account as it
->    is: the contributor tier answers `404` in well under a second, so probing
->    it costs nothing. If that tier is ever enabled, **reorder the models** —
->    a chapter does not fit in a probe — rather than widening the probe.
+>    it gets an 8s probe (`OPENROUTER_PROBE_MS`). This was sized for an account
+>    where the contributor tier answered `404` in well under a second, so
+>    probing it cost nothing. **That premise expired on 2026-09-09** — the
+>    contributor tier is serving (see the note below the callout), so the probe
+>    now spends 8s in front of a model that can actually write the chapter.
+>    The fix is to **reorder the models** — a chapter does not fit in a probe —
+>    rather than to widen the probe. Not done here; it belongs with a
+>    generation-chain change, not with the entity-gate fix.
 > 3. **There is only one real attempt, and the share table says so.** 125s
 >    cannot hold two 76s generations. Gemini (0.04 share, ~5s) and the free
 >    router (0.04, ~5s) exist to turn a *fast* refusal into a fallback, not to
@@ -169,7 +173,9 @@ OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Ge
 > `max_tokens`** — that was tried and produced a chapter with no ending; see
 > the `CHAPTER_REASONING_HEADROOM_TOKENS` note in `_shared/story-stream.ts`.
 
-**The contributor tier is `404` until an account setting changes.** `meta/muse-spark-1.3-contributor` is ~17x cheaper because it trains on prompts and completions, and the OpenRouter account's privacy setting blocks training-tier endpoints: `"Paid model training violation (account settings): 1 endpoint excluded"`. Change it at https://openrouter.ai/settings/privacy — that is a data decision (users' story ideas and generated prose go to the provider for training), and no deploy is involved either way. Until then `meta/muse-spark-1.3` serves; it was measured on 2026-09-05 returning schema-valid JSON in ~11s.
+**The contributor tier IS serving. Corrected 2026-09-09.** This note previously said `meta/muse-spark-1.3-contributor` was `404` by account data policy (`"Paid model training violation (account settings): 1 endpoint excluded"`) and that `meta/muse-spark-1.3` was the only model that could answer. That is no longer true and the account setting at https://openrouter.ai/settings/privacy has evidently changed: the contributor tier answered a live classification prompt in **23.4s** on 2026-09-09, and it is the model named in the successful chapter-generation timings (55.5-76.4s, 1,846-1,904 words). It is ~17x cheaper because it trains on prompts and completions, which remains a live data decision — users' story ideas and generated prose go to the provider for training — but it is a decision about whether to *keep* using it, not about whether it works.
+
+**What this invalidates.** Anything in this file or in code comments that reasons from "`OPENROUTER_MODELS[0]` fails in a round trip and costs nothing" is now wrong, and two places depended on it: `OPENROUTER_PROBE_MS` (an 8s probe in front of the leader on the generation chain — a chapter does not fit in a probe, so **reorder the models rather than widening it**, as callout item 2 already says) and `FAST_OPENROUTER_RESERVE_MS` (sized for a fast failure). Re-read both before changing either. `meta/muse-spark-1.3` was measured on 2026-09-05 returning schema-valid JSON in ~11s and 25.5s on the classification prompt.
 
 **Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored, and so are `OPENAI_API_KEY` / `OPENAI_STORY_API_KEY` — see below.
 
@@ -262,6 +268,8 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00038-00041 (Hardening)** | Profile update policy, shape-claim ordering, ledger tie-breaker, `characters.story_id` index |
 | **00043-00044 (Comments + covers)** | Threaded comments/votes/moderation, cover regeneration counters |
 | **00045 (Entity grounding)** | `entity_grounding` (shared expiring fact-card cache, service-role only), `stories.grounding`, `stories.grounding_entities` |
+| **00050 (Entity visibility gate)** | `stories.entity_gate_reason` + the CHECK that makes `is_public = true` with a reason set an invalid row |
+| **00058 (Classification status)** | `stories.entity_classification_status` (`ok` / `unavailable` / null-for-legacy), plus `error_events.bucket` widened to accept `grounding`, `engagement` and `phrase.learning` |
 
 ### Credit Ledger Pattern
 
@@ -270,6 +278,92 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 - Balance = newest ledger row by `created_at`, then **`ledger_sequence`**, never `id`. UUIDs are not chronological, and `refresh_subscription_grant` writes two rows in one transaction with an identical `created_at`, so ordering by `id` returns one of them at random. `00040` fixed the six functions that still did this, and its test scans every function in `public` and fails on any new one that gets it wrong.
 - **`SELECT ... FOR UPDATE SKIP LOCKED` must never be used in the credit RPCs.** They take `pg_advisory_xact_lock` plus `FOR UPDATE` on a single row keyed by `user_id`, and they must *block* under contention. Skipping would return "no row" and silently drop a deduction or a grant. `SKIP LOCKED` is correct only for independent queue rows, where skipping a row another worker already holds is the point.
 - **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5).
+
+## Grounding and the Entity Visibility Gate
+
+Two features share one classifier and must not share one posture.
+
+**Grounding cards** are prompt enrichment. `resolveGrounding` classifies an
+idea, buys a fact card for each entity worth grounding, and caches cards per
+entity in `entity_grounding` (00045). It fails open by construction: every
+failure returns an empty result, and the story is written from model knowledge,
+which is what every story had before the feature existed.
+
+**The entity visibility gate** is a safety control. A story whose idea names a
+`living_public_figure` or a `private_individual` is forced private
+(`_shared/entity-visibility-gate.ts`, migration 00050 plus its CHECK
+constraint). Historical figures, real places, real events and organisations do
+**not** gate — a story about Shivaji Maharaj or the Taj Mahal is exactly what
+grounding exists to serve.
+
+> ### ⚠️ This gate was inert in production from its first deploy until 2026-09-09. Read this before changing a grounding budget.
+>
+> Entity classification **never once succeeded**. Every failure was silent.
+> Measured on production 2026-09-09, both live models answered a
+> classification-shaped prompt correctly and completely — `Taylor Swift /
+> living_public_figure`, `Mumbai / real_place` — in **23.4s**
+> (`meta/muse-spark-1.3-contributor`) and **25.5s** (`meta/muse-spark-1.3`).
+> The code gave that call **~4.8s**: `generateFastStructuredText` defaulted to
+> 8s, `FAST_OPENROUTER_SHARE` took 60% of it, and the generation path's own
+> `GENERATION_GROUNDING_DEADLINE_MS` (9s) left the leading model **0 ms**. So
+> `shape-story` returned `grounding_entities: []` and `gating_reason: null` for
+> every idea, stories persisted `entity_gate_reason: null`, and a Taylor Swift
+> story generated with `visibility: "public"` on a real account **was published
+> publicly**.
+>
+> Four things fixed it, and they are load-bearing together:
+>
+> 1. **Classification is split from cards and runs concurrently with
+>    generation.** `classifyIdea` gets `CLASSIFICATION_DEADLINE_MS` (40s, sized
+>    from the 25.5s measurement) and is started before
+>    `begin_story_generation`, then awaited when the chapter is persisted
+>    55-100s later — so a realistic budget costs the writer **no** latency.
+>    Cards keep `GENERATION_GROUNDING_DEADLINE_MS` (9s) because they must be in
+>    the prompt before the first token, and take whatever part of the same
+>    classification lands inside it (`groundingCardsWithin`). **Do not "fix"
+>    latency here by shortening the classification budget, and do not put it in
+>    front of the prose.**
+> 2. **`FAST_OPENROUTER_SHARE` is 1.0.** OpenAI was removed from every chain on
+>    2026-09-08, so the 0.4 held back for a runner-up phase was time nothing
+>    was allowed to spend. Restore a fraction the day a second phase is added
+>    behind the OpenRouter loop, and not before.
+>
+>    | fast-path call | caller budget | leading model gets, before / after |
+>    |---|---|---|
+>    | onboarding shape | 45s | 21.0s / 39.0s |
+>    | create-studio shape | 30s | 12.0s / 24.0s |
+>    | grounding cards (generation) | 9s | **0 ms** / 3.0s |
+>    | entity classification (generation) | **40s** (new) | — / 34.0s |
+>
+>    `fastOpenRouterDeadlines(deadlineMs, models)` is the arithmetic:
+>    `window = deadlineMs * FAST_OPENROUTER_SHARE`, the last model owns the
+>    window, and each model in front of it gives up one
+>    `FAST_OPENROUTER_RESERVE_MS` (6s) so a stalled leader can never abort the
+>    runner-up before `fetch` is called. `llm.test.ts` pins every row.
+> 3. **The publish decision fails closed, and only that decision.**
+>    `_shared/publish.ts` refuses a public request when classification produced
+>    no verdict (`classification_unavailable`), in the order guest →
+>    classification unavailable → entity gate → database constraint.
+>    `stories.entity_classification_status` (00058) carries the same fact to
+>    `publish-story`, which refuses on the explicit value `'unavailable'` only —
+>    null means "generated before 00058" and still publishes. Grounding itself
+>    still fails open everywhere else.
+> 4. **The failure is logged.** Every classification that fails, times out or
+>    returns unparseable output writes an `error_events` row with
+>    `bucket: 'grounding'`, `severity: 'high'`,
+>    `errorCode: 'entity_classification_unavailable'`, and a context of
+>    `failure`, `code` and `elapsed_ms` — never the idea, never an entity name.
+>    `entity-classify.ts` still documents "silent failure is the contract for
+>    the whole grounding path"; that contract holds for cards and **is void for
+>    the gate**. A control that silently does nothing is the root cause here.
+>
+> **Known limit:** `shape-story`'s pre-generation warning is a courtesy, not a
+> gate. It awaits shaping and grounding together in front of a waiting writer,
+> so it answers only when classification is cheap. A null `gating_reason` there
+> means "no warning to show", never "checked and clear". A completed
+> classification cannot be cached for the later generation: `entity_grounding`
+> is keyed `(canonical_name, entity_class)` per entity, and a classification is
+> keyed by the idea — reusing it would need a new idea-keyed cache.
 
 ### Security Gate
 

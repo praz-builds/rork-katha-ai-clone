@@ -41,7 +41,7 @@ import {
   GenerationRequestError,
   publishStory,
   StoryGatedPrivateError,
-  type StoryGatingReason,
+  type StoryPrivateReason,
 } from "@/lib/api";
 import { clearDraft } from "@/lib/draft-storage";
 import { normalizeText, paginateChapter } from "@/lib/paginate";
@@ -187,11 +187,13 @@ export type GenerationSession = {
   /** The completed chapter: chapter one of a story session, or the continuation. */
   readonly chapter: Chapter | null;
   /**
-   * Set when the server kept the story private because the idea names a
-   * living public figure or a private individual. Populated once the
-   * streaming `done` payload carries it; the reader shows the explanation once.
+   * Set when the server kept the story private: the idea names a living
+   * public figure or a private individual, or - since 2026-09-09 - the entity
+   * check itself could not finish, in which case the story is private for now
+   * rather than for good. Populated once the streaming `done` payload carries
+   * it; the reader shows the explanation once.
    */
-  readonly gatedReason: StoryGatingReason | null;
+  readonly gatedReason: StoryPrivateReason | null;
   readonly startedAt: number;
   readonly finishedAt: number | null;
 };

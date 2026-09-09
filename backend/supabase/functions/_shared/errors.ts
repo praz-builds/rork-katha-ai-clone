@@ -17,6 +17,12 @@ export type ErrorBucket =
   | "generation.edit"
   | "generation.cover"
   | "generation.audio"
+  // Entity classification and the visibility gate that reads it. Its own
+  // bucket because it is a safety control, not a generation stage: a
+  // classification that never answers costs no user a story and is invisible
+  // in every other bucket, which is exactly how it stayed broken from the
+  // gate's first deploy until 2026-09-09.
+  | "grounding"
   | "llm.provider"
   | "publishing"
   | "discovery"
@@ -49,7 +55,10 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "chapter_role",
   "code",
   "codes",
+  "elapsed_ms",
   "environment",
+  "failure",
+  "feature",
   "genre",
   "http_status",
   "job_id",
