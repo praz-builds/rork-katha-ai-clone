@@ -184,12 +184,20 @@ const MOCK_COMMENTS: CommentNode[] = [
  */
 export default function CommentThread({
   storyId,
+  chapterId,
   authorName,
   tone = "light",
   composerPosition = "top",
   onCountChange,
 }: {
   storyId: string;
+  /**
+   * The chapter the reader is on, when this thread is opened from inside a
+   * chapter rather than from the story page. It is sent with anything written
+   * here, so the thread can show which chapter each comment is about. Absent
+   * from the story page, whose comments are about the story as a whole.
+   */
+  chapterId?: string;
   authorName: string;
   /** `dark` for the detail page's comments sheet. See `CommentTone`. */
   tone?: CommentTone;
@@ -247,7 +255,7 @@ export default function CommentThread({
     setTree((current) => addRootComment(current, createComment("You", trimmed)));
     setComposerText("");
     if (remote) {
-      postComment(storyId, trimmed)
+      postComment(storyId, trimmed, undefined, chapterId)
         .then(() => {
           setWriteFailed(false);
           return reload();
@@ -273,7 +281,7 @@ export default function CommentThread({
     setReplyTargetId(null);
     setReplyDraft("");
     if (remote) {
-      postComment(storyId, trimmed, parentId)
+      postComment(storyId, trimmed, parentId, chapterId)
         .then(() => {
           setWriteFailed(false);
           return reload();

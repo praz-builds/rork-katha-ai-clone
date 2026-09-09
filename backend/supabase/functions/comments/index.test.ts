@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
 import {
+  chapterNumberOf,
   isSelfBlock,
   parseOptionalUuid,
   parseThreadPagination,
@@ -60,7 +61,10 @@ Deno.test("validateReportDetails: optional, blank treated as absent, capped at 2
   assertEquals(validateReportDetails(undefined), { ok: true, value: null });
   assertEquals(validateReportDetails(null), { ok: true, value: null });
   assertEquals(validateReportDetails("   "), { ok: true, value: null });
-  assertEquals(validateReportDetails("  fraud  "), { ok: true, value: "fraud" });
+  assertEquals(validateReportDetails("  fraud  "), {
+    ok: true,
+    value: "fraud",
+  });
   assertEquals(validateReportDetails("a".repeat(2000)), {
     ok: true,
     value: "a".repeat(2000),
@@ -470,7 +474,9 @@ Deno.test("a blocked author's comments are absent from the thread read", async (
 
     const rows = await db.query<{ id: string }>(
       `select id from comments
-       where story_id = $1 and user_id not in (${blockedIds.map((_, i) => `$${i + 2}`).join(",")})
+       where story_id = $1 and user_id not in (${
+        blockedIds.map((_, i) => `$${i + 2}`).join(",")
+      })
        order by created_at asc`,
       [STORY, ...blockedIds],
     );
@@ -510,4 +516,41 @@ Deno.test("an unblock after a block succeeds and is idempotent (a block is never
   } finally {
     await db.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+// The chapter tag a comment carries
+//
+// A reader scanning a long thread sees which chapter each comment is about.
+// The number rides an embedded PostgREST relationship, which is why this is
+// read defensively rather than trusted to arrive in one shape: a comment left
+// on the story as a whole, and every comment written before the join existed,
+// must come back as null so the client renders no tag at all rather than a
+// wrong one.
+// ---------------------------------------------------------------------------
+
+Deno.test("a comment on a chapter reports that chapter's number", () => {
+  assertEquals(chapterNumberOf({ chapters: { chapter_number: 3 } }), 3);
+});
+
+Deno.test("an embedded relationship returned as an array is still read", () => {
+  assertEquals(chapterNumberOf({ chapters: [{ chapter_number: 12 }] }), 12);
+});
+
+Deno.test("a comment left on the story, not a chapter, has no tag", () => {
+  assertEquals(chapterNumberOf({ chapters: null }), null);
+  assertEquals(chapterNumberOf({}), null);
+  assertEquals(chapterNumberOf({ chapters: [] }), null);
+});
+
+Deno.test("chapter one is a number, not a falsy value to be dropped", () => {
+  // `0` and `1` both survive: an `if (n)` guard here would silently discard
+  // a real chapter number, and chapter numbering starts at 1.
+  assertEquals(chapterNumberOf({ chapters: { chapter_number: 1 } }), 1);
+  assertEquals(chapterNumberOf({ chapters: { chapter_number: 0 } }), 0);
+});
+
+Deno.test("a non-numeric chapter number is refused rather than passed on", () => {
+  assertEquals(chapterNumberOf({ chapters: { chapter_number: "4" } }), null);
+  assertEquals(chapterNumberOf({ chapters: "nonsense" }), null);
 });

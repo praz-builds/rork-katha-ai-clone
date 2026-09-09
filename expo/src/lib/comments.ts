@@ -171,12 +171,13 @@ type WireComment = {
   /**
    * The chapter a comment was left on.
    *
-   * `comments.chapter_id` has existed since migration 00001 and is nullable,
-   * but the `comments` Edge Function neither selects it nor accepts it on
-   * insert, so no row on the wire carries a chapter today and every comment
-   * renders without the tag. Serving it means joining `chapters.chapter_number`
-   * through that id in the function's SELECT; this field is here so the tag
-   * appears the day it does, with no client change.
+   * `comments.chapter_id` has existed since migration 00001. The `comments`
+   * Edge Function joins `chapters.chapter_number` through it (2026-09-09) and
+   * accepts a `chapter_id` on insert, so a comment written from the reader
+   * carries the chapter it was left on. It stays optional because a comment
+   * left from the story page belongs to the story rather than any one
+   * chapter, and because every comment written before that change has none.
+   * The tag renders only when a number is actually present.
    */
   chapter_number?: number | null;
 };
@@ -231,6 +232,7 @@ export async function postComment(
   storyId: string,
   content: string,
   parentId?: string,
+  chapterId?: string,
 ): Promise<ServerComment | null> {
   const data = await invokeComments<{ comment?: WireComment } | WireComment>(
     "comments",
@@ -239,6 +241,10 @@ export async function postComment(
       body: {
         action: "post",
         story_id: storyId,
+        // The chapter the reader was on when they wrote it, so the thread can
+        // say what each comment is about. Null from the story page, which is
+        // about the story rather than any one chapter.
+        chapter_id: chapterId ?? null,
         parent_id: parentId ?? null,
         content,
       },

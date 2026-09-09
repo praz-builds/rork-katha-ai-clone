@@ -91,9 +91,7 @@ export function validateVoteValue(value: unknown): -1 | 0 | 1 | null {
 }
 
 export function validateReportReason(value: unknown): string | null {
-  return typeof value === "string" && REPORT_REASONS.has(value)
-    ? value
-    : null;
+  return typeof value === "string" && REPORT_REASONS.has(value) ? value : null;
 }
 
 /** `details` is optional; blank is treated the same as omitted. */
@@ -121,6 +119,22 @@ export function isSelfBlock(userId: string, blockedId: string): boolean {
 }
 
 /** `null`/`undefined` are valid (no parent, or no target) -- an actual malformed value is not. */
+/**
+ * The chapter number embedded on a comment row, when the join carried one.
+ *
+ * PostgREST returns an embedded to-one relationship as an object, but returns
+ * it as an array under some planner shapes, and as null when `chapter_id` is
+ * null. All three are read here rather than trusting one, because getting it
+ * wrong shows the reader nothing rather than failing loudly.
+ */
+export function chapterNumberOf(row: Record<string, unknown>): number | null {
+  const embedded = row.chapters;
+  const record = Array.isArray(embedded) ? embedded[0] : embedded;
+  if (!record || typeof record !== "object") return null;
+  const value = (record as Record<string, unknown>).chapter_number;
+  return typeof value === "number" ? value : null;
+}
+
 export function parseOptionalUuid(
   value: unknown,
 ): { ok: true; value: string | null } | { ok: false } {
@@ -207,7 +221,7 @@ async function handleReadThread(
   let query = client
     .from("comments")
     .select(
-      "id, parent_id, depth, content, created_at, score, deleted_at, user_id, profiles!comments_user_id_fkey(username)",
+      "id, parent_id, depth, content, created_at, score, deleted_at, user_id, chapter_id, profiles!comments_user_id_fkey(username), chapters!comments_chapter_id_fkey(chapter_number)",
       // `exact`, not `planned`: a planner ESTIMATE reported `total: 1` for a
       // story with no comments at all, because that is what the planner
       // guesses for an unanalyzed table. A client paging on that waits for a
@@ -258,6 +272,12 @@ async function handleReadThread(
       created_at: row.created_at,
       score: row.score,
       deleted_at: row.deleted_at,
+      // The chapter a comment was left on, so a reader scanning a long thread
+      // can see what it is about without opening it. Null for a comment left
+      // on the story rather than on one chapter, and for every comment written
+      // before this was carried on the wire -- the client renders the tag only
+      // when a number is actually present.
+      chapter_number: chapterNumberOf(row),
       my_vote: myVotes.get(row.id as string) ?? 0,
     };
   });
@@ -284,6 +304,10 @@ async function handlePostComment(
   const storyId = parseUuid(body.story_id);
   if (!storyId) return { status: 400, error: "story_id must be a valid UUID" };
 
+  const chapterResult = parseOptionalUuid(body.chapter_id);
+  if (!chapterResult.ok) {
+    return { status: 400, error: "chapter_id must be a valid UUID" };
+  }
   const parentResult = parseOptionalUuid(body.parent_id);
   if (!parentResult.ok) {
     return { status: 400, error: "parent_id must be a valid UUID" };
@@ -303,11 +327,12 @@ async function handlePostComment(
     .insert({
       user_id: userId,
       story_id: storyId,
+      chapter_id: chapterResult.value,
       parent_id: parentResult.value,
       content,
     })
     .select(
-      "id, parent_id, depth, content, created_at, score, deleted_at, user_id, profiles!comments_user_id_fkey(username)",
+      "id, parent_id, depth, content, created_at, score, deleted_at, user_id, chapter_id, profiles!comments_user_id_fkey(username), chapters!comments_chapter_id_fkey(chapter_number)",
     )
     .single();
 
@@ -356,6 +381,7 @@ async function handlePostComment(
         created_at: data.created_at,
         score: data.score,
         deleted_at: data.deleted_at,
+        chapter_number: chapterNumberOf(data as Record<string, unknown>),
         my_vote: 0,
       },
     },
@@ -384,7 +410,9 @@ async function handleVote(
   body: Record<string, unknown>,
 ): Promise<OperationResult> {
   const commentId = parseUuid(body.comment_id);
-  if (!commentId) return { status: 400, error: "comment_id must be a valid UUID" };
+  if (!commentId) {
+    return { status: 400, error: "comment_id must be a valid UUID" };
+  }
 
   const value = validateVoteValue(body.value);
   if (value === null) {
@@ -433,7 +461,10 @@ async function handleReport(
   const storyResult = parseOptionalUuid(body.story_id);
   const commentResult = parseOptionalUuid(body.comment_id);
   if (!storyResult.ok || !commentResult.ok) {
-    return { status: 400, error: "story_id and comment_id must be valid UUIDs" };
+    return {
+      status: 400,
+      error: "story_id and comment_id must be valid UUIDs",
+    };
   }
   if (!validateReportTarget(storyResult.value, commentResult.value)) {
     return {
@@ -499,7 +530,9 @@ async function handleBlock(
   body: Record<string, unknown>,
 ): Promise<OperationResult> {
   const blockedId = parseUuid(body.blocked_id);
-  if (!blockedId) return { status: 400, error: "blocked_id must be a valid UUID" };
+  if (!blockedId) {
+    return { status: 400, error: "blocked_id must be a valid UUID" };
+  }
 
   if (isSelfBlock(userId, blockedId)) {
     return { status: 400, error: "You cannot block yourself" };
@@ -519,7 +552,9 @@ async function handleBlock(
     // The DB's own check constraint is the backstop for the self-block rule
     // above; this should be unreachable given the check at the top, but a
     // second, independent guard beats a bypass being silently swallowed.
-    if (code === "23514") return { status: 400, error: "You cannot block yourself" };
+    if (code === "23514") {
+      return { status: 400, error: "You cannot block yourself" };
+    }
     throw error;
   }
 
@@ -532,7 +567,9 @@ async function handleUnblock(
   body: Record<string, unknown>,
 ): Promise<OperationResult> {
   const blockedId = parseUuid(body.blocked_id);
-  if (!blockedId) return { status: 400, error: "blocked_id must be a valid UUID" };
+  if (!blockedId) {
+    return { status: 400, error: "blocked_id must be a valid UUID" };
+  }
 
   // Unconditional delete: unblocking someone never blocked in the first
   // place removes zero rows and is still a clean success -- a user must
@@ -567,7 +604,8 @@ function toResponse(req: Request, result: OperationResult): Response {
 export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
-  const respond = (body: unknown, status = 200) => jsonResponse(req, body, status);
+  const respond = (body: unknown, status = 200) =>
+    jsonResponse(req, body, status);
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -601,7 +639,10 @@ export async function handleRequest(req: Request): Promise<Response> {
 
       switch (action) {
         case "post":
-          return toResponse(req, await handlePostComment(client, user.id, body));
+          return toResponse(
+            req,
+            await handlePostComment(client, user.id, body),
+          );
         case "vote":
           return toResponse(req, await handleVote(client, user.id, body));
         case "report":
@@ -612,7 +653,10 @@ export async function handleRequest(req: Request): Promise<Response> {
           return toResponse(req, await handleUnblock(client, user.id, body));
         default:
           return respond(
-            { error: "action must be one of: post, vote, report, block, unblock" },
+            {
+              error:
+                "action must be one of: post, vote, report, block, unblock",
+            },
             400,
           );
       }

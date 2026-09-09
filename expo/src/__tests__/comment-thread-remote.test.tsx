@@ -110,8 +110,42 @@ it("sends a new root comment to the server", async () => {
   await fireEvent.changeText(composer, "  real thoughts  ");
   await fireEvent.press(view.getByLabelText(/post comment/i));
 
+  // No chapter: a comment written from the story page is about the story, and
+  // the thread must not invent a chapter for it.
   await waitFor(() =>
-    expect(mockPostComment).toHaveBeenCalledWith("story-7", "real thoughts")
+    expect(mockPostComment).toHaveBeenCalledWith(
+      "story-7",
+      "real thoughts",
+      undefined,
+      undefined,
+    )
+  );
+});
+
+it("tags a comment written from inside a chapter with that chapter", async () => {
+  // The reader's thread knows which chapter it was opened from, and sends it,
+  // so a long thread can show what each comment is actually about. Without
+  // this the `Chapter n` tag has nothing to render and every comment reads as
+  // though it were about the story as a whole.
+  mockFetchThread.mockResolvedValue([]);
+  const view = await render(
+    <CommentThread storyId="story-7" chapterId="chapter-3" authorName="Zoe" />,
+  );
+  await waitFor(() => expect(mockFetchThread).toHaveBeenCalled());
+
+  await fireEvent.changeText(
+    view.getByPlaceholderText(/Add a comment/i),
+    "this chapter broke me",
+  );
+  await fireEvent.press(view.getByLabelText(/post comment/i));
+
+  await waitFor(() =>
+    expect(mockPostComment).toHaveBeenCalledWith(
+      "story-7",
+      "this chapter broke me",
+      undefined,
+      "chapter-3",
+    )
   );
 });
 
