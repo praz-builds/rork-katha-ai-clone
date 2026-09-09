@@ -384,6 +384,9 @@ export default function App() {
           <StoryDetailScreen
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
+            // `generatedStories` is exactly the set the viewer wrote: restored
+            // by author id on boot, prepended on creation.
+            isOwn={generatedStories.some((story) => story.id === screen.storyId)}
             onBack={() => goTabs(tab)}
             onRead={(chapterIndex, options) =>
               setScreen({

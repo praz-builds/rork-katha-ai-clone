@@ -46,6 +46,14 @@ export interface CommentNode {
   voteState: VoteState;
   collapsed: boolean;
   replies: CommentNode[];
+  /**
+   * The chapter the comment was left on, when the server said. The `comments`
+   * function does not select `comments.chapter_id` (nullable since migration
+   * 00001) or the chapter number behind it, so this is absent for every remote
+   * comment and the row renders no chapter tag; it is here so the tag appears
+   * the day the wire carries it, without a client change.
+   */
+  chapterNumber?: number;
 }
 
 /** +1 for an active upvote, -1 for an active downvote, 0 otherwise. */

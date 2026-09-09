@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Ban, Download, Flag } from "lucide-react-native";
 
 import { colors, radius, shadows, spacing, type } from "@/theme";
 import { REPORT_REASONS } from "@/components/comments/types";
@@ -21,6 +22,8 @@ export default function StoryActionsSheet({
   authorName,
   onBlockAuthor,
   onSubmitReport,
+  onDownloadPdf,
+  canBlockAuthor = true,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -32,6 +35,10 @@ export default function StoryActionsSheet({
    * tests; when absent the sheet shows its confirmation and files nothing.
    */
   onSubmitReport?: (reason: ReportReason) => void;
+  /** "Download as PDF". The sheet closes first; the platform's dialog takes over. Absent hides the row. */
+  onDownloadPdf?: () => void;
+  /** False for the story's own author - you cannot block yourself, so the row is not offered. */
+  canBlockAuthor?: boolean;
 }) {
   const [view, setView] = useState<SheetView>("menu");
   const [reason, setReason] = useState<ReportReason | null>(null);
@@ -103,17 +110,36 @@ export default function StoryActionsSheet({
                 accessibilityRole="button"
                 accessibilityLabel="Report story"
               >
+                <Flag size={18} color={colors.strong} />
                 <Text style={styles.optionLabel}>Report story</Text>
               </Pressable>
 
-              <Pressable
-                onPress={() => setView("blockConfirm")}
-                style={styles.optionRow}
-                accessibilityRole="button"
-                accessibilityLabel={`Block ${authorName}`}
-              >
-                <Text style={[styles.optionLabel, styles.destructiveLabel]}>Block author</Text>
-              </Pressable>
+              {canBlockAuthor ? (
+                <Pressable
+                  onPress={() => setView("blockConfirm")}
+                  style={styles.optionRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Block ${authorName}`}
+                >
+                  <Ban size={18} color={colors.premium} />
+                  <Text style={[styles.optionLabel, styles.destructiveLabel]}>Block author</Text>
+                </Pressable>
+              ) : null}
+
+              {onDownloadPdf ? (
+                <Pressable
+                  onPress={() => {
+                    onClose();
+                    onDownloadPdf();
+                  }}
+                  style={styles.optionRow}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download as PDF"
+                >
+                  <Download size={18} color={colors.strong} />
+                  <Text style={styles.optionLabel}>Download as PDF</Text>
+                </Pressable>
+              ) : null}
 
               <Pressable
                 onPress={handleClose}
@@ -265,7 +291,9 @@ const styles = StyleSheet.create({
   },
   optionRow: {
     minHeight: 48,
-    justifyContent: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.track,
   },

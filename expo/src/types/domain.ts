@@ -225,6 +225,14 @@ export type Story = {
    * than discovering it in a 402.
    */
   coverRegenCount?: number;
+  /**
+   * Whether the story is readable by everyone. Mirrors `stories.is_public`.
+   *
+   * Optional because the list queries that hydrate a `Story` do not all select
+   * it yet; absent reads as "not known", and nothing that renders a "Public"
+   * marker may do so on an absent value.
+   */
+  isPublic?: boolean;
   focalX?: number; // 0-1, default 0.5
   focalY?: number; // 0-1, default 0.5
 };

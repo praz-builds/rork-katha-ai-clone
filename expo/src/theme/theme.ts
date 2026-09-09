@@ -76,7 +76,26 @@ export const colors = {
   sepiaAccent: "#A64C1C",
   sepiaButton: "#ec6f2c",
   sepiaPlaceholder: "#e7dcc6",
-  sepiaToggleTrack: "#e7ddca"
+  sepiaToggleTrack: "#e7ddca",
+  /**
+   * The dark overlay palette: the reader's chrome (top bar, control sheet) and
+   * the story detail page, which is the one full dark surface in the app.
+   *
+   * Promoted from the private `CHROME` object in `ReaderChrome.tsx` so the
+   * detail page can share it instead of restating five hexes. The hue is the
+   * same warm neutral family as the light ramp (R > G > B), so a dark surface
+   * next to a `bg` screen reads as the same product with the lights off, not
+   * as a different app. `chromeSurfaceRaised` is one step up for a sheet that
+   * sits on top of `chromeSurface` (the comments sheet on the detail page).
+   */
+  chromeSurface: "#1C1A17",
+  chromeSurfaceRaised: "#26231F",
+  chromeBorder: "#332F2A",
+  chromeText: "#F4F1EC",
+  chromeMuted: "#B5ADA2",
+  chromeTrack: "#3A352F",
+  /** The saved-star fill on a dark ground. Amber, not the accent orange, so it reads as "starred". */
+  chromeStar: "#F5B324"
 } as const;
 
 /**

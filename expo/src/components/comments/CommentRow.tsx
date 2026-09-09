@@ -14,7 +14,7 @@ import {
   MoreHorizontal,
 } from "lucide-react-native";
 
-import { colors, radius, shadows, spacing, type } from "@/theme";
+import { colors, fonts, radius, shadows, spacing, type } from "@/theme";
 import type { CommentNode, ReportReason } from "./types";
 import { REPORT_REASONS, countDescendants, displayScore } from "./types";
 
@@ -22,9 +22,49 @@ import { REPORT_REASONS, countDescendants, displayScore } from "./types";
 const MAX_INDENT_DEPTH = 3;
 const INDENT_STEP = spacing.md;
 
+/**
+ * Which ground the thread is drawn on.
+ *
+ * `light` is the default and is what the reader's last page and every light
+ * screen use. `dark` is the story detail page's comments sheet, drawn on
+ * `colors.chromeSurface`; it swaps the ink, the hairlines and the field fills
+ * for their chrome counterparts and adds the avatar column the sheet design
+ * calls for. Nothing about the thread's behaviour changes with tone.
+ */
+export type CommentTone = "light" | "dark";
+
+export type CommentPalette = {
+  ink: string;
+  muted: string;
+  strong: string;
+  tertiary: string;
+  line: string;
+  field: string;
+};
+
+export const COMMENT_PALETTES: Record<CommentTone, CommentPalette> = {
+  light: {
+    ink: colors.ink,
+    muted: colors.muted,
+    strong: colors.strong,
+    tertiary: colors.tertiary,
+    line: colors.track,
+    field: colors.surface2,
+  },
+  dark: {
+    ink: colors.chromeText,
+    muted: colors.chromeMuted,
+    strong: colors.chromeText,
+    tertiary: colors.chromeMuted,
+    line: colors.chromeBorder,
+    field: colors.chromeTrack,
+  },
+};
+
 export interface CommentRowProps {
   node: CommentNode;
   depth: number;
+  tone?: CommentTone;
   replyTargetId: string | null;
   replyDraft: string;
   onReplyDraftChange: (text: string) => void;
@@ -38,6 +78,7 @@ export interface CommentRowProps {
 export default function CommentRow({
   node,
   depth,
+  tone = "light",
   replyTargetId,
   replyDraft,
   onReplyDraftChange,
@@ -57,6 +98,8 @@ export default function CommentRow({
   const beyondCap = depth >= MAX_INDENT_DEPTH;
   const indent = Math.min(depth, MAX_INDENT_DEPTH) * INDENT_STEP;
   const canSubmitReply = replyDraft.trim().length > 0;
+  const palette = COMMENT_PALETTES[tone];
+  const dark = tone === "dark";
 
   return (
     /*
@@ -82,16 +125,53 @@ export default function CommentRow({
           testID={`comment-gutter-${node.id}`}
           style={styles.gutter}
         >
-          <View style={styles.gutterLine} />
+          {dark && depth === 0 ? (
+            /*
+              The sheet design leads every top-level comment with an avatar.
+              There is no avatar image on the wire, so this is the initial on
+              a recessed disc - the same treatment the author card uses. It
+              doubles as the collapse target, which is what the gutter is.
+            */
+            <View
+              style={[styles.avatar, { backgroundColor: palette.field }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Text style={[styles.avatarInitial, { color: palette.ink }]}>
+                {node.authorName.trim().charAt(0).toUpperCase() || "?"}
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.gutterLine, { backgroundColor: palette.line }]} />
+          )}
         </Pressable>
 
         <View style={styles.body}>
           <View style={styles.header}>
-            <Text style={styles.author}>{node.authorName}</Text>
-            <Text style={styles.dot}>{"·"}</Text>
-            <Text style={styles.time}>{node.timeLabel}</Text>
+            <Text
+              style={[
+                styles.author,
+                { color: palette.ink },
+                dark && styles.authorUnderlined,
+              ]}
+            >
+              {node.authorName}
+            </Text>
+            <Text style={[styles.dot, { color: palette.tertiary }]}>{"·"}</Text>
+            <Text style={[styles.time, { color: palette.muted }]}>{node.timeLabel}</Text>
+            {node.chapterNumber ? (
+              <>
+                <Text style={[styles.dot, { color: palette.tertiary }]}>{"·"}</Text>
+                <Text
+                  style={[styles.time, { color: palette.muted }]}
+                  accessibilityLabel={`On chapter ${node.chapterNumber}`}
+                >
+                  Chapter {node.chapterNumber}
+                </Text>
+              </>
+            ) : null}
             {node.collapsed ? (
-              <Text style={styles.hiddenCount}>
+              <Text style={[styles.hiddenCount, { color: palette.tertiary }]}>
                 ({hiddenCount} {hiddenCount === 1 ? "reply" : "replies"} hidden)
               </Text>
             ) : null}
@@ -99,7 +179,7 @@ export default function CommentRow({
 
           {!node.collapsed ? (
             <>
-              <Text style={styles.commentBody}>{node.body}</Text>
+              <Text style={[styles.commentBody, { color: palette.ink }]}>{node.body}</Text>
 
               <View style={styles.actions}>
                 <View style={styles.voteGroup}>
@@ -113,12 +193,13 @@ export default function CommentRow({
                   >
                     <ChevronUp
                       size={18}
-                      color={node.voteState === "up" ? colors.accent : colors.strong}
+                      color={node.voteState === "up" ? colors.accent : palette.strong}
                     />
                   </Pressable>
                   <Text
                     style={[
                       styles.score,
+                      { color: palette.strong },
                       node.voteState === "up" && styles.scoreUp,
                       node.voteState === "down" && styles.scoreDown,
                     ]}
@@ -135,7 +216,7 @@ export default function CommentRow({
                   >
                     <ChevronDown
                       size={18}
-                      color={node.voteState === "down" ? colors.premium : colors.strong}
+                      color={node.voteState === "down" ? colors.premium : palette.strong}
                     />
                   </Pressable>
                 </View>
@@ -147,8 +228,8 @@ export default function CommentRow({
                   accessibilityLabel={`Reply to ${node.authorName}`}
                   testID={`comment-reply-open-${node.id}`}
                 >
-                  <MessageCircle size={15} color={colors.strong} />
-                  <Text style={styles.actionLabel}>Reply</Text>
+                  <MessageCircle size={15} color={palette.strong} />
+                  <Text style={[styles.actionLabel, { color: palette.strong }]}>Reply</Text>
                 </Pressable>
 
                 <Pressable
@@ -157,18 +238,24 @@ export default function CommentRow({
                   accessibilityRole="button"
                   accessibilityLabel={`More actions for ${node.authorName}'s comment`}
                 >
-                  <MoreHorizontal size={15} color={colors.strong} />
+                  {dark ? (
+                    // The sheet design names the action; the light row keeps
+                    // its overflow glyph so the reader's page stays quiet.
+                    <Text style={[styles.actionLabel, { color: palette.strong }]}>Report</Text>
+                  ) : (
+                    <MoreHorizontal size={15} color={palette.strong} />
+                  )}
                 </Pressable>
               </View>
 
               {isReplyOpen ? (
-                <View style={styles.replyComposer}>
+                <View style={[styles.replyComposer, { backgroundColor: palette.field }]}>
                   <TextInput
                     value={replyDraft}
                     onChangeText={onReplyDraftChange}
                     placeholder={`Reply to ${node.authorName}...`}
-                    placeholderTextColor={colors.tertiary}
-                    style={styles.replyInput}
+                    placeholderTextColor={palette.tertiary}
+                    style={[styles.replyInput, { color: palette.ink }]}
                     multiline
                     autoFocus
                     accessibilityLabel={`Reply to ${node.authorName}`}
@@ -181,7 +268,7 @@ export default function CommentRow({
                       accessibilityRole="button"
                       accessibilityLabel="Cancel reply"
                     >
-                      <Text style={styles.replyCancelLabel}>Cancel</Text>
+                      <Text style={[styles.replyCancelLabel, { color: palette.muted }]}>Cancel</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => canSubmitReply && onSubmitReply(node.id)}
@@ -218,6 +305,7 @@ export default function CommentRow({
                       key={child.id}
                       node={child}
                       depth={depth + 1}
+                      tone={tone}
                       replyTargetId={replyTargetId}
                       replyDraft={replyDraft}
                       onReplyDraftChange={onReplyDraftChange}
@@ -352,6 +440,21 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.track,
   },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    // The gutter column is `spacing.lg` wide; the disc is wider on purpose and
+    // hangs into the gap, which is what gives the sheet its avatar column.
+    marginLeft: -spacing.sm,
+    marginRight: spacing.sm,
+  },
+  avatarInitial: {
+    ...type.headline,
+    fontFamily: fonts.display,
+  },
   body: {
     flex: 1,
     minWidth: 0,
@@ -366,6 +469,9 @@ const styles = StyleSheet.create({
     ...type.subhead,
     fontWeight: "700",
     color: colors.ink,
+  },
+  authorUnderlined: {
+    textDecorationLine: "underline",
   },
   dot: {
     ...type.caption,
