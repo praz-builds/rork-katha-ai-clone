@@ -2,6 +2,70 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-10: The cover finally arrives, and Home is put in the reader's order
+
+### Fixed
+
+- **A freshly written story kept its placeholder forever.** The art was being
+  painted, the file was in the bucket and the row said `ready` — the app was
+  simply never told. `CreateStudioScreen` used to poll for it; when generation
+  moved into the module-level session store the poll was not moved with it, so
+  a story written this session showed its genre gradient in the feed, on the
+  story page and in the library until the app was fully reloaded and the row
+  refetched. `generation-session.ts` asks again now, from the moment the
+  chapter is persisted, and writes the answer onto the session's story — which
+  is what every screen is already subscribed to, so the Home rail, the story
+  page and Library repaint together. Nothing new appears on screen while it
+  runs: the placeholder rule is unchanged (genre gradient, no spinner, no
+  copy), and the art fades in over `motion.base` when the URL lands. The poll
+  backs off from 4 seconds, caps at 12 asks — a little over two minutes — and
+  then stops politely; a cover that has not landed by then is picked up from
+  the database on the next launch. It stops the instant the cover settles
+  either way, and it leaves no timer behind when the session is retried,
+  dismissed or forgotten.
+
+### Changed
+
+- **Home is in the order the reader would put it in.** Your stories, then
+  Continue reading, then Katha Originals, then one shelf per genre they chose
+  in onboarding. What used to lead the page was a big black "Continue reading"
+  hero card that picked a featured story and printed "40% read — Chapter 2
+  waits" beside it: a claim about the reader that nothing had ever measured.
+  The hero card is gone. Continue reading is a named rail like every other
+  shelf, with the same cards, making no claim it cannot back — and it is the
+  single place a real read-progress signal drops in when there is one.
+- **Popularity is answered inside a genre the reader actually asked for.**
+  Each chosen-genre rail is ordered by reads, so "what everyone is reading" is
+  now something they see in Romance or Thriller rather than as a global chart
+  they have no stake in. The generic "Trending now" and "Most loved" rails
+  survive only for a reader who chose no genres at all — without a signal
+  there is no personal shelf to build, and a page that ends at Originals is
+  shorter than the scroll deserves. A chosen genre nothing has been written in
+  yet is skipped rather than rendered as an empty shelf.
+- **"Write another story" is an invitation now, not a settings row.** It was a
+  flat pale-peach band with a plus and a chevron. It is a full card with an
+  eyebrow, a title and a supporting line ("A genre, a name, one idea. Katha
+  writes the rest."), which rises and fades in on mount and settles under the
+  finger on press — both `useReducedMotion`-aware, both transform and opacity
+  only. It sits directly under the greeting, above the first rail, because the
+  top of the scroll is the only place an offer reads as an offer rather than
+  as the footer of the section above it; it also holds the visual weight the
+  removed hero card used to carry. Still one tap target, still one accessible
+  name.
+- **Two CTA treatments ship behind one constant** while the product owner
+  picks: `WRITE_CTA_VARIANT` in
+  `src/components/feed/WriteAnotherCTA.tsx` is `"gradient"` (an orange field
+  with white type) or `"editorial"` (a white card with an accent rail on its
+  leading edge). Flipping that one line switches the screenshot; nothing else
+  changes, and the copy, anatomy, tap target and motion are identical in both
+  so the comparison is only ever about how it looks.
+
+### Verified
+
+- `pnpm typecheck` clean, `pnpm lint` 0 errors,
+  `pnpm exec jest` 76 suites / 653 tests green (from 74 / 632),
+  `pnpm exec expo export --platform web` compiles.
+
 ## 2026-09-09: The story page goes dark, and a writer's own work leads Home
 
 ### Changed

@@ -7,9 +7,10 @@ import {
   Text,
   View,
 } from "react-native";
-import { ChevronRight, Plus, Search } from "lucide-react-native";
-import { Cover, PrimaryButton } from "@/components/KathaPrimitives";
+import { ChevronRight, Search } from "lucide-react-native";
+import { PrimaryButton } from "@/components/KathaPrimitives";
 import { FeedRail } from "@/components/feed/FeedRail";
+import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
 import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
 
@@ -26,9 +27,6 @@ type FeedRow = {
   title: string;
   stories: Story[];
 };
-
-/** Genres shown when the reader skipped onboarding's genre picker. */
-const FALLBACK_GENRES: Genre[] = ["adventure", "mystery", "fantasy"];
 
 /** A row this many stories deep is a scroll, not a browse; longer lists belong on Explore. */
 const RAIL_LENGTH = 10;
@@ -54,19 +52,51 @@ export function yourStories(generated: Story[]): Story[] {
 }
 
 /**
+ * The stories there is something to go back to.
+ *
+ * THERE IS NO READ-PROGRESS MODEL ON THE CLIENT YET, and this function is
+ * where one lands when there is. What it replaces was worse than absent: a
+ * black hero card at the top of Home that picked `featured[0]` and printed
+ * "40% read - Chapter 2 waits" beside it, a claim about the reader that
+ * nothing had ever measured. A named rail makes no such claim - it labels a
+ * shelf and shows what is on it - so the honest version of this row can exist
+ * today and get more accurate later.
+ *
+ * Until a `lastReadAt` is persisted, "something to continue" means the house
+ * picks that actually run past one chapter. A standalone is finished the
+ * moment it is opened; there is nothing to come back for.
+ */
+export function continueReading(stories: Story[]): Story[] {
+  return stories
+    .filter((story) => story.isFeatured && story.chapters.length > 1)
+    .slice(0, RAIL_LENGTH);
+}
+
+/**
  * Turns the flat story catalogue into the ordered, named rows Home renders.
  *
- * This is a pure function of its two inputs, not a hook or a piece of screen
+ * This is a pure function of its inputs, not a hook or a piece of screen
  * state, specifically so the day this becomes a server-driven "sections"
  * response the only thing that changes is what calls it - the row shape and
  * the JSX that maps over it stay identical. Keeping it pure also makes the
  * curation legible on its own: "what is Home made of" is answerable by
  * reading this one function top to bottom, without tracing render logic.
  *
- * Order is editorial, not incidental: the house picks (Originals) lead, then
- * the two social-proof cuts (Trending, Most loved), then the personal genre
- * shelves last, because a new reader has no genre signal to rank by but every
- * reader recognises "trending" and "loved" on sight.
+ * ORDER IS THE PRODUCT OWNER'S, and it runs from the most personal claim to
+ * the least:
+ *
+ * 1. **Your stories** - what the reader made. Nobody else's shelf can outrank it.
+ * 2. **Continue reading** - what they already started.
+ * 3. **Katha Originals** - the house's own writing.
+ * 4. **One rail per genre they chose in onboarding** - and this is where
+ *    trending lives now: each genre rail is ordered by reads, so "what is
+ *    popular" is answered inside a genre the reader actually asked for rather
+ *    than as a global chart they have no stake in.
+ *
+ * The generic "Trending now" / "Most loved" rails survive only as the
+ * fallback for a reader who picked no genres at all: without a genre signal
+ * there is no personal shelf to build, and a page that ends at Originals is
+ * shorter than the scroll deserves.
  */
 export function buildFeedRows(
   stories: Story[],
@@ -83,9 +113,35 @@ export function buildFeedRows(
     rows.push({ key: "yours", title: "Your stories", stories: yours });
   }
 
+  const unfinished = continueReading(stories);
+  if (unfinished.length > 0) {
+    rows.push({ key: "continue", title: "Continue reading", stories: unfinished });
+  }
+
   const originals = stories.filter((story) => story.isFeatured);
   if (originals.length > 0) {
     rows.push({ key: "originals", title: "Katha Originals", stories: originals });
+  }
+
+  if (preferredGenres.length > 0) {
+    // Deduplicated: onboarding stores display labels and two of them can map
+    // to one `Genre`, which would otherwise render the same shelf twice.
+    for (const genre of Array.from(new Set(preferredGenres))) {
+      const genreStories = stories
+        .filter((story) => story.genre === genre)
+        .sort((a, b) => b.views - a.views)
+        .slice(0, RAIL_LENGTH);
+      // A row with nothing in it is worse than no row: it teaches the reader
+      // that scrolling further sometimes wastes their time.
+      if (genreStories.length > 0) {
+        rows.push({
+          key: `genre-${genre}`,
+          title: genreLabels[genre],
+          stories: genreStories,
+        });
+      }
+    }
+    return rows;
   }
 
   const trending = [...stories]
@@ -100,18 +156,6 @@ export function buildFeedRows(
     .slice(0, RAIL_LENGTH);
   if (mostLoved.length > 0) {
     rows.push({ key: "loved", title: "Most loved", stories: mostLoved });
-  }
-
-  // Onboarding's genre picks, or a fixed fallback for a reader who skipped it -
-  // never an empty shelf where a personal row should be.
-  const genres = preferredGenres.length > 0 ? preferredGenres : FALLBACK_GENRES;
-  for (const genre of genres) {
-    const genreStories = stories.filter((story) => story.genre === genre);
-    // A row with nothing in it is worse than no row: it teaches the reader
-    // that scrolling further sometimes wastes their time.
-    if (genreStories.length > 0) {
-      rows.push({ key: `genre-${genre}`, title: genreLabels[genre], stories: genreStories });
-    }
   }
 
   return rows;
@@ -145,7 +189,6 @@ export default function HomeScreen({
     ? "Good afternoon"
     : "Good evening";
 
-  const featured = stories.filter((story) => story.isFeatured);
   const rows = buildFeedRows(stories, preferredGenres, generatedStories);
 
   return (
@@ -206,33 +249,12 @@ export default function HomeScreen({
               </View>
             </View>
           )
-          : (
-            <>
-              {featured.length > 0 && (
-                <Pressable
-                  onPress={() => onStory(featured[0].id)}
-                  style={styles.continueCard}
-                >
-                  <View style={styles.continueCopy}>
-                    <Text style={styles.continueEyebrow}>Continue reading</Text>
-                    <Text style={styles.continueTitle}>{featured[0].title}</Text>
-                    <Text style={styles.continueMeta}>
-                      40% read - Chapter 2 waits
-                    </Text>
-                  </View>
-                  <Cover story={featured[0]} size="mini" />
-                </Pressable>
-              )}
-
-              <Pressable onPress={onCreate} style={styles.writeAnotherBand}>
-                <View style={styles.writeAnotherIcon}>
-                  <Plus size={20} color={colors.accent} />
-                </View>
-                <Text style={styles.writeAnotherText}>Write another story</Text>
-                <ChevronRight size={18} color={colors.accent} />
-              </Pressable>
-            </>
-          )}
+          // The invitation sits above the shelves, not between them: the top
+          // of the scroll is where it reads as an offer rather than as the
+          // footer of whatever section preceded it. It also holds the visual
+          // weight the removed "Continue reading" hero card used to carry, so
+          // the page still opens on something rather than on a rail eyebrow.
+          : <WriteAnotherCTA onPress={onCreate} />}
 
         {/* The editorial stack. Every row is named, every row scrolls its own
             axis, and a row that would render empty was already filtered out
@@ -353,68 +375,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   writeCTAButtonWrap: { marginTop: spacing.betweenGroups },
-
-  /* ── Write another (returning user) ── */
-  writeAnotherBand: {
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.betweenGroups,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accentSoft,
-    // A flat tint band still needs to look like an object you can press, and
-    // per the elevation rule that is a shadow's job, not a border's.
-    boxShadow: shadows.card,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.related,
-  },
-  writeAnotherIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  writeAnotherText: {
-    flex: 1,
-    fontFamily: fonts.display,
-    fontSize: 17,
-    color: colors.ink,
-  },
-
-  /* ── Continue reading card ── */
-  continueCard: {
-    marginHorizontal: spacing.xl,
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    backgroundColor: colors.ink,
-    boxShadow: shadows.raised,
-    flexDirection: "row",
-    gap: spacing.related,
-    alignItems: "center",
-  },
-  continueCopy: { flex: 1 },
-  continueEyebrow: {
-    fontFamily: fonts.ui,
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  continueTitle: {
-    marginTop: spacing.xs,
-    fontFamily: fonts.display,
-    color: colors.surface,
-    fontSize: 25,
-    lineHeight: 28,
-  },
-  continueMeta: {
-    marginTop: spacing.related,
-    fontFamily: fonts.ui,
-    color: colors.tertiary,
-    fontWeight: "700",
-  },
 
   /* ── See everything (bottom exit into Explore) ── */
   seeEverythingRow: {

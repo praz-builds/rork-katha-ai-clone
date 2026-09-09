@@ -36,10 +36,12 @@ import {
   findReadyChapterAudio,
   markChapterAudioFailed,
   markChapterAudioJobStarted,
+  markChapterAudioReady,
   NARRATION_REFUSAL,
   publicAudioUrl,
   stableChapterAudioPath,
   startRunpodNarration,
+  uploadAudio,
 } from "../_shared/narration-audio.ts";
 
 export async function handleRequest(req: Request): Promise<Response> {
@@ -188,6 +190,26 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     let jobId: string;
     try {
+      if (voice.provider === "edge_tts") {
+        const params = voice.provider_voice_params as { voice?: unknown };
+        const edgeVoice = typeof params.voice === "string"
+          ? params.voice
+          : voice.id;
+        const audioBytes = await generateWithEdgeTts(
+          chapter.content,
+          edgeVoice,
+        );
+        await uploadAudio(serviceClient, storagePath, audioBytes);
+        await markChapterAudioReady(serviceClient, claim.id!, storagePath);
+        return respond({
+          status: "COMPLETED",
+          story_id: storyId,
+          chapter_id: chapterId,
+          voice_id: voiceId,
+          audio_url: await publicAudioUrl(serviceClient, storagePath),
+          cached: false,
+        });
+      }
       jobId = await startProviderJob(voice, chapter.content);
     } catch (providerError) {
       // The provider never accepted a job, so there is nothing to reconcile
@@ -267,16 +289,7 @@ async function startProviderJob(
     return await startRunpodNarration({ text, voice });
   }
   if (voice.provider === "edge_tts") {
-    // `generateWithEdgeTts` always returns null today -- it is a documented
-    // placeholder (see `_shared/edge-tts.ts`), not a job-starting API. Calling
-    // through to it and surfacing a typed failure keeps this branch ready for
-    // when a real backend lands, instead of silently claiming a job started.
-    const params = voice.provider_voice_params as { voice?: unknown };
-    const edgeVoice = typeof params.voice === "string"
-      ? params.voice
-      : voice.id;
-    await generateWithEdgeTts(text, edgeVoice);
-    throw new Error("edge_tts_not_implemented");
+    throw new Error("edge_tts_is_synchronous");
   }
   throw new Error(`unsupported_provider:${voice.provider}`);
 }
@@ -303,6 +316,20 @@ function providerErrorCode(error: unknown): string {
   if (message.includes("RUNPOD_API_KEY is not configured")) {
     return "runpod_key_missing";
   }
+  if (message.includes("EDGE_TTS_SERVICE_URL is not configured")) {
+    return "edge_tts_service_missing";
+  }
+  if (message.includes("edge_tts_timeout")) {
+    return "edge_tts_timeout";
+  }
+  if (message.includes("edge_tts_bad_response")) {
+    return "edge_tts_bad_response";
+  }
+  const edgeFailure = /edge_tts_failed:(\d{3})/.exec(message);
+  if (edgeFailure) {
+    const status = Number(edgeFailure[1]);
+    return status >= 500 ? "edge_tts_5xx" : "edge_tts_4xx";
+  }
   if (message.includes("RunPod start returned no job id")) {
     return "runpod_no_job_id";
   }
@@ -315,6 +342,9 @@ function providerErrorCode(error: unknown): string {
   }
   if (message.includes("edge_tts_not_implemented")) {
     return "edge_tts_not_implemented";
+  }
+  if (message.includes("edge_tts_is_synchronous")) {
+    return "provider_error";
   }
   if (message.startsWith("unsupported_provider:")) {
     return "unsupported_provider";
@@ -331,7 +361,10 @@ function providerErrorCode(error: unknown): string {
  * each of which is specific to this one request.
  */
 function classifyStartFailureSeverity(errorCode: string): ErrorSeverity {
-  return errorCode === "runpod_key_missing" || errorCode === "runpod_start_5xx"
+  return errorCode === "runpod_key_missing" ||
+      errorCode === "runpod_start_5xx" ||
+      errorCode === "edge_tts_service_missing" ||
+      errorCode === "edge_tts_5xx"
     ? "critical"
     : "high";
 }

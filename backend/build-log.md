@@ -3593,6 +3593,47 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
 - No `any`, no `@ts-ignore` in either touched file (checked by grep; the only
   matches are the English word "any" inside prose strings).
 - Not committed, per instructions.
+
+## 2026-09-10 UTC — Edge TTS narration path wired behind the existing audio cache
+
+The audio cost basis changed from "MiniMax is the only path" to "Microsoft
+edge-tts can be the cheap path if a worker is configured." The working estimate
+is **~$0.001-$0.006 per fresh chapter narration** for edge-tts, driven by
+worker runtime, storage and bandwidth rather than provider API credits. MiniMax
+via RunPod remains the expensive fallback for `runpod_minimax` voices until
+those voices are migrated or retired. `source-of-truth/CREDITS_AND_PRICING.md`
+now records both numbers instead of treating `$0.22/chapter` as universal.
+
+Implementation:
+
+- `_shared/edge-tts.ts` now calls `EDGE_TTS_SERVICE_URL` with `{ text, voice,
+  format: "mp3" }`, accepts either raw `audio/mpeg` or base64 JSON, enforces a
+  50 MB response cap, and supports optional `EDGE_TTS_API_KEY` plus
+  `EDGE_TTS_TIMEOUT_MS`.
+- `generate-audio` handles `edge_tts` voices synchronously: claim the
+  `(chapter, voice)` row, synthesize MP3 bytes, upload to the existing public
+  `audio` bucket, mark `chapter_audio` ready, and return the cached URL. It
+  does **not** create a fake RunPod job or ask `audio-status` to poll a provider
+  that has no job API.
+- Migration `00059_reactivate_edge_tts_voices.sql` reactivates `elvira` and
+  `alvaro`, which `00053` deliberately hid while edge-tts had no backend.
+
+Operational requirement before this can work in production: deploy or choose the
+edge-tts worker and set `EDGE_TTS_SERVICE_URL` in Supabase secrets. Without it,
+edge-tts requests fail as `edge_tts_service_missing`; cached audio and RunPod
+voices keep their existing behavior.
+
+Verification:
+
+- `deno fmt` on every changed backend test/function file.
+- `deno test --allow-all backend/supabase/functions/_shared/edge-tts.test.ts
+  backend/supabase/functions/generate-audio/index.test.ts
+  backend/supabase/migrations/00048_voice_library_test.ts
+  backend/supabase/migrations/00053_deactivate_unbacked_voices_test.ts`:
+  **32 passed, 0 failed**.
+- No live Supabase migration was applied, no function was deployed, and no
+  production-level test ran; therefore no `public.error_events` rows were
+  written this session.
 ## 2026-09-08: Rate-limit the grounding fallback, without reordering it
 
 ### Changed

@@ -60,10 +60,11 @@ The five findings that shape the numbers:
    only because of margin. 50 credits is ~16 chapters/month against a working
    writer's ~63-credit appetite, so overflow demand routes into credit packs at
    85–90% margin instead of being absorbed by a 40%-margin subscription.
-4. **Audio only works as a catalog investment, not a per-user cost.** A narration
-   costs ~$0.22 to generate and $0 to replay. Narrating the top ~500 chapters
-   ourselves is a **one-time ~$110** and turns the Reader tier from a
-   32%-breakeven gamble into a ~100%-margin product.
+4. **Audio only works as a catalog investment, not a per-user cost.** A Microsoft
+   edge-tts narration is estimated at **~$0.001-$0.006** to generate and $0 to
+   replay from cache. Narrating the top ~500 chapters ourselves is therefore a
+   **one-time ~$0.50-$3.00** if those voices pass production measurement; MiniMax
+   fallback remains materially more expensive.
 5. **Reading must stay free, and that is a strategic asset.** It costs us nothing
    to serve, it is the entire top of the funnel, and it is what every walled
    competitor cannot copy.
@@ -328,19 +329,31 @@ A cast is capped at **3 characters**. That is a product bound, not a margin one 
 four portraits still clear the floor on a blended basis — chosen so the cast
 stays legible and matches the set-of-three costing above.
 
-**Audio.** MiniMax `speech-02-hd` via RunPod. Official MiniMax rate **$0.10/1k
-chars** ([MiniMax](https://minimax-ai.chat/pricing/)); third parties $0.05–$0.10/1k
-([WaveSpeed](https://wavespeed.ai/models/minimax/speech-02-hd),
-[fal](https://fal.ai/models/fal-ai/minimax/speech-02-hd/api)). A RunPod A100
-serverless worker is ~$2.72/hr of active compute
-([RunPod](https://www.runpod.io/pricing)). ElevenLabs, for comparison, charges
-$0.05–$0.10/1k chars ([Flexprice](https://flexprice.io/blog/elevenlabs-pricing-breakdown)).
+**Audio.** Fresh narration now has two cost bases:
 
-An 800-word chapter ≈ 4,500 chars → **$0.22 at $0.05/1k, $0.45 at $0.10/1k**.
+- **Microsoft edge-tts voices** through our own `EDGE_TTS_SERVICE_URL` worker:
+  no per-character API bill, only worker runtime + storage + bandwidth. Working
+  estimate: **~$0.001-$0.006 per fresh chapter narration** after included quotas,
+  then near-zero replays from the cached MP3. This is an estimate until a real
+  production batch records duration, output size and worker bill.
+- **MiniMax `speech-02-hd` via RunPod** remains the legacy/fallback provider for
+  `runpod_minimax` voices. Official MiniMax rate **$0.10/1k chars**
+  ([MiniMax](https://minimax-ai.chat/pricing/)); third parties $0.05–$0.10/1k
+  ([WaveSpeed](https://wavespeed.ai/models/minimax/speech-02-hd),
+  [fal](https://fal.ai/models/fal-ai/minimax/speech-02-hd/api)). A RunPod A100
+  serverless worker is ~$2.72/hr of active compute
+  ([RunPod](https://www.runpod.io/pricing)). ElevenLabs, for comparison, charges
+  $0.05–$0.10/1k chars
+  ([Flexprice](https://flexprice.io/blog/elevenlabs-pricing-breakdown)).
 
-**⚠ We have not measured our actual RunPod cost.** The endpoint's throughput
-determines it and nobody has instrumented it. Every audio number here is an
-estimate from published rates. **Measure before enabling narration** (§12).
+An 800-word chapter ≈ 4,500 chars. MiniMax still implies **$0.22 at $0.05/1k,
+$0.45 at $0.10/1k**; edge-tts should be treated as the preferred provider if its
+quality and reliability pass production measurement.
+
+**⚠ We have not measured our actual audio cost.** For edge-tts the unknown is
+worker runtime/throttling; for RunPod it is endpoint throughput. Every audio
+number here is an estimate from published rates or infrastructure arithmetic.
+**Measure before enabling narration broadly** (§12).
 
 ### The credit's cost basis
 
@@ -352,7 +365,8 @@ estimate from published rates. **Measure before enabling narration** (§12).
 | Chapter art @ 1024×1024 medium | $0.042 | 1 |
 | Character set — 3 @ 1024×1024 low | $0.033 | 1 |
 | Audio unlock — cached chapter | **~$0** | 1 |
-| Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
+| Audio unlock — triggers fresh edge-tts narration | ~$0.001-$0.006 ⚠ | 1 |
+| Audio unlock — triggers MiniMax fallback narration | ~$0.22-$0.45 ⚠ | 1 |
 
 **A story, not a chapter, is the unit that matters** — the blended cost per
 credit depends on its shape, because the cast and the cover are paid once and
@@ -591,19 +605,21 @@ Reader yearly nets **$2.12/month** for 20 audio unlocks.
 | If a Reader's credit hits… | Our cost | Result |
 |---|---|---|
 | Audio we already narrated | ~$0 | **~100% margin** |
-| A chapter needing fresh narration | $0.22 | **breaks even at a 48% fresh rate** |
+| A chapter needing fresh edge-tts narration | ~$0.001-$0.006 | **>95% margin** |
+| A chapter needing fresh MiniMax narration | $0.22 | **breaks even at a 48% fresh rate** |
 
-Above a 48% fresh-narration rate, Reader yearly loses money. That is not a
-tolerance to leave to chance, which is why catalog narration below is a
-commitment rather than an optimization.
+Above a 48% MiniMax fresh-narration rate, Reader yearly loses money. Edge-tts
+changes that arithmetic, but only after measured reliability confirms it can be
+the default provider rather than a best-effort path.
 
 ### Catalog narration — the decision that makes audio work
 
-**A narration costs ~$0.22 once and $0 forever after.** It is cached in the
-public `audio` bucket and every subsequent listen, by anyone, is free. So the
+**A narration is paid once and replayed for $0 forever after.** It is cached in
+the public `audio` bucket and every subsequent listen, by anyone, is free. So the
 cost is **per chapter narrated**, never per listen.
 
-**We narrate the top ~500 chapters ourselves, proactively — a one-time ~$110.**
+**We narrate the top ~500 chapters ourselves, proactively — a one-time
+~$0.50-$3.00 on edge-tts, or ~$110+ on MiniMax fallback.**
 
 That single spend:
 
@@ -737,9 +753,11 @@ is v1.1, but rebalance the 5 when it actually ships rather than inheriting it.
 Google's Gemini free tier gives 20 images/day
 ([AI Free API](https://www.aifreeapi.com/en/posts/gemini-image-generation-free-api))
 because its marginal cost is near zero and it funnels to a $20/month plan.
-Katha's marginal cost is $0.0423–$0.22 per action and the entry paid tier is
-$4.99. A free chapter a day is 90 credits/month ≈ $3.81 of subsidy — it beats
-every plan we sell. Daily replenishment is **earned and capped**, never granted.
+Katha's creation marginal cost is not near zero, and MiniMax fallback narration
+can still be materially higher than text. The entry paid tier is $4.99. A free
+chapter a day is 90 credits/month ≈ $3.81 of subsidy at the conservative
+$0.0423 basis — it beats every plan we sell. Daily replenishment is **earned and
+capped**, never granted.
 
 ---
 
@@ -1076,7 +1094,7 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 | Phase | Contents |
 |---|---|
 | **1 — Launch** | Story start unbundled at 3 credits, further chapters at 1 (2 illustrated); free unlimited reading; free caps on drafting; streak ladder; welcome bonus; lapse warnings; paywall + one-time offer; packs; all 10 SKUs |
-| **2 — Audio** | Only after RunPod cost is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
+| **2 — Audio** | Only after edge-tts cost/reliability is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
 | **3 — v1.1** | Referral with deep-link attribution |
 
 Phase 1 is a complete, coherent economy on its own. Audio is the only piece gated
@@ -1093,8 +1111,8 @@ economy is tuned on evidence rather than argued about.
 |---|---|---|
 | **Credit utilization, Writer yearly** | The 40%-margin row, and the tier that self-selects for heavy use | Median burn > 40 of 50 → reprice or cut the grant |
 | **Pack attach rate among Writer subscribers** | The 50-credit grant is designed to route overflow into 85–90% margin packs | < 15% of Writer subs buying a pack → the grant is too generous |
-| **Catalog hit rate on audio unlocks** | Reader yearly breaks even at a 48% fresh-narration rate | Fresh rate > 40% → widen the catalog job |
-| **Actual $/chapter narration on RunPod** | Every audio number here is extrapolated from published rates | > $0.30 → narration becomes subscriber-only |
+| **Catalog hit rate on audio unlocks** | Cached audio is instant and keeps replay cost near zero | Fresh rate > 40% → widen the catalog job |
+| **Actual $/chapter narration by provider** | Every audio number here is extrapolated until a batch is measured | Edge > $0.01 or MiniMax > $0.30 → re-run the Reader math |
 | **D3 / D7 / D30 retention, streak-holders vs not** | Validates the ladder against the 26% / 13% / 7% baseline ([Adjust](https://uxcam.com/blog/mobile-app-retention-benchmarks/)) | No D7 lift after 8 weeks → the ladder is decoration; re-cadence it |
 | **Streak milestone claim rate, by rung** | Whether day 2 / 5 / 7 are the right rungs | Day-2 claim < 50% of D2-actives → the first rung lands too late; move it to day 1 |
 | **Free → paid conversion at D35** | Benchmark is 2.1% freemium median ([RevenueCat](https://www.revenuecat.com/blog/growth/subscription-app-trends-benchmarks-2026)) | < 1% → the paywall sequence is wrong before the earn table is; the free tier is already at 20% of the Reader grant |
@@ -1111,11 +1129,13 @@ economy is tuned on evidence rather than argued about.
 
 ## 12. Open items — must resolve before shipping
 
-1. **RunPod `minimax-speech-02-hd` actual cost per chapter.** Every audio number
-   is extrapolated from published rates ($0.05–$0.10/1k chars). Our real cost
-   depends on endpoint throughput and cold starts, which nobody has instrumented.
-   **Audio cannot ship until this is measured.** Above ~$0.30/chapter, the catalog
-   budget and the Reader grant both need rework.
+1. **Actual narration cost per chapter by provider.** Edge-tts is estimated from
+   worker/runtime arithmetic, and MiniMax is extrapolated from published rates
+   ($0.05–$0.10/1k chars). Our real cost depends on worker duration, throttling,
+   endpoint throughput and cold starts, none of which have a measured batch yet.
+   **Audio cannot ship broadly until this is measured.** Above ~$0.01/chapter on
+   edge-tts or ~$0.30/chapter on MiniMax, the catalog budget and the Reader grant
+   both need rework.
 2. **Confirm image quality at `low` for character sets.** The $0.011 setting
    assumes quality is acceptable at inline display sizes. Generate a dozen and
    look at them before committing.
@@ -1150,9 +1170,11 @@ economy is tuned on evidence rather than argued about.
    that removes nothing is a misleading-subscription risk at App Review. When ads
    do ship, that benefit line and the two clauses above are amended in the same
    commit, so this document never contradicts itself.
-8. **`_shared/edge-tts.ts` returns `null`** — an interface with no implementation.
-   MiniMax HD is currently the only voice. Since we are not tiering voices (§1),
-   this is acceptable at launch but means every narration carries premium cost.
+8. **Resolved in code, pending production measurement: `_shared/edge-tts.ts` has
+   a worker-backed implementation.** Set `EDGE_TTS_SERVICE_URL` before enabling
+   Microsoft voices in production. The first measured batch must record worker
+   runtime, MP3 size, failure rate and throttling, then replace the estimate in
+   §2.
 9. **Decide the OpenRouter data-policy setting, and confirm the chapter figure
    against a bill.** §2 now carries **$0.0160 per chapter** on
    `meta/muse-spark-1.3`, extrapolated from a single **measured** call
@@ -1272,8 +1294,9 @@ economy is tuned on evidence rather than argued about.
 19. **Platform-funded catalog narration:** narrate the top ~500 chapters by read
     volume proactively, ~$110 one-time, refreshed weekly. On-demand narration
     remains the long-tail fallback.
-20. **All audio is blocked on measuring the real RunPod per-chapter cost.** Above
-    ~$0.30/chapter, the catalog budget and Reader grant are both re-derived.
+20. **All audio is blocked on measuring the real per-chapter cost.** Above
+    ~$0.01/chapter on edge-tts or ~$0.30/chapter on MiniMax fallback, the catalog
+    budget and Reader grant are both re-derived.
 
 ### Earning
 
