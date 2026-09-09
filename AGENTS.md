@@ -111,7 +111,33 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 
 OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
 
-**Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` was re-balanced with the reorder — cumulative shares are openrouter 0.5, gemini 0.65, openai 0.93, free 1.0 — because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last.
+**Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` is re-balanced whenever a phase moves, because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last. Cumulative shares are now **openrouter 0.7, gemini 0.9, free 1.0** (they were 0.5 / 0.65 / 0.93 / 1.0 while OpenAI held a position).
+
+> ### ⚠️ The generation deadline is smaller than the work. Read this before debugging a failed generation.
+>
+> **Measured 2026-09-09.** A real chapter from the leading model
+> (`meta/muse-spark-1.3-contributor`, 1,846 words) takes **70 seconds**.
+>
+> `GENERATION_DEADLINE_MS` is 120s. The OpenRouter phase gets its share of that
+> and then splits it **evenly across both Muse Spark models**. At the deployed
+> 0.5 share that is 60s -> **30s per model**; at the current 0.7 share it is
+> 84s -> **42s per model**. Both are under 70s, so the leader times out before
+> it has written a chapter, every time.
+>
+> A live failure recorded exactly that in `error_events`:
+> `codes: [timeout, timeout, auth_failed, auth_failed, auth_failed, timeout, timeout]`
+> — OpenRouter timing out, the (revoked, still-deployed) OpenAI position
+> answering 401 three times, the free tier timing out — and the caller getting
+> `Story generation failed. Credit refunded.` after ~2 minutes.
+>
+> **The OpenRouter credential is healthy.** `/api/v1/key` returns 200 and the
+> model answers a short prompt in about a second. Nothing is misconfigured; the
+> budget is simply smaller than the task. **Do not start by rotating keys.**
+>
+> The fix is one of: raise `GENERATION_DEADLINE_MS`; stop splitting the
+> OpenRouter phase evenly (the leader plausibly deserves most of it, not half);
+> or lower `max_tokens`. All three are product-visible latency decisions, so
+> none was taken unilaterally.
 
 **The contributor tier is `404` until an account setting changes.** `meta/muse-spark-1.3-contributor` is ~17x cheaper because it trains on prompts and completions, and the OpenRouter account's privacy setting blocks training-tier endpoints: `"Paid model training violation (account settings): 1 endpoint excluded"`. Change it at https://openrouter.ai/settings/privacy — that is a data decision (users' story ideas and generated prose go to the provider for training), and no deploy is involved either way. Until then `meta/muse-spark-1.3` serves; it was measured on 2026-09-05 returning schema-valid JSON in ~11s.
 
@@ -119,9 +145,9 @@ OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Ge
 
 **OpenAI is removed from every chain (2026-09-08).** The credential was revoked and is not returning, so the position it authenticated is gone from `_shared/llm.ts` and `_shared/image.ts` rather than left dormant. This matters because a keyless provider does not fail loudly — `key()` returning undefined means *skip* throughout this codebase — so a half-removed position would sit in the chain costing a branch and a slice of the generation deadline while never being able to answer. `OPENAI_API_KEY` and `OPENAI_STORY_API_KEY` are now read by nothing; a test asserts that setting either does not resurrect a provider. Its 0.28 share of the generation deadline went to the leader and to Gemini, because an unclaimed slice is not saved time, it is time the remaining phases are forbidden from using.
 
-**Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once. Gemini receives it as `responseSchema`; OpenRouter and OpenAI receive it through `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
+**Output is schema-constrained, not prose-requested.** `_shared/story_schema.ts` defines the story JSON schema once. Gemini receives it as `responseSchema`; OpenRouter receives it through `response_format` with `strict: true`. Before this, the prompt only *described* the shape, and a valid-JSON-wrong-shape response fell through to the plain-text parser, persisting a chapter with a placeholder `hook_type: "none"` and an empty `series_state` while still charging a credit.
 
-**`max_tokens` is 16,000 for generation**, 2,000 for paragraph edits (32,000 and 4,000 as `max_completion_tokens` on the reasoning path). The previous 4,096 truncated a chapter plus its `series_state` mid-JSON.
+**`max_tokens` is 16,000 for generation**, 2,000 for paragraph edits (OpenRouter doubles both for its own reasoning headroom). The previous 4,096 truncated a chapter plus its `series_state` mid-JSON. The `max_completion_tokens` / `reasoning_effort` shape went with the OpenAI position; no remaining provider accepts it.
 
 **The chapter word band is enforced, not just requested.** `wordBandFor()` in `_shared/types.ts` is the single source of truth — `600-900` for a series chapter whatever the audience, `500-1200` standalone kids, `500-1500` standalone adult — and both the prompt and `requireUsableStoryOutput()` read it. A generation outside `wordBandBounds()` (0.75x floor, 1.25x ceiling) is unusable and falls through to the next provider like malformed JSON; drift inside the tolerance is logged only. The count comes from `chapter_body`, never from the model's self-reported `word_count`, because a model that ignores the band is not a reliable narrator of how badly it ignored it. Before this, nothing checked the result and `gpt-5-mini` had a 2,026-word chapter persisted and charged for.
 
@@ -148,6 +174,36 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 ```
 
 `ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist for browser clients. Native clients do not send an `Origin` header.
+
+**Run the web app on port 8090, not 8081.** The deployed `ALLOWED_ORIGINS`
+secret contains `http://localhost:8090` and does **not** contain 8081, and the
+CORS preflight for a disallowed origin returns 204 with no
+`Access-Control-Allow-Origin` header — so the browser silently blocks every
+edge-function call and the app looks like it has no backend at all. Symptom: 0
+credits, no visible error, nothing in `error_events` (the failure happens
+before any handler runs). Diagnose it with:
+
+```bash
+curl -i -X OPTIONS "$SUPABASE_URL/functions/v1/bootstrap-user" \
+  -H "Origin: http://localhost:8090" -H "Access-Control-Request-Method: POST"
+# an allowed origin echoes back: access-control-allow-origin: http://localhost:8090
+```
+
+**Guest credits are capped at 3 grants per network per day** (`GUEST_BOOTSTRAP_WINDOW_LIMIT`).
+A day of local testing exhausts that, and every new guest session then boots
+with `balance: 0, rate_limited: true` — which is correct behaviour, not a bug,
+and is not fixed by incognito because the window is scoped to the network.
+Starting a story costs 3 credits, so a rate-limited session cannot create
+anything. Top up real ledger rows with:
+
+```bash
+./scripts/grant-credits.sh all 500   # every guest session; refuses real accounts
+./scripts/grant-credits.sh <uuid> 200
+```
+
+It writes through `grant_credit` with the service role, exactly as the welcome
+bonus does, so the number on screen stays true. Load the app once first (that
+creates the `profiles` row), run it, then reload.
 
 ## Database
 
@@ -331,6 +387,37 @@ The AI infers cultural context from character names, traits, and story language.
 - **Characters**: optional, maximum 3; detailed fields live in the Craft character screen.
 - **Genre**: required primary genre, with up to two editable secondary genre tags.
 - **Language**: new Create submissions support English and Portuguese. Existing stories retain legacy language support.
+
+## Character Portraits
+
+`generate-character-image` draws a draft portrait from the Craft character
+sheet, before any story row exists. It runs the same `_shared/image.ts` chain
+as covers.
+
+**It is rate-limited, not credited.** 12 requests/hour/user via
+`claim_character_portrait_request` (migration 00055). One call can become six
+paid provider requests (two models x three safety rungs), and this endpoint has
+no credit reservation and no idempotency key — the client mints a fresh request
+id on every tap, so nothing collides on a replay. The cap bounds the damage
+without pretending to price the feature: `source-of-truth/CREDITS_AND_PRICING.md`
+§10.6 has no settled per-portrait cost, and it got ~3.5x dearer when images
+moved to Gemini's flat per-image rate. **That number needs re-running before
+portraits are priced.**
+
+**A writer may attach a reference photo**, JPEG/PNG/WebP up to 6 MB as a data
+URL. SVG is refused by allowlist — it is a document that can carry script and
+remote references, not a bitmap. The image is a STYLE reference and never a
+likeness target: `STYLE_REFERENCE_CLAUSE` is stated to the model *before* the
+image in the message, and the reference is dropped at the last safety rung so
+an attached photo cannot fail the whole ladder.
+
+**Be accurate about what enforces that.** Code comments on this path claim the
+base Safety Rules and the entity visibility gate back it up. Neither applies
+here: `buildPortraitPrompt` imports nothing from `story-prompts.ts`, and the
+portrait is uploaded to the public `covers` bucket before a story row exists,
+so the gate — which governs `stories.is_public` — cannot reach it. Prompt text
+plus the provider's own moderation is the only thing between an attached photo
+and a likeness. Treat that as the known limit, not as three layers.
 
 ## Cover Image System
 

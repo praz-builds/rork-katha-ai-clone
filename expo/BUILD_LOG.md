@@ -2,6 +2,90 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-09: The reading experience — pages, controls, portraits, and stories that survive a reload
+
+### Changed
+
+- **The reader turns pages horizontally.** One screen-wide page per
+  `paginateChapter` slice, snapping, with the Pages control synced in both
+  directions. Word-tap phrase capture still works: `renderWord` receives a
+  chapter-absolute index (`pageWordStart + i`), and only `pageIndex +/- 1`
+  renders live words so offsets stay equal to page indices.
+- **Controls appear on a tap and hide on the next one.** The reader opens with
+  them hidden, so the page is the first thing seen. The chrome is dark on every
+  reading mode: the sheet reads as "the app" and the page stays "the book".
+- **Three reading modes** — Sepia (default, warm), Paper, Night. Body text
+  clears WCAG AAA (7:1) on all three, enforced by `reading-themes.test.ts`, and
+  no mode pairs pure black with pure white (maximum contrast is the wrong
+  choice for long-form reading; it causes the halation that smears a line as
+  the page turns). The gate caught a real defect on its first run: Sepia's
+  secondary text was 3.30:1, below even AA, in the default mode.
+- **A chapter opens with its title** — a "Chapter N" eyebrow and a rule, on
+  page 1 only. `paginateChapter` gained `viewport.firstPageOffset` so page 1 is
+  budgeted for the space left below the opener; absent or `0` reproduces the
+  old uniform paging exactly.
+- **The character portrait is rendered.** It never was: when the image was
+  READY the code drew `character.name.slice(0, 1)` and mounted no `<Image>` at
+  all, in both the craft sheet and the cast-list card. Generation had worked
+  the whole time — verified against the live endpoint, ~12s to a real URL — so
+  "the character isn't generating" was a render bug that had cost real credits.
+  The card also shows a busy state now: a 12-second wait with no feedback is
+  indistinguishable from a dead button.
+- **End-of-chapter directions are cards, not a text box.** The suggestions were
+  real (open hooks, promised payoffs, next-chapter pressure) but gated at
+  `resolved.length >= 2`, so a story yielding ONE direction discarded it and
+  rendered only the write-your-own box. Now `>= 1`, capped at 3, with the free
+  text demoted to a collapsed CTA. The four hardcoded "Surprise me" lines are
+  gone; "Let Katha decide" sends `undefined` rather than inventing a direction.
+- **Streaming is transport, not presentation.** The loader holds until three
+  finished pages exist or the chapter completes, then reveals settled prose.
+  Only whole paragraphs settle and only whole pages count, so page 1 does not
+  reflow underneath the reader.
+- **A writer's own stories survive a reload.** They did not: no endpoint
+  returned a private story and the client held them in a `useState` array, so
+  closing the tab erased every story a writer had made while the rows sat safe
+  in Postgres. `fetchMyStories` reads `stories` and `chapters` straight from
+  PostgREST, where RLS has allowed an author their own work since 00002.
+- **Character reference photos.** `expo-image-picker` is wired, downscaling to
+  1024px and sending a data URL. It is a style reference, not a likeness
+  target, and the copy says so where the writer decides whether to attach one.
+- Create-flow pass: `@` on cast chips, Chapter plan removed from More options,
+  the review strength card replaced by a compact meter, the "Edit" button next
+  to Reimagine removed, a friction modal on unsaved character edits, and
+  `SWITCH_COLORS` so the four switches cannot drift off-brand again.
+
+### Fixed
+
+- **Android hardware back closed the app from inside the reader.** The handler
+  returned `false` expecting a navigator to take over. There is none — screens
+  are a `useState` switch in `App.tsx` — so it ran Android's default and
+  finished the activity. The existing test asserted `toBe(false)`, so it
+  enshrined the bug rather than catching it.
+- **The chapter reveal scrolled to its own end**, landing the writer at the far
+  end of the three revealed pages instead of the start. `StreamingProse` now
+  takes `autoFollow`, defaulting off.
+- **A searched word vanished in Night mode.** The highlight was a hardcoded
+  `accentSoft` behind text inheriting `theme.text`: 1.03:1. Highlights are now
+  per-theme and the contrast gate covers them.
+- **The Pages control was a stepper wearing a track** — one page per tap
+  wherever you touched it, wrapping to page 1 at the end. Now positional, with
+  the unfilled remainder actually drawn.
+- **The launch mark appeared to jump between loads.** Not the launch screen,
+  which is measurement-free: the generating overlay shuffles its phrase pool,
+  and a `minHeight: 64` block inside a centred column moved the mark 16pt
+  depending on which phrase was dealt, then again every 3.2s.
+
+### Known
+
+- Native gesture behaviour is unverified: no device or simulator in this
+  environment. Whether a drag reaches the pager, and whether a word tap wins the
+  touch negotiation against a horizontal scroller, are proven only at the React
+  level.
+- `CHAPTER_OPENER_HEIGHT` is a 300pt estimate that only a device can calibrate.
+- The reveal threshold is measured against a fixed nominal 390x640 page, so
+  "three pages" is a phone-sized claim; on a tablet it is less than one reader
+  page.
+
 ## 2026-09-08: Onboarding preview survives its own failures
 
 ### Changed

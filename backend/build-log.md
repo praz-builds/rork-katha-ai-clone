@@ -7,6 +7,131 @@
 
 ---
 
+## 2026-09-09 UTC — The reading experience pass, an adversarial review, and a generation deadline that cannot be met
+
+**Session:** Product-owner feedback from walking the running app, built by four
+parallel agents and integrated, then attacked by a fifth agent whose only job
+was to find what was wrong with it. Three local commits (`50e55c3`, `a0e4d52`,
+`e0ecd65`), nothing pushed.
+
+### Read this first if you are picking up story generation
+
+**Story generation is failing on the deployed backend, and the cause is
+arithmetic, not a bad key.** Measured directly on 2026-09-09:
+
+- A real chapter from the leading model (`meta/muse-spark-1.3-contributor`,
+  1,846 words) takes **70 seconds**.
+- `GENERATION_DEADLINE_MS` is 120s. The OpenRouter phase gets
+  `PHASE_END_SHARE.openrouter` of it and then splits that **evenly across both
+  Muse Spark models**. Deployed that is 0.5 -> 60s -> **30s per model**. Both
+  time out before the model has finished a chapter.
+- The OpenAI position then answers `401` three times, because the key was
+  revoked and the deployed code still has that position in the chain.
+- The free tier times out too, and the caller gets
+  `Story generation failed. Credit refunded.` after ~2 minutes.
+
+`error_events` for the failed run records exactly that:
+`codes: [timeout, timeout, auth_failed, auth_failed, auth_failed, timeout,
+timeout]`, `statuses: [null, null, 401, 401, 401, null, null]`.
+
+The OpenRouter credential itself is healthy (`/api/v1/key` returns 200) and the
+model answers a short prompt in about a second. Nothing is misconfigured; the
+budget is simply smaller than the work.
+
+**This session's local change does NOT fix it.** Removing the OpenAI position
+raises the OpenRouter share to 0.7 -> 84s -> 42s per model, still well under
+the measured 70s. Whoever takes this next has to change one of: the total
+deadline, the even split within the phase (the leader plausibly deserves most
+of it rather than half), or `max_tokens`. Do not start by rotating keys.
+
+### Changed
+
+- **OpenAI is gone from every chain.** The credential was revoked and is not
+  returning. `_shared/llm.ts` loses `OPENAI_MODELS`, both key readers, the
+  reasoning request shape and the provider phase; `_shared/image.ts` loses the
+  `gpt-image-1` position. A keyless provider does not fail loudly here --
+  `key()` returning undefined means *skip* -- so a half-removed position would
+  sit in the chain costing a branch and a slice of the deadline while never
+  able to answer. A test asserts that setting `OPENAI_API_KEY` or
+  `OPENAI_STORY_API_KEY` does not resurrect a provider.
+- **Images are `google/gemini-2.5-flash-image` ("nano banana") first**, with
+  `google/gemini-3.1-flash-image` behind it, for covers and character portraits
+  alike. Gemini charges a flat ~1,290 output tokens per image and takes no size
+  or quality parameter, so the size x quality tier model in
+  `CREDITS_AND_PRICING.md` no longer has a mechanism behind it. Covers got
+  cheaper ($0.063 -> $0.039); **character portraits got ~3.5x dearer
+  ($0.011 -> $0.039)**, which is the number the "a whole cast is one credit"
+  claim rests on. Recorded as a live open item in that file, not silently
+  re-priced.
+- **Character reference photos.** `generate-character-image` accepts an
+  optional `reference_image` data URL (JPEG/PNG/WebP, <= 6 MB, SVG refused by
+  allowlist because it is a document that can carry script). It is passed to
+  the model as a STYLE reference with `STYLE_REFERENCE_CLAUSE` stated first in
+  the message, and dropped at the last safety rung so an attached photo cannot
+  fail the whole ladder. `expo-image-picker` is wired on the client.
+- **Migration 00050 — entity visibility gate**, cherry-picked from an unmerged
+  branch. A story naming a `living_public_figure` or `private_individual` is
+  persisted private and cannot be published; historical figures, places, events
+  and organisations are deliberately not gated. A CHECK constraint enforces it
+  at the database, so a client writing `is_public` straight through PostgREST
+  is refused with 23514.
+- **Migration 00055 — character portrait rate limit.** 12 requests/hour/user.
+  `generate-character-image` had no credit, no rate limit and no idempotency
+  key, while one call can become six paid provider requests. A cap, not a
+  price: §10.6 has no settled portrait cost and a migration is the wrong place
+  to invent one.
+- **`library?scope=mine`**, scoped by the resolved user and never by the
+  parameter.
+
+### Fixed, found by the adversarial review rather than by the gates
+
+All gates were green throughout; none of these were caught by them.
+
+1. **The entity gate was bypassable.** `grounding_entities` arrives on the
+   request body and the gate was computed from it, so any shape-valid array
+   skipped classification and handed the gate its own answer. The field was
+   harmless when it only fed a prompt; making it a security input and not
+   revisiting it was an integration error. The classification now runs on its
+   own account and the gate reads only server-derived entities.
+2. **Android hardware back closed the app from inside the reader.** The handler
+   returned `false` expecting a navigator to take over; there is none (screens
+   are a `useState` switch in `App.tsx`), so it ran Android's default and
+   finished the activity. Its own test asserted `toBe(false)`.
+3. **The chapter reveal scrolled to the end of itself**, so the change made to
+   land a writer on a finished first page landed them at the far end of it.
+4. **A searched word was invisible in Night mode** (1.03:1). The contrast gate
+   missed it because it tested the pairs a theme *declares* and the reader
+   rendered highlights on colours it did not.
+5. **A writer's own stories were unreachable after a reload.** No endpoint
+   returned a private story and the client held them in `useState`. The client
+   now reads `stories` and `chapters` straight from PostgREST, where RLS has
+   said the right thing since 00002.
+
+### Known and deliberately not closed
+
+- **Generation deadline** — see the top of this entry. The single most
+  important open item.
+- **The entity gate still fails open on two ordinary paths**: it is written in
+  a best-effort grounding update whose failure is logged at `severity: "low"`,
+  and the classification is skipped entirely when `claimGroundingFallback`
+  refuses (rate limit, 00051). An ungrounded story is now also an ungated one.
+- **00050's CHECK covers `is_public` but not `is_curated`**, while every
+  visibility predicate in the schema is `is_public or is_curated or author`.
+  Not client-reachable today (`is_curated` is not in the `authenticated`
+  UPDATE grant) but the constraint's stated intent is broader than its reach.
+- **The reference-photo safety story is one real layer, not three.** The code
+  comments claim the base Safety Rules and the entity gate back it up; neither
+  applies on that path -- `buildPortraitPrompt` imports nothing from
+  `story-prompts.ts`, and the portrait is uploaded to the public `covers`
+  bucket before any story row exists. Prompt text is the only thing between an
+  attached photo and a likeness.
+- **Cover upload: dropped** by product decision. **Character reference upload
+  UI: wired**, but never exercised against a real device.
+- **Nothing in this session has been deployed**, so the live project still runs
+  the OpenAI-first chains and has neither 00050 nor 00055.
+
+---
+
 ## 2026-09-08 UTC — Eight review findings: an SSRF-by-redirect close, a read-count gate, and a practice vocabulary that finally agrees
 
 **Session:** Verified and fixed eight findings from an automated review pass
