@@ -433,6 +433,18 @@ export type Screen =
     /** Set when the reader was opened by Listen, so narration starts on arrival. */
     autoplay?: boolean;
   }
+  /**
+   * The full-screen narration player (`ListenScreen`). Reached from the reader's
+   * Listen control and from the story page's Listen button; both hand it the
+   * chapter to open on and where to go back to.
+   */
+  | {
+    name: "listen";
+    storyId: string;
+    chapterIndex?: number;
+    /** Which screen Close returns to, so Listen never strands the reader. */
+    returnTo: "story" | "reader" | "tabs";
+  }
   | { name: "author"; authorId: string }
   | { name: "credits" }
   | { name: "paywall" }

@@ -296,6 +296,92 @@ turned a refused write into a silent one.
 `pnpm typecheck` clean. `pnpm lint` 0 errors. `pnpm exec expo export --platform
 web` compiles. Backend: `deno test` 714 passed / 0 failed, `deno fmt --check`
 and `deno check` clean.
+## 2026-09-10: Listen becomes a screen — the wait is owned, and the words follow the voice
+
+### Changed
+
+- **Listen opens a full screen, not a sheet with a dead button.** Tapping
+  Listen used to raise a small panel over the reader with Play and a voice
+  toggle on it; pressing Play on a chapter nobody had listened to did nothing
+  visible, because narration is generated on first play and the panel had no
+  way to say so. Listen now opens `ListenScreen`, and that screen's first job
+  is to own the wait.
+- **The preparing screen says what is actually happening, and changes when it
+  changes.** Cover art fills the top; below it, on a solid ground, an
+  illustration, a status line and one honest line under it. The status walks
+  *Finding your narrator* → *Asking for the narration* → *Reading the chapter
+  aloud*, and each step advances only when the previous one really finished:
+  narration found on the chapter row, `generate-audio` answering, the job being
+  accepted. Nothing on the screen is a progress timer pretending to be work.
+- **When it takes too long, it says so.** Past the stated expectation the line
+  becomes *Still reading* — "This is taking longer than it usually does. It is
+  still running." Much further past it, *This is taking much longer than it
+  should*, with a way out. Polling continues underneath, so a job that lands at
+  three minutes still plays for whoever waited.
+- **The playing screen is the transcript.** Cover art stays at the top; under
+  it the chapter's own words scroll with the audio, the line being read
+  highlighted on a soft accent ground and the lines already read dimmed. Tapping
+  a line plays from it. Scrolling by hand stops the auto-follow rather than
+  fighting the reader, and a "Back to the line" pill hands it back.
+- **A real transport.** Story title and chapter title, a 68pt play/pause,
+  elapsed against total, a draggable scrubber, and a row with Chapters, Speed
+  (0.75x–2x), skip back 10, skip forward 30 and Next chapter. Every control is
+  at least 44x44 and labelled; the scrubber is an `adjustable` with a stepper
+  path, because a drag is not a gesture VoiceOver can make.
+- **Both doors lead to the same screen.** The reader chrome's Listen control
+  opens it on the chapter being read and Close returns to that chapter; the
+  story page's Listen button opens it at chapter 1 and Close returns to the
+  story page. The story page no longer refuses to open Listen for a story with
+  no narration — that story is exactly the one the preparing screen exists for.
+- **Every real state has a screen.** No narration yet, generation in flight,
+  generation failed, the entitlement gate refusing, playback failing, and
+  offline. The refusal never grows a Try again: `canGenerateNarration` answers
+  the same way every time, so it is offered "Read it instead" instead of a
+  button that cannot succeed.
+
+### Notes
+
+- **The transcript timings are an approximation, and are documented as one.**
+  Nothing in the narration pipeline returns per-line alignment — `generate-audio`
+  and `audio-status` answer with a status and a URL, and `chapter_audio` stores
+  one `duration_seconds` for the whole file. `lib/transcript-sync.ts` therefore
+  spreads the *measured* file duration across the lines in proportion to their
+  length. Expect a line of drift over a long chapter, worst right after a pause.
+  `buildCues` already takes real timings as an optional argument, so the day the
+  pipeline produces them the change is to pass them in.
+- **The loading animation is a seam, not a decision.**
+  `components/listen/NarrationLoader.tsx` takes the animation as `art` and the
+  rotating copy as `messages`; today it renders the looping Katha mark and two
+  placeholder lines. The designed variant drops into those two props at the one
+  call site in `ListenScreen`. The rotating messages are deliberately kept apart
+  from the status line: they are decorative and say nothing about progress, which
+  is why a message list can be chosen on taste without anyone auditing it for
+  truth.
+- **Closing the screen stops the audio.** There is no background audio mode in
+  `app.json`, no lock-screen transport and no mini-player anywhere in the app, so
+  narration the listener cannot see or stop would be worse than narration that
+  ends. When a persistent mini-player exists, `ListenScreen`'s unmount cleanup is
+  the one place to change.
+- **`NARRATION_EXPECTED_MS` is an expectation band, not a measurement.** Nothing
+  in the repository records how long `minimax-speech-02-hd` takes on a real
+  chapter, so the copy says "usually" rather than naming seconds — and the same
+  constant is both what the screen promises and the moment it admits the promise
+  was wrong, so the two cannot drift.
+- The four touched files outside the new ones are deliberately tiny: an
+  `onListen` prop on `ReaderScreen` (forwarded through `PhraseCaptureReader`), an
+  `onListen` prop on `StoryDetailScreen`, one `listen` variant on the `Screen`
+  union, and the route plus two openers in `App.tsx`.
+
+### Known gaps
+
+- **One voice, no picker.** The screen narrates in the story language's female
+  default (`aria`/`elvira`), which is what the old sheet defaulted to. Everything
+  underneath is keyed by voice id, so a picker is a control plus one piece of
+  state.
+- **Generation is still gated closed in production.** `NARRATION_GENERATION_ENABLED`
+  is unset, so the honest production path today ends on the "Narration is not
+  available yet" screen. That is the correct answer for a closed gate, and the
+  whole preparing flow is live the moment the flag is turned on.
 
 ## 2026-09-09: The story page goes dark, and a writer's own work leads Home
 

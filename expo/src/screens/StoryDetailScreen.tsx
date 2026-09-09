@@ -242,6 +242,7 @@ export default function StoryDetailScreen({
   onBack,
   onRead,
   onAuthor,
+  onListen,
   isOwn = false,
   canEngage = true,
   onSignIn,
@@ -251,6 +252,15 @@ export default function StoryDetailScreen({
   /** Opens the reader at the given chapter index. */
   onRead: (chapterIndex: number, options?: ReadOptions) => void;
   onAuthor: (authorId: string) => void;
+  /**
+   * Opens the full-screen narration player at chapter 1.
+   *
+   * Supplied and Listen hands off to `ListenScreen`, which owns the wait while
+   * narration is generated for a story that has none. Omitted and Listen keeps
+   * its old behaviour: open the reader when audio already exists, and say so
+   * plainly when it does not.
+   */
+  onListen?: () => void;
   /**
    * The viewer wrote this story. Their own page does not offer "Block
    * author", and it is the only page allowed to say "Public" - a reader of
@@ -396,12 +406,20 @@ export default function StoryDetailScreen({
   }, [onRead]);
 
   const handleListen = useCallback(() => {
+    // The narration player owns the wait, so Listen no longer has to check
+    // whether audio already exists: a story with none opens on the preparing
+    // screen and generation starts there. The old `narrationReady` refusal is
+    // kept only as the fallback for a host that has not wired `onListen`.
+    if (onListen) {
+      onListen();
+      return;
+    }
     if (!narrationReady) {
       setListenNotice(true);
       return;
     }
     onRead(0, { mode: "listen" });
-  }, [narrationReady, onRead]);
+  }, [narrationReady, onListen, onRead]);
 
   // Mirrors ReaderScreen's handleShare in App.tsx: native Share sheet off the
   // platform, clipboard + a brief toast on web where there is no share sheet.
