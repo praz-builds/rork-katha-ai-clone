@@ -67,9 +67,18 @@ export function yourStories(generated: Story[]): Story[] {
  * moment it is opened; there is nothing to come back for.
  */
 export function continueReading(stories: Story[]): Story[] {
-  return stories
-    .filter((story) => story.isFeatured && story.chapters.length > 1)
-    .slice(0, RAIL_LENGTH);
+  // Nothing on the client records that a reader started a story: `Story` has
+  // no `lastReadAt`, no chapter cursor, no percentage. This used to stand in
+  // featured multi-chapter stories, which put the SAME cards under "Continue
+  // reading" and under "Katha Originals", one row apart -- a shelf claiming
+  // the reader had begun books they had never opened, directly above the shelf
+  // those books actually belong to.
+  //
+  // An empty row is honest and simply does not render (see `buildFeedRows`).
+  // When a read position is persisted, this is the one place it plugs in:
+  // filter to stories with a cursor, order by most recently read.
+  void stories;
+  return [];
 }
 
 /**
@@ -102,6 +111,15 @@ export function buildFeedRows(
   stories: Story[],
   preferredGenres: Genre[],
   generatedStories: Story[] = [],
+  /**
+   * Stories the reader has actually begun, newest first.
+   *
+   * Injected rather than derived, because the client has no read position to
+   * derive it from yet (see `continueReading`). Passing nothing is the honest
+   * production case today and simply omits the row; the ordering rule the row
+   * obeys is still exercised by passing a list here.
+   */
+  inProgress: Story[] = continueReading(stories),
 ): FeedRow[] {
   const rows: FeedRow[] = [];
 
@@ -113,7 +131,7 @@ export function buildFeedRows(
     rows.push({ key: "yours", title: "Your stories", stories: yours });
   }
 
-  const unfinished = continueReading(stories);
+  const unfinished = inProgress;
   if (unfinished.length > 0) {
     rows.push({ key: "continue", title: "Continue reading", stories: unfinished });
   }

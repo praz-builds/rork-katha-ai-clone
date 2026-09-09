@@ -40,7 +40,9 @@ describe("the order of the page", () => {
   });
 
   it("puts Continue reading above Katha Originals, as a named rail", () => {
-    const rows = buildFeedRows(stories, []);
+    // Injected: the client has no read position yet, so the row is empty in
+    // production. The ORDER it takes when it does exist is the rule under test.
+    const rows = buildFeedRows(stories, [], [], [stories[0]]);
     const keys = rows.map((row) => row.key);
 
     expect(keys.indexOf("continue")).toBeLessThan(keys.indexOf("originals"));
@@ -51,7 +53,7 @@ describe("the order of the page", () => {
   it("runs yours, continue, originals, then the reader's genres", () => {
     const genre = populatedGenre();
     const written = mine({ chapters: stories[0].chapters.slice(0, 1) });
-    const rows = buildFeedRows(stories, [genre], [written]);
+    const rows = buildFeedRows(stories, [genre], [written], [stories[0]]);
 
     expect(rows.map((row) => row.key)).toEqual([
       "yours",
@@ -99,9 +101,9 @@ describe("the genres the reader chose", () => {
 // Trending and Most loved are the answer to "this reader gave us no signal",
 // not a permanent fixture of the page.
 it("falls back to Trending and Most loved when no genres were chosen", () => {
+  // No Continue reading row: nothing records that this reader began anything.
   const rows = buildFeedRows(stories, []);
   expect(rows.map((row) => row.key)).toEqual([
-    "continue",
     "originals",
     "trending",
     "loved",
@@ -130,21 +132,26 @@ describe("what belongs in a rail", () => {
     expect(rows[0].stories.map((story) => story.id)).toEqual([newer.id, older.id]);
   });
 
-  // A standalone is finished the moment it is opened; there is nothing to
-  // come back for, so it is not something to continue.
-  it("offers nothing single-chapter to continue", () => {
-    expect(
-      continueReading(stories).every((story) => story.chapters.length > 1),
-    ).toBe(true);
+  // Nothing on the client records a read position, so there is no honest way
+  // to say a reader started something. The previous stand-in was featured
+  // multi-chapter stories, which listed the same cards under "Continue
+  // reading" as under "Katha Originals" one row below -- claiming the reader
+  // had begun books they had never opened.
+  it("claims nothing is being continued until a read position is real", () => {
+    expect(continueReading(stories)).toEqual([]);
   });
 
-  it("has no Continue reading row when nothing runs past one chapter", () => {
-    const shorts = stories.map((story) => ({
-      ...story,
-      chapters: story.chapters.slice(0, 1),
-    }));
-    expect(continueReading(shorts)).toEqual([]);
-    expect(buildFeedRows(shorts, []).find((row) => row.key === "continue"))
-      .toBeUndefined();
+  it("renders no Continue reading row rather than an invented one", () => {
+    const rows = buildFeedRows(stories, []);
+    expect(rows.find((row) => row.key === "continue")).toBeUndefined();
+  });
+
+  it("never repeats an Originals story as something already begun", () => {
+    const rows = buildFeedRows(stories, []);
+    const continueRow = rows.find((row) => row.key === "continue");
+    const originalsRow = rows.find((row) => row.key === "originals");
+    expect(originalsRow?.stories.length).toBeGreaterThan(0);
+    // The duplication this replaced was visible on screen: one row apart.
+    expect(continueRow).toBeUndefined();
   });
 });
