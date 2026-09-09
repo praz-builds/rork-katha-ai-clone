@@ -18,6 +18,7 @@ import {
 import { cleanWord, sentenceAroundWord, splitWords } from "@/lib/sentence";
 import ReaderScreen from "@/screens/ReaderScreen";
 import { colors, fonts, motion, radius, spacing } from "@/theme";
+import type { ReimagineRun } from "@/lib/reimagine-client";
 import type { Chapter, Story } from "@/types/domain";
 
 export type PhraseCaptureReaderProps = {
@@ -37,6 +38,20 @@ export type PhraseCaptureReaderProps = {
    * enabled, and here that would mean end-of-chapter branching disappearing.
    */
   renderChapterEnd?: (chapter: Chapter) => ReactNode;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason as `autoplay`: a seam this wrapper
+   * does not pass through silently stops working, and here that would mean a
+   * reimagined chapter waiting behind a cover instead of appearing page by
+   * page like every other chapter.
+   */
+  onReimagineStarted?: (run: ReimagineRun) => void;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason again: without it the live reader
+   * would silently stop being live the moment phrase capture is enabled, and
+   * the writer would sit on a finished-looking page while their chapter went on
+   * being written behind it.
+   */
+  liveSessionId?: string | null;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -70,6 +85,8 @@ export default function PhraseCaptureReader({
   initialChapterIndex = 0,
   autoplay = false,
   renderChapterEnd,
+  liveSessionId = null,
+  onReimagineStarted,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
   const savedPhrasesRef = useRef<SavedPhrase[]>([]);
@@ -287,6 +304,8 @@ export default function PhraseCaptureReader({
         onChapterChange={onChapterChange}
         autoplay={autoplay}
         renderChapterEnd={renderChapterEnd}
+        liveSessionId={liveSessionId}
+        onReimagineStarted={onReimagineStarted}
       />
       {toast ? (
         <Animated.View

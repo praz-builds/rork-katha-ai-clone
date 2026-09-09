@@ -26,30 +26,84 @@ const props = (overrides: Partial<ReaderChromeProps> = {}): ReaderChromeProps =>
 });
 
 it("invokes extension controls exactly once per press", async () => {
-  const onHistory = jest.fn();
   const onEdit = jest.fn();
   const onReimagine = jest.fn();
   const onMusic = jest.fn();
   const view = await render(
-    <ReaderChrome {...props({ onHistory, onEdit, onReimagine, onMusic })} />,
+    <ReaderChrome {...props({ onEdit, onReimagine, onMusic })} />,
   );
 
-  await fireEvent.press(view.getByLabelText("History"));
   await fireEvent.press(view.getByLabelText("Edit"));
   await fireEvent.press(view.getByLabelText("Reimagine"));
   await fireEvent.press(view.getByLabelText("Music"));
 
-  expect(onHistory).toHaveBeenCalledTimes(1);
   expect(onEdit).toHaveBeenCalledTimes(1);
   expect(onReimagine).toHaveBeenCalledTimes(1);
   expect(onMusic).toHaveBeenCalledTimes(1);
 });
 
+/**
+ * History is gone, prop and all.
+ *
+ * There was never any persisted version history behind it: the old AI editor
+ * held exactly one prior paragraph, in memory, for as long as that editor
+ * happened to be open. A control in the reader's chrome promising "history"
+ * over that was a feature the app did not have, so it is not a hidden control
+ * or a disabled one - it does not exist, and this asserts the prop is gone
+ * rather than merely unrendered.
+ */
+it("has no History control and no handler for one", async () => {
+  const view = await render(<ReaderChrome {...props()} />);
+
+  expect(view.queryByLabelText("History")).toBeNull();
+  expect(Object.keys(props())).not.toContain("onHistory");
+});
+
 it("does not render Edit or Reimagine when their handlers are omitted", async () => {
   const view = await render(<ReaderChrome {...props()} />);
 
+  // Absent, never disabled. Mid-generation a greyed control is a question the
+  // writer cannot answer; Edit and Reimagine simply appear when the chapter is
+  // finished, and Edit only for its author.
   expect(view.queryByLabelText("Edit")).toBeNull();
   expect(view.queryByLabelText("Reimagine")).toBeNull();
+});
+
+it("names the chapter under the story", async () => {
+  const view = await render(
+    <ReaderChrome {...props({ chapterTitle: "The Letter" })} />,
+  );
+  expect(view.getByText("The Letter")).toBeTruthy();
+});
+
+it("drops the chapter line for a standalone story, which has one title", async () => {
+  const view = await render(<ReaderChrome {...props()} />);
+  expect(view.queryByText("The Letter")).toBeNull();
+});
+
+it("offers Music, Listen, Chapters, Preferences and the page slider", async () => {
+  const view = await render(<ReaderChrome {...props()} />);
+
+  expect(view.getByLabelText("Music")).toBeTruthy();
+  expect(view.getByLabelText("Listen")).toBeTruthy();
+  expect(view.getByLabelText("Chapters")).toBeTruthy();
+  expect(view.getByLabelText("Preferences")).toBeTruthy();
+  expect(view.getByTestId("page-scrubber")).toBeTruthy();
+});
+
+/**
+ * While a chapter is still being written the chrome is reduced to the way out
+ * and the title. Everything in the bottom sheet operates on prose, and the
+ * prose is not finished.
+ */
+it("shows only the top bar while the chapter is still being written", async () => {
+  const view = await render(
+    <ReaderChrome {...props({ mode: "top-only", onEdit: jest.fn() })} />,
+  );
+
+  expect(view.getByLabelText("Back")).toBeTruthy();
+  expect(view.queryByTestId("reader-chrome-sheet")).toBeNull();
+  expect(view.queryByLabelText("Edit")).toBeNull();
 });
 
 it("hides the search bar along with the rest of the chrome, without discarding the in-progress query", async () => {

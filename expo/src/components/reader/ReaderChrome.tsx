@@ -10,9 +10,9 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   ChevronLeft,
-  History,
   List,
   Music,
+  Pause,
   Pencil,
   Play,
   Search,
@@ -25,12 +25,22 @@ import { colors, fonts, motion, radius, spacing } from "@/theme";
 export type ReaderChromeProps = {
   visible: boolean;
   storyTitle: string;
+  /** Under the story title in the top bar. Omit for a standalone story. */
+  chapterTitle?: string;
+  /**
+   * `full` is the reader's chrome. `top-only` is what a tap shows while the
+   * chapter is still being written: the way out and the title, nothing to
+   * operate on prose that does not exist yet.
+   */
+  mode?: "full" | "top-only";
   pageIndex: number;
   pageCount: number;
   searchOpen: boolean;
   searchQuery: string;
   searchMatchCount: number;
   activeSearchMatch: number;
+  /** Listen shows Pause instead of Play while narration is running. */
+  isPlaying?: boolean;
   onBack: () => void;
   onSearchOpen: () => void;
   onSearchClose: () => void;
@@ -38,10 +48,9 @@ export type ReaderChromeProps = {
   onSearchNext: () => void;
   onSearchPrevious: () => void;
   onPageChange: (pageIndex: number) => void;
-  onHistory?: () => void;
-  /** Author-only. Omit entirely for a reader who does not own the story - the control is not rendered at all. */
+  /** Author-only, and only once the chapter is complete. Omit and the control is not rendered at all. */
   onEdit?: () => void;
-  /** Author-only. Omit entirely for a reader who does not own the story - the control is not rendered at all. */
+  /** Anyone, once the chapter is complete. Omit and the control is not rendered at all. */
   onReimagine?: () => void;
   onPreferences: () => void;
   onChapters: () => void;
@@ -49,10 +58,6 @@ export type ReaderChromeProps = {
   onMusic?: () => void;
 };
 
-/**
- * Screen-reader adjust actions. Declared once so the array identity is stable
- * across renders rather than rebuilt on every one.
- */
 /**
  * The chrome is dark, on every reading theme.
  *
@@ -70,7 +75,7 @@ export type ReaderChromeProps = {
  * reads as "the app", and the page underneath stays "the book" -- which is
  * exactly the separation the reference design draws.
  */
-const CHROME = {
+export const CHROME = {
   surface: "#1C1A17",
   border: "#332F2A",
   text: "#F4F1EC",
@@ -78,6 +83,10 @@ const CHROME = {
   track: "#3A352F",
 } as const;
 
+/**
+ * Screen-reader adjust actions. Declared once so the array identity is stable
+ * across renders rather than rebuilt on every one.
+ */
 const ADJUSTABLE_ACTIONS = [
   { name: "increment" as const },
   { name: "decrement" as const },
@@ -111,12 +120,15 @@ function ChromeButton({ action }: { action: ChromeAction }) {
 export function ReaderChrome({
   visible,
   storyTitle,
+  chapterTitle,
+  mode = "full",
   pageIndex,
   pageCount,
   searchOpen,
   searchQuery,
   searchMatchCount,
   activeSearchMatch,
+  isPlaying = false,
   onBack,
   onSearchOpen,
   onSearchClose,
@@ -124,7 +136,6 @@ export function ReaderChrome({
   onSearchNext,
   onSearchPrevious,
   onPageChange,
-  onHistory = () => {},
   onEdit,
   onReimagine,
   onPreferences,
@@ -155,21 +166,21 @@ export function ReaderChrome({
     transform: [{ translateY: reducedMotion ? 0 : (1 - progress.get()) * 28 }],
   }));
 
-  // Edit and Reimagine are author-only: a reader who does not own the story
-  // is handed `undefined` for both, and the buttons must not render at all
-  // rather than render disabled or inert.
+  // Edit is author-only and Reimagine is complete-only: a reader who may not
+  // use one is handed `undefined` for it, and the button must not render at
+  // all rather than render disabled. A greyed control mid-generation is a
+  // question the writer cannot answer; an absent one is not.
   const rowOne: ChromeAction[] = [
-    { label: "History", icon: History, onPress: onHistory },
+    { label: "Music", icon: Music, onPress: onMusic },
     ...(onEdit ? [{ label: "Edit", icon: Pencil, onPress: onEdit }] : []),
     ...(onReimagine
       ? [{ label: "Reimagine", icon: Sparkles, onPress: onReimagine }]
       : []),
   ];
   const rowTwo: ChromeAction[] = [
-    { label: "Preferences", icon: SlidersHorizontal, onPress: onPreferences },
+    { label: "Listen", icon: isPlaying ? Pause : Play, onPress: onListen },
     { label: "Chapters", icon: List, onPress: onChapters },
-    { label: "Listen", icon: Play, onPress: onListen },
-    { label: "Music", icon: Music, onPress: onMusic },
+    { label: "Preferences", icon: SlidersHorizontal, onPress: onPreferences },
   ];
   const sliderPercent = pageCount <= 1 ? 0 : pageIndex / (pageCount - 1);
 
@@ -202,7 +213,12 @@ export function ReaderChrome({
         >
           <ChevronLeft size={22} color={CHROME.text} />
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={2}>{storyTitle}</Text>
+        <View style={styles.headerTitles}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{storyTitle}</Text>
+          {chapterTitle ? (
+            <Text style={styles.headerChapter} numberOfLines={1}>{chapterTitle}</Text>
+          ) : null}
+        </View>
         <Pressable
           onPress={searchOpen ? onSearchClose : onSearchOpen}
           accessibilityRole="button"
@@ -257,91 +273,83 @@ export function ReaderChrome({
         </View>
       ) : null}
 
-      <Animated.View pointerEvents={visible ? "auto" : "none"} style={[styles.sheet, sheetStyle]}>
-        <View style={styles.controlRow}>
-          {rowOne.map((action) => <ChromeButton key={action.label} action={action} />)}
-        </View>
-        <View style={styles.pageSliderGroup}>
-          <View style={styles.pageSliderHeader}>
-            <Text style={styles.sliderLabel}>Pages</Text>
-            <Text style={styles.sliderValue}>Page {pageIndex + 1} of {pageCount}</Text>
+      {mode === "full" ? (
+        <Animated.View
+          pointerEvents={visible ? "auto" : "none"}
+          style={[styles.sheet, sheetStyle]}
+          testID="reader-chrome-sheet"
+        >
+          <View style={styles.controlRow}>
+            {rowOne.map((action) => <ChromeButton key={action.label} action={action} />)}
           </View>
-          <View style={styles.pageStepRow}>
-            <Pressable
-              onPress={() => onPageChange(Math.max(0, pageIndex - 1))}
-              accessibilityRole="button"
-              accessibilityLabel="Previous page"
-              hitSlop={8}
-              style={styles.pageStepButton}
-            >
-              <ChevronLeft size={19} color={CHROME.muted} />
-            </Pressable>
-            {/*
-              A real positional control, not a stepper wearing a track.
-
-              This used to advance ONE page per tap and wrap back to page 1
-              once it reached the end. It looked exactly like a slider, so
-              tapping three-quarters along a forty-page chapter moved you a
-              single page, and tapping at the end threw you back to the
-              beginning -- the two things a scrubber must never do. A control
-              that draws a filled track and a thumb is making a promise about
-              position, and this one did not keep it.
-
-              Touch x is mapped to a page across the measured width, on press
-              and on drag, so tap-to-jump and scrub are the same gesture.
-              `onLayout` supplies that width; until it arrives `trackWidth` is
-              0 and the handler no-ops rather than dividing by zero and
-              jumping to page 1.
-            */}
-            <View
-              testID="page-scrubber"
-              accessible
-              accessibilityRole="adjustable"
-              accessibilityLabel="Pages"
-              accessibilityValue={{ min: 1, max: pageCount, now: pageIndex + 1 }}
-              accessibilityActions={ADJUSTABLE_ACTIONS}
-              onAccessibilityAction={(event) => {
-                // The screen-reader path stays a stepper on purpose: "increment"
-                // has no position to map, and one page per swipe is what a
-                // VoiceOver user expects from an adjustable.
-                if (event.nativeEvent.actionName === "increment") {
-                  onPageChange(Math.min(pageCount - 1, pageIndex + 1));
-                } else if (event.nativeEvent.actionName === "decrement") {
-                  onPageChange(Math.max(0, pageIndex - 1));
-                }
-              }}
-              onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-              onStartShouldSetResponder={() => true}
-              onMoveShouldSetResponder={() => true}
-              onResponderGrant={(event) => seekTo(event.nativeEvent.locationX)}
-              onResponderMove={(event) => seekTo(event.nativeEvent.locationX)}
-              style={styles.sliderTrack}
-            >
-              {/*
-                The unfilled remainder was invisible: the track had no
-                background, so only the filled portion was drawn and the
-                control gave no clue how much chapter was left. On a scrubber
-                the empty half is the information.
-              */}
-              <View style={styles.sliderTrackLine} />
-              <View style={[styles.sliderFill, { width: `${Math.max(3, sliderPercent * 100)}%` }]} />
-              <View style={[styles.sliderThumb, { left: `${sliderPercent * 100}%` }]} />
+          <View style={styles.pageSliderGroup}>
+            <View style={styles.pageSliderHeader}>
+              <Text style={styles.sliderLabel}>Pages</Text>
+              <Text style={styles.sliderValue}>Page {pageIndex + 1} of {pageCount}</Text>
             </View>
-            <Pressable
-              onPress={() => onPageChange(Math.min(pageCount - 1, pageIndex + 1))}
-              accessibilityRole="button"
-              accessibilityLabel="Next page"
-              hitSlop={8}
-              style={styles.pageStepButton}
-            >
-              <ChevronLeft size={19} color={CHROME.muted} style={{ transform: [{ rotate: "180deg" }] }} />
-            </Pressable>
+            <View style={styles.pageStepRow}>
+              <Pressable
+                onPress={() => onPageChange(Math.max(0, pageIndex - 1))}
+                accessibilityRole="button"
+                accessibilityLabel="Previous page"
+                hitSlop={8}
+                style={styles.pageStepButton}
+              >
+                <ChevronLeft size={19} color={CHROME.muted} />
+              </Pressable>
+              {/*
+                A real positional control, not a stepper wearing a track.
+
+                Touch x is mapped to a page across the measured width, on press
+                and on drag, so tap-to-jump and scrub are the same gesture.
+                `onLayout` supplies that width; until it arrives `trackWidth` is
+                0 and the handler no-ops rather than dividing by zero and
+                jumping to page 1.
+              */}
+              <View
+                testID="page-scrubber"
+                accessible
+                accessibilityRole="adjustable"
+                accessibilityLabel="Pages"
+                accessibilityValue={{ min: 1, max: pageCount, now: pageIndex + 1 }}
+                accessibilityActions={ADJUSTABLE_ACTIONS}
+                onAccessibilityAction={(event) => {
+                  // The screen-reader path stays a stepper on purpose: "increment"
+                  // has no position to map, and one page per swipe is what a
+                  // VoiceOver user expects from an adjustable.
+                  if (event.nativeEvent.actionName === "increment") {
+                    onPageChange(Math.min(pageCount - 1, pageIndex + 1));
+                  } else if (event.nativeEvent.actionName === "decrement") {
+                    onPageChange(Math.max(0, pageIndex - 1));
+                  }
+                }}
+                onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={(event) => seekTo(event.nativeEvent.locationX)}
+                onResponderMove={(event) => seekTo(event.nativeEvent.locationX)}
+                style={styles.sliderTrack}
+              >
+                <View style={styles.sliderTrackLine} />
+                <View style={[styles.sliderFill, { width: `${Math.max(3, sliderPercent * 100)}%` }]} />
+                <View style={[styles.sliderThumb, { left: `${sliderPercent * 100}%` }]} />
+              </View>
+              <Pressable
+                onPress={() => onPageChange(Math.min(pageCount - 1, pageIndex + 1))}
+                accessibilityRole="button"
+                accessibilityLabel="Next page"
+                hitSlop={8}
+                style={styles.pageStepButton}
+              >
+                <ChevronLeft size={19} color={CHROME.muted} style={{ transform: [{ rotate: "180deg" }] }} />
+              </Pressable>
+            </View>
           </View>
-        </View>
-        <View style={styles.controlRow}>
-          {rowTwo.map((action) => <ChromeButton key={action.label} action={action} />)}
-        </View>
-      </Animated.View>
+          <View style={styles.controlRow}>
+            {rowTwo.map((action) => <ChromeButton key={action.label} action={action} />)}
+          </View>
+        </Animated.View>
+      ) : null}
     </>
   );
 }
@@ -371,12 +379,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: {
+  headerTitles: {
     flex: 1,
+    gap: 2,
+  },
+  headerTitle: {
     fontFamily: fonts.display,
     fontSize: 18,
     lineHeight: 22,
     color: CHROME.text,
+    letterSpacing: 0,
+  },
+  headerChapter: {
+    fontFamily: fonts.ui,
+    fontSize: 12,
+    lineHeight: 16,
+    color: CHROME.muted,
     letterSpacing: 0,
   },
   findBar: {

@@ -111,8 +111,7 @@ async function renderCreate(options: { isAnonymous?: boolean } = {}) {
     <CreateStudioScreen
       credits={12}
       isAnonymous={options.isAnonymous ?? true}
-      onCreditUsed={jest.fn()}
-      onPublished={jest.fn()}
+      onGenerationStarted={jest.fn()}
       onBack={jest.fn()}
     />,
   );
@@ -298,8 +297,7 @@ describe("approved Create flow", () => {
       const view = await render(
         <CreateStudioScreen
           credits={12}
-          onCreditUsed={jest.fn()}
-          onPublished={jest.fn()}
+          onGenerationStarted={jest.fn()}
           onBack={jest.fn()}
           initialDraft={{
             primaryGenre: genre,
@@ -393,8 +391,7 @@ describe("approved Create flow", () => {
     const view = await render(
       <CreateStudioScreen
         credits={12}
-        onCreditUsed={jest.fn()}
-        onPublished={jest.fn()}
+        onGenerationStarted={jest.fn()}
         onBack={jest.fn()}
         initialDraft={{
           primaryGenre: "historical",

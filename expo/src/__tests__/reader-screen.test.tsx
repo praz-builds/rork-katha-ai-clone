@@ -70,7 +70,9 @@ it("marks the current chapter and navigates to another real chapter", async () =
   });
 
   await waitFor(() => {
-    expect(view.getByText(story.chapters[1].title)).toBeTruthy();
+    // Twice: the page opener and the chrome's top bar, which names the chapter
+    // under the story title.
+    expect(view.getAllByText(story.chapters[1].title).length).toBeGreaterThan(0);
   });
 });
 

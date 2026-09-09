@@ -15,6 +15,7 @@ import {
 import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Animated as RNAnimated,
   BackHandler,
   Modal,
   type NativeScrollEvent,
@@ -30,7 +31,7 @@ import {
   View,
 } from "react-native";
 import { MusicPicker } from "@/components/reader/MusicPicker";
-import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
+import { EditStoryScreen, type SavedChapterEdit } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import { ReimagineSheet } from "@/components/reader/ReimagineSheet";
@@ -44,6 +45,12 @@ import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { splitWords } from "@/lib/sentence";
+import {
+  liveChapterFor,
+  REFUND_NOTICE,
+  retryGeneration,
+  useGeneration,
+} from "@/lib/generation-session";
 import { isOwnStory } from "@/lib/ownership";
 import {
   READER_THEMES,
@@ -51,7 +58,7 @@ import {
   type ReaderTheme,
   type ReadingThemeName,
 } from "@/lib/reading-themes";
-import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
+import { colors, fonts, genreGradients, genreLabels, motion, radius, spacing, type } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
 type ReaderComment = { id: number; user: string; text: string; time: string };
@@ -92,6 +99,25 @@ export type ReaderScreenProps = {
    */
   autoplay?: boolean;
   /**
+   * The id of a generation session writing a chapter of THIS story, if one is
+   * running. Present and the reader is live: settled pages appear behind the
+   * reader as prose arrives, the chrome stays shut, and the last available page
+   * says the chapter is still being written.
+   *
+   * The session itself lives in `@/lib/generation-session`, outside React, so
+   * leaving this screen does not stop the writing and coming back shows the
+   * same pages rather than starting over.
+   */
+  liveSessionId?: string | null;
+  /**
+   * Opens the Reimagine sheet.
+   *
+   * `ReaderChrome` renders a Reimagine control whenever this is supplied, for
+   * every reader and not only the author (a reader of someone else's story
+   * gets a private copy).
+   */
+  onReimagine?: () => void;
+  /**
    * A Reimagine rewrite has started for the chapter on screen.
    *
    * The run is subscribable: `run.text` is the prose so far, `run.stage` and
@@ -100,9 +126,9 @@ export type ReaderScreenProps = {
    * owns the live-reader generation session takes it from here and re-enters
    * `writing-pages` for this chapter, so pages appear as they settle.
    *
-   * When no handler is given this screen owns the wait itself: it has no
-   * page-by-page mechanism of its own, so it covers the reader until the run
-   * settles and then swaps the whole chapter in from page 1.
+   * When no handler is given this screen owns the wait itself: it covers the
+   * reader until the run settles and then swaps the whole chapter in from
+   * page 1.
    */
   onReimagineStarted?: (run: ReimagineRun) => void;
 };
@@ -303,24 +329,70 @@ export default function ReaderScreen({
   renderWord = (word) => word,
   onChapterChange,
   autoplay = false,
+  liveSessionId = null,
+  onReimagine,
   onReimagineStarted,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const session = useGeneration(liveSessionId);
+  /**
+   * The story with the chapter being written folded into it.
+   *
+   * The chapter comes from the SESSION, not from the story prop: the prop is a
+   * snapshot and the session is the thing that changes. Merged by chapter
+   * number rather than appended, so a continuation that has already completed
+   * and reached app state replaces the live copy instead of doubling it.
+   */
+  const chapters = useMemo(() => {
+    if (!session) return story.chapters;
+    const live = liveChapterFor(session);
+    const at = story.chapters.findIndex(
+      (item) => item.chapterNumber === live.chapterNumber,
+    );
+    if (at < 0) return [...story.chapters, live];
+    const merged = story.chapters.slice();
+    merged[at] = live;
+    return merged;
+  }, [session, story.chapters]);
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex);
-  const baseChapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  const baseChapter = chapters[chapterIndex] ?? chapters[0];
   // A chapter this reading session has edited, keyed by chapter id. Ephemeral:
   // it lives only in this component's state, exactly like the AI editor's
   // one-step revert it is fed by - nothing here is a second source of truth
   // for what the server holds.
   const [chapterEdits, setChapterEdits] = useState<Record<string, string>>({});
+  const [chapterTitleEdits, setChapterTitleEdits] = useState<Record<string, string>>({});
   const chapter = useMemo(() => {
     const edited = chapterEdits[baseChapter.id];
-    if (edited === undefined) return baseChapter;
-    return { ...baseChapter, paragraphs: splitChapterParagraphs(edited) };
-  }, [baseChapter, chapterEdits]);
+    const editedTitle = chapterTitleEdits[baseChapter.id];
+    if (edited === undefined && editedTitle === undefined) return baseChapter;
+    return {
+      ...baseChapter,
+      ...(edited === undefined
+        ? {}
+        : { paragraphs: splitChapterParagraphs(edited) }),
+      ...(editedTitle === undefined ? {} : { title: editedTitle }),
+    };
+  }, [baseChapter, chapterEdits, chapterTitleEdits]);
   const isAuthor = isOwnStory(story);
+  const isStandalone = story.storyMode === "standalone";
+  /**
+   * The live states of the reader, resolved for the chapter ON SCREEN.
+   *
+   * A session writes exactly one chapter, so a reader who flips back to an
+   * earlier chapter of the same story is reading finished prose and gets the
+   * whole chrome; only the chapter being written is gated.
+   */
+  const isWritingHere = session?.phase === "writing"
+    && chapter.chapterNumber === session.chapterNumber;
+  const hasFailedHere = session?.phase === "error"
+    && chapter.chapterNumber === session.chapterNumber;
+  /** Edit and Reimagine appear here and nowhere earlier. */
+  const chapterComplete = !isWritingHere && !hasFailedHere;
+  /** A bare title page: your own story, or one being written right now. */
+  const bareOpener = Boolean(session) || isAuthor;
   const [editOpen, setEditOpen] = useState(false);
   const [editWandOpen, setEditWandOpen] = useState(false);
   // Reimagine (spec §4): the sheet, the prompt to restore after a failure,
@@ -425,6 +497,33 @@ export default function ReaderScreen({
   useEffect(() => {
     onChapterChange?.(chapter, chapterIndex);
   }, [chapter, chapterIndex, onChapterChange]);
+
+  /**
+   * The reader follows the chapter being written to it.
+   *
+   * A continuation fired from the end of chapter 3 must land the reader on
+   * page 1 of chapter 4 - its opener, with the writing indicator under it -
+   * not leave them on the last page of 3 watching nothing happen. Only while
+   * the session is actually writing: once it completes, the Chapters sheet is
+   * back in charge and forcing an index here would fight it.
+   */
+  const writingChapterNumber = session?.phase === "writing"
+    ? session.chapterNumber
+    : null;
+  useEffect(() => {
+    if (writingChapterNumber === null) return;
+    const at = chapters.findIndex(
+      (item) => item.chapterNumber === writingChapterNumber,
+    );
+    if (at < 0) return;
+    setChapterIndex((current) => {
+      if (current === at) return current;
+      setPageIndex(0);
+      setAnchorOffset(0);
+      return at;
+    });
+  }, [chapters, writingChapterNumber]);
+
   // Restores the story's saved music choice (or "None") when the reader opens it.
   //
   // A reader can choose a track before this read resolves, and the restore then
@@ -692,14 +791,11 @@ export default function ReaderScreen({
     setMusicTrackId(trackId);
     void setStoryMusicTrackId(story.id, trackId);
   }, [story.id]);
-  const openEditor = useCallback((wandOpen: boolean) => {
-    setEditWandOpen(wandOpen);
-    setEditOpen(true);
-  }, []);
-
-  const closeEditor = useCallback((content: string) => {
-    setChapterEdits((prev) => ({ ...prev, [baseChapter.id]: content }));
+  const closeEditor = useCallback((saved: SavedChapterEdit | null) => {
     setEditOpen(false);
+    if (!saved) return;
+    setChapterEdits((prev) => ({ ...prev, [baseChapter.id]: saved.content }));
+    setChapterTitleEdits((prev) => ({ ...prev, [baseChapter.id]: saved.title }));
   }, [baseChapter.id]);
 
   const handleReimagineSubmit = useCallback((request: ReimagineRequest) => {
@@ -830,7 +926,14 @@ export default function ReaderScreen({
         accessibilityLabel="Toggle reader controls"
         accessibilityRole="button"
         style={styles.readingArea}
-        onPress={() => setChromeVisible((visible) => !visible)}
+        onPress={() => {
+          // Nothing in the chrome operates on prose that does not exist yet,
+          // so a tap while the chapter is still being written is deliberately
+          // inert rather than raising a sheet of controls the writer cannot
+          // use. It starts working the instant the chapter lands.
+          if (isWritingHere) return;
+          setChromeVisible((visible) => !visible);
+        }}
       >
         <ScrollView
           ref={pagerRef}
@@ -848,7 +951,14 @@ export default function ReaderScreen({
             // is mounted for the pager's benefit, so gating on `index ===
             // lastPageIndex` alone would open the branching module the instant
             // the chapter opened, before the reader had read a word of it.
-            const showsChapterEnd = index === lastPageIndex && isLastPage;
+            const showsChapterEnd = index === lastPageIndex && isLastPage
+              && chapterComplete;
+            // The writing indicator rides the LAST AVAILABLE page, whichever
+            // page that is, not the page the reader happens to be on: it is a
+            // statement about where the chapter currently ends, and the reader
+            // can see it coming as they turn toward it.
+            const showsWritingTail = index === lastPageIndex && isWritingHere;
+            const showsFailureTail = index === lastPageIndex && hasFailedHere;
             return (
               <View key={`${chapter.id}-page-${index}`} style={[styles.page, { width }]}>
                 {/*
@@ -862,26 +972,47 @@ export default function ReaderScreen({
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                   <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
                     {index === 0 ? (
+                      /*
+                        Two openers, and the difference is whose story it is.
+
+                        Your own story opens on a bare title page: the story's
+                        title, and under it the chapter's. You already know the
+                        genre, you already know who wrote it, and you have just
+                        watched the cover being made - repeating all three is
+                        the app talking about itself on the page where the
+                        writing is supposed to start. Somebody ELSE's story is
+                        a thing you are deciding to read, so it keeps the
+                        cover, the genre and the byline.
+
+                        The "Chapter N" eyebrow is gone from both. The number
+                        lives in the chrome and the Chapters sheet, where it is
+                        a way to navigate rather than a label on prose.
+                      */
                       <>
-                        <View style={styles.coverWrap}>
-                          {coverSource ? (
-                            <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
-                          ) : (
-                            <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
-                          )}
-                        </View>
-                        <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
+                        {bareOpener ? null : (
+                          <>
+                            <View style={styles.coverWrap}>
+                              {coverSource ? (
+                                <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
+                              ) : (
+                                <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
+                              )}
+                            </View>
+                            <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
+                          </>
+                        )}
                         <Text style={[styles.title, { color: theme.text }]}>{story.title}</Text>
-                        <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
-                        {/*
-                          The chapter opener. The chapter used to drop the
-                          reader straight into prose with no indication of
-                          which chapter they were in; this names it, in the
-                          display face with a rule under it, so it reads as a
-                          title page rather than as a first line of the story.
-                        */}
-                        <Text style={[styles.chapterEyebrow, { color: theme.muted }]}>Chapter {chapter.chapterNumber}</Text>
-                        <Text style={[styles.chapterTitle, { color: theme.text }]}>{chapter.title}</Text>
+                        {bareOpener ? null : (
+                          <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
+                        )}
+                        {/* One title for a standalone: the story IS the
+                            chapter, and printing its name twice reads as a
+                            mistake. */}
+                        {isStandalone ? null : (
+                          <Text style={[styles.chapterTitle, { color: theme.text }]}>
+                            {chapter.title || `Chapter ${chapter.chapterNumber}`}
+                          </Text>
+                        )}
                         <View style={[styles.chapterRule, { backgroundColor: theme.divider }]} />
                       </>
                     ) : null}
@@ -899,9 +1030,37 @@ export default function ReaderScreen({
                       >
                         {withinWindow ? renderPageBody(index) : null}
                       </Text>
+                      {showsWritingTail ? <WritingTail theme={theme} /> : null}
+                      {showsFailureTail ? (
+                        <View style={styles.failureTail}>
+                          <Text style={[styles.failureText, { color: theme.muted }]}>
+                            {REFUND_NOTICE}
+                          </Text>
+                          <Pressable
+                            onPress={() => {
+                              if (session) retryGeneration(session.id);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Retry"
+                            hitSlop={8}
+                            style={styles.failureRetry}
+                          >
+                            <Text style={styles.failureRetryText}>Retry</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
                       {showsChapterEnd ? renderChapterEnd?.(chapter) : null}
                     </View>
-                    <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {index + 1} of {pages.length}</Text>
+                    {/*
+                      "Page 1 of 4 · writing" while the chapter is still being
+                      written, because the count is honest about being a count
+                      of what EXISTS rather than of what the chapter will be. It
+                      grows; when the chapter lands it is simply the total.
+                    */}
+                    <Text style={[styles.pageFooter, { color: theme.muted }]}>
+                      Page {index + 1} of {pages.length}
+                      {isWritingHere ? " · writing" : ""}
+                    </Text>
                     {showsChapterEnd ? (
                       <View>
                       {shareToast ? (
@@ -973,8 +1132,10 @@ export default function ReaderScreen({
         </ScrollView>
       </Pressable>
       <ReaderChrome
-        visible={chromeVisible}
+        visible={chromeVisible && chapterComplete}
         storyTitle={story.title}
+        chapterTitle={isStandalone ? undefined : chapter.title}
+        isPlaying={isPlaying}
         pageIndex={pageIndex}
         pageCount={pages.length}
         searchOpen={searchOpen}
@@ -991,17 +1152,20 @@ export default function ReaderScreen({
         onSearchNext={() => jumpToMatch(1)}
         onSearchPrevious={() => jumpToMatch(-1)}
         onPageChange={goToPage}
-        // `onHistory` is deliberately left unwired. There is no persisted
-        // version history to show it - the AI editor holds exactly one prior
-        // version, in memory, scoped to that editor being open - so wiring
-        // this control to the same one-step revert would surface it a
-        // navigation away from the wand it belongs beside, reading as a
-        // history feature that does not exist. See `EditStoryScreen` for
-        // where that revert control actually lives.
-        onEdit={isAuthor ? () => openEditor(false) : undefined}
-        // Everyone gets Reimagine: an author rewrites their chapter, anyone
-        // else gets a private copy (spec §4).
-        onReimagine={() => setReimagineOpen(true)}
+        // `onHistory` is deliberately left unwired, and the control is gone
+        // from the chrome: there is no persisted version history to show.
+        //
+        // Edit is the author's, and only over a chapter that is finished.
+        // Reimagine is everyone's - a reader of someone else's story gets a
+        // private copy (spec §4) - and is likewise offered only once there is
+        // a whole chapter to reimagine. Both are ABSENT rather than disabled
+        // before that: a greyed control mid-generation is a question the
+        // writer cannot answer.
+        onEdit={isAuthor && chapterComplete ? () => setEditOpen(true) : undefined}
+        // A host may own the sheet; by default this screen opens its own.
+        onReimagine={chapterComplete
+          ? (onReimagine ?? (() => setReimagineOpen(true)))
+          : undefined}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
         onListen={() => setListenOpen(true)}
@@ -1045,7 +1209,6 @@ export default function ReaderScreen({
         <EditStoryScreen
           story={story}
           chapter={chapter}
-          initialWandOpen={editWandOpen}
           onClose={closeEditor}
         />
       ) : null}
@@ -1057,7 +1220,7 @@ export default function ReaderScreen({
       />
       <ChaptersSheet
         visible={chaptersOpen}
-        chapters={story.chapters}
+        chapters={chapters}
         currentIndex={chapterIndex}
         onSelect={switchChapter}
         onClose={() => setChaptersOpen(false)}
@@ -1080,6 +1243,68 @@ export default function ReaderScreen({
         onSelect={handleMusicSelect}
         onClose={() => setMusicPickerOpen(false)}
       />
+      {/*
+        REIMAGINE SHEET GOES HERE.
+
+        The chrome's Reimagine control is already wired: it renders whenever the
+        `onReimagine` prop is supplied and is offered to every reader, not only
+        the author. To land the sheet, the Reimagine agent adds one piece of
+        state in this component (`const [reimagineOpen, setReimagineOpen] =
+        useState(false)`), passes `() => setReimagineOpen(true)` down as
+        `onReimagine` from wherever this screen is rendered - or defaults the
+        prop to it - and renders `<ReimagineSheet visible={reimagineOpen}
+        story={story} chapter={chapter} onClose={() => setReimagineOpen(false)}
+        />` right here, beside the other sheets. Nothing else in this file has
+        to move.
+      */}
+    </View>
+  );
+}
+
+/**
+ * "Still writing..." - three dots and a line, under the last settled paragraph.
+ *
+ * Deliberately not a spinner, not a progress bar and not a percentage. None of
+ * those are knowable - the model does not report how much of a chapter is left
+ * - and all three turn reading into waiting. Three pulsing dots say the same
+ * true thing a person says when they are mid-sentence, and the reader can go on
+ * reading the pages already behind them while it is on screen.
+ */
+function WritingTail({ theme }: { theme: ReaderTheme }) {
+  const pulse = useRef(new RNAnimated.Value(0.35)).current;
+
+  useEffect(() => {
+    const loop = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(pulse, {
+          toValue: 1,
+          duration: motion.slow,
+          useNativeDriver: true,
+        }),
+        RNAnimated.timing(pulse, {
+          toValue: 0.35,
+          duration: motion.slow,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <View style={styles.writingTail} accessibilityLabel="Still writing">
+      <RNAnimated.View style={[styles.writingDots, { opacity: pulse }]}>
+        {[0, 1, 2].map((dot) => (
+          <View
+            key={dot}
+            style={[styles.writingDot, { backgroundColor: theme.muted }]}
+          />
+        ))}
+      </RNAnimated.View>
+      <Text style={[styles.writingCaption, { color: theme.muted }]}>
+        Still writing...
+      </Text>
     </View>
   );
 }
@@ -1277,15 +1502,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 0,
   },
-  chapterEyebrow: {
-    marginTop: spacing.xl,
-    fontFamily: fonts.ui,
-    fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0,
-  },
   chapterTitle: {
+    marginTop: spacing.xl,
     marginBottom: spacing.sm,
     fontFamily: fonts.display,
     fontSize: 26,
@@ -1312,6 +1530,45 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     textAlign: "center",
+    letterSpacing: 0,
+  },
+  writingTail: {
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+  },
+  writingDots: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  writingDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  writingCaption: {
+    ...type.caption,
+    letterSpacing: 0,
+  },
+  failureTail: {
+    marginTop: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  failureText: {
+    ...type.caption,
+    letterSpacing: 0,
+    flexShrink: 1,
+  },
+  failureRetry: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  failureRetryText: {
+    ...type.caption,
+    fontWeight: "700",
+    color: colors.accent,
     letterSpacing: 0,
   },
   searchHighlight: {

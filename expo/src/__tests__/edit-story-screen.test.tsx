@@ -1,29 +1,37 @@
+/**
+ * Edit is a notepad.
+ *
+ * It used to be a small word processor reached from the reader's chrome: a wand
+ * bar that rewrote whichever paragraph the cursor sat in, a find bar, a
+ * one-step revert of the last AI rewrite, and an autosave that raced the
+ * writer's typing. Product replaced all of it with one text field, one title
+ * field and a Save button - rewriting a chapter with a prompt is Reimagine's
+ * job, reached from the same chrome.
+ *
+ * These tests pin what a notepad has to get right: the words are the writer's
+ * until they press Save, leaving with unsaved changes asks first, and a failed
+ * save never eats what they typed.
+ */
+
 import React from "react";
-import { Alert } from "react-native";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
 import type { Chapter, Story } from "@/types/domain";
 
-const mockEditParagraph = jest.fn();
-const mockPublishStory = jest.fn();
+const mockSaveChapter = jest.fn();
 
-jest.mock("@/lib/api", () => ({
-  editParagraph: (...args: unknown[]) => mockEditParagraph(...args),
-  publishStory: (...args: unknown[]) => mockPublishStory(...args),
+jest.mock("@/lib/chapter-save", () => ({
+  saveChapter: (...args: unknown[]) => mockSaveChapter(...args),
 }));
 
-/**
- * A single-paragraph chapter, on purpose: the AI wand targets whichever
- * paragraph the cursor sits in, and `fireEvent.changeText` does not move a
- * real cursor. With exactly one paragraph, "wherever the cursor is" and
- * "paragraph 0" are the same place, so these tests do not need to fake a
- * selection event to know what they are asserting on.
- */
 const chapter: Chapter = {
   id: "chapter-1",
   storyId: "story-1",
   title: "Chapter One",
-  paragraphs: ["The lighthouse keeper climbed the stairs one last time."],
+  paragraphs: [
+    "The lighthouse keeper climbed the stairs one last time.",
+    "The lamp had not been lit in a year.",
+  ],
   chapterNumber: 1,
   isPublished: true,
 };
@@ -33,6 +41,7 @@ const story: Story = {
   title: "The Last Lighthouse Keeper",
   authorId: "me",
   genre: "mystery",
+  storyMode: "series",
   synopsis: "A keeper faces one final night.",
   chapters: [chapter],
   likes: 0,
@@ -47,292 +56,163 @@ const story: Story = {
 beforeEach(() => {
   cleanup();
   jest.clearAllMocks();
-  mockPublishStory.mockResolvedValue(undefined);
+  mockSaveChapter.mockResolvedValue({ titleSaved: true });
 });
 
 afterEach(() => {
   cleanup();
 });
 
-async function openWand(view: Awaited<ReturnType<typeof render>>, prompt: string) {
-  // Idempotent: the wand sheet may already be open from an earlier call in
-  // the same test (regenerating a second time does not close it), and its
-  // header toggle relabels to "Close AI rewrite" once it is.
-  if (!view.queryByLabelText("AI rewrite prompt")) {
-    await act(async () => {
-      await fireEvent.press(view.getByLabelText("Rewrite with AI"));
-    });
-  }
-  await act(async () => {
-    fireEvent.changeText(view.getByLabelText("AI rewrite prompt"), prompt);
-  });
-  await act(async () => {
-    fireEvent.press(view.getByLabelText("Rewrite with AI"));
-  });
-}
-
-it("fires exactly one AI rewrite request on a double tap of the wand", async () => {
-  let resolveEdit: ((value: string) => void) | undefined;
-  mockEditParagraph.mockImplementationOnce(
-    () => new Promise((resolve) => { resolveEdit = resolve; })
-  );
-
+it("opens on the whole chapter as one editable text, and nothing else", async () => {
   const view = await render(
     <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
   );
 
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText("Rewrite with AI"));
-  });
-  await act(async () => {
-    fireEvent.changeText(
-      view.getByLabelText("AI rewrite prompt"),
-      "make this sadder",
-    );
-  });
+  expect(view.getByLabelText("Chapter text").props.value).toBe(
+    chapter.paragraphs.join("\n\n"),
+  );
+  expect(view.getByLabelText("Chapter title").props.value).toBe("Chapter One");
 
-  const submit = view.getByLabelText("Rewrite with AI");
-  await act(async () => {
-    fireEvent.press(submit);
-    fireEvent.press(submit);
-  });
-
-  expect(mockEditParagraph).toHaveBeenCalledTimes(1);
-
-  await act(async () => {
-    resolveEdit?.("A sadder opening line.");
-    await Promise.resolve();
-  });
-
-  expect(mockEditParagraph).toHaveBeenCalledTimes(1);
+  // The AI surfaces are gone, not hidden.
+  expect(view.queryByLabelText("Rewrite with AI")).toBeNull();
+  expect(view.queryByLabelText("AI rewrite prompt")).toBeNull();
+  expect(view.queryByLabelText("Find in chapter")).toBeNull();
 });
 
-it("hands the current text back to onClose", async () => {
+it("keeps Save inert until something has actually changed", async () => {
+  const view = await render(
+    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
+  );
+
+  const save = view.getByTestId("edit-chapter-save");
+  expect(save.props.accessibilityState.disabled).toBe(true);
+
+  await act(async () => {
+    fireEvent.changeText(view.getByLabelText("Chapter text"), "A new chapter.");
+  });
+
+  await waitFor(() =>
+    expect(
+      view.getByTestId("edit-chapter-save").props.accessibilityState.disabled,
+    ).toBe(false)
+  );
+});
+
+it("saves the chapter and hands the saved text back to the reader", async () => {
+  jest.useFakeTimers();
   const onClose = jest.fn();
   const view = await render(
     <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
   );
 
-  const input = view.getByLabelText("Chapter text");
   await act(async () => {
-    fireEvent.changeText(input, "A hand-edited opening.");
+    fireEvent.changeText(view.getByLabelText("Chapter text"), "One line, rewritten by hand.");
+    fireEvent.changeText(view.getByLabelText("Chapter title"), "The Last Climb");
+  });
+  await act(async () => {
+    fireEvent.press(view.getByTestId("edit-chapter-save"));
   });
 
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText("Close editor"));
-  });
+  await waitFor(() => expect(mockSaveChapter).toHaveBeenCalledTimes(1));
+  expect(mockSaveChapter).toHaveBeenCalledWith(
+    expect.objectContaining({
+      storyId: "story-1",
+      chapterId: "chapter-1",
+      body: "One line, rewritten by hand.",
+      title: "The Last Climb",
+    }),
+  );
 
-  await waitFor(() => expect(onClose).toHaveBeenCalledWith("A hand-edited opening."));
+  // "Saved" sits where the button was, then the editor closes itself.
+  await waitFor(() => expect(view.getByText("Saved")).toBeTruthy());
+  await act(async () => {
+    jest.runAllTimers();
+  });
+  expect(onClose).toHaveBeenCalledWith({
+    content: "One line, rewritten by hand.",
+    title: "The Last Climb",
+  });
+  jest.useRealTimers();
 });
 
-it("debounces a manual edit into a single save request", async () => {
-  const view = await render(
-    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
-  );
-  const input = view.getByLabelText("Chapter text");
-
-  await act(async () => {
-    fireEvent.changeText(input, "F");
-    fireEvent.changeText(input, "Fi");
-    fireEvent.changeText(input, "Fir");
-    fireEvent.changeText(input, "First rewritten sentence.");
-  });
-
-  await waitFor(() => expect(mockPublishStory).toHaveBeenCalledTimes(1));
-  expect(mockPublishStory).toHaveBeenCalledWith("story-1", {
-    chapters: [{ id: "chapter-1", content: "First rewritten sentence." }],
-    visibility: "public",
-  });
-});
-
-it("does not offer revert before any regeneration has happened", async () => {
-  const view = await render(
-    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
-  );
-
-  expect(view.queryByLabelText("Revert to previous version")).toBeNull();
-});
-
-it("restores the previous text exactly after one regeneration", async () => {
-  mockEditParagraph.mockResolvedValueOnce("The keeper climbed the stairs, afraid, one last time.");
-
-  const view = await render(
-    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
-  );
-  const input = view.getByLabelText("Chapter text");
-  const original = input.props.value;
-
-  await openWand(view, "make it more afraid");
-
-  await waitFor(() =>
-    expect(view.getByLabelText("Chapter text").props.value).toBe(
-      "The keeper climbed the stairs, afraid, one last time.",
-    )
-  );
-  await waitFor(() => expect(view.getByLabelText("Revert to previous version")).toBeTruthy());
-
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText("Revert to previous version"));
-  });
-
-  expect(view.getByLabelText("Chapter text").props.value).toBe(original);
-  expect(view.queryByLabelText("Revert to previous version")).toBeNull();
-});
-
-it("after a second regeneration, revert goes back only one step and the older version is gone", async () => {
-  mockEditParagraph.mockResolvedValueOnce("Version two of the opening line.");
-  const view = await render(
-    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
-  );
-
-  await openWand(view, "first rewrite");
-  await waitFor(() =>
-    expect(view.getByLabelText("Chapter text").props.value).toBe(
-      "Version two of the opening line.",
-    )
-  );
-
-  mockEditParagraph.mockResolvedValueOnce("Version three of the opening line.");
-  await openWand(view, "second rewrite");
-  await waitFor(() =>
-    expect(view.getByLabelText("Chapter text").props.value).toBe(
-      "Version three of the opening line.",
-    )
-  );
-
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText("Revert to previous version"));
-  });
-
-  // Back only to the version right before the SECOND regeneration - the
-  // original text from before the first regeneration is gone for good.
-  expect(view.getByLabelText("Chapter text").props.value).toBe(
-    "Version two of the opening line.",
-  );
-  expect(view.queryByLabelText("Revert to previous version")).toBeNull();
-});
-
-it("keeps the current text and offers a retry when a regeneration fails", async () => {
-  mockEditParagraph.mockRejectedValueOnce(new Error("the model timed out"));
-  const view = await render(
-    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
-  );
-  const original = view.getByLabelText("Chapter text").props.value;
-
-  await openWand(view, "darker tone");
-
-  await waitFor(() => expect(view.getByLabelText("Retry AI rewrite")).toBeTruthy());
-  expect(view.getByLabelText("Chapter text").props.value).toBe(original);
-  expect(view.queryByLabelText("Revert to previous version")).toBeNull();
-
-  mockEditParagraph.mockResolvedValueOnce("A darker opening line.");
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText("Retry AI rewrite"));
-  });
-
-  await waitFor(() =>
-    expect(view.getByLabelText("Chapter text").props.value).toBe(
-      "A darker opening line.",
-    )
-  );
-  expect(mockEditParagraph).toHaveBeenCalledTimes(2);
-});
-
-it("keeps the reader's text and offers a retry when a save fails", async () => {
-  mockPublishStory.mockRejectedValueOnce(new Error("network down"));
-  const view = await render(
-    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
-  );
-  const input = view.getByLabelText("Chapter text");
-
-  await act(async () => {
-    fireEvent.changeText(input, "A change that will fail to save.");
-  });
-
-  await waitFor(() => expect(view.getByLabelText("Retry save")).toBeTruthy());
-  expect(view.getByLabelText("Chapter text").props.value).toBe(
-    "A change that will fail to save.",
-  );
-
-  mockPublishStory.mockResolvedValueOnce(undefined);
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText("Retry save"));
-  });
-
-  await waitFor(() => expect(view.queryByLabelText("Retry save")).toBeNull());
-  expect(mockPublishStory).toHaveBeenCalledTimes(2);
-  expect(view.getByLabelText("Chapter text").props.value).toBe(
-    "A change that will fail to save.",
-  );
-});
-
-it("saves an edit typed immediately before closing instead of losing it (findings 1 and 2)", async () => {
+it("leaves immediately when nothing was typed", async () => {
   const onClose = jest.fn();
   const view = await render(
     <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
   );
-  const input = view.getByLabelText("Chapter text");
 
-  // Typed, then closed straight away - well inside the default 900ms
-  // debounce, so the timer has not fired yet.
   await act(async () => {
-    fireEvent.changeText(input, "Typed a moment before closing.");
-  });
-  await act(async () => {
-    await fireEvent.press(view.getByLabelText("Close editor"));
+    fireEvent.press(view.getByLabelText("Back"));
   });
 
-  await waitFor(() => expect(mockPublishStory).toHaveBeenCalledTimes(1));
-  expect(mockPublishStory).toHaveBeenCalledWith("story-1", {
-    chapters: [{ id: "chapter-1", content: "Typed a moment before closing." }],
-    visibility: "public",
-  });
-  expect(onClose).toHaveBeenCalledWith("Typed a moment before closing.");
+  expect(onClose).toHaveBeenCalledWith(null);
 });
 
-it("does not vanish a failed save on close - it asks before discarding it (finding 7)", async () => {
-  const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
-  mockPublishStory.mockRejectedValue(new Error("network down"));
-
+it("asks before discarding unsaved changes, and keeps them if the writer says so", async () => {
   const onClose = jest.fn();
   const view = await render(
     <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
   );
-  const input = view.getByLabelText("Chapter text");
 
   await act(async () => {
-    fireEvent.changeText(input, "A change that will never save.");
+    fireEvent.changeText(view.getByLabelText("Chapter text"), "Half a thought.");
   });
-  await waitFor(() => expect(view.getByLabelText("Retry save")).toBeTruthy());
-
   await act(async () => {
-    await fireEvent.press(view.getByLabelText("Close editor"));
+    fireEvent.press(view.getByLabelText("Back"));
   });
 
-  // The close is intercepted, not silently allowed through: the editor is
-  // still on screen and the writer was asked, rather than told nothing.
+  // Asked, and NOT left.
+  await waitFor(() => expect(view.getByText("Discard changes?")).toBeTruthy());
   expect(onClose).not.toHaveBeenCalled();
-  expect(alertSpy).toHaveBeenCalledWith(
-    "Couldn't save your edit",
-    expect.stringContaining("couldn't be saved"),
-    expect.arrayContaining([
-      expect.objectContaining({ text: "Keep Editing" }),
-      expect.objectContaining({ text: "Discard & Close" }),
-    ]),
+
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Keep editing"));
+  });
+  expect(view.queryByText("Discard changes?")).toBeNull();
+  expect(view.getByLabelText("Chapter text").props.value).toBe("Half a thought.");
+
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Back"));
+  });
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Discard changes"));
+  });
+  // Null, not the text: a discarded edit must never reach the reader.
+  expect(onClose).toHaveBeenCalledWith(null);
+});
+
+it("keeps the words on screen when the save fails, and offers a retry", async () => {
+  mockSaveChapter.mockRejectedValueOnce(new Error("Could not reach the server."));
+  const view = await render(
+    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
   );
 
-  // Choosing to discard closes with the last text the server actually has -
-  // the chapter's original content - never the unsaved edit, so the reader
-  // screen is never handed text as if it had been saved when it had not.
-  const [, , buttons] = alertSpy.mock.calls[0];
-  const discard = buttons?.find((button) => button.text === "Discard & Close");
   await act(async () => {
-    discard?.onPress?.();
+    fireEvent.changeText(view.getByLabelText("Chapter text"), "Worth keeping.");
+  });
+  await act(async () => {
+    fireEvent.press(view.getByTestId("edit-chapter-save"));
   });
 
-  expect(onClose).toHaveBeenCalledWith(
-    "The lighthouse keeper climbed the stairs one last time.",
+  await waitFor(() => expect(view.getByText("Could not reach the server.")).toBeTruthy());
+  expect(view.getByLabelText("Chapter text").props.value).toBe("Worth keeping.");
+
+  mockSaveChapter.mockResolvedValueOnce({ titleSaved: true });
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Retry save"));
+  });
+  await waitFor(() => expect(mockSaveChapter).toHaveBeenCalledTimes(2));
+});
+
+it("shows no chapter title field for a standalone story, which has one title", async () => {
+  const view = await render(
+    <EditStoryScreen
+      story={{ ...story, storyMode: "standalone" }}
+      chapter={chapter}
+      onClose={jest.fn()}
+    />,
   );
 
-  alertSpy.mockRestore();
+  expect(view.queryByLabelText("Chapter title")).toBeNull();
+  expect(view.getByText(story.title)).toBeTruthy();
 });

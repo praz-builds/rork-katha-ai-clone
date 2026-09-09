@@ -242,6 +242,14 @@ export type Story = {
   isPublic?: boolean;
   focalX?: number; // 0-1, default 0.5
   focalY?: number; // 0-1, default 0.5
+  /**
+   * Whether anyone else can read this.
+   *
+   * Set by the "Make it public" toggle in the brief and applied once chapter
+   * one exists; there is no separate publish step any more. Absent means
+   * private, which is what the `stories.is_public` column defaults to.
+   */
+  visibility?: "private" | "public";
 };
 
 /** Mirrors the `stories_cover_status_check` constraint (migration 00029). */

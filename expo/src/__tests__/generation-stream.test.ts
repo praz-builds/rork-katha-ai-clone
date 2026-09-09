@@ -1,16 +1,29 @@
 /**
- * The wiring that makes streaming reach a person.
+ * Incremental delivery: the transport half of what "streaming" means here.
  *
- * The endpoint being fast is not the feature. The feature is text appearing on
- * a screen while it is still being written, and the failure mode these guard
+ * The endpoint being fast is not the feature. The feature is prose reaching the
+ * client while it is still being written, and the failure mode this guards
  * against is the one that looks identical from the server side: a client that
- * collects every chunk and renders once at the end. That client passes every
- * API test and delivers none of the benefit.
+ * collects every chunk and hands it all over at the end. That client passes
+ * every other API test in this repo and delivers none of the benefit - page 1
+ * would arrive at ~70 seconds instead of ~20, and a request that sends no bytes
+ * until it is done trips Supabase's 150-second idle timeout with no refund
+ * payload reaching anyone.
+ *
+ * What the client is then allowed to PAINT is a separate question, answered by
+ * the settle rule in `chapter-reveal.test.ts` (the rule) and
+ * `create-streaming-integration.test.tsx` (the screen obeying it). Nothing here
+ * is an argument for a typewriter; this file only proves the chunks arrive as
+ * chunks.
+ *
+ * WHERE THIS CAME FROM. It is the second half of `streaming-ui.test.tsx`. The
+ * first half tested `StreamingProse`, the panel the Create screen used to paint
+ * prose into, which the 2026-09-09 design decision deleted along with the draft
+ * editor it sat above. The transport it tested did not go anywhere, so it lives
+ * on its own here rather than dying with the component.
  */
 
-import React from "react";
-import { act, fireEvent, render } from "@testing-library/react-native";
-import StreamingProse from "@/components/create/StreamingProse";
+import { act } from "@testing-library/react-native";
 import { generateStoryStreaming } from "@/lib/api";
 
 const mockExpoFetch = jest.fn();
@@ -49,54 +62,6 @@ function pacedStream(frames: string[]): ReadableStream<Uint8Array> {
     },
   });
 }
-
-describe("StreamingProse", () => {
-  it("renders each completed paragraph", async () => {
-    const r = await render(<StreamingProse text={"First para.\n\nSecond para."} />);
-    expect(r.getByText("First para.")).toBeTruthy();
-    expect(r.getByText("Second para.")).toBeTruthy();
-  });
-
-  it("shows a partial trailing paragraph rather than hiding it", async () => {
-    // Waiting for a paragraph to complete before showing anything would put the
-    // reader back in front of a blank screen for most of the generation.
-    const r = await render(<StreamingProse text={"Done.\n\nStill being writ"} />);
-    expect(r.getByText("Still being writ")).toBeTruthy();
-  });
-
-  it("reports the stage it was given", async () => {
-    const r = await render(<StreamingProse text="x" stage="shaping" />);
-    expect(r.getByText("Shaping the chapter")).toBeTruthy();
-  });
-
-  it("keeps the prose on screen when generation fails", async () => {
-    // The rule the whole error path exists for: text somebody has read is not
-    // taken away from them.
-    const r = await render(
-      <StreamingProse
-        text="The ferry left on Tuesday."
-        errorMessage="Generation failed. Credit refunded."
-        onDismissError={() => {}}
-      />,
-    );
-    expect(r.getByText("The ferry left on Tuesday.")).toBeTruthy();
-    expect(r.getByText("Generation failed. Credit refunded.")).toBeTruthy();
-  });
-
-  it("offers a way off the failure, so the screen is not a dead end", async () => {
-    const onDismissError = jest.fn();
-    const r = await render(
-      <StreamingProse
-        text="Half a story."
-        errorMessage="It failed."
-        onDismissError={onDismissError}
-        dismissLabel="Start over"
-      />,
-    );
-    fireEvent.press(r.getByTestId("streaming-dismiss-error"));
-    expect(onDismissError).toHaveBeenCalled();
-  });
-});
 
 describe("generateStoryStreaming delivers prose progressively", () => {
   const draft = {

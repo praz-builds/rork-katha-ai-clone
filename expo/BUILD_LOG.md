@@ -134,6 +134,95 @@
   `lib/api.ts`, which the backend branch is editing in parallel.
 - Detected characters are the story roster filtered to names on the page; a
   character the model invented has no roster entry and is not guessed at.
+## 2026-09-09: Generation lands in the reader — the editor, the review step and the publish button are gone
+
+### Changed
+
+- **You press Create and, about twenty seconds later, you are reading page one
+  of your own story.** Before: Create put up the crafting screen for the whole
+  55-76 second generation, then dropped you into a paragraph-by-paragraph draft
+  editor with AI rewrite chips, a chapter tab strip, a "Write the rest" run and
+  a cover review card, then a Review step with a Publish button — a small
+  desktop word processor, reached by everyone, before they had read a word of
+  their own story. After: the crafting screen holds only while there is nothing
+  to read, and the moment whole finished pages exist the ordinary reader opens
+  on page 1. The rest of the chapter arrives behind you while you read it.
+- **Prose still arrives in chunks; it is never painted in front of you.** The
+  transport is unchanged and deliberately so — chunked delivery is the only
+  reason page 1 can be on screen at ~20s rather than at ~70s, and it is what
+  keeps the request under Supabase's 150-second idle timeout. What changed is
+  what a chunk is allowed to do. A page is released only when it is a whole
+  page of whole paragraphs, and the boundary of a released page can never move,
+  so the page you are looking at cannot grow or reflow underneath you. Nothing
+  is ever typed out letter by letter or mid-sentence.
+- **The last available page says the chapter is still being written** — three
+  pulsing dots and "Still writing…" under the final settled paragraph, and the
+  footer reads "Page 1 of 4 · writing" while that count is still a count of
+  what exists. No spinner, no progress bar, no percentage: none of those are
+  knowable, and all three turn reading into waiting.
+- **Leaving the screen no longer kills the generation you paid for.** The
+  stream, the prose it has delivered and the rule deciding how much of it you
+  may see now live in a module-level session (`src/lib/generation-session.ts`),
+  not in the Create screen's state. You can press back, switch tabs, or open
+  the same story from Library while it is being written, and come back to
+  exactly the pages you left. The story is in your library from the moment its
+  first page exists.
+- **Your own story opens on a bare title page.** Story title, then chapter
+  title, then the prose. The cover thumbnail, the genre eyebrow, the byline and
+  the "Chapter N" label are dropped for a story you wrote and for one being
+  written; somebody else's story is a thing you are choosing to read, so it
+  keeps all four. A standalone story shows one title, not the same name twice.
+- **The reader's controls do not open until the chapter is finished.** A tap
+  during generation does nothing at all. Nothing in the tray operates on prose
+  that does not exist yet — you cannot search half a chapter, scrub to a page
+  that has not settled, or narrate an unfinished one — and a tray of controls
+  that cannot be used is a question the writer cannot answer. The first tap
+  after the chapter lands opens it, and is not swallowed by the taps refused
+  before it.
+- **Edit is a notepad.** One text field, the whole chapter, vertical, with the
+  chapter title editable above it and a Save button. The wand bar, the search
+  bar, the paragraph-regenerate path and the revert icon are gone from it. It
+  is the author's, and it appears only once the chapter is complete — absent
+  rather than greyed out until then. Reimagine sits beside it on the same terms
+  and is offered to every reader, not only the author.
+- **Publishing is the "Make it public" toggle in the brief.** There is no
+  Review step and no Publish button to find. A story you marked public is
+  public the moment its chapter lands; a story that names a real living person
+  or someone from your own life stays private, and you are told once, plainly,
+  rather than being handed a policy.
+- **Continuing a story turns the page instead of opening a panel.** Tapping a
+  direction at the end of a chapter used to leave you at the foot of the
+  chapter you had just finished, watching a second waiting surface several
+  inches down a scroll. Now the reader turns to page 1 of the new chapter and
+  the prose arrives there, exactly as chapter one did. One tap buys one
+  chapter, however many times the card is pressed.
+
+### Fixed
+
+- **A double tap on an end-of-chapter direction bought two chapters.** The
+  guard used to be the component's own request state; the component no longer
+  makes the request, so the guard moved into it explicitly. Two presses in the
+  same tick are one continuation and one credit.
+- **A continuation that failed lost the direction the reader typed.** The
+  session holds it, so Retry re-sends the same steer rather than asking them to
+  find and retype it.
+- **A generation that stopped early erased the pages it had already handed
+  over.** They stay on screen, with one line under them — "Katha stopped early.
+  Your credit is back." — and a Retry. The server's own message is the right
+  thing to log and the wrong thing to put under half a chapter somebody is
+  reading.
+
+### Known
+
+- The Reimagine sheet itself is not built here. `ReaderScreen` takes an
+  `onReimagine` prop and `ReaderChrome` renders the control whenever it is
+  supplied; the sheet lands at the marked block beside the other sheets.
+- `regenerateCover` and the cover-poll helpers remain in `src/lib/api.ts` with
+  no caller, and the `writeTheRest` strings remain in `src/i18n/en.json`. Both
+  are dead client surface left in place because `api.ts` and the i18n bundles
+  are being edited elsewhere; they render nothing.
+- Native gesture behaviour is still unverified in this environment: the tests
+  fire the `momentumScrollEnd` the platform would fire, not a finger drag.
 
 ## 2026-09-09: The reading experience — pages, controls, portraits, and stories that survive a reload
 
