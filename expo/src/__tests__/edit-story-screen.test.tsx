@@ -16,13 +16,18 @@
 import React from "react";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
+import { __resetChapterSaveQueue } from "@/lib/chapter-save-queue";
 import type { Chapter, Story } from "@/types/domain";
 
 const mockSaveChapter = jest.fn();
 
-jest.mock("@/lib/chapter-save", () => ({
-  saveChapter: (...args: unknown[]) => mockSaveChapter(...args),
-}));
+// The queue is real. It is what makes Save optimistic, so faking it away would
+// leave these tests asserting against a version of the screen that does not
+// ship. Only the network primitive under it is replaced.
+jest.mock("@/lib/chapter-save", () => {
+  const actual = jest.requireActual("@/lib/chapter-save");
+  return { ...actual, saveChapter: (...args: unknown[]) => mockSaveChapter(...args) };
+});
 
 const chapter: Chapter = {
   id: "chapter-1",
@@ -56,7 +61,11 @@ const story: Story = {
 beforeEach(() => {
   cleanup();
   jest.clearAllMocks();
+  mockSaveChapter.mockReset();
   mockSaveChapter.mockResolvedValue({ titleSaved: true });
+  // The queue is module-level state; a failure left in it would follow the next
+  // test into the reader.
+  __resetChapterSaveQueue();
 });
 
 afterEach(() => {
@@ -98,9 +107,16 @@ it("keeps Save inert until something has actually changed", async () => {
   );
 });
 
-it("saves the chapter and hands the saved text back to the reader", async () => {
-  jest.useFakeTimers();
+/**
+ * The measurement that mattered: Save used to hold the writer here for the
+ * whole round trip plus a 1.2-second "Saved" dwell. `onClose` must now fire in
+ * the SAME TICK as the tap, with the request still unresolved behind it.
+ */
+it("returns the reader instantly and persists in the background", async () => {
   const onClose = jest.fn();
+  // A save that never settles. If the editor were still waiting on the network
+  // this test could not finish.
+  mockSaveChapter.mockImplementationOnce(() => new Promise(() => {}));
   const view = await render(
     <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
   );
@@ -109,11 +125,13 @@ it("saves the chapter and hands the saved text back to the reader", async () => 
     fireEvent.changeText(view.getByLabelText("Chapter text"), "One line, rewritten by hand.");
     fireEvent.changeText(view.getByLabelText("Chapter title"), "The Last Climb");
   });
-  await act(async () => {
-    fireEvent.press(view.getByTestId("edit-chapter-save"));
-  });
+  fireEvent.press(view.getByTestId("edit-chapter-save"));
 
-  await waitFor(() => expect(mockSaveChapter).toHaveBeenCalledTimes(1));
+  // Synchronously, with no `await` between the tap and this assertion.
+  expect(onClose).toHaveBeenCalledWith({
+    content: "One line, rewritten by hand.",
+    title: "The Last Climb",
+  });
   expect(mockSaveChapter).toHaveBeenCalledWith(
     expect.objectContaining({
       storyId: "story-1",
@@ -122,17 +140,59 @@ it("saves the chapter and hands the saved text back to the reader", async () => 
       title: "The Last Climb",
     }),
   );
+});
 
-  // "Saved" sits where the button was, then the editor closes itself.
-  await waitFor(() => expect(view.getByText("Saved")).toBeTruthy());
+it("never claims 'Saved' for a write that has not landed", async () => {
+  mockSaveChapter.mockImplementationOnce(() => new Promise(() => {}));
+  const view = await render(
+    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
+  );
+
   await act(async () => {
-    jest.runAllTimers();
+    fireEvent.changeText(view.getByLabelText("Chapter text"), "Still in flight.");
   });
-  expect(onClose).toHaveBeenCalledWith({
-    content: "One line, rewritten by hand.",
-    title: "The Last Climb",
+  fireEvent.press(view.getByTestId("edit-chapter-save"));
+
+  expect(view.queryByText("Saved")).toBeNull();
+  expect(view.queryByText("Saving")).toBeNull();
+});
+
+it("fires one close and one request however fast Save is double-tapped", async () => {
+  const onClose = jest.fn();
+  const view = await render(
+    <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
+  );
+
+  await act(async () => {
+    fireEvent.changeText(view.getByLabelText("Chapter text"), "Once, please.");
   });
-  jest.useRealTimers();
+  await act(async () => {
+    fireEvent.press(view.getByTestId("edit-chapter-save"));
+    fireEvent.press(view.getByTestId("edit-chapter-save"));
+  });
+
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(mockSaveChapter).toHaveBeenCalledTimes(1);
+});
+
+it("refuses an empty chapter locally, without a request and without leaving", async () => {
+  const onClose = jest.fn();
+  const view = await render(
+    <EditStoryScreen story={story} chapter={chapter} onClose={onClose} />,
+  );
+
+  await act(async () => {
+    fireEvent.changeText(view.getByLabelText("Chapter text"), "   ");
+  });
+  await act(async () => {
+    fireEvent.press(view.getByTestId("edit-chapter-save"));
+  });
+
+  expect(onClose).not.toHaveBeenCalled();
+  expect(mockSaveChapter).not.toHaveBeenCalled();
+  expect(view.getByTestId("edit-chapter-error")).toBeTruthy();
+  // Every character still there.
+  expect(view.getByLabelText("Chapter text").props.value).toBe("   ");
 });
 
 it("leaves immediately when nothing was typed", async () => {
@@ -181,28 +241,15 @@ it("asks before discarding unsaved changes, and keeps them if the writer says so
   expect(onClose).toHaveBeenCalledWith(null);
 });
 
-it("keeps the words on screen when the save fails, and offers a retry", async () => {
-  mockSaveChapter.mockRejectedValueOnce(new Error("Could not reach the server."));
-  const view = await render(
-    <EditStoryScreen story={story} chapter={chapter} onClose={jest.fn()} />,
-  );
+/*
+  A NETWORK FAILURE IS NO LONGER THIS SCREEN'S TO REPORT.
 
-  await act(async () => {
-    fireEvent.changeText(view.getByLabelText("Chapter text"), "Worth keeping.");
-  });
-  await act(async () => {
-    fireEvent.press(view.getByTestId("edit-chapter-save"));
-  });
-
-  await waitFor(() => expect(view.getByText("Could not reach the server.")).toBeTruthy());
-  expect(view.getByLabelText("Chapter text").props.value).toBe("Worth keeping.");
-
-  mockSaveChapter.mockResolvedValueOnce({ titleSaved: true });
-  await act(async () => {
-    fireEvent.press(view.getByLabelText("Retry save"));
-  });
-  await waitFor(() => expect(mockSaveChapter).toHaveBeenCalledTimes(2));
-});
+  The editor is gone by the time the request settles, so a refusal surfaces in
+  the reader with a Retry that still holds the text. `chapter-save-queue.test.ts`
+  covers the queue and `reader-screen-edit.test.tsx` covers the banner; there is
+  nothing left here to assert about it, and a test that pretended otherwise
+  would be testing a screen that is not on the stack.
+*/
 
 it("shows no chapter title field for a standalone story, which has one title", async () => {
   const view = await render(

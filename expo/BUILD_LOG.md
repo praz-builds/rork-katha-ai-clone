@@ -382,6 +382,158 @@ and `deno check` clean.
   is unset, so the honest production path today ends on the "Narration is not
   available yet" screen. That is the correct answer for a closed gate, and the
   whole preparing flow is live the moment the flag is turned on.
+## 2026-09-10: The reader's controls, a selection you can feel, and chips that tell the story what to do
+
+### Changed
+
+- **The reader's control sheet lost a word and found a button.** A "Pages"
+  caption used to take a whole row's width to name the slider under it, beside
+  a readout that already said "Page 7 of 15". The caption is gone; the readout
+  stays, centred; and the height it was using went into the six controls, whose
+  glyphs are 26px on 64px-tall targets instead of 19px on 44. The sheet's top
+  corners came down from `radius.xl` (24) to `radius.md` (14) — at 24, on a
+  390-wide sheet, the curve runs for most of the height of the first control
+  row and the whole thing reads as a lozenge rather than a panel sliding up
+  from the bottom edge.
+- **The forward page control exists.** There was a back chevron at the left of
+  the slider and empty space at the right. The forward one had been written as
+  a `ChevronLeft` rotated 180 degrees through a `style` prop — a transform
+  lucide hands to the SVG root, and one that does not survive every renderer.
+  Both ends are now one `PageStepButton` with a real `ChevronRight`, so they
+  cannot drift apart again: same size, same 48px plate, same hit slop. Each is
+  disabled at its own end of the chapter and stays on screen while disabled,
+  because a control that vanishes at the last page is the defect that was
+  reported in the first place.
+- **Long-press and drag selects text, and you can feel it.** Long-pressing a
+  word used to save the sentence around it outright: one gesture, one guess at
+  how much the reader meant, no way to see it first and no way to take a word
+  off the end. It now anchors a SELECTION on that sentence — a light impact
+  fires as the wash appears — and dragging grows or shrinks it word by word
+  with a selection tick per word crossed. Nothing is written until the reader
+  chooses. Tapping a single word still saves that word, unchanged.
+- **A selection offers three things and no more.** **Save phrase** (the
+  existing `phrases` backend, first because it is the default intent), **Copy**
+  (its absence reads as a bug, not a decision) and **Share quote**, which sends
+  the line with the story's name attached — readers already screenshot lines
+  they like, and a screenshot carries no way back. "Look up" was rejected:
+  there is no dictionary on React Native without a native module, and a control
+  that silently does nothing on Android is worse than no control.
+- **Saving a chapter edit is instant.** Save used to `await` the round trip
+  with every control disabled and then hold a 1.2-second "Saved" state before
+  closing — three to four seconds of a frozen notepad to persist text the
+  writer was looking at. The edit is now accepted locally and the reader comes
+  straight back with the new words on the page; the request runs in
+  `lib/chapter-save-queue.ts`, outside the component tree, where unmounting the
+  editor cannot cancel it. The header no longer says "Saving" or "Saved",
+  because by the time either could be true the screen is gone.
+- **A refused save is still told, in the reader.** The queue holds the exact
+  text. If the write is refused, a banner appears over the page with the
+  server's own reason, a **Retry** that re-sends what the writer typed, and a
+  **Not now** for an edit they have decided to live with. Nothing anywhere
+  reports success for a write that failed.
+- **The edit field is quiet.** The chapter text area is `colors.surface` inside
+  a hairline `colors.border` on a `colors.bg` ground — the same paper the rest
+  of the app uses — and focus is one step of border weight (`borderStrong`),
+  not a colour change. `outlineWidth: 0` stops the web build drawing the
+  browser's own focus ring on top of it.
+- **Chapter-end chips are directions now, not questions.** The source data was
+  never the problem — the beats, open hooks, promised payoffs and pressure
+  lines are real and specific — but hooks arrive phrased as questions, because
+  a hook is a question. Rendered straight they read as a comprehension quiz:
+  "Who is writing the predictive linen notes". `lib/directions.ts` puts a fixed
+  English frame in front of the story's own words to point it the other way:
+  "Find out who is writing the predictive linen notes." "What will happen if
+  Anjali unfolds every sheet tomorrow" becomes "Show what happens if Anjali
+  unfolds every sheet tomorrow." A yes/no question is un-inverted around its
+  auxiliary: "Is the casualty girl Divya lying about having no brother" becomes
+  "Find out whether the casualty girl Divya is lying about having no brother."
+  Nothing is invented, and a sentence that cannot be converted grammatically is
+  DROPPED rather than replaced.
+- **"Write your own" is a third card.** It was a small muted text link under
+  the cards, beside a second one called "Let Katha decide" — two lightweight
+  controls competing for the same decision, both of them arguing visually that
+  they were afterthoughts. It is now a card of the same width and weight as the
+  two derived directions, reading "Write your own — or get a surprise", with a
+  dashed edge as the one signal that this one is the reader's to fill in.
+  Tapping it replaces the card IN PLACE with the composer, so the field lands
+  where the finger already is: a title row with a close button, one line of
+  register-teaching ("An instruction, not a question — 'Take Meera to the fort
+  path.'"), an auto-focused field placeheld "Tell Katha what happens next.", a
+  counter that appears only in the last 20% of the limit, and a footer holding
+  **Surprise me** and **Continue · 1 credit**. "Surprise me" is the old "Let
+  Katha decide" folded in where it belongs: it sends no instruction at all, so
+  the model uses the plan and series state it already holds. Two derived cards
+  plus this one is three, which is what Okudu shows and what fits a thumb.
+- **The reader's comments are the story's own.** `ReaderScreen` carried three
+  hardcoded comments in a module constant — "Mira R.", "Dev S." and "Aanya K."
+  discussing a lighthouse metaphor — and rendered them under EVERY story. A
+  brand-new story about a nurse in Kochi ended with three strangers admiring a
+  lighthouse that is not in it, while the story detail page for the same story
+  correctly reported zero. The thread comes from `lib/comments.ts` now, the
+  same source the detail page reads, and a story with none says "No comments
+  yet. Be the first to say something."
+- **Engagement needs an account.** Like, Save, Follow and the comment box are
+  gated for a guest through a new `onRequireSignIn` prop on `ReaderScreen` (and
+  forwarded by `PhraseCaptureReader`), wired in `App.tsx` to the existing
+  sign-in entry. The control stays visible and enabled — a hidden Like is a
+  feature the guest never learns exists and a disabled one is a dead end — and
+  a tap opens sign-in instead of writing to local state nothing will persist.
+  Reading, page turning, search, preferences, narration and phrase capture stay
+  open to everyone.
+
+### Fixed
+
+- **A tap with the keyboard up was spent dismissing the keyboard.** The reader's
+  per-page scroller now sets `keyboardShouldPersistTaps="handled"`, so the
+  chapter-end composer's Continue button takes the first tap rather than making
+  the reader press a paid button twice.
+- **Gesture Handler had no Jest setup.** The moment the reader wrapped itself in
+  a `GestureHandlerRootView`, every suite that mounts the reader died on
+  `RNGestureHandlerModule.install is not a function` — nowhere near the thing it
+  was testing. `jest.config.js` now loads the library's own `jestSetup.js`
+  before the project's.
+
+### Added
+
+- `expo/src/lib/directions.ts` — question-to-direction conversion, high
+  precision and low recall by design, with a drop path instead of a filler
+  pool.
+- `expo/src/lib/text-selection.ts` — the arithmetic of the drag selection,
+  pure and worklet-safe, so which words end up selected is testable without a
+  device.
+- `expo/src/lib/chapter-save-queue.ts` — the background save, its subscribers
+  and its retry.
+- `expo/src/lib/clipboard.ts` — `expo-clipboard` on native through a guarded
+  dynamic require, `navigator.clipboard` on web, and an honest `false` when
+  neither is available.
+- `expo/src/components/reader/SelectionToolbar.tsx` — the three-action menu a
+  selection raises.
+- **New dependency: `expo-clipboard` (~8.0.8).** Copy needs it, RN core's
+  `Clipboard` is deprecated, and the module is loaded lazily so a web bundle and
+  a Jest run that cannot link it still work.
+
+### Known gaps
+
+- **The drag is read as travel, not as a hit test.** Prose is drawn as nested
+  `<Text>` inside a flowing paragraph — which is what keeps pagination and line
+  wrap correct — and a nested `Text` reports an unusable frame on some
+  platforms and none at all on react-native-web. So the drag moves the
+  selection through the text in reading order (sideways by the word, downward by
+  the line) rather than resolving the finger's position against measured word
+  frames. The reader steers by the highlight, which moves under their finger,
+  and can release and drag again from the same anchor. A pixel-accurate version
+  needs either a Fabric-only measurement pass or a different way of drawing the
+  page, and would want a device to tune.
+- **Feel is unverified on hardware.** Haptic timing, the 650ms drag activation
+  threshold and the word/line step distances are code-correct and unit-tested
+  but have not been judged on a release build. They are the first things to
+  re-tune on device.
+- **The orange border on the edit field could not be reproduced in source.** No
+  version of `EditStoryScreen.tsx` in this repository's history draws an accent
+  frame around the text area; the most likely culprit is the browser's own focus
+  ring on the web build. The field has been given an explicit quiet treatment
+  and the platform outline has been suppressed, which covers both possibilities,
+  but it is worth a second look at the running app.
 
 ## 2026-09-09: The story page goes dark, and a writer's own work leads Home
 

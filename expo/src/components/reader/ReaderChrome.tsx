@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   ChevronLeft,
+  ChevronRight,
   List,
   Music,
   Pause,
@@ -98,6 +99,16 @@ type ChromeAction = {
   onPress: () => void;
 };
 
+/**
+ * The control glyph size.
+ *
+ * 19 before, when the sheet also carried a "Pages" label taking a whole row's
+ * width to say what the readout beside it already said. Deleting that row gave
+ * the six controls the vertical space they were short of, and they are the
+ * things a reader actually aims at in a dark sheet with a thumb.
+ */
+const CHROME_ICON_SIZE = 26;
+
 function ChromeButton({ action }: { action: ChromeAction }) {
   const Icon = action.icon;
   return (
@@ -111,8 +122,57 @@ function ChromeButton({ action }: { action: ChromeAction }) {
         pressed && styles.chromeButtonPressed,
       ]}
     >
-      <Icon size={19} color={CHROME.text} />
+      <Icon size={CHROME_ICON_SIZE} color={CHROME.text} />
       <Text style={styles.chromeButtonText}>{action.label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * One end of the page stepper.
+ *
+ * Both ends are this component so they cannot drift apart: same size, same hit
+ * area, same disabled treatment, mirrored glyph. The forward one used to be a
+ * `ChevronLeft` rotated 180 degrees through a style prop, which is a
+ * transform lucide passes to the SVG root and which does not survive every
+ * renderer -- the product owner's screenshot has a back chevron on the left of
+ * the slider and empty space on the right. A real `ChevronRight` cannot fail
+ * that way.
+ *
+ * Disabled is rendered, not hidden: at the first and last page the control
+ * stays where the thumb expects it and reads as unavailable, rather than the
+ * row reflowing under the finger.
+ */
+function PageStepButton({
+  direction,
+  disabled,
+  onPress,
+}: {
+  direction: "previous" | "next";
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const Icon = direction === "previous" ? ChevronLeft : ChevronRight;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={direction === "previous" ? "Previous page" : "Next page"}
+      accessibilityState={{ disabled }}
+      hitSlop={8}
+      testID={`page-step-${direction}`}
+      style={({ pressed }) => [
+        styles.pageStepButton,
+        disabled && styles.pageStepButtonDisabled,
+        pressed && !disabled && styles.chromeButtonPressed,
+      ]}
+    >
+      {/* `muted`, not `track`: the plate IS `track`, so a track-coloured glyph
+        * on it is not a dimmed control, it is an empty circle -- which is the
+        * exact thing being fixed here. The recession comes from the 55% on the
+        * whole button. */}
+      <Icon size={22} color={disabled ? CHROME.muted : CHROME.text} />
     </Pressable>
   );
 }
@@ -283,20 +343,23 @@ export function ReaderChrome({
             {rowOne.map((action) => <ChromeButton key={action.label} action={action} />)}
           </View>
           <View style={styles.pageSliderGroup}>
-            <View style={styles.pageSliderHeader}>
-              <Text style={styles.sliderLabel}>Pages</Text>
-              <Text style={styles.sliderValue}>Page {pageIndex + 1} of {pageCount}</Text>
-            </View>
+            {/*
+              One centred readout, no "Pages" caption beside it.
+
+              The caption spent a whole row's width naming the control it sat
+              on, next to a readout that already said "Page 7 of 15". The row is
+              gone and its height went to the six controls above and below,
+              which are what a thumb actually has to find.
+            */}
+            <Text style={styles.sliderValue} testID="page-readout">
+              Page {pageIndex + 1} of {pageCount}
+            </Text>
             <View style={styles.pageStepRow}>
-              <Pressable
+              <PageStepButton
+                direction="previous"
+                disabled={pageIndex <= 0}
                 onPress={() => onPageChange(Math.max(0, pageIndex - 1))}
-                accessibilityRole="button"
-                accessibilityLabel="Previous page"
-                hitSlop={8}
-                style={styles.pageStepButton}
-              >
-                <ChevronLeft size={19} color={CHROME.muted} />
-              </Pressable>
+              />
               {/*
                 A real positional control, not a stepper wearing a track.
 
@@ -334,15 +397,11 @@ export function ReaderChrome({
                 <View style={[styles.sliderFill, { width: `${Math.max(3, sliderPercent * 100)}%` }]} />
                 <View style={[styles.sliderThumb, { left: `${sliderPercent * 100}%` }]} />
               </View>
-              <Pressable
+              <PageStepButton
+                direction="next"
+                disabled={pageIndex >= pageCount - 1}
                 onPress={() => onPageChange(Math.min(pageCount - 1, pageIndex + 1))}
-                accessibilityRole="button"
-                accessibilityLabel="Next page"
-                hitSlop={8}
-                style={styles.pageStepButton}
-              >
-                <ChevronLeft size={19} color={CHROME.muted} style={{ transform: [{ rotate: "180deg" }] }} />
-              </Pressable>
+              />
             </View>
           </View>
           <View style={styles.controlRow}>
@@ -442,8 +501,17 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 20,
     backgroundColor: CHROME.surface,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
+    /*
+      `radius.md` (14), not `radius.xl` (24).
+
+      At 24 on a 390-wide sheet the top corners curve for most of the height of
+      the first control row, which is what reads as pill-like rather than as a
+      panel sliding up from the bottom edge. 14 is the same radius the app's
+      cards use: enough to say "this is a surface with edges", not enough to
+      round the sheet into a lozenge.
+    */
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
     borderTopWidth: 1,
     borderColor: CHROME.border,
     paddingHorizontal: spacing.md,
@@ -459,7 +527,10 @@ const styles = StyleSheet.create({
   },
   chromeButton: {
     flex: 1,
-    minHeight: 44,
+    // 44 was the floor and it was also the ceiling, because a "Pages" caption
+    // sat between the two control rows. It does not any more.
+    minHeight: 64,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
@@ -479,21 +550,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
-  pageSliderHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  sliderLabel: {
-    fontFamily: fonts.ui,
-    fontSize: 13,
-    fontWeight: "800",
-    color: CHROME.text,
-    letterSpacing: 0,
-  },
   sliderValue: {
     fontFamily: fonts.ui,
     fontSize: 12,
+    textAlign: "center",
     color: CHROME.muted,
     letterSpacing: 0,
   },
@@ -503,12 +563,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   pageStepButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: CHROME.track,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pageStepButtonDisabled: {
+    // The plate stays; only the glyph recedes (`PageStepButton` swaps its
+    // colour to `CHROME.track`). Removing the fill as well would make the
+    // control look like it had gone away, which is the thing the owner
+    // reported about the forward one in the first place.
+    opacity: 0.55,
   },
   sliderTrack: {
     flex: 1,

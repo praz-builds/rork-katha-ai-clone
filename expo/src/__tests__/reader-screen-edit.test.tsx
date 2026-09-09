@@ -64,9 +64,13 @@ jest.mock("expo-av", () => ({
   },
 }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
-jest.mock("@/lib/chapter-save", () => ({
-  saveChapter: jest.fn(() => Promise.resolve({ titleSaved: true })),
-}));
+// The queue is real here on purpose -- these tests exercise the reader's whole
+// edit round trip, and the queue is now part of it. Only the network primitive
+// underneath it is faked.
+jest.mock("@/lib/chapter-save", () => {
+  const actual = jest.requireActual("@/lib/chapter-save");
+  return { ...actual, saveChapter: jest.fn(() => Promise.resolve({ titleSaved: true })) };
+});
 
 const baseStory = stories.find((item) => item.chapters.length > 1)!;
 

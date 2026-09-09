@@ -26,6 +26,19 @@ jest.mock("expo-av", () => ({
 }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 
+const mockImpactAsync = jest.fn();
+const mockSelectionAsync = jest.fn();
+jest.mock("expo-haptics", () => ({
+  impactAsync: (...args: [string]) => mockImpactAsync(...args),
+  selectionAsync: (...args: []) => mockSelectionAsync(...args),
+  ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
+}));
+
+const mockCopyText = jest.fn();
+jest.mock("@/lib/clipboard", () => ({
+  copyText: (...args: [string]) => mockCopyText(...args),
+}));
+
 const mockSavePhrase = jest.fn();
 const mockUnsavePhrase = jest.fn();
 const mockListSavedPhrases = jest.fn();
@@ -42,7 +55,7 @@ jest.mock("@/lib/phrases", () => {
 
 /* eslint-disable import/first */
 import React from "react";
-import { AccessibilityInfo, Alert } from "react-native";
+import { AccessibilityInfo, Alert, Share } from "react-native";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
 import type { SavedPhrase } from "@/lib/phrases";
@@ -95,10 +108,20 @@ function savedRecord(over: Partial<SavedPhrase> = {}): SavedPhrase {
   };
 }
 
+let mockShare: jest.SpyInstance;
+
 beforeEach(() => {
   cleanup();
   jest.clearAllMocks();
+  // `clearAllMocks` empties the call log but NOT a queued `mockResolvedValueOnce`.
+  // A test that queues one and does not consume it hands it to the next test,
+  // which then sees somebody else's saved phrase. `mockReset` drops the queue.
+  mockSavePhrase.mockReset();
+  mockUnsavePhrase.mockReset();
+  mockCopyText.mockReset();
+  mockCopyText.mockResolvedValue(true);
   mockListSavedPhrases.mockResolvedValue([]);
+  mockShare = jest.spyOn(Share, "share").mockResolvedValue({ action: "sharedAction" } as never);
   jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(false);
   jest.spyOn(AccessibilityInfo, "addEventListener").mockReturnValue({ remove: jest.fn() } as never);
   jest.spyOn(Alert, "alert").mockImplementation(() => {});
@@ -125,18 +148,97 @@ it("tapping a word calls save exactly once, with that word as the phrase", async
   }));
 });
 
-it("long-press saves the surrounding sentence, not just the word", async () => {
-  mockSavePhrase.mockResolvedValueOnce(savedRecord({ id: "saved-2", phrase: SENTENCE, sentence: SENTENCE }));
+/**
+ * Long-press used to save the surrounding sentence outright. It now SELECTS it
+ * and waits: the reader sees the range, can drag it, and chooses what to do
+ * with it. Nothing is written until Save phrase is tapped -- which is the whole
+ * point of the change, so it is asserted rather than assumed.
+ */
+it("long-press selects the surrounding sentence and writes nothing yet", async () => {
   const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
 
   await act(async () => {
     await fireEvent(view.getByTestId(LIGHTHOUSE_WORD), "longPress");
   });
 
+  expect(view.getByTestId("selection-toolbar")).toBeTruthy();
+  expect(mockSavePhrase).not.toHaveBeenCalled();
+});
+
+it("Save phrase on a selection saves the whole selected sentence", async () => {
+  mockSavePhrase.mockResolvedValueOnce(
+    savedRecord({ id: "saved-2", phrase: SENTENCE, sentence: SENTENCE }),
+  );
+  const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent(view.getByTestId(LIGHTHOUSE_WORD), "longPress");
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("selection-action-save"));
+  });
+
   await waitFor(() => expect(mockSavePhrase).toHaveBeenCalledTimes(1));
   const [call] = mockSavePhrase.mock.calls[0];
   expect(call.phrase).toBe(SENTENCE);
   expect(call.phrase).not.toBe("lighthouse");
+});
+
+it("a light impact fires when the selection begins", async () => {
+  const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent(view.getByTestId(LIGHTHOUSE_WORD), "longPress");
+  });
+
+  expect(mockImpactAsync).toHaveBeenCalledTimes(1);
+  expect(mockImpactAsync).toHaveBeenCalledWith("light");
+});
+
+it("Copy puts the selection on the clipboard and closes the menu", async () => {
+  mockCopyText.mockResolvedValueOnce(true);
+  const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent(view.getByTestId(LIGHTHOUSE_WORD), "longPress");
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("selection-action-copy"));
+  });
+
+  expect(mockCopyText).toHaveBeenCalledWith(SENTENCE);
+  expect(view.queryByTestId("selection-toolbar")).toBeNull();
+  expect(mockSavePhrase).not.toHaveBeenCalled();
+});
+
+it("Share quote sends the line with the story's name attached", async () => {
+  const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent(view.getByTestId(LIGHTHOUSE_WORD), "longPress");
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("selection-action-share"));
+  });
+
+  await waitFor(() => expect(mockShare).toHaveBeenCalledTimes(1));
+  const message = mockShare.mock.calls[0][0].message as string;
+  expect(message).toContain(SENTENCE);
+  expect(message).toContain(STORY.title);
+});
+
+it("tapping off a selection dismisses it without saving anything", async () => {
+  const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent(view.getByTestId(LIGHTHOUSE_WORD), "longPress");
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("selection-dismiss"));
+  });
+
+  expect(view.queryByTestId("selection-toolbar")).toBeNull();
+  expect(mockSavePhrase).not.toHaveBeenCalled();
 });
 
 it("tapping an already-saved phrase unsaves it", async () => {

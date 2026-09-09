@@ -602,6 +602,11 @@ export default function App() {
                     chapterIndex,
                     returnTo: "reader",
                   })}
+                // Reading is open to everyone; putting your name on somebody
+                // else's story is not. A guest who taps Like, Save, Follow or
+                // the comment box lands at sign-in instead of at a local
+                // state change nothing will ever persist.
+                onRequireSignIn={isAnonymous ? () => setScreen({ name: "onboarding" }) : undefined}
                 // A rewrite becomes a live session like any other chapter, so
                 // it reveals page by page instead of waiting behind a cover.
                 // `findStoryGeneration` above then picks it up on the next

@@ -63,6 +63,18 @@ export const colors = {
   accent: "#FF6B1A",
   accentPressed: "#E85610",
   accentSoft: "#FFEFE2",
+  /**
+   * The wash under a live text selection in the reader.
+   *
+   * Translucent rather than a flat hex, and cool rather than warm, because it
+   * is the one highlight in the app that has to sit on all three reading
+   * grounds -- Sepia (#F4E8D0), Paper (#FAF7F2) and Night -- without being
+   * given the theme. At 30% a neutral slate darkens the two light pages into a
+   * clear grey band and lifts the dark one, and on none of them can it be
+   * mistaken for `accentSoft`, which one line away means "saved to your
+   * library" rather than "selected right now".
+   */
+  selectionTint: "rgba(118, 114, 138, 0.30)",
   heart: "#E85D5D",
   info: "#4A78C2",
   premium: "#C44536",

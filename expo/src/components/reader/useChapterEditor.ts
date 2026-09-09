@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { saveChapter } from "@/lib/chapter-save";
+import { queueChapterSave } from "@/lib/chapter-save-queue";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -32,6 +33,21 @@ export type UseChapterEditorResult = {
    * as it was either way, so the writer can retry or discard.
    */
   save: () => Promise<boolean>;
+  /**
+   * Accept the edit locally and hand the writer their page back NOW, with the
+   * request running in the background (`lib/chapter-save-queue.ts`).
+   *
+   * Returns the text and title to show, or `null` when the edit is not
+   * acceptable at all -- today only an empty chapter, which is refused here
+   * rather than after a round trip because it needs no server to know it is
+   * wrong. A rejection sets `status` to `error` and leaves every character in
+   * the field.
+   *
+   * This does NOT report whether the write succeeded, because it cannot: the
+   * request has not finished. Whoever hosts the reader subscribes to the queue
+   * and shows a failure there if one comes back.
+   */
+  commit: () => { content: string; title: string } | null;
   /** The last chapter text this hook confirmed was persisted to the server. */
   getLastSavedText: () => string;
   /** The last chapter title this hook confirmed the reader should show. */
@@ -140,6 +156,35 @@ export function useChapterEditor({
     }
   }, [chapterId, chapterNumber, isPublished, storyId]);
 
+  const commit = useCallback((): { content: string; title: string } | null => {
+    const content = textRef.current;
+    const heading = titleRef.current;
+    if (!content.trim()) {
+      setStatus("error");
+      setError("A chapter can't be empty. Add some text, or discard your changes.");
+      return null;
+    }
+    // Nothing changed: no request, and nothing for the reader to re-paginate.
+    if (content === savedTextRef.current && heading === savedTitleRef.current) {
+      return { content, title: heading };
+    }
+    savedTextRef.current = content;
+    savedTitleRef.current = heading;
+    setSavedText(content);
+    setSavedTitle(heading);
+    setStatus("saved");
+    setError(null);
+    queueChapterSave({
+      storyId,
+      chapterId,
+      chapterNumber,
+      body: content,
+      title: heading.trim() || undefined,
+      isPublished,
+    });
+    return { content, title: heading };
+  }, [chapterId, chapterNumber, isPublished, storyId]);
+
   const getLastSavedText = useCallback(() => savedTextRef.current, []);
   const getLastSavedTitle = useCallback(() => savedTitleRef.current, []);
 
@@ -152,6 +197,7 @@ export function useChapterEditor({
     status,
     error,
     save,
+    commit,
     getLastSavedText,
     getLastSavedTitle,
   };

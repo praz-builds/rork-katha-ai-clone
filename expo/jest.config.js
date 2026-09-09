@@ -11,7 +11,19 @@ module.exports = {
    * catch a genuine hang, long enough that a slow machine is not a failure.
    */
   testTimeout: 30000,
-  setupFiles: ['<rootDir>/jest.setup.js'],
+  /**
+   * Gesture Handler's own setup file first.
+   *
+   * `GestureHandlerRootView` calls into the native module at render
+   * (`RNGestureHandlerModule.install()`), so the moment the reader started
+   * wrapping itself in one, every suite that mounts the reader died on
+   * "install is not a function" -- nowhere near the thing it was testing. The
+   * library ships this mock for exactly that.
+   */
+  setupFiles: [
+    '<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js',
+    '<rootDir>/jest.setup.js',
+  ],
   transformIgnorePatterns: [
     'node_modules/(?!(.pnpm/[^/]+/node_modules/)?(((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|posthog-react-native|react-native-svg|lucide-react-native))',
   ],
