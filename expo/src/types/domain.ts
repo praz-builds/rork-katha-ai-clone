@@ -350,6 +350,19 @@ export type CreateDraft = {
      * the weakest of them.
      */
     referenceImage?: string;
+    /**
+     * The `user_characters` row this character came from, when the writer
+     * picked them out of their saved-character library instead of writing a
+     * new one (migration 00057).
+     *
+     * The client still sends every field, because the writer may edit them for
+     * this story and a story's cast is its own. The id is what lets the server
+     * fill in a field the sheet left blank, carry over a portrait that was
+     * paid for once, and link the story's `characters` row back to the saved
+     * one. An id the caller does not own is dropped server-side rather than
+     * failing the generation - see `_shared/saved-characters.ts`.
+     */
+    savedCharacterId?: string;
     isHero: boolean;
     /**
      * Set when this character was added from the saved library, so the

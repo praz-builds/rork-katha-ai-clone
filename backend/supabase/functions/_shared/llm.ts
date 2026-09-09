@@ -183,7 +183,80 @@ export function isProviderDisabled(
   return disabled.has(provider.toLowerCase());
 }
 
-const GENERATION_DEADLINE_MS = 120_000;
+/**
+ * The Supabase gateway's **Request Idle Timeout**: if a function has sent no
+ * bytes for this long, the caller gets `504 Gateway Timeout` and the response
+ * the handler eventually produces is thrown away.
+ *
+ * Documented at https://supabase.com/docs/guides/functions/limits, and it does
+ * **not** vary by plan (the worker *wall clock* does - 150s free, 400s paid -
+ * but that is the worker's lifetime, not how long a caller will wait for a
+ * first byte).
+ *
+ * This is the hard ceiling on every non-streaming generation. A streamed
+ * response never met it, because the first `delta` arrives in seconds and each
+ * chunk resets the clock. A blocking request sends nothing until it is
+ * finished, so the whole generation - auth, reservation, grounding, the model,
+ * persistence, the response - must fit inside this number.
+ */
+export const EDGE_REQUEST_IDLE_TIMEOUT_MS = 150_000;
+
+/**
+ * The generation budget, in milliseconds. This is the whole provider chain,
+ * not one attempt.
+ *
+ * **Raised from 120s and then sized against the gateway on 2026-09-09.**
+ *
+ * This number governs the *blocking* callers only - `generate-story`,
+ * `edit-story` and `shape-story`. Streaming remains the primary transport for
+ * every chapter the reader watches being written (`generate-story-stream`,
+ * `continue-story` and `reimagine-chapter` with `stream: true`), and those are
+ * bounded by `STREAM_DEADLINE_MS` in `_shared/story-stream.ts` instead,
+ * because a streamed response sends its first bytes in seconds and every
+ * chunk resets the gateway's idle clock. Do not unify the two numbers: they
+ * are bounded by different things.
+ *
+ * The measurements it is built on, all `meta/muse-spark-1.3-contributor`, one
+ * chapter, taken against production on 2026-09-09: **55.5s, 69.1s, 70s and
+ * 76.4s**. So a chapter is a ~55-80s job, and the design target is that a
+ * single slow run finishes comfortably.
+ *
+ * The arithmetic, and it is tight:
+ *
+ * | budget item                                             |      ms |
+ * |---------------------------------------------------------|---------|
+ * | gateway request idle timeout                            | 150,000 |
+ * | grounding pipeline on the generation path (`GENERATION_GROUNDING_DEADLINE_MS`) |   9,000 |
+ * | auth, credit reservation, persistence, the response      |  ~6,000 |
+ * | **left for the provider chain**                          | **125,000** |
+ * | **margin against the gateway**                           |  10,000 |
+ *
+ * The observed evidence that this is the right shape: a blocking
+ * `generate-story` on production returned `Story generation failed. Credit
+ * refunded.` after **126.1 seconds** on 2026-09-09. So a ~126s round trip is
+ * survivable and the refund path works at that length; past 150s neither is
+ * true, because the client gets a 504 and never sees the refund payload the
+ * handler built.
+ *
+ * **One full chapter attempt fits. A second one does not.** 125s cannot hold
+ * two 76s attempts. The chain is therefore one serious position - the paid
+ * OpenRouter phase, where the standard model may take its full 90s socket
+ * timeout - in front of positions that exist only to turn a *fast* refusal
+ * into a retry rather than a refund: the contributor tier answers `404` in a
+ * round trip by account policy, and Gemini answers `429 RESOURCE_EXHAUSTED`
+ * immediately (and is disabled outright by `LLM_DISABLED_PROVIDERS` today).
+ *
+ * That is a real limitation and it is architectural, not a tuning mistake: a
+ * blocking request cannot both wait for one 76-second model and keep a second
+ * 76-second model in reserve. **Do not "fix" it by splitting the phase evenly
+ * again** - that is exactly the arithmetic that produced
+ * `codes: [timeout, timeout, timeout, timeout]` on production, four attempts
+ * none of which was long enough to write anything. If the product needs a true
+ * fallback chain on this path, the answer is `202 Accepted` plus polling (or a
+ * queue), not a larger number here: a larger number only moves the failure
+ * from "credit refunded" to "504, and the client never learns what happened".
+ */
+export const GENERATION_DEADLINE_MS = 125_000;
 
 /**
  * A story plus its series_state runs well past 4096 tokens.
@@ -199,11 +272,12 @@ const GEMINI_TIMEOUT_MS = 70_000;
  * now the primary, running a reasoning model over a 16,000-token visible budget,
  * and 30s is no longer defensible: the measured 11s was a ~1.4k-token shaping
  * call, and a full chapter emits roughly an order of magnitude more, reasoning
- * included. Raised to match `GEMINI_TIMEOUT_MS`, which makes the *phase share*
- * the binding constraint rather than this number - the point of a per-request
- * timeout here is to end a hung socket, not to second-guess the phase budget.
+ * included. Raised past `GEMINI_TIMEOUT_MS` on 2026-09-09, because a chapter
+ * measured at 70s against a 70s socket timeout is a coin toss: the point of a
+ * per-request timeout here is to end a hung socket, not to second-guess the
+ * phase budget, so it sits above the measured chapter with room to spare.
  */
-const OPENROUTER_TIMEOUT_MS = 70_000;
+const OPENROUTER_TIMEOUT_MS = 90_000;
 /** A reasoning model thinks before it writes, so it needs a longer window. */
 
 /**
@@ -240,16 +314,40 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  * every fallback aborts before it sends a request - the chain collapses to one
  * provider in exactly the slow case the fallbacks exist for.
  *
- * **Re-balanced 2026-09-05 for the new order.** These are cumulative, so moving
- * a phase without moving its share silently hands the new leader the old
- * leader's slice and starves whoever now runs last. Slices, against the 120s
- * generation deadline:
+ * **Re-balanced 2026-09-05 for the new order, and again 2026-09-09 for the
+ * blocking 125s budget.** These are cumulative, so moving a phase without
+ * moving its share silently hands the new leader the old leader's slice and
+ * starves whoever now runs last. Slices, against the 125s generation deadline:
  *
- * | phase          | slice | window | per model                        |
- * |----------------|-------|--------|----------------------------------|
- * | openrouter     | 0.70  | 84s    | 42s each across two Muse Sparks  |
- * | gemini         | 0.20  | 24s    | 24s                              |
- * | openrouterFree | 0.10  | 12s    | 6s each                          |
+ * | phase          | share | ends at | window | what it is for                  |
+ * |----------------|-------|---------|--------|---------------------------------|
+ * | openrouter     | 0.92  | 115s    | 115s   | the one real attempt            |
+ * | gemini         | 0.96  | 120s    | 5s     | a fast `429`, not a chapter     |
+ * | openrouterFree | 1.00  | 125s    | 5s     | the same, last                  |
+ *
+ * Inside the paid phase (see `openRouterPhaseDeadlines`):
+ *
+ * | model                              | deadline | why                          |
+ * |------------------------------------|----------|------------------------------|
+ * | `meta/muse-spark-1.3-contributor`  | 8s       | `404`s in a round trip by account policy; it must not hold time it cannot use |
+ * | `meta/muse-spark-1.3`              | 115s     | the model that actually writes; capped in practice by its own 90s socket timeout |
+ *
+ * The two tail phases are honestly sized: neither can write a chapter in its
+ * slice, and neither is expected to. They exist so that a position that fails
+ * *quickly* - a `404`, a 401, a connection refused - still has somewhere to go
+ * before the credit is refunded. See `GENERATION_DEADLINE_MS` for why there is
+ * no room for more than that.
+ *
+ * **A disabled phase does not give its slice back to the phase in front of
+ * it.** These are cumulative offsets from a single start, so a phase that
+ * `LLM_DISABLED_PROVIDERS` removes is skipped instantly and everything *after*
+ * it inherits the time - the phase before it still ends where the table says.
+ * That matters right now: Gemini is disabled in production (quota-exhausted
+ * since 2026-08-31), so the real chain is OpenRouter's 115s, then the free
+ * router with whatever is left of the remaining 10s. If Gemini is ever meant
+ * to be a real fallback again, its *share* has to move, not just its secret.
+ *
+ * The paid phase is no longer split evenly - see `openRouterPhaseDeadlines`.
  *
  * OpenAI held 0.28 of this budget until its credential was revoked
  * (2026-09-08). Its share went to the leader and to Gemini rather than being
@@ -265,10 +363,56 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  * refunding the credit.
  */
 export const PHASE_END_SHARE = {
-  openrouter: 0.7,
-  gemini: 0.9,
+  openrouter: 0.92,
+  gemini: 0.96,
   openrouterFree: 1,
 } as const;
+
+/**
+ * What a model in front of the last one in the paid phase gets.
+ *
+ * The phase used to be cut into equal slices by model index. That is the
+ * arithmetic that broke production: two models, 84s, 42s each, against a
+ * chapter that takes 70s, producing `[timeout, timeout, timeout, timeout]` and
+ * a refund every single time. Halving a window that can only just hold one
+ * chapter guarantees that neither half can hold one.
+ *
+ * The window is now shaped by which model is expected to *write*. Under a 150s
+ * gateway exactly one model can be given a chapter's worth of time, so the
+ * **last** model in `OPENROUTER_MODELS` gets the whole window and every model
+ * in front of it gets a probe: long enough for a round trip and a refusal,
+ * short enough that it cannot spend the writer's time. That fits the account
+ * as it actually is - `meta/muse-spark-1.3-contributor` is 17x cheaper but
+ * answers `404` in well under a second because the privacy setting blocks
+ * training-tier endpoints, so probing it costs almost nothing and paying for
+ * it costs almost nothing either.
+ *
+ * **If the contributor tier is ever enabled, reorder the models rather than
+ * widening this.** A chapter does not fit in a probe, so a healthy contributor
+ * tier would time out here and the standard model would serve anyway - which
+ * works, but pays 17x. The fix is to put the model that should write last.
+ *
+ * Capped at an equal share for small windows, so a 20s window across two
+ * models does not hand its leader the entire thing.
+ */
+export const OPENROUTER_PROBE_MS = 8_000;
+
+/**
+ * Per-model deadlines for the paid OpenRouter phase, as offsets from the
+ * phase start. Exported for `llm.test.ts` and `llm-deadline.test.ts`.
+ */
+export function openRouterPhaseDeadlines(
+  windowMs: number,
+  models: number,
+): number[] {
+  const window = Math.max(0, Math.floor(windowMs));
+  if (models <= 0) return [];
+  const probe = Math.min(OPENROUTER_PROBE_MS, Math.floor(window / models));
+  return Array.from(
+    { length: models },
+    (_, index) => index === models - 1 ? window : probe * (index + 1),
+  );
+}
 
 interface GenerationResult {
   text: string;
@@ -680,9 +824,10 @@ async function runProviderChain(
   // OpenRouter leads. The default model is configured in `OPENROUTER_MODEL` and
   // the standard tier stands immediately behind it, because the contributor tier
   // is `404`-by-data-policy on this account until the privacy setting changes -
-  // see the constant. The window is split evenly across the two for the same
-  // reason the OpenAI window is: a stalled first entry must not spend the slice
-  // its own fallback needs.
+  // see the constant. The window is NOT split evenly: under the gateway's 150s
+  // ceiling only one model can be given a chapter's worth of time, so the last
+  // model owns the window and the ones in front of it get a probe. See
+  // `OPENROUTER_PROBE_MS`.
   const openRouterModels = isProviderDisabled("openrouter", disabled)
     ? []
     : OPENROUTER_MODELS;
@@ -692,9 +837,12 @@ async function runProviderChain(
     0,
     openRouterPhaseEnd - openRouterPhaseStart,
   );
+  const openRouterDeadlines = openRouterPhaseDeadlines(
+    openRouterWindow,
+    openRouterModels.length,
+  );
   for (const [index, model] of openRouterModels.entries()) {
-    const modelDeadline = openRouterPhaseStart +
-      Math.floor((openRouterWindow * (index + 1)) / openRouterModels.length);
+    const modelDeadline = openRouterPhaseStart + openRouterDeadlines[index];
     let resolvedModel = model;
     const openRouterText = await tryProvider({
       failures,

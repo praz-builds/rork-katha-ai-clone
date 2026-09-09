@@ -8,8 +8,8 @@ import {
 import { logError } from "../_shared/errors.ts";
 import { AllProvidersFailedError, editParagraph } from "../_shared/llm.ts";
 import {
-  StreamCommittedError,
   streamChapterProse,
+  StreamCommittedError,
 } from "../_shared/story-stream.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
@@ -17,6 +17,24 @@ const EDIT_SYSTEM_PROMPT =
   `You are a story editor. You will receive a paragraph from a story and an editing instruction.
 Return ONLY the edited paragraph text. Do not add commentary, labels, or explanations.
 Maintain the story's existing voice, tense, and point of view unless the instruction specifically asks to change them.`;
+
+/**
+ * The ceiling on a whole-chapter save, in characters.
+ *
+ * The notepad hands back the entire chapter, so this is the one request in the
+ * product where a user can post a large body of text. A generated chapter is
+ * 500-2,600 words - call it 20,000 characters at the top of the band - and a
+ * writer who expands one by hand is still nowhere near this. 200,000 is
+ * generous enough that nobody legitimate meets it and small enough that a
+ * runaway client cannot post a novel into one row; it is also well inside
+ * `MAX_REQUEST_BYTES` (128 KiB) in `_shared/operations.ts`, which refuses the
+ * body before this check ever runs. Both exist: one bounds the transport, this
+ * one bounds what a chapter is allowed to be.
+ */
+const MAX_CHAPTER_BODY_CHARS = 200_000;
+
+/** A chapter title is a line, not a paragraph. */
+const MAX_CHAPTER_TITLE_CHARS = 200;
 
 const VALID_INSTRUCTIONS = new Set([
   "rewrite",
@@ -75,6 +93,22 @@ serve(async (req) => {
     const chapterId = parseUuid(body.chapter_id);
     if (!chapterId) return respond({ error: "Invalid chapter_id" }, 400);
     observedChapterId = chapterId;
+
+    // --- The notepad save. ---
+    //
+    // A whole-chapter write with no model in it at all: the writer edited the
+    // text by hand and pressed Save. It shares this function because it shares
+    // everything that matters - the ownership check, the chapter lookup, the
+    // compare-and-swap that stops two edits silently overwriting each other,
+    // and the story word-count recompute - and differs only in where the new
+    // text came from. A separate function would have to restate all of that
+    // and would drift from it.
+    //
+    // Recognised by the presence of `chapter_body`, before any of the
+    // paragraph-edit validation below, because none of that applies here.
+    if (body.chapter_body !== undefined) {
+      return await saveWholeChapter(req, body, storyId, chapterId, user.id);
+    }
 
     const paragraphIndex = body.paragraph_index;
     if (
@@ -230,7 +264,12 @@ serve(async (req) => {
       const wordCount = updatedContent.split(/\s+/).filter(Boolean).length;
       const { updated } = await updateChapterContentIfUnchanged(
         serviceClient as unknown as ChapterUpdateClient,
-        { chapterId, previousContent: content, nextContent: updatedContent, wordCount },
+        {
+          chapterId,
+          previousContent: content,
+          nextContent: updatedContent,
+          wordCount,
+        },
       );
       if (!updated) return { updated: false as const };
 
@@ -383,6 +422,132 @@ serve(async (req) => {
     return respond({ error: "Internal server error" }, 500);
   }
 });
+
+/**
+ * Persist a hand-edited chapter.
+ *
+ * The compare-and-swap is deliberately NOT used here, and that is the one real
+ * difference from the AI edit path. An AI edit reads a chapter, spends seconds
+ * in a model call, and writes back text derived from what it read - so a
+ * concurrent write must invalidate it. A notepad save is the writer looking at
+ * the text and typing: their copy IS the intent, and refusing it because the
+ * cover job or a narration write touched the row would lose work they can see
+ * on screen. The client sends the whole chapter, and the whole chapter is what
+ * is stored.
+ */
+async function saveWholeChapter(
+  req: Request,
+  body: Record<string, unknown>,
+  storyId: string,
+  chapterId: string,
+  userId: string,
+): Promise<Response> {
+  const respond = (payload: unknown, status = 200) =>
+    jsonResponse(req, payload, status);
+
+  const chapterBody = body.chapter_body;
+  if (typeof chapterBody !== "string" || !chapterBody.trim()) {
+    return respond({ error: "chapter_body must be a non-empty string" }, 400);
+  }
+  if (chapterBody.length > MAX_CHAPTER_BODY_CHARS) {
+    return respond(
+      {
+        error:
+          `chapter_body must be ${MAX_CHAPTER_BODY_CHARS} characters or fewer`,
+      },
+      400,
+    );
+  }
+
+  const rawTitle = body.chapter_title;
+  if (
+    rawTitle !== undefined && rawTitle !== null &&
+    (typeof rawTitle !== "string" || rawTitle.length > MAX_CHAPTER_TITLE_CHARS)
+  ) {
+    return respond(
+      {
+        error:
+          `chapter_title must be a string of ${MAX_CHAPTER_TITLE_CHARS} characters or fewer`,
+      },
+      400,
+    );
+  }
+  const title = typeof rawTitle === "string" ? rawTitle.trim() : undefined;
+
+  const serviceClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  const { data: story, error: storyError } = await serviceClient
+    .from("stories")
+    .select("id, author_id")
+    .eq("id", storyId)
+    .single();
+  if (storyError || !story) return respond({ error: "Story not found" }, 404);
+  if (story.author_id !== userId) {
+    return respond({ error: "Not authorized to edit this story" }, 403);
+  }
+
+  // Trailing whitespace on a line the writer is still typing on is not
+  // content; the leading/trailing blank lines a text area collects are not
+  // either. Paragraph structure inside the chapter is left exactly as typed,
+  // because that is what the reader's pagination reads.
+  const content = chapterBody.replace(/[ \t]+$/gm, "").trim();
+  const wordCount = content.split(/\s+/).filter(Boolean).length;
+
+  const update: Record<string, unknown> = {
+    content,
+    word_count: wordCount,
+    // The narration read the old prose; see the chapter_audio delete below.
+    audio_url: null,
+  };
+  // An empty title means "leave it": the notepad shows the existing title in
+  // an input, and a writer who clears it is not asking for an untitled chapter.
+  if (title) update.title = title;
+
+  const { data: saved, error: saveError } = await serviceClient
+    .from("chapters")
+    .update(update)
+    .eq("id", chapterId)
+    .eq("story_id", storyId)
+    .select("id, chapter_number, title, content, word_count")
+    .maybeSingle();
+  if (saveError) throw saveError;
+  if (!saved) return respond({ error: "Chapter not found" }, 404);
+
+  // The story's word count is the sum of its chapters, and it is shown on
+  // every card. Recomputed rather than adjusted, because an adjustment needs
+  // the old value to have been read in the same transaction.
+  const { data: allChapters, error: chaptersError } = await serviceClient
+    .from("chapters")
+    .select("word_count")
+    .eq("story_id", storyId);
+  if (!chaptersError && allChapters) {
+    await serviceClient
+      .from("stories")
+      .update({
+        word_count: allChapters.reduce(
+          (sum: number, c: Record<string, unknown>) =>
+            sum + ((c.word_count as number) ?? 0),
+          0,
+        ),
+      })
+      .eq("id", storyId);
+  }
+
+  // Narration read the old prose. Same rule as a reimagined chapter: drop the
+  // rows so the next Listen tap generates audio for what is actually there.
+  const { error: audioError } = await serviceClient
+    .from("chapter_audio")
+    .delete()
+    .eq("chapter_id", chapterId);
+  if (audioError) {
+    console.error("chapter_audio cleanup failed:", audioError);
+  }
+
+  return respond({ chapter: saved, saved: true });
+}
 
 function buildEditPrompt(
   instruction: string,

@@ -27,7 +27,11 @@ import { logError } from "./errors.ts";
 import { scanCrudeLexicon } from "./validation.ts";
 
 export interface CrudeLexiconReportContext {
-  feature: "generate_story" | "generate_story_stream" | "continue_story";
+  feature:
+    | "generate_story"
+    | "generate_story_stream"
+    | "continue_story"
+    | "reimagine_chapter";
   storyId?: string | null;
   userId?: string | null;
 }

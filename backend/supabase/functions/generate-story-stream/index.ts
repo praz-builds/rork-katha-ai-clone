@@ -42,6 +42,16 @@ import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { buildStoryDonePayload } from "../_shared/generation-done.ts";
+import {
+  applyRequestedVisibility,
+  type VisibilityClient,
+} from "../_shared/publish.ts";
+import {
+  rememberStoryCharacters,
+  resolveSavedCharacters,
+  type SavedCharacterClient,
+} from "../_shared/saved-characters.ts";
 import {
   GENERATION_GROUNDING_DEADLINE_MS,
   resolveGrounding,
@@ -126,7 +136,7 @@ serve(async (req) => {
       spiceLevel,
       storyMode,
       seed,
-      characters,
+      characters: requestedCharacters,
       requestId,
       language,
       whereAndWhen,
@@ -141,6 +151,7 @@ serve(async (req) => {
       notifyOnReady,
       grounding,
       groundingEntities,
+      visibility,
     } = input;
     const chapterRole: ChapterRole = storyMode === "series"
       ? "series_opening"
@@ -150,6 +161,18 @@ serve(async (req) => {
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       serviceRoleKey,
+    );
+
+    // A brief may pull a character from the writer's saved library by id.
+    // Resolved before the credit is reserved, so the prompt and the cast rows
+    // both see the filled-in character; an id that is not theirs is dropped.
+    // Narrowed structurally, as `chapters.ts` does: the generated client type
+    // is too deep for the compiler to match against a small interface.
+    const characterClient = serviceClient as unknown as SavedCharacterClient;
+    const characters = await resolveSavedCharacters(
+      characterClient,
+      user.id,
+      requestedCharacters,
     );
 
     // Same fallback as the buffered path, started before the opening round
@@ -318,6 +341,7 @@ serve(async (req) => {
                   // which is the kind of gap two parallel write paths produce.
                   portrait_url: c.portraitUrl,
                   is_hero: c.isHero ?? false,
+                  saved_character_id: c.savedCharacterId ?? null,
                 })),
               ).then(
                 (r) => ({ error: r.error as unknown }),
@@ -528,6 +552,25 @@ serve(async (req) => {
             }
           }
 
+          // The visibility toggle is the publish button. Applied after the
+          // grounding write above so the gate reason is on the row before the
+          // 00050 CHECK is asked to admit `is_public = true`; the outcome
+          // travels in `done` so the client can say why a public request
+          // stayed private without a second call.
+          const visibilityOutcome = await applyRequestedVisibility(
+            serviceClient as unknown as VisibilityClient,
+            {
+              storyId: story.id,
+              requested: visibility,
+              isAnonymous: user.is_anonymous === true,
+              gateReason,
+            },
+          );
+
+          // The cast joins the writer's saved characters. Best-effort, after
+          // the chapter is persisted and paid for.
+          await rememberStoryCharacters(characterClient, user.id, story.id);
+
           send("stage", { stage: "art" });
 
           let coverStatus: "generating" | "failed" = "generating";
@@ -555,30 +598,30 @@ serve(async (req) => {
             }).eq("id", story.id);
           }
 
-          send("done", {
-            story: {
-              ...story,
-              cover_status: coverStatus,
-              title: output.title,
-              word_count: verdict.words,
-              status: "complete",
-              primary_genre: primaryGenre,
-              story_mode: storyMode,
-              series_state: storyMode === "series"
-                ? output.series_state ?? EMPTY_SERIES_STATE
-                : EMPTY_SERIES_STATE,
-              first_line: output.first_line,
-              previously_summary: output.previously_summary,
-              content_rating: contentRating,
-            },
-            chapter,
-            balance: operation.balance,
-            model: prose.model,
-            timings: {
-              first_token: firstTokenAt,
-              total: Date.now() - startedAt,
-            },
-          });
+          // One builder for both transports - see `generation-done.ts` for
+          // the schema tie that keeps `beats`, `themes` and `series_state`
+          // from silently dropping out of this payload again.
+          send(
+            "done",
+            buildStoryDonePayload({
+              story,
+              chapter,
+              output,
+              storyMode,
+              primaryGenre,
+              contentRating,
+              coverStatus,
+              words: verdict.words,
+              beats,
+              balance: operation.balance,
+              model: prose.model,
+              timings: {
+                first_token: firstTokenAt,
+                total: Date.now() - startedAt,
+              },
+              visibility: visibilityOutcome,
+            }),
+          );
         } catch (error) {
           // Every failure past the reservation refunds, exactly as the
           // non-streamed path does. The difference is what the user is left

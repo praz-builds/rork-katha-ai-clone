@@ -111,33 +111,63 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 
 OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
 
-**Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` is re-balanced whenever a phase moves, because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last. Cumulative shares are now **openrouter 0.7, gemini 0.9, free 1.0** (they were 0.5 / 0.65 / 0.93 / 1.0 while OpenAI held a position).
+**Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` is re-balanced whenever a phase moves, because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last. Cumulative shares are now **openrouter 0.92, gemini 0.96, free 1.0** (they were 0.5 / 0.65 / 0.93 / 1.0 while OpenAI held a position, then 0.7 / 0.9 / 1.0). See the callout below for why the paid phase is no longer split evenly between its two models.
 
-> ### ⚠️ The generation deadline is smaller than the work. Read this before debugging a failed generation.
+> ### ⚠️ The blocking generation budget is bounded by a 150-second gateway. Read this before changing `GENERATION_DEADLINE_MS`.
 >
-> **Measured 2026-09-09.** A real chapter from the leading model
-> (`meta/muse-spark-1.3-contributor`, 1,846 words) takes **70 seconds**.
+> **Resolved 2026-09-09.** The 120s budget genuinely could not fit the work: a
+> real chapter takes **55.5-76.4 seconds** (four production measurements,
+> `meta/muse-spark-1.3-contributor`, 1,846-1,904 words), and the OpenRouter
+> phase split its window evenly across two models, so every attempt was under
+> half a chapter long. Production recorded exactly that —
+> `codes: [timeout, timeout, timeout, timeout]`, `all_providers_failed`, credit
+> refunded after ~126s, with a healthy credential. **Do not start by rotating
+> keys.**
 >
-> `GENERATION_DEADLINE_MS` is 120s. The OpenRouter phase gets its share of that
-> and then splits it **evenly across both Muse Spark models**. At the deployed
-> 0.5 share that is 60s -> **30s per model**; at the current 0.7 share it is
-> 84s -> **42s per model**. Both are under 70s, so the leader times out before
-> it has written a chapter, every time.
+> Three things were decided, and they are now pinned by
+> `_shared/llm-deadline.test.ts`:
 >
-> A live failure recorded exactly that in `error_events`:
-> `codes: [timeout, timeout, auth_failed, auth_failed, auth_failed, timeout, timeout]`
-> — OpenRouter timing out, the (revoked, still-deployed) OpenAI position
-> answering 401 three times, the free tier timing out — and the caller getting
-> `Story generation failed. Credit refunded.` after ~2 minutes.
+> 1. **`GENERATION_DEADLINE_MS` is 125s**, not 120s and not 200s. The ceiling is
+>    `EDGE_REQUEST_IDLE_TIMEOUT_MS`: Supabase returns **504 after 150 seconds
+>    with no bytes sent, on every plan** (worker wall clock is 150s free / 400s
+>    paid; the idle timeout does not vary). A blocking generation sends nothing
+>    until it is done, so the whole handler lives under 150s. 125s of provider
+>    chain + ~15s of grounding, reservation, persistence and response leaves 10s
+>    of margin. **This binds `generate-story`, `edit-story` and `shape-story`.
+>    It does not bind the streamed paths** — a stream's first byte arrives in
+>    seconds and each chunk resets the clock, which is why `STREAM_DEADLINE_MS`
+>    is 180s and is correct.
+> 2. **The paid phase is not split evenly.** Under a 150s ceiling only one model
+>    can be given a chapter's worth of time, so the **last** model in
+>    `OPENROUTER_MODELS` owns the whole 115s window and every model in front of
+>    it gets an 8s probe (`OPENROUTER_PROBE_MS`). That fits the account as it
+>    is: the contributor tier answers `404` in well under a second, so probing
+>    it costs nothing. If that tier is ever enabled, **reorder the models** —
+>    a chapter does not fit in a probe — rather than widening the probe.
+> 3. **There is only one real attempt, and the share table says so.** 125s
+>    cannot hold two 76s generations. Gemini (0.04 share, ~5s) and the free
+>    router (0.04, ~5s) exist to turn a *fast* refusal into a fallback, not to
+>    write a chapter. Do not "fix" this by splitting evenly again; that is the
+>    arithmetic that produced four timeouts. If the product needs a true
+>    fallback chain on a blocking path, the answer is `202 Accepted` plus
+>    polling, not a bigger number — a bigger number only moves the failure from
+>    "credit refunded" to "504, and the client never learns what happened".
 >
-> **The OpenRouter credential is healthy.** `/api/v1/key` returns 200 and the
-> model answers a short prompt in about a second. Nothing is misconfigured; the
-> budget is simply smaller than the task. **Do not start by rotating keys.**
+> **A disabled phase does not give its slice back to the phase in front of it.**
+> The shares are cumulative offsets from one start, so a phase removed by
+> `LLM_DISABLED_PROVIDERS` is skipped instantly and everything *after* it
+> inherits the time. Gemini is disabled in production (429-exhausted since
+> 2026-08-31), so the live chain is OpenRouter's 115s and then the free router.
+> Making Gemini a real fallback again means moving its **share**, not just its
+> secret.
 >
-> The fix is one of: raise `GENERATION_DEADLINE_MS`; stop splitting the
-> OpenRouter phase evenly (the leader plausibly deserves most of it, not half);
-> or lower `max_tokens`. All three are product-visible latency decisions, so
-> none was taken unilaterally.
+> **Known and unfixed: the word band overshoots on the streamed path.** A
+> standalone adult chapter measured 1,904 words against a 500-1,500 band, and a
+> series chapter 2,116 against 600-900. The streamed path cannot retry what the
+> reader has already read, so an out-of-band chapter is logged
+> (`streamed_chapter_outside_band`) and kept. **Do not fix it by lowering
+> `max_tokens`** — that was tried and produced a chapter with no ending; see
+> the `CHAPTER_REASONING_HEADROOM_TOKENS` note in `_shared/story-stream.ts`.
 
 **The contributor tier is `404` until an account setting changes.** `meta/muse-spark-1.3-contributor` is ~17x cheaper because it trains on prompts and completions, and the OpenRouter account's privacy setting blocks training-tier endpoints: `"Paid model training violation (account settings): 1 endpoint excluded"`. Change it at https://openrouter.ai/settings/privacy — that is a data decision (users' story ideas and generated prose go to the provider for training), and no deploy is involved either way. Until then `meta/muse-spark-1.3` serves; it was measured on 2026-09-05 returning schema-valid JSON in ~11s.
 
@@ -261,22 +291,72 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `bootstrap-user` | POST | Anonymous profile + welcome grant, rate-limited | Must run before any other authed call: several tables FK to `profiles` |
 | `register-push-token` | POST | Upsert an Expo push token for the caller | Done |
 | `send-push` | POST | Service-role fan-out via Expo, with receipt handling | Not yet wired to a completion path |
-| `continue-story` | POST | Next chapter (author-only), max 7 chapters | Text path done |
-| `library` | GET | Paginated curated feed with genre filter + search | Done |
+| `continue-story` | POST | Next chapter (author-only), max 7 chapters | Streams on `stream: true`; both transports return `story.series_state` / `story.beats` alongside the chapter |
+| `reimagine-chapter` | POST | Rewrite one existing chapter, optionally recasting it | Streams on `stream: true`. Forks the story for a non-author. 1 credit, refunded on failure |
+| `library` | GET | Paginated curated feed with genre filter + search; `?scope=mine` for the writer's own | Returns `cover_image_url`, `cover_status`, `chapters(count)`, `previously_summary`, `beats`, `series_state` — everything the Home "Your stories" rail and the chapter-end chips need |
 | `feedback` | POST | Comments + one-time feedback credit reward | Done |
 | `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
 | `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
 | `generate-audio` | POST | Cached narration lookup | Fresh RunPod generation is blocked until the durable 1-credit audio unlock exists |
 | `audio-status` | GET | Cached narration lookup | Provider polling is blocked until jobs have a durable chapter binding |
 | `feed` | GET | Feed endpoint | Done |
-| `edit-story` | POST | Paragraph-level AI editing | Done |
+| `edit-story` | POST | Paragraph-level AI editing, **and** the notepad's whole-chapter save | A body with `chapter_body` takes the save path (no model, 200k char ceiling) before any paragraph validation |
 | `publish-story` | POST | Mark story published, trigger cover generation | Done |
 | `deduct-credit` | POST | Legacy generic endpoint | Disabled |
 | `grant-credit` | POST | AdMob SSV reward verification | Disabled until SSV |
 
 ### Shared Utilities (`_shared/`)
 
-`chapters.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `push.ts`, `revenuecat.ts`, `runpod.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
+`chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
+
+### The "created" story flow (2026-09-09)
+
+Locked product decisions are in the design handoff at `docs/design/created-flow.md`. What the backend contract says:
+
+- **Publishing is the visibility toggle, not a step.** `generate-story` and `generate-story-stream` accept `visibility: "private" | "public"` (absent means private) and apply it the moment the first chapter is persisted — `_shared/publish.ts`. The response's `visibility` is `{ requested, applied, reason }`; `reason` is the entity gate's own enum, `account_required` (a guest asked to publish), or `gate_constraint`. There is no separate review step.
+- **The `done` payload is built once**, by `_shared/generation-done.ts`, for both transports. Its nesting is `{ story, chapter, balance, model, timings, visibility }` — extend it, never flatten it. `DONE_PAYLOAD_LOCATIONS` ties every field of `STORY_OUTPUT_JSON_SCHEMA` to where it lands, and the test fails if a schema field has no home. That is what stopped `beats` and `themes` from quietly dropping out of the streamed payload.
+- **Saved characters are per user** (`user_characters`, migration 00057), auto-populated from every finished story's cast. A brief may reference one by `saved_character_id`; an id the caller does not own is dropped rather than failing a paid generation.
+- **Reimagining somebody else's chapter forks their story.** `fork_story` copies the row, its chapters and its cast into a private story owned by the caller, with `stories.forked_from_story_id` set. The fork is looked up before it is created, keyed on (source story, caller), so a reader ends up with one copy however many chapters they rewrite.
+- **`apply_to_all_chapters` renames, it does not regenerate.** `_shared/character-substitution.ts`: whole-word and Unicode-aware, possessives follow for free, ALL CAPS is preserved, a first name stands in for a full name, a surname alone does not, and **pronouns are never rewritten**. Regenerating every chapter would cost a credit each and rewrite prose the reader chose to keep.
+
+#### Wire shapes a client agent codes against
+
+`reimagine-chapter` request:
+
+```
+{ story_id, chapter_number, request_id, stream?: boolean,
+  prompt?: string,
+  character_replacements?: [
+    { from_name,
+      to: { saved_character_id } | { name, role?, appearance?, background? },
+      apply_to_all_chapters: boolean } ] }
+```
+
+At least one of `prompt` and `character_replacements` is required — a rewrite with no instruction is a credit spent on a coin toss. Response (one JSON body when buffered, the `done` event's `data` when streamed):
+
+```
+{ chapter, story_id, forked_from_story_id, balance, model, timings,
+  renamed: { chapters, roster } }
+```
+
+`generate-story` / `generate-story-stream` terminal payload — **this is the nesting; extend it, never flatten it**:
+
+```
+{ story:   <the story row>, plus cover_status, title, word_count,
+             status: "complete", primary_genre, story_mode, series_state,
+             first_line, previously_summary, themes, beats, content_rating,
+             is_public,
+  chapter: <the persisted chapter row: id, chapter_number, title, content,
+            word_count, hook_type, hook_text, ...>,
+  balance, model, timings,
+  visibility: { requested, applied, reason } }
+```
+
+`continue-story` answers with `{ chapter, story: { id, series_state, beats, previously_summary }, balance, model, timings }` on **both** transports — nested under `story` on purpose, so a continuation has the same shape a first chapter does rather than a second flat spelling of the same fields.
+
+`edit-story` takes a second, model-free path: a body carrying `chapter_body` (≤ 200,000 characters, optional `chapter_title`) is the notepad's whole-chapter save and is routed before any paragraph-edit validation. It deliberately does not use the AI path's compare-and-swap — an AI edit rewrites text it read, so a concurrent write must invalidate it; a notepad save is the writer typing at text they can see, and refusing their copy because a cover job touched the row would lose visible work. Narration is dropped either way.
+
+`library?scope=mine` is the writer's own stories, and carries `story_mode`, `beats`, `series_state`, `planned_chapter_count` and `entity_gate_reason` beside the feed fields, because the Home rail and the chapter-end chips are rendered from a row, not from a fresh generation.
 
 ### TODO Functions by Phase
 
@@ -343,16 +423,17 @@ API:
 
 LLM returns JSON: `{ title, chapter_title, chapter_body, word_count, themes, first_line, previously_summary }`. Parsed by `parseStructuredOutput()` with text-based fallback via `parseGeneratedStoryText()`.
 
-### Streaming (`_shared/story-stream.ts`, `generate-story-stream/`)
+### Streaming (`_shared/story-stream.ts`, `generate-story-stream/`, `continue-story/`, `reimagine-chapter/`)
 
-The preferred generation path. First prose reaches the reader at ~5.6s against a ~49s total, measured in production: an 8.8x improvement in the only latency a reader experiences. Same model, same prompt, same story.
+**Streaming is the primary transport, and it stays that way.** First prose reaches the reader at ~5.6s against a ~49s total, measured in production: an 8.8x improvement in the only latency a reader experiences. Same model, same prompt, same story. Every chapter behaves identically — a first chapter (`generate-story-stream`), a continuation (`continue-story` with `stream: true`) and a rewrite (`reimagine-chapter` with `stream: true`) share `streamChapterProse`, the same event protocol and the same `done` payload builder. A proposal to make generation blocking everywhere was raised and **retracted** on 2026-09-09; the buffered handlers remain only for retries, replays and clients that cannot stream.
 
 Rules an agent touching this must not break:
 
 - **Prose streams as plain text; metadata is a separate structured call.** `chapter_body` is a field inside a strict schema, so streaming it means recovering a string that is still being escaped, in an unguaranteed order. Do not try to incrementally parse the JSON. `series_state` in particular must stay behind a strict schema or series continuation breaks.
 - **The metadata schema is derived from `STORY_OUTPUT_JSON_SCHEMA`, never restated.** A field added to one must not be able to go missing from the other.
 - **Fallback is one-way.** A provider may be swapped before the first token and never after, because the reader has already read prose. `StreamCommittedError` marks that boundary. The credit refunds either way and whatever was shown stays on screen.
-- **Two timeouts, not one:** time-to-first-token and time-between-chunks. A single total-response timeout cannot separate "never started" from "stalled", and any value is wrong for one of them.
+- **`STREAM_DEADLINE_MS` is 180s and is not the blocking budget.** The 150s Supabase request *idle* timeout does not bind a stream: the first byte lands in seconds and every chunk resets the clock. `GENERATION_DEADLINE_MS` (125s) exists for the blocking callers only. Do not unify the two numbers — they are bounded by different things.
+- **Two timeouts, not one:** time-to-first-token (`STREAM_TTFT_MS`, 20s) and time-between-chunks (`STREAM_STALL_MS`, 25s). A single total-response timeout cannot separate "never started" from "stalled", and any value is wrong for one of them.
 - **Do not size `max_tokens` to the word band.** It caps reasoning and content together, so headroom for one is headroom for the other, and it can only ever stop the model mid-word. This was tried and produced a chapter with no ending. The cap is a runaway guard; the band is stated in the prompt and reported by `chapterLengthVerdict`.
 - **Client transport must be `expo/fetch`.** `supabase.functions.invoke()` buffers, and React Native's global `fetch` returns a null `response.body` -- code written against the web streaming API compiles, runs, and silently never streams.
 
