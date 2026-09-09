@@ -42,13 +42,18 @@ const series = stories.find((story) => story.chapters.length > 1);
 const standalone = stories.find((story) => story.chapters.length === 1);
 
 /** `render` is async in RNTL 14, so every call site awaits this. */
-const renderDetail = (story: Story, onRead = jest.fn()) =>
+const renderDetail = (
+  story: Story,
+  onRead = jest.fn(),
+  extra: { isOwn?: boolean; onAuthor?: jest.Mock } = {},
+) =>
   render(
     <StoryDetailScreen
       story={story}
       onBack={jest.fn()}
       onRead={onRead}
-      onAuthor={jest.fn()}
+      onAuthor={extra.onAuthor ?? jest.fn()}
+      isOwn={extra.isOwn}
     />,
   );
 
@@ -111,19 +116,35 @@ it("offers a single-chapter story a start action, not a chapter list", async () 
   expect(view.queryByLabelText(/^Read chapter/)).toBeNull();
 });
 
-it("renders the meta line from date, format and chapter progress", async () => {
+/**
+ * The meta line is one sentence: author, date, likes, comments, and how far
+ * along the story is. It is read through the rendered string because the
+ * pieces are nested `Text` nodes, and what matters is the sentence a reader
+ * sees, not which node holds each word.
+ */
+const metaText = (view: Awaited<ReturnType<typeof renderDetail>>): string =>
+  JSON.stringify(view.toJSON()).replace(/\\"/g, '"');
+
+it("renders the meta line from author, date, likes, comments and chapter progress", async () => {
   const story = withStory({
     storyMode: "series",
     plannedChapterCount: 7,
     chapters: series!.chapters.slice(0, 2),
     publishedOffset: 0,
+    likes: 232,
   });
   const view = await renderDetail(story);
 
-  expect(view.getByText(`${dated(story)} · Series (2/7)`)).toBeTruthy();
+  const rendered = metaText(view);
+  expect(rendered).toContain(dated(story));
+  expect(rendered).toContain("232 likes");
+  expect(rendered).toContain("2/7 chapters");
+  expect(view.getByLabelText("Open comments")).toBeTruthy();
 });
 
-it("does not render misleading chapter progress for one chapter", async () => {
+it("says how many chapters exist against the plan, even for one", async () => {
+  // "1/7 chapters" is a true statement about a series that has one chapter of
+  // seven planned, and it is how a reader learns the story is unfinished.
   const story = withStory({
     storyMode: "series",
     plannedChapterCount: 7,
@@ -131,8 +152,96 @@ it("does not render misleading chapter progress for one chapter", async () => {
   });
   const view = await renderDetail(story);
 
-  expect(view.getByText(`${dated(story)} · Series`)).toBeTruthy();
-  expect(view.queryByText(/\(1\/7\)/)).toBeNull();
+  expect(metaText(view)).toContain("1/7 chapters");
+});
+
+it("calls a one-shot a Standalone", async () => {
+  const story = withStory({
+    storyMode: "standalone",
+    plannedChapterCount: undefined,
+    chapters: [standalone!.chapters[0]],
+  });
+  const view = await renderDetail(story);
+
+  expect(metaText(view)).toContain("Standalone");
+});
+
+it("links the author's handle on the meta line to their profile", async () => {
+  const onAuthor = jest.fn();
+  const view = await renderDetail(standalone!, jest.fn(), { onAuthor });
+
+  const links = view.getAllByLabelText(/View .*'s profile/);
+  await fireEvent.press(links[0]);
+
+  expect(onAuthor).toHaveBeenCalledWith(standalone!.authorId);
+});
+
+it("opens the comments sheet from the meta line", async () => {
+  const view = await renderDetail(standalone!);
+
+  await fireEvent.press(view.getByLabelText("Open comments"));
+
+  await waitFor(() => expect(view.getByLabelText("Close comments")).toBeTruthy());
+});
+
+/**
+ * "Public" is a claim only the author's own page may make: a reader of
+ * someone else's story is already looking at a public one, and a private
+ * story never reaches anyone else. So the marker needs both the ownership
+ * and the flag, and is absent when either is missing or unknown.
+ */
+describe("the Public marker", () => {
+  it("shows on the writer's own public story", async () => {
+    const view = await renderDetail(
+      withStory({ isPublic: true }),
+      jest.fn(),
+      { isOwn: true },
+    );
+    expect(view.getByLabelText("Public story")).toBeTruthy();
+  });
+
+  it("is absent on the writer's own private story", async () => {
+    const view = await renderDetail(
+      withStory({ isPublic: false }),
+      jest.fn(),
+      { isOwn: true },
+    );
+    expect(view.queryByLabelText("Public story")).toBeNull();
+  });
+
+  it("is absent when the flag is unknown", async () => {
+    const view = await renderDetail(
+      withStory({ isPublic: undefined }),
+      jest.fn(),
+      { isOwn: true },
+    );
+    expect(view.queryByLabelText("Public story")).toBeNull();
+  });
+
+  it("is absent on someone else's story even when public", async () => {
+    const view = await renderDetail(withStory({ isPublic: true }));
+    expect(view.queryByLabelText("Public story")).toBeNull();
+  });
+});
+
+describe("the overflow menu", () => {
+  it("offers Report, Block author and Download as PDF on someone else's story", async () => {
+    const view = await renderDetail(standalone!);
+    await fireEvent.press(view.getByLabelText("More options"));
+
+    await waitFor(() => expect(view.getByLabelText("Report story")).toBeTruthy());
+    expect(view.getByLabelText(/^Block /)).toBeTruthy();
+    expect(view.getByLabelText("Download as PDF")).toBeTruthy();
+  });
+
+  it("does not offer the writer a way to block themselves", async () => {
+    const view = await renderDetail(standalone!, jest.fn(), { isOwn: true });
+    await fireEvent.press(view.getByLabelText("More options"));
+
+    await waitFor(() => expect(view.getByLabelText("Report story")).toBeTruthy());
+    expect(view.queryByLabelText(/^Block /)).toBeNull();
+    expect(view.getByLabelText("Download as PDF")).toBeTruthy();
+  });
 });
 
 it("falls back to the opening paragraph when the first line is absent", async () => {

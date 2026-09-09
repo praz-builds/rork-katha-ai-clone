@@ -9,7 +9,8 @@ import {
 } from "react-native";
 
 import { colors, radius, spacing, type } from "@/theme";
-import CommentRow from "./CommentRow";
+import CommentRow, { COMMENT_PALETTES } from "./CommentRow";
+import type { CommentTone } from "./CommentRow";
 import type { CommentNode, SortMode } from "./types";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
@@ -184,11 +185,25 @@ const MOCK_COMMENTS: CommentNode[] = [
 export default function CommentThread({
   storyId,
   authorName,
+  tone = "light",
+  composerPosition = "top",
+  onCountChange,
 }: {
   storyId: string;
   authorName: string;
+  /** `dark` for the detail page's comments sheet. See `CommentTone`. */
+  tone?: CommentTone;
+  /**
+   * Where the "Add a comment" composer sits. `top` is the reader's inline
+   * preview, where the invitation to comment leads; `bottom` is the sheet,
+   * where the list is the thing and the composer is pinned under it.
+   */
+  composerPosition?: "top" | "bottom";
+  /** Reports the total comment count whenever it changes, so a caller can show it elsewhere. */
+  onCountChange?: (count: number) => void;
 }) {
   const remote = isSupabaseConfigured;
+  const palette = COMMENT_PALETTES[tone];
   const [tree, setTree] = useState<CommentNode[]>(remote ? [] : MOCK_COMMENTS);
   const [loading, setLoading] = useState(remote);
   const [failed, setFailed] = useState(false);
@@ -221,6 +236,10 @@ export default function CommentThread({
   const sorted = useMemo(() => sortTopLevel(tree, sortMode), [tree, sortMode]);
   const total = useMemo(() => countAll(tree), [tree]);
   const canPost = composerText.trim().length > 0;
+
+  useEffect(() => {
+    onCountChange?.(total);
+  }, [onCountChange, total]);
 
   const handlePostRoot = () => {
     const trimmed = composerText.trim();
@@ -303,32 +322,42 @@ export default function CommentThread({
     setTree((current) => collapse(current, id));
   };
 
+  const composer = (
+    <View style={styles.composerRow}>
+      <TextInput
+        value={composerText}
+        onChangeText={setComposerText}
+        placeholder="Add a comment..."
+        placeholderTextColor={palette.tertiary}
+        style={[
+          styles.composerInput,
+          { backgroundColor: palette.field, color: palette.ink },
+        ]}
+        multiline
+        accessibilityLabel="Write a comment"
+      />
+      <Pressable
+        onPress={handlePostRoot}
+        disabled={!canPost}
+        style={[
+          styles.postButton,
+          !canPost && { backgroundColor: palette.field },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Post comment"
+        accessibilityState={{ disabled: !canPost }}
+      >
+        <Text style={styles.postButtonLabel}>Post</Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <View style={styles.composerRow}>
-        <TextInput
-          value={composerText}
-          onChangeText={setComposerText}
-          placeholder="Add a comment..."
-          placeholderTextColor={colors.tertiary}
-          style={styles.composerInput}
-          multiline
-          accessibilityLabel="Write a comment"
-        />
-        <Pressable
-          onPress={handlePostRoot}
-          disabled={!canPost}
-          style={[styles.postButton, !canPost && styles.postButtonDisabled]}
-          accessibilityRole="button"
-          accessibilityLabel="Post comment"
-          accessibilityState={{ disabled: !canPost }}
-        >
-          <Text style={styles.postButtonLabel}>Post</Text>
-        </Pressable>
-      </View>
+      {composerPosition === "top" ? composer : null}
 
       <View style={styles.metaRow}>
-        <Text style={styles.count}>
+        <Text style={[styles.count, { color: palette.ink }]}>
           {total} {total === 1 ? "comment" : "comments"}
         </Text>
         <View style={styles.sortTabs}>
@@ -338,7 +367,7 @@ export default function CommentThread({
             accessibilityLabel="Sort by top"
             accessibilityState={{ selected: sortMode === "top" }}
           >
-            <Text style={[styles.sortTab, sortMode === "top" && styles.sortTabActive]}>
+            <Text style={[styles.sortTab, { color: palette.muted }, sortMode === "top" && styles.sortTabActive]}>
               Top
             </Text>
           </Pressable>
@@ -348,7 +377,7 @@ export default function CommentThread({
             accessibilityLabel="Sort by new"
             accessibilityState={{ selected: sortMode === "new" }}
           >
-            <Text style={[styles.sortTab, sortMode === "new" && styles.sortTabActive]}>
+            <Text style={[styles.sortTab, { color: palette.muted }, sortMode === "new" && styles.sortTabActive]}>
               New
             </Text>
           </Pressable>
@@ -373,7 +402,7 @@ export default function CommentThread({
          * read path.
          */
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Comments could not load</Text>
+          <Text style={[styles.emptyTitle, { color: palette.ink }]}>Comments could not load</Text>
           <Pressable
             onPress={() => {
               setLoading(true);
@@ -387,8 +416,8 @@ export default function CommentThread({
         </View>
       ) : sorted.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No comments yet</Text>
-          <Text style={styles.emptySub}>
+          <Text style={[styles.emptyTitle, { color: palette.ink }]}>No comments yet</Text>
+          <Text style={[styles.emptySub, { color: palette.muted }]}>
             Be the first to tell {authorName} what you thought.
           </Text>
         </View>
@@ -397,11 +426,14 @@ export default function CommentThread({
           {sorted.map((node, index) => (
             <View
               key={node.id}
-              style={index > 0 ? styles.rootDivider : undefined}
+              style={index > 0
+                ? [styles.rootDivider, { borderTopColor: palette.line }]
+                : undefined}
             >
               <CommentRow
                 node={node}
                 depth={0}
+                tone={tone}
                 replyTargetId={replyTargetId}
                 replyDraft={replyDraft}
                 onReplyDraftChange={setReplyDraft}
@@ -415,6 +447,8 @@ export default function CommentThread({
           ))}
         </View>
       )}
+
+      {composerPosition === "bottom" ? composer : null}
     </View>
   );
 }

@@ -34,6 +34,26 @@ const FALLBACK_GENRES: Genre[] = ["adventure", "mystery", "fantasy"];
 const RAIL_LENGTH = 10;
 
 /**
+ * The stories the reader wrote that there is something to open.
+ *
+ * One complete chapter is the bar, and it is the only bar there is: a chapter
+ * is written by a single request and persisted whole, so a story is either
+ * finished enough to read or it is not on the client yet. There is no
+ * half-written story to represent and no "still writing" card to build.
+ *
+ * A story CAN be here without its cover -- the art is painted in the
+ * background after the prose lands -- which is what the genre-gradient
+ * placeholder in `StoryFeedCard` is for.
+ *
+ * Order is the caller's, which is last-touched first: `fetchMyStories`
+ * returns newest-first and a story written this session is prepended. `Story`
+ * carries no `updatedAt`, so sorting here would have to invent a key.
+ */
+export function yourStories(generated: Story[]): Story[] {
+  return generated.filter((story) => story.chapters.length > 0);
+}
+
+/**
  * Turns the flat story catalogue into the ordered, named rows Home renders.
  *
  * This is a pure function of its two inputs, not a hook or a piece of screen
@@ -51,8 +71,17 @@ const RAIL_LENGTH = 10;
 export function buildFeedRows(
   stories: Story[],
   preferredGenres: Genre[],
+  generatedStories: Story[] = [],
 ): FeedRow[] {
   const rows: FeedRow[] = [];
+
+  // The writer's own work leads once there is any. A reader who has written
+  // something opens the app to find it, not to be shown the house picks first;
+  // before they have, the row simply does not exist rather than sitting empty.
+  const yours = yourStories(generatedStories);
+  if (yours.length > 0) {
+    rows.push({ key: "yours", title: "Your stories", stories: yours });
+  }
 
   const originals = stories.filter((story) => story.isFeatured);
   if (originals.length > 0) {
@@ -117,7 +146,7 @@ export default function HomeScreen({
     : "Good evening";
 
   const featured = stories.filter((story) => story.isFeatured);
-  const rows = buildFeedRows(stories, preferredGenres);
+  const rows = buildFeedRows(stories, preferredGenres, generatedStories);
 
   return (
     <SafeAreaView style={styles.flex}>

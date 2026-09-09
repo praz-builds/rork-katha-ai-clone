@@ -2,6 +2,87 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-09: The story page goes dark, and a writer's own work leads Home
+
+### Changed
+
+- **The story page is one picture, not a card of one.** Opening a story used
+  to be a light screen with the cover boxed into a rounded thumbnail near the
+  top — a picture with a frame drawn around it, on a page that then listed
+  facts about the story. It is now the single dark surface in the app
+  (`chrome.surface`): the cover runs full-bleed for 62% of the window and
+  dissolves into the ground through a gradient that ends at 100% of the same
+  colour, so there is no edge, no radius and no line where the art stops and
+  the page begins. Close, Save, Share and More float over the art on 55%-dark
+  discs rather than sitting in a bar above it.
+- **The facts read as a sentence.** Author, date, likes, comments and how far
+  along the story is are one wrapping line — `@name · Aug 16, 2026 · 232 likes
+  · 187 comments · 4/7 chapters` — with the handle and the comment count
+  underlined because they go somewhere. A one-shot says `Standalone` rather
+  than inventing a denominator; a series whose plan the query did not select
+  says how many chapters exist and nothing more. Your own public story adds
+  `· Public`, which is the only page allowed to claim it: a reader of someone
+  else's story is already looking at a public one.
+- **Read and Listen are two equal pills**, both solid orange, because an
+  outlined twin reads as disabled on a dark ground and Listen is not. When a
+  story has no narration Listen says so in one quiet line instead of opening a
+  player that can only apologise.
+- **Comments open in a dark sheet over the page.** Each row leads with the
+  commenter's initial, the handle is underlined, and the age line has room for
+  a `Chapter n` tag — rendered only when the row actually carries one. The
+  sheet header carries a real close button; before, the only way out was a
+  backdrop tap, which a screen reader could not reach and a web viewer had no
+  hardware back to substitute for.
+- **A story can be taken off the screen.** The 3-dot menu now offers Report
+  story, Block author (never on your own story — you cannot block yourself)
+  and Download as PDF. The PDF is a title page then every chapter under its
+  own heading, set in a serif at book proportions: `expo-print` plus the share
+  sheet on a phone, the browser's own print dialog on the web. The HTML is
+  built by a pure function and tested, so the shape of what a reader takes
+  away does not depend on a printer.
+- **Home leads with your own stories.** A writer who has made a story opens the
+  app and finds it first, in the same rail and the same card as everything
+  else, last-touched first — rather than being shown the house picks and
+  hunting through Library for their own work. The bar is one complete chapter,
+  which is the only bar there is: a chapter is written by a single
+  request/response and persisted whole, so there is no half-written story to
+  represent. Before the writer has made anything the row does not exist rather
+  than sitting empty. The cover is the one part that can still be missing —
+  the art is painted in the background after the prose — which is what the
+  gradient placeholder below is for.
+- **Covers arrive quietly.** A cover that is still being painted, or that
+  failed, shows its genre gradient and nothing else — no spinner, no
+  "Painting…", no retry button. When the URL lands the art fades in over the
+  gradient in `motion.base`. Feed cards also read the generated cover
+  (`coverImageUrl`) first, so a story the writer just made keeps its art
+  outside the studio.
+- **The dark palette is a theme token now.** `colors.chromeSurface`,
+  `chromeSurfaceRaised`, `chromeBorder`, `chromeText`, `chromeMuted`,
+  `chromeTrack` and `chromeStar` were promoted out of a private object in
+  `ReaderChrome.tsx` so the reader's controls and the story page draw from one
+  set of values instead of two copies of five hexes.
+
+### Fixed
+
+- **The like count read as two words to anything parsing the meta line.**
+  `{n} {likes}` rendered as separate text nodes with a space between them; it
+  is one string now, so a screen reader does not pause inside the phrase.
+- **The story page fetched its comments twice.** A React Native `Modal` keeps
+  its children mounted whether or not it is visible, so the sheet's thread ran
+  alongside the inline preview on every story a reader opened. The sheet's
+  thread mounts when the sheet does.
+- **The hero flashed bare ground while a cover downloaded.** The genre
+  gradient now sits under the art rather than only instead of it.
+
+### Known gaps
+
+- **No comment can carry a chapter yet.** `comments.chapter_id` has existed
+  since migration 00001, but the `comments` Edge Function neither selects it
+  nor accepts it on insert, so the `Chapter n` tag is wired end to end on the
+  client and renders on nothing. Serving it is a join to
+  `chapters.chapter_number` in that function's SELECT; no client change is
+  needed when it lands.
+
 ## 2026-09-09: The reading experience — pages, controls, portraits, and stories that survive a reload
 
 ### Changed

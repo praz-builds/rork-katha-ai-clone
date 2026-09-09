@@ -1,31 +1,36 @@
 import { useCallback, useRef, useState } from "react";
 import {
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  ArrowLeft,
   Bookmark,
   BookmarkCheck,
   BookOpen,
   ChevronRight,
   Ellipsis,
+  Globe,
   Heart,
   Headphones,
   Share2,
   Star,
+  X,
 } from "lucide-react-native";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { authorFor } from "@/data/seed";
 import CommentThread from "@/components/comments/CommentThread";
 import type { ReportReason } from "@/components/comments/types";
 import { blockAuthor, reportContent } from "@/lib/comments";
+import { downloadStoryPdf } from "@/lib/story-pdf";
 import {
   setAuthorFollow,
   setStoryBookmark,
@@ -40,25 +45,51 @@ import {
   genreGradients,
   genreLabels,
   radius,
-  shadows,
   spacing,
   type,
 } from "@/theme";
-import type { Story } from "@/types/domain";
+import type { Genre, Story } from "@/types/domain";
 
 type ReadMode = "read" | "listen";
 type ReadOptions = { mode?: ReadMode };
 
 /**
+ * THE ONE DARK PAGE IN THE APP.
+ *
+ * Every other screen sits on `colors.bg`; this one sits on `colors.chromeSurface`
+ * so the cover can dissolve into the ground with no edge. A light page would
+ * need a card, a radius or a border under the art to stop it looking pasted
+ * on, and every one of those is a line between the picture and the story it
+ * belongs to. Dark ground, gradient to 100% of the same colour, no line.
+ *
+ * `chrome` is the palette the reader's controls already use, promoted to the
+ * theme so this page and `ReaderChrome` share one set of values.
+ */
+const chrome = {
+  surface: colors.chromeSurface,
+  raised: colors.chromeSurfaceRaised,
+  border: colors.chromeBorder,
+  text: colors.chromeText,
+  muted: colors.chromeMuted,
+  track: colors.chromeTrack,
+  star: colors.chromeStar,
+} as const;
+
+/** How much of the window the hero takes. The picture, not a thumbnail of it. */
+const HERO_HEIGHT_FRACTION = 0.62;
+/** The bottom part of the hero the dissolve covers. */
+const HERO_FADE_FRACTION = 0.45;
+/** Opacity of the discs behind the floating controls, so they read on any cover. */
+const CONTROL_DISC_ALPHA = 0.55;
+/** The comments sheet's height as a share of the window. */
+const COMMENTS_SHEET_FRACTION = 0.8;
+
+/**
  * Builds an rgba() string FROM a hex token instead of writing a literal one.
  *
- * The hero scrim has to fade smoothly from fully transparent to a solid
- * backing tone so the title stays legible over any cover art, and that is an
- * alpha ramp by definition - a flat colour token cannot express it. This is
- * the one deliberate exception to "no rgba" anywhere else in this file: the
- * opaque end of the ramp is derived from `colors.ink` at call time, so if the
- * ink token ever moves, the scrim moves with it instead of drifting out of
- * sync with a hand-copied hex.
+ * The dissolve is an alpha ramp from nothing to the ground, and the control
+ * discs are the ground at partial opacity; both are derived from
+ * `colors.chromeSurface` at call time so the page cannot drift from the token.
  */
 function hexToRgba(hex: string, alpha: number): string {
   const value = hex.replace("#", "");
@@ -81,7 +112,7 @@ function Stat({
   active?: boolean;
   onPress?: () => void;
 }) {
-  const glyphColor = active ? colors.heart : colors.strong;
+  const glyphColor = active ? colors.heart : chrome.text;
   const body = (
     <View style={styles.stat}>
       <Icon
@@ -123,7 +154,7 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function storyPublishedDate(story: Story): string {
+export function storyPublishedDate(story: Story): string {
   const date = new Date();
   date.setDate(date.getDate() - story.publishedOffset);
   return new Intl.DateTimeFormat("en", {
@@ -133,29 +164,24 @@ function storyPublishedDate(story: Story): string {
   }).format(date);
 }
 
-function chapterWordCount(story: Story): number {
-  return story.chapters.reduce((total, chapter) =>
-    total + chapter.paragraphs.join(" ").trim().split(/\s+/).filter(Boolean)
-      .length, 0);
-}
-
-function storyFormatLabel(story: Story): string {
-  if (story.storyMode === "series" || (story.plannedChapterCount ?? 0) > 1) {
-    return "Series";
-  }
-  const words = chapterWordCount(story);
-  if (words >= 17500) return "Novel";
-  if (words >= 7500) return "Novella";
-  return "Short story";
-}
-
-function storyMetaLine(story: Story): string {
-  const parts = [storyPublishedDate(story), storyFormatLabel(story)];
+/**
+ * The last item of the meta line: what kind of thing this is and how far
+ * along it is.
+ *
+ * `Standalone` for a one-shot. A series says `{written}/{planned} chapters`
+ * when the plan is known, and just `{n} chapters` when it is not - a series
+ * whose plan the list query did not select is still a series, and inventing
+ * a denominator would be worse than omitting it.
+ */
+export function storyProgressLabel(story: Story): string {
+  const isSeries = story.storyMode === "series" ||
+    (story.plannedChapterCount ?? 0) > 1 ||
+    story.chapters.length > 1;
+  if (!isSeries) return "Standalone";
+  const written = story.chapters.length;
   const planned = story.plannedChapterCount;
-  if (planned && planned > 1 && story.chapters.length > 1) {
-    parts[1] = `${parts[1]} (${story.chapters.length}/${planned})`;
-  }
-  return parts.join(" · ");
+  if (planned && planned > 1) return `${written}/${planned} chapters`;
+  return `${written} ${written === 1 ? "chapter" : "chapters"}`;
 }
 
 function storyHook(story: Story): string {
@@ -185,11 +211,29 @@ function hasNarration(story: Story): boolean {
   );
 }
 
-function badgeLabels(story: Story): string[] {
-  return [
-    story.contentRating?.trim(),
-    story.audienceMode === "kids" ? "Kids" : undefined,
-  ].filter((label): label is string => Boolean(label));
+/**
+ * The chips under the meta line: the primary genre first, then the shelf
+ * tags, then the two audience flags when they apply. One row, one style, so
+ * the reader scans "what is this" left to right without decoding two kinds
+ * of pill.
+ */
+function chipLabels(story: Story): string[] {
+  const primary: Genre = story.primaryGenre ?? story.genre;
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  const push = (label: string | undefined) => {
+    const trimmed = label?.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    labels.push(trimmed);
+  };
+  push(genreLabels[primary]);
+  story.tags.forEach((tag) => push(tag));
+  push(story.contentRating);
+  if (story.audienceMode === "kids") push("Kids");
+  return labels;
 }
 
 /**
@@ -210,17 +254,25 @@ export default function StoryDetailScreen({
   onBack,
   onRead,
   onAuthor,
+  isOwn = false,
 }: {
   story: Story;
   onBack: () => void;
   /** Opens the reader at the given chapter index. */
   onRead: (chapterIndex: number, options?: ReadOptions) => void;
   onAuthor: (authorId: string) => void;
+  /**
+   * The viewer wrote this story. Their own page does not offer "Block
+   * author", and it is the only page allowed to say "Public" - a reader of
+   * someone else's story is, by definition, already looking at a public one.
+   */
+  isOwn?: boolean;
 }) {
   const author = authorFor(story.authorId);
+  const { height: windowHeight } = useWindowDimensions();
   const hasMultipleChapters = story.chapters.length > 1;
   const narrationReady = hasNarration(story);
-  const badges = badgeLabels(story);
+  const chips = chipLabels(story);
   const [listenNotice, setListenNotice] = useState(false);
 
   // Seeded from the viewer's own state, not from `false`.
@@ -238,6 +290,9 @@ export default function StoryDetailScreen({
     story.viewerFollowsAuthor ?? false,
   );
   const [shareToast, setShareToast] = useState(false);
+  const [pdfToast, setPdfToast] = useState<string | null>(null);
+  const [commentCount, setCommentCount] = useState<number | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const likeInFlight = useRef(false);
   const saveInFlight = useRef(false);
   const followInFlight = useRef(false);
@@ -378,6 +433,25 @@ export default function StoryDetailScreen({
     }
   }, [story.id]);
 
+  /**
+   * The PDF is handed to the platform's own dialog; the only outcome this
+   * screen reports is the one it can know - that the dialog could not open.
+   * A dismissed dialog is not a failure and says nothing.
+   */
+  const handleDownloadPdf = useCallback(() => {
+    downloadStoryPdf({
+      story,
+      authorName: author.displayName,
+      dateLabel: storyPublishedDate(story),
+    }).catch(() => {
+      setPdfToast("Couldn't prepare the PDF on this device.");
+      setTimeout(() => setPdfToast(null), 2500);
+    });
+  }, [author.displayName, story]);
+
+  const openComments = useCallback(() => setCommentsOpen(true), []);
+  const closeComments = useCallback(() => setCommentsOpen(false), []);
+
   // The generated cover first, the bundled seed asset second. See the note in
   // ReaderScreen: reading only `coverImage` meant a story the user generated
   // showed its art in the studio and lost it everywhere else.
@@ -388,24 +462,44 @@ export default function StoryDetailScreen({
     : undefined;
   const focalX = story.focalX ?? 0.5;
   // The documented hero rule (see ReaderScreen in App.tsx): the raw focal
-  // point is tuned for a shorter frame, so a 3:4 crop needs the point nudged
+  // point is tuned for a shorter frame, so a tall crop needs the point nudged
   // up 2% or a face placed near the top of the source art rides slightly too
   // low once the hero has this much more vertical room to show.
   const heroFocalY = Math.max(0, (story.focalY ?? 0.5) - 0.02);
+  const heroHeight = Math.round(windowHeight * HERO_HEIGHT_FRACTION);
+  const showsPublic = isOwn && story.isPublic === true;
+  const commentsLabel = commentCount === null
+    ? "Comments"
+    : `${formatNumber(commentCount)} ${commentCount === 1 ? "comment" : "comments"}`;
 
   return (
     <View style={styles.screen}>
+      <StatusBar style="light" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {/*
-          THE COVER ART IS 3:4 PORTRAIT (seed covers 360x480, generated ones
-          1024x1536 - see backend/COVER_IMAGES.md). A 3:4 hero shows the whole
-          frame with no crop, unlike the square `Cover` thumbnail used in the
-          feed, which deliberately trades edges for a uniform grid cell.
+          THE HERO IS THE PICTURE, NOT A CARD OF IT. Full width, most of the
+          window, and the bottom of it dissolves into the page ground at 100%
+          of the same colour - no border, no radius, no edge for the eye to
+          catch. The genre gradient stands in while the cover is still being
+          painted or was never made, and stands in silently: no spinner and no
+          copy over it, because a reader deciding whether to open a story does
+          not need a progress report on its artwork.
         */}
-        <View style={styles.hero}>
+        <View style={[styles.hero, { height: heroHeight }]}>
+          {/*
+            The gradient is always under the art, not only instead of it. A
+            cover that is still downloading would otherwise leave the bare
+            dark ground for a beat, and a hero-sized rectangle of nothing at
+            the top of the page reads as a broken screen rather than as a
+            picture on its way.
+          */}
+          <LinearGradient
+            colors={genreGradients[story.genre]}
+            style={StyleSheet.absoluteFill}
+          />
           {coverImage
             ? (
               <FocalImage
@@ -415,21 +509,12 @@ export default function StoryDetailScreen({
                 style={{ width: "100%", height: "100%" }}
               />
             )
-            : (
-              <LinearGradient
-                colors={genreGradients[story.genre]}
-                style={StyleSheet.absoluteFill}
-              />
-            )}
+            : null}
 
           <LinearGradient
-            colors={[
-              "transparent",
-              hexToRgba(colors.ink, 0.45),
-              hexToRgba(colors.ink, 0.88),
-            ]}
-            locations={[0, 0.55, 1]}
-            style={StyleSheet.absoluteFill}
+            colors={[hexToRgba(chrome.surface, 0), chrome.surface]}
+            locations={[0, 1]}
+            style={[styles.heroFade, { height: Math.round(heroHeight * HERO_FADE_FRACTION) }]}
             pointerEvents="none"
           />
 
@@ -438,12 +523,12 @@ export default function StoryDetailScreen({
             accessibilityLabel="Close story"
             onPress={onBack}
             style={({ pressed }) => [
-              styles.iconButton,
-              styles.heroBackButton,
-              pressed && styles.iconButtonPressed,
+              styles.controlDisc,
+              styles.heroCloseButton,
+              pressed && styles.controlDiscPressed,
             ]}
           >
-            <ArrowLeft size={20} color={colors.strong} />
+            <X size={20} color={chrome.text} />
           </Pressable>
           <View style={styles.heroActionCluster}>
             <Pressable
@@ -451,14 +536,14 @@ export default function StoryDetailScreen({
               accessibilityLabel={isSaved ? "Remove saved story" : "Save story"}
               onPress={handleSave}
               style={({ pressed }) => [
-                styles.iconButton,
-                pressed && styles.iconButtonPressed,
+                styles.controlDisc,
+                pressed && styles.controlDiscPressed,
               ]}
             >
               <Star
                 size={20}
-                color={isSaved ? colors.accent : colors.strong}
-                fill={isSaved ? colors.accent : "none"}
+                color={isSaved ? chrome.star : chrome.text}
+                fill={isSaved ? chrome.star : "none"}
               />
             </Pressable>
             <Pressable
@@ -466,22 +551,22 @@ export default function StoryDetailScreen({
               accessibilityLabel="Share story"
               onPress={handleShare}
               style={({ pressed }) => [
-                styles.iconButton,
-                pressed && styles.iconButtonPressed,
+                styles.controlDisc,
+                pressed && styles.controlDiscPressed,
               ]}
             >
-              <Share2 size={20} color={colors.strong} />
+              <Share2 size={20} color={chrome.text} />
             </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="More options"
               onPress={handleOverflowPress}
               style={({ pressed }) => [
-                styles.iconButton,
-                pressed && styles.iconButtonPressed,
+                styles.controlDisc,
+                pressed && styles.controlDiscPressed,
               ]}
             >
-              <Ellipsis size={20} color={colors.strong} />
+              <Ellipsis size={20} color={chrome.text} />
             </Pressable>
           </View>
         </View>
@@ -491,23 +576,62 @@ export default function StoryDetailScreen({
             <Text style={styles.detailTitle} numberOfLines={3}>
               {story.title}
             </Text>
-            <Text style={styles.metaLine}>{storyMetaLine(story)}</Text>
-            {story.tags.length > 0 && (
-              <Text style={styles.themeLine} numberOfLines={1}>
-                {story.tags.join(", ")}
+
+            {/*
+              One wrapping line, not a table. The pieces a reader uses to
+              place a story - who, when, how loved, how long - read as a
+              sentence, and the two that go somewhere are underlined so
+              they read as links inside it rather than as buttons beside it.
+            */}
+            <Text style={styles.metaLine} accessibilityRole="text">
+              <Text
+                style={styles.metaLink}
+                accessibilityRole="link"
+                accessibilityLabel={`View ${author.displayName}'s profile`}
+                onPress={() => onAuthor(story.authorId)}
+              >
+                @{author.username}
               </Text>
-            )}
-            {badges.length > 0 && (
-              <View style={styles.badgeRow}>
-                {badges.map((badge) => (
-                  <View key={badge} style={styles.badgeChip}>
-                    <Text style={styles.badgeText}>{badge}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+              {" · "}
+              {storyPublishedDate(story)}
+              {" · "}
+              {/*
+                One string, not a number and a noun side by side. Split across
+                two children it renders as two text nodes with a space between
+                them, which a screen reader may pause inside and which no
+                assertion about the sentence can match.
+              */}
+              {`${formatNumber(likeCount)} ${likeCount === 1 ? "like" : "likes"}`}
+              {" · "}
+              <Text
+                style={styles.metaLink}
+                accessibilityRole="link"
+                accessibilityLabel="Open comments"
+                onPress={openComments}
+              >
+                {commentsLabel}
+              </Text>
+              {" · "}
+              {storyProgressLabel(story)}
+              {showsPublic ? " · Public" : ""}
+            </Text>
+
+            <View style={styles.chipRow}>
+              {chips.map((chip) => (
+                <View key={chip} style={styles.chip}>
+                  <Text style={styles.chipText}>{chip}</Text>
+                </View>
+              ))}
+              {showsPublic && (
+                <View style={[styles.chip, styles.publicChip]} accessibilityLabel="Public story">
+                  <Globe size={14} color={chrome.text} />
+                  <Text style={styles.chipText}>Public</Text>
+                </View>
+              )}
+            </View>
+
             {!!storyHook(story) && (
-              <Text style={styles.hookText} numberOfLines={3}>
+              <Text style={styles.summary}>
                 {storyHook(story)}
               </Text>
             )}
@@ -527,14 +651,10 @@ export default function StoryDetailScreen({
               accessibilityRole="button"
               accessibilityLabel="Listen to story"
               onPress={handleListen}
-              style={({ pressed }) => [
-                styles.cta,
-                styles.listenCta,
-                pressed && styles.pressed,
-              ]}
+              style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
             >
-              <Headphones size={19} color={colors.accent} />
-              <Text style={[styles.ctaText, styles.listenCtaText]}>Listen</Text>
+              <Headphones size={19} color={colors.surface} />
+              <Text style={styles.ctaText}>Listen</Text>
             </Pressable>
           </View>
           {listenNotice && (
@@ -543,6 +663,11 @@ export default function StoryDetailScreen({
               style={styles.listenNotice}
             >
               Narration is not ready for this story yet.
+            </Text>
+          )}
+          {pdfToast && (
+            <Text accessibilityRole="text" style={styles.listenNotice}>
+              {pdfToast}
             </Text>
           )}
 
@@ -564,18 +689,9 @@ export default function StoryDetailScreen({
                 onPress={handleSave}
               />
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Share story"
-              onPress={handleShare}
-              style={({ pressed }) => [styles.shareRow, pressed && styles.pressed]}
-            >
-              <Share2 size={18} color={colors.strong} />
-              <Text style={styles.shareText}>Share</Text>
-            </Pressable>
             {shareToast && (
-              <View style={styles.shareToast}>
-                <Text style={styles.shareToastText}>Copied to clipboard</Text>
+              <View style={styles.toast}>
+                <Text style={styles.toastText}>Copied to clipboard</Text>
               </View>
             )}
           </View>
@@ -598,21 +714,23 @@ export default function StoryDetailScreen({
                 <Text style={styles.authorName}>{author.displayName}</Text>
                 <Text style={styles.authorHandle}>@{author.username}</Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={isFollowing ? "Unfollow" : "Follow"}
-                onPress={handleFollow}
-                style={[styles.followButton, isFollowing && styles.followButtonActive]}
-              >
-                <Text
-                  style={[
-                    styles.followButtonText,
-                    isFollowing && styles.followButtonTextActive,
-                  ]}
+              {!isOwn && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={isFollowing ? "Unfollow" : "Follow"}
+                  onPress={handleFollow}
+                  style={[styles.followButton, isFollowing && styles.followButtonActive]}
                 >
-                  {isFollowing ? "Following" : "Follow"}
-                </Text>
-              </Pressable>
+                  <Text
+                    style={[
+                      styles.followButtonText,
+                      isFollowing && styles.followButtonTextActive,
+                    ]}
+                  >
+                    {isFollowing ? "Following" : "Follow"}
+                  </Text>
+                </Pressable>
+              )}
             </Pressable>
             <Text style={styles.synopsis}>{story.synopsis}</Text>
           </View>
@@ -642,7 +760,7 @@ export default function StoryDetailScreen({
                     <Text style={styles.chapterRowTitle} numberOfLines={1}>
                       {chapter.title}
                     </Text>
-                    <ChevronRight size={18} color={colors.strong} />
+                    <ChevronRight size={18} color={chrome.muted} />
                   </Pressable>
                 ))}
               </View>
@@ -653,7 +771,7 @@ export default function StoryDetailScreen({
 
           <View style={styles.metaGroup}>
             <Text style={styles.sectionEyebrow}>ABOUT THIS STORY</Text>
-            <MetaRow label="Genre" value={genreLabels[story.genre]} />
+            <MetaRow label="Genre" value={genreLabels[story.primaryGenre ?? story.genre]} />
             {story.tags.length > 0 && (
               <MetaRow label="Tags" value={story.tags.join(", ")} />
             )}
@@ -687,14 +805,20 @@ export default function StoryDetailScreen({
             )}
           </View>
 
+          <View style={styles.divider} />
+
           {/*
-            COMMENT THREAD MOUNT POINT. Comments are owned by another agent
-            (see src/components/comments/**) and are rendered here.
+            The inline preview. The full thread lives in the sheet (below);
+            this instance is what keeps the count on the meta line honest and
+            gives a reader who scrolled this far a place to comment without a
+            second tap.
           */}
           <View style={styles.commentsAnchor}>
             <CommentThread
               storyId={story.id}
               authorName={author.displayName}
+              tone="dark"
+              onCountChange={setCommentCount}
             />
           </View>
         </View>
@@ -707,15 +831,121 @@ export default function StoryDetailScreen({
         authorName={author.displayName}
         onBlockAuthor={handleBlockAuthor}
         onSubmitReport={handleReportStory}
+        onDownloadPdf={handleDownloadPdf}
+        canBlockAuthor={!isOwn}
       />
+
+      <CommentsSheet
+        visible={commentsOpen}
+        onClose={closeComments}
+        count={commentCount}
+        windowHeight={windowHeight}
+      >
+        {/*
+          Mounted only while the sheet is open. A `Modal` keeps its children
+          mounted whether or not it is visible, so rendering the thread
+          unconditionally meant every story page fetched the same comments
+          twice - once for the preview the reader can see, once for a sheet
+          they had not opened.
+        */}
+        {commentsOpen && (
+          <CommentThread
+            storyId={story.id}
+            authorName={author.displayName}
+            tone="dark"
+            composerPosition="bottom"
+            onCountChange={setCommentCount}
+          />
+        )}
+      </CommentsSheet>
     </View>
+  );
+}
+
+/**
+ * The comments sheet: the thread on a raised dark surface over the page.
+ *
+ * A `Modal` rather than an in-page panel so it sits above the hero and the
+ * status bar and dismisses with the hardware back. The header carries the
+ * count the meta line already showed, so opening the sheet confirms the tap
+ * rather than restating it in a new shape.
+ */
+function CommentsSheet({
+  visible,
+  onClose,
+  count,
+  windowHeight,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  count: number | null;
+  windowHeight: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.sheetRoot}>
+        <Pressable
+          style={styles.sheetBackdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss comments"
+        />
+        <View
+          style={[styles.sheet, { height: Math.round(windowHeight * COMMENTS_SHEET_FRACTION) }]}
+          accessibilityViewIsModal
+        >
+          <View style={styles.sheetHandle} />
+          {/*
+            The header carries the way out.
+
+            The backdrop closes the sheet too, but it is not an affordance a
+            reader can see, and it is outside the modal's accessibility scope
+            once `accessibilityViewIsModal` walls the sheet off - so a screen
+            reader, and a web viewer with no hardware back button, would have
+            had no reachable close at all. The X is the one that is always
+            there; the backdrop and the hardware back stay as shortcuts.
+          */}
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>
+              {count === null ? "Comments" : `Comments (${formatNumber(count)})`}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close comments"
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.sheetClose,
+                pressed && styles.pressed,
+              ]}
+            >
+              <X size={20} color={chrome.muted} />
+            </Pressable>
+          </View>
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: chrome.surface,
   },
   scrollContent: {
     flexGrow: 1,
@@ -724,34 +954,38 @@ const styles = StyleSheet.create({
   /* ── Hero ── */
   hero: {
     width: "100%",
-    aspectRatio: 3 / 4,
     overflow: "hidden",
     position: "relative",
-    backgroundColor: colors.surface2,
+    backgroundColor: chrome.surface,
   },
-  iconButton: {
+  heroFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  controlDisc: {
+    width: 40,
+    height: 40,
     minWidth: 44,
     minHeight: 44,
-    width: 44,
-    height: 44,
     borderRadius: 22,
-    backgroundColor: colors.surface,
+    backgroundColor: hexToRgba(chrome.surface, CONTROL_DISC_ALPHA),
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: shadows.iconButton,
   },
-  iconButtonPressed: {
-    boxShadow: shadows.iconButtonPressed,
+  controlDiscPressed: {
+    backgroundColor: hexToRgba(chrome.surface, 0.8),
   },
-  heroBackButton: {
+  heroCloseButton: {
     position: "absolute",
-    top: spacing.xl,
-    left: spacing.xl,
+    top: spacing.huge,
+    left: spacing.lg,
   },
   heroActionCluster: {
     position: "absolute",
-    top: spacing.xl,
-    right: spacing.xl,
+    top: spacing.huge,
+    right: spacing.lg,
     flexDirection: "row",
     gap: spacing.sm,
   },
@@ -759,7 +993,9 @@ const styles = StyleSheet.create({
   /* ── Content ── */
   content: {
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
+    // Pulled up into the dissolve so the title starts over the last of the
+    // picture rather than under a band of empty ground.
+    marginTop: -spacing.xxl,
     paddingBottom: spacing.huge,
   },
   pressed: {
@@ -768,52 +1004,55 @@ const styles = StyleSheet.create({
   },
 
   storyIntro: {
-    gap: spacing.related,
+    gap: spacing.md,
   },
   detailTitle: {
-    ...type.largeTitle,
     fontFamily: fonts.display,
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: "700",
     letterSpacing: 0,
-    color: colors.ink,
+    color: chrome.text,
   },
   metaLine: {
     ...type.subhead,
-    fontFamily: fonts.ui,
+    lineHeight: 22,
     letterSpacing: 0,
-    color: colors.muted,
+    color: chrome.muted,
   },
-  themeLine: {
-    ...type.subhead,
-    fontFamily: fonts.ui,
-    letterSpacing: 0,
-    color: colors.strong,
+  metaLink: {
+    color: chrome.text,
+    textDecorationLine: "underline",
   },
-  badgeRow: {
+  chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
   },
-  badgeChip: {
+  chip: {
     minHeight: 32,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: chrome.border,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
   },
-  badgeText: {
-    ...type.caption,
-    fontFamily: fonts.ui,
-    fontWeight: "700",
+  publicChip: {
+    borderColor: chrome.muted,
+  },
+  chipText: {
+    ...type.subhead,
     letterSpacing: 0,
-    color: colors.accent,
+    color: chrome.text,
   },
-  hookText: {
+  summary: {
     ...type.body,
-    fontFamily: fonts.readerItalic,
+    lineHeight: 24,
     letterSpacing: 0,
-    color: colors.ink,
-    marginTop: spacing.xs,
+    color: chrome.text,
   },
   primaryActions: {
     flexDirection: "row",
@@ -821,44 +1060,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.betweenGroups,
   },
 
-  /* Primary CTA. `radius.pill` + `shadows.raised` is the documented recipe
-     for "the create CTA" - see the doc comment on `shadows.raised`. */
+  /* Primary CTAs. Both solid: on a dark ground an outlined twin reads as
+     disabled, and Listen is not. */
   cta: {
     flex: 1,
-    minHeight: 52,
+    minHeight: 56,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
-    boxShadow: shadows.raised,
-  },
-  listenCta: {
-    backgroundColor: colors.surface,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    boxShadow: shadows.card,
   },
   ctaText: {
     ...type.headline,
-    fontFamily: fonts.ui,
     fontWeight: "700",
     letterSpacing: 0,
     color: colors.surface,
   },
-  listenCtaText: {
-    color: colors.accent,
-  },
   listenNotice: {
     ...type.subhead,
-    fontFamily: fonts.ui,
     letterSpacing: 0,
-    color: colors.muted,
+    color: chrome.muted,
     marginTop: spacing.related,
   },
 
-  /* Stats + share */
+  /* Stats */
   statsGroup: {
     marginTop: spacing.betweenGroups,
     gap: spacing.related,
@@ -879,42 +1106,29 @@ const styles = StyleSheet.create({
   statValue: {
     ...type.subhead,
     fontWeight: "700",
-    color: colors.ink,
+    color: chrome.text,
   },
   statLabel: {
     ...type.caption,
-    color: colors.muted,
+    color: chrome.muted,
   },
-  shareRow: {
-    flexDirection: "row",
-    alignSelf: "center",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
-  shareText: {
-    ...type.subhead,
-    fontWeight: "600",
-    color: colors.strong,
-  },
-  shareToast: {
+  toast: {
     alignSelf: "center",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
-    backgroundColor: colors.ink,
+    backgroundColor: chrome.text,
   },
-  shareToastText: {
+  toastText: {
     ...type.caption,
     fontWeight: "600",
-    color: colors.surface,
+    color: chrome.surface,
   },
 
-  /* Dividers separate groups; never a border on an elevated surface. */
+  /* Hairlines part groups on one surface; never a border on a box. */
   divider: {
     height: 1,
-    backgroundColor: colors.track,
+    backgroundColor: chrome.border,
     marginVertical: spacing.betweenGroups,
   },
 
@@ -931,14 +1145,14 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.surface2,
+    backgroundColor: chrome.track,
     alignItems: "center",
     justifyContent: "center",
   },
   authorAvatarInitial: {
     ...type.headline,
     fontFamily: fonts.display,
-    color: colors.ink,
+    color: chrome.text,
   },
   authorInfo: {
     flex: 1,
@@ -947,34 +1161,34 @@ const styles = StyleSheet.create({
   authorName: {
     ...type.subhead,
     fontWeight: "700",
-    color: colors.ink,
+    color: chrome.text,
   },
   authorHandle: {
     ...type.caption,
-    color: colors.muted,
+    color: chrome.muted,
   },
   followButton: {
     minHeight: 36,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
-    backgroundColor: colors.ink,
+    backgroundColor: chrome.text,
     alignItems: "center",
     justifyContent: "center",
   },
   followButtonActive: {
-    backgroundColor: colors.accentSoft,
+    backgroundColor: chrome.track,
   },
   followButtonText: {
     ...type.caption,
     fontWeight: "700",
-    color: colors.surface,
+    color: chrome.surface,
   },
   followButtonTextActive: {
-    color: colors.accent,
+    color: chrome.text,
   },
   synopsis: {
     ...type.body,
-    color: colors.muted,
+    color: chrome.muted,
   },
 
   /* Chapter list */
@@ -983,16 +1197,15 @@ const styles = StyleSheet.create({
   },
   educationalNote: {
     ...type.caption,
-    color: colors.muted,
+    color: chrome.muted,
     marginTop: spacing.md,
     lineHeight: 18,
   },
   sectionEyebrow: {
     ...type.caption,
-    fontFamily: fonts.ui,
     fontWeight: "700",
     letterSpacing: 1.1,
-    color: colors.muted,
+    color: chrome.muted,
     marginBottom: spacing.md,
   },
   chapterRow: {
@@ -1003,25 +1216,25 @@ const styles = StyleSheet.create({
   },
   chapterRowDivider: {
     borderTopWidth: 1,
-    borderTopColor: colors.track,
+    borderTopColor: chrome.border,
   },
   chapterNumberBadge: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: colors.surface2,
+    backgroundColor: chrome.track,
     alignItems: "center",
     justifyContent: "center",
   },
   chapterNumberText: {
     ...type.caption,
     fontWeight: "700",
-    color: colors.ink,
+    color: chrome.text,
   },
   chapterRowTitle: {
     ...type.body,
     flex: 1,
-    color: colors.ink,
+    color: chrome.text,
   },
 
   /* Metadata */
@@ -1035,18 +1248,71 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     ...type.subhead,
-    color: colors.muted,
+    color: chrome.muted,
   },
   metaValue: {
     ...type.subhead,
     fontWeight: "600",
-    color: colors.ink,
+    color: chrome.text,
     flexShrink: 1,
     textAlign: "right",
   },
 
-  /* Comment thread mount point - intentionally empty, see the comment above. */
   commentsAnchor: {
-    marginTop: spacing.betweenGroups,
+    marginTop: 0,
+  },
+
+  /* ── Comments sheet ── */
+  sheetRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.ink,
+    opacity: 0.5,
+  },
+  sheet: {
+    backgroundColor: chrome.raised,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: chrome.border,
+    marginBottom: spacing.lg,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  sheetTitle: {
+    flex: 1,
+    fontFamily: fonts.display,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "600",
+    color: chrome.text,
+  },
+  sheetClose: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: -spacing.sm,
+  },
+  sheetScroll: {
+    flex: 1,
+  },
+  sheetScrollContent: {
+    paddingBottom: spacing.huge,
   },
 });

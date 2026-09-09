@@ -33,6 +33,8 @@ export type ServerComment = {
   myVote: -1 | 0 | 1;
   /** Soft-deleted comments keep their place so replies do not orphan. */
   deleted: boolean;
+  /** Present only when the server returned a chapter for the comment. */
+  chapterNumber?: number;
 };
 
 const MINUTE = 60_000;
@@ -99,6 +101,7 @@ export function buildThread(
       voteState: voteStateFrom(row.myVote),
       collapsed: false,
       replies: [],
+      ...(row.chapterNumber ? { chapterNumber: row.chapterNumber } : {}),
     });
   }
 
@@ -165,6 +168,17 @@ type WireComment = {
   score: number | null;
   my_vote: number | null;
   deleted_at: string | null;
+  /**
+   * The chapter a comment was left on.
+   *
+   * `comments.chapter_id` has existed since migration 00001 and is nullable,
+   * but the `comments` Edge Function neither selects it nor accepts it on
+   * insert, so no row on the wire carries a chapter today and every comment
+   * renders without the tag. Serving it means joining `chapters.chapter_number`
+   * through that id in the function's SELECT; this field is here so the tag
+   * appears the day it does, with no client change.
+   */
+  chapter_number?: number | null;
 };
 
 function isWireComment(value: unknown): value is WireComment {
@@ -186,6 +200,9 @@ export function fromWire(row: WireComment): ServerComment {
     score: row.score ?? 0,
     myVote: vote,
     deleted: row.deleted_at !== null,
+    ...(typeof row.chapter_number === "number" && row.chapter_number > 0
+      ? { chapterNumber: row.chapter_number }
+      : {}),
   };
 }
 
