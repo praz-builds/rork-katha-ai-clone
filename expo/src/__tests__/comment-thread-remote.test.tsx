@@ -161,11 +161,100 @@ it("keeps a loaded thread visible when a comment write fails", async () => {
   await fireEvent.press(view.getByLabelText(/post comment/i));
 
   await waitFor(() =>
-    expect(view.getByText("That action did not save. Check your connection and try again."))
-      .toBeTruthy()
+    expect(
+      view.getByText("Your comment did not save. It is back in the box - try again."),
+    ).toBeTruthy()
   );
   expect(view.getByText("Still visible")).toBeTruthy();
   expect(view.queryByText("Comments could not load")).toBeNull();
+});
+
+/**
+ * THE BUG THE OWNER HIT: he wrote a comment and it was not saved.
+ *
+ * The optimistic row was added and never taken back, so a write that 401'd
+ * (an anonymous session, which is what the `comments` function refuses) left
+ * the comment sitting in the thread looking posted. He closed the app
+ * believing it had gone somewhere. The failure notice was a small line above
+ * the list; the comment underneath it was the thing he was looking at.
+ *
+ * The comment now goes away and the text goes back into the composer.
+ */
+it("takes back a comment whose write failed and returns the text to the composer", async () => {
+  mockFetchThread.mockResolvedValue([]);
+  mockPostComment.mockRejectedValueOnce(new Error("401"));
+  const view = await render(<CommentThread storyId="story-7" authorName="Zoe" />);
+  await waitFor(() => expect(mockFetchThread).toHaveBeenCalled());
+
+  const composer = view.getByPlaceholderText(/Add a comment/i);
+  await fireEvent.changeText(composer, "the thing I wrote");
+  await fireEvent.press(view.getByLabelText(/post comment/i));
+
+  await waitFor(() =>
+    expect(
+      view.getByText("Your comment did not save. It is back in the box - try again."),
+    ).toBeTruthy()
+  );
+  // It is not still in the thread pretending to be posted...
+  expect(view.queryByText("the thing I wrote")).toBeNull();
+  // ...and it was not thrown away either.
+  expect(view.getByPlaceholderText(/Add a comment/i).props.value).toBe(
+    "the thing I wrote",
+  );
+});
+
+/**
+ * ANONYMOUS SESSIONS ARE STOPPED BEFORE THE WRITE, NOT BY IT.
+ *
+ * The `comments` function requires auth, so a guest's comment was always going
+ * to 401. Asking them to sign in first is the fix; the rollback above is the
+ * backstop for every other reason a write can fail.
+ */
+it("asks an anonymous viewer to sign in instead of posting", async () => {
+  mockFetchThread.mockResolvedValue([]);
+  const onRequireSignIn = jest.fn();
+  const view = await render(
+    <CommentThread
+      storyId="story-7"
+      authorName="Zoe"
+      canEngage={false}
+      onRequireSignIn={onRequireSignIn}
+    />,
+  );
+  await waitFor(() => expect(mockFetchThread).toHaveBeenCalled());
+
+  await fireEvent.changeText(
+    view.getByPlaceholderText(/Add a comment/i),
+    "a guest's thought",
+  );
+  await fireEvent.press(view.getByLabelText(/post comment/i));
+
+  expect(onRequireSignIn).toHaveBeenCalled();
+  expect(mockPostComment).not.toHaveBeenCalled();
+  // Nothing was optimistically shown either: a guest must not watch their
+  // comment appear and then vanish.
+  expect(view.queryByText("a guest's thought")).toBeNull();
+});
+
+it("asks an anonymous viewer to sign in instead of voting", async () => {
+  mockFetchThread.mockResolvedValue([
+    serverRow({ id: "s1", body: "vote target", score: 5, myVote: 0 }),
+  ]);
+  const onRequireSignIn = jest.fn();
+  const view = await render(
+    <CommentThread
+      storyId="story-1"
+      authorName="Zoe"
+      canEngage={false}
+      onRequireSignIn={onRequireSignIn}
+    />,
+  );
+  await waitFor(() => expect(view.getByText("vote target")).toBeTruthy());
+
+  await fireEvent.press(view.getByLabelText(/^Upvote/));
+
+  expect(onRequireSignIn).toHaveBeenCalled();
+  expect(mockVoteOnComment).not.toHaveBeenCalled();
 });
 
 it("does not send an empty comment", async () => {
@@ -179,7 +268,15 @@ it("does not send an empty comment", async () => {
   expect(mockPostComment).not.toHaveBeenCalled();
 });
 
-it("sends the vote the control lands on, including clearing to 0", async () => {
+/**
+ * ONE DIRECTION, AND ONLY EVER 1 OR 0 ON THE WIRE.
+ *
+ * The vote API still accepts -1 - it has to, for rows written before the
+ * downvote was removed - so "we took the arrow out of the UI" is not the same
+ * claim as "this UI cannot send a downvote". This asserts the second one: the
+ * control is gone, and every value that leaves the thread is 1 or 0.
+ */
+it("sends the vote the control lands on, and never a downvote", async () => {
   mockFetchThread
     .mockResolvedValueOnce([
       serverRow({ id: "s1", body: "vote target", score: 5, myVote: 0 }),
@@ -193,6 +290,11 @@ it("sends the vote the control lands on, including clearing to 0", async () => {
   const view = await render(<CommentThread storyId="story-1" authorName="Zoe" />);
   await waitFor(() => expect(view.getByText("vote target")).toBeTruthy());
 
+  // There is no downvote control at all - not a disabled one, not a hidden
+  // one. It cannot be pressed because it does not exist.
+  expect(view.queryByLabelText(/Downvote/)).toBeNull();
+  expect(view.queryByLabelText("Downvoted")).toBeNull();
+
   // none -> up sends +1
   await fireEvent.press(view.getByLabelText(/^Upvote/));
   await waitFor(() => expect(mockVoteOnComment).toHaveBeenLastCalledWith("s1", 1));
@@ -202,9 +304,10 @@ it("sends the vote the control lands on, including clearing to 0", async () => {
   await fireEvent.press(view.getByLabelText("Upvoted"));
   await waitFor(() => expect(mockVoteOnComment).toHaveBeenLastCalledWith("s1", 0));
 
-  // none -> down sends -1
-  await fireEvent.press(view.getByLabelText(/^Downvote/));
-  await waitFor(() => expect(mockVoteOnComment).toHaveBeenLastCalledWith("s1", -1));
+  // Whatever the sequence, -1 never left the client.
+  for (const call of mockVoteOnComment.mock.calls) {
+    expect([0, 1]).toContain(call[1]);
+  }
 });
 
 it("ignores repeated vote taps while the previous vote is still saving", async () => {

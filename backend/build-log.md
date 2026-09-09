@@ -7,6 +7,51 @@
 
 ---
 
+## 2026-09-10 UTC — A report has to say what happened
+
+**Session:** Story-page lane of the "created" flow rebuild, on
+`fable/story-page-light`. One function touched. Nothing deployed; no migration.
+
+### `comments`: `details` is required on a report
+
+`validateReportDetails` treated `details` as optional and mapped blank to
+`null`. What that produced was reports carrying a reason enum and nothing else
+— `harassment`, and no indication of what was harassing about it. A moderator
+cannot act on a bucket name, and a one-tap report next to a stranger's comment
+is filed by whoever is most annoyed rather than by whoever has a problem.
+
+It now requires a trimmed description of at least **10 characters** (the floor
+under "x" and an accidental keypress, not a quality bar) and still caps at
+`MAX_REPORT_DETAILS_LENGTH` (2,000, matching the column's check constraint in
+migration 00042). The return shape carries which rule failed, so the handler
+can say "you need to describe the problem" and "that is too long" separately
+rather than answering both with the length message.
+
+```
+{ ok: true, value: string } | { ok: false, reason: "missing" | "length" }
+```
+
+The client (`expo/src/lib/comments.ts` `reportContent`) enforces the same rule
+before the call, and the report sheets keep Submit disabled until there is a
+description. The server-side check is not a duplicate of that — it is the
+boundary; the client's is a courtesy that saves a round trip.
+
+**No schema change.** `content_reports.details` is already nullable with a
+2,000-character check; nothing in the database had to move for a rule about
+what callers may send.
+
+**Not changed:** `author_id` was already on both the read and the post
+responses. The client was dropping it; it now carries it through so a comment's
+byline can route to a profile.
+
+**Tests:** `validateReportDetails` rewritten to pin required / trimmed /
+floored / capped, including that whitespace cannot pad a one-word description
+over the floor. `deno test --allow-env --allow-net --allow-read
+supabase/functions`: **714 passed, 0 failed**. `deno fmt --check` and
+`deno check` clean on the touched files.
+
+---
+
 ## 2026-09-09 UTC — Reimagining a chapter, saved characters, and the generation deadline finally sized to the gateway
 
 **Session:** Backend lane of the "created" story flow (`docs/design/created-flow.md`,

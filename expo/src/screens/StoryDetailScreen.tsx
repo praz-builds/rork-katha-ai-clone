@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
   Platform,
@@ -13,14 +13,12 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  Bookmark,
-  BookmarkCheck,
   BookOpen,
   ChevronRight,
   Ellipsis,
   Globe,
-  Heart,
   Headphones,
+  MessageCircle,
   Share2,
   Star,
   X,
@@ -29,13 +27,9 @@ import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { authorFor } from "@/data/seed";
 import CommentThread from "@/components/comments/CommentThread";
 import type { ReportReason } from "@/components/comments/types";
-import { blockAuthor, reportContent } from "@/lib/comments";
+import { blockAuthor, fetchCommentCount, reportContent } from "@/lib/comments";
 import { downloadStoryPdf } from "@/lib/story-pdf";
-import {
-  setAuthorFollow,
-  setStoryBookmark,
-  setStoryLike,
-} from "@/lib/api";
+import { setAuthorFollow, setStoryBookmark } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
 import { imageAssets } from "@/data/images";
@@ -45,6 +39,7 @@ import {
   genreGradients,
   genreLabels,
   radius,
+  shadows,
   spacing,
   type,
 } from "@/theme";
@@ -54,33 +49,35 @@ type ReadMode = "read" | "listen";
 type ReadOptions = { mode?: ReadMode };
 
 /**
- * THE ONE DARK PAGE IN THE APP.
+ * THE STORY PAGE IS LIGHT, LIKE EVERY OTHER SCREEN.
  *
- * Every other screen sits on `colors.bg`; this one sits on `colors.chromeSurface`
- * so the cover can dissolve into the ground with no edge. A light page would
- * need a card, a radius or a border under the art to stop it looking pasted
- * on, and every one of those is a line between the picture and the story it
- * belongs to. Dark ground, gradient to 100% of the same colour, no line.
+ * It was briefly the one dark surface in the app, on the argument that the
+ * cover needs a dark ground to dissolve into. The edgeless cover was the part
+ * worth keeping; the dark ground was not. A single dark page in a warm light
+ * app reads as a different product the moment you arrive at it, and the
+ * dissolve does not need darkness - it needs the ground and the fade to be the
+ * SAME colour, which is as true of `colors.bg` as it was of `#1C1A17`.
  *
- * `chrome` is the palette the reader's controls already use, promoted to the
- * theme so this page and `ReaderChrome` share one set of values.
+ * So: the picture still runs full-bleed off the top with no card, no border
+ * and no radius, and its bottom fades to exactly `colors.bg` at 100%. What
+ * changed is which colour that is.
  */
-const chrome = {
-  surface: colors.chromeSurface,
-  raised: colors.chromeSurfaceRaised,
-  border: colors.chromeBorder,
-  text: colors.chromeText,
-  muted: colors.chromeMuted,
-  track: colors.chromeTrack,
-  star: colors.chromeStar,
-} as const;
 
 /** How much of the window the hero takes. The picture, not a thumbnail of it. */
 const HERO_HEIGHT_FRACTION = 0.62;
 /** The bottom part of the hero the dissolve covers. */
 const HERO_FADE_FRACTION = 0.45;
-/** Opacity of the discs behind the floating controls, so they read on any cover. */
-const CONTROL_DISC_ALPHA = 0.55;
+/**
+ * Opacity of the discs behind the floating controls.
+ *
+ * A cover can be anything: a white snowfield or a night street. The disc is
+ * `colors.surface` (pure white) at this alpha, so whatever is behind it, what
+ * the glyph actually sits on is within a few points of white - and
+ * `colors.strong` on that clears WCAG AA by a wide margin in both directions.
+ * `story-detail-controls.test.ts` computes both extremes rather than trusting
+ * this comment.
+ */
+const CONTROL_DISC_ALPHA = 0.92;
 /** The comments sheet's height as a share of the window. */
 const COMMENTS_SHEET_FRACTION = 0.8;
 
@@ -88,10 +85,10 @@ const COMMENTS_SHEET_FRACTION = 0.8;
  * Builds an rgba() string FROM a hex token instead of writing a literal one.
  *
  * The dissolve is an alpha ramp from nothing to the ground, and the control
- * discs are the ground at partial opacity; both are derived from
- * `colors.chromeSurface` at call time so the page cannot drift from the token.
+ * discs are white at partial opacity; both are derived from theme tokens at
+ * call time so the page cannot drift from them.
  */
-function hexToRgba(hex: string, alpha: number): string {
+export function hexToRgba(hex: string, alpha: number): string {
   const value = hex.replace("#", "");
   const r = parseInt(value.substring(0, 2), 16);
   const g = parseInt(value.substring(2, 4), 16);
@@ -99,59 +96,37 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function Stat({
-  Icon,
-  value,
-  label,
-  active,
-  onPress,
-}: {
-  Icon: typeof BookOpen;
-  value: number;
-  label: string;
-  active?: boolean;
-  onPress?: () => void;
-}) {
-  const glyphColor = active ? colors.heart : chrome.text;
-  const body = (
-    <View style={styles.stat}>
-      <Icon
-        size={20}
-        color={glyphColor}
-        fill={active ? colors.heart : "none"}
-      />
-      <Text style={styles.statValue}>{formatNumber(value)}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
+/**
+ * The colour a semi-transparent layer actually presents, once it is composited
+ * over a backdrop. Source-over alpha blending, per channel.
+ *
+ * This is how the control discs are checked against real cover art rather than
+ * against the colour they would be if they were opaque.
+ */
+export function compositeOver(
+  layerHex: string,
+  alpha: number,
+  backdropHex: string,
+): string {
+  const parse = (hex: string) => {
+    const v = hex.replace("#", "");
+    return [
+      parseInt(v.substring(0, 2), 16),
+      parseInt(v.substring(2, 4), 16),
+      parseInt(v.substring(4, 6), 16),
+    ];
+  };
+  const layer = parse(layerHex);
+  const backdrop = parse(backdropHex);
+  const mixed = layer.map((channel, index) =>
+    Math.round(channel * alpha + backdrop[index] * (1 - alpha))
   );
-  if (!onPress) {
-    // The read count is informational only - no toggle, so it is not a
-    // button and must not announce itself as one to a screen reader.
-    return (
-      <View accessibilityLabel={`${formatNumber(value)} ${label}`}>
-        {body}
-      </View>
-    );
-  }
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${label}, ${formatNumber(value)}`}
-      onPress={onPress}
-      style={({ pressed }) => [styles.statPressable, pressed && styles.pressed]}
-    >
-      {body}
-    </Pressable>
-  );
+  return `#${mixed.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function MetaRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.metaRow}>
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue} numberOfLines={2}>{value}</Text>
-    </View>
-  );
+/** The colour a floating control's glyph is actually drawn against, over `coverHex`. */
+export function controlDiscBackdrop(coverHex: string): string {
+  return compositeOver(colors.surface, CONTROL_DISC_ALPHA, coverHex);
 }
 
 export function storyPublishedDate(story: Story): string {
@@ -212,13 +187,22 @@ function hasNarration(story: Story): boolean {
 }
 
 /**
- * The chips under the meta line: the primary genre first, then the shelf
- * tags, then the two audience flags when they apply. One row, one style, so
- * the reader scans "what is this" left to right without decoding two kinds
- * of pill.
+ * The chips under the meta line: GENRES ONLY.
+ *
+ * They used to carry the story's themes and its spice level too, so a romance
+ * shelved itself as `Romance · premonition · duty · compassion · fear · sweet`.
+ * Four of those are notes the generator left about the plot and the fifth is a
+ * content setting; none of them is a shelf anyone browses, and together they
+ * buried the one word in the row that told a reader what they were looking at.
+ *
+ * The primary genre first, then any genre the story's tags also name. A tag
+ * that is not a genre is not shown here at all.
  */
-function chipLabels(story: Story): string[] {
+export function chipLabels(story: Story): string[] {
   const primary: Genre = story.primaryGenre ?? story.genre;
+  const genreByLabel = new Map(
+    Object.values(genreLabels).map((label) => [label.toLowerCase(), label]),
+  );
   const seen = new Set<string>();
   const labels: string[] = [];
   const push = (label: string | undefined) => {
@@ -230,9 +214,13 @@ function chipLabels(story: Story): string[] {
     labels.push(trimmed);
   };
   push(genreLabels[primary]);
-  story.tags.forEach((tag) => push(tag));
-  push(story.contentRating);
-  if (story.audienceMode === "kids") push("Kids");
+  // A tag survives only if it names a genre. `genreLabels` is the whole list
+  // of genres this product has, so membership in it IS the test.
+  story.tags.forEach((tag) => {
+    const asGenre = genreByLabel.get(tag.trim().toLowerCase()) ??
+      genreLabels[tag.trim() as Genre];
+    if (asGenre) push(asGenre);
+  });
   return labels;
 }
 
@@ -255,6 +243,8 @@ export default function StoryDetailScreen({
   onRead,
   onAuthor,
   isOwn = false,
+  canEngage = true,
+  onSignIn,
 }: {
   story: Story;
   onBack: () => void;
@@ -267,6 +257,18 @@ export default function StoryDetailScreen({
    * someone else's story is, by definition, already looking at a public one.
    */
   isOwn?: boolean;
+  /**
+   * May this viewer engage? False for an anonymous session.
+   *
+   * READING STAYS OPEN TO EVERYONE. Saving, following, commenting, replying
+   * and voting do not: each of them writes a row against a user id, and an
+   * anonymous guest has one that will not survive the day. Every gated control
+   * stays visible and pressing it asks for a sign-in, rather than failing
+   * quietly or - worse - updating on screen and losing the write.
+   */
+  canEngage?: boolean;
+  /** Opens the app's sign-in flow. Called by every gated control. */
+  onSignIn?: () => void;
 }) {
   const author = authorFor(story.authorId);
   const { height: windowHeight } = useWindowDimensions();
@@ -277,13 +279,11 @@ export default function StoryDetailScreen({
 
   // Seeded from the viewer's own state, not from `false`.
   //
-  // Starting every control at `false` meant a reader who had already liked a
-  // story saw an unfilled heart, and their next tap sent `on: true` for a like
+  // Starting every control at `false` meant a reader who had already saved a
+  // story saw an empty star, and their next tap sent `on: true` for a save
   // that already existed -- removing nothing, adding nothing, and leaving the
   // UI disagreeing with the server. Absent means not engaged, which is the safe
   // reading while the endpoints supplying these are still rolling out.
-  const [isLiked, setIsLiked] = useState(story.viewerHasLiked ?? false);
-  const [likeCount, setLikeCount] = useState(story.likes);
   const [isSaved, setIsSaved] = useState(story.viewerHasBookmarked ?? false);
   const [saveCount, setSaveCount] = useState(story.bookmarks);
   const [isFollowing, setIsFollowing] = useState(
@@ -293,37 +293,49 @@ export default function StoryDetailScreen({
   const [pdfToast, setPdfToast] = useState<string | null>(null);
   const [commentCount, setCommentCount] = useState<number | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const likeInFlight = useRef(false);
+  const [signInPrompt, setSignInPrompt] = useState<string | null>(null);
   const saveInFlight = useRef(false);
   const followInFlight = useRef(false);
 
-  const handleLike = useCallback(() => {
-    if (likeInFlight.current) return;
-    likeInFlight.current = true;
-    const previousOn = isLiked;
-    const previousCount = likeCount;
-    const nextOn = !previousOn;
-    const nextCount = Math.max(0, previousCount + (nextOn ? 1 : -1));
-    setIsLiked(nextOn);
-    setLikeCount(nextCount);
-    const rollback = () => {
-      setIsLiked(previousOn);
-      setLikeCount(previousCount);
+  /**
+   * The sign-in wall.
+   *
+   * One function, called by every gated control, so there is exactly one way
+   * an anonymous viewer can be told and no control can forget. It returns
+   * true when it handled the press, which reads at the call site as "stop
+   * here".
+   */
+  const requireSignIn = useCallback((action: string): boolean => {
+    if (canEngage) return false;
+    setSignInPrompt(action);
+    return true;
+  }, [canEngage]);
+
+  /**
+   * The count on the comments icon, without mounting the thread.
+   *
+   * The thread now lives entirely in the sheet, so the page has no other way
+   * to know the number - and a comments icon with no count is a door with
+   * nothing written on it. The GET already returns an exact total; this asks
+   * for one row to read it.
+   */
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let live = true;
+    fetchCommentCount(story.id)
+      .then((count) => {
+        if (live) setCommentCount(count);
+      })
+      // A count that could not be fetched is shown as no count at all, which
+      // is honest; the icon still opens the sheet.
+      .catch(() => {});
+    return () => {
+      live = false;
     };
-    try {
-      setStoryLike(story.id, nextOn, nextCount).then((result) => {
-        setIsLiked(result.on);
-        setLikeCount(result.count);
-      }).catch(rollback).finally(() => {
-        likeInFlight.current = false;
-      });
-    } catch {
-      rollback();
-      likeInFlight.current = false;
-    }
-  }, [isLiked, likeCount, story.id]);
+  }, [story.id]);
 
   const handleSave = useCallback(() => {
+    if (requireSignIn("save this story")) return;
     if (saveInFlight.current) return;
     saveInFlight.current = true;
     const previousOn = isSaved;
@@ -347,9 +359,10 @@ export default function StoryDetailScreen({
       rollback();
       saveInFlight.current = false;
     }
-  }, [isSaved, saveCount, story.id]);
+  }, [isSaved, requireSignIn, saveCount, story.id]);
 
   const handleFollow = useCallback(() => {
+    if (requireSignIn(`follow ${author.displayName}`)) return;
     if (followInFlight.current) return;
     followInFlight.current = true;
     const previousOn = isFollowing;
@@ -370,7 +383,13 @@ export default function StoryDetailScreen({
       rollback();
       followInFlight.current = false;
     }
-  }, [author.followers, isFollowing, story.authorId]);
+  }, [
+    author.displayName,
+    author.followers,
+    isFollowing,
+    requireSignIn,
+    story.authorId,
+  ]);
 
   const handleRead = useCallback(() => {
     onRead(0, { mode: "read" });
@@ -415,6 +434,10 @@ export default function StoryDetailScreen({
    * in `backend/supabase/functions/feed/index.ts`.
    */
   const handleBlockAuthor = useCallback(async () => {
+    if (requireSignIn(`block ${author.displayName}`)) {
+      setActionsOpen(false);
+      return false;
+    }
     if (isSupabaseConfigured) {
       try {
         await blockAuthor(story.authorId);
@@ -425,13 +448,23 @@ export default function StoryDetailScreen({
     setActionsOpen(false);
     onBack();
     return true;
-  }, [onBack, story.authorId]);
+  }, [author.displayName, onBack, requireSignIn, story.authorId]);
 
-  const handleReportStory = useCallback((reason: ReportReason) => {
-    if (isSupabaseConfigured) {
-      reportContent({ storyId: story.id }, reason).catch(() => {});
-    }
-  }, [story.id]);
+  /**
+   * Report the story. The description is required and is passed straight
+   * through; `reportContent` rejects a blank one, and the sheet does not show
+   * its confirmation over a rejection.
+   */
+  const handleReportStory = useCallback(
+    async (reason: ReportReason, details: string) => {
+      if (requireSignIn("report this story")) {
+        throw new Error("Sign in to report a story.");
+      }
+      if (!isSupabaseConfigured) return;
+      await reportContent({ storyId: story.id }, reason, details);
+    },
+    [requireSignIn, story.id],
+  );
 
   /**
    * The PDF is handed to the platform's own dialog; the only outcome this
@@ -474,7 +507,7 @@ export default function StoryDetailScreen({
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -492,9 +525,9 @@ export default function StoryDetailScreen({
           {/*
             The gradient is always under the art, not only instead of it. A
             cover that is still downloading would otherwise leave the bare
-            dark ground for a beat, and a hero-sized rectangle of nothing at
-            the top of the page reads as a broken screen rather than as a
-            picture on its way.
+            ground for a beat, and a hero-sized rectangle of nothing at the top
+            of the page reads as a broken screen rather than as a picture on
+            its way.
           */}
           <LinearGradient
             colors={genreGradients[story.genre]}
@@ -511,8 +544,21 @@ export default function StoryDetailScreen({
             )
             : null}
 
+          {/*
+            A soft light haze at the very top. The discs below carry their own
+            contrast and are proven independently of this, but the status bar
+            glyphs are the platform's and are drawn dark on a light page - this
+            is what keeps them readable over a night-time cover.
+          */}
           <LinearGradient
-            colors={[hexToRgba(chrome.surface, 0), chrome.surface]}
+            colors={[hexToRgba(colors.surface, 0.55), hexToRgba(colors.surface, 0)]}
+            locations={[0, 1]}
+            style={styles.heroTopScrim}
+            pointerEvents="none"
+          />
+
+          <LinearGradient
+            colors={[hexToRgba(colors.bg, 0), colors.bg]}
             locations={[0, 1]}
             style={[styles.heroFade, { height: Math.round(heroHeight * HERO_FADE_FRACTION) }]}
             pointerEvents="none"
@@ -528,9 +574,33 @@ export default function StoryDetailScreen({
               pressed && styles.controlDiscPressed,
             ]}
           >
-            <X size={20} color={chrome.text} />
+            <X size={20} color={colors.strong} />
           </Pressable>
           <View style={styles.heroActionCluster}>
+            {/*
+              COMMENTS LIVE UP HERE NOW, beside save and share, the way every
+              reading app puts the speech bubble next to the heart. The thread
+              used to be a slab at the bottom of the page that a reader had to
+              scroll the whole story past to reach; as an icon it is one tap
+              from the top and the count says whether it is worth the tap.
+            */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={commentCount === null
+                ? "Open comments"
+                : `Open comments, ${commentsLabel}`}
+              onPress={openComments}
+              style={({ pressed }) => [
+                styles.controlDisc,
+                commentCount !== null && styles.controlPill,
+                pressed && styles.controlDiscPressed,
+              ]}
+            >
+              <MessageCircle size={20} color={colors.strong} />
+              {commentCount !== null && (
+                <Text style={styles.controlCount}>{formatNumber(commentCount)}</Text>
+              )}
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={isSaved ? "Remove saved story" : "Save story"}
@@ -540,10 +610,17 @@ export default function StoryDetailScreen({
                 pressed && styles.controlDiscPressed,
               ]}
             >
+              {/*
+                `accentPressed`, not `accent`, for the filled state. The disc
+                is near-white over any cover, and #FF6B1A on white is 2.85:1 -
+                under the 3:1 WCAG floor for a graphical object, which for a
+                filled star means the "saved" state is the state hardest to
+                see. The darker step of the same orange clears it.
+              */}
               <Star
                 size={20}
-                color={isSaved ? chrome.star : chrome.text}
-                fill={isSaved ? chrome.star : "none"}
+                color={isSaved ? colors.accentPressed : colors.strong}
+                fill={isSaved ? colors.accentPressed : "none"}
               />
             </Pressable>
             <Pressable
@@ -555,7 +632,7 @@ export default function StoryDetailScreen({
                 pressed && styles.controlDiscPressed,
               ]}
             >
-              <Share2 size={20} color={chrome.text} />
+              <Share2 size={20} color={colors.strong} />
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -566,7 +643,7 @@ export default function StoryDetailScreen({
                 pressed && styles.controlDiscPressed,
               ]}
             >
-              <Ellipsis size={20} color={chrome.text} />
+              <Ellipsis size={20} color={colors.strong} />
             </Pressable>
           </View>
         </View>
@@ -595,27 +672,14 @@ export default function StoryDetailScreen({
               {" · "}
               {storyPublishedDate(story)}
               {" · "}
-              {/*
-                One string, not a number and a noun side by side. Split across
-                two children it renders as two text nodes with a space between
-                them, which a screen reader may pause inside and which no
-                assertion about the sentence can match.
-              */}
-              {`${formatNumber(likeCount)} ${likeCount === 1 ? "like" : "likes"}`}
-              {" · "}
-              <Text
-                style={styles.metaLink}
-                accessibilityRole="link"
-                accessibilityLabel="Open comments"
-                onPress={openComments}
-              >
-                {commentsLabel}
-              </Text>
-              {" · "}
               {storyProgressLabel(story)}
               {showsPublic ? " · Public" : ""}
             </Text>
 
+            {/*
+              GENRES ONLY. Themes and the spice level used to ride in this row
+              and drowned the one word that told a reader what they had opened.
+            */}
             <View style={styles.chipRow}>
               {chips.map((chip) => (
                 <View key={chip} style={styles.chip}>
@@ -624,7 +688,7 @@ export default function StoryDetailScreen({
               ))}
               {showsPublic && (
                 <View style={[styles.chip, styles.publicChip]} accessibilityLabel="Public story">
-                  <Globe size={14} color={chrome.text} />
+                  <Globe size={14} color={colors.strong} />
                   <Text style={styles.chipText}>Public</Text>
                 </View>
               )}
@@ -633,6 +697,28 @@ export default function StoryDetailScreen({
             {!!storyHook(story) && (
               <Text style={styles.summary}>
                 {storyHook(story)}
+              </Text>
+            )}
+
+            {isEducational(story) && (
+              /*
+                An Educational story is fiction, and says so.
+
+                The genre's prompt module works hard at accuracy -- it tells the
+                model to state a mechanism only when it is certain and to choose
+                the plainer true version over the impressive specific one -- but
+                that is guidance to a generator, not a fact check, and nothing
+                in the pipeline verifies a single claim. A confident wrong date
+                or mechanism reaches a reader through the ordinary publication
+                path looking exactly like a correct one.
+
+                It survived the strip-down of this page while the "About this
+                story" block around it did not, because it is the one line here
+                that a reader needs BEFORE they decide to read.
+              */
+              <Text style={styles.educationalNote} accessibilityRole="text">
+                This story is fiction written by AI. Facts in it are not
+                verified — check anything you plan to rely on.
               </Text>
             )}
           </View>
@@ -670,31 +756,19 @@ export default function StoryDetailScreen({
               {pdfToast}
             </Text>
           )}
-
-          <View style={styles.statsGroup}>
-            <View style={styles.statRow}>
-              <Stat Icon={BookOpen} value={story.views} label="reads" />
-              <Stat
-                Icon={Heart}
-                value={likeCount}
-                label="likes"
-                active={isLiked}
-                onPress={handleLike}
-              />
-              <Stat
-                Icon={isSaved ? BookmarkCheck : Bookmark}
-                value={saveCount}
-                label="saves"
-                active={isSaved}
-                onPress={handleSave}
-              />
+          {shareToast && (
+            <View style={styles.toast}>
+              <Text style={styles.toastText}>Copied to clipboard</Text>
             </View>
-            {shareToast && (
-              <View style={styles.toast}>
-                <Text style={styles.toastText}>Copied to clipboard</Text>
-              </View>
-            )}
-          </View>
+          )}
+
+          {/*
+            THE STAT ROW IS GONE. Reads / likes / saves sat here as three big
+            numbers under the CTAs. The star at the top of the page already
+            means "save", so two of them were the same control twice; and a
+            read count on a product with no readers yet is a number that can
+            only ever argue against opening the story.
+          */}
 
           <View style={styles.divider} />
 
@@ -732,7 +806,6 @@ export default function StoryDetailScreen({
                 </Pressable>
               )}
             </Pressable>
-            <Text style={styles.synopsis}>{story.synopsis}</Text>
           </View>
 
           {hasMultipleChapters && (
@@ -760,67 +833,20 @@ export default function StoryDetailScreen({
                     <Text style={styles.chapterRowTitle} numberOfLines={1}>
                       {chapter.title}
                     </Text>
-                    <ChevronRight size={18} color={chrome.muted} />
+                    <ChevronRight size={18} color={colors.tertiary} />
                   </Pressable>
                 ))}
               </View>
             </>
           )}
 
-          <View style={styles.divider} />
-
-          <View style={styles.metaGroup}>
-            <Text style={styles.sectionEyebrow}>ABOUT THIS STORY</Text>
-            <MetaRow label="Genre" value={genreLabels[story.primaryGenre ?? story.genre]} />
-            {story.tags.length > 0 && (
-              <MetaRow label="Tags" value={story.tags.join(", ")} />
-            )}
-            <MetaRow label="Language" value={story.language} />
-            {story.contentRating && (
-              <MetaRow label="Content rating" value={story.contentRating} />
-            )}
-            <MetaRow label="Chapters" value={String(story.chapters.length)} />
-            {isEducational(story) && (
-              /*
-                An Educational story is fiction, and says so.
-
-                The genre's prompt module works hard at accuracy -- it tells the
-                model to state a mechanism only when it is certain and to choose
-                the plainer true version over the impressive specific one -- but
-                that is guidance to a generator, not a fact check, and nothing
-                in the pipeline verifies a single claim. A confident wrong date
-                or mechanism reaches a reader through the ordinary publication
-                path looking exactly like a correct one.
-
-                Prompt guidance cannot close that gap; only a reader who knows
-                what they are holding can. So the one thing the product can
-                honestly promise -- that this was written by a model and is not
-                checked -- is stated where the reader decides whether to read
-                it, rather than left for them to assume.
-              */
-              <Text style={styles.educationalNote} accessibilityRole="text">
-                This story is fiction written by AI. Facts in it are not
-                verified — check anything you plan to rely on.
-              </Text>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
           {/*
-            The inline preview. The full thread lives in the sheet (below);
-            this instance is what keeps the count on the meta line honest and
-            gives a reader who scrolled this far a place to comment without a
-            second tap.
+            "About this story", the prompt block and the inline comment thread
+            all used to sit below here. The first two restated the chips and
+            the summary in a two-column table; the third put a whole thread at
+            the bottom of a page whose job is to get someone into the story.
+            The comments icon at the top is the door now.
           */}
-          <View style={styles.commentsAnchor}>
-            <CommentThread
-              storyId={story.id}
-              authorName={author.displayName}
-              tone="dark"
-              onCountChange={setCommentCount}
-            />
-          </View>
         </View>
       </ScrollView>
 
@@ -844,31 +870,103 @@ export default function StoryDetailScreen({
         {/*
           Mounted only while the sheet is open. A `Modal` keeps its children
           mounted whether or not it is visible, so rendering the thread
-          unconditionally meant every story page fetched the same comments
-          twice - once for the preview the reader can see, once for a sheet
-          they had not opened.
+          unconditionally meant every story page fetched a thread nobody had
+          asked to see.
         */}
         {commentsOpen && (
           <CommentThread
             storyId={story.id}
             authorName={author.displayName}
-            tone="dark"
             composerPosition="bottom"
             onCountChange={setCommentCount}
+            canEngage={canEngage}
+            onRequireSignIn={() => {
+              setCommentsOpen(false);
+              setSignInPrompt("join the conversation");
+            }}
+            onAuthorPress={onAuthor}
           />
         )}
       </CommentsSheet>
+
+      <SignInPrompt
+        action={signInPrompt}
+        onClose={() => setSignInPrompt(null)}
+        onSignIn={() => {
+          setSignInPrompt(null);
+          onSignIn?.();
+        }}
+      />
     </View>
   );
 }
 
 /**
- * The comments sheet: the thread on a raised dark surface over the page.
+ * The sign-in wall.
+ *
+ * It names the thing the reader was trying to do, because "Sign in to
+ * continue" over a story page tells them nothing about why they were stopped.
+ * Dismissing it returns them to the story: reading never needed an account and
+ * this must not read as a gate on the story itself.
+ */
+export function SignInPrompt({
+  action,
+  onClose,
+  onSignIn,
+}: {
+  action: string | null;
+  onClose: () => void;
+  onSignIn: () => void;
+}) {
+  return (
+    <Modal
+      visible={action !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.promptRoot}>
+        <Pressable
+          style={styles.promptBackdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+        />
+        <View style={styles.promptCard} accessibilityRole="alert">
+          <Text style={styles.promptTitle}>Sign in to {action}</Text>
+          <Text style={styles.promptBody}>
+            Reading is open to everyone. Saving, following and commenting need
+            an account, so your library and your words are still here next time.
+          </Text>
+          <Pressable
+            onPress={onSignIn}
+            style={styles.promptPrimary}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in"
+          >
+            <Text style={styles.promptPrimaryLabel}>Sign in</Text>
+          </Pressable>
+          <Pressable
+            onPress={onClose}
+            style={styles.promptSecondary}
+            accessibilityRole="button"
+            accessibilityLabel="Keep reading"
+          >
+            <Text style={styles.promptSecondaryLabel}>Keep reading</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * The comments sheet: the thread on a raised surface over the page.
  *
  * A `Modal` rather than an in-page panel so it sits above the hero and the
  * status bar and dismisses with the hardware back. The header carries the
- * count the meta line already showed, so opening the sheet confirms the tap
- * rather than restating it in a new shape.
+ * count the icon already showed, so opening the sheet confirms the tap rather
+ * than restating it in a new shape.
  */
 function CommentsSheet({
   visible,
@@ -925,7 +1023,7 @@ function CommentsSheet({
                 pressed && styles.pressed,
               ]}
             >
-              <X size={20} color={chrome.muted} />
+              <X size={20} color={colors.muted} />
             </Pressable>
           </View>
           <ScrollView
@@ -945,7 +1043,7 @@ function CommentsSheet({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: chrome.surface,
+    backgroundColor: colors.bg,
   },
   scrollContent: {
     flexGrow: 1,
@@ -956,7 +1054,7 @@ const styles = StyleSheet.create({
     width: "100%",
     overflow: "hidden",
     position: "relative",
-    backgroundColor: chrome.surface,
+    backgroundColor: colors.bg,
   },
   heroFade: {
     position: "absolute",
@@ -964,18 +1062,37 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  heroTopScrim: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 120,
+  },
   controlDisc: {
-    width: 40,
-    height: 40,
     minWidth: 44,
     minHeight: 44,
-    borderRadius: 22,
-    backgroundColor: hexToRgba(chrome.surface, CONTROL_DISC_ALPHA),
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: hexToRgba(colors.surface, CONTROL_DISC_ALPHA),
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    boxShadow: shadows.card,
+  },
+  /* Widens when it carries a number beside the glyph. */
+  controlPill: {
+    paddingHorizontal: spacing.md,
+  },
+  controlCount: {
+    ...type.caption,
+    fontWeight: "700",
+    color: colors.strong,
   },
   controlDiscPressed: {
-    backgroundColor: hexToRgba(chrome.surface, 0.8),
+    backgroundColor: colors.surface,
+    opacity: 0.9,
   },
   heroCloseButton: {
     position: "absolute",
@@ -1012,16 +1129,16 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: "700",
     letterSpacing: 0,
-    color: chrome.text,
+    color: colors.ink,
   },
   metaLine: {
     ...type.subhead,
     lineHeight: 22,
     letterSpacing: 0,
-    color: chrome.muted,
+    color: colors.muted,
   },
   metaLink: {
-    color: chrome.text,
+    color: colors.ink,
     textDecorationLine: "underline",
   },
   chipRow: {
@@ -1034,25 +1151,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: chrome.border,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: spacing.xs,
   },
   publicChip: {
-    borderColor: chrome.muted,
+    borderColor: colors.borderStrong,
   },
   chipText: {
     ...type.subhead,
     letterSpacing: 0,
-    color: chrome.text,
+    color: colors.ink,
   },
   summary: {
     ...type.body,
     lineHeight: 24,
     letterSpacing: 0,
-    color: chrome.text,
+    color: colors.ink,
   },
   primaryActions: {
     flexDirection: "row",
@@ -1060,8 +1177,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.betweenGroups,
   },
 
-  /* Primary CTAs. Both solid: on a dark ground an outlined twin reads as
-     disabled, and Listen is not. */
   cta: {
     flex: 1,
     minHeight: 56,
@@ -1081,54 +1196,27 @@ const styles = StyleSheet.create({
   listenNotice: {
     ...type.subhead,
     letterSpacing: 0,
-    color: chrome.muted,
+    color: colors.muted,
     marginTop: spacing.related,
-  },
-
-  /* Stats */
-  statsGroup: {
-    marginTop: spacing.betweenGroups,
-    gap: spacing.related,
-  },
-  statRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  statPressable: {
-    borderRadius: radius.md,
-  },
-  stat: {
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
-  statValue: {
-    ...type.subhead,
-    fontWeight: "700",
-    color: chrome.text,
-  },
-  statLabel: {
-    ...type.caption,
-    color: chrome.muted,
   },
   toast: {
     alignSelf: "center",
+    marginTop: spacing.related,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
-    backgroundColor: chrome.text,
+    backgroundColor: colors.ink,
   },
   toastText: {
     ...type.caption,
     fontWeight: "600",
-    color: chrome.surface,
+    color: colors.surface,
   },
 
   /* Hairlines part groups on one surface; never a border on a box. */
   divider: {
     height: 1,
-    backgroundColor: chrome.border,
+    backgroundColor: colors.track,
     marginVertical: spacing.betweenGroups,
   },
 
@@ -1145,14 +1233,14 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: chrome.track,
+    backgroundColor: colors.surface2,
     alignItems: "center",
     justifyContent: "center",
   },
   authorAvatarInitial: {
     ...type.headline,
     fontFamily: fonts.display,
-    color: chrome.text,
+    color: colors.ink,
   },
   authorInfo: {
     flex: 1,
@@ -1161,34 +1249,30 @@ const styles = StyleSheet.create({
   authorName: {
     ...type.subhead,
     fontWeight: "700",
-    color: chrome.text,
+    color: colors.ink,
   },
   authorHandle: {
     ...type.caption,
-    color: chrome.muted,
+    color: colors.muted,
   },
   followButton: {
     minHeight: 36,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
-    backgroundColor: chrome.text,
+    backgroundColor: colors.ink,
     alignItems: "center",
     justifyContent: "center",
   },
   followButtonActive: {
-    backgroundColor: chrome.track,
+    backgroundColor: colors.surface2,
   },
   followButtonText: {
     ...type.caption,
     fontWeight: "700",
-    color: chrome.surface,
+    color: colors.surface,
   },
   followButtonTextActive: {
-    color: chrome.text,
-  },
-  synopsis: {
-    ...type.body,
-    color: chrome.muted,
+    color: colors.ink,
   },
 
   /* Chapter list */
@@ -1197,15 +1281,14 @@ const styles = StyleSheet.create({
   },
   educationalNote: {
     ...type.caption,
-    color: chrome.muted,
-    marginTop: spacing.md,
+    color: colors.muted,
     lineHeight: 18,
   },
   sectionEyebrow: {
     ...type.caption,
     fontWeight: "700",
     letterSpacing: 1.1,
-    color: chrome.muted,
+    color: colors.muted,
     marginBottom: spacing.md,
   },
   chapterRow: {
@@ -1216,50 +1299,78 @@ const styles = StyleSheet.create({
   },
   chapterRowDivider: {
     borderTopWidth: 1,
-    borderTopColor: chrome.border,
+    borderTopColor: colors.track,
   },
   chapterNumberBadge: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: chrome.track,
+    backgroundColor: colors.surface2,
     alignItems: "center",
     justifyContent: "center",
   },
   chapterNumberText: {
     ...type.caption,
     fontWeight: "700",
-    color: chrome.text,
+    color: colors.ink,
   },
   chapterRowTitle: {
     ...type.body,
     flex: 1,
-    color: chrome.text,
+    color: colors.ink,
   },
 
-  /* Metadata */
-  metaGroup: {
+  /* ── Sign-in wall ── */
+  promptRoot: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  promptBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.ink,
+    opacity: 0.5,
+  },
+  promptCard: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
     gap: spacing.related,
+    boxShadow: shadows.overlay,
   },
-  metaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: spacing.md,
+  promptTitle: {
+    ...type.headline,
+    color: colors.ink,
   },
-  metaLabel: {
+  promptBody: {
     ...type.subhead,
-    color: chrome.muted,
+    color: colors.muted,
+    marginBottom: spacing.related,
   },
-  metaValue: {
-    ...type.subhead,
-    fontWeight: "600",
-    color: chrome.text,
-    flexShrink: 1,
-    textAlign: "right",
+  promptPrimary: {
+    minHeight: 48,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
-
-  commentsAnchor: {
-    marginTop: 0,
+  promptPrimaryLabel: {
+    ...type.body,
+    fontWeight: "700",
+    color: colors.surface,
+  },
+  promptSecondary: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promptSecondaryLabel: {
+    ...type.body,
+    fontWeight: "700",
+    color: colors.muted,
   },
 
   /* ── Comments sheet ── */
@@ -1273,18 +1384,19 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   sheet: {
-    backgroundColor: chrome.raised,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingTop: spacing.md,
     paddingHorizontal: spacing.xl,
+    boxShadow: shadows.overlay,
   },
   sheetHandle: {
     alignSelf: "center",
     width: 36,
     height: 4,
     borderRadius: radius.pill,
-    backgroundColor: chrome.border,
+    backgroundColor: colors.borderStrong,
     marginBottom: spacing.lg,
   },
   sheetHeader: {
@@ -1300,7 +1412,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 30,
     fontWeight: "600",
-    color: chrome.text,
+    color: colors.ink,
   },
   sheetClose: {
     width: 44,

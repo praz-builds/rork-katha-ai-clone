@@ -30,6 +30,12 @@ export const REPORT_REASONS: readonly { id: ReportReason; label: string }[] = [
 
 export interface CommentNode {
   id: string;
+  /**
+   * The commenter's user id, when the wire carried one. The byline and the
+   * avatar are tappable and route to that person; without an id there is
+   * nowhere to go, so the row renders the name as plain text instead.
+   */
+  authorId?: string;
   authorName: string;
   body: string;
   /** Epoch ms, used only to order "New". */
@@ -103,6 +109,34 @@ export function applyVote(
     ...node,
     voteState: node.voteState === direction ? "none" : direction,
   }));
+}
+
+/**
+ * Remove one comment from the tree, wherever it sits.
+ *
+ * Used to take back an OPTIMISTIC comment whose write failed. Without it the
+ * failed comment stayed on screen looking posted: the writer saw their words
+ * in the thread, closed the app, and came back to find them gone. Its replies
+ * come with it, which is correct - a local comment that was never saved cannot
+ * have server-side children.
+ */
+export function removeComment(tree: CommentNode[], id: string): CommentNode[] {
+  const next: CommentNode[] = [];
+  let changed = false;
+  for (const node of tree) {
+    if (node.id === id) {
+      changed = true;
+      continue;
+    }
+    const replies = removeComment(node.replies, id);
+    if (replies !== node.replies) {
+      changed = true;
+      next.push({ ...node, replies });
+    } else {
+      next.push(node);
+    }
+  }
+  return changed ? next : tree;
 }
 
 /** Toggle whether a comment's subtree is collapsed. */

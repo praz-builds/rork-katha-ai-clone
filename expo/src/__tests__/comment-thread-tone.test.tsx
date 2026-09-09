@@ -75,13 +75,20 @@ it("shows no chapter tag when the server did not say", async () => {
   expect(view.queryByText(/^Chapter /)).toBeNull();
 });
 
-it("names the overflow action 'Report' on the dark sheet and keeps the glyph on the light page", async () => {
-  const dark = await renderRow(node(), "dark");
-  expect(dark.getByText("Report")).toBeTruthy();
-
-  const light = await renderRow(node(), "light");
-  expect(light.queryByText("Report")).toBeNull();
-  expect(light.getByLabelText("More actions for toma's comment")).toBeTruthy();
+/**
+ * Report is never a button on the row.
+ *
+ * It used to be one on the dark sheet - a word sitting next to Reply - and it
+ * was used the way a one-tap button next to a stranger's opinion is always
+ * used. It is behind the three-dot menu in both tones now, and the row itself
+ * offers no way to report anything.
+ */
+it("puts Report behind the three-dot menu in both tones, never on the row", async () => {
+  for (const tone of ["light", "dark"] as const) {
+    const view = await renderRow(node(), tone);
+    expect(view.queryByText("Report")).toBeNull();
+    expect(view.getByLabelText("More actions for toma's comment")).toBeTruthy();
+  }
 });
 
 it("keeps the count reported to the caller in step with the thread", async () => {
