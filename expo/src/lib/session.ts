@@ -1,3 +1,4 @@
+import { setViewerId } from "@/lib/ownership";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 export type BootstrappedUser = {
@@ -108,6 +109,10 @@ async function callBootstrap(accessToken: string): Promise<BootstrappedUser> {
   ) {
     throw new Error("User bootstrap returned an invalid response");
   }
+
+  // The one place the client learns who it is. Ownership checks (Edit is
+  // author-only) compare `story.authorId` against this.
+  setViewerId(payload.user_id);
 
   return {
     userId: payload.user_id,

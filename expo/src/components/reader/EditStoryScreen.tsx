@@ -1,75 +1,47 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import {
-  ChevronLeft,
-  RotateCcw,
-  Search,
-  Wand2,
-  X,
-} from "lucide-react-native";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { ChevronLeft } from "lucide-react-native";
+import { colors, fonts, motion, radius, spacing, type } from "@/theme";
 import { useChapterEditor } from "@/components/reader/useChapterEditor";
 import type { Chapter, Story } from "@/types/domain";
 
 export type EditStoryScreenProps = {
   story: Story;
   chapter: Chapter;
-  /** Open with the AI prompt bar already showing - the `onReimagine` entry point. */
-  initialWandOpen?: boolean;
-  /** Fires once, when the editor is dismissed, with whatever text is on screen. */
-  onClose: (content: string) => void;
+  /**
+   * Fires once, when the editor is dismissed. Carries the saved text when the
+   * writer saved, and `null` when they left without changing anything or
+   * discarded what they had typed - so the reader never shows text the server
+   * does not hold.
+   */
+  onClose: (savedContent: string | null) => void;
 };
 
-/** Which `\n\n`-separated paragraph an offset into the joined text falls inside. */
-function paragraphIndexAtOffset(text: string, offset: number): number {
-  const paragraphs = text.split("\n\n");
-  let cursor = 0;
-  for (let index = 0; index < paragraphs.length; index += 1) {
-    const end = cursor + paragraphs[index].length;
-    if (offset <= end) return index;
-    cursor = end + 2; // the "\n\n" separator
-  }
-  return Math.max(0, paragraphs.length - 1);
-}
-
-function findMatches(text: string, query: string): { start: number; end: number }[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return [];
-  const haystack = text.toLowerCase();
-  const matches: { start: number; end: number }[] = [];
-  let index = haystack.indexOf(needle);
-  while (index >= 0) {
-    matches.push({ start: index, end: index + needle.length });
-    index = haystack.indexOf(needle, index + needle.length);
-  }
-  return matches;
-}
+/** How long "Saved" stays in the header before the editor closes itself. */
+const SAVED_DWELL_MS = motion.slow * 3;
 
 /**
- * The full-screen chapter editor opened from `ReaderChrome`'s `onEdit` and
- * `onReimagine`.
+ * The notepad. The whole chapter as one editable text, vertical, with Save.
  *
- * Version history is not a feature here: `useChapterEditor` holds exactly one
- * prior version in memory, and closing this screen drops it for good. There
- * is nothing to load back from a server on reopen beyond the chapter's
- * current saved content.
+ * This deliberately does nothing else. There is no find bar, no AI rewrite
+ * prompt, no per-paragraph action - rewriting a chapter with a prompt is
+ * Reimagine's job, reached from the same chrome, and an editor that also
+ * offered it read as two half-features in one screen. Here the writer goes to
+ * a line, changes a word, and saves.
  */
 export function EditStoryScreen({
   story,
   chapter,
-  initialWandOpen = false,
   onClose,
 }: EditStoryScreenProps) {
   const reducedMotion = useReducedMotion();
@@ -83,83 +55,52 @@ export function EditStoryScreen({
     initialContent,
     isPublished: chapter.isPublished,
   });
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isStandalone = story.storyMode === "standalone";
 
-  const [wandOpen, setWandOpen] = useState(initialWandOpen);
-  const [prompt, setPrompt] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeMatch, setActiveMatch] = useState(0);
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    };
+  }, []);
 
-  const selectionRef = useRef({ start: 0, end: 0 });
-  const inputRef = useRef<TextInput>(null);
-  const closingRef = useRef(false);
-
-  const matches = useMemo(
-    () => findMatches(editor.text, searchQuery),
-    [editor.text, searchQuery],
-  );
-
-  const jumpToMatch = useCallback((direction: 1 | -1) => {
-    if (matches.length === 0) return;
-    const next = (activeMatch + direction + matches.length) % matches.length;
-    setActiveMatch(next);
-    const match = matches[next];
-    inputRef.current?.setNativeProps({ selection: match });
-    inputRef.current?.focus();
-  }, [activeMatch, matches]);
-
-  const handleSubmitPrompt = useCallback(() => {
-    const trimmed = prompt.trim();
-    if (!trimmed) return;
-    const paragraphIndex = paragraphIndexAtOffset(
-      editor.text,
-      selectionRef.current.start,
-    );
-    editor.regenerate(paragraphIndex, trimmed);
-  }, [editor, prompt]);
-
-  const handleClose = useCallback(async () => {
-    // Guards against a double tap (or the header button and the hardware
-    // back button firing together) racing two flush attempts.
-    if (closingRef.current) return;
-    closingRef.current = true;
-    try {
-      // Closing must flush a pending debounced edit rather than cancel it -
-      // waiting here is what turns "the debounce timer never got to fire"
-      // into an actual save attempt before the editor goes away.
-      const saved = await editor.flushPendingSave();
-      if (!saved) {
-        // The flush failed (or an earlier save had already failed and was
-        // still waiting to be retried). Closing anyway would hand the
-        // reader screen text that was never actually persisted, with no
-        // indication anything went wrong - the exact illusion of a
-        // successful save this must not create. Ask, rather than assume.
-        closingRef.current = false;
-        Alert.alert(
-          "Couldn't save your edit",
-          "Your last change couldn't be saved. Keep editing to try again, or discard it and close.",
-          [
-            { text: "Keep Editing", style: "cancel" },
-            {
-              text: "Discard & Close",
-              style: "destructive",
-              onPress: () => onClose(editor.getLastSavedText()),
-            },
-          ],
-        );
-        return;
-      }
-      onClose(editor.text);
-    } finally {
-      closingRef.current = false;
-    }
+  const handleSave = useCallback(async () => {
+    const saved = await editor.save();
+    if (!saved) return;
+    // "Saved" is shown where the button was, then the reader gets their page
+    // back on its own. A second tap on Save during the dwell is harmless: the
+    // text is already the saved text, so `save` resolves without a request.
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => {
+      onClose(editor.getLastSavedText());
+    }, SAVED_DWELL_MS);
   }, [editor, onClose]);
+
+  const handleBack = useCallback(() => {
+    if (editor.status === "saving") return;
+    if (editor.dirty) {
+      // Asked inline rather than with `Alert.alert`, which is a no-op on the
+      // web build - a discard prompt that never appears would trap the writer
+      // in the editor with no way out but saving.
+      setConfirmingDiscard(true);
+      return;
+    }
+    onClose(null);
+  }, [editor.dirty, editor.status, onClose]);
+
+  const saveLabel = editor.status === "saving"
+    ? "Saving"
+    : editor.status === "saved" && !editor.dirty
+    ? "Saved"
+    : "Save";
+  const saveDisabled = !editor.dirty || editor.status === "saving";
 
   return (
     <Modal
       visible
       animationType={reducedMotion ? "none" : "slide"}
-      onRequestClose={handleClose}
+      onRequestClose={handleBack}
       presentationStyle="fullScreen"
     >
       <KeyboardAvoidingView
@@ -168,172 +109,99 @@ export function EditStoryScreen({
       >
         <View style={styles.header}>
           <Pressable
-            onPress={handleClose}
+            onPress={handleBack}
             accessibilityRole="button"
-            accessibilityLabel="Close editor"
+            accessibilityLabel="Back"
             hitSlop={8}
             style={styles.iconButton}
           >
             <ChevronLeft size={22} color={colors.ink} />
           </Pressable>
-          <Text style={styles.headerTitle} numberOfLines={1}>Edit Story</Text>
-          <View style={styles.headerActions}>
-            {editor.canRevert ? (
-              <Pressable
-                onPress={editor.revert}
-                accessibilityRole="button"
-                accessibilityLabel="Revert to previous version"
-                hitSlop={8}
-                style={styles.iconButton}
-              >
-                <RotateCcw size={20} color={colors.strong} />
-              </Pressable>
-            ) : null}
-            <Pressable
-              onPress={() => setWandOpen((open) => !open)}
-              accessibilityRole="button"
-              accessibilityLabel={wandOpen ? "Close AI rewrite" : "Rewrite with AI"}
-              hitSlop={8}
-              style={styles.iconButton}
-            >
-              {wandOpen ? <X size={20} color={colors.ink} /> : <Wand2 size={20} color={colors.strong} />}
-            </Pressable>
-            <Pressable
-              onPress={() => setSearchOpen((open) => !open)}
-              accessibilityRole="button"
-              accessibilityLabel={searchOpen ? "Close search" : "Search chapter"}
-              hitSlop={8}
-              style={styles.iconButton}
-            >
-              {searchOpen ? <X size={20} color={colors.ink} /> : <Search size={20} color={colors.strong} />}
-            </Pressable>
-          </View>
-        </View>
-
-        {wandOpen ? (
-          <View style={styles.promptBar}>
-            <TextInput
-              value={prompt}
-              onChangeText={setPrompt}
-              placeholder="Tell the AI what to change in this passage"
-              placeholderTextColor={colors.tertiary}
-              accessibilityLabel="AI rewrite prompt"
-              style={styles.promptInput}
-              multiline
-              editable={editor.regenerateStatus !== "regenerating"}
-            />
-            <Pressable
-              onPress={handleSubmitPrompt}
-              accessibilityRole="button"
-              accessibilityLabel="Rewrite with AI"
-              hitSlop={8}
-              disabled={editor.regenerateStatus === "regenerating" || !prompt.trim()}
+          <Text style={styles.headerTitle} numberOfLines={1}>Edit chapter</Text>
+          <Pressable
+            onPress={handleSave}
+            disabled={saveDisabled}
+            accessibilityRole="button"
+            accessibilityLabel="Save chapter"
+            accessibilityState={{ disabled: saveDisabled, busy: editor.status === "saving" }}
+            hitSlop={8}
+            style={styles.saveButton}
+            testID="edit-chapter-save"
+          >
+            <Text
               style={[
-                styles.promptSubmit,
-                (editor.regenerateStatus === "regenerating" || !prompt.trim()) &&
-                  styles.promptSubmitDisabled,
+                styles.saveText,
+                saveDisabled && styles.saveTextDisabled,
+                editor.status === "saved" && !editor.dirty && styles.saveTextDone,
               ]}
             >
-              <Wand2 size={18} color={colors.surface} />
-            </Pressable>
+              {saveLabel}
+            </Text>
+          </Pressable>
+        </View>
+
+        {confirmingDiscard ? (
+          <View style={styles.discardBar} accessibilityRole="alert">
+            <Text style={styles.discardText}>Discard changes?</Text>
+            <View style={styles.discardActions}>
+              <Pressable
+                onPress={() => setConfirmingDiscard(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Keep editing"
+                style={styles.discardAction}
+              >
+                <Text style={styles.discardKeep}>Keep editing</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => onClose(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Discard changes"
+                style={styles.discardAction}
+              >
+                <Text style={styles.discardConfirm}>Discard</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
-        {editor.regenerateStatus === "error" ? (
-          <View style={styles.statusBanner}>
-            <Text style={styles.statusBannerText}>
-              {editor.regenerateError ?? "Could not regenerate that passage."}
+
+        {editor.status === "error" ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>
+              {editor.error ?? "Could not save your edit."}
             </Text>
             <Pressable
-              onPress={editor.retryRegenerate}
+              onPress={handleSave}
               accessibilityRole="button"
-              accessibilityLabel="Retry AI rewrite"
-              style={styles.statusRetry}
+              accessibilityLabel="Retry save"
+              style={styles.retry}
             >
-              <Text style={styles.statusRetryText}>Retry</Text>
+              <Text style={styles.retryText}>Retry</Text>
             </Pressable>
           </View>
         ) : null}
 
-        {searchOpen ? (
-          <View style={styles.findBar}>
-            <TextInput
-              value={searchQuery}
-              onChangeText={(next) => {
-                setSearchQuery(next);
-                setActiveMatch(0);
-              }}
-              placeholder="Find in chapter"
-              placeholderTextColor={colors.tertiary}
-              accessibilityLabel="Find in chapter"
-              style={styles.findInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.findCount}>
-              {searchQuery.trim()
-                ? `${matches.length === 0 ? 0 : activeMatch + 1} of ${matches.length}`
-                : "Find"}
-            </Text>
-            <Pressable
-              onPress={() => jumpToMatch(-1)}
-              accessibilityRole="button"
-              accessibilityLabel="Previous match"
-              hitSlop={8}
-              style={styles.findButton}
-            >
-              <ChevronLeft size={18} color={colors.strong} />
-            </Pressable>
-            <Pressable
-              onPress={() => jumpToMatch(1)}
-              accessibilityRole="button"
-              accessibilityLabel="Next match"
-              hitSlop={8}
-              style={styles.findButton}
-            >
-              <ChevronLeft size={18} color={colors.strong} style={{ transform: [{ rotate: "180deg" }] }} />
-            </Pressable>
-          </View>
-        ) : null}
-
-        <ScrollView
-          style={styles.body}
-          contentContainerStyle={styles.bodyContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={styles.storyTitle} numberOfLines={2}>{story.title}</Text>
+        <View style={styles.body}>
+          <Text style={styles.storyTitle} numberOfLines={1}>{story.title}</Text>
+          {/* The chapter title is shown, not edited: the save path carries
+            * chapter text only, and a title field that looked editable but
+            * never reached the server would be the same kind of dead control
+            * the notepad exists to be rid of. */}
+          {!isStandalone && chapter.title ? (
+            <Text style={styles.chapterTitle} numberOfLines={2}>{chapter.title}</Text>
+          ) : null}
           <TextInput
-            ref={inputRef}
             value={editor.text}
-            onChangeText={editor.onChangeText}
-            onSelectionChange={(event) => {
-              selectionRef.current = event.nativeEvent.selection;
-            }}
+            onChangeText={editor.setText}
             multiline
+            scrollEnabled
+            autoCorrect
+            editable={editor.status !== "saving"}
             accessibilityLabel="Chapter text"
             style={styles.chapterInput}
             textAlignVertical="top"
+            keyboardType="default"
           />
-        </ScrollView>
-
-        {editor.saveStatus === "saving" ? (
-          <View style={styles.saveBanner}>
-            <Text style={styles.saveBannerText}>Saving...</Text>
-          </View>
-        ) : editor.saveStatus === "error" ? (
-          <View style={[styles.saveBanner, styles.saveBannerError]}>
-            <Text style={styles.saveBannerText}>
-              {editor.saveError ?? "Could not save your edit."}
-            </Text>
-            <Pressable
-              onPress={editor.retrySave}
-              accessibilityRole="button"
-              accessibilityLabel="Retry save"
-              style={styles.statusRetry}
-            >
-              <Text style={styles.statusRetryText}>Retry</Text>
-            </Pressable>
-          </View>
-        ) : null}
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -342,7 +210,7 @@ export function EditStoryScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.surface,
   },
   header: {
     minHeight: 56,
@@ -356,16 +224,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerTitle: {
+    ...type.headline,
     flex: 1,
-    fontFamily: fonts.display,
-    fontSize: 18,
+    textAlign: "center",
     color: colors.ink,
     letterSpacing: 0,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
   },
   iconButton: {
     width: 44,
@@ -374,145 +237,112 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  promptBar: {
-    flexDirection: "row",
+  saveButton: {
+    minWidth: 64,
+    height: 44,
     alignItems: "flex-end",
-    gap: spacing.sm,
+    justifyContent: "center",
+  },
+  saveText: {
+    ...type.headline,
+    color: colors.accent,
+    letterSpacing: 0,
+  },
+  saveTextDisabled: {
+    color: colors.tertiary,
+  },
+  saveTextDone: {
+    color: colors.success,
+  },
+  discardBar: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.accentSoft,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+    gap: spacing.sm,
   },
-  promptInput: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 120,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    fontFamily: fonts.ui,
-    fontSize: 15,
+  discardText: {
+    ...type.headline,
     color: colors.ink,
     letterSpacing: 0,
   },
-  promptSubmit: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  promptSubmitDisabled: {
-    backgroundColor: colors.tertiary,
-  },
-  findBar: {
+  discardActions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingHorizontal: spacing.lg,
-    minHeight: 50,
-    backgroundColor: colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    gap: spacing.lg,
   },
-  findInput: {
-    flex: 1,
+  discardAction: {
     minHeight: 44,
-    fontFamily: fonts.ui,
-    fontSize: 15,
+    justifyContent: "center",
+  },
+  discardKeep: {
+    ...type.subhead,
+    fontWeight: "700",
     color: colors.ink,
     letterSpacing: 0,
   },
-  findCount: {
-    minWidth: 48,
-    fontFamily: fonts.ui,
-    fontSize: 12,
-    color: colors.muted,
-    textAlign: "right",
+  discardConfirm: {
+    ...type.subhead,
+    fontWeight: "700",
+    color: colors.heart,
     letterSpacing: 0,
   },
-  findButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statusBanner: {
+  errorBanner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     backgroundColor: colors.accentSoft,
   },
-  statusBannerText: {
+  errorText: {
+    ...type.subhead,
     flex: 1,
-    fontFamily: fonts.ui,
-    fontSize: 13,
     color: colors.ink,
     letterSpacing: 0,
   },
-  statusRetry: {
+  retry: {
     minHeight: 44,
     minWidth: 44,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
   },
-  statusRetryText: {
-    fontFamily: fonts.ui,
-    fontSize: 13,
+  retryText: {
+    ...type.subhead,
     fontWeight: "700",
     color: colors.accent,
     letterSpacing: 0,
   },
   body: {
     flex: 1,
-  },
-  bodyContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   storyTitle: {
+    ...type.caption,
+    color: colors.muted,
+    letterSpacing: 0,
+  },
+  chapterTitle: {
+    ...type.subhead,
     fontFamily: fonts.display,
     fontSize: 20,
     lineHeight: 26,
     color: colors.ink,
     letterSpacing: 0,
+    marginBottom: spacing.sm,
   },
   chapterInput: {
-    minHeight: 400,
+    flex: 1,
     fontFamily: fonts.reader,
     fontSize: 18,
-    lineHeight: 28,
+    lineHeight: 30,
     color: colors.ink,
     letterSpacing: 0,
-  },
-  saveBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surface2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  saveBannerError: {
-    backgroundColor: colors.accentSoft,
-  },
-  saveBannerText: {
-    flex: 1,
-    fontFamily: fonts.ui,
-    fontSize: 13,
-    color: colors.ink,
-    letterSpacing: 0,
+    paddingBottom: spacing.xxxl,
   },
 });
