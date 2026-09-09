@@ -42,6 +42,7 @@ async function publish(
   body: Record<string, unknown>,
   storyIsPublic = false,
   entityGateReason: string | null = null,
+  entityClassificationStatus: string | null = "ok",
 ): Promise<{
   status: number;
   json: Record<string, unknown>;
@@ -90,6 +91,7 @@ async function publish(
         status: "complete",
         is_public: storyIsPublic,
         entity_gate_reason: entityGateReason,
+        entity_classification_status: entityClassificationStatus,
       });
     }
     if (url.includes("/rest/v1/chapters")) {
@@ -478,6 +480,53 @@ Deno.test("a title edit on an already-public story is persisted", async () => {
       ),
       "the edited title never reached the database",
     );
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a story whose classification never answered cannot be published", async () => {
+  // The 2026-09-09 defect reaching this endpoint. `entity_gate_reason` is
+  // null both when the classifier found nobody and when it never ran, and
+  // this endpoint published on null. `entity_classification_status`
+  // (migration 00058) is the distinction, and 'unavailable' fails closed.
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, json, requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+      false,
+      null,
+      "unavailable",
+    );
+
+    assertEquals(status, 403);
+    assertEquals(json.error_code, "story_gated_private");
+    assertEquals(json.gating_reason, "classification_unavailable");
+    assert(!wentPublic(requests), "an unchecked story must not go public");
+    // An explanation, not a dead end: the copy says the story is saved and
+    // can be published later.
+    assert(String(json.error).includes("later"));
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a story from before the column existed publishes exactly as before", async () => {
+  // Null is not 'unavailable'. Every story generated before migration 00058
+  // carries null, and treating that as unchecked would lock the whole
+  // existing corpus out of publishing to close a hole only new stories can
+  // be in.
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+      false,
+      null,
+      null,
+    );
+
+    assertEquals(status, 200);
+    assert(wentPublic(requests), "a legacy story must still publish");
   } finally {
     restoreEnv(beforeEnv);
   }

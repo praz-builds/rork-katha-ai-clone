@@ -48,6 +48,29 @@ it("explains a private individual gate with its own copy", async () => {
   ).toBeTruthy();
 });
 
+it("explains an unfinished check as temporary, without claiming the idea names anyone", async () => {
+  // The 2026-09-09 defect's copy. A story that was never checked has not been
+  // judged, and the two things the writer needs to know are that it is saved
+  // and that it can go public later. Reusing the gate copy here would tell
+  // them their idea names a real living person - something no check ever said.
+  const view = await render(
+    <StoryGatedPrivateModal
+      reason="classification_unavailable"
+      onAcknowledge={jest.fn()}
+    />,
+  );
+
+  expect(view.getByText("Kept private for now")).toBeTruthy();
+  const body =
+    "Katha couldn't finish checking this story in time, so it's been kept private for now. It's saved in your library to read and continue, and you can publish it later.";
+  expect(view.getByText(body)).toBeTruthy();
+
+  // An explanation, not a warning, and not a claim about the story's content.
+  expect(body.toLowerCase()).not.toMatch(/policy|violation/);
+  expect(body.toLowerCase()).not.toMatch(/real person|someone from your own/);
+  expect(body).toMatch(/publish it later/);
+});
+
 it("exposes a single acknowledgement control with a real accessible name", async () => {
   const view = await render(
     <StoryGatedPrivateModal reason="living_public_figure" onAcknowledge={jest.fn()} />,

@@ -70,15 +70,34 @@ export class StoryShapeRequestError extends Error {
 export type StoryGatingReason = "living_public_figure" | "private_individual";
 
 /**
- * The server refused to make a story public because its idea names a real
- * living person - a public figure or a private individual - and kept the
- * story private instead. This is not a failed publish in the ordinary sense:
- * every edit was still saved, the story still exists and reads exactly as
- * before, and nothing needs to be retried. The caller's job is to explain
- * that, not to offer a retry button.
+ * Every reason a story the writer asked to publish came back private.
+ *
+ * The two gate reasons are decisions: the server read the idea, found a real
+ * living person in it, and applied the rule. `classification_unavailable` is
+ * the absence of a decision - the check itself did not finish - and it is a
+ * separate value because it means something different to the writer. The
+ * gated story will never be public; the unchecked one can be published later,
+ * unchanged, once the check runs.
+ *
+ * It exists at all because of the defect found on 2026-09-09: the check had
+ * never completed in production, and "no answer" arrived at the publish
+ * decision looking exactly like "nobody real in this idea". The backend now
+ * fails closed on that one decision and says which it was.
+ */
+export type StoryPrivateReason =
+  | StoryGatingReason
+  | "classification_unavailable";
+
+/**
+ * The server refused to make a story public - because its idea names a real
+ * living person, or because it could not finish checking - and kept the story
+ * private instead. This is not a failed publish in the ordinary sense: every
+ * edit was still saved, the story still exists and reads exactly as before,
+ * and nothing needs to be retried. The caller's job is to explain that, not to
+ * offer a retry button.
  */
 export class StoryGatedPrivateError extends Error {
-  constructor(readonly gatingReason: StoryGatingReason) {
+  constructor(readonly gatingReason: StoryPrivateReason) {
     super("This story stays private.");
     this.name = "StoryGatedPrivateError";
   }
@@ -526,7 +545,16 @@ export async function fetchMyStories(): Promise<Story[]> {
   const { data, error } = await supabase
     .from("stories")
     .select(
-      "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, like_count, bookmark_count, read_count, created_at",
+      // `beats`, `series_state`, `story_mode`, `planned_chapter_count`,
+      // `is_public` and `entity_gate_reason` are not decoration. The
+      // chapter-end screen derives its "what happens next" chips from the
+      // beats, the open hooks, the promised payoffs and the next-chapter
+      // pressure; without them a story opened from Library or Home offers a
+      // bare text box instead. That was the reload bug: the chips appeared
+      // once, right after generating (where `mapGeneratedStory` reads them
+      // from the response), and never again, because this query never asked
+      // for the columns and `hydrateStoryRow` filled in empties.
+      "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, beats, series_state, planned_chapter_count, entity_gate_reason, like_count, bookmark_count, read_count, created_at",
     )
     .eq("author_id", userId)
     .eq("status", "complete")
@@ -594,13 +622,28 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
     authorId: typeof record.author_id === "string" ? record.author_id : "",
     genre,
     primaryGenre: genre,
-    storyMode: chapters.length > 1 ? "series" : "standalone",
-    plannedChapterCount: undefined,
+    // The row's own `story_mode` first: a series whose second chapter has not
+    // been written yet is still a series, and counting chapters called it a
+    // standalone and hid the continuation UI on exactly the story that needed
+    // it most.
+    storyMode: isStoryMode(record.story_mode)
+      ? record.story_mode
+      : chapters.length > 1
+      ? "series"
+      : "standalone",
+    plannedChapterCount: isPlannedChapterCount(record.planned_chapter_count)
+      ? record.planned_chapter_count
+      : undefined,
     chapterLength: isChapterLength(record.length_type)
       ? record.length_type
       : undefined,
-    beats: [],
-    seriesState: undefined,
+    // Parsed with the same helper `mapGeneratedStory` uses, so a story reads
+    // identically whether it came from a generation response or from a row
+    // after a reload. These were hardcoded `[]` and `undefined`.
+    beats: Array.isArray(record.beats)
+      ? record.beats.filter((beat): beat is string => typeof beat === "string")
+      : [],
+    seriesState: parseSeriesState(record.series_state),
     audienceMode: record.audience_mode === "kids" ? "kids" : "adult",
     spiceLevel: record.spice_level === "steamy" ? "steamy" : "sweet",
     contentRating: typeof record.content_rating === "string"
@@ -788,6 +831,11 @@ function buildGenerationRequestBody(
           appearance: c.appearance,
           isHero: c.isHero,
           portrait_url: c.portraitUrl,
+          // The link back to the writer's saved-character library, when they
+          // picked this person rather than writing them. The fields above are
+          // still sent in full: the writer may have edited them for this
+          // story, and a story's cast is its own.
+          saved_character_id: c.savedCharacterId,
         })),
       language: draft.language,
       where_and_when: draft.whereAndWhen,
@@ -862,7 +910,7 @@ function objectFailure(
  */
 async function storyGatedPrivateReason(
   error: unknown,
-): Promise<StoryGatingReason | null> {
+): Promise<StoryPrivateReason | null> {
   const context = error && typeof error === "object"
     ? (error as { context?: { json?: () => Promise<unknown> } }).context
     : undefined;
@@ -872,9 +920,17 @@ async function storyGatedPrivateReason(
     if (!body || typeof body !== "object") return null;
     const payload = body as Record<string, unknown>;
     if (payload.error_code !== "story_gated_private") return null;
-    return payload.gating_reason === "private_individual"
-      ? "private_individual"
-      : "living_public_figure";
+    // Matched explicitly rather than defaulted, now that there are three. The
+    // old two-way ternary would have rendered "this names a real living
+    // person" over a story that had simply not been checked - a claim about
+    // the writer's idea that the server never made.
+    if (payload.gating_reason === "private_individual") {
+      return "private_individual";
+    }
+    if (payload.gating_reason === "classification_unavailable") {
+      return "classification_unavailable";
+    }
+    return "living_public_figure";
   } catch {
     return null;
   }
@@ -1380,6 +1436,289 @@ export async function continueStoryStreaming(
 
   if (!done.chapter) throw new Error("Continuation returned no chapter");
   return mapContinuedChapter(done, storyId, expectedChapterNum, isFinale);
+}
+
+/**
+ * Rewrite one chapter, showing the new prose as it is written.
+ *
+ * The reader's "Reimagine" sheet. It re-prompts a single chapter with an
+ * instruction and, optionally, a set of character replacements; it costs the
+ * same one credit a continuation costs, and it streams for the same reason a
+ * continuation does - the reader is watching the chapter they already know
+ * being rewritten, which is the least patient moment in the product.
+ *
+ * **A reader who is not the author gets a private copy.** The server forks the
+ * story (`fork_story`, migration 00057) and rewrites the chapter in the copy,
+ * so the original is untouched. That is why this resolves with a `storyId`
+ * that may not be the one that was passed in, and why the caller must switch
+ * the reader over to it rather than assuming it is still on the same story.
+ * `forkedFromStoryId` is non-null exactly when that happened.
+ */
+export interface ReimagineReplacement {
+  /** The name as it appears in the chapter today. */
+  fromName: string;
+  /** A character from the writer's saved library, or one typed in the sheet. */
+  to:
+    | { savedCharacterId: string }
+    | {
+      name: string;
+      role?: string;
+      appearance?: string;
+      background?: string;
+    };
+  /**
+   * Rename this character in every OTHER chapter too, and in the roster and
+   * continuity state that later chapters are written from.
+   *
+   * The other chapters are NOT regenerated - that would cost a credit each and
+   * rewrite prose the reader chose to keep. They are renamed: whole words,
+   * case preserved, possessives included, pronouns never touched.
+   */
+  applyToAllChapters?: boolean;
+}
+
+export interface ReimaginedChapter {
+  chapter: Chapter;
+  /** The story that was actually written to: the fork, when one was made. */
+  storyId: string;
+  /** Non-null when a private copy was made because the caller is not the author. */
+  forkedFromStoryId: string | null;
+  model: string;
+  /** What `applyToAllChapters` touched, for the "renamed everywhere" notice. */
+  renamed: { chapters: number; roster: number };
+}
+
+export async function reimagineChapterStreaming(
+  storyId: string,
+  chapterNumber: number,
+  requestId: string,
+  input: { prompt?: string; replacements?: ReimagineReplacement[] },
+  handlers: StreamedChapterHandlers,
+): Promise<ReimaginedChapter> {
+  if (!isSupabaseConfigured) {
+    throw new GenerationRequestError(
+      "Reimagining a chapter needs a connection.",
+      false,
+    );
+  }
+
+  try {
+    await bootstrapUser();
+  } catch {
+    throw new GenerationRequestError(
+      "Unable to set up your story account. Please try again.",
+      false,
+    );
+  }
+
+  // The server's own story id arrives on the `meta` event, before any prose,
+  // precisely so a reader whose story was forked knows which story they are
+  // reading while it is still being written.
+  let resolvedStoryId = storyId;
+  let forkedFrom: string | null = null;
+
+  const done = await runStreamedCall({
+    fn: "reimagine-chapter",
+    body: {
+      story_id: storyId,
+      chapter_number: chapterNumber,
+      request_id: requestId,
+      prompt: input.prompt,
+      character_replacements: (input.replacements ?? []).map((replacement) => ({
+        from_name: replacement.fromName,
+        to: "savedCharacterId" in replacement.to
+          ? { saved_character_id: replacement.to.savedCharacterId }
+          : {
+            name: replacement.to.name,
+            role: replacement.to.role,
+            appearance: replacement.to.appearance,
+            background: replacement.to.background,
+          },
+        apply_to_all_chapters: replacement.applyToAllChapters === true,
+      })),
+      stream: true,
+    },
+    onEvent: (event, payload) => {
+      if (event === "delta") {
+        const text = payload.text;
+        if (typeof text === "string") handlers.onDelta(text);
+      } else if (event === "stage") {
+        handlers.onStage?.(String(payload.stage ?? ""));
+      } else if (event === "meta") {
+        if (typeof payload.story_id === "string") {
+          resolvedStoryId = payload.story_id;
+        }
+        forkedFrom = typeof payload.forked_from_story_id === "string"
+          ? payload.forked_from_story_id
+          : null;
+      }
+    },
+  });
+
+  if (!done.chapter) {
+    throw new GenerationRequestError(
+      "The rewrite stopped partway through. Please try again.",
+      false,
+    );
+  }
+  if (typeof done.story_id === "string") resolvedStoryId = done.story_id;
+  if (typeof done.forked_from_story_id === "string") {
+    forkedFrom = done.forked_from_story_id;
+  }
+
+  const { chapter, model } = mapContinuedChapter(
+    done,
+    resolvedStoryId,
+    chapterNumber,
+  );
+  const renamed = asRecord(done.renamed);
+  return {
+    chapter: { ...chapter, chapterNumber },
+    storyId: resolvedStoryId,
+    forkedFromStoryId: forkedFrom,
+    model,
+    renamed: {
+      chapters: numberOrZero(renamed.chapters),
+      roster: numberOrZero(renamed.roster),
+    },
+  };
+}
+
+/**
+ * A character the writer has saved, reusable across stories.
+ *
+ * Read straight from `user_characters` (migration 00057) rather than through an
+ * edge function: RLS already scopes the table to its owner, so a function in
+ * front of it would be a second, weaker copy of a rule Postgres enforces -- and
+ * it would make the picker wait on a deploy to work at all. The same reasoning
+ * as `fetchMyStories`.
+ */
+export interface SavedCharacter {
+  id: string;
+  name: string;
+  description?: string;
+  background?: string;
+  appearance?: string;
+  portraitUrl?: string;
+  createdAt?: string;
+}
+
+export async function listSavedCharacters(): Promise<SavedCharacter[]> {
+  if (!isSupabaseConfigured) return [];
+
+  let userId: string | undefined;
+  try {
+    userId = (await bootstrapUser())?.userId;
+  } catch {
+    return [];
+  }
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from("user_characters")
+    .select("id, name, description, background, appearance, portrait_url, created_at")
+    .eq("owner_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  // The picker opens over a create flow that is otherwise working. An empty
+  // list is a recoverable disappointment; an exception is not.
+  if (error || !Array.isArray(data)) return [];
+
+  return data
+    .map((row): SavedCharacter | null => {
+      const record = row as Record<string, unknown>;
+      const id = typeof record.id === "string" ? record.id : null;
+      const name = typeof record.name === "string" ? record.name.trim() : "";
+      if (!id || !name) return null;
+      return {
+        id,
+        name,
+        description: stringOrUndefined(record.description),
+        background: stringOrUndefined(record.background),
+        appearance: stringOrUndefined(record.appearance),
+        portraitUrl: stringOrUndefined(record.portrait_url),
+        createdAt: stringOrUndefined(record.created_at),
+      };
+    })
+    .filter((character): character is SavedCharacter => character !== null);
+}
+
+/**
+ * Remove a saved character.
+ *
+ * This deletes the library entry only. Stories the character already appears in
+ * keep their own `characters` rows and are not touched: deleting someone from
+ * the list of people you can reuse must never edit the stories you already
+ * wrote them into.
+ */
+export async function deleteSavedCharacter(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  try {
+    await bootstrapUser();
+  } catch {
+    return false;
+  }
+  // Ownership is enforced by RLS, not by this call.
+  const { error } = await supabase.from("user_characters").delete().eq("id", id);
+  return !error;
+}
+
+/**
+ * Save a chapter the writer edited by hand.
+ *
+ * The notepad hands back the whole chapter, and the whole chapter is what is
+ * stored - no paragraph indices, no model, no merge. `edit-story` recognises a
+ * `chapter_body` and takes that path before any of its paragraph-edit
+ * validation, so this shares the ownership check, the chapter lookup and the
+ * story word-count recompute with the AI editing path rather than restating
+ * them.
+ *
+ * Narration for the chapter is dropped server-side: the audio read the old
+ * prose, and playing it over new text is worse than regenerating it.
+ */
+export async function saveChapterText(
+  storyId: string,
+  chapterId: string,
+  text: string,
+  chapterTitle?: string,
+): Promise<Chapter> {
+  if (!isSupabaseConfigured) {
+    throw new Error("Saving a chapter needs a connection.");
+  }
+
+  const { data, error } = await supabase.functions.invoke("edit-story", {
+    body: {
+      story_id: storyId,
+      chapter_id: chapterId,
+      chapter_body: text,
+      chapter_title: chapterTitle,
+    },
+  });
+
+  if (error) {
+    const failure = await edgeFunctionFailure(error, data);
+    throw new Error(failure.message);
+  }
+
+  const payload = asRecord(data);
+  const chapter = asRecord(payload.chapter);
+  const content = requiredString(chapter.content, "chapter content");
+  return {
+    id: requiredString(chapter.id, "chapter id"),
+    storyId,
+    title: typeof chapter.title === "string" ? chapter.title : "Chapter",
+    paragraphs: content.split(/\n\s*\n/).filter(Boolean),
+    chapterNumber: typeof chapter.chapter_number === "number"
+      ? chapter.chapter_number
+      : 1,
+    chapterRole: parseChapterRole(chapter.chapter_role, "standalone"),
+    firstLine: stringOrUndefined(chapter.first_line),
+    previouslySummary: stringOrUndefined(chapter.previously_summary),
+    hookType: parseHookType(chapter.hook_type),
+    hookText: stringOrUndefined(chapter.hook_text),
+    isPublished: chapter.is_published === true,
+  };
 }
 
 /**

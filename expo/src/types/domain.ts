@@ -179,6 +179,13 @@ export type Story = {
   spiceLevel?: SpiceLevel;
   contentRating?: string;
   synopsis: string;
+  /**
+   * The story's cast as persisted in `characters` (name + the brief's
+   * detail). Optional because seed stories and older library rows carry no
+   * roster; the Reimagine sheet degrades to "no named characters found"
+   * rather than guessing names out of the prose.
+   */
+  characters?: StoryCharacter[];
   chapters: Chapter[];
   likes: number;
   bookmarks: number;
@@ -197,6 +204,15 @@ export type Story = {
    * absent for every draft younger than that.
    */
   coverImageUrl?: string;
+  /**
+   * The story this one is a private copy OF.
+   *
+   * Set on the fork `reimagine-chapter` makes for a reader who does not own
+   * the story they rewrote (`stories.forked_from_story_id`). Absent on every
+   * original. The reader is moved onto the copy when it appears, and this is
+   * how the app recognises which story the copy replaced.
+   */
+  forkedFromStoryId?: string;
   /**
    * What THIS viewer has already done to this story.
    *
@@ -225,12 +241,59 @@ export type Story = {
    * than discovering it in a 402.
    */
   coverRegenCount?: number;
+  /**
+   * Whether the story is readable by everyone. Mirrors `stories.is_public`.
+   *
+   * Optional because the list queries that hydrate a `Story` do not all select
+   * it yet; absent reads as "not known", and nothing that renders a "Public"
+   * marker may do so on an absent value.
+   */
+  isPublic?: boolean;
   focalX?: number; // 0-1, default 0.5
   focalY?: number; // 0-1, default 0.5
+  /**
+   * Whether anyone else can read this.
+   *
+   * Set by the "Make it public" toggle in the brief and applied once chapter
+   * one exists; there is no separate publish step any more. Absent means
+   * private, which is what the `stories.is_public` column defaults to.
+   */
+  visibility?: "private" | "public";
 };
 
 /** Mirrors the `stories_cover_status_check` constraint (migration 00029). */
 export type CoverStatus = "pending" | "generating" | "ready" | "failed";
+
+/** One member of a story's persisted cast. */
+export type StoryCharacter = {
+  id?: string;
+  name: string;
+  /** Role, age, who they are - the brief's `description`. */
+  role?: string;
+  background?: string;
+  appearance?: string;
+  portraitUrl?: string;
+  isHero?: boolean;
+};
+
+/**
+ * A character in the user's reusable library (`saved_characters`, migration
+ * 00057). Owned by the user, not by any one story: the same person can be
+ * dropped into a new brief with one tap, or swapped into someone else's
+ * chapter through Reimagine.
+ */
+export type SavedCharacter = {
+  id: string;
+  name: string;
+  /** Role, age, who they are. Maps to the brief's `description`. */
+  role?: string;
+  background?: string;
+  appearance?: string;
+  portraitUrl?: string;
+  /** The story this character was first written for, when known. */
+  sourceStoryId?: string;
+  createdAt: string;
+};
 
 export type ImageName =
   | "camp-midnight.jpg"
@@ -304,6 +367,22 @@ export type CreateDraft = {
      * the weakest of them.
      */
     referenceImage?: string;
+    /**
+     * The `user_characters` row this character came from, when the writer
+     * picked them out of their saved-character library instead of writing a
+     * new one (migration 00057).
+     *
+     * The client still sends every field, because the writer may edit them for
+     * this story and a story's cast is its own. The id is what lets the server
+     * fill in a field the sheet left blank, carry over a portrait that was
+     * paid for once, and link the story's `characters` row back to the saved
+     * one. An id the caller does not own is dropped server-side rather than
+     * failing the generation - see `_shared/saved-characters.ts`.
+     *
+     * On the client it also identifies the row exactly, so tapping the same
+     * saved-character chip a second time removes the one it added.
+     */
+    savedCharacterId?: string;
     isHero: boolean;
   }[];
   isSeries?: boolean;
@@ -362,6 +441,18 @@ export type Screen =
     chapterIndex?: number;
     /** Set when the reader was opened by Listen, so narration starts on arrival. */
     autoplay?: boolean;
+  }
+  /**
+   * The full-screen narration player (`ListenScreen`). Reached from the reader's
+   * Listen control and from the story page's Listen button; both hand it the
+   * chapter to open on and where to go back to.
+   */
+  | {
+    name: "listen";
+    storyId: string;
+    chapterIndex?: number;
+    /** Which screen Close returns to, so Listen never strands the reader. */
+    returnTo: "story" | "reader" | "tabs";
   }
   | { name: "author"; authorId: string }
   | { name: "credits" }

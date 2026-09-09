@@ -6,270 +6,193 @@
  * endpoint has existed. The client never sent it, so the whole feature was one
  * unpassed argument away from working and nothing failed to say so.
  *
- * These tests hold the two halves of that argument that a type signature cannot
- * check: blank must collapse to `undefined` rather than `""`, because an empty
- * string still renders the reader-direction block in the prompt and tells the
- * model a steer exists when none does; and a used direction must be cleared,
- * because a direction that survives keeps steering chapters the reader never
- * aimed it at, invisibly.
+ * These tests hold the halves of that argument a type signature cannot check:
+ * blank must collapse to `undefined` rather than `""`, because an empty string
+ * still renders the reader-direction block in the prompt and tells the model a
+ * steer exists when none does; a used direction must not leak into the next
+ * chapter, because a direction that survives keeps steering chapters the reader
+ * never aimed it at, invisibly; and a direction must survive a RETRY, because
+ * losing it there charges the reader for our failure in the only currency they
+ * have at that moment.
+ *
+ * WHERE THIS USED TO LIVE. The direction was typed into a "What happens next?"
+ * box in the draft editor, and this file drove `CreateStudioScreen` all the way
+ * there. The editor is gone (2026-09-09): continuation is reached exactly once,
+ * at the foot of the chapter, from `ChapterEnd`, and the request is made by the
+ * generation session rather than by a screen. So the direction's journey is now
+ * two hops, each tested where it happens - `chapter-end.test.tsx` proves the
+ * surface hands up the exact prose the reader chose (and nothing at all when
+ * they let Katha decide), and this file proves the session puts it on the wire.
  */
 
 /* eslint-disable import/first */
-import React from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
-
-const mockInferStoryBrief = jest.fn();
 const mockContinueStoryStreaming = jest.fn();
-const mockLoadDraft = jest.fn();
-const mockSaveDraft = jest.fn();
-const mockClearDraft = jest.fn();
-const mockExpoFetch = jest.fn();
-
-jest.mock("expo/fetch", () => ({
-  fetch: (...args: unknown[]) => mockExpoFetch(...args),
-}));
 
 jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn() }));
-jest.mock("@/lib/notifications", () => ({
-  pushPermissionGranted: jest.fn().mockResolvedValue(false),
-}));
 jest.mock("@/lib/supabase", () => ({
   isSupabaseConfigured: true,
   SUPABASE_URL: "https://example.test",
   SUPABASE_ANON_KEY: "anon",
-  supabase: {
-    auth: {
-      getSession: jest.fn().mockResolvedValue({
-        data: { session: { access_token: "tok" } },
-      }),
-    },
-  },
+  supabase: { auth: { getSession: jest.fn() } },
 }));
 
-// Chapter 1 goes through the real streaming path, because that is the cheapest
-// way to reach the editor in the state a reader reaches it in. Only the
-// continuation call is stubbed, since its arguments are the subject here.
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
+  let n = 0;
   return {
     ...actual,
-    inferStoryBrief: (...args: unknown[]) => mockInferStoryBrief(...args),
     continueStoryStreaming: (...args: unknown[]) =>
       mockContinueStoryStreaming(...args),
-    createGenerationRequestId: () => "continuation-direction-request",
+    createGenerationRequestId: () => `continuation-direction-${++n}`,
   };
 });
 
 jest.mock("@/lib/draft-storage", () => ({
-  loadDraft: () => mockLoadDraft(),
-  saveDraft: (...args: unknown[]) => mockSaveDraft(...args),
-  clearDraft: () => mockClearDraft(),
+  loadDraft: jest.fn(),
+  saveDraft: jest.fn(),
+  clearDraft: jest.fn(),
 }));
 
-jest.mock("@/components/GeneratingOverlay", () => () => null);
-
-jest.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
-  SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
-}));
-
-jest.mock("@/components/KathaPrimitives", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const R = require("react");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pressable, Text } = require("react-native");
-  return {
-    CreditPill: ({ credits }: { credits: number }) =>
-      R.createElement(Text, null, `${credits} credits`),
-    PrimaryButton: (
-      { children, onPress }: { children: React.ReactNode; onPress: () => void },
-    ) =>
-      R.createElement(
-        Pressable,
-        { accessibilityRole: "button", onPress },
-        R.createElement(Text, null, children),
-      ),
-  };
-});
-
-import CreateStudioScreen from "@/screens/CreateStudioScreen";
+import {
+  __resetGenerationSessions,
+  getGeneration,
+  retryGeneration,
+  startChapterGeneration,
+  waitForGeneration,
+} from "@/lib/generation-session";
+import type { Chapter, Story } from "@/types/domain";
 /* eslint-enable import/first */
 
-const CHAPTER_ONE_SSE =
-  'event: done\ndata: {"story":{"id":"story-1","title":"The Quiet Door","author_id":"author-1","primary_genre":"adventure","story_mode":"standalone","themes":["doors"],"word_count":9,"status":"complete"},"chapter":{"id":"chapter-1","chapter_number":1,"title":"Chapter 1","content":"The door was not there yesterday.\\n\\nShe pushed it open."}}\n\n';
+/** Position of `nextInstruction` in the `continueStoryStreaming` signature. */
+const DIRECTION_ARG = 5;
 
-function completedStream(frame: string) {
-  const encoder = new TextEncoder();
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(encoder.encode(frame));
-      controller.close();
-    },
-  });
+function chapterTwo(): Chapter {
+  return {
+    id: "chapter-2",
+    storyId: "story-1",
+    title: "Chapter 2",
+    paragraphs: ["The stairs went down further than the building was tall."],
+    chapterNumber: 2,
+    chapterRole: "mid_series",
+    isPublished: false,
+  };
 }
 
-/** Drives Create through chapter 1 and leaves the screen in the editor. */
-async function renderAtEditor() {
-  mockExpoFetch.mockResolvedValue({
-    ok: true,
-    status: 200,
-    body: completedStream(CHAPTER_ONE_SSE),
-    json: async () => ({}),
-  });
+const story: Story = {
+  id: "story-1",
+  title: "The Quiet Door",
+  authorId: "me",
+  genre: "adventure",
+  storyMode: "series",
+  plannedChapterCount: 3,
+  synopsis: "A child finds a door.",
+  chapters: [{
+    id: "chapter-1",
+    storyId: "story-1",
+    title: "Chapter 1",
+    paragraphs: ["The door was not there yesterday."],
+    chapterNumber: 1,
+    chapterRole: "series_opening",
+    isPublished: true,
+  }],
+  likes: 0,
+  bookmarks: 0,
+  views: 0,
+  tags: [],
+  publishedOffset: 0,
+  isFeatured: false,
+  language: "English",
+};
 
-  const view = await render(
-    <CreateStudioScreen
-      credits={12}
-      onCreditUsed={jest.fn()}
-      onPublished={jest.fn()}
-      onBack={jest.fn()}
-    />,
-  );
-
-  await fireEvent.changeText(
-    view.getByLabelText("Story idea"),
-    "A child finds a door in an old library that was not there yesterday.",
-  );
-  await view.findByRole("button", { name: "Add a character" });
-
-  await act(async () => {
-    fireEvent.press(view.getByRole("button", { name: /create/i }));
+/** Starts the next chapter and waits for the session to settle. */
+async function continueWith(direction?: string) {
+  const session = startChapterGeneration({
+    story,
+    nextChapterNumber: 2,
+    direction,
   });
-  // The setup screen's Create button now opens the pre-generation review
-  // screen; its own Create button is the one that actually fires generation.
-  await act(async () => {
-    fireEvent.press(view.getByRole("button", { name: /create/i }));
-  });
-  await view.findByTestId("continue-chapter-button");
-  return view;
+  await waitForGeneration(session.id).catch(() => {});
+  return session;
 }
 
 beforeEach(() => {
-  mockExpoFetch.mockReset();
-  mockInferStoryBrief.mockReset().mockResolvedValue({
-    genres: ["adventure"],
-    whereAndWhen: "A quiet library, present day",
-    characters: [],
-    suggestedMoments: [],
-  });
+  __resetGenerationSessions();
   mockContinueStoryStreaming.mockReset().mockResolvedValue({
     model: "test-model",
-    chapter: {
-      id: "chapter-2",
-      chapterNumber: 2,
-      title: "Chapter 2",
-      paragraphs: ["The stairs went down further than the building was tall."],
-      isPublished: false,
-    },
-  });
-  mockLoadDraft.mockReset().mockResolvedValue(null);
-  mockSaveDraft.mockReset();
-  mockClearDraft.mockReset();
-});
-
-describe("there is one way to continue, not two", () => {
-  it("offers no chapter-forward control outside the end-of-chapter block", async () => {
-    // The chapter strip used to carry a "+ Add" chip that called the same
-    // handler as Continue. Two controls for one paid action would be merely
-    // redundant; what made it wrong is *where* it was. It sat at the top of
-    // the screen, where the reader has formed no opinion yet about what should
-    // happen next, and it bought a chapter without ever showing them the
-    // "What happens next?" box — so the one input that makes continuation
-    // personal was silently discarded by half the doors onto it.
-    //
-    // Continuation is now reached exactly once, at the foot of the chapter,
-    // where the direction is asked for first.
-    const view = await renderAtEditor();
-
-    expect(view.getByTestId("continue-chapter-button")).toBeTruthy();
-    expect(view.getByTestId("next-instruction-input")).toBeTruthy();
-
-    // Nothing else on the screen adds a chapter. "Add paragraph" is an edit to
-    // the chapter in hand and is free, which is a different act entirely.
-    expect(view.queryByText("Add")).toBeNull();
-    expect(
-      view.queryByLabelText("Add the next chapter, 1 credit"),
-    ).toBeNull();
-
-    // And nothing here reads as "next" any more: the control that leaves the
-    // editor says where it goes.
-    expect(view.queryByText("Next")).toBeNull();
-    expect(view.getAllByTestId(/^editor-review-button/).length).toBeGreaterThan(
-      0,
-    );
+    chapter: chapterTwo(),
   });
 });
 
-describe("What happens next?", () => {
-  it("sends no direction at all when the box is left blank", async () => {
-    const view = await renderAtEditor();
+afterEach(() => {
+  __resetGenerationSessions();
+});
 
-    await act(async () => {
-      fireEvent.press(view.getByTestId("continue-chapter-button"));
-    });
+describe("the direction the reader chose reaches the request", () => {
+  it("sends no direction at all when the reader gave none", async () => {
+    await continueWith(undefined);
 
-    await waitFor(() => expect(mockContinueStoryStreaming).toHaveBeenCalled());
-    const args = mockContinueStoryStreaming.mock.calls[0];
-    // Position 5 is `nextInstruction`. `undefined`, not `""` — an empty string
-    // is a direction as far as the prompt builder is concerned.
-    expect(args[5]).toBeUndefined();
+    expect(mockContinueStoryStreaming).toHaveBeenCalledTimes(1);
+    // `undefined`, not `""` — an empty string is a direction as far as the
+    // prompt builder is concerned, and claims a steer that does not exist.
+    expect(mockContinueStoryStreaming.mock.calls[0][DIRECTION_ARG])
+      .toBeUndefined();
   });
 
-  it("trims a typed direction and forwards it", async () => {
-    const view = await renderAtEditor();
+  it("forwards the reader's own sentence unaltered", async () => {
+    await continueWith("She finds her brother on the other side.");
 
-    await act(async () => {
-      fireEvent.changeText(
-        view.getByTestId("next-instruction-input"),
-        "   She finds her brother on the other side.   ",
-      );
-    });
-    await act(async () => {
-      fireEvent.press(view.getByTestId("continue-chapter-button"));
-    });
-
-    await waitFor(() => expect(mockContinueStoryStreaming).toHaveBeenCalled());
-    expect(mockContinueStoryStreaming.mock.calls[0][5]).toBe(
+    expect(mockContinueStoryStreaming.mock.calls[0][DIRECTION_ARG]).toBe(
       "She finds her brother on the other side.",
     );
   });
 
-  it("clears the box once the chapter it steered has been written", async () => {
-    const view = await renderAtEditor();
-
-    await act(async () => {
-      fireEvent.changeText(
-        view.getByTestId("next-instruction-input"),
-        "She finds her brother on the other side.",
-      );
+  it("says which chapter it is writing, and whether that chapter is the last", async () => {
+    // The direction is not the only thing the server needs to be told. A
+    // continuation that misreports its own number is written against the wrong
+    // beat of the plan, and one that does not know it is the finale ends the
+    // story on a hook nothing will ever pay off.
+    const session = startChapterGeneration({
+      story,
+      nextChapterNumber: 3,
+      isFinale: true,
+      direction: "They climb back into the light.",
     });
-    await act(async () => {
-      fireEvent.press(view.getByTestId("continue-chapter-button"));
-    });
+    await waitForGeneration(session.id).catch(() => {});
 
-    // Chapter 3 of a 3-chapter plan is still to come, so the box is back — and
-    // it must be back empty, or chapter 3 inherits chapter 2's direction.
-    const input = await view.findByTestId("next-instruction-input");
-    await waitFor(() => expect(input.props.value).toBe(""));
+    const args = mockContinueStoryStreaming.mock.calls[0];
+    expect(args[0]).toBe("story-1");
+    expect(args[3]).toBe(true);
+    expect(args[4]).toBe(3);
   });
 
-  it("keeps the direction when the continuation fails before any prose", async () => {
-    // The reader typed it, we lost it. Making them retype it would charge them
-    // for our failure in the only currency they have here.
+  it("does not let one chapter's direction steer the next one", async () => {
+    await continueWith("She finds her brother on the other side.");
+    await continueWith(undefined);
+
+    // Each session carries its own direction and nothing else does. A direction
+    // held anywhere shared would still be steering here, invisibly.
+    expect(mockContinueStoryStreaming).toHaveBeenCalledTimes(2);
+    expect(mockContinueStoryStreaming.mock.calls[1][DIRECTION_ARG])
+      .toBeUndefined();
+  });
+
+  it("keeps the direction across a retry after a failure", async () => {
+    // The reader typed it; we lost the chapter. Making them find and retype it
+    // would charge them for our failure. The retry is offered under the prose
+    // they already have, so there is no box to retype it into either - the
+    // session is what remembers.
     mockContinueStoryStreaming.mockRejectedValueOnce(new Error("offline"));
-    const view = await renderAtEditor();
+    const session = await continueWith("She finds her brother on the other side.");
 
-    await act(async () => {
-      fireEvent.changeText(
-        view.getByTestId("next-instruction-input"),
-        "She finds her brother on the other side.",
-      );
-    });
-    await act(async () => {
-      fireEvent.press(view.getByTestId("continue-chapter-button"));
-    });
+    expect(getGeneration(session.id)?.phase).toBe("error");
 
-    const input = await view.findByTestId("next-instruction-input");
-    expect(input.props.value).toBe("She finds her brother on the other side.");
+    retryGeneration(session.id);
+    await waitForGeneration(session.id);
+
+    expect(mockContinueStoryStreaming).toHaveBeenCalledTimes(2);
+    expect(mockContinueStoryStreaming.mock.calls[1][DIRECTION_ARG]).toBe(
+      "She finds her brother on the other side.",
+    );
+    expect(getGeneration(session.id)?.phase).toBe("complete");
   });
 });

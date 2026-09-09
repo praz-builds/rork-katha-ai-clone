@@ -73,6 +73,8 @@ interface ServerState {
   errorEventsInserts: Array<Record<string, unknown>>;
   calls: {
     rpc: number;
+    edgeTts: number;
+    uploads: Array<{ path: string; bytes: number }>;
     runpodRun: number;
     runpodCancel: string[];
     patches: Array<{ table: string; body: Record<string, unknown> }>;
@@ -99,6 +101,8 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     errorEventsInserts: [],
     calls: {
       rpc: 0,
+      edgeTts: 0,
+      uploads: [],
       patches: [] as ServerState["calls"]["patches"],
       runpodRun: 0,
       runpodCancel: [] as string[],
@@ -253,6 +257,21 @@ function makeFetchStub(state: ServerState): typeof fetch {
       return json([row]);
     }
 
+    if (url.pathname.startsWith("/storage/v1/object/audio/")) {
+      if (request.method !== "POST" && request.method !== "PUT") {
+        return json({ message: "unsupported storage method" }, 405);
+      }
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      state.calls.uploads.push({
+        path: decodeURIComponent(url.pathname.replace(
+          "/storage/v1/object/audio/",
+          "",
+        )),
+        bytes: bytes.byteLength,
+      });
+      return json({ Key: url.pathname });
+    }
+
     if (url.pathname === "/rest/v1/rpc/claim_chapter_audio_generation") {
       state.calls.rpc += 1;
       const body = await request.json() as {
@@ -269,6 +288,17 @@ function makeFetchStub(state: ServerState): typeof fetch {
         body.p_word_count,
       );
       return json([result]);
+    }
+
+    if (url.href === "https://edge-tts.test/synthesize") {
+      state.calls.edgeTts += 1;
+      const body = await request.json() as Record<string, unknown>;
+      assertEquals(body.voice, "es-ES-ElviraNeural");
+      assertEquals(body.format, "mp3");
+      return new Response(new Uint8Array([1, 2, 3, 4]), {
+        status: 200,
+        headers: { "Content-Type": "audio/mpeg" },
+      });
     }
 
     if (
@@ -452,6 +482,39 @@ Deno.test("two concurrent requests for the same chapter and voice start exactly 
       1,
       "only the claim winner records a job id",
     );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("an edge_tts voice generates synchronously, uploads audio, and never touches RunPod", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    EDGE_TTS_SERVICE_URL: "https://edge-tts.test/synthesize",
+  });
+  try {
+    const state = newState();
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "elvira",
+    });
+
+    assertEquals(status, 200);
+    assertEquals(body.status, "COMPLETED");
+    assertEquals(body.voice_id, "elvira");
+    assertEquals(body.cached, false);
+    assertEquals(state.calls.edgeTts, 1);
+    assertEquals(state.calls.runpodRun, 0);
+    assertEquals(state.calls.uploads, [{
+      path: `${STORY_ID}/${CHAPTER_ID}/elvira.mp3`,
+      bytes: 4,
+    }]);
+
+    const row = state.chapterAudio.get(`${CHAPTER_ID}:elvira`);
+    assertEquals(row?.status, "ready");
+    assertEquals(row?.storage_path, `${STORY_ID}/${CHAPTER_ID}/elvira.mp3`);
   } finally {
     restoreEnv(env);
   }

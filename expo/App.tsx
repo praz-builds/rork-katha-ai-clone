@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchMyStories } from "@/lib/api";
@@ -17,15 +17,27 @@ import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
 import { LaunchScreen } from "@/components/brand/LaunchScreen";
 import LoaderPreview from "@/screens/dev/LoaderPreview";
+import NarrationLoaderPreview from "@/screens/dev/NarrationLoaderPreview";
 import { ScreenScaffold } from "@/components/KathaPrimitives";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
+import ListenScreen from "@/screens/ListenScreen";
 import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
 import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
 import ChapterEnd from "@/components/reader/ChapterEnd";
+import GeneratingOverlay from "@/components/GeneratingOverlay";
+import StoryGatedPrivateModal from "@/components/create/StoryGatedPrivateModal";
+import {
+  acknowledgeGate,
+  adoptReimagineGeneration,
+  findStoryGeneration,
+  provisionalStory,
+  startChapterGeneration,
+  useGenerations,
+} from "@/lib/generation-session";
 import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
 import HomeScreen from "@/screens/HomeScreen";
@@ -127,6 +139,7 @@ export default function App() {
   const [writerBlueprint, setWriterBlueprint] = useState<
     WriterOnboardingResult["draft"] | null
   >(null);
+  const generations = useGenerations();
 
   useEffect(() => {
     Font.loadAsync({
@@ -205,13 +218,164 @@ export default function App() {
     };
   }, []);
 
+  /**
+   * Every generation reaches app state, whoever started it and wherever they
+   * went afterwards.
+   *
+   * A generation outlives the screen that asked for it: the writer can leave
+   * Create, or leave the reader, while a chapter is still being written. So the
+   * registration lives here, above every screen, watching the store rather than
+   * waiting on a callback from a component that may no longer be mounted.
+   *
+   * A story being written is registered as soon as it has pages, under its
+   * SESSION id, so it is in the library and openable the moment there is
+   * something to read - which is the promise the live reader makes. When the
+   * server's own story arrives it replaces that row, real id and all, and the
+   * reader is repointed at it if that is what it happens to be showing.
+   */
+  useEffect(() => {
+    const interesting = generations.filter((session) =>
+      session.phase === "complete"
+      || (session.kind === "story" && session.revealedProse.length > 0)
+    );
+    if (interesting.length === 0) return;
+    setGeneratedStories((current) => {
+      let next = current;
+      const upsert = (story: Story, replacingId?: string) => {
+        const at = next.findIndex((held) =>
+          held.id === story.id || held.id === replacingId
+        );
+        next = at < 0
+          ? [story, ...next]
+          : next.map((held, index) => (index === at ? story : held));
+      };
+      for (const session of interesting) {
+        if (session.kind === "story") {
+          if (session.phase === "complete" && session.story) {
+            upsert(session.story, session.id);
+          } else {
+            const draftStory = provisionalStory(session);
+            if (draftStory) upsert(draftStory);
+          }
+          continue;
+        }
+        const { chapter } = session;
+        if (session.phase !== "complete" || !chapter || !session.storyId) continue;
+        const target = next.find((held) => held.id === session.storyId)
+          ?? stories.find((held) => held.id === session.storyId);
+        if (!target) {
+          // A reader who reimagines somebody else's story is rewriting a
+          // PRIVATE COPY the client has never seen, under an id no story in
+          // state carries. The session hands the whole copy over; without
+          // this it fell through here and the story the reader now owns (and
+          // paid for) existed only on the server.
+          if (session.story && session.story.id === session.storyId) {
+            upsert(session.story);
+          }
+          continue;
+        }
+        if (
+          target.chapters.some(
+            (held) => held.chapterNumber === chapter.chapterNumber,
+          )
+        ) {
+          continue;
+        }
+        // A seed story being continued is not in `generatedStories` yet, so
+        // `upsert` adds it rather than mapping over it.
+        upsert({ ...target, chapters: [...target.chapters, chapter] });
+      }
+      return next;
+    });
+  }, [generations]);
+
+  /**
+   * A finished story takes over the reader that was showing it being written.
+   *
+   * Until it completes, the reader is pointed at the session id (that is what
+   * the provisional story is keyed by). Repointing rather than re-navigating is
+   * what keeps the writer on the page they were reading.
+   */
+  useEffect(() => {
+    setScreen((current) => {
+      if (current.name !== "reader") return current;
+      const session = generations.find((item) =>
+        item.id === current.storyId && item.phase === "complete" && item.story
+      );
+      return session?.story
+        ? { ...current, storyId: session.story.id }
+        : current;
+    });
+  }, [generations]);
+
+  /**
+   * A rewrite by a reader who does not own the story moves them onto their copy.
+   *
+   * `reimagine-chapter` forks the story rather than editing somebody else's,
+   * so the prose on screen belongs to a story the reader now owns. Leaving the
+   * reader pointed at the ORIGINAL meant the rewrite vanished the moment the
+   * live session finished and the reader's own copy was never opened.
+   */
+  useEffect(() => {
+    setScreen((current) => {
+      if (current.name !== "reader") return current;
+      const fork = generations.find((item) =>
+        item.phase === "complete"
+        && item.story?.forkedFromStoryId === current.storyId
+      );
+      return fork?.story ? { ...current, storyId: fork.story.id } : current;
+    });
+  }, [generations]);
+
+  /** The credit each generation charged, deducted once, when it settles. */
+  const chargedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const charges = generations.filter((session) =>
+      session.phase === "complete"
+      && session.creditsCharged > 0
+      && !chargedRef.current.has(session.id)
+    );
+    if (charges.length === 0) return;
+    charges.forEach((session) => chargedRef.current.add(session.id));
+    const total = charges.reduce(
+      (sum, session) => sum + session.creditsCharged,
+      0,
+    );
+    setCredits((value) => Math.max(0, value - total));
+  }, [generations]);
+
+  /**
+   * The entity gate, explained once.
+   *
+   * A story naming a living public figure or somebody from the writer's own
+   * life is kept private however the toggle was set, and the writer is told
+   * why. It is rendered here, above the reader, because by the time the server
+   * answers, the writer has already been handed their story to read.
+   */
+  const gatedSession = generations.find((session) => session.gatedReason);
+
   const allStories = useMemo(() => [...generatedStories, ...stories], [
     generatedStories,
   ]);
 
+  /**
+   * The generation writing into the story the reader is open on, if any.
+   *
+   * Derived rather than held in state: a chapter started from the chapter end,
+   * a story started from the brief and a story reopened from Library while it
+   * is still being written are all the same question - "is anything being
+   * written into this story right now" - and the store is the one place that
+   * knows the answer.
+   */
+  const readerStoryId = screen.name === "reader" ? screen.storyId : null;
+  const readerSession = readerStoryId
+    ? findStoryGeneration(readerStoryId)
+    : null;
+
   if (!fontsReady) return <LaunchScreen />;
 
   if (preview === "loader") return <LoaderPreview />;
+  if (preview === "narration-loader") return <NarrationLoaderPreview />;
 
   /**
    * A series gets a landing page; a standalone opens straight into its prose.
@@ -292,12 +456,13 @@ export default function App() {
             credits={credits}
             isAnonymous={isAnonymous}
             initialDraft={writerBlueprint ?? undefined}
-            onCreditUsed={(amount) =>
-              setCredits((value) => Math.max(0, value - amount))}
-            onPublished={(story) => {
-              setGeneratedStories((current) => [story, ...current]);
+            onGenerationStarted={(session) => {
+              // Straight to the reader, before a word of the story exists. It
+              // shows the crafting screen until there are finished pages and
+              // then becomes the reader; the session id is what it is pointed
+              // at until the server names the story.
               setTab("home");
-              setScreen({ name: "reader", storyId: story.id });
+              setScreen({ name: "reader", storyId: session.id });
             }}
             onBack={() => goTabs("home")}
           />
@@ -384,6 +549,9 @@ export default function App() {
           <StoryDetailScreen
             story={allStories.find((story) => story.id === screen.storyId) ??
               allStories[0]}
+            // `generatedStories` is exactly the set the viewer wrote: restored
+            // by author id on boot, prepended on creation.
+            isOwn={generatedStories.some((story) => story.id === screen.storyId)}
             onBack={() => goTabs(tab)}
             onRead={(chapterIndex, options) =>
               setScreen({
@@ -397,51 +565,121 @@ export default function App() {
                 autoplay: options?.mode === "listen",
               })}
             onAuthor={(authorId) => setScreen({ name: "author", authorId })}
+            // Reading is open to a guest; engaging is not. Every gated control
+            // on that page stays visible and routes here instead of writing.
+            canEngage={!isAnonymous}
+            onSignIn={() => setScreen({ name: "onboarding" })}
+            // Listen is its own screen now, not a reader with autoplay set: a
+            // story with no narration yet has a real wait, and the player owns
+            // it. Close comes back here.
+            onListen={() =>
+              setScreen({
+                name: "listen",
+                storyId: screen.storyId,
+                chapterIndex: 0,
+                returnTo: "story",
+              })}
+          />
+        )
+        : screen.name === "listen"
+        ? (
+          <ListenScreen
+            story={allStories.find((story) => story.id === screen.storyId) ??
+              allStories[0]}
+            initialChapterIndex={screen.chapterIndex ?? 0}
+            onClose={() => {
+              const { storyId, chapterIndex, returnTo } = screen;
+              if (returnTo === "story") setScreen({ name: "story", storyId });
+              else if (returnTo === "reader") {
+                setScreen({ name: "reader", storyId, chapterIndex });
+              } else goTabs(tab);
+            }}
           />
         )
         : screen.name === "reader"
         ? (
-          <PhraseCaptureReader
-            story={allStories.find((story) => story.id === screen.storyId) ??
-              allStories[0]}
-            initialChapterIndex={screen.chapterIndex ?? 0}
-            autoplay={screen.autoplay ?? false}
-            onBack={() => goTabs(tab)}
-            renderChapterEnd={(chapter) => (
-              <ChapterEnd
-                story={allStories.find((story) =>
-                  story.id === screen.storyId) ?? allStories[0]}
-                chapter={chapter}
-                // Without this the continuation succeeded, showed a
-                // confirmation, and then went nowhere: the new chapter was
-                // never added to app state, so it could not be read and the
-                // reader still ended where it had ended before. A "What's
-                // next?" that produces a chapter you cannot reach is worse than
-                // no button at all.
-                onChapterReady={(next) =>
-                  setGeneratedStories((current) => {
-                    const target = allStories.find((story) =>
-                      story.id === screen.storyId
-                    );
-                    if (!target) return current;
-                    const alreadyHeld = current.some((story) =>
-                      story.id === target.id
-                    );
-                    const withChapter: Story = {
-                      ...target,
-                      chapters: [...target.chapters, next],
-                    };
-                    // A seed story being continued is not in `generatedStories`
-                    // yet, so it is added rather than mapped over.
-                    return alreadyHeld
-                      ? current.map((story) =>
-                        story.id === target.id ? withChapter : story
-                      )
-                      : [withChapter, ...current];
+          /*
+            The one screen a generation lands on, in both of its states.
+
+            While the chapter has no finished pages yet there is nothing to
+            read, so the crafting screen holds the whole window - the same
+            screen, unchanged, that the wait has always used. The moment whole
+            settled pages exist the reader takes over on page 1 and the rest of
+            the chapter arrives behind it. A CONTINUATION never shows the
+            crafting screen at all: the reader is already open, so it turns to
+            the new chapter's opener and writes into it.
+          */
+          readerSession?.kind === "story"
+              && readerSession.phase === "writing"
+              && readerSession.revealedProse.length === 0
+            ? <GeneratingOverlay genre={readerSession.genre} mode="story" />
+            : (
+              <PhraseCaptureReader
+                story={allStories.find((story) => story.id === screen.storyId)
+                  ?? (readerSession ? provisionalStory(readerSession) : null)
+                  ?? allStories[0]}
+                initialChapterIndex={screen.chapterIndex ?? 0}
+                autoplay={screen.autoplay ?? false}
+                liveSessionId={readerSession?.id ?? null}
+                // The chrome's Listen control opens the narration player on
+                // the chapter being read, and Close returns to this reader on
+                // that same chapter.
+                onListen={(chapterIndex) =>
+                  setScreen({
+                    name: "listen",
+                    storyId: screen.storyId,
+                    chapterIndex,
+                    returnTo: "reader",
                   })}
+                // Reading is open to everyone; putting your name on somebody
+                // else's story is not. A guest who taps Like, Save, Follow or
+                // the comment box lands at sign-in instead of at a local
+                // state change nothing will ever persist.
+                onRequireSignIn={isAnonymous ? () => setScreen({ name: "onboarding" }) : undefined}
+                // A rewrite becomes a live session like any other chapter, so
+                // it reveals page by page instead of waiting behind a cover.
+                // `findStoryGeneration` above then picks it up on the next
+                // render and the reader is live on it.
+                onReimagineStarted={(run) => {
+                  const target = allStories.find((item) => item.id === screen.storyId);
+                  if (!target) return;
+                  adoptReimagineGeneration({
+                    run,
+                    story: target,
+                    chapterNumber: (screen.chapterIndex ?? 0) + 1,
+                  });
+                }}
+                onBack={() => goTabs(tab)}
+                renderChapterEnd={(chapter, { reimagine }) => {
+                  const story =
+                    allStories.find((item) => item.id === screen.storyId) ??
+                      allStories[0];
+                  return (
+                    <ChapterEnd
+                      story={story}
+                      chapter={chapter}
+                      // A standalone, and a series that has reached its
+                      // planned ending, have no next chapter to offer. Rewriting
+                      // is the one thing left, so the pill has to be reachable
+                      // from the ending itself and not only from the chrome.
+                      onReimagine={reimagine ?? undefined}
+                      onContinue={(direction) => {
+                        const next = chapter.chapterNumber + 1;
+                        startChapterGeneration({
+                          story,
+                          nextChapterNumber: next,
+                          isFinale:
+                            typeof story.plannedChapterCount === "number"
+                              ? next >= story.plannedChapterCount
+                              : false,
+                          direction,
+                        });
+                      }}
+                    />
+                  );
+                }}
               />
-            )}
-          />
+            )
         )
         : screen.name === "practice"
         ? (
@@ -476,6 +714,12 @@ export default function App() {
             )}
           </>
         )}
+        {gatedSession?.gatedReason ? (
+          <StoryGatedPrivateModal
+            reason={gatedSession.gatedReason}
+            onAcknowledge={() => acknowledgeGate(gatedSession.id)}
+          />
+        ) : null}
       </ScreenScaffold>
     </SafeAreaProvider>
   );

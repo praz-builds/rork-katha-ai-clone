@@ -15,6 +15,7 @@ import {
 import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Animated as RNAnimated,
   BackHandler,
   Modal,
   type NativeScrollEvent,
@@ -30,17 +31,34 @@ import {
   View,
 } from "react-native";
 import { MusicPicker } from "@/components/reader/MusicPicker";
-import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
+import { EditStoryScreen, type SavedChapterEdit } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
+import GeneratingOverlay from "@/components/GeneratingOverlay";
+import { ReimagineSheet } from "@/components/reader/ReimagineSheet";
+import { startReimagine, type ReimagineRequest, type ReimagineRun } from "@/lib/reimagine-client";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import { captureError } from "@/lib/analytics";
+import {
+  chapterSaveState,
+  dismissChapterSave,
+  retryChapterSave,
+  subscribeToChapterSaves,
+  type ChapterSaveEntry,
+} from "@/lib/chapter-save-queue";
+import { fetchThread, formatRelativeTime, postComment } from "@/lib/comments";
 import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { splitWords } from "@/lib/sentence";
+import {
+  liveChapterFor,
+  REFUND_NOTICE,
+  retryGeneration,
+  useGeneration,
+} from "@/lib/generation-session";
 import { isOwnStory } from "@/lib/ownership";
 import {
   READER_THEMES,
@@ -48,10 +66,10 @@ import {
   type ReaderTheme,
   type ReadingThemeName,
 } from "@/lib/reading-themes";
-import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
+import { colors, fonts, genreGradients, genreLabels, motion, radius, shadows, spacing, type } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
-type ReaderComment = { id: number; user: string; text: string; time: string };
+type ReaderComment = { id: string; user: string; text: string; time: string };
 
 type ReaderPreferences = {
   typeSize: number;
@@ -71,8 +89,17 @@ export type ReaderScreenProps = {
    * The seam fires at the last page of EVERY chapter, not only the story's
    * newest, so the callback needs the chapter actually being read rather than
    * whatever a navigation-time closure captured.
+   *
+   * `actions.reimagine` opens THIS screen's Reimagine sheet, and is null while
+   * the chapter is still being written. A standalone story's ending is the one
+   * place Reimagine is the only thing left to offer -- there is no next chapter
+   * -- and the caller has no handle on the sheet, so without this the pill at
+   * the end of a standalone was never rendered at all.
    */
-  renderChapterEnd?: (chapter: Chapter) => ReactNode;
+  renderChapterEnd?: (
+    chapter: Chapter,
+    actions: { reimagine: (() => void) | null },
+  ) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
   /**
@@ -88,6 +115,67 @@ export type ReaderScreenProps = {
    * Listen was indistinguishable from Read.
    */
   autoplay?: boolean;
+  /**
+   * The id of a generation session writing a chapter of THIS story, if one is
+   * running. Present and the reader is live: settled pages appear behind the
+   * reader as prose arrives, the chrome stays shut, and the last available page
+   * says the chapter is still being written.
+   *
+   * The session itself lives in `@/lib/generation-session`, outside React, so
+   * leaving this screen does not stop the writing and coming back shows the
+   * same pages rather than starting over.
+   */
+  liveSessionId?: string | null;
+  /**
+   * Opens the Reimagine sheet.
+   *
+   * `ReaderChrome` renders a Reimagine control whenever this is supplied, for
+   * every reader and not only the author (a reader of someone else's story
+   * gets a private copy).
+   */
+  onReimagine?: () => void;
+  /**
+   * A Reimagine rewrite has started for the chapter on screen.
+   *
+   * The run is subscribable: `run.text` is the prose so far, `run.stage` and
+   * `run.status` say where it is, and `run.promise` settles with the finished
+   * chapter (or the private copy's `storyId`, for a non-author). A host that
+   * owns the live-reader generation session takes it from here and re-enters
+   * `writing-pages` for this chapter, so pages appear as they settle.
+   *
+   * When no handler is given this screen owns the wait itself: it covers the
+   * reader until the run settles and then swaps the whole chapter in from
+   * page 1.
+   */
+  onReimagineStarted?: (run: ReimagineRun) => void;
+  /**
+   * Open the full-screen narration player on the chapter being read.
+   *
+   * Supplied and the chrome's Listen control hands off to `ListenScreen`, which
+   * owns the wait while narration is generated. Omitted and the reader keeps
+   * its own inline Listen sheet, which can only ever play narration that
+   * already exists.
+   */
+  onListen?: (chapterIndex: number) => void;
+  /**
+   * The viewer has no account, so anything that writes to somebody else's
+   * story is gated.
+   *
+   * READING IS NEVER GATED. Turning pages, preferences, search, narration and
+   * phrase capture all stay open to a guest, because none of them puts the
+   * guest's name on anything. Liking, saving, following and commenting do, and
+   * a guest who taps one gets the sign-in prompt rather than a local state
+   * change that will be silently lost -- or worse, a control that appears to
+   * work and does nothing.
+   *
+   * The control stays VISIBLE and enabled in both cases. A hidden Like is a
+   * feature the guest never learns exists; a disabled one is a dead end. A
+   * prompt is a door.
+   *
+   * Supply `onRequireSignIn` to gate. Omitted, nothing is gated -- which is
+   * what a signed-in session passes.
+   */
+  onRequireSignIn?: () => void;
 };
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
@@ -137,26 +225,19 @@ const LINE_HEIGHTS = [26, 30, 34, 38];
 
 
 
-const INITIAL_COMMENTS: ReaderComment[] = [
-  {
-    id: 1,
-    user: "Mira R.",
-    text: "This story had me hooked from the first line. The lighthouse metaphor is beautiful.",
-    time: "2h ago",
-  },
-  {
-    id: 2,
-    user: "Dev S.",
-    text: "Beautiful writing. The ending was unexpected but satisfying.",
-    time: "5h ago",
-  },
-  {
-    id: 3,
-    user: "Aanya K.",
-    text: "I want a sequel to this. What happens to the lighthouse?",
-    time: "1d ago",
-  },
-];
+/*
+  THERE ARE NO SEEDED COMMENTS. DO NOT ADD ANY.
+
+  This module used to carry three hardcoded comments -- "Mira R.", "Dev S." and
+  "Aanya K." discussing a lighthouse metaphor -- and they rendered on the last
+  page of EVERY story. A brand-new story about a nurse in Kochi ended with
+  three strangers admiring a lighthouse that does not appear in it, while the
+  story detail page for the same story correctly said it had none. The reader
+  was the only surface lying.
+
+  Comments now come from `lib/comments.ts` (`fetchThread`), the same source the
+  detail page reads, and a story with none says so.
+*/
 
 /**
  * Chapter text in the canonical, normalized coordinate space (see the
@@ -286,25 +367,82 @@ export default function ReaderScreen({
   renderWord = (word) => word,
   onChapterChange,
   autoplay = false,
+  liveSessionId = null,
+  onReimagine,
+  onReimagineStarted,
+  onListen,
+  onRequireSignIn,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const session = useGeneration(liveSessionId);
+  /**
+   * The story with the chapter being written folded into it.
+   *
+   * The chapter comes from the SESSION, not from the story prop: the prop is a
+   * snapshot and the session is the thing that changes. Merged by chapter
+   * number rather than appended, so a continuation that has already completed
+   * and reached app state replaces the live copy instead of doubling it.
+   */
+  const chapters = useMemo(() => {
+    if (!session) return story.chapters;
+    const live = liveChapterFor(session);
+    const at = story.chapters.findIndex(
+      (item) => item.chapterNumber === live.chapterNumber,
+    );
+    if (at < 0) return [...story.chapters, live];
+    const merged = story.chapters.slice();
+    merged[at] = live;
+    return merged;
+  }, [session, story.chapters]);
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex);
-  const baseChapter = story.chapters[chapterIndex] ?? story.chapters[0];
+  const baseChapter = chapters[chapterIndex] ?? chapters[0];
   // A chapter this reading session has edited, keyed by chapter id. Ephemeral:
   // it lives only in this component's state, exactly like the AI editor's
   // one-step revert it is fed by - nothing here is a second source of truth
   // for what the server holds.
   const [chapterEdits, setChapterEdits] = useState<Record<string, string>>({});
+  const [chapterTitleEdits, setChapterTitleEdits] = useState<Record<string, string>>({});
   const chapter = useMemo(() => {
     const edited = chapterEdits[baseChapter.id];
-    if (edited === undefined) return baseChapter;
-    return { ...baseChapter, paragraphs: splitChapterParagraphs(edited) };
-  }, [baseChapter, chapterEdits]);
+    const editedTitle = chapterTitleEdits[baseChapter.id];
+    if (edited === undefined && editedTitle === undefined) return baseChapter;
+    return {
+      ...baseChapter,
+      ...(edited === undefined
+        ? {}
+        : { paragraphs: splitChapterParagraphs(edited) }),
+      ...(editedTitle === undefined ? {} : { title: editedTitle }),
+    };
+  }, [baseChapter, chapterEdits, chapterTitleEdits]);
   const isAuthor = isOwnStory(story);
+  const isStandalone = story.storyMode === "standalone";
+  /**
+   * The live states of the reader, resolved for the chapter ON SCREEN.
+   *
+   * A session writes exactly one chapter, so a reader who flips back to an
+   * earlier chapter of the same story is reading finished prose and gets the
+   * whole chrome; only the chapter being written is gated.
+   */
+  const isWritingHere = session?.phase === "writing"
+    && chapter.chapterNumber === session.chapterNumber;
+  const hasFailedHere = session?.phase === "error"
+    && chapter.chapterNumber === session.chapterNumber;
+  /** Edit and Reimagine appear here and nowhere earlier. */
+  const chapterComplete = !isWritingHere && !hasFailedHere;
+  /** A bare title page: your own story, or one being written right now. */
+  const bareOpener = Boolean(session) || isAuthor;
   const [editOpen, setEditOpen] = useState(false);
   const [editWandOpen, setEditWandOpen] = useState(false);
+  // Reimagine (spec §4): the sheet, the prompt to restore after a failure,
+  // the failure itself, and the "Saved to Your stories" toast for a reader
+  // whose rewrite landed in a private copy.
+  const [reimagineOpen, setReimagineOpen] = useState(false);
+  const [reimaginePrompt, setReimaginePrompt] = useState("");
+  const [reimagineError, setReimagineError] = useState<string | null>(null);
+  const [reimagineWaiting, setReimagineWaiting] = useState(false);
+  const [forkToast, setForkToast] = useState(false);
   const [preferences, setPreferences] = useState<ReaderPreferences>(DEFAULT_PREFS);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
@@ -367,10 +505,35 @@ export default function ReaderScreen({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(story.likes);
   const [isSaved, setIsSaved] = useState(false);
-  const [comments, setComments] = useState<ReaderComment[]>(INITIAL_COMMENTS);
+  const [comments, setComments] = useState<ReaderComment[]>([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [isFollowing, setIsFollowing] = useState(false);
   const [shareToast, setShareToast] = useState(false);
+
+  /*
+    THE OTHER HALF OF THE OPTIMISTIC SAVE.
+
+    `EditStoryScreen` hands the writer their page back the instant they tap
+    Save and lets `lib/chapter-save.ts` finish the request in the background.
+    That is only honest if a refusal is shown, and by then the editor is gone --
+    so the reader is where it lands. The queue holds the exact text, so Retry
+    re-sends what the writer typed rather than what is on the page.
+
+    Only a FAILURE surfaces. A successful background save says nothing, because
+    the writer already saw the result: their words, on the page.
+  */
+  const [saveFailure, setSaveFailure] = useState<ChapterSaveEntry | null>(null);
+  useEffect(() => {
+    // Read once for the chapter being opened -- a save can fail while the
+    // writer is elsewhere in the story -- then follow it.
+    const current = chapterSaveState(chapter.id);
+    setSaveFailure(current?.state === "failed" ? current : null);
+    return subscribeToChapterSaves((entry) => {
+      if (entry.chapterId !== chapter.id) return;
+      setSaveFailure(entry.state === "failed" ? entry : null);
+    });
+  }, [chapter.id]);
 
   useEffect(() => {
     let alive = true;
@@ -399,6 +562,33 @@ export default function ReaderScreen({
   useEffect(() => {
     onChapterChange?.(chapter, chapterIndex);
   }, [chapter, chapterIndex, onChapterChange]);
+
+  /**
+   * The reader follows the chapter being written to it.
+   *
+   * A continuation fired from the end of chapter 3 must land the reader on
+   * page 1 of chapter 4 - its opener, with the writing indicator under it -
+   * not leave them on the last page of 3 watching nothing happen. Only while
+   * the session is actually writing: once it completes, the Chapters sheet is
+   * back in charge and forcing an index here would fight it.
+   */
+  const writingChapterNumber = session?.phase === "writing"
+    ? session.chapterNumber
+    : null;
+  useEffect(() => {
+    if (writingChapterNumber === null) return;
+    const at = chapters.findIndex(
+      (item) => item.chapterNumber === writingChapterNumber,
+    );
+    if (at < 0) return;
+    setChapterIndex((current) => {
+      if (current === at) return current;
+      setPageIndex(0);
+      setAnchorOffset(0);
+      return at;
+    });
+  }, [chapters, writingChapterNumber]);
+
   // Restores the story's saved music choice (or "None") when the reader opens it.
   //
   // A reader can choose a track before this read resolves, and the restore then
@@ -666,22 +856,133 @@ export default function ReaderScreen({
     setMusicTrackId(trackId);
     void setStoryMusicTrackId(story.id, trackId);
   }, [story.id]);
-  const openEditor = useCallback((wandOpen: boolean) => {
-    setEditWandOpen(wandOpen);
-    setEditOpen(true);
-  }, []);
-
-  const closeEditor = useCallback((content: string) => {
-    setChapterEdits((prev) => ({ ...prev, [baseChapter.id]: content }));
+  const closeEditor = useCallback((saved: SavedChapterEdit | null) => {
     setEditOpen(false);
+    if (!saved) return;
+    setChapterEdits((prev) => ({ ...prev, [baseChapter.id]: saved.content }));
+    setChapterTitleEdits((prev) => ({ ...prev, [baseChapter.id]: saved.title }));
   }, [baseChapter.id]);
 
+  const handleReimagineSubmit = useCallback((request: ReimagineRequest) => {
+    setReimagineOpen(false);
+    setReimagineError(null);
+    setReimaginePrompt("");
+    const run = startReimagine(request);
+    if (onReimagineStarted) {
+      onReimagineStarted(run);
+      return;
+    }
+    // No host is holding the run, so this screen holds it. It has no
+    // page-by-page mechanism of its own, so it covers the reader until the
+    // rewrite settles rather than showing prose arriving mid-sentence.
+    setReimagineWaiting(true);
+    const chapterId = baseChapter.id;
+    run.promise.then(
+      (result) => {
+        setReimagineWaiting(false);
+        setChapterEdits((prev) => ({ ...prev, [chapterId]: result.chapter.paragraphs.join("\n\n") }));
+        setPageIndex(0);
+        if (result.forked) {
+          setForkToast(true);
+          setTimeout(() => setForkToast(false), 2500);
+        }
+      },
+      (error: unknown) => {
+        // The chapter on screen was never replaced, so there is nothing to
+        // restore; the sheet reopens with the prompt intact and the reason.
+        setReimagineWaiting(false);
+        setReimaginePrompt(request.prompt);
+        setReimagineError(
+          error instanceof Error ? error.message : "The rewrite failed. Please try again.",
+        );
+        setReimagineOpen(true);
+      },
+    );
+  }, [baseChapter.id, onReimagineStarted]);
+
+  /**
+   * Reimagine, as the chapter-end module may offer it.
+   *
+   * The same control the chrome carries, resolved the same way: the host's
+   * handler if it supplied one, otherwise this screen's own sheet. Null while
+   * the chapter is unfinished, because there is nothing complete to rewrite.
+   */
+  const chapterEndReimagine = useMemo(
+    () =>
+      chapterComplete
+        ? (onReimagine ?? (() => setReimagineOpen(true)))
+        : null,
+    [chapterComplete, onReimagine],
+  );
+
+  /*
+    The real thread, for THIS story, from the same endpoint the detail page
+    reads. A story with no comments gets an empty state saying so rather than
+    three seeded strangers.
+
+    A failure is treated as "none yet" on purpose. This is a preview at the foot
+    of a page of prose, not the comments product; an error row here would be the
+    loudest thing on the page, and the reader loses nothing they were promised.
+  */
+  useEffect(() => {
+    let alive = true;
+    setCommentsLoaded(false);
+    setComments([]);
+    fetchThread(story.id).then(
+      (rows) => {
+        if (!alive) return;
+        const now = Date.now();
+        setComments(
+          rows
+            .filter((row) => !row.deleted)
+            .map((row) => ({
+              id: row.id,
+              user: row.authorName,
+              text: row.body,
+              time: formatRelativeTime(Date.parse(row.createdAt), now),
+            })),
+        );
+        setCommentsLoaded(true);
+      },
+      () => {
+        if (alive) setCommentsLoaded(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [story.id]);
+
+  /**
+   * Every engagement control routes through this.
+   *
+   * Returns true when the tap was swallowed by the sign-in prompt, so a caller
+   * reads as `if (requireSignIn()) return;` -- one line, impossible to leave off
+   * half a handler.
+   */
+  const requireSignIn = useCallback((): boolean => {
+    if (!onRequireSignIn) return false;
+    onRequireSignIn();
+    return true;
+  }, [onRequireSignIn]);
+
   const handleLike = useCallback(() => {
+    if (requireSignIn()) return;
     setIsLiked((prev) => {
       setLikeCount((count) => prev ? count - 1 : count + 1);
       return !prev;
     });
-  }, []);
+  }, [requireSignIn]);
+
+  const handleToggleSaved = useCallback(() => {
+    if (requireSignIn()) return;
+    setIsSaved((prev) => !prev);
+  }, [requireSignIn]);
+
+  const handleToggleFollow = useCallback(() => {
+    if (requireSignIn()) return;
+    setIsFollowing((prev) => !prev);
+  }, [requireSignIn]);
 
   const handleShare = useCallback(async () => {
     const text = `${story.title} by ${author.displayName}\n\nRead on Katha AI`;
@@ -700,13 +1001,53 @@ export default function ReaderScreen({
     }
   }, [author.displayName, story.title]);
 
+  /*
+    The comment is POSTED, not just prepended.
+
+    This composer read the real thread from `fetchThread` and then wrote
+    nowhere: the comment appeared, an alert explained it was "saved locally",
+    and it was gone on the next chapter change -- while `postComment`, the call
+    the comments product itself uses, sat in the same module. The row appears
+    immediately (optimistic, keyed `local-`) and is replaced by the server's
+    own row when it lands; a refusal takes the row back out and says so, rather
+    than leaving the reader looking at a comment nobody else will ever see.
+  */
   const handleSubmitComment = useCallback(() => {
+    if (requireSignIn()) return;
     const trimmed = commentText.trim();
     if (!trimmed) return;
-    setComments((prev) => [{ id: Date.now(), user: "You", text: trimmed, time: "just now" }, ...prev]);
+    const localId = `local-${Date.now()}`;
+    setComments((prev) => [
+      { id: localId, user: "You", text: trimmed, time: "just now" },
+      ...prev,
+    ]);
     setCommentText("");
-    Alert.alert("Comment added", "Your comment is saved locally. Comments will persist after authentication is connected.");
-  }, [commentText]);
+    void postComment(story.id, trimmed, undefined, baseChapter.id).then(
+      (posted) => {
+        if (!posted) return;
+        setComments((prev) =>
+          prev.map((comment) =>
+            comment.id === localId
+              ? {
+                id: posted.id,
+                user: posted.authorName,
+                text: posted.body,
+                time: formatRelativeTime(Date.parse(posted.createdAt), Date.now()),
+              }
+              : comment
+          )
+        );
+      },
+      () => {
+        setComments((prev) => prev.filter((comment) => comment.id !== localId));
+        setCommentText(trimmed);
+        Alert.alert(
+          "Comment not posted",
+          "Katha could not save your comment. Check your connection and try again.",
+        );
+      },
+    );
+  }, [baseChapter.id, commentText, requireSignIn, story.id]);
 
   const jumpToMatch = useCallback((direction: 1 | -1) => {
     if (searchMatches.length === 0) return;
@@ -767,7 +1108,14 @@ export default function ReaderScreen({
         accessibilityLabel="Toggle reader controls"
         accessibilityRole="button"
         style={styles.readingArea}
-        onPress={() => setChromeVisible((visible) => !visible)}
+        onPress={() => {
+          // Nothing in the chrome operates on prose that does not exist yet,
+          // so a tap while the chapter is still being written is deliberately
+          // inert rather than raising a sheet of controls the writer cannot
+          // use. It starts working the instant the chapter lands.
+          if (isWritingHere) return;
+          setChromeVisible((visible) => !visible);
+        }}
       >
         <ScrollView
           ref={pagerRef}
@@ -785,7 +1133,14 @@ export default function ReaderScreen({
             // is mounted for the pager's benefit, so gating on `index ===
             // lastPageIndex` alone would open the branching module the instant
             // the chapter opened, before the reader had read a word of it.
-            const showsChapterEnd = index === lastPageIndex && isLastPage;
+            const showsChapterEnd = index === lastPageIndex && isLastPage
+              && chapterComplete;
+            // The writing indicator rides the LAST AVAILABLE page, whichever
+            // page that is, not the page the reader happens to be on: it is a
+            // statement about where the chapter currently ends, and the reader
+            // can see it coming as they turn toward it.
+            const showsWritingTail = index === lastPageIndex && isWritingHere;
+            const showsFailureTail = index === lastPageIndex && hasFailedHere;
             return (
               <View key={`${chapter.id}-page-${index}`} style={[styles.page, { width }]}>
                 {/*
@@ -796,29 +1151,58 @@ export default function ReaderScreen({
                   single screen. Body text on a normal page is sized to fit,
                   so this never actually scrolls there.
                 */}
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                {/* `keyboardShouldPersistTaps` so the chapter-end composer's
+                  * Continue button takes the first tap. Without it a tap with
+                  * the keyboard up is spent dismissing the keyboard, and the
+                  * reader has to press a paid button twice. */}
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.scrollContent}
+                >
                   <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
                     {index === 0 ? (
+                      /*
+                        Two openers, and the difference is whose story it is.
+
+                        Your own story opens on a bare title page: the story's
+                        title, and under it the chapter's. You already know the
+                        genre, you already know who wrote it, and you have just
+                        watched the cover being made - repeating all three is
+                        the app talking about itself on the page where the
+                        writing is supposed to start. Somebody ELSE's story is
+                        a thing you are deciding to read, so it keeps the
+                        cover, the genre and the byline.
+
+                        The "Chapter N" eyebrow is gone from both. The number
+                        lives in the chrome and the Chapters sheet, where it is
+                        a way to navigate rather than a label on prose.
+                      */
                       <>
-                        <View style={styles.coverWrap}>
-                          {coverSource ? (
-                            <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
-                          ) : (
-                            <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
-                          )}
-                        </View>
-                        <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
+                        {bareOpener ? null : (
+                          <>
+                            <View style={styles.coverWrap}>
+                              {coverSource ? (
+                                <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
+                              ) : (
+                                <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
+                              )}
+                            </View>
+                            <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
+                          </>
+                        )}
                         <Text style={[styles.title, { color: theme.text }]}>{story.title}</Text>
-                        <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
-                        {/*
-                          The chapter opener. The chapter used to drop the
-                          reader straight into prose with no indication of
-                          which chapter they were in; this names it, in the
-                          display face with a rule under it, so it reads as a
-                          title page rather than as a first line of the story.
-                        */}
-                        <Text style={[styles.chapterEyebrow, { color: theme.muted }]}>Chapter {chapter.chapterNumber}</Text>
-                        <Text style={[styles.chapterTitle, { color: theme.text }]}>{chapter.title}</Text>
+                        {bareOpener ? null : (
+                          <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
+                        )}
+                        {/* One title for a standalone: the story IS the
+                            chapter, and printing its name twice reads as a
+                            mistake. */}
+                        {isStandalone ? null : (
+                          <Text style={[styles.chapterTitle, { color: theme.text }]}>
+                            {chapter.title || `Chapter ${chapter.chapterNumber}`}
+                          </Text>
+                        )}
                         <View style={[styles.chapterRule, { backgroundColor: theme.divider }]} />
                       </>
                     ) : null}
@@ -836,9 +1220,39 @@ export default function ReaderScreen({
                       >
                         {withinWindow ? renderPageBody(index) : null}
                       </Text>
-                      {showsChapterEnd ? renderChapterEnd?.(chapter) : null}
+                      {showsWritingTail ? <WritingTail theme={theme} /> : null}
+                      {showsFailureTail ? (
+                        <View style={styles.failureTail}>
+                          <Text style={[styles.failureText, { color: theme.muted }]}>
+                            {REFUND_NOTICE}
+                          </Text>
+                          <Pressable
+                            onPress={() => {
+                              if (session) retryGeneration(session.id);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Retry"
+                            hitSlop={8}
+                            style={styles.failureRetry}
+                          >
+                            <Text style={styles.failureRetryText}>Retry</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
+                      {showsChapterEnd
+                        ? renderChapterEnd?.(chapter, { reimagine: chapterEndReimagine })
+                        : null}
                     </View>
-                    <Text style={[styles.pageFooter, { color: theme.muted }]}>Page {index + 1} of {pages.length}</Text>
+                    {/*
+                      "Page 1 of 4 · writing" while the chapter is still being
+                      written, because the count is honest about being a count
+                      of what EXISTS rather than of what the chapter will be. It
+                      grows; when the chapter lands it is simply the total.
+                    */}
+                    <Text style={[styles.pageFooter, { color: theme.muted }]}>
+                      Page {index + 1} of {pages.length}
+                      {isWritingHere ? " · writing" : ""}
+                    </Text>
                     {showsChapterEnd ? (
                       <View>
                       {shareToast ? (
@@ -848,7 +1262,7 @@ export default function ReaderScreen({
                       ) : null}
                       <View style={[styles.divider, { backgroundColor: theme.divider }]} />
                       <View style={styles.engagementRow}>
-                        <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" style={styles.engagementAction}>
+                        <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" testID="reader-like" style={styles.engagementAction}>
                           <Heart size={16} color={isLiked ? colors.heart : theme.text} fill={isLiked ? colors.heart : "none"} />
                           <Text style={[styles.engagementCount, { color: theme.text }]}>{formatNumber(likeCount)}</Text>
                         </Pressable>
@@ -856,7 +1270,7 @@ export default function ReaderScreen({
                           <MessageCircle size={16} color={theme.text} />
                           <Text style={[styles.engagementCount, { color: theme.text }]}>{comments.length}</Text>
                         </View>
-                        <Pressable onPress={() => setIsSaved((prev) => !prev)} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" style={styles.engagementAction}>
+                        <Pressable onPress={handleToggleSaved} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" testID="reader-save" style={styles.engagementAction}>
                           {isSaved ? <BookmarkCheck size={16} color={theme.text} /> : <Bookmark size={16} color={theme.text} />}
                         </Pressable>
                         <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
@@ -870,7 +1284,7 @@ export default function ReaderScreen({
                           <Text style={[styles.authorName, { color: theme.text }]}>{author.displayName}</Text>
                           <Text style={[styles.authorBio, { color: theme.muted }]} numberOfLines={2}>{author.bio}</Text>
                         </View>
-                        <Pressable onPress={() => setIsFollowing((prev) => !prev)} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" style={styles.followButton}>
+                        <Pressable onPress={handleToggleFollow} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" testID="reader-follow" style={styles.followButton}>
                           <Text style={styles.followText}>{isFollowing ? "Following" : "Follow"}</Text>
                         </Pressable>
                       </View>
@@ -888,10 +1302,21 @@ export default function ReaderScreen({
                             maxLength={500}
                             accessibilityLabel="Add a comment"
                           />
-                          <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" style={styles.commentSendBtn}>
+                          <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" testID="reader-comment-send" style={styles.commentSendBtn}>
                             <Send size={16} color={colors.surface} />
                           </Pressable>
                         </View>
+                        {/* The honest empty state. It waits for the fetch to
+                          * settle rather than flashing "No comments yet" at a
+                          * story that has forty. */}
+                        {commentsLoaded && comments.length === 0 ? (
+                          <Text
+                            style={[styles.commentsEmpty, { color: theme.muted }]}
+                            testID="reader-comments-empty"
+                          >
+                            No comments yet. Be the first to say something.
+                          </Text>
+                        ) : null}
                         {comments.map((comment) => (
                           <View key={comment.id} style={[styles.commentItem, { borderTopColor: theme.divider }]}>
                             <Text style={[styles.commentUser, { color: theme.text }]}>{comment.user}</Text>
@@ -910,8 +1335,10 @@ export default function ReaderScreen({
         </ScrollView>
       </Pressable>
       <ReaderChrome
-        visible={chromeVisible}
+        visible={chromeVisible && chapterComplete}
         storyTitle={story.title}
+        chapterTitle={isStandalone ? undefined : chapter.title}
+        isPlaying={isPlaying}
         pageIndex={pageIndex}
         pageCount={pages.length}
         searchOpen={searchOpen}
@@ -928,25 +1355,95 @@ export default function ReaderScreen({
         onSearchNext={() => jumpToMatch(1)}
         onSearchPrevious={() => jumpToMatch(-1)}
         onPageChange={goToPage}
-        // `onHistory` is deliberately left unwired. There is no persisted
-        // version history to show it - the AI editor holds exactly one prior
-        // version, in memory, scoped to that editor being open - so wiring
-        // this control to the same one-step revert would surface it a
-        // navigation away from the wand it belongs beside, reading as a
-        // history feature that does not exist. See `EditStoryScreen` for
-        // where that revert control actually lives.
-        onEdit={isAuthor ? () => openEditor(false) : undefined}
-        onReimagine={isAuthor ? () => openEditor(true) : undefined}
+        // `onHistory` is deliberately left unwired, and the control is gone
+        // from the chrome: there is no persisted version history to show.
+        //
+        // Edit is the author's, and only over a chapter that is finished.
+        // Reimagine is everyone's - a reader of someone else's story gets a
+        // private copy (spec §4) - and is likewise offered only once there is
+        // a whole chapter to reimagine. Both are ABSENT rather than disabled
+        // before that: a greyed control mid-generation is a question the
+        // writer cannot answer.
+        onEdit={isAuthor && chapterComplete ? () => setEditOpen(true) : undefined}
+        // A host may own the sheet; by default this screen opens its own.
+        onReimagine={chapterComplete
+          ? (onReimagine ?? (() => setReimagineOpen(true)))
+          : undefined}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
-        onListen={() => setListenOpen(true)}
+        onListen={onListen
+          ? () => onListen(chapterIndex)
+          : () => setListenOpen(true)}
         onMusic={() => setMusicPickerOpen(true)}
       />
+      {/*
+        Mounted only while open. The sheet reads the safe-area inset, and a
+        reader rendered outside a `SafeAreaProvider` (every reader test, and
+        any host that has not wrapped this screen) would throw on a hook it
+        never needed to run for a closed sheet.
+      */}
+      {reimagineOpen ? (
+        <ReimagineSheet
+          visible
+          story={story}
+          chapter={chapter}
+          isAuthor={isAuthor}
+          initialPrompt={reimaginePrompt}
+          errorMessage={reimagineError}
+          onClose={() => setReimagineOpen(false)}
+          onSubmit={handleReimagineSubmit}
+        />
+      ) : null}
+      {/*
+        The rewrite takes about a minute and arrives whole. This covers the
+        reader for the whole of it - the same wait the create flow shows, so
+        "Katha is writing a chapter" looks the same wherever it happens - and
+        never implies measurable progress.
+      */}
+      {reimagineWaiting ? (
+        <View style={StyleSheet.absoluteFill} accessibilityLabel="Reimagining this chapter">
+          <GeneratingOverlay genre={story.genre} mode="chapter" />
+        </View>
+      ) : null}
+      {forkToast ? (
+        <View style={styles.forkToast} accessibilityLiveRegion="polite">
+          <Text style={styles.shareToastText}>Saved to Your stories</Text>
+        </View>
+      ) : null}
+      {saveFailure ? (
+        <View style={styles.saveFailure} accessibilityRole="alert" testID="reader-save-failed">
+          <Text style={styles.saveFailureText}>
+            {saveFailure.error ?? "Your edit is on this device but Katha could not save it."}
+          </Text>
+          <View style={styles.saveFailureActions}>
+            <Pressable
+              onPress={() => retryChapterSave(saveFailure.chapterId)}
+              accessibilityRole="button"
+              accessibilityLabel="Retry saving your edit"
+              testID="reader-save-retry"
+              style={styles.saveFailureAction}
+            >
+              <Text style={styles.saveFailureRetry}>Retry</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                dismissChapterSave(saveFailure.chapterId);
+                setSaveFailure(null);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss the save failure"
+              testID="reader-save-dismiss"
+              style={styles.saveFailureAction}
+            >
+              <Text style={styles.saveFailureDismiss}>Not now</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       {editOpen ? (
         <EditStoryScreen
           story={story}
           chapter={chapter}
-          initialWandOpen={editWandOpen}
           onClose={closeEditor}
         />
       ) : null}
@@ -958,7 +1455,7 @@ export default function ReaderScreen({
       />
       <ChaptersSheet
         visible={chaptersOpen}
-        chapters={story.chapters}
+        chapters={chapters}
         currentIndex={chapterIndex}
         onSelect={switchChapter}
         onClose={() => setChaptersOpen(false)}
@@ -981,6 +1478,68 @@ export default function ReaderScreen({
         onSelect={handleMusicSelect}
         onClose={() => setMusicPickerOpen(false)}
       />
+      {/*
+        REIMAGINE SHEET GOES HERE.
+
+        The chrome's Reimagine control is already wired: it renders whenever the
+        `onReimagine` prop is supplied and is offered to every reader, not only
+        the author. To land the sheet, the Reimagine agent adds one piece of
+        state in this component (`const [reimagineOpen, setReimagineOpen] =
+        useState(false)`), passes `() => setReimagineOpen(true)` down as
+        `onReimagine` from wherever this screen is rendered - or defaults the
+        prop to it - and renders `<ReimagineSheet visible={reimagineOpen}
+        story={story} chapter={chapter} onClose={() => setReimagineOpen(false)}
+        />` right here, beside the other sheets. Nothing else in this file has
+        to move.
+      */}
+    </View>
+  );
+}
+
+/**
+ * "Still writing..." - three dots and a line, under the last settled paragraph.
+ *
+ * Deliberately not a spinner, not a progress bar and not a percentage. None of
+ * those are knowable - the model does not report how much of a chapter is left
+ * - and all three turn reading into waiting. Three pulsing dots say the same
+ * true thing a person says when they are mid-sentence, and the reader can go on
+ * reading the pages already behind them while it is on screen.
+ */
+function WritingTail({ theme }: { theme: ReaderTheme }) {
+  const pulse = useRef(new RNAnimated.Value(0.35)).current;
+
+  useEffect(() => {
+    const loop = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(pulse, {
+          toValue: 1,
+          duration: motion.slow,
+          useNativeDriver: true,
+        }),
+        RNAnimated.timing(pulse, {
+          toValue: 0.35,
+          duration: motion.slow,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <View style={styles.writingTail} accessibilityLabel="Still writing">
+      <RNAnimated.View style={[styles.writingDots, { opacity: pulse }]}>
+        {[0, 1, 2].map((dot) => (
+          <View
+            key={dot}
+            style={[styles.writingDot, { backgroundColor: theme.muted }]}
+          />
+        ))}
+      </RNAnimated.View>
+      <Text style={[styles.writingCaption, { color: theme.muted }]}>
+        Still writing...
+      </Text>
     </View>
   );
 }
@@ -1178,15 +1737,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 0,
   },
-  chapterEyebrow: {
-    marginTop: spacing.xl,
-    fontFamily: fonts.ui,
-    fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0,
-  },
   chapterTitle: {
+    marginTop: spacing.xl,
     marginBottom: spacing.sm,
     fontFamily: fonts.display,
     fontSize: 26,
@@ -1213,6 +1765,45 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     textAlign: "center",
+    letterSpacing: 0,
+  },
+  writingTail: {
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+  },
+  writingDots: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  writingDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  writingCaption: {
+    ...type.caption,
+    letterSpacing: 0,
+  },
+  failureTail: {
+    marginTop: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  failureText: {
+    ...type.caption,
+    letterSpacing: 0,
+    flexShrink: 1,
+  },
+  failureRetry: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  failureRetryText: {
+    ...type.caption,
+    fontWeight: "700",
+    color: colors.accent,
     letterSpacing: 0,
   },
   searchHighlight: {
@@ -1295,6 +1886,56 @@ const styles = StyleSheet.create({
     fontSize: 20,
     letterSpacing: 0,
   },
+  saveFailure: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.huge,
+    zIndex: 40,
+    gap: spacing.sm,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.ink,
+    boxShadow: shadows.overlay,
+  },
+  saveFailureText: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.surface,
+    letterSpacing: 0,
+  },
+  saveFailureActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.lg,
+  },
+  saveFailureAction: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: "center",
+  },
+  saveFailureRetry: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.accent,
+    letterSpacing: 0,
+  },
+  saveFailureDismiss: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.tertiary,
+    letterSpacing: 0,
+  },
+  commentsEmpty: {
+    fontFamily: fonts.ui,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0,
+    paddingVertical: spacing.sm,
+  },
   commentInputRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1349,6 +1990,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.ink,
     marginBottom: spacing.md,
+  },
+  forkToast: {
+    position: "absolute",
+    bottom: spacing.huge,
+    alignSelf: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.ink,
   },
   shareToastText: {
     fontFamily: fonts.ui,

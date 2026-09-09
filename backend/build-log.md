@@ -7,6 +7,440 @@
 
 ---
 
+## 2026-09-09 UTC — The entity visibility gate has never once fired, and the fix is a budget, a fail-closed publish, and a log line
+
+**Session:** `fable/entity-gate-fix`, backend plus the one client modal the new
+reason needs. Nothing deployed; nothing run against `iafeuxgoiknncgyjmugd`.
+Diagnosed by the owner on production the same day.
+
+### Read this first: a safety control that silently did nothing for weeks
+
+**Entity classification never succeeded in production, on any request, from the
+gate's first deploy.** Not intermittently — never. And every failure was
+silent, so the feature looked exactly like a gate that kept finding nothing to
+gate.
+
+The measurements the owner took against the live models, with a
+classification-shaped prompt for *"Taylor Swift secretly moves into a flat
+above a struggling Mumbai record shop…"*:
+
+| model | observed | answer |
+|---|---|---|
+| `meta/muse-spark-1.3-contributor` | **23.4s** | `Taylor Swift / living_public_figure / needs_grounding: true`, `Mumbai / real_place` |
+| `meta/muse-spark-1.3` | **25.5s** | the same |
+
+Both models get it exactly right. The code gave the call **~4.8 seconds**, and
+on the generation path it gave it **zero**:
+`generateFastStructuredText` defaults to `deadlineMs = 8_000`;
+`fastOpenRouterDeadlines` took `FAST_OPENROUTER_SHARE` (0.6) of that; the
+generation path passed `GENERATION_GROUNDING_DEADLINE_MS` (9s), of which the
+classifier's own `CLASSIFY_SHARE` (0.35) left 3.15s, 0.6 of which is 1.89s,
+minus a 6s reserve for the runner-up = **0 ms for the only model in front**.
+
+**The consequence, confirmed on production.** `shape-story` returned
+`grounding_entities: []` and `gating_reason: null` for every idea tried,
+including "Shivaji Maharaj plans the night march", which is precisely the case
+grounding exists to serve. Stories persisted `grounding: []`,
+`grounding_entities: []`, `entity_gate_reason: null`. A Taylor Swift story
+generated through the deployed backend with `visibility: "public"` on a real,
+non-anonymous account **was published publicly**. Migration 00050, its CHECK
+constraint, `publish-story`'s refusal — all of it inert.
+
+This got sharper the same week, because publishing became a toggle applied
+automatically when the first chapter lands (`_shared/publish.ts`) rather than a
+separate deliberate step.
+
+### The four changes, and why none of them is "raise the deadline"
+
+Raising the grounding deadline would have put ~25s in front of the first token,
+against a product requirement that prose appears as fast as possible. So:
+
+**1. Classification is split from cards, and runs on the generation's own
+clock.** `classifyIdea` (new, in `grounding-pipeline.ts`) gets
+`CLASSIFICATION_DEADLINE_MS = 40_000` — the 25.5s measurement plus room for a
+slow day, with the measurement in the comment. It is started before
+`begin_story_generation` and **awaited only when the chapter is persisted**,
+55-100s later, so the answer is already waiting and the budget costs the writer
+nothing. Grounding cards keep the 9s best-effort budget, because they must be
+in the prompt before the first token, and take whatever part of the *same*
+classification lands inside that window (`groundingCardsWithin`) — one
+classification, two consumers, rather than paying for a second short call that
+was only ever going to time out.
+
+Classification also now runs on **every** generation, not just the unshaped
+path. The old `needsGroundingFallback` short-circuit meant a caller who sent
+one shape-valid grounding card skipped server classification entirely and
+handed the gate an empty answer — the gate's own comment claimed it read "only
+what THIS server derived", and with no server call there was nothing derived.
+
+**2. `FAST_OPENROUTER_SHARE` is 1.0.** The 0.6 held 40% of every fast call's
+budget back for an OpenAI phase that was removed from `llm.ts` on 2026-09-08.
+Nothing was behind the OpenRouter loop to spend it, so it was not saved time,
+it was forbidden time — and at a 9s budget it was the difference between a
+working check and a 0 ms one. `FAST_OPENROUTER_RESERVE_MS` (6s) still protects
+the runner-up *model*, which is the guarantee the split was really making.
+Every other fast caller gets its budget back too: onboarding shape 21s → 39s,
+create-studio shape 12s → 24s.
+
+**3. The publish decision fails closed. Only that decision.**
+`_shared/publish.ts` gains `classification_unavailable`, checked in the order
+guest → classification unavailable → entity gate → database constraint, and
+`classificationAvailable` is a **required** parameter rather than an optional
+one defaulting to `true` — an optional field would let the next caller that
+forgets it publish unchecked, which is this bug's own shape.
+
+Grounding still fails open everywhere else: a story is still written from model
+knowledge when the classifier is down. But "we could not check whether this
+names a real person" must never resolve to "publish it".
+
+Migration **00058** carries the same fact to `publish-story`, which is how the
+deployed client actually publishes (it calls `publishStory` after generation,
+not the toggle). `stories.entity_classification_status` is `'ok'` /
+`'unavailable'` / null. Null means *generated before this column existed* and
+still publishes — treating it as unchecked would have locked the entire
+existing corpus out of publishing to close a hole only new stories can be in.
+
+**4. The failure is loud.** `reportClassificationFailure` writes an
+`error_events` row: `bucket: 'grounding'` (new), `severity: 'high'`,
+`errorCode: 'entity_classification_unavailable'`, context of `failure`
+(`provider_failed` / `unparseable` / `not_attempted`), the provider's own
+`code`, and `elapsed_ms`. Never the idea, never an entity name — asserted by a
+test that greps the serialized row.
+
+00058 also widens the `error_events.bucket` CHECK, and this is worth its own
+sentence: the constraint is an allow-list, so a row in an unlisted bucket is a
+**rejected insert** — telemetry about a silent failure, failing silently. While
+there, `engagement` and `phrase.learning` were added: both have been in the
+`ErrorBucket` union since 00046 and 00047 and **every row those two paths ever
+tried to write has been discarded by this constraint**.
+
+### What is honestly not fixed
+
+- **`shape-story`'s pre-generation warning still usually will not fire.** It
+  awaits shaping and grounding together in front of a waiting writer, so giving
+  the classifier 25s would make the preview crawl for everyone to warn a few.
+  It now answers only when classification is cheap, and `gating_reason: null`
+  there means *no warning to show*, never *checked and clear* — said in the
+  code, in AGENTS.md, and here. The failure is logged from that call site too.
+- **A completed classification cannot be cached for the later generation.**
+  `entity_grounding` is keyed `(canonical_name, entity_class)` — one row per
+  entity — and a classification is keyed by the idea. Reusing one would need a
+  new idea-keyed cache (a hash of the idea, an expiry, a new RPC), which is a
+  schema decision of its own and not something to smuggle in behind a safety
+  fix.
+- **`OPENROUTER_PROBE_MS` is now mis-sized.** The 8s probe in front of the
+  generation leader was justified by "the contributor tier answers 404 in under
+  a second". It does not any more (see below). The right fix is to reorder
+  `OPENROUTER_MODELS`, which belongs to a generation-chain change, not to this
+  one. Flagged in AGENTS.md, not done here.
+
+### Correcting the record: the contributor tier is serving
+
+AGENTS.md said `meta/muse-spark-1.3-contributor` was `404` by account data
+policy. It is not: it answered in 23.4s on 2026-09-09 and it is the model named
+in the successful chapter timings. The privacy setting has evidently changed.
+That is still a live data decision — story ideas and generated prose go to the
+provider for training at ~17x lower cost — but it is a decision about whether
+to keep using it, not about whether it works. Both places that reasoned from
+"the leader fails for free" are flagged.
+
+### Gates
+
+`deno test functions` **714 → 730**, `migrations` **118 → 120**, both green.
+`deno fmt` and `deno check` clean on everything touched. `pnpm typecheck` clean,
+`pnpm lint` 0 errors, `pnpm exec jest` 632 → 633 green.
+
+Client surface is the minimum the new reason needs: `StoryPrivateReason` in
+`api.ts`, the third case in `StoryGatedPrivateModal` ("Kept private for now" —
+an explanation, not a warning, and deliberately *not* the gate copy, which
+would tell a writer their idea names a real living person when nobody ever
+looked), and a two-line type widening in `generation-session.ts` so the reason
+can reach the modal.
+## 2026-09-10 UTC — A report has to say what happened
+
+**Session:** Story-page lane of the "created" flow rebuild, on
+`fable/story-page-light`. One function touched. Nothing deployed; no migration.
+
+### `comments`: `details` is required on a report
+
+`validateReportDetails` treated `details` as optional and mapped blank to
+`null`. What that produced was reports carrying a reason enum and nothing else
+— `harassment`, and no indication of what was harassing about it. A moderator
+cannot act on a bucket name, and a one-tap report next to a stranger's comment
+is filed by whoever is most annoyed rather than by whoever has a problem.
+
+It now requires a trimmed description of at least **10 characters** (the floor
+under "x" and an accidental keypress, not a quality bar) and still caps at
+`MAX_REPORT_DETAILS_LENGTH` (2,000, matching the column's check constraint in
+migration 00042). The return shape carries which rule failed, so the handler
+can say "you need to describe the problem" and "that is too long" separately
+rather than answering both with the length message.
+
+```
+{ ok: true, value: string } | { ok: false, reason: "missing" | "length" }
+```
+
+The client (`expo/src/lib/comments.ts` `reportContent`) enforces the same rule
+before the call, and the report sheets keep Submit disabled until there is a
+description. The server-side check is not a duplicate of that — it is the
+boundary; the client's is a courtesy that saves a round trip.
+
+**No schema change.** `content_reports.details` is already nullable with a
+2,000-character check; nothing in the database had to move for a rule about
+what callers may send.
+
+**Not changed:** `author_id` was already on both the read and the post
+responses. The client was dropping it; it now carries it through so a comment's
+byline can route to a profile.
+
+**Tests:** `validateReportDetails` rewritten to pin required / trimmed /
+floored / capped, including that whitespace cannot pad a one-word description
+over the floor. `deno test --allow-env --allow-net --allow-read
+supabase/functions`: **714 passed, 0 failed**. `deno fmt --check` and
+`deno check` clean on the touched files.
+
+---
+
+## 2026-09-09 UTC — Reimagining a chapter, saved characters, and the generation deadline finally sized to the gateway
+
+**Session:** Backend lane of the "created" story flow (`docs/design/created-flow.md`,
+product decisions locked the same day). Resumed from a WIP commit after a rate
+limit, on `fable/backend-created-flow`. Nothing deployed; nothing run against
+`iafeuxgoiknncgyjmugd`.
+
+### Read this first: the blocking generation budget has a hard ceiling, and it is not the model
+
+The previous entry's diagnosis was right and its proposed fix was not big
+enough on one axis and far too big on another. Both halves are now settled.
+
+**The work.** A chapter takes **55.5s, 69.1s, 70s or 76.4s** — four production
+measurements, `meta/muse-spark-1.3-contributor`, 1,846–1,904 words. The 120s
+budget split its 84s paid window evenly across two models. 42s per attempt
+against a 70s job is not a fallback chain, it is four guaranteed timeouts, and
+production recorded exactly that: `all_providers_failed`,
+`codes: [timeout, timeout, timeout, timeout]`, credit correctly refunded after
+126.1 seconds.
+
+**The ceiling.** Supabase returns **504 after 150 seconds with no bytes sent,
+on every plan** (worker wall clock is 150s free / 400s paid; the *request idle
+timeout* is 150s regardless — <https://supabase.com/docs/guides/functions/limits>).
+A blocking handler sends nothing until it is finished, so 150s bounds the whole
+request: grounding, the reservation, the model, persistence and the response.
+Past it the caller gets a gateway error and **never sees the refund payload the
+handler built**. This never mattered while everything streamed, because a
+stream's first byte lands in seconds and every chunk resets the clock. It
+matters the moment a blocking caller waits on a chapter.
+
+**What was done, all pinned by `_shared/llm-deadline.test.ts`:**
+
+| | before | after |
+|---|---|---|
+| `GENERATION_DEADLINE_MS` | 120,000 | **125,000** (+ ~15s handler ⇒ 140s worst case, 10s of margin under 150s) |
+| `EDGE_REQUEST_IDLE_TIMEOUT_MS` | — | **150,000**, new, documented, and asserted against |
+| `PHASE_END_SHARE` | 0.70 / 0.90 / 1.0 | **0.92 / 0.96 / 1.0** (openrouter 115s, gemini ~5s, free ~5s) |
+| paid phase, per model | even halves | **8s probe** for every model but the last; the last owns the window |
+| `OPENROUTER_TIMEOUT_MS` | 70,000 | 90,000 — a 76s chapter against a 70s socket is a coin toss |
+
+The probe rule is the important one and it is deliberately blunt: under a 150s
+ceiling **exactly one model can be given a chapter's worth of time**, so the
+last model in `OPENROUTER_MODELS` gets all of it and the ones in front get long
+enough to refuse. That fits the account as it actually is —
+`meta/muse-spark-1.3-contributor` answers `404` in well under a second by data
+policy, so probing it is nearly free. If that tier is ever enabled, **reorder
+the models rather than widening the probe**; a chapter does not fit in 8s.
+
+**What is honestly not fixed.** There is no second real attempt on a blocking
+call, and the share table now says so instead of implying otherwise. A true
+fallback chain on a blocking path needs `202 Accepted` plus polling. Also worth
+knowing: Gemini is configured but disabled by `LLM_DISABLED_PROVIDERS`
+(429-exhausted since 2026-08-31), so the live chain is OpenRouter alone — and
+because the shares are cumulative offsets from one start, a disabled phase
+hands its time to the phases *after* it, never to the one in front. Re-enabling
+Gemini as a real fallback means moving its share, not just its secret.
+
+**Streaming stays the primary transport.** Mid-session the direction changed to
+"remove streaming everywhere" and then changed back; the code was carried
+through both. What was clarified is worth recording, because the two get
+conflated: *incremental delivery* (chunks over the wire, which is what puts
+page 1 in front of a reader ~20s in) is kept; *typewriter reveal* (text
+painting letter by letter) was never a backend concern and the client already
+gates prose behind whole settled pages.
+
+### Reimagining a chapter
+
+New function `reimagine-chapter`, both transports, opted into with
+`stream: true` exactly as `continue-story` is.
+
+Request: `{ story_id, chapter_number, request_id, prompt?, character_replacements[] }`,
+where each replacement is `{ from_name, to: { saved_character_id } | { name, role?, appearance?, background? }, apply_to_all_chapters }`.
+At least one of `prompt` and a replacement is required — a rewrite with no
+instruction is a credit spent on a coin toss. Response (the `done` event's data
+when streamed, one JSON body when not):
+`{ chapter, story_id, forked_from_story_id, balance, model, timings, renamed: { chapters, roster } }`.
+
+Three things distinguish it from a continuation, and only those three:
+
+1. **A non-author gets a private copy first.** `fork_story` (migration 00057)
+   copies the story, its chapters and its cast, sets
+   `stories.forked_from_story_id`, and the rewrite happens in the copy. The
+   fork is looked up before it is created, keyed on (source story, caller), so
+   a reader who reimagines three chapters ends up with one copy, and a retry
+   never mints a second story. The replay check accepts an operation whose
+   `story_id` is the caller's fork of the requested story, which is what makes
+   retrying a forked reimagine work at all.
+2. **The chapter already exists.** `complete_reimagine_generation` UPDATEs the
+   row rather than inserting, deletes `chapter_audio` and nulls `audio_url`
+   (the narration read prose that is gone), and rewrites `series_state` **only
+   when the rewritten chapter is the last one** — a chapter in the middle of a
+   series does not get to overwrite the state later chapters were written from.
+3. **`apply_to_all_chapters` renames, it does not regenerate.** Regenerating
+   every chapter would cost a credit each and rewrite prose the reader chose to
+   keep. `_shared/character-substitution.ts` does the rename: whole words,
+   Unicode-aware boundaries, possessives for free, ALL CAPS preserved, a first
+   name standing in for a full name, a surname alone left alone, and **pronouns
+   never touched** (a gender change is a job for reimagining, not for a
+   rename). The roster row and the story's `series_state` move with it, because
+   those are what the *next* continuation is written from — without that the
+   rename would hold in the prose and be undone by the next chapter. The whole
+   cross-chapter pass runs after the chapter is persisted and can never fail the
+   request: the reader has already paid for and received the rewrite, and losing
+   it because a rename could not be propagated is the worse trade. A failure
+   there is logged as `reimagine_rename_failed`.
+
+Cost is `CHAPTER_TEXT_CREDITS` — one credit, the same reservation, replay and
+refund lifecycle as a continuation, via a new `generation_operations.kind` of
+`reimagine`. A chapter that is still being written is refused with a typed
+`chapter_generating` before any credit is touched, and the `KTH01` the
+reservation would raise is mapped to the same code.
+
+The pure parts — reading the replacement list, applying it to the cast,
+deciding which renames escape the chapter — live in `_shared/reimagine.ts` so
+they can be tested without a server, a database or a model.
+
+### Publishing is a toggle now, not a step
+
+`_shared/publish.ts`. The visibility switch in the create brief **is** the
+publish button: `generate-story` and `generate-story-stream` accept
+`visibility: "private" | "public"` (absent means private) and apply it the
+moment the first chapter is persisted. There is no separate review step.
+
+The response carries `visibility: { requested, applied, reason }` rather than a
+boolean, because the interesting case is the one where they differ. `reason` is
+`null` when they agree, and otherwise the entity gate's own enum, or
+`account_required` (a guest asked to publish — the same rule `publish-story`
+has always enforced), or `gate_constraint` (the 00050 CHECK refused the update
+anyway, so the story stayed private and the payload says so instead of
+pretending). The columns written are exactly the ones `publish-story` writes,
+in the same order, so the two paths cannot drift apart on what "public" means.
+
+### One `done` payload, tied to the schema
+
+`_shared/generation-done.ts` builds the terminal payload for both transports.
+Its nesting is `{ story, chapter, balance, model, timings, visibility }` —
+**extend it, never flatten it**; client agents code against those five objects.
+
+The reason it exists is a bug it now makes impossible: each handler used to
+assemble the object by hand, and the streamed one had quietly stopped carrying
+`beats` and `themes` — fields that are on the row, in the schema, and read by
+the chapter-end chips. `DONE_PAYLOAD_LOCATIONS` maps every field of
+`STORY_OUTPUT_JSON_SCHEMA` that the stream does not produce itself to where it
+lands (`story.beats`, `chapter.hook_text`, and so on), and the test fails both
+when a schema field has no entry and when the built payload has nothing at the
+named location. A field added to the schema without a home is now a red test
+rather than a silently missing chip.
+
+### Saved characters
+
+`user_characters` (migration 00057) is the writer's own cast library, and
+`_shared/saved-characters.ts` does two best-effort jobs around a paid
+generation.
+
+**Resolve.** A brief may name a character by `saved_character_id` instead of
+restating it; blank fields are filled from the library and the portrait the
+writer already paid for comes along. An id the caller does not own is dropped
+silently — the character keeps whatever the brief said. A generation must never
+fail over a stale id.
+
+**Remember.** After the first chapter is persisted, the story's cast is copied
+into `user_characters` so the next brief can start from it. Duplicate names are
+skipped by the database, and a failure costs the writer nothing but the
+convenience.
+
+### Everything else
+
+- **`continue-story` now returns the continuity it just wrote.** Both
+  transports answer with `story: { id, series_state, beats, previously_summary }`
+  beside the chapter. The chapter-end screen derives its "what happens next"
+  chips from the open hooks, promised payoffs and next-chapter pressure;
+  returning only the chapter row left the client offering chapter 4's chips
+  derived from chapter 2's state. Nested under `story` deliberately, so the
+  payload has the same shape a first chapter's does rather than a second flat
+  spelling of the same fields.
+- **`edit-story` accepts a whole-chapter save.** A body carrying
+  `chapter_body` (≤ 200,000 characters, with an optional `chapter_title`) takes
+  a no-model path before any paragraph-edit validation, and shares the
+  ownership check, the chapter lookup and the story word-count recompute with
+  the AI path. It deliberately does **not** use the compare-and-swap the AI
+  edit uses: an AI edit writes text derived from what it read, so a concurrent
+  write must invalidate it; a notepad save is the writer looking at the text
+  and typing, and refusing their copy because a cover job touched the row would
+  lose work they can see on screen. Narration is dropped, same rule as a
+  rewrite.
+- **`library` carries what the Home rail and the chapter end need.**
+  Confirmed `cover_image_url`, `cover_status`, `chapters(count)` and
+  `previously_summary` were already there; added `story_mode`, `beats`,
+  `series_state`, `planned_chapter_count` and `entity_gate_reason`.
+- **The reload bug behind "the chapter end only offers a text box."** This was
+  the complaint that started the session, and the backend was innocent: a real
+  series generation came back with 3 beats, 4 open hooks, 2 promised payoffs,
+  `next_chapter_pressure` and a real `hook_text`. `mapGeneratedStory` in
+  `expo/src/lib/api.ts` read all of it, so the chips worked immediately after
+  generating. `hydrateStoryRow` hardcoded `beats: []` and
+  `seriesState: undefined`, and `fetchMyStories`'s `.select(...)` never asked
+  for the columns — so the moment the app was reloaded and the story came back
+  from Library or Home, the chips vanished permanently. Fixed on both ends, plus
+  `storyMode` now comes from the row instead of being inferred from the chapter
+  count (a series whose second chapter is unwritten has exactly one chapter, and
+  counting called it a standalone and hid the continuation UI on precisely the
+  story that needed it). Three regression tests in `my-stories-restore.test.ts`.
+- **Client API additions** (`expo/src/lib/api.ts` and `types/domain.ts` only —
+  no screens, no components): `reimagineChapterStreaming`,
+  `listSavedCharacters`, `deleteSavedCharacter`, `saveChapterText`, and
+  `CreateDraft.characters[].savedCharacterId`, which is now sent as
+  `saved_character_id` on generation.
+
+### Known and unfixed
+
+**The word band overshoots on the streamed path**, and it is measurable: a
+standalone adult chapter came back at 1,904 words against a 500–1,500 band, and
+a series chapter at 2,116 against 600–900. The streamed path cannot retry what
+the reader has already read, so an out-of-band chapter is logged
+(`streamed_chapter_outside_band`) and kept. **Do not try to fix it by lowering
+`max_tokens`** — that was tried, and because reasoning and prose share one cap
+it produced a chapter with no ending. Nothing in this session makes it worse;
+the reimagine path applies exactly the same rule as the streamed continuation.
+
+### Verification
+
+- Backend, `deno test --allow-env --allow-net --allow-read supabase/functions`:
+  673 passed before, **709 passed, 0 failed** after — +36, all of them in six
+  new files: `llm-deadline.test.ts` (5), `character-substitution.test.ts` (8),
+  `publish.test.ts` (7), `reimagine.test.ts` (7), `saved-characters.test.ts`
+  (6), `generation-done.test.ts` (3). No existing test was edited.
+- `supabase/migrations`: 112 passed before, **118 passed, 0 failed** after —
+  the six in `00057_saved_characters_and_reimagine_test.ts`.
+- `deno fmt` run on every file touched; `deno check` clean on
+  `reimagine-chapter`, `continue-story`, `edit-story`, `library`,
+  `generate-story`, `generate-story-stream` and the new `_shared` modules.
+- Client, from `expo/` on Node v22.23.0: `pnpm typecheck` clean.
+  `my-stories-restore.test.ts` 8 passed (was 5).
+- **Nothing was deployed and nothing ran against `iafeuxgoiknncgyjmugd`.** The
+  production measurements quoted above were taken by the orchestrating session,
+  not by this one. No production-level test ran here, so no
+  `public.error_events` rows were written.
+
+---
+
 ## 2026-09-09 UTC — The reading experience pass, an adversarial review, and a generation deadline that cannot be met
 
 **Session:** Product-owner feedback from walking the running app, built by four
@@ -3201,6 +3635,47 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
 - No `any`, no `@ts-ignore` in either touched file (checked by grep; the only
   matches are the English word "any" inside prose strings).
 - Not committed, per instructions.
+
+## 2026-09-10 UTC — Edge TTS narration path wired behind the existing audio cache
+
+The audio cost basis changed from "MiniMax is the only path" to "Microsoft
+edge-tts can be the cheap path if a worker is configured." The working estimate
+is **~$0.001-$0.006 per fresh chapter narration** for edge-tts, driven by
+worker runtime, storage and bandwidth rather than provider API credits. MiniMax
+via RunPod remains the expensive fallback for `runpod_minimax` voices until
+those voices are migrated or retired. `source-of-truth/CREDITS_AND_PRICING.md`
+now records both numbers instead of treating `$0.22/chapter` as universal.
+
+Implementation:
+
+- `_shared/edge-tts.ts` now calls `EDGE_TTS_SERVICE_URL` with `{ text, voice,
+  format: "mp3" }`, accepts either raw `audio/mpeg` or base64 JSON, enforces a
+  50 MB response cap, and supports optional `EDGE_TTS_API_KEY` plus
+  `EDGE_TTS_TIMEOUT_MS`.
+- `generate-audio` handles `edge_tts` voices synchronously: claim the
+  `(chapter, voice)` row, synthesize MP3 bytes, upload to the existing public
+  `audio` bucket, mark `chapter_audio` ready, and return the cached URL. It
+  does **not** create a fake RunPod job or ask `audio-status` to poll a provider
+  that has no job API.
+- Migration `00059_reactivate_edge_tts_voices.sql` reactivates `elvira` and
+  `alvaro`, which `00053` deliberately hid while edge-tts had no backend.
+
+Operational requirement before this can work in production: deploy or choose the
+edge-tts worker and set `EDGE_TTS_SERVICE_URL` in Supabase secrets. Without it,
+edge-tts requests fail as `edge_tts_service_missing`; cached audio and RunPod
+voices keep their existing behavior.
+
+Verification:
+
+- `deno fmt` on every changed backend test/function file.
+- `deno test --allow-all backend/supabase/functions/_shared/edge-tts.test.ts
+  backend/supabase/functions/generate-audio/index.test.ts
+  backend/supabase/migrations/00048_voice_library_test.ts
+  backend/supabase/migrations/00053_deactivate_unbacked_voices_test.ts`:
+  **32 passed, 0 failed**.
+- No live Supabase migration was applied, no function was deployed, and no
+  production-level test ran; therefore no `public.error_events` rows were
+  written this session.
 ## 2026-09-08: Rate-limit the grounding fallback, without reordering it
 
 ### Changed

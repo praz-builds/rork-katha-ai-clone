@@ -105,6 +105,6 @@ Deno.test("the per-minute window reopens, and it is the only limit left", async 
  * described a policy that no longer exists - not behaviour that regressed - so
  * keeping them inverted ("assert the ceiling does NOT apply") would have left
  * this file arguing with itself about which migration was in force.
- * `00046_story_shape_no_anonymous_ceiling_test.ts` asserts the policy that
+ * `00056_story_shape_no_anonymous_ceiling_test.ts` asserts the policy that
  * replaced them.
  */

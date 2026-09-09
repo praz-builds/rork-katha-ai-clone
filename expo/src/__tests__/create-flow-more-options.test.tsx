@@ -104,8 +104,7 @@ async function renderCreate() {
     <CreateStudioScreen
       credits={12}
       isAnonymous={false}
-      onCreditUsed={jest.fn()}
-      onPublished={jest.fn()}
+      onGenerationStarted={jest.fn()}
       onBack={jest.fn()}
     />,
   );

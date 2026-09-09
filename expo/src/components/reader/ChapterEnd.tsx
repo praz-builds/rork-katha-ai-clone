@@ -8,13 +8,8 @@ import {
   View,
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import { AlertCircle, PenLine, Shuffle, Sparkles } from "lucide-react-native";
-import {
-  continueStory,
-  createGenerationRequestId,
-  GenerationRequestError,
-  isLocalStubChapter,
-} from "@/lib/api";
+import { PenLine, Shuffle, Sparkles, X } from "lucide-react-native";
+import { toDirection } from "@/lib/directions";
 import { CHAPTER_TEXT_CREDITS, MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
 import { colors, fonts, radius, spacing, type } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
@@ -22,9 +17,11 @@ import type { Chapter, Story } from "@/types/domain";
 /**
  * One concrete direction the reader can send the next chapter toward.
  *
- * `prompt` is specific prose ("Ask Aaji to open the stuck page and share the
- * old fort song"), never a generic label ("Continue the plot"). It becomes
- * `next_instruction` on the `continue-story` request unchanged.
+ * `prompt` is specific prose AND AN INSTRUCTION -- "Ask Aaji to open the stuck
+ * page and share the old fort song", never a question ("Who left the page
+ * stuck?") and never a generic label ("Continue the plot"). It becomes
+ * `next_instruction` on the `continue-story` request unchanged, so what the
+ * reader reads on the card is exactly what the model is told.
  */
 export type ContinuationOption = {
   id: string;
@@ -32,7 +29,6 @@ export type ContinuationOption = {
 };
 
 type SuggestionStatus = "loading" | "ready" | "unavailable";
-type SubmitPhase = "idle" | "submitting" | "success" | "error";
 
 /**
  * What `continue-story` falls back to when a story has no usable
@@ -50,13 +46,25 @@ const UNAVAILABLE_REASON = {
 /** The resolver is given this long before its result is treated as failed. */
 const RESOLVE_TIMEOUT_MS = 4000;
 
+/**
+ * The character counter appears only when the limit is close enough to matter.
+ * A counter on an empty field is a word budget nobody asked for.
+ */
+const COUNTER_VISIBLE_AT = Math.round(MAX_NEXT_INSTRUCTION_CHARS * 0.8);
+
 function nonEmpty(value: string | undefined | null): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 }
 
-/** How many direction cards the reader is offered at once. */
-const MAX_OPTIONS = 3;
+/**
+ * How many DERIVED direction cards the reader is offered.
+ *
+ * Two, not three. The third card in the row is always "Write your own", so the
+ * reader is looking at three cards either way -- two the story proposes and one
+ * they fill in themselves.
+ */
+const MAX_OPTIONS = 2;
 
 /**
  * Reads the concrete continuation directions straight off data the backend
@@ -91,12 +99,27 @@ export function deriveContinuationOptions(
 ): ContinuationOption[] {
   const candidates: ContinuationOption[] = [];
   const push = (id: string, value: string | undefined | null) => {
-    const prompt = nonEmpty(value);
+    const raw = nonEmpty(value);
+    if (!raw) return;
+    /*
+      EVERY CHIP IS AN INSTRUCTION, NEVER A QUESTION.
+
+      `open_hooks` and `hook_text` arrive phrased as questions, because that is
+      what a hook is. Rendered straight they read as a comprehension quiz --
+      "Who is writing the predictive linen notes" -- which asks the reader to
+      answer the story rather than steer it. `toDirection` puts a fixed English
+      frame in front of the story's own words to point it the other way, and
+      returns `null` for anything it cannot convert grammatically.
+
+      A `null` is DROPPED. It is not replaced, because the replacement would
+      have to be invented, and an invented chip fits every story in the app.
+    */
+    const prompt = toDirection(raw);
     if (!prompt) return;
     // Two sources often carry the same sentence - the plan's next beat and the
-    // pressure the model recorded, most commonly. Deduping on the prose (not
-    // the source) keeps the reader from being offered the same step twice
-    // wearing two different labels.
+    // pressure the model recorded, most commonly. Deduping on the CONVERTED
+    // prose (not the source) also catches a hook and a payoff that differ only
+    // in punctuation, since both land on the same direction.
     if (candidates.some((existing) => existing.prompt === prompt)) return;
     candidates.push({ id, prompt });
   };
@@ -152,27 +175,29 @@ export type ChapterEndProps = {
    */
   resolveOptions?: (story: Story, chapter: Chapter) => Promise<ContinuationOption[]>;
   /**
-   * Sends the continuation request. Defaults to `continueStory` from
-   * `@/lib/api`, the buffered (non-streaming) path already used elsewhere for
-   * this exact call shape - `(storyId, requestId, isFinale, expectedChapterNum,
-   * nextInstruction)`. Overridable for tests.
+   * Write the next chapter in this direction. `undefined` means Katha decides.
+   *
+   * This component no longer makes the request itself. It used to, and then
+   * showed its own "Writing what happens next..." panel at the bottom of the
+   * last page - a second waiting surface, several inches down a scroll, with a
+   * different look from the one the same app shows for the first chapter. The
+   * caller now starts the generation and puts the ordinary wait on screen; when
+   * it lands, the reader opens on page 1 of the new chapter.
    */
-  continueChapter?: typeof continueStory;
+  onContinue: (direction?: string) => void;
   /**
-   * Fires once a new chapter has been generated. Optional: this component
-   * never mutates the reader's pagination or the story it was handed, so a
-   * caller that wants to jump to the new chapter or refetch the story wires
-   * this in.
+   * Opens Reimagine for a standalone story, which has no next chapter to offer
+   * and so ends on this instead. Omitted and the pill is not rendered.
    */
-  onChapterReady?: (chapter: Chapter) => void;
+  onReimagine?: () => void;
 };
 
 export default function ChapterEnd({
   story,
   chapter,
   resolveOptions = defaultResolveOptions,
-  continueChapter = continueStory,
-  onChapterReady,
+  onContinue,
+  onReimagine,
 }: ChapterEndProps) {
   const reduceMotion = useReducedMotion();
   const plannedChapterCount = story.plannedChapterCount;
@@ -210,11 +235,27 @@ export default function ChapterEnd({
   // that is open by default reads as the main path.
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState("");
-  const [phase, setPhase] = useState<SubmitPhase>("idle");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [completedChapter, setCompletedChapter] = useState<Chapter | null>(null);
-  const [directionApplied, setDirectionApplied] = useState(true);
-  const submittingRef = useRef(false);
+
+  /**
+   * One continuation per chapter end, however many times it is tapped.
+   *
+   * This component used to make the request itself and guard it with the
+   * request's own pending state; it now hands the direction upward and the
+   * caller starts the generation, so the guard has to be here or nowhere. It
+   * is not cosmetic: two taps in the same tick are two `startChapterGeneration`
+   * calls, which is two chapters written and two credits spent for one
+   * decision. A `ref` rather than state because the second press of a real
+   * double tap can arrive before a re-render.
+   */
+  const firedRef = useRef(false);
+  useEffect(() => {
+    firedRef.current = false;
+  }, [chapter.id]);
+  const continueOnce = useCallback((direction?: string) => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    onContinue(direction);
+  }, [onContinue]);
 
   useEffect(() => {
     if (seriesComplete || !isLatestChapter) return;
@@ -232,115 +273,68 @@ export default function ChapterEnd({
         } else {
           setUnavailableReason(UNAVAILABLE_REASON.insufficient);
           setStatus("unavailable");
+          // With nothing derived, the reader's own words are the only way on,
+          // so the composer opens rather than hiding behind one more tap.
+          setComposerOpen(true);
         }
       })
       .catch(() => {
         if (cancelled) return;
         setUnavailableReason(UNAVAILABLE_REASON.failed);
         setStatus("unavailable");
+        setComposerOpen(true);
       });
     return () => {
       cancelled = true;
     };
   }, [story, chapter, isLatestChapter, seriesComplete, resolveOptions]);
 
-  const submit = useCallback(async (instruction?: string) => {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setPhase("submitting");
-    setErrorMessage("");
-    try {
-      const nextChapterNumber = chapter.chapterNumber + 1;
-      const isFinale = typeof plannedChapterCount === "number"
-        && nextChapterNumber >= plannedChapterCount;
-      const requestId = createGenerationRequestId();
-      const result = await continueChapter(
-        story.id,
-        requestId,
-        isFinale,
-        nextChapterNumber,
-        instruction,
-      );
-      setCompletedChapter(result.chapter);
-      // With no backend configured the continuation is canned prose, so the
-      // direction the reader chose or typed did not shape it. Saying so is the
-      // honest option: silently returning text that ignores their choice
-      // teaches them the feature does not work.
-      setDirectionApplied(!isLocalStubChapter(result));
-      setPhase("success");
-      onChapterReady?.(result.chapter);
-    } catch (err) {
-      setErrorMessage(
-        err instanceof GenerationRequestError
-          ? err.message
-          : "Something went wrong. Please try again.",
-      );
-      setPhase("error");
-    } finally {
-      submittingRef.current = false;
-    }
-  }, [chapter.chapterNumber, continueChapter, onChapterReady, plannedChapterCount, story.id]);
-
   if (!isLatestChapter) return null;
 
+  /*
+    Two ways a story ends here, and they are different endings.
+
+    A SERIES that has reached its planned last chapter says so: there is no
+    further chapter to write, and offering one would be selling a credit against
+    a story the plan has already finished.
+
+    A STANDALONE never had a next chapter to offer. It ends on the one thing it
+    can still be: written again, differently. So it gets the Reimagine pill
+    rather than a direction module, and the engagement row the reader already
+    renders underneath sits below it.
+  */
   if (seriesComplete) {
     return (
-      <View style={styles.wrap} accessibilityLabel="This story is complete">
-        <Text style={styles.heading}>The story is complete</Text>
-        <Text style={styles.body}>
-          This story has reached its planned ending. There is no further
-          chapter to write.
-        </Text>
-      </View>
-    );
-  }
-
-  if (phase === "submitting") {
-    return (
-      <View style={styles.wrap}>
-        <Text style={styles.heading}>Writing what happens next...</Text>
-        <View style={styles.progressRow}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={styles.body}>This usually takes under a minute.</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (phase === "success" && completedChapter) {
-    return (
-      <View style={styles.wrap} accessibilityLabel="New chapter ready">
-        <Text style={styles.heading}>New chapter ready</Text>
-        <Text style={styles.body}>
-          &quot;{completedChapter.title}&quot; has been added to this story.
-        </Text>
-        {!directionApplied
-          ? (
-            <Text style={styles.stubNote}>
-              This one was written from a sample, so the direction you chose was
-              not used. Connect a backend to steer the next chapter.
+      <View
+        style={styles.wrap}
+        accessibilityLabel={
+          isSeries ? "This story is complete" : "The end of this story"
+        }
+      >
+        {isSeries ? (
+          <>
+            <Text style={styles.heading}>The story is complete</Text>
+            <Text style={styles.body}>
+              This story has reached its planned ending. There is no further
+              chapter to write.
             </Text>
-          )
-          : null}
-      </View>
-    );
-  }
-
-  if (phase === "error") {
-    return (
-      <View style={styles.wrap}>
-        <View style={styles.errorRow}>
-          <AlertCircle size={18} color={colors.premium} />
-          <Text style={styles.errorText}>{errorMessage}</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Try again"
-          style={styles.retryButton}
-          onPress={() => setPhase("idle")}
-        >
-          <Text style={styles.retryButtonText}>Try again</Text>
-        </Pressable>
+          </>
+        ) : null}
+        {onReimagine ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reimagine this story"
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && !reduceMotion && styles.textCtaPressed,
+            ]}
+            onPress={onReimagine}
+            testID="chapter-end-reimagine"
+          >
+            <Sparkles size={16} color={colors.accent} />
+            <Text style={styles.secondaryButtonText}>Reimagine this story</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -355,7 +349,8 @@ export default function ChapterEnd({
         * composer's submit button hid it from the cards, which are now the
         * path most readers will take. */}
       <Text style={styles.priceNote}>
-        Any of these writes the next chapter · {CHAPTER_TEXT_CREDITS} credit
+        Any of these writes chapter {chapter.chapterNumber + 1} ·{" "}
+        {CHAPTER_TEXT_CREDITS} credit
       </Text>
       {status === "loading" ? (
         <View
@@ -390,7 +385,7 @@ export default function ChapterEnd({
               styles.optionCard,
               pressed && !reduceMotion && styles.optionCardPressed,
             ]}
-            onPress={() => submit(option.prompt)}
+            onPress={() => continueOnce(option.prompt)}
             testID={`chapter-end-option-${index}`}
           >
             <Sparkles size={16} color={colors.accent} />
@@ -398,78 +393,110 @@ export default function ChapterEnd({
           </Pressable>
         ))
         : null}
-      {/* Two small text CTAs, deliberately lighter than the cards above: an
-        * icon, a label, no card, no fill. The free-text input is not rendered
-        * until "Write your own" is tapped. */}
-      <View style={styles.ctaRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            composerOpen ? "Hide your own direction" : "Write your own direction"
-          }
-          accessibilityState={{ expanded: composerOpen }}
-          style={({ pressed }) => [
-            styles.textCta,
-            pressed && !reduceMotion && styles.textCtaPressed,
-          ]}
-          onPress={() => setComposerOpen((open) => !open)}
-          testID="chapter-end-write-own"
-        >
-          <PenLine size={16} color={colors.muted} />
-          <Text style={styles.textCtaLabel}>Write your own</Text>
-        </Pressable>
-        {/* §10.2: leaving the direction blank means Katha decides. This is that
-          * sentence as a control. It replaces a "Surprise me" button that
-          * pasted one of four hardcoded generic lines into the box - filler
-          * that fit any story in the app and so proved the app had read none
-          * of them. Sending no instruction at all lets the model use the plan
-          * and series state it already has, which is the honest version of the
-          * same offer. */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Let Katha decide what happens next"
-          style={({ pressed }) => [
-            styles.textCta,
-            pressed && !reduceMotion && styles.textCtaPressed,
-          ]}
-          onPress={() => submit(undefined)}
-          testID="chapter-end-let-katha-decide"
-        >
-          <Shuffle size={16} color={colors.muted} />
-          <Text style={styles.textCtaLabel}>Let Katha decide</Text>
-        </Pressable>
-      </View>
+      {/*
+        THE THIRD CARD.
+
+        "Write your own" used to be a small muted text link under the cards,
+        next to a second one called "Let Katha decide" -- two lightweight
+        controls competing for the same decision, both of them visually arguing
+        that they were afterthoughts. It is one card now, the same weight and
+        the same width as the directions above it, because it is the same kind
+        of choice: this is the third thing the reader can tell the story to do.
+
+        "or a surprise" is the second control folded in rather than dropped.
+        Katha deciding means sending NO instruction at all -- the model uses the
+        plan and series state it already holds -- so it belongs with the box
+        where the reader would otherwise type one, not in a row of its own.
+      */}
       {composerOpen ? (
-        <View style={styles.composer}>
+        <View style={styles.composerCard} testID="chapter-end-composer">
+          <View style={styles.composerHeader}>
+            <PenLine size={16} color={colors.accent} />
+            <Text style={styles.composerTitle}>Write your own</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close your own direction"
+              hitSlop={8}
+              style={styles.composerClose}
+              onPress={() => setComposerOpen(false)}
+              testID="chapter-end-composer-close"
+            >
+              <X size={18} color={colors.muted} />
+            </Pressable>
+          </View>
+          {/* The register is taught once, with an example, rather than left for
+            * the reader to discover by writing a question and getting a chapter
+            * that answers one. */}
+          <Text style={styles.composerHint}>
+            An instruction, not a question — &ldquo;Take Meera to the fort path.&rdquo;
+          </Text>
           <TextInput
             multiline
+            autoFocus
             value={composerText}
             onChangeText={setComposerText}
             maxLength={MAX_NEXT_INSTRUCTION_CHARS}
-            placeholder="Type what happens next."
+            placeholder="Tell Katha what happens next."
             placeholderTextColor={colors.tertiary}
             style={styles.composerInput}
             accessibilityLabel="Write your own direction"
-            accessibilityHint="Optional. Leave blank and Katha decides what happens next."
+            accessibilityHint="Optional. Leave it blank and Katha decides what happens next."
             testID="chapter-end-composer-input"
           />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              composerText.trim()
-                ? "Continue with your direction"
-                : "Continue and let Katha decide"
-            }
-            style={styles.primaryButton}
-            onPress={() => submit(nonEmpty(composerText))}
-            testID="chapter-end-composer-submit"
-          >
-            <Text style={styles.primaryButtonText}>
-              Continue · {CHAPTER_TEXT_CREDITS} credit
+          {composerText.length >= COUNTER_VISIBLE_AT ? (
+            <Text style={styles.composerCount} testID="chapter-end-composer-count">
+              {composerText.length} / {MAX_NEXT_INSTRUCTION_CHARS}
             </Text>
-          </Pressable>
+          ) : null}
+          <View style={styles.composerFooter}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Surprise me, let Katha decide what happens next"
+              style={({ pressed }) => [
+                styles.textCta,
+                pressed && !reduceMotion && styles.textCtaPressed,
+              ]}
+              onPress={() => continueOnce(undefined)}
+              testID="chapter-end-let-katha-decide"
+            >
+              <Shuffle size={16} color={colors.muted} />
+              <Text style={styles.textCtaLabel}>Surprise me</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                composerText.trim()
+                  ? "Continue with your direction"
+                  : "Continue and let Katha decide"
+              }
+              style={styles.primaryButton}
+              onPress={() => continueOnce(nonEmpty(composerText))}
+              testID="chapter-end-composer-submit"
+            >
+              <Text style={styles.primaryButtonText}>
+                Continue · {CHAPTER_TEXT_CREDITS} credit
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      ) : null}
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Write your own direction, or let Katha surprise you"
+          accessibilityHint={`Writes chapter ${chapter.chapterNumber + 1}`}
+          accessibilityState={{ expanded: false }}
+          style={({ pressed }) => [
+            styles.optionCard,
+            styles.writeOwnCard,
+            pressed && !reduceMotion && styles.optionCardPressed,
+          ]}
+          onPress={() => setComposerOpen(true)}
+          testID="chapter-end-write-own"
+        >
+          <PenLine size={16} color={colors.accent} />
+          <Text style={styles.optionText}>Write your own — or get a surprise</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -497,12 +524,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     minHeight: 44,
   },
-  progressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 44,
-  },
   optionCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -523,11 +544,53 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: -spacing.related,
   },
-  ctaRow: {
+  // The third card. Same shape as a derived direction so the row reads as
+  // three peers, with a dashed edge as the one signal that this one is the
+  // reader's to fill in.
+  writeOwnCard: {
+    borderStyle: "dashed",
+    borderColor: colors.borderStrong,
+    backgroundColor: "transparent",
+  },
+  composerCard: {
+    gap: spacing.sm,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  composerHeader: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: spacing.lg,
+    gap: spacing.sm,
+  },
+  composerTitle: {
+    ...type.headline,
+    flex: 1,
+    color: colors.ink,
+  },
+  composerClose: {
+    width: 44,
+    height: 44,
+    marginRight: -spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  composerHint: {
+    ...type.caption,
+    color: colors.muted,
+  },
+  composerCount: {
+    ...type.caption,
+    textAlign: "right",
+    color: colors.muted,
+  },
+  composerFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
   },
   // Deliberately not a card: no border, no fill, muted icon and label. The
   // weight difference between this and `optionCard` is the whole point of the
@@ -547,9 +610,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontWeight: "600",
   },
-  composer: {
-    gap: spacing.md,
-  },
   optionText: {
     ...type.body,
     color: colors.ink,
@@ -558,17 +618,21 @@ const styles = StyleSheet.create({
   composerInput: {
     minHeight: 96,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    // The recessed inset fill, not another white card on a white card. Focus
+    // needs no accent frame here either: the field is the only thing in the
+    // card that takes a caret.
+    backgroundColor: colors.surface2,
     padding: spacing.md,
     color: colors.ink,
     fontFamily: fonts.ui,
     fontSize: 15,
     textAlignVertical: "top",
+    outlineWidth: 0,
   },
   primaryButton: {
+    flex: 1,
     minHeight: 48,
+    paddingHorizontal: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.pill,
@@ -580,37 +644,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 15,
   },
-  stubNote: {
-    ...type.subhead,
-    fontFamily: fonts.ui,
-    letterSpacing: 0,
-    color: colors.muted,
-    marginTop: spacing.related,
-  },
-  errorRow: {
+  secondaryButton: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    minHeight: 44,
-  },
-  errorText: {
-    ...type.body,
-    color: colors.ink,
-    flex: 1,
-  },
-  retryButton: {
-    minHeight: 44,
-    minWidth: 44,
     alignItems: "center",
     justifyContent: "center",
+    gap: spacing.sm,
+    minHeight: 48,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.accent,
   },
-  retryButtonText: {
+  secondaryButtonText: {
     ...type.body,
-    color: colors.ink,
+    color: colors.accent,
     fontWeight: "700",
   },
 });

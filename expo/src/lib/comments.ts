@@ -24,6 +24,12 @@ import type {
 export type ServerComment = {
   id: string;
   parentId: string | null;
+  /**
+   * The author's user id, when the wire carried one. It is what makes a byline
+   * tappable: the row can route to that person's profile instead of being a
+   * dead name. Optional because a soft-deleted or legacy row may not have it.
+   */
+  authorId?: string;
   authorName: string;
   body: string;
   createdAt: string;
@@ -33,6 +39,8 @@ export type ServerComment = {
   myVote: -1 | 0 | 1;
   /** Soft-deleted comments keep their place so replies do not orphan. */
   deleted: boolean;
+  /** Present only when the server returned a chapter for the comment. */
+  chapterNumber?: number;
 };
 
 const MINUTE = 60_000;
@@ -84,6 +92,7 @@ export function buildThread(
     const createdAtMs = Date.parse(row.createdAt);
     byId.set(row.id, {
       id: row.id,
+      ...(row.authorId ? { authorId: row.authorId } : {}),
       authorName: row.authorName,
       body: row.deleted ? "[deleted]" : row.body,
       createdAtMs: Number.isNaN(createdAtMs) ? 0 : createdAtMs,
@@ -99,6 +108,7 @@ export function buildThread(
       voteState: voteStateFrom(row.myVote),
       collapsed: false,
       replies: [],
+      ...(row.chapterNumber ? { chapterNumber: row.chapterNumber } : {}),
     });
   }
 
@@ -159,12 +169,25 @@ export function sortThread(
 type WireComment = {
   id: string;
   parent_id: string | null;
+  author_id?: string | null;
   author_display_name: string | null;
   content: string;
   created_at: string;
   score: number | null;
   my_vote: number | null;
   deleted_at: string | null;
+  /**
+   * The chapter a comment was left on.
+   *
+   * `comments.chapter_id` has existed since migration 00001. The `comments`
+   * Edge Function joins `chapters.chapter_number` through it (2026-09-09) and
+   * accepts a `chapter_id` on insert, so a comment written from the reader
+   * carries the chapter it was left on. It stays optional because a comment
+   * left from the story page belongs to the story rather than any one
+   * chapter, and because every comment written before that change has none.
+   * The tag renders only when a number is actually present.
+   */
+  chapter_number?: number | null;
 };
 
 function isWireComment(value: unknown): value is WireComment {
@@ -178,6 +201,9 @@ export function fromWire(row: WireComment): ServerComment {
   return {
     id: row.id,
     parentId: row.parent_id,
+    ...(typeof row.author_id === "string" && row.author_id
+      ? { authorId: row.author_id }
+      : {}),
     // A guest has no profile display name. "Reader" is the neutral fallback;
     // rendering an empty byline or a raw uuid would be worse.
     authorName: row.author_display_name?.trim() || "Reader",
@@ -186,6 +212,9 @@ export function fromWire(row: WireComment): ServerComment {
     score: row.score ?? 0,
     myVote: vote,
     deleted: row.deleted_at !== null,
+    ...(typeof row.chapter_number === "number" && row.chapter_number > 0
+      ? { chapterNumber: row.chapter_number }
+      : {}),
   };
 }
 
@@ -201,6 +230,24 @@ async function invokeComments<T>(
   return data as T;
 }
 
+/**
+ * How many comments a story has, without pulling the thread.
+ *
+ * The story page shows the count on the comments icon before anyone opens the
+ * sheet, and mounting the whole thread to learn one number would fetch a page
+ * of rows nobody is going to read. The GET already returns an exact `total`
+ * in its pagination block, so asking for a single row is enough to read it.
+ */
+export async function fetchCommentCount(storyId: string): Promise<number> {
+  const params = new URLSearchParams({ story_id: storyId, limit: "1" });
+  const data = await invokeComments<{ pagination?: { total?: number } }>(
+    `comments?${params.toString()}`,
+    { method: "GET" },
+  );
+  const total = data?.pagination?.total;
+  return typeof total === "number" && total >= 0 ? total : 0;
+}
+
 export async function fetchThread(storyId: string): Promise<ServerComment[]> {
   const params = new URLSearchParams({ story_id: storyId });
   const data = await invokeComments<{ comments?: WireComment[] }>(
@@ -214,6 +261,7 @@ export async function postComment(
   storyId: string,
   content: string,
   parentId?: string,
+  chapterId?: string,
 ): Promise<ServerComment | null> {
   const data = await invokeComments<{ comment?: WireComment } | WireComment>(
     "comments",
@@ -222,6 +270,10 @@ export async function postComment(
       body: {
         action: "post",
         story_id: storyId,
+        // The chapter the reader was on when they wrote it, so the thread can
+        // say what each comment is about. Null from the story page, which is
+        // about the story rather than any one chapter.
+        chapter_id: chapterId ?? null,
         parent_id: parentId ?? null,
         content,
       },
@@ -243,11 +295,31 @@ export function voteOnComment(
   });
 }
 
+/**
+ * File a report. THE DESCRIPTION IS REQUIRED.
+ *
+ * A reason on its own is a rage-click: four taps and the reporter is done,
+ * and a moderator gets a bucket name with nothing in it. Asking what actually
+ * happened costs the reporter a sentence, gives the moderator the only part
+ * of the report that can be acted on, and is enough friction that the button
+ * stops being a way to express annoyance.
+ *
+ * This function refuses a blank description rather than sending one, so the
+ * rule holds for every caller and not only for the sheet that happens to
+ * enforce it in its UI today. `backend/supabase/functions/comments/index.ts`
+ * enforces the same rule server-side.
+ */
 export function reportContent(
   target: { commentId?: string; storyId?: string },
   reason: ReportReason,
-  details?: string,
+  details: string,
 ): Promise<unknown> {
+  const description = typeof details === "string" ? details.trim() : "";
+  if (!description) {
+    return Promise.reject(
+      new Error("A report needs a description of the problem."),
+    );
+  }
   return invokeComments("comments", {
     method: "POST",
     body: {
@@ -255,7 +327,7 @@ export function reportContent(
       comment_id: target.commentId ?? null,
       story_id: target.storyId ?? null,
       reason,
-      details: details ?? null,
+      details: description,
     },
   });
 }

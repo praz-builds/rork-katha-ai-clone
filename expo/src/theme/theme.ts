@@ -63,6 +63,18 @@ export const colors = {
   accent: "#FF6B1A",
   accentPressed: "#E85610",
   accentSoft: "#FFEFE2",
+  /**
+   * The wash under a live text selection in the reader.
+   *
+   * Translucent rather than a flat hex, and cool rather than warm, because it
+   * is the one highlight in the app that has to sit on all three reading
+   * grounds -- Sepia (#F4E8D0), Paper (#FAF7F2) and Night -- without being
+   * given the theme. At 30% a neutral slate darkens the two light pages into a
+   * clear grey band and lifts the dark one, and on none of them can it be
+   * mistaken for `accentSoft`, which one line away means "saved to your
+   * library" rather than "selected right now".
+   */
+  selectionTint: "rgba(118, 114, 138, 0.30)",
   heart: "#E85D5D",
   info: "#4A78C2",
   premium: "#C44536",
@@ -76,7 +88,26 @@ export const colors = {
   sepiaAccent: "#A64C1C",
   sepiaButton: "#ec6f2c",
   sepiaPlaceholder: "#e7dcc6",
-  sepiaToggleTrack: "#e7ddca"
+  sepiaToggleTrack: "#e7ddca",
+  /**
+   * The dark overlay palette: the reader's chrome (top bar, control sheet) and
+   * the story detail page, which is the one full dark surface in the app.
+   *
+   * Promoted from the private `CHROME` object in `ReaderChrome.tsx` so the
+   * detail page can share it instead of restating five hexes. The hue is the
+   * same warm neutral family as the light ramp (R > G > B), so a dark surface
+   * next to a `bg` screen reads as the same product with the lights off, not
+   * as a different app. `chromeSurfaceRaised` is one step up for a sheet that
+   * sits on top of `chromeSurface` (the comments sheet on the detail page).
+   */
+  chromeSurface: "#1C1A17",
+  chromeSurfaceRaised: "#26231F",
+  chromeBorder: "#332F2A",
+  chromeText: "#F4F1EC",
+  chromeMuted: "#B5ADA2",
+  chromeTrack: "#3A352F",
+  /** The saved-star fill on a dark ground. Amber, not the accent orange, so it reads as "starred". */
+  chromeStar: "#F5B324"
 } as const;
 
 /**
@@ -245,6 +276,17 @@ export const controls = {
   formFieldRadius: 18,
   otpCellHeight: 58,
   otpCellRadius: 14,
+  /**
+   * The shared `Toggle` (src/components/Toggle.tsx). The control is 52 x 32
+   * with a 26 knob on a 3 inset; the TARGET it answers to is 44 x 44, which
+   * is the platform minimum and is why the two are separate numbers. Nothing
+   * else may draw a switch, so these live here rather than in the component.
+   */
+  toggleTrackWidth: 52,
+  toggleTrackHeight: 32,
+  toggleThumb: 26,
+  toggleInset: 3,
+  toggleHitTarget: 44,
   /** Inset highlight offset used by shadows.iconButton, kept here so a custom size can reuse it. */
   iconButtonHighlightInset: 6
 } as const;

@@ -2,6 +2,761 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-10: The cover finally arrives, and Home is put in the reader's order
+
+### Fixed
+
+- **A freshly written story kept its placeholder forever.** The art was being
+  painted, the file was in the bucket and the row said `ready` — the app was
+  simply never told. `CreateStudioScreen` used to poll for it; when generation
+  moved into the module-level session store the poll was not moved with it, so
+  a story written this session showed its genre gradient in the feed, on the
+  story page and in the library until the app was fully reloaded and the row
+  refetched. `generation-session.ts` asks again now, from the moment the
+  chapter is persisted, and writes the answer onto the session's story — which
+  is what every screen is already subscribed to, so the Home rail, the story
+  page and Library repaint together. Nothing new appears on screen while it
+  runs: the placeholder rule is unchanged (genre gradient, no spinner, no
+  copy), and the art fades in over `motion.base` when the URL lands. The poll
+  backs off from 4 seconds, caps at 12 asks — a little over two minutes — and
+  then stops politely; a cover that has not landed by then is picked up from
+  the database on the next launch. It stops the instant the cover settles
+  either way, and it leaves no timer behind when the session is retried,
+  dismissed or forgotten.
+
+### Changed
+
+- **Home is in the order the reader would put it in.** Your stories, then
+  Continue reading, then Katha Originals, then one shelf per genre they chose
+  in onboarding. What used to lead the page was a big black "Continue reading"
+  hero card that picked a featured story and printed "40% read — Chapter 2
+  waits" beside it: a claim about the reader that nothing had ever measured.
+  The hero card is gone. Continue reading is a named rail like every other
+  shelf, with the same cards, making no claim it cannot back — and it is the
+  single place a real read-progress signal drops in when there is one.
+- **Popularity is answered inside a genre the reader actually asked for.**
+  Each chosen-genre rail is ordered by reads, so "what everyone is reading" is
+  now something they see in Romance or Thriller rather than as a global chart
+  they have no stake in. The generic "Trending now" and "Most loved" rails
+  survive only for a reader who chose no genres at all — without a signal
+  there is no personal shelf to build, and a page that ends at Originals is
+  shorter than the scroll deserves. A chosen genre nothing has been written in
+  yet is skipped rather than rendered as an empty shelf.
+- **"Write another story" is an invitation now, not a settings row.** It was a
+  flat pale-peach band with a plus and a chevron. It is a full card with an
+  eyebrow, a title and a supporting line ("A genre, a name, one idea. Katha
+  writes the rest."), which rises and fades in on mount and settles under the
+  finger on press — both `useReducedMotion`-aware, both transform and opacity
+  only. It sits directly under the greeting, above the first rail, because the
+  top of the scroll is the only place an offer reads as an offer rather than
+  as the footer of the section above it; it also holds the visual weight the
+  removed hero card used to carry. Still one tap target, still one accessible
+  name.
+- **Two CTA treatments ship behind one constant** while the product owner
+  picks: `WRITE_CTA_VARIANT` in
+  `src/components/feed/WriteAnotherCTA.tsx` is `"gradient"` (an orange field
+  with white type) or `"editorial"` (a white card with an accent rail on its
+  leading edge). Flipping that one line switches the screenshot; nothing else
+  changes, and the copy, anatomy, tap target and motion are identical in both
+  so the comparison is only ever about how it looks.
+
+### Verified
+
+- `pnpm typecheck` clean, `pnpm lint` 0 errors,
+  `pnpm exec jest` 76 suites / 653 tests green (from 74 / 632),
+  `pnpm exec expo export --platform web` compiles.
+## 2026-09-10: The starters move behind one control, and the app gets one switch
+
+### Changed
+
+- **"TRY ONE" and its three cards are now a single "View ideas" pill.** The
+  brief printed the three genre starters inline under the story-idea box.
+  Each one is two sentences of prose on purpose — that is what teaches a
+  writer what a usable idea looks like — so three of them plus a heading ate
+  most of the first screen, and Premise, Who's in it and the length controls
+  started below the fold on the one screen where a writer decides what to
+  write. Owner feedback on the running screen: "reducing the spacing and
+  keeping this more neat". Nothing was deleted: the same starters open in a
+  bottom sheet from one 44pt pill, and the fold now falls below the cast.
+- **The ideas open in a bottom sheet, keyed to the genre chip.**
+  `src/components/create/IdeasSheet.tsx`. A sheet rather than a popover
+  because a starter is prose and the `Dropdown` is built for one-line options
+  at a 320pt cap; a sheet rather than a pushed screen because this is a detour
+  off the idea box, not a step of the brief — the box stays visible behind the
+  scrim and there are three ways back to it (close button, scrim, hardware
+  back), none of which choose anything. The list is derived from the `genre`
+  prop at render rather than copied into state on open, so changing the genre
+  chip and reopening gives the new genre's ideas. Tapping one fills the idea
+  box and closes on the tap; there is no confirm step to give.
+- **Every genre has three starters and always will.** `GENRE_STARTERS` is a
+  `Record<Genre, string[]>`, so a genre added to the union does not compile
+  until someone writes them, and a test asserts three apiece across `GENRES`.
+- **There is one switch in the app now: `src/components/Toggle.tsx`.** The
+  brief's four toggles were React Native's `Switch` under a spread of colour
+  props. That control paints its thumb and its off-state fill from the
+  *platform* palette, so a prop a caller forgets is not a missing colour, it
+  is iOS green — which is what Kids Mode shipped: an orange track under a
+  green thumb, and green appears in no token file in this repository. `Toggle`
+  draws every pixel itself out of `@/theme` and has no platform fallback left
+  to fall back to. It is the onboarding selection treatment (accent when on,
+  warm neutral when off, white knob), ported through tokens rather than copied
+  out of `KathaOnboardingFlowV2`'s private `C` palette.
+- **All four toggles converted**: Kids Mode, Chapter art, Make it public, and
+  Lead character in Craft character. A grep for `Switch`, `SWITCH_COLORS` and
+  `accessibilityRole="switch"` finds nothing else in `src/` — the reader's
+  voice and theme controls are segmented pickers, and the create flow's value
+  and character chips are checkboxes.
+- **A disabled toggle reads as disabled, not as off.** "Make it public" is
+  disabled for a signed-out writer; drawn in the off colours it told them the
+  story was private by their own choice, which is a lie they cannot act on. A
+  disabled toggle keeps its position and a tint of its state — `accentSoft`
+  when on, `border` when off — and drops the thumb shadow, so it reads flat
+  and inert.
+- **Geometry is a token, not a component constant.** `controls.toggleTrackWidth`
+  52, `toggleTrackHeight` 32, `toggleThumb` 26, `toggleInset` 3,
+  `toggleHitTarget` 44. The control is 52 x 32 and the *target* it answers to
+  is 44 x 44 plus 6pt of `hitSlop`, which is why those are two numbers.
+- **Motion is one shared value.** It cross-fades the accent fill and slides the
+  thumb over `motion.fast`; `useReducedMotion` makes the state arrive rather
+  than travel, and never suppresses the change. No colour interpolation runs
+  on the UI thread.
+- **`DESIGN.md` carries the Toggle recipe** and a drift-prevention line: a new
+  `Switch` import, or a second hand-rolled track-and-thumb, is drift.
+
+### Known gaps
+
+- **Onboarding's own "Try one" rail is untouched.** `WriterOnboarding` still
+  stacks the starter cards inline. That screen has one job and nothing below
+  the fold to protect, and the owner's note was about the create brief, so it
+  was left as it is rather than changed on inference. If it should match, it
+  is the same sheet and a one-line trigger.
+- **`DESIGN.md`'s Core Tokens table has drifted from `theme.ts`** — several
+  hexes there (`bg`, `surface2`, `border`, `borderStrong`) predate the ramp
+  retune documented in `theme.ts`. Not touched here; the Toggle recipe names
+  tokens rather than hexes for that reason.
+
+### Verification
+
+- `pnpm typecheck` clean, `pnpm lint` 0 errors,
+  `pnpm exec expo export --platform web` compiles.
+- Two new suites: `toggle.test.tsx` (5) and `ideas-sheet.test.tsx` (10).
+## 2026-09-10: Three ways of saying "a voice is being prepared"
+
+### Changed
+
+- **`src/components/reader/NarrationLoader.tsx` is new**, for the preparing
+  state of the full-screen narration player. It is deliberately not
+  `CraftingLoader`: that screen's brand mark says "Katha is writing", and a
+  reader who pressed Listen is waiting on something else entirely. Three
+  variants, chosen by a `variant` prop so product can compare them without the
+  player changing:
+  - `waveform` — seven bars breathing around a centre-weighted profile, the
+    shape a level meter makes on a spoken voice. Says: a voice, warming up.
+  - `halo` — a drawn headphone glyph with rings leaving the earcups and fading
+    outward. Says: sound on its way to you. The closest to the reference.
+  - `passage` — the chapter's own lines with a reading light travelling across
+    them, clipped to the block of text. Says: this is being read.
+- **The messages map to real pipeline stages, not to a timer.** `voice` (the
+  voice is resolved and cached narration looked up), `requesting` (the
+  (chapter, voice) row is claimed and a RunPod job started), `generating`
+  (`audio-status` is answering `PENDING`), `finishing` (bytes are back and
+  being stored). `NARRATION_STAGES` is exported so the player drives it from
+  status; `message` overrides a line when the player knows something truer.
+- **No screen here promises a duration.** The provider's queue depth is
+  invisible to the app and `audio-status` answers `PENDING` or `COMPLETED`
+  with nothing in between, so a countdown would be invented. A test asserts no
+  stage message contains a digit or the word "second".
+- **Reduced motion keeps saying something.** Each variant drops its
+  translation and scale and keeps a slow opacity breath
+  (`ReduceMotion.Never`, deliberately — Reanimated's default would snap the
+  one animation these users have to its final value), and the progress moves
+  to a discrete fill driven by the real stage: one more bar, one more ring,
+  one more line takes the accent every time a stage completes. Frozen art on a
+  wait screen is indistinguishable from a crash.
+- **`?preview=narration-loader`** renders all three stacked with their labels
+  and a stage switcher, at `src/screens/dev/NarrationLoaderPreview.tsx`. Two
+  lines in `App.tsx`, following the existing `?preview=loader` pattern; both
+  are `__DEV__` + web only and cannot reach a shipped build.
+
+### Verification
+
+- `pnpm typecheck` clean (Node 22.23.0).
+- `pnpm lint`: 0 errors, the existing 24 warnings unchanged.
+- `pnpm exec jest`: 75 suites, 642 tests passing (74/632 before, plus the new
+  `narration-loader` suite's 10). Each variant is asserted to render, and to
+  still render its message with reduced motion on.
+- `pnpm exec expo export --platform web` compiled the web bundle.
+- Looked at all three in Chrome at `localhost:8095/?preview=narration-loader`
+  (8090 was held by another session's dev server); no console errors. Motion
+  feel on device is unjudged — a laptop browser is not a verification
+  environment for a 620ms loop.
+- Not pushed. Not deployed.
+## 2026-09-10: The story page comes back into the light, and a comment that was lost stops being lost
+
+The design handoff made the story page the one dark surface in the app so the
+cover would have nothing to dissolve against. The owner overruled that on the
+screenshot. What follows is his feedback, built.
+
+### Changed
+
+- **The page is light again, and the cover still has no edge.** The dark
+  ground was the wrong half of the idea. What the dissolve needs is for the
+  fade and the page to be the *same* colour, and that is as true of
+  `colors.bg` as it was of `#1C1A17` — so the cover still runs full-bleed for
+  62% of the window with no card, no border and no radius, and its bottom now
+  ends on exactly the warm ground every other screen uses. One dark page in a
+  light app read as a different product the moment you arrived at it.
+- **The floating controls are proven, not eyeballed.** Close, comments, save,
+  share and more sit on white discs at 92% over whatever the cover happens to
+  be. `story-page-light.test.tsx` composites the disc over a blown-out white
+  cover, a black night cover and a mid-brown one and asserts the glyph clears
+  WCAG AA on all three. It also found something: the saved star at
+  `colors.accent` measures **2.85:1** on that disc — under the 3:1 floor for a
+  graphical object, which meant the *saved* state was the state hardest to
+  see. It is `colors.accentPressed` now, which clears it over every cover.
+- **Three stat icons gone.** Reads / likes / saves sat under the CTAs as three
+  big numbers. Two of them duplicated the star at the top of the page, and a
+  read count on a product with no readers yet can only ever argue against
+  opening the story.
+- **"About this story" gone, the prompt block gone, the inline comment thread
+  gone.** The first two restated the chips and the summary as a two-column
+  table; the third put a whole thread at the bottom of a page whose only job is
+  to get someone into the story. The AI-fiction disclosure on an Educational
+  story survived the strip-down, because it is the one line here a reader needs
+  *before* they decide to read.
+- **The chips are genres and nothing else.** A romance was shelving itself as
+  `Romance · premonition · duty · compassion · fear · sweet`. Four of those are
+  notes the generator left about the plot and the fifth is a content setting.
+  A tag now has to name a real genre to appear at all.
+- **Comments moved to the top, behind an icon.** A speech bubble sits beside
+  the star in the floating cluster with the count on it, and opens the same
+  sheet, restyled light. The count comes from a new `fetchCommentCount` that
+  reads the exact total the GET already returns, so the page can label the door
+  without mounting the thread behind it.
+
+### The comment that was not saved
+
+The owner wrote a comment and it did not save. It was two failures stacked.
+
+1. **The session was anonymous, and the `comments` function requires auth.** So
+   the write was always going to 401.
+2. **The client kept the comment on screen anyway.** The optimistic row was
+   added and never taken back; the failure notice was a small line *above* the
+   list, and the comment underneath it was the thing he was looking at. He
+   closed the app believing it had gone somewhere.
+
+Both are fixed, and the second matters more than the first: it is the one that
+turned a refused write into a silent one.
+
+- **Engagement is gated for anonymous sessions.** Saving, following, voting,
+  replying and commenting now show a sign-in wall that names the thing you were
+  trying to do. Nothing is optimistically updated first. **Reading stays open to
+  everyone** — the wall is on writes, never on the story.
+- **A failed write takes the comment back and returns the text to the box.** Not
+  a toast over a comment that is still sitting there looking posted: the row is
+  removed, the words go back into the composer, and the message says so. Same
+  for a reply, and a failed vote is rolled back rather than left claiming a vote
+  the server never recorded.
+
+### Reporting
+
+- **Report is no longer a button on the row.** It was one tap away from a
+  stranger's opinion, and that is what it was used for. It lives behind a
+  three-dot menu per comment now.
+- **A report needs a description.** Reason-only reports are a bucket name a
+  moderator cannot act on. The reporter has to say what happened (10 characters
+  minimum — the floor under "x", not a quality bar), the submit button stays
+  disabled until they do, and `reportContent` itself rejects a blank
+  description so the rule cannot be routed around by a future caller. The
+  backend enforces it too.
+- **The confirmation is evidence now.** The sheet used to show "thanks, we'll
+  look at it" whether or not the write succeeded. It shows the failure instead,
+  with the description still in the field.
+- **Comment reports actually reach the server.** The old sheet set a `submitted`
+  flag and filed nothing at all. Nobody would have noticed until someone asked
+  where the reports were.
+
+### Removed
+
+- **The downvote.** Not disabled, not hidden — absent. The vote API still takes
+  `-1` for rows written before today, but there is no branch in this UI that can
+  produce one, and `onVote` no longer takes a direction argument to get wrong.
+
+### Also
+
+- **A commenter's name and avatar are tappable** and route to that person, via
+  the `author_id` the `comments` function was already returning and the client
+  was dropping. The profile screen itself is later work; this fires the existing
+  author navigation.
+- `chapter_number` per comment still works — the `Chapter n` tag keeps its own
+  test in `comment-thread-tone.test.tsx`.
+
+### Verification
+
+`pnpm typecheck` clean. `pnpm lint` 0 errors. `pnpm exec expo export --platform
+web` compiles. Backend: `deno test` 714 passed / 0 failed, `deno fmt --check`
+and `deno check` clean.
+## 2026-09-10: Listen becomes a screen — the wait is owned, and the words follow the voice
+
+### Changed
+
+- **Listen opens a full screen, not a sheet with a dead button.** Tapping
+  Listen used to raise a small panel over the reader with Play and a voice
+  toggle on it; pressing Play on a chapter nobody had listened to did nothing
+  visible, because narration is generated on first play and the panel had no
+  way to say so. Listen now opens `ListenScreen`, and that screen's first job
+  is to own the wait.
+- **The preparing screen says what is actually happening, and changes when it
+  changes.** Cover art fills the top; below it, on a solid ground, an
+  illustration, a status line and one honest line under it. The status walks
+  *Finding your narrator* → *Asking for the narration* → *Reading the chapter
+  aloud*, and each step advances only when the previous one really finished:
+  narration found on the chapter row, `generate-audio` answering, the job being
+  accepted. Nothing on the screen is a progress timer pretending to be work.
+- **When it takes too long, it says so.** Past the stated expectation the line
+  becomes *Still reading* — "This is taking longer than it usually does. It is
+  still running." Much further past it, *This is taking much longer than it
+  should*, with a way out. Polling continues underneath, so a job that lands at
+  three minutes still plays for whoever waited.
+- **The playing screen is the transcript.** Cover art stays at the top; under
+  it the chapter's own words scroll with the audio, the line being read
+  highlighted on a soft accent ground and the lines already read dimmed. Tapping
+  a line plays from it. Scrolling by hand stops the auto-follow rather than
+  fighting the reader, and a "Back to the line" pill hands it back.
+- **A real transport.** Story title and chapter title, a 68pt play/pause,
+  elapsed against total, a draggable scrubber, and a row with Chapters, Speed
+  (0.75x–2x), skip back 10, skip forward 30 and Next chapter. Every control is
+  at least 44x44 and labelled; the scrubber is an `adjustable` with a stepper
+  path, because a drag is not a gesture VoiceOver can make.
+- **Both doors lead to the same screen.** The reader chrome's Listen control
+  opens it on the chapter being read and Close returns to that chapter; the
+  story page's Listen button opens it at chapter 1 and Close returns to the
+  story page. The story page no longer refuses to open Listen for a story with
+  no narration — that story is exactly the one the preparing screen exists for.
+- **Every real state has a screen.** No narration yet, generation in flight,
+  generation failed, the entitlement gate refusing, playback failing, and
+  offline. The refusal never grows a Try again: `canGenerateNarration` answers
+  the same way every time, so it is offered "Read it instead" instead of a
+  button that cannot succeed.
+
+### Notes
+
+- **The transcript timings are an approximation, and are documented as one.**
+  Nothing in the narration pipeline returns per-line alignment — `generate-audio`
+  and `audio-status` answer with a status and a URL, and `chapter_audio` stores
+  one `duration_seconds` for the whole file. `lib/transcript-sync.ts` therefore
+  spreads the *measured* file duration across the lines in proportion to their
+  length. Expect a line of drift over a long chapter, worst right after a pause.
+  `buildCues` already takes real timings as an optional argument, so the day the
+  pipeline produces them the change is to pass them in.
+- **The loading animation is a seam, not a decision.**
+  `components/listen/NarrationLoader.tsx` takes the animation as `art` and the
+  rotating copy as `messages`; today it renders the looping Katha mark and two
+  placeholder lines. The designed variant drops into those two props at the one
+  call site in `ListenScreen`. The rotating messages are deliberately kept apart
+  from the status line: they are decorative and say nothing about progress, which
+  is why a message list can be chosen on taste without anyone auditing it for
+  truth.
+- **Closing the screen stops the audio.** There is no background audio mode in
+  `app.json`, no lock-screen transport and no mini-player anywhere in the app, so
+  narration the listener cannot see or stop would be worse than narration that
+  ends. When a persistent mini-player exists, `ListenScreen`'s unmount cleanup is
+  the one place to change.
+- **`NARRATION_EXPECTED_MS` is an expectation band, not a measurement.** Nothing
+  in the repository records how long `minimax-speech-02-hd` takes on a real
+  chapter, so the copy says "usually" rather than naming seconds — and the same
+  constant is both what the screen promises and the moment it admits the promise
+  was wrong, so the two cannot drift.
+- The four touched files outside the new ones are deliberately tiny: an
+  `onListen` prop on `ReaderScreen` (forwarded through `PhraseCaptureReader`), an
+  `onListen` prop on `StoryDetailScreen`, one `listen` variant on the `Screen`
+  union, and the route plus two openers in `App.tsx`.
+
+### Known gaps
+
+- **One voice, no picker.** The screen narrates in the story language's female
+  default (`aria`/`elvira`), which is what the old sheet defaulted to. Everything
+  underneath is keyed by voice id, so a picker is a control plus one piece of
+  state.
+- **Generation is still gated closed in production.** `NARRATION_GENERATION_ENABLED`
+  is unset, so the honest production path today ends on the "Narration is not
+  available yet" screen. That is the correct answer for a closed gate, and the
+  whole preparing flow is live the moment the flag is turned on.
+## 2026-09-10: The reader's controls, a selection you can feel, and chips that tell the story what to do
+
+### Changed
+
+- **The reader's control sheet lost a word and found a button.** A "Pages"
+  caption used to take a whole row's width to name the slider under it, beside
+  a readout that already said "Page 7 of 15". The caption is gone; the readout
+  stays, centred; and the height it was using went into the six controls, whose
+  glyphs are 26px on 64px-tall targets instead of 19px on 44. The sheet's top
+  corners came down from `radius.xl` (24) to `radius.md` (14) — at 24, on a
+  390-wide sheet, the curve runs for most of the height of the first control
+  row and the whole thing reads as a lozenge rather than a panel sliding up
+  from the bottom edge.
+- **The forward page control exists.** There was a back chevron at the left of
+  the slider and empty space at the right. The forward one had been written as
+  a `ChevronLeft` rotated 180 degrees through a `style` prop — a transform
+  lucide hands to the SVG root, and one that does not survive every renderer.
+  Both ends are now one `PageStepButton` with a real `ChevronRight`, so they
+  cannot drift apart again: same size, same 48px plate, same hit slop. Each is
+  disabled at its own end of the chapter and stays on screen while disabled,
+  because a control that vanishes at the last page is the defect that was
+  reported in the first place.
+- **Long-press and drag selects text, and you can feel it.** Long-pressing a
+  word used to save the sentence around it outright: one gesture, one guess at
+  how much the reader meant, no way to see it first and no way to take a word
+  off the end. It now anchors a SELECTION on that sentence — a light impact
+  fires as the wash appears — and dragging grows or shrinks it word by word
+  with a selection tick per word crossed. Nothing is written until the reader
+  chooses. Tapping a single word still saves that word, unchanged.
+- **A selection offers three things and no more.** **Save phrase** (the
+  existing `phrases` backend, first because it is the default intent), **Copy**
+  (its absence reads as a bug, not a decision) and **Share quote**, which sends
+  the line with the story's name attached — readers already screenshot lines
+  they like, and a screenshot carries no way back. "Look up" was rejected:
+  there is no dictionary on React Native without a native module, and a control
+  that silently does nothing on Android is worse than no control.
+- **Saving a chapter edit is instant.** Save used to `await` the round trip
+  with every control disabled and then hold a 1.2-second "Saved" state before
+  closing — three to four seconds of a frozen notepad to persist text the
+  writer was looking at. The edit is now accepted locally and the reader comes
+  straight back with the new words on the page; the request runs in
+  `lib/chapter-save-queue.ts`, outside the component tree, where unmounting the
+  editor cannot cancel it. The header no longer says "Saving" or "Saved",
+  because by the time either could be true the screen is gone.
+- **A refused save is still told, in the reader.** The queue holds the exact
+  text. If the write is refused, a banner appears over the page with the
+  server's own reason, a **Retry** that re-sends what the writer typed, and a
+  **Not now** for an edit they have decided to live with. Nothing anywhere
+  reports success for a write that failed.
+- **The edit field is quiet.** The chapter text area is `colors.surface` inside
+  a hairline `colors.border` on a `colors.bg` ground — the same paper the rest
+  of the app uses — and focus is one step of border weight (`borderStrong`),
+  not a colour change. `outlineWidth: 0` stops the web build drawing the
+  browser's own focus ring on top of it.
+- **Chapter-end chips are directions now, not questions.** The source data was
+  never the problem — the beats, open hooks, promised payoffs and pressure
+  lines are real and specific — but hooks arrive phrased as questions, because
+  a hook is a question. Rendered straight they read as a comprehension quiz:
+  "Who is writing the predictive linen notes". `lib/directions.ts` puts a fixed
+  English frame in front of the story's own words to point it the other way:
+  "Find out who is writing the predictive linen notes." "What will happen if
+  Anjali unfolds every sheet tomorrow" becomes "Show what happens if Anjali
+  unfolds every sheet tomorrow." A yes/no question is un-inverted around its
+  auxiliary: "Is the casualty girl Divya lying about having no brother" becomes
+  "Find out whether the casualty girl Divya is lying about having no brother."
+  Nothing is invented, and a sentence that cannot be converted grammatically is
+  DROPPED rather than replaced.
+- **"Write your own" is a third card.** It was a small muted text link under
+  the cards, beside a second one called "Let Katha decide" — two lightweight
+  controls competing for the same decision, both of them arguing visually that
+  they were afterthoughts. It is now a card of the same width and weight as the
+  two derived directions, reading "Write your own — or get a surprise", with a
+  dashed edge as the one signal that this one is the reader's to fill in.
+  Tapping it replaces the card IN PLACE with the composer, so the field lands
+  where the finger already is: a title row with a close button, one line of
+  register-teaching ("An instruction, not a question — 'Take Meera to the fort
+  path.'"), an auto-focused field placeheld "Tell Katha what happens next.", a
+  counter that appears only in the last 20% of the limit, and a footer holding
+  **Surprise me** and **Continue · 1 credit**. "Surprise me" is the old "Let
+  Katha decide" folded in where it belongs: it sends no instruction at all, so
+  the model uses the plan and series state it already holds. Two derived cards
+  plus this one is three, which is what Okudu shows and what fits a thumb.
+- **The reader's comments are the story's own.** `ReaderScreen` carried three
+  hardcoded comments in a module constant — "Mira R.", "Dev S." and "Aanya K."
+  discussing a lighthouse metaphor — and rendered them under EVERY story. A
+  brand-new story about a nurse in Kochi ended with three strangers admiring a
+  lighthouse that is not in it, while the story detail page for the same story
+  correctly reported zero. The thread comes from `lib/comments.ts` now, the
+  same source the detail page reads, and a story with none says "No comments
+  yet. Be the first to say something."
+- **Engagement needs an account.** Like, Save, Follow and the comment box are
+  gated for a guest through a new `onRequireSignIn` prop on `ReaderScreen` (and
+  forwarded by `PhraseCaptureReader`), wired in `App.tsx` to the existing
+  sign-in entry. The control stays visible and enabled — a hidden Like is a
+  feature the guest never learns exists and a disabled one is a dead end — and
+  a tap opens sign-in instead of writing to local state nothing will persist.
+  Reading, page turning, search, preferences, narration and phrase capture stay
+  open to everyone.
+
+### Fixed
+
+- **A tap with the keyboard up was spent dismissing the keyboard.** The reader's
+  per-page scroller now sets `keyboardShouldPersistTaps="handled"`, so the
+  chapter-end composer's Continue button takes the first tap rather than making
+  the reader press a paid button twice.
+- **Gesture Handler had no Jest setup.** The moment the reader wrapped itself in
+  a `GestureHandlerRootView`, every suite that mounts the reader died on
+  `RNGestureHandlerModule.install is not a function` — nowhere near the thing it
+  was testing. `jest.config.js` now loads the library's own `jestSetup.js`
+  before the project's.
+
+### Added
+
+- `expo/src/lib/directions.ts` — question-to-direction conversion, high
+  precision and low recall by design, with a drop path instead of a filler
+  pool.
+- `expo/src/lib/text-selection.ts` — the arithmetic of the drag selection,
+  pure and worklet-safe, so which words end up selected is testable without a
+  device.
+- `expo/src/lib/chapter-save-queue.ts` — the background save, its subscribers
+  and its retry.
+- `expo/src/lib/clipboard.ts` — `expo-clipboard` on native through a guarded
+  dynamic require, `navigator.clipboard` on web, and an honest `false` when
+  neither is available.
+- `expo/src/components/reader/SelectionToolbar.tsx` — the three-action menu a
+  selection raises.
+- **New dependency: `expo-clipboard` (~8.0.8).** Copy needs it, RN core's
+  `Clipboard` is deprecated, and the module is loaded lazily so a web bundle and
+  a Jest run that cannot link it still work.
+
+### Known gaps
+
+- **The drag is read as travel, not as a hit test.** Prose is drawn as nested
+  `<Text>` inside a flowing paragraph — which is what keeps pagination and line
+  wrap correct — and a nested `Text` reports an unusable frame on some
+  platforms and none at all on react-native-web. So the drag moves the
+  selection through the text in reading order (sideways by the word, downward by
+  the line) rather than resolving the finger's position against measured word
+  frames. The reader steers by the highlight, which moves under their finger,
+  and can release and drag again from the same anchor. A pixel-accurate version
+  needs either a Fabric-only measurement pass or a different way of drawing the
+  page, and would want a device to tune.
+- **Feel is unverified on hardware.** Haptic timing, the 650ms drag activation
+  threshold and the word/line step distances are code-correct and unit-tested
+  but have not been judged on a release build. They are the first things to
+  re-tune on device.
+- **The orange border on the edit field could not be reproduced in source.** No
+  version of `EditStoryScreen.tsx` in this repository's history draws an accent
+  frame around the text area; the most likely culprit is the browser's own focus
+  ring on the web build. The field has been given an explicit quiet treatment
+  and the platform outline has been suppressed, which covers both possibilities,
+  but it is worth a second look at the running app.
+
+## 2026-09-09: The story page goes dark, and a writer's own work leads Home
+
+### Changed
+
+- **The story page is one picture, not a card of one.** Opening a story used
+  to be a light screen with the cover boxed into a rounded thumbnail near the
+  top — a picture with a frame drawn around it, on a page that then listed
+  facts about the story. It is now the single dark surface in the app
+  (`chrome.surface`): the cover runs full-bleed for 62% of the window and
+  dissolves into the ground through a gradient that ends at 100% of the same
+  colour, so there is no edge, no radius and no line where the art stops and
+  the page begins. Close, Save, Share and More float over the art on 55%-dark
+  discs rather than sitting in a bar above it.
+- **The facts read as a sentence.** Author, date, likes, comments and how far
+  along the story is are one wrapping line — `@name · Aug 16, 2026 · 232 likes
+  · 187 comments · 4/7 chapters` — with the handle and the comment count
+  underlined because they go somewhere. A one-shot says `Standalone` rather
+  than inventing a denominator; a series whose plan the query did not select
+  says how many chapters exist and nothing more. Your own public story adds
+  `· Public`, which is the only page allowed to claim it: a reader of someone
+  else's story is already looking at a public one.
+- **Read and Listen are two equal pills**, both solid orange, because an
+  outlined twin reads as disabled on a dark ground and Listen is not. When a
+  story has no narration Listen says so in one quiet line instead of opening a
+  player that can only apologise.
+- **Comments open in a dark sheet over the page.** Each row leads with the
+  commenter's initial, the handle is underlined, and the age line has room for
+  a `Chapter n` tag — rendered only when the row actually carries one. The
+  sheet header carries a real close button; before, the only way out was a
+  backdrop tap, which a screen reader could not reach and a web viewer had no
+  hardware back to substitute for.
+- **A story can be taken off the screen.** The 3-dot menu now offers Report
+  story, Block author (never on your own story — you cannot block yourself)
+  and Download as PDF. The PDF is a title page then every chapter under its
+  own heading, set in a serif at book proportions: `expo-print` plus the share
+  sheet on a phone, the browser's own print dialog on the web. The HTML is
+  built by a pure function and tested, so the shape of what a reader takes
+  away does not depend on a printer.
+- **Home leads with your own stories.** A writer who has made a story opens the
+  app and finds it first, in the same rail and the same card as everything
+  else, last-touched first — rather than being shown the house picks and
+  hunting through Library for their own work. The bar is one complete chapter,
+  which is the only bar there is: a chapter is written by a single
+  request/response and persisted whole, so there is no half-written story to
+  represent. Before the writer has made anything the row does not exist rather
+  than sitting empty. The cover is the one part that can still be missing —
+  the art is painted in the background after the prose — which is what the
+  gradient placeholder below is for.
+- **Covers arrive quietly.** A cover that is still being painted, or that
+  failed, shows its genre gradient and nothing else — no spinner, no
+  "Painting…", no retry button. When the URL lands the art fades in over the
+  gradient in `motion.base`. Feed cards also read the generated cover
+  (`coverImageUrl`) first, so a story the writer just made keeps its art
+  outside the studio.
+- **The dark palette is a theme token now.** `colors.chromeSurface`,
+  `chromeSurfaceRaised`, `chromeBorder`, `chromeText`, `chromeMuted`,
+  `chromeTrack` and `chromeStar` were promoted out of a private object in
+  `ReaderChrome.tsx` so the reader's controls and the story page draw from one
+  set of values instead of two copies of five hexes.
+
+### Fixed
+
+- **The like count read as two words to anything parsing the meta line.**
+  `{n} {likes}` rendered as separate text nodes with a space between them; it
+  is one string now, so a screen reader does not pause inside the phrase.
+- **The story page fetched its comments twice.** A React Native `Modal` keeps
+  its children mounted whether or not it is visible, so the sheet's thread ran
+  alongside the inline preview on every story a reader opened. The sheet's
+  thread mounts when the sheet does.
+- **The hero flashed bare ground while a cover downloaded.** The genre
+  gradient now sits under the art rather than only instead of it.
+
+### Known gaps
+
+- **No comment can carry a chapter yet.** `comments.chapter_id` has existed
+  since migration 00001, but the `comments` Edge Function neither selects it
+  nor accepts it on insert, so the `Chapter n` tag is wired end to end on the
+  client and renders on nothing. Serving it is a join to
+  `chapters.chapter_number` in that function's SELECT; no client change is
+  needed when it lands.
+## 2026-09-09: Reimagine, saved characters, and being told before a credit is spent
+
+### Changed
+
+- **A chapter can be rewritten from the reader.** Reimagine was a button that
+  opened the paragraph editor with the wand bar showing — the same screen as
+  Edit, reached from a different door, and only ever for the author. It now
+  opens its own sheet: the characters the story's roster actually puts on this
+  page, a Replace pill per row, and a box for what should change. Either one is
+  enough to submit; with neither, the button stays off rather than spending a
+  credit on "rewrite this, no notes."
+- **Anyone can reimagine, not just the author.** A reader of someone else's
+  story gets the same sheet with the subtitle "Makes a private copy in your
+  library" and the button "Reimagine in my copy"; on success a toast says
+  "Saved to Your stories" and the original is untouched. Before, the control
+  was hidden for non-authors entirely.
+- **Swapping a character can run through the whole book.** A replaced row grows
+  an "Apply to all chapters" checkbox — "Renames them everywhere in this story
+  and in every chapter after this one." It is hidden for a standalone story,
+  where there is nowhere else for the name to go.
+- **Characters are reusable.** "Who's in it" has two tabs. **Saved** is a
+  one-tap library of everyone the writer has crafted before — a chip per
+  person, tapped again to remove, capped at three with "Up to three characters
+  per story." when the cast is full. **New** is the Craft character flow,
+  unchanged, and every character saved there is written to the library too, so
+  the second story never retypes the first story's cast. The library is decided
+  once per screen, not per render: finishing a character no longer yanks the
+  writer to the Saved tab with the "Add a character" row vanishing under their
+  thumb.
+- **A public story that names a real living person is explained before it is
+  written.** The writer used to turn on public, spend a credit, wait for a
+  chapter, and only then be told the story would stay private. Now tapping
+  Generate with a gating entity in the idea shows a card first: "This one can't
+  be public", the reason in the writer's own terms, and two ways out — **Keep
+  it private** (writes it, privately) or **Change my idea** (back to the brief,
+  nothing spent). Historical figures, real places and real events never trigger
+  it, which is the whole point of the grounding feature. The server gate stays
+  the backstop for the case where shaping had not finished in time.
+- The visibility toggle reads "Make it public", and says "Anyone on Katha can
+  read it once it's written." when it is on — the old "This story can be shared
+  after creation." described an action that no longer exists.
+
+### Notes
+
+- The client mirrors `_shared/entity-visibility-gate.ts` rather than importing
+  it (Deno), and prefers `shape-story`'s own `gating_reason` the moment the
+  backend returns one. `entity-gate.test.ts` pins both gating classes and a
+  historical figure that must never gate.
+- `reimagine-client.ts` and `saved-characters.ts` are deliberately outside
+  `lib/api.ts`, which the backend branch is editing in parallel.
+- Detected characters are the story roster filtered to names on the page; a
+  character the model invented has no roster entry and is not guessed at.
+## 2026-09-09: Generation lands in the reader — the editor, the review step and the publish button are gone
+
+### Changed
+
+- **You press Create and, about twenty seconds later, you are reading page one
+  of your own story.** Before: Create put up the crafting screen for the whole
+  55-76 second generation, then dropped you into a paragraph-by-paragraph draft
+  editor with AI rewrite chips, a chapter tab strip, a "Write the rest" run and
+  a cover review card, then a Review step with a Publish button — a small
+  desktop word processor, reached by everyone, before they had read a word of
+  their own story. After: the crafting screen holds only while there is nothing
+  to read, and the moment whole finished pages exist the ordinary reader opens
+  on page 1. The rest of the chapter arrives behind you while you read it.
+- **Prose still arrives in chunks; it is never painted in front of you.** The
+  transport is unchanged and deliberately so — chunked delivery is the only
+  reason page 1 can be on screen at ~20s rather than at ~70s, and it is what
+  keeps the request under Supabase's 150-second idle timeout. What changed is
+  what a chunk is allowed to do. A page is released only when it is a whole
+  page of whole paragraphs, and the boundary of a released page can never move,
+  so the page you are looking at cannot grow or reflow underneath you. Nothing
+  is ever typed out letter by letter or mid-sentence.
+- **The last available page says the chapter is still being written** — three
+  pulsing dots and "Still writing…" under the final settled paragraph, and the
+  footer reads "Page 1 of 4 · writing" while that count is still a count of
+  what exists. No spinner, no progress bar, no percentage: none of those are
+  knowable, and all three turn reading into waiting.
+- **Leaving the screen no longer kills the generation you paid for.** The
+  stream, the prose it has delivered and the rule deciding how much of it you
+  may see now live in a module-level session (`src/lib/generation-session.ts`),
+  not in the Create screen's state. You can press back, switch tabs, or open
+  the same story from Library while it is being written, and come back to
+  exactly the pages you left. The story is in your library from the moment its
+  first page exists.
+- **Your own story opens on a bare title page.** Story title, then chapter
+  title, then the prose. The cover thumbnail, the genre eyebrow, the byline and
+  the "Chapter N" label are dropped for a story you wrote and for one being
+  written; somebody else's story is a thing you are choosing to read, so it
+  keeps all four. A standalone story shows one title, not the same name twice.
+- **The reader's controls do not open until the chapter is finished.** A tap
+  during generation does nothing at all. Nothing in the tray operates on prose
+  that does not exist yet — you cannot search half a chapter, scrub to a page
+  that has not settled, or narrate an unfinished one — and a tray of controls
+  that cannot be used is a question the writer cannot answer. The first tap
+  after the chapter lands opens it, and is not swallowed by the taps refused
+  before it.
+- **Edit is a notepad.** One text field, the whole chapter, vertical, with the
+  chapter title editable above it and a Save button. The wand bar, the search
+  bar, the paragraph-regenerate path and the revert icon are gone from it. It
+  is the author's, and it appears only once the chapter is complete — absent
+  rather than greyed out until then. Reimagine sits beside it on the same terms
+  and is offered to every reader, not only the author.
+- **Publishing is the "Make it public" toggle in the brief.** There is no
+  Review step and no Publish button to find. A story you marked public is
+  public the moment its chapter lands; a story that names a real living person
+  or someone from your own life stays private, and you are told once, plainly,
+  rather than being handed a policy.
+- **Continuing a story turns the page instead of opening a panel.** Tapping a
+  direction at the end of a chapter used to leave you at the foot of the
+  chapter you had just finished, watching a second waiting surface several
+  inches down a scroll. Now the reader turns to page 1 of the new chapter and
+  the prose arrives there, exactly as chapter one did. One tap buys one
+  chapter, however many times the card is pressed.
+
+### Fixed
+
+- **A double tap on an end-of-chapter direction bought two chapters.** The
+  guard used to be the component's own request state; the component no longer
+  makes the request, so the guard moved into it explicitly. Two presses in the
+  same tick are one continuation and one credit.
+- **A continuation that failed lost the direction the reader typed.** The
+  session holds it, so Retry re-sends the same steer rather than asking them to
+  find and retype it.
+- **A generation that stopped early erased the pages it had already handed
+  over.** They stay on screen, with one line under them — "Katha stopped early.
+  Your credit is back." — and a Retry. The server's own message is the right
+  thing to log and the wrong thing to put under half a chapter somebody is
+  reading.
+
+### Known
+
+- The Reimagine sheet itself is not built here. `ReaderScreen` takes an
+  `onReimagine` prop and `ReaderChrome` renders the control whenever it is
+  supplied; the sheet lands at the marked block beside the other sheets.
+- `regenerateCover` and the cover-poll helpers remain in `src/lib/api.ts` with
+  no caller, and the `writeTheRest` strings remain in `src/i18n/en.json`. Both
+  are dead client surface left in place because `api.ts` and the i18n bundles
+  are being edited elsewhere; they render nothing.
+- Native gesture behaviour is still unverified in this environment: the tests
+  fire the `momentumScrollEnd` the platform would fire, not a finger drag.
+
 ## 2026-09-09: The reading experience — pages, controls, portraits, and stories that survive a reload
 
 ### Changed

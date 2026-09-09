@@ -111,8 +111,7 @@ async function renderCreate(options: { isAnonymous?: boolean } = {}) {
     <CreateStudioScreen
       credits={12}
       isAnonymous={options.isAnonymous ?? true}
-      onCreditUsed={jest.fn()}
-      onPublished={jest.fn()}
+      onGenerationStarted={jest.fn()}
       onBack={jest.fn()}
     />,
   );
@@ -123,6 +122,10 @@ async function fillIdea(
   idea = "A child finds a door in an old library that was not there yesterday.",
 ) {
   await fireEvent.changeText(view.getByLabelText("Story idea"), idea);
+  // "Who's in it" has two tabs since the saved-character library landed, and
+  // a writer who already has saved characters opens on Saved. Every test
+  // below crafts a new character, so select New and wait for its row.
+  await fireEvent.press(await view.findByLabelText("New character"));
   await view.findByRole("button", { name: "Add a character" });
 }
 
@@ -150,14 +153,14 @@ describe("approved Create flow", () => {
 
     await fillIdea(view);
     const kidsMode = view.getByRole("switch", { name: "Kids Mode" });
-    expect(kidsMode.props.value).toBe(false);
+    expect(kidsMode.props.accessibilityState.checked).toBe(false);
     expect(view.queryByText("Values")).toBeNull();
 
-    await fireEvent(kidsMode, "valueChange", true);
+    await fireEvent.press(kidsMode);
     expect(view.getByText("Values")).toBeTruthy();
     expect(view.getByRole("checkbox", { name: "Kindness" })).toBeTruthy();
 
-    await fireEvent(kidsMode, "valueChange", false);
+    await fireEvent.press(kidsMode);
     expect(view.queryByText("Values")).toBeNull();
   });
 
@@ -261,7 +264,7 @@ describe("approved Create flow", () => {
 
   it("derives the kids-mode genre menu from the one genre list, not a second hand-kept one", async () => {
     const view = await renderCreate();
-    await fireEvent(view.getByRole("switch", { name: "Kids Mode" }), "valueChange", true);
+    await fireEvent.press(view.getByRole("switch", { name: "Kids Mode" }));
     await fireEvent.press(view.getByRole("button", { name: "Genre" }));
 
     // Every genre KIDS_UI_GENRES computes from UI_GENRES is actually offered.
@@ -294,8 +297,7 @@ describe("approved Create flow", () => {
       const view = await render(
         <CreateStudioScreen
           credits={12}
-          onCreditUsed={jest.fn()}
-          onPublished={jest.fn()}
+          onGenerationStarted={jest.fn()}
           onBack={jest.fn()}
           initialDraft={{
             primaryGenre: genre,
@@ -338,7 +340,7 @@ describe("approved Create flow", () => {
     const view = await renderCreate();
     await fillIdea(view, "A child follows a map hidden in a library book.");
 
-    await fireEvent(view.getByRole("switch", { name: "Kids Mode" }), "valueChange", true);
+    await fireEvent.press(view.getByRole("switch", { name: "Kids Mode" }));
     await fireEvent.press(view.getByRole("checkbox", { name: "Kindness" }));
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     await fireEvent.changeText(view.getByLabelText("Writing style"), "Warm, playful, and direct");
@@ -347,11 +349,7 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "7 chapters" }));
     await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
-    await fireEvent(
-      view.getByRole("switch", { name: "Chapter art" }),
-      "valueChange",
-      true,
-    );
+    await fireEvent.press(view.getByRole("switch", { name: "Chapter art" }));
     // Language now offers English only -- see the dedicated Language test --
     // so it is left untouched here rather than switched to Portuguese.
     // The setup screen's Create button opens the pre-generation review screen;
@@ -389,8 +387,7 @@ describe("approved Create flow", () => {
     const view = await render(
       <CreateStudioScreen
         credits={12}
-        onCreditUsed={jest.fn()}
-        onPublished={jest.fn()}
+        onGenerationStarted={jest.fn()}
         onBack={jest.fn()}
         initialDraft={{
           primaryGenre: "historical",
@@ -521,10 +518,10 @@ describe("approved Create flow", () => {
 
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     const visibilitySwitch = view.getByRole("switch", {
-      name: "Public visibility",
+      name: "Make it public",
     });
-    expect(visibilitySwitch.props.value).toBe(false);
-    await fireEvent(visibilitySwitch, "valueChange", true);
+    expect(visibilitySwitch.props.accessibilityState.checked).toBe(false);
+    await fireEvent.press(visibilitySwitch);
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await view.findByText("Here is what Katha will write");
@@ -590,9 +587,9 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
     const visibilitySwitch = view.getByRole("switch", {
-      name: "Public visibility",
+      name: "Make it public",
     });
-    await fireEvent(visibilitySwitch, "valueChange", true);
+    await fireEvent.press(visibilitySwitch);
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
     await view.findByText("Here is what Katha will write");
@@ -614,7 +611,8 @@ describe("approved Create flow", () => {
       "A lighthouse keeper receives a letter from tomorrow.",
     );
     expect(
-      view.getByRole("switch", { name: "Public visibility" }).props.value,
+      view.getByRole("switch", { name: "Make it public" }).props
+        .accessibilityState.checked,
     ).toBe(true);
     // The Chapters and Chapter length dropdowns reset to closed on this fresh
     // mount, so their options are not in the tree -- the committed value is
@@ -683,7 +681,8 @@ describe("draft restoration across a remount", () => {
 
     await fireEvent.press(second.getByRole("button", { name: "More options" }));
     expect(
-      second.getByRole("switch", { name: "Public visibility" }).props.value,
+      second.getByRole("switch", { name: "Make it public" }).props
+        .accessibilityState.checked,
     ).toBe(true);
     expect(second.getByLabelText("Writing style").props.value).toBe(
       "Wry, first person",

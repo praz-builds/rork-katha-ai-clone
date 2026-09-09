@@ -78,6 +78,16 @@ export const COVER_POLL_MAX_ATTEMPTS = 40;
 export const CHAPTER_TEXT_CREDITS = 1;
 
 /**
+ * What starting a story costs: its characters, chapter one and its cover.
+ *
+ * The number was a literal in four places (the studio's guard, its alert, the
+ * brief's cost card and its warning). It is the one price a first-time writer
+ * is shown before they have spent anything, so it is named once here and the
+ * generation session charges exactly this on completion.
+ */
+export const STORY_START_CREDITS = 3;
+
+/**
  * The chapter from which "Write the rest" is offered.
  *
  * §10.2: "**Write the rest** appears from chapter 3 onward". The rule is about

@@ -2,7 +2,15 @@ import { memo } from "react";
 import { Text } from "react-native";
 import { colors, fonts } from "@/theme";
 
-export type TappableWordState = "idle" | "saved" | "pending";
+/**
+ * `selecting` is a word lit by a live long-press-and-drag selection. It is a
+ * separate state from `saved` rather than a variant of it because the two mean
+ * opposite things to the reader: `saved` is a fact about their library,
+ * `selecting` is a transient range that disappears the moment they tap away.
+ * A selection that borrowed the saved highlight would read as "these words are
+ * now in your library", which they are not until Save phrase is tapped.
+ */
+export type TappableWordState = "idle" | "saved" | "pending" | "selecting";
 
 export type TappableWordProps = {
   word: string;
@@ -46,6 +54,7 @@ function TappableWordComponent({ word, state, onPress, onLongPress, testID }: Ta
         styles.word,
         state === "saved" && styles.saved,
         state === "pending" && styles.pending,
+        state === "selecting" && styles.selecting,
       ]}
     >
       {word}
@@ -71,5 +80,15 @@ const styles = {
   },
   pending: {
     opacity: 0.55,
+  },
+  /**
+   * The live selection. `selectionTint` is a neutral slate wash rather than the
+   * accent: it has to sit legibly on Sepia, Paper AND Night, and it must not be
+   * confused with the accent-orange saved highlight one line above it.
+   * Background only -- the ink stays the reading theme's, so the words carry on
+   * being readable while the range is being dragged.
+   */
+  selecting: {
+    backgroundColor: colors.selectionTint,
   },
 } as const;

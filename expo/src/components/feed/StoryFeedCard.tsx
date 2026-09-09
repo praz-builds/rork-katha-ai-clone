@@ -1,12 +1,14 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { BookOpen, ChevronRight, Heart } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import {
   colors,
   fonts,
   genreGradients,
+  motion,
   radius,
   shadows,
   spacing,
@@ -52,27 +54,64 @@ export const RAIL_CARD_WIDTH = 300;
 const COVER_WIDTH = 116;
 const COVER_HEIGHT = 155;
 
+/**
+ * The cover, or the genre gradient standing in for it.
+ *
+ * THE PLACEHOLDER IS SILENT. A story whose cover is still being painted, or
+ * whose painting failed, shows its genre's gradient and nothing else: no
+ * spinner, no "Painting..." copy, no retry. A feed card is a reader's glance
+ * at a story, and a progress report on its artwork is not something they
+ * asked for. When the URL arrives the picture fades in over the gradient in
+ * `motion.base`, so the swap reads as the art arriving rather than the card
+ * flickering.
+ *
+ * The generated cover (`coverImageUrl`) is read first and the bundled seed
+ * asset (`coverImage`) second. Reading only the bundled one meant a story the
+ * user wrote showed its art in the studio and a gradient everywhere else.
+ */
 function CardCover({ story }: { story: Story }) {
-  const image = story.coverImage ? imageAssets[story.coverImage] : undefined;
+  const image = story.coverImageUrl
+    ? { uri: story.coverImageUrl }
+    : story.coverImage
+    ? imageAssets[story.coverImage]
+    : undefined;
   const focalY = Math.max(0, (story.focalY ?? 0.5) - 0.07);
+  const opacity = useRef(new Animated.Value(0)).current;
+  const imageKey = story.coverImageUrl ?? story.coverImage ?? null;
+
+  // A new source starts invisible and fades in when it has loaded. Reset on
+  // every change of source so a regenerated cover fades in like the first.
+  useEffect(() => {
+    opacity.setValue(0);
+  }, [imageKey, opacity]);
+
+  const reveal = () => {
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: motion.base,
+      useNativeDriver: true,
+    }).start();
+  };
 
   return (
     <View style={styles.cover}>
+      <LinearGradient
+        colors={genreGradients[story.genre]}
+        style={StyleSheet.absoluteFill}
+      />
       {image
         ? (
-          <FocalImage
-            source={image}
-            focalX={story.focalX ?? 0.5}
-            focalY={focalY}
-            style={{ width: "100%", height: "100%" }}
-          />
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
+            <FocalImage
+              source={image}
+              focalX={story.focalX ?? 0.5}
+              focalY={focalY}
+              style={{ width: "100%", height: "100%" }}
+              onLoad={reveal}
+            />
+          </Animated.View>
         )
-        : (
-          <LinearGradient
-            colors={genreGradients[story.genre]}
-            style={StyleSheet.absoluteFill}
-          />
-        )}
+        : null}
     </View>
   );
 }

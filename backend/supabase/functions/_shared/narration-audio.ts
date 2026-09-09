@@ -333,7 +333,23 @@ export async function startRunpodNarration(
     },
     body: JSON.stringify({
       input: {
-        text,
+        // The field is `prompt`, not `text`. The endpoint's handler reads
+        // `prompt` and computes its cost from `len(prompt)`, so a request
+        // carrying `text` crashed inside RunPod with
+        // `object of type 'NoneType' has no len()` and came back as a failed
+        // job with a Python traceback in `error_code`. Every narration this
+        // product has ever attempted failed exactly that way.
+        prompt: text,
+        // Sensible neutral defaults. `english_normalization` reads numbers,
+        // abbreviations and dates the way a narrator would rather than
+        // spelling them out character by character.
+        speed: 1,
+        volume: 1,
+        pitch: 0,
+        english_normalization: true,
+        // `voice_id` must be one of MiniMax's own voice names; ours are stored
+        // per voice row so a new voice needs no code change. Spread last so a
+        // row can override any default above.
         ...voice.provider_voice_params,
       },
     }),
@@ -373,10 +389,16 @@ export async function pollRunpodNarration(
     };
   }
 
-  const audioBytes = await bytesFromRunpodOutput(payload?.output);
-  if (!audioBytes) {
-    return { status: "failed", errorCode: "missing_audio_output" };
+  const extracted = await bytesFromRunpodOutput(payload?.output);
+  if ("failure" in extracted) {
+    return {
+      status: "failed",
+      errorCode: extracted.detail
+        ? `${extracted.failure}:${extracted.detail}`
+        : extracted.failure,
+    };
   }
+  const audioBytes = extracted.bytes;
   return {
     status: "ready",
     audioBytes,
@@ -430,42 +452,131 @@ export async function cancelRunpodNarration(
   }
 }
 
+/** Why no audio came back, in terms specific enough to act on. */
+export type AudioOutputFailure =
+  | "no_output_object"
+  | "no_audio_field"
+  | "base64_unusable"
+  | "audio_host_blocked"
+  | "audio_fetch_failed"
+  | "audio_too_large";
+
 async function bytesFromRunpodOutput(
   output: unknown,
-): Promise<Uint8Array | null> {
-  if (!output || typeof output !== "object") return null;
-  const record = output as Record<string, unknown>;
+): Promise<
+  { bytes: Uint8Array } | { failure: AudioOutputFailure; detail?: string }
+> {
+  if (!output || typeof output !== "object") {
+    return { failure: "no_output_object" };
+  }
+  // Some RunPod endpoints answer with a single-element array rather than an
+  // object. Unwrapping one costs nothing and turns a shape that looks like a
+  // hard failure into an ordinary success.
+  const unwrapped = Array.isArray(output)
+    ? (output.length === 1 && output[0] && typeof output[0] === "object"
+      ? output[0]
+      : output)
+    : output;
+  const record = unwrapped as Record<string, unknown>;
+
+  // `result` is what this endpoint actually answers with, beside `cost`, and
+  // it is sometimes a URL and sometimes base64. Deciding by CONTENT rather
+  // than by key name means neither form is a special case, and a provider
+  // that switches between them needs no change here.
+  const ambiguous = stringField(record, ["result", "output"]);
+  if (ambiguous) {
+    if (/^https?:\/\//i.test(ambiguous.trim())) {
+      return await audioFromUrl(ambiguous.trim());
+    }
+    const bytes = decodeBase64Audio(ambiguous);
+    if (bytes) return { bytes };
+    return { failure: "base64_unusable" };
+  }
 
   const base64 = stringField(record, ["audio_base64", "audio", "mp3_base64"]);
   if (base64) {
     const bytes = decodeBase64Audio(base64);
     if (!bytes) {
       console.error("narration: refusing an oversized base64 audio payload");
+      return { failure: "base64_unusable" };
     }
-    return bytes;
+    return { bytes };
   }
 
-  const url = stringField(record, ["audio_url", "url", "mp3_url"]);
-  if (url) {
-    // This URL arrives in a provider response, so it is attacker-influenced the
-    // moment the provider is compromised, spoofed or simply wrong. Fetching it
-    // unchecked let this function be pointed at anything the Edge runtime can
-    // reach -- internal addresses and cloud metadata endpoints included -- and
-    // at a body of any size. Narration audio is the only thing it is ever meant
-    // to retrieve.
-    const response = await fetchAllowedAudioUrl(url);
-    if (!response || !response.ok) return null;
+  const url = stringField(record, [
+    "audio_url",
+    "url",
+    "mp3_url",
+    "audioUrl",
+    "output_url",
+  ]);
+  if (url) return await audioFromUrl(url);
 
-    const declared = Number(response.headers.get("content-length") ?? "");
-    if (Number.isFinite(declared) && declared > MAX_AUDIO_BYTES) return null;
+  // Naming the keys the provider DID send turns "no audio" into a one-line
+  // diagnosis when a provider changes its response shape. Keys only, never
+  // values: an output object can carry a signed URL.
+  // The KEYS the provider did send are recorded on the row, not just logged.
+  // Edge Function logs are not reachable from the CLI, so a shape change at
+  // the provider is otherwise a silent dead end that costs a deploy to
+  // diagnose. Keys only, capped, never values: an output object can carry a
+  // signed URL, and a signed URL is a credential.
+  const keys = Object.keys(record).slice(0, 8).join(",").slice(0, 120);
+  console.error(`narration: provider output had no audio field; keys=${keys}`);
+  return {
+    failure: "no_audio_field",
+    detail: keys || (Array.isArray(record) ? "empty_array" : "none"),
+  };
+}
 
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    // The header is a claim, not a guarantee, so the real length is checked too.
-    if (bytes.byteLength > MAX_AUDIO_BYTES) return null;
-    return bytes;
+/**
+ * Download narration audio from a provider-supplied URL.
+ *
+ * This URL arrives in a provider response, so it is attacker-influenced the
+ * moment the provider is compromised, spoofed or simply wrong. Fetching it
+ * unchecked let this function be pointed at anything the Edge runtime can
+ * reach -- internal addresses and cloud metadata endpoints included -- and at
+ * a body of any size. Narration audio is the only thing it is ever meant to
+ * retrieve.
+ */
+async function audioFromUrl(
+  url: string,
+): Promise<
+  { bytes: Uint8Array } | { failure: AudioOutputFailure; detail?: string }
+> {
+  lastBlockedHost = null;
+  const response = await fetchAllowedAudioUrl(url);
+  if (!response) {
+    // The host is recorded on the row, never the URL: the path and query of a
+    // download link are a credential. A host is not, and it is the one thing
+    // needed to extend NARRATION_AUDIO_HOSTS without a deploy.
+    return {
+      failure: "audio_host_blocked",
+      detail: lastBlockedHost ?? undefined,
+    };
+  }
+  if (!response.ok) {
+    console.error(`narration: audio fetch answered ${response.status}`);
+    return { failure: "audio_fetch_failed" };
   }
 
-  return null;
+  const declared = Number(response.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > MAX_AUDIO_BYTES) {
+    return { failure: "audio_too_large" };
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  // The header is a claim, not a guarantee, so the real length is checked too.
+  if (bytes.byteLength > MAX_AUDIO_BYTES) return { failure: "audio_too_large" };
+  return { bytes };
+}
+
+/** A URL's host, for logging, or null when it will not parse. */
+function hostOf(candidate: string): string | null {
+  try {
+    return new URL(candidate).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 /** A redirect chain is capped, not just re-validated, so it cannot be used to hang the request either. */
@@ -485,12 +596,20 @@ const MAX_AUDIO_REDIRECTS = 5;
  * itself, so `isAllowedAudioUrl` gets a real say at each one instead of
  * being bypassed by the second and every later request in the chain.
  */
+/** The host that was refused on the last blocked fetch, for the failure row. */
+let lastBlockedHost: string | null = null;
+
 async function fetchAllowedAudioUrl(url: string): Promise<Response | null> {
   let current = url;
   for (let hop = 0; hop <= MAX_AUDIO_REDIRECTS; hop += 1) {
     if (!isAllowedAudioUrl(current)) {
+      // The HOST is named, never the full URL: a signed download link carries
+      // its own credential in the query string. Naming it is what makes a
+      // blocked provider host a five-second fix instead of a guess -- the
+      // allowlist is extended through `NARRATION_AUDIO_HOSTS` with no deploy.
+      lastBlockedHost = hostOf(current) ?? "unparseable";
       console.error(
-        "narration: refusing to fetch audio from an unexpected host",
+        `narration: refusing audio from unexpected host ${lastBlockedHost} (hop ${hop})`,
       );
       return null;
     }
@@ -541,9 +660,21 @@ function isAllowedAudioUrl(candidate: string): boolean {
     .split(",")
     .map((host) => host.trim().toLowerCase())
     .filter(Boolean);
-  const allowed = configured.length
-    ? configured
-    : ["api.runpod.ai", "runpod.ai"];
+  const allowed = configured.length ? configured : [
+    "api.runpod.ai",
+    "runpod.ai",
+    // RunPod hands back finished audio on its own CloudFront distribution,
+    // not on runpod.ai. Measured 2026-09-10: the endpoint's `result` field
+    // is a URL on this exact host, and narration failed as
+    // `audio_host_blocked` until it was named here.
+    //
+    // The DISTRIBUTION is allowed, never `cloudfront.net` as a whole:
+    // anyone can put a distribution on that domain, so the broad suffix
+    // would turn this allowlist back into an open redirect target. If
+    // RunPod moves, the failure row now names the new host and
+    // `NARRATION_AUDIO_HOSTS` overrides this list with no deploy.
+    "d2h7xmz5gqybh9.cloudfront.net",
+  ];
 
   const host = parsed.hostname.toLowerCase();
   return allowed.some((suffix) =>

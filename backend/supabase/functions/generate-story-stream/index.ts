@@ -42,10 +42,26 @@ import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { buildStoryDonePayload } from "../_shared/generation-done.ts";
 import {
+  applyRequestedVisibility,
+  type VisibilityClient,
+} from "../_shared/publish.ts";
+import {
+  rememberStoryCharacters,
+  resolveSavedCharacters,
+  type SavedCharacterClient,
+} from "../_shared/saved-characters.ts";
+import {
+  CLASSIFICATION_DEADLINE_MS,
+  CLASSIFICATION_NOT_ATTEMPTED,
+  type ClassificationOutcome,
+  classifyIdea,
   GENERATION_GROUNDING_DEADLINE_MS,
-  resolveGrounding,
+  groundingCardsWithin,
+  reportClassificationFailure,
 } from "../_shared/grounding-pipeline.ts";
+import type { GroundingCard } from "../_shared/grounding-types.ts";
 import { claimGroundingFallback } from "../_shared/grounding-rate-limit.ts";
 import {
   AllProvidersFailedError,
@@ -126,7 +142,7 @@ serve(async (req) => {
       spiceLevel,
       storyMode,
       seed,
-      characters,
+      characters: requestedCharacters,
       requestId,
       language,
       whereAndWhen,
@@ -141,6 +157,7 @@ serve(async (req) => {
       notifyOnReady,
       grounding,
       groundingEntities,
+      visibility,
     } = input;
     const chapterRole: ChapterRole = storyMode === "series"
       ? "series_opening"
@@ -152,45 +169,54 @@ serve(async (req) => {
       serviceRoleKey,
     );
 
-    // Same fallback as the buffered path, started before the opening round
-    // trip so it overlaps it, and gated by the same cheap per-caller rate
-    // limit before `resolveGrounding` ever runs - see the long note in
-    // `generate-story/index.ts` for why the Create studio needs the fallback,
-    // why the shaped path never reaches this branch, and why the limit check
-    // does not change the ordering against `begin_story_generation` below.
-    // Deliberately NOT short-circuited by `groundingEntities`.
+    // A brief may pull a character from the writer's saved library by id.
+    // Resolved before the credit is reserved, so the prompt and the cast rows
+    // both see the filled-in character; an id that is not theirs is dropped.
+    // Narrowed structurally, as `chapters.ts` does: the generated client type
+    // is too deep for the compiler to match against a small interface.
+    const characterClient = serviceClient as unknown as SavedCharacterClient;
+    const characters = await resolveSavedCharacters(
+      characterClient,
+      user.id,
+      requestedCharacters,
+    );
+
+    // Same shape as the buffered path, and deliberately identical to it: the
+    // long note in `generate-story/index.ts` explains why classification is
+    // split from cards, why it now runs on every generation rather than only
+    // the unshaped one, why a refused rate-limit claim is a failure rather
+    // than an empty verdict, and why the ordering against
+    // `begin_story_generation` must not change.
     //
-    // That field arrives on the request body. It was introduced as a
-    // convenience -- the client echoes back what `shape-story` already
-    // classified, so the work is not repeated -- and while it only fed a
-    // prompt, a tampered entry mislabelled nobody but the tamperer's own
-    // story. The entity visibility gate changed that: the same field now
-    // decides whether a story may ever be published. A caller who sends any
-    // shape-valid `grounding_entities` array used to skip classification
-    // entirely and hand the gate its own answer.
-    //
-    // So the classification runs on its own account, and the gate below reads
-    // only what THIS server derived. The echoed entities still serve their
-    // original purpose (prompt grounding); they simply no longer get a vote on
-    // visibility.
-    const needsGroundingFallback = grounding.length === 0;
-    const groundingFallback = needsGroundingFallback
-      ? claimGroundingFallback({
+    // The streamed path has one extra reason to want this shape. It is the
+    // path a first chapter actually takes, so it is the path the publish
+    // toggle rides on, and it is also the one that cannot afford latency in
+    // front of the first token - page one is meant to appear ~20s in. A
+    // classification that resolves at persist time costs it nothing.
+    const classificationPromise: Promise<ClassificationOutcome> =
+      claimGroundingFallback({
         user,
         request: req,
         serviceRoleKey,
         client: serviceClient,
       }).then((allowed) =>
         allowed
-          ? resolveGrounding({
+          ? classifyIdea({
             idea: seed,
             characterNames: characters?.map((c) => c.name).filter(Boolean),
-            cache: serviceClient,
-            deadlineMs: GENERATION_GROUNDING_DEADLINE_MS,
-          }).catch(() => null)
-          : null
-      ).catch(() => null)
-      : Promise.resolve(null);
+            deadlineMs: CLASSIFICATION_DEADLINE_MS,
+          })
+          : CLASSIFICATION_NOT_ATTEMPTED
+      ).catch(() => CLASSIFICATION_NOT_ATTEMPTED);
+
+    const needsGroundingFallback = grounding.length === 0;
+    const groundingFallback = needsGroundingFallback
+      ? groundingCardsWithin(
+        classificationPromise,
+        serviceClient,
+        GENERATION_GROUNDING_DEADLINE_MS,
+      )
+      : Promise.resolve<GroundingCard[]>([]);
 
     const { data: begun, error: beginError } = await serviceClient.rpc(
       "begin_story_generation",
@@ -318,6 +344,7 @@ serve(async (req) => {
                   // which is the kind of gap two parallel write paths produce.
                   portrait_url: c.portraitUrl,
                   is_hero: c.isHero ?? false,
+                  saved_character_id: c.savedCharacterId ?? null,
                 })),
               ).then(
                 (r) => ({ error: r.error as unknown }),
@@ -336,27 +363,13 @@ serve(async (req) => {
             chapterLength,
             plannedChapterCount,
           };
-          const fallback = await groundingFallback;
-          const resolvedGrounding = fallback?.cards.length
-            ? fallback.cards
+          // Cards only. The classification behind them is read after the
+          // chapter is persisted, where the wait is free - see the note where
+          // `classificationPromise` is created.
+          const fallbackCards = await groundingFallback;
+          const resolvedGrounding = fallbackCards.length
+            ? fallbackCards
             : grounding;
-          const resolvedEntities = fallback?.entities.length
-            ? fallback.entities
-            : groundingEntities;
-          // The entity visibility gate. Computed from the same classification
-          // that populates `grounding_entities` - see
-          // `_shared/entity-visibility-gate.ts` for the rule. This never makes
-          // the story public; `is_public` was already false by column default
-          // (migration 00001) and nothing in this handler ever sets it true.
-          // What this decides is whether the story can EVER be published, and
-          // it is recorded now because a well-known living person produces no
-          // grounding card (the model already writes them accurately) while
-          // being exactly the entity this gate exists for - `resolvedGrounding`
-          // alone would never see them.
-          // Server-derived entities only. `resolvedEntities` may contain the
-          // client's echoed classification, which is fine for a prompt and
-          // unacceptable for a gate -- see `needsGroundingFallback` above.
-          const gateReason = deriveGatingReason(fallback?.entities ?? []);
 
           // The reader's saved phrases seed their next story. Best-effort: an
           // empty list renders the prompt byte-identically, so a lookup failure
@@ -499,16 +512,40 @@ serve(async (req) => {
             throw completionError ?? new Error("Story persistence failed");
           }
 
+          // The classification, read at the one moment waiting for it is free:
+          // the chapter is written and on disk, and this started before the
+          // opening RPC. Same trade as the buffered path.
+          const classification = await classificationPromise;
+          const gateReason = classification.status === "ok"
+            ? deriveGatingReason(classification.entities)
+            : null;
+          const resolvedEntities = classification.status === "ok"
+            ? classification.entities
+            : groundingEntities;
+          if (classification.status !== "ok") {
+            await reportClassificationFailure({
+              outcome: classification,
+              feature: "entity_gate",
+              storyId: story.id,
+              userId: user.id,
+            });
+          }
+
           // Same rationale as the buffered path: outside the credit
           // transaction, because a card that fails to store must not roll back
-          // a chapter the reader is already looking at.
-          if (resolvedGrounding.length || resolvedEntities.length) {
+          // a chapter the reader is already looking at. Unconditional, because
+          // `entity_classification_status` is a fact about every story and an
+          // unwritten row is not one of its values.
+          {
             const { error: groundingError } = await serviceClient
               .from("stories")
               .update({
                 grounding: resolvedGrounding,
                 grounding_entities: resolvedEntities,
                 entity_gate_reason: gateReason,
+                entity_classification_status: classification.status === "ok"
+                  ? "ok"
+                  : "unavailable",
               })
               .eq("id", story.id);
             if (groundingError) {
@@ -527,6 +564,26 @@ serve(async (req) => {
               });
             }
           }
+
+          // The visibility toggle is the publish button. Applied after the
+          // grounding write above so the gate reason is on the row before the
+          // 00050 CHECK is asked to admit `is_public = true`; the outcome
+          // travels in `done` so the client can say why a public request
+          // stayed private without a second call.
+          const visibilityOutcome = await applyRequestedVisibility(
+            serviceClient as unknown as VisibilityClient,
+            {
+              storyId: story.id,
+              requested: visibility,
+              isAnonymous: user.is_anonymous === true,
+              classificationAvailable: classification.status === "ok",
+              gateReason,
+            },
+          );
+
+          // The cast joins the writer's saved characters. Best-effort, after
+          // the chapter is persisted and paid for.
+          await rememberStoryCharacters(characterClient, user.id, story.id);
 
           send("stage", { stage: "art" });
 
@@ -555,30 +612,30 @@ serve(async (req) => {
             }).eq("id", story.id);
           }
 
-          send("done", {
-            story: {
-              ...story,
-              cover_status: coverStatus,
-              title: output.title,
-              word_count: verdict.words,
-              status: "complete",
-              primary_genre: primaryGenre,
-              story_mode: storyMode,
-              series_state: storyMode === "series"
-                ? output.series_state ?? EMPTY_SERIES_STATE
-                : EMPTY_SERIES_STATE,
-              first_line: output.first_line,
-              previously_summary: output.previously_summary,
-              content_rating: contentRating,
-            },
-            chapter,
-            balance: operation.balance,
-            model: prose.model,
-            timings: {
-              first_token: firstTokenAt,
-              total: Date.now() - startedAt,
-            },
-          });
+          // One builder for both transports - see `generation-done.ts` for
+          // the schema tie that keeps `beats`, `themes` and `series_state`
+          // from silently dropping out of this payload again.
+          send(
+            "done",
+            buildStoryDonePayload({
+              story,
+              chapter,
+              output,
+              storyMode,
+              primaryGenre,
+              contentRating,
+              coverStatus,
+              words: verdict.words,
+              beats,
+              balance: operation.balance,
+              model: prose.model,
+              timings: {
+                first_token: firstTokenAt,
+                total: Date.now() - startedAt,
+              },
+              visibility: visibilityOutcome,
+            }),
+          );
         } catch (error) {
           // Every failure past the reservation refunds, exactly as the
           // non-streamed path does. The difference is what the user is left

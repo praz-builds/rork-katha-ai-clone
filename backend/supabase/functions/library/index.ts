@@ -106,7 +106,19 @@ export async function handleRequest(req: Request): Promise<Response> {
     let query = supabase
       .from("stories")
       .select(
-        "id, title, genre, primary_genre, topic, cover_image_url, length_type, word_count, created_at, content_rating, author_id",
+        // `cover_status`, `previously_summary` and the chapter count are what
+        // a "Your stories" rail needs to render a card without a second
+        // round trip per story: whether to show the cover or the concept
+        // card, the one-line summary under the title, and "3 chapters".
+        //
+        // `beats`, `series_state`, `planned_chapter_count` and
+        // `entity_gate_reason` are here because a story opened from this rail
+        // is a story the reader can continue, and the chapter-end screen
+        // derives its "what happens next" chips from the first three. Omitting
+        // them was why the chips appeared once, after generating, and never
+        // again after a reload: the columns were never fetched, so the client
+        // hydrated every story with `beats: []` and no series state.
+        "id, title, genre, primary_genre, topic, cover_image_url, cover_status, previously_summary, length_type, word_count, created_at, content_rating, author_id, is_public, story_mode, beats, series_state, planned_chapter_count, entity_gate_reason, chapters(count)",
         { count: "planned" },
       )
       .eq("status", "complete")
