@@ -146,10 +146,13 @@ it("does not confuse two chapters of the same story", async () => {
   OLDER text. The queue now sends the second only after the first has settled.
 */
 it("does not let a second save of the same chapter overtake the first", async () => {
-  let releaseFirst: (() => void) | null = null;
+  // A holder, not a bare `let`: the assignment happens inside the Promise
+  // executor, which TypeScript's control flow cannot see, so a plain variable
+  // is narrowed to `null` at the call site below and stops being callable.
+  const first: { release: (() => void) | null } = { release: null };
   mockSaveChapter.mockImplementationOnce(() =>
     new Promise<void>((resolve) => {
-      releaseFirst = () => resolve();
+      first.release = () => resolve();
     })
   );
 
@@ -161,7 +164,7 @@ it("does not let a second save of the same chapter overtake the first", async ()
   // The newer text has NOT been sent: the older request is still open.
   expect(mockSaveChapter).toHaveBeenCalledTimes(1);
 
-  releaseFirst?.();
+  first.release?.();
   await flush();
 
   expect(mockSaveChapter).toHaveBeenCalledTimes(2);
