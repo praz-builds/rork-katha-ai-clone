@@ -69,7 +69,7 @@ export const NARRATION_STAGES = [
   { id: "voice", message: "Checking which voice reads this one" },
   { id: "requesting", message: "Asking for a reading of this chapter" },
   { id: "generating", message: "The voice is reading it now" },
-  { id: "finishing", message: "Almost ready — saving it so it replays instantly" },
+  { id: "finishing", message: "Almost ready, saving it so it replays instantly" },
 ] as const;
 
 export type NarrationStageId = (typeof NARRATION_STAGES)[number]["id"];
@@ -108,9 +108,9 @@ export const NARRATION_LOADER_VARIANT_LABELS: Record<
   NarrationLoaderVariant,
   string
 > = {
-  waveform: "Waveform — a voice warming up",
-  halo: "Halo — sound leaving the headphones",
-  passage: "Passage — a reading light crossing the lines",
+  waveform: "Waveform, a voice warming up",
+  halo: "Halo, sound leaving the headphones",
+  passage: "Passage, a reading light crossing the lines",
 };
 
 /* ── Motion constants ──────────────────────────────────────────────────── */
@@ -143,7 +143,7 @@ const BREATH_MIN = 0.55;
 /* ── Component ─────────────────────────────────────────────────────────── */
 
 export type NarrationLoaderProps = {
-  /** Which art to draw. Default `waveform`. */
+  /** Which art to draw. Default `halo`, chosen by the product owner. */
   variant?: NarrationLoaderVariant;
   /**
    * The stage the pipeline is actually in. Drives the default message, the
@@ -163,7 +163,7 @@ export type NarrationLoaderProps = {
 };
 
 export function NarrationLoader({
-  variant = "waveform",
+  variant = "halo",
   stage = "voice",
   message,
   hint,
@@ -646,7 +646,9 @@ const styles = StyleSheet.create({
   },
 
   messageBox: {
-    marginTop: spacing.xxl,
+    // Close to the art on purpose: the line names what the picture is doing,
+    // so a wide gap reads as two unrelated things stacked up.
+    marginTop: spacing.md,
     minHeight: 22,
     justifyContent: "center",
   },
