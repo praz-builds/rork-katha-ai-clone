@@ -32,6 +32,9 @@ import {
 import { MusicPicker } from "@/components/reader/MusicPicker";
 import { EditStoryScreen } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
+import GeneratingOverlay from "@/components/GeneratingOverlay";
+import { ReimagineSheet } from "@/components/reader/ReimagineSheet";
+import { startReimagine, type ReimagineRequest, type ReimagineRun } from "@/lib/reimagine-client";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
@@ -88,6 +91,20 @@ export type ReaderScreenProps = {
    * Listen was indistinguishable from Read.
    */
   autoplay?: boolean;
+  /**
+   * A Reimagine rewrite has started for the chapter on screen.
+   *
+   * The run is subscribable: `run.text` is the prose so far, `run.stage` and
+   * `run.status` say where it is, and `run.promise` settles with the finished
+   * chapter (or the private copy's `storyId`, for a non-author). A host that
+   * owns the live-reader generation session takes it from here and re-enters
+   * `writing-pages` for this chapter, so pages appear as they settle.
+   *
+   * When no handler is given this screen owns the wait itself: it has no
+   * page-by-page mechanism of its own, so it covers the reader until the run
+   * settles and then swaps the whole chapter in from page 1.
+   */
+  onReimagineStarted?: (run: ReimagineRun) => void;
 };
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
@@ -286,6 +303,7 @@ export default function ReaderScreen({
   renderWord = (word) => word,
   onChapterChange,
   autoplay = false,
+  onReimagineStarted,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
@@ -305,6 +323,14 @@ export default function ReaderScreen({
   const isAuthor = isOwnStory(story);
   const [editOpen, setEditOpen] = useState(false);
   const [editWandOpen, setEditWandOpen] = useState(false);
+  // Reimagine (spec §4): the sheet, the prompt to restore after a failure,
+  // the failure itself, and the "Saved to Your stories" toast for a reader
+  // whose rewrite landed in a private copy.
+  const [reimagineOpen, setReimagineOpen] = useState(false);
+  const [reimaginePrompt, setReimaginePrompt] = useState("");
+  const [reimagineError, setReimagineError] = useState<string | null>(null);
+  const [reimagineWaiting, setReimagineWaiting] = useState(false);
+  const [forkToast, setForkToast] = useState(false);
   const [preferences, setPreferences] = useState<ReaderPreferences>(DEFAULT_PREFS);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
@@ -676,6 +702,43 @@ export default function ReaderScreen({
     setEditOpen(false);
   }, [baseChapter.id]);
 
+  const handleReimagineSubmit = useCallback((request: ReimagineRequest) => {
+    setReimagineOpen(false);
+    setReimagineError(null);
+    setReimaginePrompt("");
+    const run = startReimagine(request);
+    if (onReimagineStarted) {
+      onReimagineStarted(run);
+      return;
+    }
+    // No host is holding the run, so this screen holds it. It has no
+    // page-by-page mechanism of its own, so it covers the reader until the
+    // rewrite settles rather than showing prose arriving mid-sentence.
+    setReimagineWaiting(true);
+    const chapterId = baseChapter.id;
+    run.promise.then(
+      (result) => {
+        setReimagineWaiting(false);
+        setChapterEdits((prev) => ({ ...prev, [chapterId]: result.chapter.paragraphs.join("\n\n") }));
+        setPageIndex(0);
+        if (result.forked) {
+          setForkToast(true);
+          setTimeout(() => setForkToast(false), 2500);
+        }
+      },
+      (error: unknown) => {
+        // The chapter on screen was never replaced, so there is nothing to
+        // restore; the sheet reopens with the prompt intact and the reason.
+        setReimagineWaiting(false);
+        setReimaginePrompt(request.prompt);
+        setReimagineError(
+          error instanceof Error ? error.message : "The rewrite failed. Please try again.",
+        );
+        setReimagineOpen(true);
+      },
+    );
+  }, [baseChapter.id, onReimagineStarted]);
+
   const handleLike = useCallback(() => {
     setIsLiked((prev) => {
       setLikeCount((count) => prev ? count - 1 : count + 1);
@@ -936,12 +999,48 @@ export default function ReaderScreen({
         // history feature that does not exist. See `EditStoryScreen` for
         // where that revert control actually lives.
         onEdit={isAuthor ? () => openEditor(false) : undefined}
-        onReimagine={isAuthor ? () => openEditor(true) : undefined}
+        // Everyone gets Reimagine: an author rewrites their chapter, anyone
+        // else gets a private copy (spec §4).
+        onReimagine={() => setReimagineOpen(true)}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
         onListen={() => setListenOpen(true)}
         onMusic={() => setMusicPickerOpen(true)}
       />
+      {/*
+        Mounted only while open. The sheet reads the safe-area inset, and a
+        reader rendered outside a `SafeAreaProvider` (every reader test, and
+        any host that has not wrapped this screen) would throw on a hook it
+        never needed to run for a closed sheet.
+      */}
+      {reimagineOpen ? (
+        <ReimagineSheet
+          visible
+          story={story}
+          chapter={chapter}
+          isAuthor={isAuthor}
+          initialPrompt={reimaginePrompt}
+          errorMessage={reimagineError}
+          onClose={() => setReimagineOpen(false)}
+          onSubmit={handleReimagineSubmit}
+        />
+      ) : null}
+      {/*
+        The rewrite takes about a minute and arrives whole. This covers the
+        reader for the whole of it - the same wait the create flow shows, so
+        "Katha is writing a chapter" looks the same wherever it happens - and
+        never implies measurable progress.
+      */}
+      {reimagineWaiting ? (
+        <View style={StyleSheet.absoluteFill} accessibilityLabel="Reimagining this chapter">
+          <GeneratingOverlay genre={story.genre} mode="chapter" />
+        </View>
+      ) : null}
+      {forkToast ? (
+        <View style={styles.forkToast} accessibilityLiveRegion="polite">
+          <Text style={styles.shareToastText}>Saved to Your stories</Text>
+        </View>
+      ) : null}
       {editOpen ? (
         <EditStoryScreen
           story={story}
@@ -1349,6 +1448,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.ink,
     marginBottom: spacing.md,
+  },
+  forkToast: {
+    position: "absolute",
+    bottom: spacing.huge,
+    alignSelf: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.ink,
   },
   shareToastText: {
     fontFamily: fonts.ui,

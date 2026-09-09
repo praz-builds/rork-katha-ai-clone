@@ -123,6 +123,10 @@ async function fillIdea(
   idea = "A child finds a door in an old library that was not there yesterday.",
 ) {
   await fireEvent.changeText(view.getByLabelText("Story idea"), idea);
+  // "Who's in it" has two tabs since the saved-character library landed, and
+  // a writer who already has saved characters opens on Saved. Every test
+  // below crafts a new character, so select New and wait for its row.
+  await fireEvent.press(await view.findByLabelText("New character"));
   await view.findByRole("button", { name: "Add a character" });
 }
 
@@ -521,7 +525,7 @@ describe("approved Create flow", () => {
 
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     const visibilitySwitch = view.getByRole("switch", {
-      name: "Public visibility",
+      name: "Make it public",
     });
     expect(visibilitySwitch.props.value).toBe(false);
     await fireEvent(visibilitySwitch, "valueChange", true);
@@ -590,7 +594,7 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
     const visibilitySwitch = view.getByRole("switch", {
-      name: "Public visibility",
+      name: "Make it public",
     });
     await fireEvent(visibilitySwitch, "valueChange", true);
 
@@ -614,7 +618,7 @@ describe("approved Create flow", () => {
       "A lighthouse keeper receives a letter from tomorrow.",
     );
     expect(
-      view.getByRole("switch", { name: "Public visibility" }).props.value,
+      view.getByRole("switch", { name: "Make it public" }).props.value,
     ).toBe(true);
     // The Chapters and Chapter length dropdowns reset to closed on this fresh
     // mount, so their options are not in the tree -- the committed value is
@@ -683,7 +687,7 @@ describe("draft restoration across a remount", () => {
 
     await fireEvent.press(second.getByRole("button", { name: "More options" }));
     expect(
-      second.getByRole("switch", { name: "Public visibility" }).props.value,
+      second.getByRole("switch", { name: "Make it public" }).props.value,
     ).toBe(true);
     expect(second.getByLabelText("Writing style").props.value).toBe(
       "Wry, first person",

@@ -23,6 +23,7 @@ import * as ImagePicker from "expo-image-picker";
 import {
   ArrowLeft,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Edit3,
@@ -42,8 +43,15 @@ import {
   GENRE_STARTERS,
 } from "@/lib/genre-content";
 import * as storyApi from "@/lib/api";
-import { colors, fonts, genreLabels, radius, spacing } from "@/theme";
-import type { AudienceMode, CreateDraft, CreationLanguage, Genre } from "@/types/domain";
+import {
+  draftCharacterFromSaved,
+  listSavedCharacters,
+  saveCharacterToLibrary,
+  savedCharacterInputFromDraft,
+} from "@/lib/saved-characters";
+import type { SavedCharacterInput } from "@/lib/saved-characters";
+import { colors, fonts, genreLabels, radius, shadows, spacing } from "@/theme";
+import type { AudienceMode, CreateDraft, CreationLanguage, Genre, SavedCharacter } from "@/types/domain";
 import { KIDS_UI_GENRES, UI_GENRES } from "@/types/domain";
 
 type CharacterDraft = CreateDraft["characters"][number];
@@ -55,6 +63,8 @@ export type StudioCreateDraft = Omit<CreateDraft, "visibility"> & {
 };
 
 type CreateStage = "main" | "character" | "review";
+/** Which half of "Who's in it" is showing: the saved library, or a new sheet. */
+export type CastTab = "saved" | "new";
 
 type Props = {
   credits: number;
@@ -63,7 +73,66 @@ type Props = {
   setDraft: Dispatch<SetStateAction<StudioCreateDraft>>;
   onGenerate: () => void;
   onBack: () => void;
+  /** Test seams for the saved-character library; default to the real store. */
+  loadSavedCharacters?: () => Promise<SavedCharacter[]>;
+  saveSavedCharacter?: (input: SavedCharacterInput) => Promise<SavedCharacter>;
 };
+
+/** A blank Craft character sheet. Exported for the saved-characters picker. */
+export function emptyCharacterDraft(isHero: boolean): CharacterDraft {
+  return { name: "", description: "", background: "", appearance: "", isHero };
+}
+
+/**
+ * Attach a photo that steers a character's look. Returns the `data:` URL, or
+ * null when the writer cancelled or the photo could not be read.
+ *
+ * Downscaled and re-encoded here rather than sent as the camera produced it:
+ * a modern phone photo is 3-8 MB, the endpoint caps a reference at 6 MB of
+ * base64, and a request that large is slow on the writer's connection before
+ * it is anything else. 1024px on the long edge is well beyond what an image
+ * model reads for build, hair and wardrobe.
+ *
+ * `base64: true` because the endpoint takes a data URL. The bytes never
+ * touch our storage: the reference exists only for the length of one
+ * portrait request and is dropped as soon as it has been used.
+ */
+export async function pickReferenceImage(): Promise<string | null> {
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) {
+    Alert.alert(
+      "Photo access needed",
+      "Katha needs permission to open your photos so you can attach a reference.",
+    );
+    return null;
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ["images"],
+    quality: 0.8,
+    base64: true,
+    allowsEditing: true,
+    aspect: [2, 3],
+  });
+  if (result.canceled || !result.assets?.length) return null;
+
+  const asset = result.assets[0];
+  if (!asset.base64) {
+    Alert.alert(
+      "Couldn't read that photo",
+      "Please pick a different image, or try a JPEG or PNG.",
+    );
+    return null;
+  }
+
+  // The endpoint's allowlist is JPEG, PNG and WebP; anything else is refused
+  // there. Naming the type from the asset rather than assuming PNG is what
+  // keeps that refusal about the actual file.
+  const mime = asset.mimeType && /^image\/(jpeg|jpg|png|webp)$/.test(asset.mimeType)
+    ? asset.mimeType
+    : "image/jpeg";
+  return `data:${mime};base64,${asset.base64}`;
+}
 
 const VALUES = [
   { value: "kindness", label: "Kindness" },
@@ -207,9 +276,34 @@ function briefStrength(draft: StudioCreateDraft) {
   return { label: "Sparse", detail: "Katha will invent most of this. That can be good.", slots };
 }
 
-export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft, onGenerate, onBack }: Props) {
+export default function CreateBriefFlow({
+  credits,
+  isAnonymous,
+  draft,
+  setDraft,
+  onGenerate,
+  onBack,
+  loadSavedCharacters = listSavedCharacters,
+  saveSavedCharacter = saveCharacterToLibrary,
+}: Props) {
   const insets = useSafeAreaInsets();
   const [stage, setStage] = useState<CreateStage>("main");
+  /**
+   * The saved library, read once per mount. `null` until the first read
+   * settles so the Saved tab is not chosen as the default on an empty list
+   * that is merely still loading.
+   */
+  const [savedCharacters, setSavedCharacters] = useState<SavedCharacter[] | null>(null);
+  /**
+   * Which half of "Who's in it" is showing. Saved leads when the library
+   * already has someone in it, but only ever as the *opening* choice: it is
+   * decided once, when the first read settles, and never recomputed. Deriving
+   * it from the list on every render would yank a writer from New to Saved
+   * the moment they finish crafting their first character - mid-flow, with
+   * the "Add a character" row disappearing under their thumb.
+   */
+  const [castTab, setCastTab] = useState<CastTab>("new");
+  const castTabDecided = useRef(false);
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [momentInput, setMomentInput] = useState("");
   const [editingCharacterIndex, setEditingCharacterIndex] = useState<number | null>(null);
@@ -228,6 +322,57 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
   const strength = briefStrength(draft);
   const isCharacter = stage === "character";
   const isReview = stage === "review";
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSavedCharacters().then(
+      (list) => {
+        if (cancelled) return;
+        setSavedCharacters(list);
+        if (!castTabDecided.current) {
+          castTabDecided.current = true;
+          if (list.length > 0) setCastTab("saved");
+        }
+      },
+      () => {
+        if (cancelled) return;
+        setSavedCharacters([]);
+        castTabDecided.current = true;
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSavedCharacters]);
+
+  /**
+   * One tap adds a saved character to the cast; tapping the same chip again
+   * removes exactly that row (matched on `savedCharacterId`, never on name,
+   * so a hand-typed namesake is left alone). The cap is evaluated inside the
+   * updater, like `addCharacter` - see cast-cap.test.ts for why.
+   */
+  const toggleSavedCharacter = useCallback((saved: SavedCharacter) => {
+    setDraft((previous) => {
+      const existingIndex = previous.characters.findIndex((item) => item.savedCharacterId === saved.id);
+      if (existingIndex >= 0) {
+        const characters = previous.characters.filter((_, index) => index !== existingIndex);
+        const stillHasLead = characters.some((item) => item.isHero);
+        return {
+          ...previous,
+          characters: characters.map((item, index) => ({ ...item, isHero: stillHasLead ? item.isHero : index === 0 })),
+        };
+      }
+      if (previous.characters.length >= 3) return previous;
+      return {
+        ...previous,
+        characters: [
+          ...previous.characters,
+          draftCharacterFromSaved(saved, previous.characters.length === 0),
+        ],
+      };
+    });
+    select();
+  }, [select, setDraft]);
 
   useEffect(() => {
     if (reduceMotion || stage === "character") return;
@@ -269,8 +414,8 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
 
   const saveCharacter = useCallback(() => {
     if (!characterBuffer.name.trim()) return;
+    const next = { ...characterBuffer, name: characterBuffer.name.trim(), description: characterBuffer.description.trim() };
     setDraft((previous) => {
-      const next = { ...characterBuffer, name: characterBuffer.name.trim(), description: characterBuffer.description.trim() };
       const characters = editingCharacterIndex === null
         ? [...previous.characters, next]
         : previous.characters.map((item, index) => index === editingCharacterIndex ? next : item);
@@ -292,7 +437,24 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
     setUnsavedPromptOpen(false);
     confirm();
     setStage("main");
-  }, [characterBuffer, confirm, editingCharacterIndex, setDraft]);
+    // Every character crafted here is also a saved character. Fire and forget:
+    // a library write failing must not cost the writer their cast, and the
+    // list simply refreshes when it lands.
+    saveSavedCharacter(savedCharacterInputFromDraft(next)).then(
+      (saved) => {
+        setSavedCharacters((previous) => [saved, ...(previous ?? []).filter((item) => item.id !== saved.id)]);
+        setDraft((previous) => ({
+          ...previous,
+          characters: previous.characters.map((item) =>
+            item.name.trim().toLowerCase() === saved.name.trim().toLowerCase() && !item.savedCharacterId
+              ? { ...item, savedCharacterId: saved.id }
+              : item
+          ),
+        }));
+      },
+      () => {},
+    );
+  }, [characterBuffer, confirm, editingCharacterIndex, saveSavedCharacter, setDraft]);
 
   const deleteCharacter = useCallback((index: number) => {
     setDraft((previous) => {
@@ -339,43 +501,9 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
    * portrait request and is dropped as soon as it has been used.
    */
   const pickCharacterReference = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(
-        "Photo access needed",
-        "Katha needs permission to open your photos so you can attach a reference.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      base64: true,
-      allowsEditing: true,
-      aspect: [2, 3],
-    });
-    if (result.canceled || !result.assets?.length) return;
-
-    const asset = result.assets[0];
-    if (!asset.base64) {
-      Alert.alert(
-        "Couldn't read that photo",
-        "Please pick a different image, or try a JPEG or PNG.",
-      );
-      return;
-    }
-
-    // The endpoint's allowlist is JPEG, PNG and WebP; anything else is refused
-    // there. Naming the type from the asset rather than assuming PNG is what
-    // keeps that refusal about the actual file.
-    const mime = asset.mimeType && /^image\/(jpeg|jpg|png|webp)$/.test(asset.mimeType)
-      ? asset.mimeType
-      : "image/jpeg";
-    setCharacterBuffer((previous) => ({
-      ...previous,
-      referenceImage: `data:${mime};base64,${asset.base64}`,
-    }));
+    const referenceImage = await pickReferenceImage();
+    if (!referenceImage) return;
+    setCharacterBuffer((previous) => ({ ...previous, referenceImage }));
   }, []);
 
   const clearCharacterReference = useCallback(() => {
@@ -497,6 +625,10 @@ export default function CreateBriefFlow({ credits, isAnonymous, draft, setDraft,
               onAudience={chooseAudience}
               onAddCharacter={startCharacter}
               onEditCharacter={startCharacter}
+              savedCharacters={savedCharacters ?? []}
+              castTab={castTab}
+              onCastTab={(tab) => { select(); setCastTab(tab); }}
+              onToggleSavedCharacter={toggleSavedCharacter}
               onAddMoment={addMoment}
               onMomentInput={setMomentInput}
               onToggleOptions={() => { select(); setMoreOptionsOpen((open) => !open); }}
@@ -545,6 +677,10 @@ function StorySetupScreen({
   onAudience,
   onAddCharacter,
   onEditCharacter,
+  savedCharacters,
+  castTab,
+  onCastTab,
+  onToggleSavedCharacter,
   onAddMoment,
   onMomentInput,
   onToggleOptions,
@@ -564,6 +700,10 @@ function StorySetupScreen({
   onAudience: (mode: AudienceMode) => void;
   onAddCharacter: () => void;
   onEditCharacter: (index: number) => void;
+  savedCharacters: SavedCharacter[];
+  castTab: CastTab;
+  onCastTab: (tab: CastTab) => void;
+  onToggleSavedCharacter: (character: SavedCharacter) => void;
   onAddMoment: (value: string) => void;
   onMomentInput: (value: string) => void;
   onToggleOptions: () => void;
@@ -654,9 +794,65 @@ function StorySetupScreen({
         with three finished images was indistinguishable from one with none.
       */}
       <Section label="Who's in it" hint={draft.characters.length ? `${draft.characters.length} of 3` : undefined}>
+        {/*
+          Two ways in: the saved library (one tap per person) and a new sheet.
+          Saved leads when the library has anyone in it; a first-time writer
+          sees New, where the only useful action is.
+        */}
+        <View style={styles.castTabs} accessibilityRole="tablist">
+          {(["saved", "new"] as const).map((tab) => {
+            const selected = castTab === tab;
+            return (
+              <Pressable
+                key={tab}
+                onPress={() => onCastTab(tab)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                accessibilityLabel={tab === "saved" ? "Saved characters" : "New character"}
+                style={[styles.castTab, selected && styles.castTabSelected]}
+              >
+                <Text style={[styles.castTabLabel, selected && styles.castTabLabelSelected]}>
+                  {tab === "saved" ? "Saved" : "New"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {castTab === "saved" ? (
+          savedCharacters.length === 0 ? (
+            <Text style={styles.savedEmpty}>Characters you create in a story are saved here automatically.</Text>
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalChips}>
+                {savedCharacters.map((saved) => {
+                  const added = draft.characters.some((item) => item.savedCharacterId === saved.id);
+                  const atCap = !added && draft.characters.length >= 3;
+                  return (
+                    <Pressable
+                      key={saved.id}
+                      onPress={() => onToggleSavedCharacter(saved)}
+                      disabled={atCap}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: added, disabled: atCap }}
+                      accessibilityLabel={added ? `Remove ${saved.name} from this story` : `Add ${saved.name} to this story`}
+                      style={[styles.savedChip, added && styles.savedChipAdded, atCap && styles.savedChipDisabled]}
+                    >
+                      {saved.portraitUrl
+                        ? <Image source={{ uri: saved.portraitUrl }} resizeMode="cover" style={styles.savedChipPortrait} />
+                        : <View style={[styles.savedChipPortrait, styles.savedChipInitialWrap]}><Text style={styles.savedChipInitial}>{saved.name.trim().slice(0, 1).toUpperCase() || "?"}</Text></View>}
+                      <Text numberOfLines={1} style={[styles.savedChipLabel, atCap && styles.savedChipLabelDisabled]}>{saved.name}</Text>
+                      {added ? <CheckCircle2 size={14} color={colors.accent} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              {draft.characters.length >= 3 ? <Text style={styles.savedCapHint}>Up to three characters per story.</Text> : null}
+            </>
+          )
+        ) : null}
         <View style={styles.characterList}>
           {draft.characters.map((character, index) => <Pressable key={`${character.name}-${index}`} onPress={() => onEditCharacter(index)} accessibilityRole="button" accessibilityLabel={`Edit ${character.name || "character"}`} style={styles.characterCard}><View style={[styles.avatar, character.isHero && styles.avatarLead, character.portraitStatus === "ready" && styles.avatarReady]}>{character.portraitStatus === "ready" && character.portraitUrl ? <Image source={{ uri: character.portraitUrl }} resizeMode="cover" style={styles.avatarImage} accessible accessibilityLabel={`Portrait of ${character.name.trim() || "this character"}`} /> : character.portraitStatus === "generating" ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={styles.avatarText}>{character.name.trim().slice(0, 1).toUpperCase() || "?"}</Text>}</View><View style={styles.characterCopy}><Text style={styles.characterName}>{character.name || "Untitled character"}{character.isHero ? " · Lead" : ""}</Text><Text numberOfLines={1} style={styles.characterDescription}>{character.portraitStatus === "ready" ? "Image ready" : character.portraitStatus === "failed" ? "Image failed" : character.description || "Details waiting"}</Text></View><ChevronRight size={18} color={colors.tertiary} /></Pressable>)}
-          {draft.characters.length < 3 ? <Pressable onPress={onAddCharacter} accessibilityRole="button" accessibilityLabel="Add a character" style={styles.addCharacter}><View style={styles.addCharacterIcon}><UserPlus size={20} color={colors.accent} /></View><View style={styles.addCharacterCopy}><Text style={styles.addCharacterTitle}>Add a character</Text></View><Plus size={20} color={colors.accent} /></Pressable> : null}
+          {castTab === "new" && draft.characters.length < 3 ? <Pressable onPress={onAddCharacter} accessibilityRole="button" accessibilityLabel="Add a character" style={styles.addCharacter}><View style={styles.addCharacterIcon}><UserPlus size={20} color={colors.accent} /></View><View style={styles.addCharacterCopy}><Text style={styles.addCharacterTitle}>Add a character</Text></View><Plus size={20} color={colors.accent} /></Pressable> : null}
         </View>
       </Section>
 
@@ -937,7 +1133,7 @@ function MoreOptions({
       <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
     </View>
 
-    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Visibility</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "This story can be shared after creation." : "Only you can see this story."}</Text></View><Switch value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} {...SWITCH_COLORS} accessibilityLabel="Public visibility" /></View>
+    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Make it public</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "Anyone on Katha can read it once it's written." : "Only you can see this story."}</Text></View><Switch value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} {...SWITCH_COLORS} accessibilityLabel="Make it public" /></View>
 
     {/*
       English only, at the bottom, for now. The spice control was removed
@@ -957,7 +1153,7 @@ function MoreOptions({
   </View>;
 }
 
-function CharacterCraftScreen({
+export function CharacterCraftScreen({
   character,
   onChange,
   onBack,
@@ -1209,6 +1405,21 @@ const styles = StyleSheet.create({
   choiceText: { color: colors.muted, fontFamily: fonts.ui, fontSize: 13, fontWeight: "700" },
   choiceTextActive: { color: colors.accent, fontWeight: "800" },
   characterList: { gap: spacing.sm },
+  castTabs: { flexDirection: "row", height: 36, padding: 3, borderRadius: radius.md, backgroundColor: colors.surface2, gap: 2 },
+  castTab: { flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.md - 3 },
+  castTabSelected: { backgroundColor: colors.surface, boxShadow: shadows.card },
+  castTabLabel: { color: colors.muted, fontFamily: fonts.ui, fontSize: 14, fontWeight: "600" },
+  castTabLabelSelected: { color: colors.ink },
+  savedEmpty: { color: colors.muted, fontFamily: fonts.ui, fontSize: 13, paddingVertical: spacing.xs },
+  savedChip: { height: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: 6, paddingRight: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  savedChipAdded: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  savedChipDisabled: { opacity: 0.55 },
+  savedChipPortrait: { width: 32, height: 32, borderRadius: 16, overflow: "hidden" },
+  savedChipInitialWrap: { backgroundColor: colors.surface2, alignItems: "center", justifyContent: "center" },
+  savedChipInitial: { color: colors.accent, fontFamily: fonts.display, fontSize: 14 },
+  savedChipLabel: { color: colors.ink, fontFamily: fonts.ui, fontSize: 14, fontWeight: "700", maxWidth: 140 },
+  savedChipLabelDisabled: { color: colors.tertiary },
+  savedCapHint: { color: colors.tertiary, fontFamily: fonts.ui, fontSize: 12 },
   addCharacter: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent },
   addCharacterIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   addCharacterCopy: { flex: 1, gap: 2 },

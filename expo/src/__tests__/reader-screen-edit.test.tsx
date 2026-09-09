@@ -41,7 +41,9 @@ it("does not show the Edit control for a story the reader does not own", async (
   });
 
   expect(view.queryByLabelText("Edit")).toBeNull();
-  expect(view.queryByLabelText("Reimagine")).toBeNull();
+  // Reimagine is not author-only: a reader rewrites into a private copy of
+  // their own (created-flow spec §4), so the control stays.
+  expect(view.getByLabelText("Reimagine")).toBeTruthy();
 });
 
 it("opens the editor for a story the reader owns and lets them save a manual edit", async () => {
