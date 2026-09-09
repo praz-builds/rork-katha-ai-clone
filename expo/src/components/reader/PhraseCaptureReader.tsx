@@ -37,6 +37,13 @@ export type PhraseCaptureReaderProps = {
    * enabled, and here that would mean end-of-chapter branching disappearing.
    */
   renderChapterEnd?: (chapter: Chapter) => ReactNode;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason again: without it the live reader
+   * would silently stop being live the moment phrase capture is enabled, and
+   * the writer would sit on a finished-looking page while their chapter went on
+   * being written behind it.
+   */
+  liveSessionId?: string | null;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -70,6 +77,7 @@ export default function PhraseCaptureReader({
   initialChapterIndex = 0,
   autoplay = false,
   renderChapterEnd,
+  liveSessionId = null,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
   const savedPhrasesRef = useRef<SavedPhrase[]>([]);
@@ -287,6 +295,7 @@ export default function PhraseCaptureReader({
         onChapterChange={onChapterChange}
         autoplay={autoplay}
         renderChapterEnd={renderChapterEnd}
+        liveSessionId={liveSessionId}
       />
       {toast ? (
         <Animated.View

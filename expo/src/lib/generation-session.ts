@@ -39,6 +39,8 @@ import {
   createGenerationRequestId,
   generateStoryStreaming,
   GenerationRequestError,
+  publishStory,
+  StoryGatedPrivateError,
   type StoryGatingReason,
 } from "@/lib/api";
 import { clearDraft } from "@/lib/draft-storage";
@@ -131,6 +133,19 @@ export function revealableChapterProse(raw: string): string {
 
 export type GenerationPhase = "writing" | "complete" | "error";
 
+/**
+ * What the reader is told when a generation stops after it had already been
+ * handed pages.
+ *
+ * Every generation path in the backend refunds the credit before it answers, so
+ * the one thing a writer actually wants to know at that moment is already
+ * settled. The server's own message is a technical one - the right thing to log
+ * and the wrong thing to put under half a chapter somebody is still reading.
+ * This is the sentence the live reader shows instead, exported once so the
+ * reader and its test cannot drift from each other.
+ */
+export const REFUND_NOTICE = "Katha stopped early. Your credit is back.";
+
 export type GenerationSession = {
   /**
    * Stable for the life of the session, across retries. A story session's
@@ -152,6 +167,12 @@ export type GenerationSession = {
   readonly audienceMode: AudienceMode;
   readonly spiceLevel: SpiceLevel;
   readonly plannedChapterCount?: 3 | 7 | 15;
+  /**
+   * What the brief asked for. A story session carries it because the client
+   * still has to state it out loud after the chapter lands - see
+   * `applyVisibility`.
+   */
+  readonly visibility: "private" | "public";
   readonly phase: GenerationPhase;
   /** The server's last reported pipeline stage: context, writing, shaping, art. */
   readonly stage: string;
@@ -274,6 +295,44 @@ function settle(record: SessionRecord, patch: Partial<GenerationSession>): void 
   record.deferred.resolve(record.session);
 }
 
+/**
+ * Say the story's visibility out loud, after the chapter exists.
+ *
+ * Publishing used to be a screen: the writer finished generating, landed in an
+ * editor, pressed Done, reviewed a cover and pressed Publish, and only then did
+ * `publish-story` hear the word "public". The review step is gone, so the
+ * toggle in the brief is the whole decision - which means the call it used to
+ * trigger happens here, unattended, the moment the chapter is written.
+ *
+ * It runs AFTER `settle` and never blocks it: the reader is already looking at
+ * their finished chapter, and making the chrome wait on a second round trip
+ * would charge them for a call they did not ask for. A private story skips it
+ * entirely - private is what the row already is.
+ *
+ * The one thing this can surface is the entity gate. A story naming a living
+ * public figure, or somebody from the writer's own life, is refused publication
+ * by `publish-story`, which answers `story_gated_private`. That is not an error
+ * to retry, it is a fact about the story, so it lands on the session as
+ * `gatedReason` and the writer is told once.
+ */
+function applyVisibility(record: SessionRecord, storyId: string): void {
+  if (record.session.visibility !== "public") return;
+  publishStory(storyId, { visibility: "public" })
+    .then(() => update(record.session.id, { visibility: "public" }))
+    .catch((error: unknown) => {
+      if (error instanceof StoryGatedPrivateError) {
+        update(record.session.id, {
+          gatedReason: error.gatingReason,
+          visibility: "private",
+        });
+        return;
+      }
+      // Anything else is a transport failure on a call the writer did not
+      // initiate. The story exists and is theirs; it is simply still private.
+      console.warn("Could not make the story public:", error);
+    });
+}
+
 function fail(record: SessionRecord, error: unknown): void {
   // A failure that reset the reservation must not be retried under the same
   // id: the server would answer the replay with the failure it already gave.
@@ -306,6 +365,7 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
       audienceMode: draft.audienceMode,
       spiceLevel: draft.spiceLevel,
       plannedChapterCount: draft.plannedChapterCount,
+      visibility: draft.visibility === "public" ? "public" : "private",
       phase: "writing",
       stage: "context",
       revealedProse: "",
@@ -345,6 +405,7 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
         chapter,
         creditsCharged: STORY_START_CREDITS,
       });
+      applyVisibility(record, story.id);
     }).catch((error) => fail(record, error));
   };
   records.set(id, record);
@@ -372,6 +433,9 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
       audienceMode: story.audienceMode ?? "adult",
       spiceLevel: story.spiceLevel ?? "sweet",
       plannedChapterCount: story.plannedChapterCount,
+      // A continuation never re-decides visibility; it inherits what the story
+      // already is, and `applyVisibility` is not called for it at all.
+      visibility: story.visibility === "public" ? "public" : "private",
       phase: "writing",
       stage: "context",
       revealedProse: "",
@@ -427,6 +491,11 @@ export function dismissGeneration(id: string): void {
   if (records.delete(id)) publish();
 }
 
+/** Acknowledge the entity gate, so its explanation is shown once and not again. */
+export function acknowledgeGate(id: string): void {
+  update(id, { gatedReason: null });
+}
+
 export function getGeneration(id: string): GenerationSession | null {
   return records.get(id)?.session ?? null;
 }
@@ -441,6 +510,24 @@ export function findStoryGeneration(storyId: string): GenerationSession | null {
     const { session } = record;
     if (session.storyId !== storyId && session.id !== storyId) continue;
     if (!found || session.startedAt >= found.startedAt) found = session;
+  }
+  return found;
+}
+
+/**
+ * The newest session of all, whatever its phase.
+ *
+ * This is how the Create studio finds its way back to a generation it started
+ * before the writer switched tabs. The studio unmounts when they leave, so it
+ * cannot hold the session id in state; on the way back it asks here, and the
+ * live reader reopens on exactly the pages the writer left.
+ */
+export function latestGeneration(): GenerationSession | null {
+  let found: GenerationSession | null = null;
+  for (const record of records.values()) {
+    if (!found || record.session.startedAt >= found.startedAt) {
+      found = record.session;
+    }
   }
   return found;
 }
@@ -552,6 +639,7 @@ export function provisionalStory(session: GenerationSession): Story | null {
     publishedOffset: 0,
     isFeatured: false,
     language: session.language,
+    visibility: session.visibility,
     coverStatus: "generating",
   };
 }

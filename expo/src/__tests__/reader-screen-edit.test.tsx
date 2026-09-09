@@ -1,3 +1,13 @@
+/**
+ * Who gets Edit and Reimagine, and when.
+ *
+ * Edit is the author's, over a chapter that is finished. Reimagine is
+ * everybody's - a reader of somebody else's story gets a private copy - and is
+ * likewise offered only once there is a whole chapter to reimagine. Neither is
+ * ever rendered disabled: a greyed control mid-generation is a question the
+ * writer cannot answer, so both are simply absent until the chapter lands.
+ */
+
 import React from "react";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { stories } from "@/data/seed";
@@ -17,9 +27,8 @@ jest.mock("expo-av", () => ({
   },
 }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
-jest.mock("@/lib/api", () => ({
-  editParagraph: jest.fn(() => Promise.resolve("Rewritten paragraph.")),
-  publishStory: jest.fn(() => Promise.resolve(undefined)),
+jest.mock("@/lib/chapter-save", () => ({
+  saveChapter: jest.fn(() => Promise.resolve({ titleSaved: true })),
 }));
 
 const baseStory = stories.find((item) => item.chapters.length > 1)!;
@@ -41,41 +50,53 @@ it("does not show the Edit control for a story the reader does not own", async (
   });
 
   expect(view.queryByLabelText("Edit")).toBeNull();
-  expect(view.queryByLabelText("Reimagine")).toBeNull();
 });
 
-it("opens the editor for a story the reader owns and lets them save a manual edit", async () => {
+it("offers Reimagine to a reader who did not write the story", async () => {
+  const onReimagine = jest.fn();
+  const view = await render(
+    <ReaderScreen story={baseStory} onBack={jest.fn()} onReimagine={onReimagine} />,
+  );
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Reimagine"));
+  });
+
+  expect(onReimagine).toHaveBeenCalledTimes(1);
+});
+
+it("opens the notepad for a story the reader owns and closes it again", async () => {
   const ownStory = { ...baseStory, authorId: "me" };
   const view = await render(<ReaderScreen story={ownStory} onBack={jest.fn()} />);
 
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Toggle reader controls"));
   });
-
   await waitFor(() => expect(view.getByLabelText("Edit")).toBeTruthy());
-
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Edit"));
   });
 
-  await waitFor(() => expect(view.getByText("Edit Story")).toBeTruthy());
+  await waitFor(() => expect(view.getByText("Edit chapter")).toBeTruthy());
   expect(view.getByLabelText("Chapter text")).toBeTruthy();
 
   await act(async () => {
-    await fireEvent.press(view.getByLabelText("Close editor"));
+    await fireEvent.press(view.getByTestId("edit-chapter-back"));
   });
-
-  await waitFor(() => expect(view.queryByText("Edit Story")).toBeNull());
+  await waitFor(() => expect(view.queryByText("Edit chapter")).toBeNull());
 });
 
-it("round-trips a chapter with a deliberately blank paragraph, preserving every paragraph's index (finding 6)", async () => {
+it("round-trips a chapter with a deliberately blank paragraph, preserving every paragraph's index", async () => {
+  jest.useFakeTimers();
   const ownStory = { ...baseStory, authorId: "me" };
   const view = await render(<ReaderScreen story={ownStory} onBack={jest.fn()} />);
 
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Toggle reader controls"));
   });
-  await waitFor(() => expect(view.getByLabelText("Edit")).toBeTruthy());
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Edit"));
   });
@@ -83,29 +104,26 @@ it("round-trips a chapter with a deliberately blank paragraph, preserving every 
 
   // Paragraph 0, an intentionally blank paragraph 1, then paragraph 2 - the
   // exact `join("\n\n")` shape a real chapter with a deliberate blank line
-  // between two paragraphs would produce.
+  // between two paragraphs produces. Splitting on `/\n\s*\n/` and dropping
+  // empty parts would collapse the blank one away and pull "Paragraph two."
+  // down an index.
   const withBlankParagraph = "Paragraph zero.\n\n\n\nParagraph two.";
   await act(async () => {
     fireEvent.changeText(view.getByLabelText("Chapter text"), withBlankParagraph);
   });
   await act(async () => {
-    await fireEvent.press(view.getByLabelText("Close editor"));
+    fireEvent.press(view.getByTestId("edit-chapter-save"));
   });
-  await waitFor(() => expect(view.queryByText("Edit Story")).toBeNull());
+  await act(async () => {
+    jest.runAllTimers();
+  });
+  await waitFor(() => expect(view.queryByText("Edit chapter")).toBeNull());
 
-  // Reopen: the closed editor's text becomes `chapter.paragraphs` by way of
-  // the reader's own split/join round trip. Before the fix, splitting on
-  // `/\n\s*\n/` and filtering empty parts collapsed the blank paragraph away
-  // and pulled "Paragraph two." from index 2 down to index 1 - exactly the
-  // index shift that would point the AI editor at the wrong paragraph.
-  // (The chrome is still visible from the earlier toggle - closing the
-  // editor does not hide it - so there is no second toggle to press here.)
-  await waitFor(() => expect(view.getByLabelText("Edit")).toBeTruthy());
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Edit"));
   });
-
   await waitFor(() =>
     expect(view.getByLabelText("Chapter text").props.value).toBe(withBlankParagraph)
   );
+  jest.useRealTimers();
 });

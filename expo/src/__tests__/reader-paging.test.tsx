@@ -190,10 +190,14 @@ it("opens the chapter with its title, once, on the first page only", async () =>
   const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
 
   // The opener belongs to the chapter's first page. Every page of the chapter
-  // is mounted at once, so a title rendered per page would appear as many
-  // times as there are pages.
-  expect(view.getAllByText(story.chapters[0].title)).toHaveLength(1);
-  expect(view.getByText(`Chapter ${story.chapters[0].chapterNumber}`)).toBeTruthy();
+  // is mounted at once, so a title rendered per page would appear as many times
+  // as there are pages. Two is the opener plus the chrome's own top bar, which
+  // is mounted (transparent) whether or not the chrome is showing.
+  expect(view.getAllByText(story.chapters[0].title)).toHaveLength(2);
+  // The "Chapter N" eyebrow is gone from the page. The number lives in the
+  // chrome and the Chapters sheet, where it is a way to navigate rather than a
+  // label printed over prose.
+  expect(view.queryByText(`Chapter ${story.chapters[0].chapterNumber}`)).toBeNull();
 });
 
 it("opens on the warm reading surface rather than a near-white page", async () => {

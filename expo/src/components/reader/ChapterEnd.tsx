@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,13 +8,7 @@ import {
   View,
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import { AlertCircle, PenLine, Shuffle, Sparkles } from "lucide-react-native";
-import {
-  continueStory,
-  createGenerationRequestId,
-  GenerationRequestError,
-  isLocalStubChapter,
-} from "@/lib/api";
+import { PenLine, Shuffle, Sparkles } from "lucide-react-native";
 import { CHAPTER_TEXT_CREDITS, MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
 import { colors, fonts, radius, spacing, type } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
@@ -32,7 +26,6 @@ export type ContinuationOption = {
 };
 
 type SuggestionStatus = "loading" | "ready" | "unavailable";
-type SubmitPhase = "idle" | "submitting" | "success" | "error";
 
 /**
  * What `continue-story` falls back to when a story has no usable
@@ -152,27 +145,29 @@ export type ChapterEndProps = {
    */
   resolveOptions?: (story: Story, chapter: Chapter) => Promise<ContinuationOption[]>;
   /**
-   * Sends the continuation request. Defaults to `continueStory` from
-   * `@/lib/api`, the buffered (non-streaming) path already used elsewhere for
-   * this exact call shape - `(storyId, requestId, isFinale, expectedChapterNum,
-   * nextInstruction)`. Overridable for tests.
+   * Write the next chapter in this direction. `undefined` means Katha decides.
+   *
+   * This component no longer makes the request itself. It used to, and then
+   * showed its own "Writing what happens next..." panel at the bottom of the
+   * last page - a second waiting surface, several inches down a scroll, with a
+   * different look from the one the same app shows for the first chapter. The
+   * caller now starts the generation and puts the ordinary wait on screen; when
+   * it lands, the reader opens on page 1 of the new chapter.
    */
-  continueChapter?: typeof continueStory;
+  onContinue: (direction?: string) => void;
   /**
-   * Fires once a new chapter has been generated. Optional: this component
-   * never mutates the reader's pagination or the story it was handed, so a
-   * caller that wants to jump to the new chapter or refetch the story wires
-   * this in.
+   * Opens Reimagine for a standalone story, which has no next chapter to offer
+   * and so ends on this instead. Omitted and the pill is not rendered.
    */
-  onChapterReady?: (chapter: Chapter) => void;
+  onReimagine?: () => void;
 };
 
 export default function ChapterEnd({
   story,
   chapter,
   resolveOptions = defaultResolveOptions,
-  continueChapter = continueStory,
-  onChapterReady,
+  onContinue,
+  onReimagine,
 }: ChapterEndProps) {
   const reduceMotion = useReducedMotion();
   const plannedChapterCount = story.plannedChapterCount;
@@ -210,11 +205,6 @@ export default function ChapterEnd({
   // that is open by default reads as the main path.
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState("");
-  const [phase, setPhase] = useState<SubmitPhase>("idle");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [completedChapter, setCompletedChapter] = useState<Chapter | null>(null);
-  const [directionApplied, setDirectionApplied] = useState(true);
-  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (seriesComplete || !isLatestChapter) return;
@@ -244,103 +234,52 @@ export default function ChapterEnd({
     };
   }, [story, chapter, isLatestChapter, seriesComplete, resolveOptions]);
 
-  const submit = useCallback(async (instruction?: string) => {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setPhase("submitting");
-    setErrorMessage("");
-    try {
-      const nextChapterNumber = chapter.chapterNumber + 1;
-      const isFinale = typeof plannedChapterCount === "number"
-        && nextChapterNumber >= plannedChapterCount;
-      const requestId = createGenerationRequestId();
-      const result = await continueChapter(
-        story.id,
-        requestId,
-        isFinale,
-        nextChapterNumber,
-        instruction,
-      );
-      setCompletedChapter(result.chapter);
-      // With no backend configured the continuation is canned prose, so the
-      // direction the reader chose or typed did not shape it. Saying so is the
-      // honest option: silently returning text that ignores their choice
-      // teaches them the feature does not work.
-      setDirectionApplied(!isLocalStubChapter(result));
-      setPhase("success");
-      onChapterReady?.(result.chapter);
-    } catch (err) {
-      setErrorMessage(
-        err instanceof GenerationRequestError
-          ? err.message
-          : "Something went wrong. Please try again.",
-      );
-      setPhase("error");
-    } finally {
-      submittingRef.current = false;
-    }
-  }, [chapter.chapterNumber, continueChapter, onChapterReady, plannedChapterCount, story.id]);
-
   if (!isLatestChapter) return null;
 
+  /*
+    Two ways a story ends here, and they are different endings.
+
+    A SERIES that has reached its planned last chapter says so: there is no
+    further chapter to write, and offering one would be selling a credit against
+    a story the plan has already finished.
+
+    A STANDALONE never had a next chapter to offer. It ends on the one thing it
+    can still be: written again, differently. So it gets the Reimagine pill
+    rather than a direction module, and the engagement row the reader already
+    renders underneath sits below it.
+  */
   if (seriesComplete) {
     return (
-      <View style={styles.wrap} accessibilityLabel="This story is complete">
-        <Text style={styles.heading}>The story is complete</Text>
-        <Text style={styles.body}>
-          This story has reached its planned ending. There is no further
-          chapter to write.
-        </Text>
-      </View>
-    );
-  }
-
-  if (phase === "submitting") {
-    return (
-      <View style={styles.wrap}>
-        <Text style={styles.heading}>Writing what happens next...</Text>
-        <View style={styles.progressRow}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={styles.body}>This usually takes under a minute.</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (phase === "success" && completedChapter) {
-    return (
-      <View style={styles.wrap} accessibilityLabel="New chapter ready">
-        <Text style={styles.heading}>New chapter ready</Text>
-        <Text style={styles.body}>
-          &quot;{completedChapter.title}&quot; has been added to this story.
-        </Text>
-        {!directionApplied
-          ? (
-            <Text style={styles.stubNote}>
-              This one was written from a sample, so the direction you chose was
-              not used. Connect a backend to steer the next chapter.
+      <View
+        style={styles.wrap}
+        accessibilityLabel={
+          isSeries ? "This story is complete" : "The end of this story"
+        }
+      >
+        {isSeries ? (
+          <>
+            <Text style={styles.heading}>The story is complete</Text>
+            <Text style={styles.body}>
+              This story has reached its planned ending. There is no further
+              chapter to write.
             </Text>
-          )
-          : null}
-      </View>
-    );
-  }
-
-  if (phase === "error") {
-    return (
-      <View style={styles.wrap}>
-        <View style={styles.errorRow}>
-          <AlertCircle size={18} color={colors.premium} />
-          <Text style={styles.errorText}>{errorMessage}</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Try again"
-          style={styles.retryButton}
-          onPress={() => setPhase("idle")}
-        >
-          <Text style={styles.retryButtonText}>Try again</Text>
-        </Pressable>
+          </>
+        ) : null}
+        {onReimagine ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reimagine this story"
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && !reduceMotion && styles.textCtaPressed,
+            ]}
+            onPress={onReimagine}
+            testID="chapter-end-reimagine"
+          >
+            <Sparkles size={16} color={colors.accent} />
+            <Text style={styles.secondaryButtonText}>Reimagine this story</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -355,7 +294,8 @@ export default function ChapterEnd({
         * composer's submit button hid it from the cards, which are now the
         * path most readers will take. */}
       <Text style={styles.priceNote}>
-        Any of these writes the next chapter · {CHAPTER_TEXT_CREDITS} credit
+        Any of these writes chapter {chapter.chapterNumber + 1} ·{" "}
+        {CHAPTER_TEXT_CREDITS} credit
       </Text>
       {status === "loading" ? (
         <View
@@ -390,7 +330,7 @@ export default function ChapterEnd({
               styles.optionCard,
               pressed && !reduceMotion && styles.optionCardPressed,
             ]}
-            onPress={() => submit(option.prompt)}
+            onPress={() => onContinue(option.prompt)}
             testID={`chapter-end-option-${index}`}
           >
             <Sparkles size={16} color={colors.accent} />
@@ -432,7 +372,7 @@ export default function ChapterEnd({
             styles.textCta,
             pressed && !reduceMotion && styles.textCtaPressed,
           ]}
-          onPress={() => submit(undefined)}
+          onPress={() => onContinue(undefined)}
           testID="chapter-end-let-katha-decide"
         >
           <Shuffle size={16} color={colors.muted} />
@@ -461,7 +401,7 @@ export default function ChapterEnd({
                 : "Continue and let Katha decide"
             }
             style={styles.primaryButton}
-            onPress={() => submit(nonEmpty(composerText))}
+            onPress={() => onContinue(nonEmpty(composerText))}
             testID="chapter-end-composer-submit"
           >
             <Text style={styles.primaryButtonText}>
@@ -492,12 +432,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 44,
-  },
-  progressRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -580,37 +514,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 15,
   },
-  stubNote: {
-    ...type.subhead,
-    fontFamily: fonts.ui,
-    letterSpacing: 0,
-    color: colors.muted,
-    marginTop: spacing.related,
-  },
-  errorRow: {
+  secondaryButton: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    minHeight: 44,
-  },
-  errorText: {
-    ...type.body,
-    color: colors.ink,
-    flex: 1,
-  },
-  retryButton: {
-    minHeight: 44,
-    minWidth: 44,
     alignItems: "center",
     justifyContent: "center",
+    gap: spacing.sm,
+    minHeight: 48,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.accent,
   },
-  retryButtonText: {
+  secondaryButtonText: {
     ...type.body,
-    color: colors.ink,
+    color: colors.accent,
     fontWeight: "700",
   },
 });

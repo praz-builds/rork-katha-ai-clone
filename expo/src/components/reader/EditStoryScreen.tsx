@@ -19,12 +19,17 @@ export type EditStoryScreenProps = {
   story: Story;
   chapter: Chapter;
   /**
-   * Fires once, when the editor is dismissed. Carries the saved text when the
-   * writer saved, and `null` when they left without changing anything or
-   * discarded what they had typed - so the reader never shows text the server
-   * does not hold.
+   * Fires once, when the editor is dismissed. Carries the saved chapter when
+   * the writer saved, and `null` when they left without changing anything or
+   * discarded what they had typed - so the reader never shows text nobody
+   * asked it to keep.
    */
-  onClose: (savedContent: string | null) => void;
+  onClose: (saved: SavedChapterEdit | null) => void;
+};
+
+export type SavedChapterEdit = {
+  content: string;
+  title: string;
 };
 
 /** How long "Saved" stays in the header before the editor closes itself. */
@@ -49,15 +54,17 @@ export function EditStoryScreen({
     () => chapter.paragraphs.join("\n\n"),
     [chapter.paragraphs],
   );
+  const isStandalone = story.storyMode === "standalone";
   const editor = useChapterEditor({
     storyId: story.id,
     chapterId: chapter.id,
+    chapterNumber: chapter.chapterNumber,
     initialContent,
+    initialTitle: chapter.title ?? "",
     isPublished: chapter.isPublished,
   });
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isStandalone = story.storyMode === "standalone";
 
   useEffect(() => {
     return () => {
@@ -73,7 +80,10 @@ export function EditStoryScreen({
     // text is already the saved text, so `save` resolves without a request.
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => {
-      onClose(editor.getLastSavedText());
+      onClose({
+        content: editor.getLastSavedText(),
+        title: editor.getLastSavedTitle(),
+      });
     }, SAVED_DWELL_MS);
   }, [editor, onClose]);
 
@@ -114,6 +124,7 @@ export function EditStoryScreen({
             accessibilityLabel="Back"
             hitSlop={8}
             style={styles.iconButton}
+            testID="edit-chapter-back"
           >
             <ChevronLeft size={22} color={colors.ink} />
           </Pressable>
@@ -182,13 +193,24 @@ export function EditStoryScreen({
 
         <View style={styles.body}>
           <Text style={styles.storyTitle} numberOfLines={1}>{story.title}</Text>
-          {/* The chapter title is shown, not edited: the save path carries
-            * chapter text only, and a title field that looked editable but
-            * never reached the server would be the same kind of dead control
-            * the notepad exists to be rid of. */}
-          {!isStandalone && chapter.title ? (
-            <Text style={styles.chapterTitle} numberOfLines={2}>{chapter.title}</Text>
-          ) : null}
+          {/* A standalone story has one title and it is the story's, so there
+            * is nothing to edit here. A chapter of a series has its own, and it
+            * is edited in place: a heading that looked like a heading and could
+            * not be corrected was the single most-reported thing about the old
+            * editor. */}
+          {isStandalone ? null : (
+            <TextInput
+              value={editor.title}
+              onChangeText={editor.setTitle}
+              placeholder="Chapter title"
+              placeholderTextColor={colors.tertiary}
+              editable={editor.status !== "saving"}
+              accessibilityLabel="Chapter title"
+              style={styles.chapterTitle}
+              maxLength={120}
+              testID="edit-chapter-title"
+            />
+          )}
           <TextInput
             value={editor.text}
             onChangeText={editor.setText}

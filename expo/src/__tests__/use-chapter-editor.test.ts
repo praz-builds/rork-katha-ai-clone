@@ -1,252 +1,164 @@
+/**
+ * The notepad's core.
+ *
+ * This hook used to be an autosaving editor with a debounce, an in-flight
+ * guard, a one-step AI revert and a paragraph-regenerate call. All of that is
+ * gone: Edit is a plain text field over the whole chapter with a Save button,
+ * and rewriting a chapter with a prompt is Reimagine's job.
+ *
+ * So what is worth pinning here is small and load-bearing: nothing is sent
+ * until Save is pressed, Save sends exactly what is on screen (title included),
+ * a failure leaves the writer's words exactly where they left them, and an
+ * empty chapter is refused rather than saved.
+ */
+
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { useChapterEditor } from "@/components/reader/useChapterEditor";
 
-const mockEditParagraph = jest.fn();
-const mockPublishStory = jest.fn();
+const mockSaveChapter = jest.fn();
 
-jest.mock("@/lib/api", () => ({
-  editParagraph: (...args: unknown[]) => mockEditParagraph(...args),
-  publishStory: (...args: unknown[]) => mockPublishStory(...args),
+jest.mock("@/lib/chapter-save", () => ({
+  saveChapter: (...args: unknown[]) => mockSaveChapter(...args),
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockPublishStory.mockResolvedValue(undefined);
+  mockSaveChapter.mockResolvedValue({ titleSaved: true });
 });
 
 const baseParams = {
   storyId: "story-1",
   chapterId: "chapter-1",
+  chapterNumber: 3,
+  initialContent: "Original text.",
+  initialTitle: "The Letter",
   isPublished: true,
-  // Long enough that the assertions below run well before it would have
-  // fired on its own - these tests exist to prove the save happens without
-  // waiting for the debounce, not because it eventually would.
-  debounceMs: 5000,
 };
 
-it("flushes an edit typed just before closing instead of dropping it (findings 1 and 2)", async () => {
-  const { result, unmount } = await renderHook(() =>
-    useChapterEditor({ ...baseParams, initialContent: "Original text." }),
-  );
+it("sends nothing until Save is pressed", async () => {
+  const { result } = await renderHook(() => useChapterEditor(baseParams));
 
   await act(async () => {
-    result.current.onChangeText("Edited a moment before closing.");
+    result.current.setText("Edited, but not saved.");
   });
 
-  // The debounce (5s) has not fired yet, and nothing has reached the server.
-  expect(mockPublishStory).not.toHaveBeenCalled();
-
-  // Unmounting - what closing the editor does - must flush the pending
-  // save rather than cancel it via the debounce timer's clearTimeout.
-  unmount();
-
-  await waitFor(() => expect(mockPublishStory).toHaveBeenCalledTimes(1));
-  expect(mockPublishStory).toHaveBeenCalledWith("story-1", {
-    chapters: [{ id: "chapter-1", content: "Edited a moment before closing." }],
-    visibility: "public",
-  });
+  expect(mockSaveChapter).not.toHaveBeenCalled();
+  expect(result.current.dirty).toBe(true);
 });
 
-it("does not let an older in-flight save strand a newer edit (finding 3)", async () => {
-  let resolveFirstSave: (() => void) | undefined;
-  mockPublishStory.mockImplementationOnce(
-    () => new Promise<void>((resolve) => { resolveFirstSave = resolve; }),
+it("saves the text and the title exactly as they are on screen", async () => {
+  const { result } = await renderHook(() => useChapterEditor(baseParams));
+
+  await act(async () => {
+    result.current.setText("The keeper climbed the stairs one last time.");
+    result.current.setTitle("The Last Climb");
+  });
+  await act(async () => {
+    await result.current.save();
+  });
+
+  expect(mockSaveChapter).toHaveBeenCalledTimes(1);
+  expect(mockSaveChapter).toHaveBeenCalledWith({
+    storyId: "story-1",
+    chapterId: "chapter-1",
+    chapterNumber: 3,
+    body: "The keeper climbed the stairs one last time.",
+    title: "The Last Climb",
+    isPublished: true,
+  });
+  await waitFor(() => expect(result.current.status).toBe("saved"));
+  expect(result.current.dirty).toBe(false);
+  expect(result.current.getLastSavedText()).toBe(
+    "The keeper climbed the stairs one last time.",
   );
-
-  const { result } = await renderHook(() =>
-    useChapterEditor({ ...baseParams, initialContent: "Original text.", debounceMs: 10 }),
-  );
-
-  // First edit: its debounce fires and the save starts, but does not
-  // resolve yet.
-  await act(async () => {
-    result.current.onChangeText("First edit.");
-  });
-  await waitFor(() => expect(mockPublishStory).toHaveBeenCalledTimes(1));
-
-  // A second, newer edit arrives while the first save is still in flight.
-  await act(async () => {
-    result.current.onChangeText("Second, newer edit.");
-  });
-
-  // The first save now resolves. Before the fix this unconditionally
-  // cleared `pendingSaveText`, so the second edit's own debounced save
-  // would find nothing to send and the newer text would never reach the
-  // server.
-  await act(async () => {
-    resolveFirstSave?.();
-    await Promise.resolve();
-  });
-
-  await waitFor(() => expect(mockPublishStory).toHaveBeenCalledTimes(2));
-  expect(mockPublishStory).toHaveBeenLastCalledWith("story-1", {
-    chapters: [{ id: "chapter-1", content: "Second, newer edit." }],
-    visibility: "public",
-  });
+  expect(result.current.getLastSavedTitle()).toBe("The Last Climb");
 });
 
-it("treats an empty AI rewrite as a failure and leaves the paragraph unchanged (finding 4)", async () => {
-  mockEditParagraph.mockResolvedValueOnce("   ");
+it("treats a title-only change as a change", async () => {
+  const { result } = await renderHook(() => useChapterEditor(baseParams));
 
-  const { result } = await renderHook(() =>
-    useChapterEditor({ ...baseParams, initialContent: "The original paragraph." }),
-  );
+  expect(result.current.dirty).toBe(false);
+  await act(async () => {
+    result.current.setTitle("A Better Name");
+  });
+  expect(result.current.dirty).toBe(true);
 
   await act(async () => {
-    result.current.regenerate(0, "make it sadder");
-    await Promise.resolve();
-    await Promise.resolve();
+    await result.current.save();
   });
-
-  await waitFor(() => expect(result.current.regenerateStatus).toBe("error"));
-  expect(result.current.text).toBe("The original paragraph.");
-  expect(result.current.canRevert).toBe(false);
-  expect(result.current.regenerateError).toBeTruthy();
+  expect(mockSaveChapter).toHaveBeenCalledTimes(1);
 });
 
-it("persists a revert of a persisted rewrite instead of only changing local state (finding 5)", async () => {
-  mockEditParagraph.mockResolvedValueOnce("A rewritten paragraph.");
+it("sends nothing at all when nothing changed", async () => {
+  const { result } = await renderHook(() => useChapterEditor(baseParams));
 
-  const { result } = await renderHook(() =>
-    useChapterEditor({ ...baseParams, initialContent: "The original paragraph.", debounceMs: 10 }),
-  );
-
+  let saved = false;
   await act(async () => {
-    result.current.regenerate(0, "make it sadder");
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-  await waitFor(() => expect(result.current.text).toBe("A rewritten paragraph."));
-  expect(result.current.canRevert).toBe(true);
-
-  // The rewrite above was already persisted server-side by `edit-story`
-  // itself - `publishStory` was never called for it, matching that call
-  // path. The revert must send its own save.
-  expect(mockPublishStory).not.toHaveBeenCalled();
-
-  await act(async () => {
-    result.current.revert();
+    saved = await result.current.save();
   });
 
-  expect(result.current.text).toBe("The original paragraph.");
-
-  await waitFor(() => expect(mockPublishStory).toHaveBeenCalledTimes(1));
-  expect(mockPublishStory).toHaveBeenCalledWith("story-1", {
-    chapters: [{ id: "chapter-1", content: "The original paragraph." }],
-    visibility: "public",
-  });
+  expect(saved).toBe(true);
+  expect(mockSaveChapter).not.toHaveBeenCalled();
 });
 
-it("does not silently discard a failed save when the editor closes (finding 7)", async () => {
-  mockPublishStory.mockRejectedValueOnce(new Error("network down"));
-
-  const { result } = await renderHook(() =>
-    useChapterEditor({ ...baseParams, initialContent: "Original text.", debounceMs: 10 }),
-  );
+it("refuses to save an empty chapter, and says why", async () => {
+  const { result } = await renderHook(() => useChapterEditor(baseParams));
 
   await act(async () => {
-    result.current.onChangeText("A change that will fail to save.");
+    result.current.setText("   ");
   });
-  await waitFor(() => expect(result.current.saveStatus).toBe("error"));
-
-  // A caller closing the editor must flush before it goes away, and must
-  // learn whether that flush actually succeeded rather than assuming so.
-  let flushed: boolean | undefined;
-  mockPublishStory.mockRejectedValueOnce(new Error("still down"));
+  let saved = true;
   await act(async () => {
-    flushed = await result.current.flushPendingSave();
+    saved = await result.current.save();
   });
 
-  expect(flushed).toBe(false);
-  // The honest fallback - what the server actually holds - is still the
-  // original text, not the never-saved edit.
-  expect(result.current.getLastSavedText()).toBe("Original text.");
+  expect(saved).toBe(false);
+  expect(mockSaveChapter).not.toHaveBeenCalled();
+  expect(result.current.status).toBe("error");
+  expect(result.current.error).toMatch(/can't be empty/i);
+  // The words stay in the field. Erasing what somebody typed because the
+  // server would not take it is the one unrecoverable thing an editor can do.
+  expect(result.current.text).toBe("   ");
 });
 
-
-
-// A manual edit made WHILE a rewrite is in flight must survive its arrival.
-//
-// `regenerate` captured the text when it started and rebuilt the chapter from
-// that snapshot when it resolved, so anything typed during the wait was
-// silently discarded the moment the rewrite came back. The writer watched their
-// own sentence disappear with no reason to connect it to the wand.
-it("keeps an edit typed while a rewrite is in flight", async () => {
-  let resolveRewrite: ((value: string) => void) | undefined;
-  mockEditParagraph.mockImplementation(
-    () =>
-      new Promise<string>((resolve) => {
-        resolveRewrite = resolve;
-      }),
-  );
-
-  const { result } = await renderHook(() =>
-    useChapterEditor({
-      ...baseParams,
-      initialContent: "First paragraph.\n\nSecond paragraph.",
-    })
-  );
+it("keeps the writer's words on a failed save, and lets them retry", async () => {
+  mockSaveChapter.mockRejectedValueOnce(new Error("The network went away."));
+  const { result } = await renderHook(() => useChapterEditor(baseParams));
 
   await act(async () => {
-    result.current.regenerate(0, "make it colder");
+    result.current.setText("Worth keeping.");
   });
-
-  // The writer keeps working while the model thinks.
+  let saved = true;
   await act(async () => {
-    result.current.onChangeText(
-      "First paragraph.\n\nSecond paragraph, edited.",
-    );
+    saved = await result.current.save();
   });
+
+  expect(saved).toBe(false);
+  await waitFor(() => expect(result.current.status).toBe("error"));
+  expect(result.current.error).toBe("The network went away.");
+  expect(result.current.text).toBe("Worth keeping.");
+  expect(result.current.dirty).toBe(true);
 
   await act(async () => {
-    resolveRewrite?.("A colder first paragraph.");
-    await Promise.resolve();
+    saved = await result.current.save();
   });
-
-  // Both survive: the rewrite landed on paragraph one, the manual edit on two.
-  await waitFor(() =>
-    expect(result.current.text).toContain("A colder first paragraph.")
-  );
-  expect(result.current.text).toContain("Second paragraph, edited.");
+  expect(saved).toBe(true);
+  expect(mockSaveChapter).toHaveBeenCalledTimes(2);
 });
 
-// The paragraph-count fallback must not be a worse loss than the one it avoids.
-//
-// An earlier version of this fix fell back to the pre-rewrite snapshot whenever
-// the paragraph count had changed, which protected the target paragraph by
-// discarding EVERY manual edit the writer had made -- including edits to
-// paragraphs the rewrite never touched. The current text is now always the base.
-it("keeps edits to untouched paragraphs when a paragraph is added mid-rewrite", async () => {
-  let resolveRewrite: ((value: string) => void) | undefined;
-  mockEditParagraph.mockImplementation(
-    () =>
-      new Promise<string>((resolve) => {
-        resolveRewrite = resolve;
-      }),
-  );
-
+it("states the story's visibility on every save rather than letting the server guess", async () => {
   const { result } = await renderHook(() =>
-    useChapterEditor({
-      ...baseParams,
-      initialContent: "One.\n\nTwo.",
-    })
+    useChapterEditor({ ...baseParams, isPublished: false })
   );
 
   await act(async () => {
-    result.current.regenerate(0, "colder");
+    result.current.setText("A private draft.");
   });
-
-  // The writer edits paragraph two AND adds a third while waiting.
   await act(async () => {
-    result.current.onChangeText("One.\n\nTwo, edited.\n\nThree, new.");
+    await result.current.save();
   });
 
-  await act(async () => {
-    resolveRewrite?.("A colder one.");
-    await Promise.resolve();
-  });
-
-  await waitFor(() => expect(result.current.text).toContain("A colder one."));
-  expect(result.current.text).toContain("Two, edited.");
-  expect(result.current.text).toContain("Three, new.");
+  expect(mockSaveChapter).toHaveBeenCalledWith(
+    expect.objectContaining({ isPublished: false }),
+  );
 });

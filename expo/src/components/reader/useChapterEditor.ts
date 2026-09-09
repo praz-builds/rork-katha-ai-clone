@@ -1,19 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { publishStory } from "@/lib/api";
+import { saveChapter } from "@/lib/chapter-save";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 export type UseChapterEditorParams = {
   storyId: string;
   chapterId: string;
+  chapterNumber: number;
   /** The chapter's current content, `paragraphs.join("\n\n")`. */
   initialContent: string;
+  /** The chapter's current title. Empty string for a standalone story. */
+  initialTitle: string;
   /** Whether the chapter is already public, so a save states its own visibility explicitly rather than guessing it. */
   isPublished: boolean;
 };
 
 export type UseChapterEditorResult = {
   text: string;
+  /** The chapter title as the writer has it. Wire to the heading `TextInput`. */
+  title: string;
+  setTitle: (next: string) => void;
   /** Wire to the editable `TextInput`'s `onChangeText`. Nothing is sent until `save`. */
   setText: (next: string) => void;
   /** True when the text on screen differs from what the server holds. */
@@ -28,6 +34,8 @@ export type UseChapterEditorResult = {
   save: () => Promise<boolean>;
   /** The last chapter text this hook confirmed was persisted to the server. */
   getLastSavedText: () => string;
+  /** The last chapter title this hook confirmed the reader should show. */
+  getLastSavedTitle: () => string;
 };
 
 /**
@@ -42,17 +50,23 @@ export type UseChapterEditorResult = {
 export function useChapterEditor({
   storyId,
   chapterId,
+  chapterNumber,
   initialContent,
+  initialTitle,
   isPublished,
 }: UseChapterEditorParams): UseChapterEditorResult {
   const [text, setTextState] = useState(initialContent);
   const [savedText, setSavedText] = useState(initialContent);
+  const [title, setTitleState] = useState(initialTitle);
+  const [savedTitle, setSavedTitle] = useState(initialTitle);
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
   // Readable from inside the async save without the closure going stale.
   const textRef = useRef(initialContent);
   const savedTextRef = useRef(initialContent);
+  const titleRef = useRef(initialTitle);
+  const savedTitleRef = useRef(initialTitle);
   const inFlight = useRef(false);
   const mountedRef = useRef(true);
 
@@ -71,10 +85,19 @@ export function useChapterEditor({
     setStatus((current) => (current === "saving" ? current : "idle"));
   }, []);
 
+  const setTitle = useCallback((next: string) => {
+    titleRef.current = next;
+    setTitleState(next);
+    setStatus((current) => (current === "saving" ? current : "idle"));
+  }, []);
+
   const save = useCallback(async (): Promise<boolean> => {
     if (inFlight.current) return false;
     const content = textRef.current;
-    if (content === savedTextRef.current) return true;
+    const heading = titleRef.current;
+    if (content === savedTextRef.current && heading === savedTitleRef.current) {
+      return true;
+    }
     if (!content.trim()) {
       setStatus("error");
       setError("A chapter can't be empty. Add some text, or discard your changes.");
@@ -84,17 +107,21 @@ export function useChapterEditor({
     setStatus("saving");
     setError(null);
     try {
-      // `publishStory` is the one call in `src/lib/api.ts` that persists hand
-      // edits to a chapter's content, so this reuses it rather than adding a
-      // second save path. Visibility is always stated, matching that call's
-      // own contract: a public story stays public, a private one private.
-      await publishStory(storyId, {
-        chapters: [{ id: chapterId, content }],
-        visibility: isPublished ? "public" : "private",
+      // One call, whichever backend path is actually available. See
+      // `src/lib/chapter-save.ts` for why there are two.
+      await saveChapter({
+        storyId,
+        chapterId,
+        chapterNumber,
+        body: content,
+        title: heading.trim() || undefined,
+        isPublished,
       });
       savedTextRef.current = content;
+      savedTitleRef.current = heading;
       if (mountedRef.current) {
         setSavedText(content);
+        setSavedTitle(heading);
         setStatus("saved");
       }
       return true;
@@ -111,17 +138,21 @@ export function useChapterEditor({
     } finally {
       inFlight.current = false;
     }
-  }, [chapterId, isPublished, storyId]);
+  }, [chapterId, chapterNumber, isPublished, storyId]);
 
   const getLastSavedText = useCallback(() => savedTextRef.current, []);
+  const getLastSavedTitle = useCallback(() => savedTitleRef.current, []);
 
   return {
     text,
     setText,
-    dirty: text !== savedText,
+    title,
+    setTitle,
+    dirty: text !== savedText || title !== savedTitle,
     status,
     error,
     save,
     getLastSavedText,
+    getLastSavedTitle,
   };
 }
