@@ -207,7 +207,7 @@ creates the `profiles` row), run it, then reload.
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00041` applied except the deliberately absent `00016` and `00024`. Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00056` applied (pushed 2026-09-09) except the deliberately absent `00016` and `00024`. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 `_test.ts` files live alongside the `.sql` in this directory. The CLI skips them by filename pattern, which is why they are safe there, but they are not migrations and must never be numbered as if they were.
 
