@@ -23,7 +23,14 @@ function client(
               eq(column, value) {
                 return {
                   in(inColumn, values) {
-                    queries.push({ table, columns, column, value, inColumn, values });
+                    queries.push({
+                      table,
+                      columns,
+                      column,
+                      value,
+                      inColumn,
+                      values,
+                    });
                     return Promise.resolve(
                       rows instanceof Error
                         ? { data: null, error: rows }
@@ -38,7 +45,10 @@ function client(
       },
       rpc(fn, args) {
         rpcs.push({ fn, args });
-        return Promise.resolve({ data: rpc.data ?? null, error: rpc.error ?? null });
+        return Promise.resolve({
+          data: rpc.data ?? null,
+          error: rpc.error ?? null,
+        });
       },
     },
   };
@@ -81,7 +91,11 @@ Deno.test("blank fields are filled from the saved row and the portrait travels",
 Deno.test("what the writer typed wins over the saved row", async () => {
   const { client: c } = client([SAVED]);
   const out = await resolveSavedCharacters(c, "u1", [
-    { name: "Maya", appearance: "Now grey-haired", savedCharacterId: "saved-1" },
+    {
+      name: "Maya",
+      appearance: "Now grey-haired",
+      savedCharacterId: "saved-1",
+    },
   ]);
   assertEquals(out[0].appearance, "Now grey-haired");
   assertEquals(out[0].description, "The girl at the counter");
@@ -92,7 +106,11 @@ Deno.test("an id that is not the caller's is dropped, and the character keeps th
   const out = await resolveSavedCharacters(c, "u1", [
     { name: "Maya", description: "typed", savedCharacterId: "someone-elses" },
   ]);
-  assertEquals(out, [{ name: "Maya", description: "typed", savedCharacterId: undefined }]);
+  assertEquals(out, [{
+    name: "Maya",
+    description: "typed",
+    savedCharacterId: undefined,
+  }]);
 });
 
 Deno.test("a lookup failure never fails the generation", async () => {

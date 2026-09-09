@@ -65,7 +65,11 @@ Deno.test("a private request writes nothing", async () => {
     isAnonymous: false,
     gateReason: null,
   });
-  assertEquals(outcome, { requested: "private", applied: "private", reason: null });
+  assertEquals(outcome, {
+    requested: "private",
+    applied: "private",
+    reason: null,
+  });
   assertEquals(writes, []);
 });
 
@@ -106,12 +110,19 @@ Deno.test("an allowed public request writes the same columns publish-story write
     isAnonymous: false,
     gateReason: null,
   });
-  assertEquals(outcome, { requested: "public", applied: "public", reason: null });
+  assertEquals(outcome, {
+    requested: "public",
+    applied: "public",
+    reason: null,
+  });
   assertEquals(writes.length, 2);
   assertEquals(writes[0].table, "chapters");
   assertEquals(writes[0].values.is_published, true);
   assertEquals(typeof writes[0].values.published_at, "string");
-  assertEquals(writes[0].filters, [["story_id", STORY], ["is_published", false]]);
+  assertEquals(writes[0].filters, [["story_id", STORY], [
+    "is_published",
+    false,
+  ]]);
   assertEquals(writes[1].table, "stories");
   assertEquals(writes[1].values, { is_public: true });
   assertEquals(writes[1].filters, [["id", STORY]]);
@@ -130,7 +141,9 @@ Deno.test("the database refusing the flip is reported as the constraint, not as 
 });
 
 Deno.test("any other database error is thrown, never swallowed into a private outcome", async () => {
-  const { client } = recordingClient({ chapters: { code: "42501", message: "denied" } });
+  const { client } = recordingClient({
+    chapters: { code: "42501", message: "denied" },
+  });
   await assertRejects(() =>
     applyRequestedVisibility(client, {
       storyId: STORY,

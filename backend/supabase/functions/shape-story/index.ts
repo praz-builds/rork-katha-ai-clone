@@ -141,7 +141,9 @@ serve(async (req) => {
      * back to a preview built from what the writer typed, which is the right
      * answer whether they hit the per-minute window or the model failed.
      */
-    if (allowed !== true) return respond({ shape: null, reason: "rate_limited" });
+    if (allowed !== true) {
+      return respond({ shape: null, reason: "rate_limited" });
+    }
 
     try {
       // Shaping and grounding run together, not in sequence.

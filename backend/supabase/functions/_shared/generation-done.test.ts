@@ -1,9 +1,12 @@
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildStoryDonePayload,
   DONE_PAYLOAD_LOCATIONS,
-  STREAMED_STORY_FIELDS,
   storySchemaFields,
+  STREAMED_STORY_FIELDS,
 } from "./generation-done.ts";
 import { EMPTY_SERIES_STATE } from "./types.ts";
 

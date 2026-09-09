@@ -43,7 +43,7 @@ matters the moment a blocking caller waits on a chapter.
 |---|---|---|
 | `GENERATION_DEADLINE_MS` | 120,000 | **125,000** (+ ~15s handler ⇒ 140s worst case, 10s of margin under 150s) |
 | `EDGE_REQUEST_IDLE_TIMEOUT_MS` | — | **150,000**, new, documented, and asserted against |
-| `PHASE_END_SHARE` | 0.70 / 0.90 / 1.0 | **0.86 / 0.96 / 1.0** (openrouter 107s, gemini ~5s, free ~5s) |
+| `PHASE_END_SHARE` | 0.70 / 0.90 / 1.0 | **0.92 / 0.96 / 1.0** (openrouter 115s, gemini ~5s, free ~5s) |
 | paid phase, per model | even halves | **8s probe** for every model but the last; the last owns the window |
 | `OPENROUTER_TIMEOUT_MS` | 70,000 | 90,000 — a 76s chapter against a 70s socket is a coin toss |
 
@@ -123,6 +123,55 @@ The pure parts — reading the replacement list, applying it to the cast,
 deciding which renames escape the chapter — live in `_shared/reimagine.ts` so
 they can be tested without a server, a database or a model.
 
+### Publishing is a toggle now, not a step
+
+`_shared/publish.ts`. The visibility switch in the create brief **is** the
+publish button: `generate-story` and `generate-story-stream` accept
+`visibility: "private" | "public"` (absent means private) and apply it the
+moment the first chapter is persisted. There is no separate review step.
+
+The response carries `visibility: { requested, applied, reason }` rather than a
+boolean, because the interesting case is the one where they differ. `reason` is
+`null` when they agree, and otherwise the entity gate's own enum, or
+`account_required` (a guest asked to publish — the same rule `publish-story`
+has always enforced), or `gate_constraint` (the 00050 CHECK refused the update
+anyway, so the story stayed private and the payload says so instead of
+pretending). The columns written are exactly the ones `publish-story` writes,
+in the same order, so the two paths cannot drift apart on what "public" means.
+
+### One `done` payload, tied to the schema
+
+`_shared/generation-done.ts` builds the terminal payload for both transports.
+Its nesting is `{ story, chapter, balance, model, timings, visibility }` —
+**extend it, never flatten it**; client agents code against those five objects.
+
+The reason it exists is a bug it now makes impossible: each handler used to
+assemble the object by hand, and the streamed one had quietly stopped carrying
+`beats` and `themes` — fields that are on the row, in the schema, and read by
+the chapter-end chips. `DONE_PAYLOAD_LOCATIONS` maps every field of
+`STORY_OUTPUT_JSON_SCHEMA` that the stream does not produce itself to where it
+lands (`story.beats`, `chapter.hook_text`, and so on), and the test fails both
+when a schema field has no entry and when the built payload has nothing at the
+named location. A field added to the schema without a home is now a red test
+rather than a silently missing chip.
+
+### Saved characters
+
+`user_characters` (migration 00057) is the writer's own cast library, and
+`_shared/saved-characters.ts` does two best-effort jobs around a paid
+generation.
+
+**Resolve.** A brief may name a character by `saved_character_id` instead of
+restating it; blank fields are filled from the library and the portrait the
+writer already paid for comes along. An id the caller does not own is dropped
+silently — the character keeps whatever the brief said. A generation must never
+fail over a stale id.
+
+**Remember.** After the first chapter is persisted, the story's cast is copied
+into `user_characters` so the next brief can start from it. Duplicate names are
+skipped by the database, and a failure costs the writer nothing but the
+convenience.
+
 ### Everything else
 
 - **`continue-story` now returns the continuity it just wrote.** Both
@@ -180,11 +229,12 @@ the reimagine path applies exactly the same rule as the streamed continuation.
 ### Verification
 
 - Backend, `deno test --allow-env --allow-net --allow-read supabase/functions`:
-  700 passed before, **709 passed, 0 failed** after (+7 in the new
-  `_shared/reimagine.test.ts`, +2 from rewriting `llm-deadline.test.ts` around
-  the gateway ceiling).
-- `supabase/migrations`: 118 passed, 0 failed, unchanged — no migration was
-  touched this session; 00057 was written by the predecessor.
+  673 passed before, **709 passed, 0 failed** after — +36, all of them in six
+  new files: `llm-deadline.test.ts` (5), `character-substitution.test.ts` (8),
+  `publish.test.ts` (7), `reimagine.test.ts` (7), `saved-characters.test.ts`
+  (6), `generation-done.test.ts` (3). No existing test was edited.
+- `supabase/migrations`: 112 passed before, **118 passed, 0 failed** after —
+  the six in `00057_saved_characters_and_reimagine_test.ts`.
 - `deno fmt` run on every file touched; `deno check` clean on
   `reimagine-chapter`, `continue-story`, `edit-story`, `library`,
   `generate-story`, `generate-story-stream` and the new `_shared` modules.

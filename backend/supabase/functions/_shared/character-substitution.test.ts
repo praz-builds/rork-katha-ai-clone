@@ -8,7 +8,11 @@ import {
 
 Deno.test("whole words only: a name inside a longer word is left alone", () => {
   assertEquals(
-    substituteCharacterName("Maya met Mayank in the Himalaya.", "Maya", "Priya"),
+    substituteCharacterName(
+      "Maya met Mayank in the Himalaya.",
+      "Maya",
+      "Priya",
+    ),
     "Priya met Mayank in the Himalaya.",
   );
 });
@@ -51,12 +55,18 @@ Deno.test("a full name expands to the full name and the first name, never the su
 Deno.test("renaming to the same name, or with a blank, is a no-op", () => {
   assertEquals(expandRename({ from: "Maya", to: "maya" }), []);
   assertEquals(expandRename({ from: "", to: "Priya" }), []);
-  assertEquals(substituteCharacters("Maya sat.", [{ from: "Maya", to: "" }]), "Maya sat.");
+  assertEquals(
+    substituteCharacters("Maya sat.", [{ from: "Maya", to: "" }]),
+    "Maya sat.",
+  );
 });
 
 Deno.test("pronouns are never rewritten", () => {
   assertEquals(
-    substituteCharacters("Maya said she would. He agreed.", [{ from: "Maya", to: "Rohan" }]),
+    substituteCharacters("Maya said she would. He agreed.", [{
+      from: "Maya",
+      to: "Rohan",
+    }]),
     "Rohan said she would. He agreed.",
   );
 });

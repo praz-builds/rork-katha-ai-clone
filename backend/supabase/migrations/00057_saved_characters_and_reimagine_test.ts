@@ -240,7 +240,10 @@ Deno.test("fork_story copies a readable story privately for a non-author and ref
 
     // The gate travels with the copy: 00050's CHECK still holds.
     assertEquals(
-      await attempt(db, `update stories set is_public = true where id = '${copyId}'`),
+      await attempt(
+        db,
+        `update stories set is_public = true where id = '${copyId}'`,
+      ),
       "23514",
     );
 
@@ -254,9 +257,14 @@ Deno.test("fork_story copies a readable story privately for a non-author and ref
       [copyId],
     );
     assertEquals(chapters.rows.map((c) => c.chapter_number), [1, 2]);
-    assertEquals(chapters.rows[0].content, "Aarav walked in.\n\nMaya looked up.");
+    assertEquals(
+      chapters.rows[0].content,
+      "Aarav walked in.\n\nMaya looked up.",
+    );
     assert(chapters.rows.every((c) => c.is_published === false));
-    assert(chapters.rows.every((c) => c.id !== CHAPTER_ONE && c.id !== CHAPTER_TWO));
+    assert(
+      chapters.rows.every((c) => c.id !== CHAPTER_ONE && c.id !== CHAPTER_TWO),
+    );
 
     const cast = await db.query<{ name: string; is_hero: boolean }>(
       "select name, is_hero from characters where story_id = $1 order by name",
@@ -272,7 +280,9 @@ Deno.test("fork_story copies a readable story privately for a non-author and ref
     assertEquals(original.rows[0].count, 2);
 
     // A private story cannot be forked by a stranger.
-    await db.query("update stories set is_curated = false where id = $1", [STORY]);
+    await db.query("update stories set is_curated = false where id = $1", [
+      STORY,
+    ]);
     assertEquals(
       await attempt(db, `select fork_story('${STORY}', '${READER}')`),
       "P0001",
@@ -338,7 +348,9 @@ Deno.test("a reimagine reserves a credit under its own kind and completes by rew
     // 900 - 500 + 450: the story total tracks the rewrite.
     assertEquals(story.rows[0].word_count, 850);
     // Chapter 2 is the latest, so continuity follows it.
-    assertEquals(story.rows[0].series_state.open_hooks, ["Where are they going"]);
+    assertEquals(story.rows[0].series_state.open_hooks, [
+      "Where are they going",
+    ]);
     assertEquals(story.rows[0].previously_summary, "They left together.");
 
     const op = await db.query<{ status: string; result_chapter_id: string }>(
@@ -409,7 +421,9 @@ Deno.test("reimagining a middle chapter leaves the story's continuity alone and 
     assertEquals(
       await attempt(
         db,
-        `select complete_reimagine_generation('${cont.rows[0].result.id}', '${AUTHOR}', 't', 'c', 1)`,
+        `select complete_reimagine_generation('${
+          cont.rows[0].result.id
+        }', '${AUTHOR}', 't', 'c', 1)`,
       ),
       "P0001",
     );
