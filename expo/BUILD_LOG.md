@@ -65,6 +65,81 @@
 - `pnpm typecheck` clean, `pnpm lint` 0 errors,
   `pnpm exec jest` 76 suites / 653 tests green (from 74 / 632),
   `pnpm exec expo export --platform web` compiles.
+## 2026-09-10: The starters move behind one control, and the app gets one switch
+
+### Changed
+
+- **"TRY ONE" and its three cards are now a single "View ideas" pill.** The
+  brief printed the three genre starters inline under the story-idea box.
+  Each one is two sentences of prose on purpose — that is what teaches a
+  writer what a usable idea looks like — so three of them plus a heading ate
+  most of the first screen, and Premise, Who's in it and the length controls
+  started below the fold on the one screen where a writer decides what to
+  write. Owner feedback on the running screen: "reducing the spacing and
+  keeping this more neat". Nothing was deleted: the same starters open in a
+  bottom sheet from one 44pt pill, and the fold now falls below the cast.
+- **The ideas open in a bottom sheet, keyed to the genre chip.**
+  `src/components/create/IdeasSheet.tsx`. A sheet rather than a popover
+  because a starter is prose and the `Dropdown` is built for one-line options
+  at a 320pt cap; a sheet rather than a pushed screen because this is a detour
+  off the idea box, not a step of the brief — the box stays visible behind the
+  scrim and there are three ways back to it (close button, scrim, hardware
+  back), none of which choose anything. The list is derived from the `genre`
+  prop at render rather than copied into state on open, so changing the genre
+  chip and reopening gives the new genre's ideas. Tapping one fills the idea
+  box and closes on the tap; there is no confirm step to give.
+- **Every genre has three starters and always will.** `GENRE_STARTERS` is a
+  `Record<Genre, string[]>`, so a genre added to the union does not compile
+  until someone writes them, and a test asserts three apiece across `GENRES`.
+- **There is one switch in the app now: `src/components/Toggle.tsx`.** The
+  brief's four toggles were React Native's `Switch` under a spread of colour
+  props. That control paints its thumb and its off-state fill from the
+  *platform* palette, so a prop a caller forgets is not a missing colour, it
+  is iOS green — which is what Kids Mode shipped: an orange track under a
+  green thumb, and green appears in no token file in this repository. `Toggle`
+  draws every pixel itself out of `@/theme` and has no platform fallback left
+  to fall back to. It is the onboarding selection treatment (accent when on,
+  warm neutral when off, white knob), ported through tokens rather than copied
+  out of `KathaOnboardingFlowV2`'s private `C` palette.
+- **All four toggles converted**: Kids Mode, Chapter art, Make it public, and
+  Lead character in Craft character. A grep for `Switch`, `SWITCH_COLORS` and
+  `accessibilityRole="switch"` finds nothing else in `src/` — the reader's
+  voice and theme controls are segmented pickers, and the create flow's value
+  and character chips are checkboxes.
+- **A disabled toggle reads as disabled, not as off.** "Make it public" is
+  disabled for a signed-out writer; drawn in the off colours it told them the
+  story was private by their own choice, which is a lie they cannot act on. A
+  disabled toggle keeps its position and a tint of its state — `accentSoft`
+  when on, `border` when off — and drops the thumb shadow, so it reads flat
+  and inert.
+- **Geometry is a token, not a component constant.** `controls.toggleTrackWidth`
+  52, `toggleTrackHeight` 32, `toggleThumb` 26, `toggleInset` 3,
+  `toggleHitTarget` 44. The control is 52 x 32 and the *target* it answers to
+  is 44 x 44 plus 6pt of `hitSlop`, which is why those are two numbers.
+- **Motion is one shared value.** It cross-fades the accent fill and slides the
+  thumb over `motion.fast`; `useReducedMotion` makes the state arrive rather
+  than travel, and never suppresses the change. No colour interpolation runs
+  on the UI thread.
+- **`DESIGN.md` carries the Toggle recipe** and a drift-prevention line: a new
+  `Switch` import, or a second hand-rolled track-and-thumb, is drift.
+
+### Known gaps
+
+- **Onboarding's own "Try one" rail is untouched.** `WriterOnboarding` still
+  stacks the starter cards inline. That screen has one job and nothing below
+  the fold to protect, and the owner's note was about the create brief, so it
+  was left as it is rather than changed on inference. If it should match, it
+  is the same sheet and a one-line trigger.
+- **`DESIGN.md`'s Core Tokens table has drifted from `theme.ts`** — several
+  hexes there (`bg`, `surface2`, `border`, `borderStrong`) predate the ramp
+  retune documented in `theme.ts`. Not touched here; the Toggle recipe names
+  tokens rather than hexes for that reason.
+
+### Verification
+
+- `pnpm typecheck` clean, `pnpm lint` 0 errors,
+  `pnpm exec expo export --platform web` compiles.
+- Two new suites: `toggle.test.tsx` (5) and `ideas-sheet.test.tsx` (10).
 
 ## 2026-09-09: The story page goes dark, and a writer's own work leads Home
 

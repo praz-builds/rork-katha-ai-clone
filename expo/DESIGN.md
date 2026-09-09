@@ -224,6 +224,37 @@ Use shadows to establish a single center piece or actionable surface, not on eve
 - Selected: orange border, pale peach background, orange filled radio with white check.
 - Entire row is the hit target.
 
+### Toggle
+
+The one switch in the app is `src/components/Toggle.tsx`. **Never use React
+Native's `Switch`, and never hand-roll another one.** `Switch` paints its thumb
+and its off-state fill from the *platform* palette, so any prop a caller
+forgets is not a missing colour, it is iOS green — which is how the create
+brief shipped an orange track under a green thumb, a colour that appears in no
+token file here. `Toggle` draws every pixel itself from `@/theme`.
+
+- Geometry lives in `controls`: `toggleTrackWidth` 52, `toggleTrackHeight` 32,
+  `toggleThumb` 26, `toggleInset` 3, `toggleHitTarget` 44. The control is 52 x
+  32; the *target* is 44 x 44, the platform minimum, plus 6pt of `hitSlop`.
+- Off: `borderStrong` track, `surface` thumb with `shadows.card`.
+- On: `accent` track (the same accent as the onboarding option row and genre
+  chip — this is that treatment, ported through tokens rather than copied out
+  of onboarding's private `C` palette), `surface` thumb.
+- Disabled: keeps its position and a tint of its state — `accentSoft` when on,
+  `border` when off — and loses the thumb shadow. **A disabled toggle must
+  never be drawn as an off one**: "Make it public" is disabled for a signed-out
+  writer, and drawing it off tells them their story is private by their own
+  choice.
+- Motion: one shared value cross-fades the accent fill and slides the thumb
+  over `motion.fast`. `useReducedMotion` makes the state *arrive* rather than
+  travel; it never suppresses the change.
+- Accessibility: `accessibilityRole="switch"` with
+  `accessibilityState={{ checked, disabled }}`, and `accessibilityLabel` is a
+  required prop — a switch with no name is unusable by voice.
+- Props: `value`, `onValueChange(next)`, `disabled`, `accessibilityLabel`,
+  `accessibilityHint`, `style`, `testID`. `onValueChange` receives the opposite
+  of the current value and fires once per press, never when disabled.
+
 ### Genre Chip
 
 - Horizontal wrap with 10 point gaps.
@@ -482,6 +513,8 @@ After onboarding or paywall changes:
 ## Drift Prevention
 
 - Change shared identity once in `BrandWordmark`, never per screen.
+- Every switch is `src/components/Toggle.tsx`. A new `Switch` import, or a
+  second hand-rolled track-and-thumb, is drift — see the Toggle recipe above.
 - Promote repeated visual values into `src/theme/theme.ts` when more than one product area uses them.
 - Keep local onboarding constants only when they are tied to the exact 390 x 844 composition or animation story.
 - Update this file in the same change as any approved token, geometry, animation, screen-order, or branch change.

@@ -125,6 +125,6 @@ it("keeps the visibility toggle in More options with the spec's copy", async () 
   await fireEvent.press(await view.findByLabelText("More options"));
   expect(view.getByText("Make it public")).toBeTruthy();
   expect(view.getByText("Only you can see this story.")).toBeTruthy();
-  await fireEvent(view.getByRole("switch", { name: "Make it public" }), "valueChange", true);
+  await fireEvent.press(view.getByRole("switch", { name: "Make it public" }));
   await waitFor(() => expect(view.getByText("Anyone on Katha can read it once it's written.")).toBeTruthy());
 });

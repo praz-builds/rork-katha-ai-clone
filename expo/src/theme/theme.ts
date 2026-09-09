@@ -264,6 +264,17 @@ export const controls = {
   formFieldRadius: 18,
   otpCellHeight: 58,
   otpCellRadius: 14,
+  /**
+   * The shared `Toggle` (src/components/Toggle.tsx). The control is 52 x 32
+   * with a 26 knob on a 3 inset; the TARGET it answers to is 44 x 44, which
+   * is the platform minimum and is why the two are separate numbers. Nothing
+   * else may draw a switch, so these live here rather than in the component.
+   */
+  toggleTrackWidth: 52,
+  toggleTrackHeight: 32,
+  toggleThumb: 26,
+  toggleInset: 3,
+  toggleHitTarget: 44,
   /** Inset highlight offset used by shadows.iconButton, kept here so a custom size can reuse it. */
   iconButtonHighlightInset: 6
 } as const;
