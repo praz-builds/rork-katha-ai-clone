@@ -276,6 +276,23 @@ export async function generateChapterArt(input: ChapterArtInput): Promise<void> 
     }
     const chapter = chapterRead.data as Record<string, unknown>;
 
+    /*
+      A CAST THAT COULD NOT BE READ IS NOT AN EMPTY CAST.
+
+      `castRead.error` was ignored and `?? []` swallowed it, so a transient read
+      failure produced a picture drawn with no cast context at all -- and then
+      the art component was marked delivered and the credit kept. The writer
+      pays for a chapter illustration and gets a scene with nobody in it,
+      because a query failed for a second.
+      Thrown rather than degraded: the caller treats a throw as a failed art
+      component and refunds the credit, which is the honest outcome. A story
+      that genuinely has no cast still reads as an empty array with no error and
+      is drawn as the scene it is.
+    */
+    if (castRead.error) {
+      throw castRead.error;
+    }
+
     const art = await generateChapterImage({
       storyId: input.storyId,
       chapterNumber: input.chapterNumber,

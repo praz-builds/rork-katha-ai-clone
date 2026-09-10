@@ -93,16 +93,6 @@ export type PhraseCaptureReaderProps = {
    * a void because the sign-in gate never reached the reader.
    */
   onRequireSignIn?: () => void;
-  /**
-   * Which chapter the reader is on, forwarded up rather than swallowed.
-   *
-   * This wrapper consumes `ReaderScreen`'s `onChapterChange` for its own
-   * selection bookkeeping, and consuming it without forwarding was the same as
-   * deleting the seam for every caller above -- the same failure every other
-   * prop in this list carries a note about. Forwarded on those grounds rather
-   * than for a current consumer.
-   */
-  onChapterChange?: (chapter: Chapter, chapterIndex: number) => void;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -156,7 +146,6 @@ export default function PhraseCaptureReader({
   onRequireSignIn,
   onReimagineStarted,
   onListen,
-  onChapterChange,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
   const savedPhrasesRef = useRef<SavedPhrase[]>([]);
@@ -513,17 +502,25 @@ export default function PhraseCaptureReader({
     );
   }, [beginSelection, handleWordPress, pendingKeys, savedPhrases, screenReaderEnabled, selection, story.id]);
 
-  const handleChapterChange = useCallback(
-    (chapter: Chapter, chapterIndex: number) => {
-      setActiveChapter(chapter);
-      // A range is a set of indices into ONE chapter's word list. Carrying it
-      // across a chapter change would light an unrelated run of words in the
-      // new one.
-      clearSelection();
-      onChapterChange?.(chapter, chapterIndex);
-    },
-    [clearSelection, onChapterChange],
-  );
+  /*
+    NOT FORWARDED UPWARD, DELIBERATELY.
+
+    A `onChapterChange` pass-through was added here for the auto write-ahead's
+    reading-position bound, and that bound was then removed as a product
+    decision -- the chain runs to the credit balance, not to the reader. The
+    prop went with it rather than being left in place "in case": an inline
+    callback from a parent is a new identity on every parent render, which
+    re-runs this memo, which makes `ReaderScreen` fire the change again and
+    dismiss a phrase selection the reader was in the middle of. An unused seam
+    with a live footgun is worse than no seam.
+  */
+  const handleChapterChange = useCallback((chapter: Chapter) => {
+    setActiveChapter(chapter);
+    // A range is a set of indices into ONE chapter's word list. Carrying it
+    // across a chapter change would light an unrelated run of words in the
+    // new one.
+    clearSelection();
+  }, [clearSelection]);
 
   return (
     <GestureHandlerRootView style={styles.flex}>

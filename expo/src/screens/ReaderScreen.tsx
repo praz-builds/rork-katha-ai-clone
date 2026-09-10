@@ -995,8 +995,20 @@ export default function ReaderScreen({
   const handleVoiceChange = useCallback(async (gender: VoiceGender) => {
     if (gender === voiceGender || isLoadingAudioRef.current) return;
     if (soundRef.current) {
-      await soundRef.current.unloadAsync();
-      soundRef.current = null;
+      /*
+        THE HANDLE IS TAKEN BEFORE THE AWAIT, NOT AFTER.
+
+        `unloadAsync` yields, and a chapter change or a play tap during that
+        window assigns a NEW sound to `soundRef.current`. Clearing the ref
+        afterwards then threw away the live handle instead of the dead one:
+        playback carried on with nothing able to reach it, and every control
+        that reads the ref -- pause, seek, the next voice change -- did nothing.
+        Nulling only when the ref still holds the sound we unloaded is what
+        makes this safe to interleave.
+      */
+      const previous = soundRef.current;
+      await previous.unloadAsync();
+      if (soundRef.current === previous) soundRef.current = null;
     }
     setIsPlaying(false);
     setVoiceGender(gender);

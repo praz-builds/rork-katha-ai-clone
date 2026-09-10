@@ -454,6 +454,17 @@ export default function App() {
 
   /** The credit each generation charged, deducted once, when it settles. */
   const chargedRef = useRef<Set<string>>(new Set());
+  /**
+   * The balance as of the last charge, readable synchronously.
+   *
+   * `credits` is state and lands a render after the charge that changed it.
+   * Anything that decides whether to SPEND needs the number as it is now, not
+   * as it was before the chapter that just finished. See the charge effect.
+   */
+  const availableCreditsRef = useRef(credits);
+  useEffect(() => {
+    availableCreditsRef.current = credits;
+  }, [credits]);
   useEffect(() => {
     const charges = generations.filter((session) =>
       session.phase === "complete"
@@ -466,6 +477,22 @@ export default function App() {
       (sum, session) => sum + session.creditsCharged,
       0,
     );
+    /*
+      THE REF IS DECREMENTED SYNCHRONOUSLY, THE STATE IS NOT.
+
+      Both this effect and the auto write-ahead below key on `generations`, so
+      the tick a chapter completes runs both -- this one first, in declaration
+      order. But `setCredits` is a state update: the `credits` the write-ahead
+      closes over in that same pass is still the pre-charge number, one chapter
+      too high. Auto mode would then start a chapter the balance could not pay
+      for and take a 402, with nobody having tapped anything.
+
+      Too-high is the dangerous direction, and it is the exact failure the
+      write-ahead's balance gate exists to prevent. So the gate reads this ref,
+      which is correct the instant the charge is known, rather than the state,
+      which is correct one render later.
+    */
+    availableCreditsRef.current = Math.max(0, availableCreditsRef.current - total);
     setCredits((value) => Math.max(0, value - total));
   }, [generations]);
 
@@ -529,7 +556,9 @@ export default function App() {
     if (!story) return;
     startAutoChapterAhead({
       story,
-      credits,
+      // The ref, not the state: on the tick a chapter completes, the state is
+      // still one charge behind. See `availableCreditsRef`.
+      credits: availableCreditsRef.current,
       // The same derivation the chapter end shows a reader, off the newest
       // persisted chapter -- but the WHOLE ranked list, not its head. Which
       // one gets written is the server's call: `chooseDirection` reads how the

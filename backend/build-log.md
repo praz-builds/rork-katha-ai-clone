@@ -4818,3 +4818,40 @@ that says a chapter is being written opened a static page and hid the live
 generation behind it. It now routes into the reader at the chapter actually
 being written, for the same reason `finish` does: the reader is the only surface
 that resolves the live session and shows prose arriving.
+
+### CodeAnt round three, PR #90 — three races and a dead seam
+
+**A credits race that could spend money with nobody tapping.** The charge effect
+and the auto write-ahead both key on `generations`, so a completing chapter runs
+both in the same pass -- the charge first. But `setCredits` is state and lands a
+render later, so the write-ahead closed over a balance one charge too high and
+could start a chapter the balance could not pay for. Too-high is the dangerous
+direction and is precisely what that gate exists to prevent, so the gate now
+reads `availableCreditsRef`, decremented synchronously the instant a charge is
+known, rather than the state that is correct one render afterwards.
+
+**A cast that could not be read was treated as a cast that does not exist.**
+`castRead.error` was ignored and `?? []` swallowed it, so a transient failure
+drew a chapter illustration with no cast context and then marked the art
+component delivered and kept the credit. It now throws, which the caller treats
+as a failed component and refunds. A story that genuinely has no cast still
+reads as an empty array with no error and is drawn as the scene it is.
+
+**An audio unload race that killed the controls.** `unloadAsync` yields, and a
+chapter change or play tap in that window assigns a new sound to
+`soundRef.current`; nulling the ref afterwards threw away the LIVE handle
+instead of the dead one, so playback continued with nothing able to reach it and
+pause, seek and the next voice change all did nothing. The handle is now taken
+before the await and cleared only if the ref still holds it.
+
+**A dead seam with a live footgun.** `PhraseCaptureReader`'s `onChapterChange`
+pass-through was added for the write-ahead's reading-position bound and lost its
+only caller when that bound was removed. Left in place it was a hazard: an
+inline callback from a parent is a new identity per render, which re-runs the
+memo, which makes `ReaderScreen` fire the change again and dismiss a phrase
+selection mid-drag. Removed rather than kept "in case".
+
+**Answered, not changed.** An author reading their own chapter one sees no
+artwork, which is `bareOpener` behaving as designed since PR #85 -- their own
+story opens on a bare title page, and chapter one's art IS the cover, so it is
+not also drawn as a chapter plate. Unchanged by this PR.
