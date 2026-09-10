@@ -465,8 +465,20 @@ export default function ChapterEnd({
       nothing started would be wrong for the second it takes.
     */
     const failed = nextSession?.phase === "error";
+    /*
+      A COMPLETED SESSION IS NOT A PENDING ONE. This read `nextSession !== null`,
+      which is true of a chapter that has already finished writing -- so between
+      the session settling and the app appending the new chapter to the story,
+      the reader was told their finished chapter was still being written. The
+      window is small and it is not zero, and the sentence is simply false
+      inside it.
+
+      `autoStarted` is still ORed in because it covers the opposite gap: this
+      mount has fired but the session has not registered yet.
+    */
+    const inFlight = nextSession?.phase === "writing";
     const pending = !failed
-      && (autoStarted || status === "loading" || nextSession !== null);
+      && (inFlight || autoStarted || status === "loading");
     return (
       <View style={styles.wrap} testID="chapter-end-auto">
         <Text style={styles.heading}>

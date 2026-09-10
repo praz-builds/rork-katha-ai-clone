@@ -1408,10 +1408,12 @@ resentment-generating placement available.
 - Auto-open the paywall on launch or after a generation completes.
 - Countdown timers, "only 2 left today!", or scarcity framing **on any in-app
   surface**, with **no exceptions** since the one-time offer was removed (§3).
-  is an exception only because its deadline is real: a 2-minute clock, enforced
-  server-side, after which the SKU is disabled for that user and the price never
-  returns. False scarcity stays banned everywhere, including there — no
-  "only 2 left", no restock, no recovery push, no second showing.
+  The carve-out that used to follow this line — a real, server-enforced
+  2-minute clock on that offer — went with the offer it described, and the
+  sentence fragment it left behind was still authorizing a countdown one line
+  under the ban. There is no exception now. False scarcity remains banned
+  everywhere: no "only 2 left", no restock, no recovery push, no second
+  showing.
 - Hide, shrink, or delay a dismiss control.
 - Charge for a retry after our own failure.
 

@@ -4752,3 +4752,60 @@ because a row that disappears reads as a control that was cut rather than
 moved); and §2 described `story_flow` as "a column, not a request field" when it
 is in fact both — the request is how it gets there, the column is how it
 survives to the chapter end where it means anything.
+
+### CodeAnt inline review, PR #90 — eleven threads
+
+The four "nitpicks" were the summary; the inline review carried eleven. Seven
+were real and are fixed here, and one of them was a data-loss bug introduced by
+this very change set.
+
+**`??` where `||` was needed, and legacy characters lost for good.** Both story
+inserts wrote `appearance: c.appearance ?? c.description`. Nullish coalescing
+falls through on null and undefined but NOT on the empty string, which is
+exactly what a client sends for a field the writer left blank — so a legacy
+character whose text lived in `description` had both columns written empty and
+their details destroyed. `characterAppearance` in `types.ts` already resolved
+with `||` for this reason; the inserts did not.
+
+**"Chapter N+1 is being written" over a chapter that had finished.** `pending`
+read `nextSession !== null`, which is true of a completed session. Between the
+session settling and the app appending the chapter, the sentence was false.
+
+**Autoplay used the wrong narrator.** It fired on mount, and the stored voice
+gender resolves a tick or two later — so a reader who had saved the male
+narrator opened Listen and heard the female one. The preference persisted
+correctly and was then ignored at the one moment it existed for. Autoplay now
+waits for the read to settle, including on its failure path.
+
+**`liveStoryIds` hid the freshest series.** It mapped every session regardless
+of phase, and `home-cta.ts` excludes those ids from its "Finish your story"
+search — so a story that finished generating minutes ago was excluded until its
+session was pruned. Now only sessions actually being written.
+
+**The shelf-loaded flag defeated its own guard.** `fetchMyStories` turns every
+failure into an empty array, and `App` set `shelfLoaded` from it — which is
+precisely the failure `home-cta.ts` documents itself as preventing: a writer
+with three stories and a bad connection told to start their first one. The boot
+read now uses `fetchCreatedShelf`, which can say it failed.
+
+**A countdown ban that authorized a countdown.** Removing the one-time offer
+left an orphaned sentence fragment directly under "no exceptions", still
+describing a 2-minute clock as a legitimate carve-out.
+
+**Not fixed, and why.**
+
+- *Credit drift after an art refund.* The client charges what was reserved; if
+  the background art fails the server refunds one credit and the client never
+  hears. The drift is one too LOW, which only makes the app conservative — the
+  write-ahead stops early, the paywall shows early. Too HIGH is the dangerous
+  direction and is the bug fixed earlier in this log. The real fix is the `done`
+  payload carrying the authoritative balance the RPC already computes; that is a
+  server change and not this commit's.
+- *Direction choice before the stream opens.* Already documented; deadline cut
+  from 6s to 4s. Invisible on the write-ahead path, which is auto mode's normal
+  path.
+- *"The welcome bonus requires two declines."* No such rule exists in
+  `CREDITS_AND_PRICING.md` — searched. A grant condition is not changed on an
+  unverified reading of a pricing document.
+- *Margin basis calls a three-chapter total a story-start cost.* The same
+  unresolved 1-vs-3 disagreement recorded in AGENTS.md. It is a price.

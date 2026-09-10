@@ -635,6 +635,15 @@ export default function ReaderScreen({
   */
   const prefsChosenByUserRef = useRef(false);
   const voiceChosenByUserRef = useRef(false);
+  /**
+   * Whether the stored narrator preference has been read back yet.
+   *
+   * Autoplay waits for it. The read resolves a tick or two after mount, and
+   * autoplay fired on mount — so a reader who had saved the male narrator
+   * opened Listen and heard the female one, which is the preference persisting
+   * and then being ignored at the one moment it was for.
+   */
+  const [voiceRestored, setVoiceRestored] = useState(false);
   useEffect(() => {
     let alive = true;
     AsyncStorage.getItem(READER_PREFS_KEY).then((raw) => {
@@ -642,6 +651,11 @@ export default function ReaderScreen({
     });
     void preferredVoiceGender().then((gender) => {
       if (alive && gender && !voiceChosenByUserRef.current) setVoiceGender(gender);
+    }).finally(() => {
+      // Settled either way. Autoplay waits on this, so it must be set on the
+      // failure path too or a reader whose storage read throws never hears
+      // anything at all.
+      if (alive) setVoiceRestored(true);
     });
     return () => {
       alive = false;
@@ -970,10 +984,14 @@ export default function ReaderScreen({
   const autoplayFiredRef = useRef(false);
   useEffect(() => {
     if (!autoplay || autoplayFiredRef.current) return;
+    // The narrator preference decides which audio file is fetched, so firing
+    // before it lands does not merely start early -- it starts with the wrong
+    // voice, and reuses that URL for the whole chapter.
+    if (!voiceRestored) return;
     autoplayFiredRef.current = true;
     setListenOpen(true);
     void handlePlayTap();
-  }, [autoplay, handlePlayTap]);
+  }, [autoplay, handlePlayTap, voiceRestored]);
   const handleVoiceChange = useCallback(async (gender: VoiceGender) => {
     if (gender === voiceGender || isLoadingAudioRef.current) return;
     if (soundRef.current) {

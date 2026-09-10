@@ -632,6 +632,20 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
  * credit per chapter, so the write-ahead's balance gate -- which documents
  * itself as exact rather than optimistic -- eventually passed on a balance the
  * server did not have and fired a request it had been built never to fire.
+ *
+ * KNOWN RESIDUAL DRIFT, IN THE SAFE DIRECTION. This charges what was RESERVED.
+ * If the background art then fails, the server refunds one credit
+ * (`refund_story_media_component('chapter_art')`) and the client never hears
+ * about it -- the balance stays one too low until the next `bootstrapUser`.
+ *
+ * Left deliberately, because the two directions are not equally bad. Too LOW
+ * only makes the app more conservative than it needs to be: the write-ahead
+ * stops a chapter early, the paywall appears early, the finish card hides. Too
+ * HIGH sends a request the server refuses and hangs a failure off the end of a
+ * story someone was enjoying -- the bug this comment opens with. The real fix
+ * is for the continuation's `done` payload to carry the authoritative balance,
+ * which the RPC already computes, so the client stops deriving a number it can
+ * only ever approximate. That is a server change and not this commit's.
  */
 function chapterCost(story: Pick<Story, "illustrateChapters">): number {
   return CHAPTER_TEXT_CREDITS +

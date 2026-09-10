@@ -3,7 +3,7 @@ import * as Font from "expo-font";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
-import { fetchMyStories } from "@/lib/api";
+import { fetchCreatedShelf } from "@/lib/api";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
@@ -143,7 +143,8 @@ export default function App() {
   /**
    * Has the writer's own shelf come back from the server?
    *
-   * `fetchMyStories` swallows every failure into an empty array, so without
+   * `fetchMyStories` swallows every failure into an empty array, so the boot
+   * read uses `fetchCreatedShelf`, which can say it failed. Without
    * this Home cannot tell "you have written nothing" from "we could not find
    * out", and tells a writer with a bad connection to start their first story.
    */
@@ -217,7 +218,18 @@ export default function App() {
    */
   const writingSession = generations.find((session) => session.phase === "writing")
     ?? null;
+  /*
+    ONLY THE ONES STILL BEING WRITTEN.
+
+    `home-cta.ts` excludes these from its "Finish your story" search, because a
+    provisional row inserted mid-generation is, to the letter, the shape of a
+    part-written series. This mapped over EVERY session regardless of phase, so
+    a story that finished generating minutes ago stayed excluded until its
+    session was pruned -- and the freshest series, the one the writer is most
+    likely to want to continue, was the one the card refused to offer.
+  */
   const liveStoryIds = generations
+    .filter((session) => session.phase === "writing")
     .map((session) => session.storyId ?? session.id)
     .filter((id): id is string => Boolean(id));
 
@@ -301,16 +313,23 @@ export default function App() {
       // state the list query does not select), so the local copy wins where
       // both exist.
       if (active) {
-        void fetchMyStories().then((mine) => {
+        // `fetchCreatedShelf`, not `fetchMyStories`: the latter turns every
+        // failure into an empty array, and flagging the shelf loaded off that
+        // is precisely the bug `home-cta.ts` documents itself as preventing --
+        // a writer with three stories and a bad connection being told to start
+        // their first one. "Empty" and "we could not ask" are different
+        // answers, and only the first of them licenses that copy.
+        void fetchCreatedShelf().then((shelf) => {
           if (!active) return;
-          // Flagged even when the shelf is empty, because "empty" and
-          // "we could not ask" are different answers and Home's first-run
-          // copy is a claim that may only be made on the first of them.
+          if (!shelf.ok) return;
           setShelfLoaded(true);
-          if (mine.length === 0) return;
+          if (shelf.stories.length === 0) return;
           setGeneratedStories((current) => {
             const seen = new Set(current.map((story) => story.id));
-            return [...current, ...mine.filter((story) => !seen.has(story.id))];
+            return [
+              ...current,
+              ...shelf.stories.filter((story) => !seen.has(story.id)),
+            ];
           });
         });
       }

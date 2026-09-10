@@ -334,9 +334,15 @@ serve(async (req) => {
               // readable by anything that has not moved to `appearance` yet. Nothing
               // reads it in preference to `appearance` any more: `characterAppearance`
               // in `types.ts` is the single resolver and it puts `appearance` first.
-              description: c.appearance ?? c.description ?? null,
+              description: c.appearance || c.description || null,
               background: c.background,
-              appearance: c.appearance ?? c.description ?? null,
+              // `||`, NOT `??`. An empty-string appearance is what a client
+              // sends for a character the writer left blank, and `??` only
+              // falls through on null/undefined -- so a legacy character whose
+              // text lives in `description` would have had BOTH columns written
+              // empty and their details lost for good. `characterAppearance`
+              // in `types.ts` resolves the same way for the same reason.
+              appearance: c.appearance || c.description || null,
               portrait_url: c.portraitUrl,
               is_hero: c.isHero ?? false,
               saved_character_id: c.savedCharacterId ?? null,
