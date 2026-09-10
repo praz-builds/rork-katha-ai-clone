@@ -16,6 +16,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DEFAULT_VOICE_ID, VoiceRecord } from "./voices.ts";
 import { RUNPOD_ENDPOINT, runpodCancelUrl, runpodStatusUrl } from "./runpod.ts";
+import { safeErrorCode } from "./sentry.ts";
 
 export const NARRATION_REFUSAL = "Narration unlock is not available yet";
 export const AUDIO_BUCKET = "audio";
@@ -383,9 +384,21 @@ export async function pollRunpodNarration(
 
   const status = normalizeAudioStatus(payload?.status);
   if (status !== "ready") {
+    // Classified, never echoed. `payload.error` is whatever the worker chose
+    // to put there, and for this endpoint that is a raw Python traceback --
+    // it is how the `len(prompt)` crash was diagnosed. `audio-status` writes
+    // this straight to `chapter_audio.error_code` and returns it in the
+    // response body, and RLS lets every reader of a public story select that
+    // row, so an unfiltered value publishes worker file paths, library
+    // versions and any echoed input to anyone who taps Listen. `safeErrorCode`
+    // passes an identifier through unchanged and replaces anything else with
+    // `unclassified_error`, which is the same rule the Sentry path has always
+    // applied to the same values.
     return {
       status,
-      errorCode: typeof payload?.error === "string" ? payload.error : null,
+      errorCode: typeof payload?.error === "string"
+        ? safeErrorCode(payload.error) ?? null
+        : null,
     };
   }
 
@@ -711,7 +724,22 @@ const MAX_AUDIO_BASE64_CHARS = Math.ceil((MAX_AUDIO_BYTES / 3) * 4);
 function decodeBase64Audio(value: string): Uint8Array | null {
   const clean = value.replace(/^data:audio\/[^;]+;base64,/, "");
   if (clean.length > MAX_AUDIO_BASE64_CHARS) return null;
-  return Uint8Array.from(atob(clean), (char) => char.charCodeAt(0));
+  try {
+    return Uint8Array.from(atob(clean), (char) => char.charCodeAt(0));
+  } catch {
+    // `atob` THROWS on anything that is not base64; it does not return null.
+    // The caller reaches here whenever `result` is a string that is neither a
+    // URL nor audio -- which is exactly the shape a provider uses to report a
+    // failure in a field typed as a result, e.g. "Error: voice_id not found".
+    // Unguarded, that threw out of the poller, became a 500, and the client
+    // showed "failed" and stopped; the row then sat pending until the 10
+    // minute stale check relabelled it `generation_timed_out`, which is the
+    // wrong diagnosis and hid the real one. Returning null lets the caller
+    // record `base64_unusable`, which is the whole point of that code
+    // existing. `edge-tts.ts` already guarded the same call; this is the copy
+    // that did not.
+    return null;
+  }
 }
 
 function numericOrNull(value: unknown): number | null {

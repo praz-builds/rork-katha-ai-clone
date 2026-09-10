@@ -204,17 +204,28 @@ export function isDuplicateCreditOperationError(error: unknown): boolean {
     (/duplicate key/i.test(message) && /operation_key/i.test(message));
 }
 
-/** Atomically zero every credit bucket at subscription lapse. */
+/**
+ * Atomically zero every credit bucket at subscription lapse.
+ *
+ * `requireEventId`, when given, makes the RPC verify -- under the same
+ * per-user advisory lock it does the zeroing in -- that this RevenueCat event
+ * is still the most recent one on the subscription row, and do nothing if it
+ * is not. That is how a straggling or superseded EXPIRATION is stopped from
+ * erasing credits a renewal has just granted. Omitted, the lapse is
+ * unconditional, which is what every non-webhook caller wants.
+ */
 export async function lapseCredits(
   supabase: SupabaseClient<CreditDatabase>,
   userId: string,
   referenceId: string,
   operationKey: string,
+  requireEventId?: string,
 ): Promise<number> {
   const { data, error } = await supabase.rpc("lapse_credits", {
     p_user_id: userId,
     p_reference_id: referenceId,
     p_operation_key: operationKey,
+    ...(requireEventId ? { p_require_event_id: requireEventId } : {}),
   });
   if (error) throw new Error(`Failed to lapse credits: ${error.message}`);
   return data as number;

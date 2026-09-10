@@ -480,3 +480,124 @@ Deno.test("the request opts into streaming", async () => {
   assertEquals(body.stream, true);
   assertEquals((body.reasoning as Record<string, unknown>)?.effort, "minimal");
 });
+
+// ---------------------------------------------------------------------------
+// "The bytes stopped arriving" is not "the model finished"
+//
+// Until 2026-09-10 these three shapes all resolved as a clean success with
+// `truncated: false`. The callers then ran the metadata call on the stub,
+// persisted it through `complete_story_generation` with `status = 'complete'`,
+// and kept the credit. On `reimagine-chapter`, which updates the chapter in
+// place and deletes its narration, the finished original was replaced by the
+// stub and could not be recovered.
+//
+// Each of these must now fail the generation instead. Prose already shown to
+// the reader stays on their screen (the caller wraps a post-commit throw as a
+// `StreamCommittedError` and refunds), but nothing half-written is ever saved
+// as a chapter.
+// ---------------------------------------------------------------------------
+
+Deno.test("an in-band provider error after prose has streamed fails the chapter", async () => {
+  const deltas: string[] = [];
+  await assertRejects(
+    () =>
+      withStubbedFetch(
+        // Every provider in the chain reports the same mid-stream failure, so
+        // the fallbacks cannot rescue this and the chain ends in a throw.
+        () =>
+          sseResponse([
+            'data: {"choices":[{"delta":{"content":"The ferry stopped coming, and "}}]}',
+            'data: {"error":{"code":429,"message":"rate limited"},"choices":[{"finish_reason":"error"}]}',
+          ]),
+        () =>
+          streamChapterProse({
+            systemPrompt: "sys",
+            userPrompt: "usr",
+            onDelta: (c) => deltas.push(c),
+          }),
+      ),
+    Error,
+  );
+  // The reader saw the opening. That is why the caller refunds rather than
+  // pretending nothing happened.
+  assertEquals(deltas, ["The ferry stopped coming, and "]);
+});
+
+Deno.test("a stream that just stops, with no [DONE] and no finish_reason, fails", async () => {
+  await assertRejects(
+    () =>
+      withStubbedFetch(
+        () =>
+          sseResponse([
+            'data: {"choices":[{"delta":{"content":"Half a chapter and then the socket"}}]}',
+          ]),
+        () =>
+          streamChapterProse({
+            systemPrompt: "sys",
+            userPrompt: "usr",
+            onDelta: () => {},
+          }),
+      ),
+    Error,
+  );
+});
+
+Deno.test("a content_filter stop is a failure, not a short chapter", async () => {
+  await assertRejects(
+    () =>
+      withStubbedFetch(
+        () =>
+          sseResponse([
+            'data: {"choices":[{"delta":{"content":"She opened the door and"}}]}',
+            'data: {"choices":[{"finish_reason":"content_filter"}]}',
+            "data: [DONE]",
+          ]),
+        () =>
+          streamChapterProse({
+            systemPrompt: "sys",
+            userPrompt: "usr",
+            onDelta: () => {},
+          }),
+      ),
+    Error,
+  );
+});
+
+// The two endings that ARE legitimate must keep working, or this fix would
+// have traded a silent corruption for an outage.
+Deno.test("finish_reason stop without a [DONE] sentinel is still a finished chapter", async () => {
+  const result = await withStubbedFetch(
+    () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"A whole chapter."}}]}',
+        'data: {"choices":[{"finish_reason":"stop"}]}',
+      ]),
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(result.text, "A whole chapter.");
+  assertEquals(result.truncated, false);
+});
+
+Deno.test("finish_reason length is still the known, handled truncation", async () => {
+  const result = await withStubbedFetch(
+    () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"First paragraph.\\n\\nSecond, cut off mid-"}}]}',
+        'data: {"choices":[{"finish_reason":"length"}]}',
+        "data: [DONE]",
+      ]),
+    () =>
+      streamChapterProse({
+        systemPrompt: "sys",
+        userPrompt: "usr",
+        onDelta: () => {},
+      }),
+  );
+  assertEquals(result.truncated, true);
+  assertEquals(result.text, "First paragraph.");
+});

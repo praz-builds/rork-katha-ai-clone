@@ -98,7 +98,6 @@ async function timingSafeEqualAsync(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
-
 function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,

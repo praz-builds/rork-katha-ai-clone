@@ -157,7 +157,12 @@ async function scalar<T>(
 // The seeded voice registry
 // ---------------------------------------------------------------------------
 
-Deno.test("seeds exactly today's 8 voices, in sort order, all active", async () => {
+// The eight rows are still seeded here; whether each is OFFERED is a separate
+// question, and by the end of the migration series the answer for the edge_tts
+// pair is no (00053 said so, 00059 disagreed, 00063 settled it). This test is
+// about the seed, so it asserts the rows and the tiers, and leaves `is_active`
+// to 00063's own test.
+Deno.test("seeds exactly today's 8 voices, in sort order", async () => {
   const db = await createDatabase();
   try {
     await asService(db);
@@ -170,13 +175,15 @@ Deno.test("seeds exactly today's 8 voices, in sort order, all active", async () 
       result.rows.map((r) => r.id),
       ["aria", "kai", "elvira", "alvaro", "onyx", "nova", "echo", "fable"],
     );
+    // Deactivated for want of a worker, not deleted: the rows keep the
+    // provider parameters a real edge_tts implementation will need.
     assertEquals(
       result.rows.filter((r) => !r.is_active).map((r) => r.id),
-      [],
+      ["elvira", "alvaro"],
     );
     assertEquals(
       result.rows.filter((r) => r.is_active).map((r) => r.id),
-      ["aria", "kai", "elvira", "alvaro", "onyx", "nova", "echo", "fable"],
+      ["aria", "kai", "onyx", "nova", "echo", "fable"],
     );
     assertEquals(
       result.rows.filter((r) => r.tier === "standard").map((r) => r.id),
@@ -202,9 +209,19 @@ Deno.test("voices: anon has no grant at all, authenticated can read active voice
     await asAnon(db);
     assertEquals(await attempt(db, "select 1 from voices limit 1"), "42501");
 
+    // Six, not eight. The policy is `using (is_active)`, and 00063 leaves two
+    // rows inactive -- so this number is now evidence the filter works. While
+    // every seeded voice was active it was evidence of nothing: removing the
+    // predicate entirely would not have changed the answer.
     await asUser(db, AUTHOR);
     const count = await scalar<string>(db, "select count(*)::text from voices");
-    assertEquals(count, "8");
+    assertEquals(count, "6");
+
+    const inactive = await scalar<string>(
+      db,
+      "select count(*)::text from voices where not is_active",
+    );
+    assertEquals(inactive, "0", "an inactive voice reached an ordinary reader");
   } finally {
     await db.close();
   }

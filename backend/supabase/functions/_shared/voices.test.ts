@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EDGE_TTS_VOICES } from "./edge-tts.ts";
 import {
@@ -100,8 +103,53 @@ Deno.test("listVoices trusts an empty result rather than resurrecting the static
 });
 
 Deno.test("listVoices falls back to STATIC_VOICES with no client at all", async () => {
-  const voices = await listVoices(null, "es");
-  assertEquals(voices, STATIC_VOICES.filter((v) => v.language === "es"));
+  const voices = await listVoices(null, "en");
+  assertEquals(voices, STATIC_VOICES.filter((v) => v.language === "en"));
+});
+
+// The registry flag says an administrator WANTS a voice offered. It cannot say
+// whether the machinery behind it exists, and on 2026-09-10 the two disagreed
+// on production: 00059 had reactivated the edge_tts pair for a worker that was
+// never deployed, so every Spanish reader was offered Elvira, and every tap
+// failed with `edge_tts_service_missing`. The runtime now has the final word.
+Deno.test("a voice whose provider is not configured is never offered", async () => {
+  Deno.env.delete("EDGE_TTS_SERVICE_URL");
+  const spanish = STATIC_VOICES.filter((v) => v.language === "es");
+  assert(spanish.length > 0, "the static list must still carry the rows");
+  assert(
+    spanish.every((v) => v.provider === "edge_tts"),
+    "this test is only meaningful while every Spanish voice is edge_tts",
+  );
+
+  assertEquals(await listVoices(null, "es"), []);
+  assertEquals(
+    await listVoices(
+      stubClient(spanish as unknown as Record<string, unknown>[]),
+      "es",
+    ),
+    [],
+  );
+  assertEquals(await getVoiceRecord(null, "elvira"), null);
+  assertEquals(
+    await getVoiceRecord(
+      stubClient([spanish[0]] as unknown as Record<string, unknown>[]),
+      "elvira",
+    ),
+    null,
+  );
+});
+
+// ...and it hands them back the moment the worker exists, with no migration,
+// no deploy, and no third flip of `is_active`.
+Deno.test("configuring the worker restores the voices on its own", async () => {
+  Deno.env.set("EDGE_TTS_SERVICE_URL", "https://edge-tts.internal/synthesize");
+  try {
+    const spanish = STATIC_VOICES.filter((v) => v.language === "es");
+    assertEquals(await listVoices(null, "es"), spanish);
+    assertEquals(await getVoiceRecord(null, "elvira"), spanish[0]);
+  } finally {
+    Deno.env.delete("EDGE_TTS_SERVICE_URL");
+  }
 });
 
 Deno.test("getVoiceRecord returns the database row when the read succeeds", async () => {
