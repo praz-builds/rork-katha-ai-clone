@@ -66,8 +66,11 @@ a `critical` error event.
 Fixed at both levels: the rows are deactivated again (00063), **and**
 `_shared/voices.ts` now asks the running deployment whether a provider is
 configured at all. An operator flipping `is_active` cannot re-break Spanish
-narration while the worker is missing, and the voices return on their own the
-moment the URL is set — no migration, no deploy.
+narration while the worker is missing.
+
+Bringing the pair back takes **both** — a configured `EDGE_TTS_SERVICE_URL`
+*and* reactivating the rows. The deployment gets a veto here; it does not get
+to overrule an administrator who switched a voice off.
 
 *Verified: the endpoint offers 6 working voices; `language=es` returns 0.*
 
