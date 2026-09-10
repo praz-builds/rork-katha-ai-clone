@@ -95,6 +95,31 @@ export const OPENROUTER_MODELS: readonly string[] = [
   OPENROUTER_MODEL,
   "meta/muse-spark-1.3",
 ];
+
+/**
+ * The OpenRouter position for STREAMED prose, without the contributor probe.
+ *
+ * `OPENROUTER_MODEL` is a training-tier id that this account's data policy
+ * answers `404` to. On a buffered call that costs one round trip out of a
+ * hundred-odd seconds and buys optionality for the day the policy changes.
+ * On the streamed path it is a guaranteed wasted round trip in front of the
+ * number the product lives or dies on -- the seconds before the reader sees a
+ * first page -- so the stream starts at the model that actually serves.
+ *
+ * The probe is not deleted, only demoted to last, where it is reached solely
+ * if the serving model fails before writing a token. That keeps the
+ * before-first-token fallback the streamed path has always had, and keeps the
+ * probe alive for the day the policy changes -- it simply stops standing in
+ * front of every reader.
+ */
+export const OPENROUTER_STREAM_MODELS: readonly string[] = [
+  "meta/muse-spark-1.3",
+  // Kept, but LAST. It costs nothing where it now sits -- it is only reached
+  // if the serving model fails before a first token, which is already a bad
+  // day -- and on the day the data policy changes it starts working again
+  // without anyone remembering this file exists.
+  OPENROUTER_MODEL,
+];
 /**
  * The free-tier position: last resort, and empirically thin.
  *

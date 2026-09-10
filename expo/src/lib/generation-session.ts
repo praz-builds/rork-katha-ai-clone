@@ -47,7 +47,7 @@ import {
 } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { clearDraft } from "@/lib/draft-storage";
-import { normalizeText, paginateChapter } from "@/lib/paginate";
+import { normalizeText } from "@/lib/paginate";
 import type { ReimagineRun } from "@/lib/reimagine-client";
 import { CHAPTER_TEXT_CREDITS, STORY_START_CREDITS } from "@/lib/pricing-limits";
 import type {
@@ -75,60 +75,39 @@ import type {
  * prose. The typography is the reader's default, so a "page" here is the same
  * quantity of words the reader will actually get on a page.
  */
-const REVEAL_PAGE_VIEWPORT = { width: 390, height: 640 };
-const REVEAL_PAGE_TYPOGRAPHY = { fontSize: 18, lineHeight: 31 };
-
-/**
- * How many finished pages must exist before the chapter is revealed.
- *
- * The product owner's illustration was "if a chapter is ten pages, they give
- * you the first five" - half the chapter, with the rest arriving behind you.
- * A series chapter is held to 600-900 words by `wordBandFor()` in the backend,
- * call it 3,300 to 5,000 characters, and at the geometry above a page holds
- * about 650 characters. So a chapter is five to eight pages, and "first five
- * of ten" is, in this product's units, three.
- *
- * Three is also the smallest number that keeps the promise for more than an
- * instant: the reader lands on page 1 with two more already written behind
- * it, so they can turn twice before they could possibly outrun the writer.
- *
- * The other half of the rule is "or the chapter is complete, whichever comes
- * first", and it needs no code here: a chapter too short to reach three pages
- * completes, and the completed session carries the server's own chapter.
- */
-export const REVEAL_MIN_PAGES = 3;
-
 /**
  * The prose the reader may be shown, given everything received so far.
  *
- * Returns `""` while the chapter is still below the threshold. Once non-empty
- * it only ever grows, and always by whole pages, so a caller can render it
- * directly without tracking whether a reveal has already happened.
+ * TWO RULES, AND ONLY ONE OF THEM LIVES HERE.
+ *
+ * 1. Never mid-sentence. Everything after the last blank line is a paragraph
+ *    still being written, so it is withheld. That is what stops the reveal
+ *    from ever looking like a typewriter, and it is this function's whole
+ *    job.
+ *
+ * 2. Never reflow a page the reader is looking at. That used to live here too,
+ *    as `REVEAL_MIN_PAGES = 3`: the chapter stayed hidden until three
+ *    NOMINAL pages had settled, measured against a guessed 390x640 viewport.
+ *    It has moved to the reader, which is the only place that knows the real
+ *    page geometry, and which now simply declines to draw the one page that
+ *    can still grow.
+ *
+ * WHY THAT MATTERS. The guessed page held ~720 characters; the reader's real
+ * first page holds ~324, because the chapter opener takes the top of it. So
+ * the old rule withheld roughly 460 words to fill a page that shows 60 --
+ * about seven times more than it needed -- and that wait, 16 to 29 seconds
+ * after the first token, was the largest single component of the time before
+ * anybody saw a word. It also did not actually deliver rule 2: the last page
+ * absorbs a trailing remainder, so the page at the end of the revealed text
+ * mutated as the chapter grew, three-page threshold or not.
+ *
+ * Returns whole settled paragraphs, and only ever grows.
  */
 export function revealableChapterProse(raw: string): string {
   // Everything after the last blank line is a paragraph still being written.
   const lastBreak = raw.lastIndexOf("\n\n");
   if (lastBreak < 0) return "";
-  const settled = normalizeText(raw.slice(0, lastBreak));
-  if (!settled) return "";
-
-  const pages = paginateChapter(
-    settled,
-    REVEAL_PAGE_VIEWPORT,
-    REVEAL_PAGE_TYPOGRAPHY,
-  );
-  // Drop the last page: it is the one the next chunk lands in.
-  const finished = pages.slice(0, -1);
-  if (finished.length < REVEAL_MIN_PAGES) return "";
-
-  // Back off to the last paragraph that ends inside those pages. A page
-  // boundary is a sentence boundary, so cutting at it directly would end the
-  // reveal in the middle of a paragraph.
-  const pageEnd = finished[finished.length - 1].end;
-  const paragraphEnd = settled.lastIndexOf("\n\n", pageEnd);
-  if (paragraphEnd <= 0) return "";
-
-  return settled.slice(0, paragraphEnd);
+  return normalizeText(raw.slice(0, lastBreak));
 }
 
 // ---------------------------------------------------------------------------

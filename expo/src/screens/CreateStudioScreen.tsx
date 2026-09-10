@@ -201,6 +201,26 @@ export default function CreateStudioScreen({
         setDraft({
           ...restored,
           characters: characters.slice(0, MAX_CHARACTERS),
+          // KIDS MODE IS NOT RESTORED.
+          //
+          // Everything else in a draft is work in progress worth getting
+          // back: the idea, the premise, the cast, the moments. Kids Mode is
+          // not work, it is a decision about who a story is FOR, and it
+          // changes what gets written -- the genre list shrinks, spice is
+          // forced to sweet, the length changes, the content rating changes.
+          //
+          // Restoring it silently, up to seven days after it was set, means
+          // opening Create and finding the switch already on with no memory
+          // of turning it on. The owner reported exactly that and read it as
+          // the app guessing. A brief that arrives pre-decided about its
+          // audience is a guess, however it got there.
+          //
+          // The cost of this choice, stated plainly: someone part-way through
+          // composing a children's story who reloads has to turn it back on.
+          // They will see that they need to -- it is the first control on the
+          // screen and it is now legible -- whereas the reverse mistake is
+          // invisible until the story comes back wrong.
+          audienceMode: INITIAL_DRAFT.audienceMode,
         });
       })
       .finally(() => {

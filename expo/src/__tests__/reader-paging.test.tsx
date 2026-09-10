@@ -131,18 +131,23 @@ it("lays the chapter out as one horizontal, snapping page per computed page", as
 
   // One page column is mounted per page the paginator produced, so the
   // pager's scroll offsets and the page indices are the same coordinate.
-  const pageCount = pageCountFrom(view.getAllByText(/^Page \d+ of \d+$/));
-  expect(pageCount).toBeGreaterThan(2);
-  for (let number = 1; number <= pageCount; number += 1) {
-    expect(view.getAllByText(`Page ${number} of ${pageCount}`).length).toBeGreaterThan(0);
-  }
-  // One footer per page, plus the chrome's own readout of the same wording.
-  expect(view.getAllByText(/^Page \d+ of \d+$/)).toHaveLength(pageCount + 1);
+  //
+  // The footer says "Page three", not "Page 3 of 19". The total is a moving
+  // number while a chapter is being written and watching it climb reads like
+  // the book growing under you; the page you are on is the part that is
+  // stable and the part a reader uses.
+  const labels = view.getAllByTestId(/^reader-page-label-\d+$/);
+  expect(labels.length).toBeGreaterThan(2);
+  expect(labels[0]).toHaveTextContent("Page one");
+  expect(labels[1]).toHaveTextContent("Page two");
+  expect(labels[2]).toHaveTextContent("Page three");
+  // No page carries a running total any more.
+  expect(view.queryAllByText(/^Page \d+ of \d+$/)).toHaveLength(1);
 });
 
 it("a settled swipe moves the reader forward and the Pages control follows it", async () => {
   const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
-  const pageCount = pageCountFrom(view.getAllByText(/^Page \d+ of \d+$/));
+  const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;
   expect(pageCount).toBeGreaterThan(2);
 
   await act(async () => {
@@ -166,7 +171,7 @@ it("a settled swipe moves the reader forward and the Pages control follows it", 
 
 it("the Pages control still drives the pager, so the sync runs both ways", async () => {
   const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
-  const pageCount = pageCountFrom(view.getAllByText(/^Page \d+ of \d+$/));
+  const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;
 
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Toggle reader controls"));
@@ -312,4 +317,52 @@ it("a word is still tappable with the pager mounted, and each word keeps one ind
 
   await waitFor(() => expect(mockSavePhrase).toHaveBeenCalledTimes(1));
   expect(mockSavePhrase.mock.calls[0][0]).toMatchObject({ phrase: "lighthouse" });
+});
+
+/**
+ * The blank page.
+ *
+ * A page outside the render window draws an empty body, and the window used
+ * to be centred on `pageIndex`, which only moved when `onMomentumScrollEnd`
+ * fired. That event never fires for a trackpad or a mouse wheel and lags a
+ * fast fling, so jumping to page three -- by flinging, or by dragging the page
+ * slider -- landed on a page whose prose had never been asked to render. The
+ * reader saw "Page 3 of 9" over nothing at all.
+ */
+it("a page jumped to directly still has its prose", async () => {
+  const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
+  const labels = view.getAllByTestId(/^reader-page-label-\d+$/);
+  expect(labels.length).toBeGreaterThan(3);
+
+  const bodyOf = (index: number) =>
+    view.getByTestId(`reader-page-body-${index}`);
+
+  // A scroll with no momentum end -- exactly what a wheel or trackpad
+  // produces -- must still bring the destination page's prose with it.
+  await act(async () => {
+    fireEvent.scroll(view.getByTestId("reader-pager"), settledSwipeTo(3));
+  });
+
+  await waitFor(() => {
+    expect(bodyOf(3).props.children).toBeTruthy();
+  });
+});
+
+it("the page slider lands on prose, not on an empty page", async () => {
+  const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+  // Three forward taps, with no scroll event of any kind in between: the
+  // window has to follow the committed page as well as the live offset.
+  for (let step = 0; step < 3; step += 1) {
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText("Next page"));
+    });
+  }
+
+  await waitFor(() => {
+    expect(view.getByTestId("reader-page-body-3").props.children).toBeTruthy();
+  });
 });

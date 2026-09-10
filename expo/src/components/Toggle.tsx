@@ -118,11 +118,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  /*
+    OFF HAS TO LOOK OFF.
+
+    The off track was `borderStrong` (#D7D5D0) carrying a white thumb, on a
+    #F3F2EF page. Three near-identical warm neutrals stacked on each other:
+    the owner read the Kids Mode row as switched ON when it was off, and they
+    were right to -- the only cue distinguishing the two states was which end
+    a white circle sat at, against a track barely darker than the page.
+
+    So the off state is now recessed rather than merely pale: a darker track
+    with an inset edge, and a thumb that carries a border so its position
+    reads at a glance. The on state is unchanged -- accent fill, and now
+    obviously different from this.
+  */
   track: {
     width: controls.toggleTrackWidth,
     height: controls.toggleTrackHeight,
     borderRadius: radius.pill,
-    backgroundColor: colors.borderStrong,
+    backgroundColor: colors.track,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
     padding: controls.toggleInset,
     justifyContent: "center",
     overflow: "hidden",
@@ -143,6 +159,8 @@ const styles = StyleSheet.create({
     height: controls.toggleThumb,
     borderRadius: controls.toggleThumb / 2,
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
     boxShadow: shadows.card,
   },
   thumbDisabled: {

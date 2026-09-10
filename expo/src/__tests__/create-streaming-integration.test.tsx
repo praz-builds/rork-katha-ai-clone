@@ -311,7 +311,7 @@ afterEach(() => {
 });
 
 describe("a generation hands over finished pages, never a typewriter", () => {
-  it("shows nothing of the chapter while it is still under the threshold", async () => {
+  it("never puts half a sentence on screen", async () => {
     const stream = openStream();
     const { view } = await startAndRender();
 
@@ -329,15 +329,15 @@ describe("a generation hands over finished pages, never a typewriter", () => {
     expect(view.getByTestId("generating-overlay")).toBeTruthy();
     expect(visibleText(view)).not.toContain("The door was not");
 
+    // A settled paragraph is enough to leave the loader. It is NOT enough to
+    // draw a page: the reader only draws pages whose end can no longer move,
+    // so with a single paragraph there is nothing to show yet and the writing
+    // tail carries the wait. What must never happen -- at any point above or
+    // below -- is half a sentence appearing.
     await stream.release(delta(" there yesterday.\n\n"));
-    // Even a COMPLETE paragraph is not enough. One settled paragraph is not a
-    // finished page, and a page that keeps growing under the reader is the
-    // thing the threshold exists to prevent.
-    expect(view.getByTestId("generating-overlay")).toBeTruthy();
+    expect(visibleText(view)).not.toContain("The door was not there yesterday. She");
 
     await stream.release(delta(PARAGRAPH));
-    expect(view.getByTestId("generating-overlay")).toBeTruthy();
-
     await stream.finishWith(DONE_EVENT);
   });
 
@@ -345,7 +345,7 @@ describe("a generation hands over finished pages, never a typewriter", () => {
     const stream = openStream();
     const { session, view } = await startAndRender();
 
-    // Enough settled prose to clear REVEAL_MIN_PAGES with room to spare.
+    // Enough settled prose for several pages whose ends can no longer move.
     await stream.release(delta(OPENING + PARAGRAPH.repeat(9)));
 
     // THE ASSERTION THIS FILE EXISTS FOR. `done` has not been sent - the
@@ -362,10 +362,12 @@ describe("a generation hands over finished pages, never a typewriter", () => {
       .toBe(true);
     expect(visibleText(view)).toContain("The door was not there yesterday.");
 
-    // The page count is honest about counting what EXISTS, and the last
-    // available page says so.
+    // The page names itself and nothing else: no running total climbing as
+    // the chapter is written, and no "· writing" duplicating what the writing
+    // tail already says where the writing is happening.
     const writing = visibleText(view);
-    expect(writing).toMatch(/Page 1 of \d+ · writing/);
+    expect(writing).toContain("Page one");
+    expect(writing).not.toMatch(/Page \d+ of \d+ · writing/);
     expect(writing).toContain("Still writing...");
 
     // And the paragraph the model is mid-way through is not among them. `TAIL`
@@ -425,16 +427,16 @@ describe("a generation hands over finished pages, never a typewriter", () => {
     expect(text).not.toContain("Still writing...");
   });
 
-  it("never strands the writer on the crafting screen when the chapter is too short to reveal", async () => {
-    // The other half of "three pages, or the whole chapter, whichever comes
-    // first". A chapter under the threshold is never revealed mid-stream at
-    // all - it goes from the crafting screen straight to the finished text.
+  it("never strands the writer on the crafting screen on a short chapter", async () => {
+    // A chapter with only a paragraph or two in it never accumulates a page
+    // whose end is fixed, so nothing is drawn mid-stream -- and the risk is
+    // that the writer sits on the loader until the very end and then finds
+    // the tail still saying "Still writing...". It has to land on the
+    // finished text, cleanly, however short it was.
     const stream = openStream();
     const { view } = await startAndRender();
 
     await stream.release(delta(OPENING));
-    expect(view.getByTestId("generating-overlay")).toBeTruthy();
-
     await stream.finishWith(DONE_EVENT);
 
     expect(view.queryByTestId("generating-overlay")).toBeNull();

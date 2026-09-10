@@ -57,8 +57,6 @@ import {
   CLASSIFICATION_NOT_ATTEMPTED,
   type ClassificationOutcome,
   classifyIdea,
-  GENERATION_GROUNDING_DEADLINE_MS,
-  groundingCardsWithin,
   reportClassificationFailure,
 } from "../_shared/grounding-pipeline.ts";
 import type { GroundingCard } from "../_shared/grounding-types.ts";
@@ -76,6 +74,7 @@ import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
   buildStoryProsePrompt,
   buildUserPrompt,
+  PROSE_CLOSING_INSTRUCTION,
 } from "../_shared/story-prompts.ts";
 import {
   buildChapterMetadataPrompt,
@@ -213,14 +212,33 @@ serve(async (req) => {
           : CLASSIFICATION_NOT_ATTEMPTED
       ).catch(() => CLASSIFICATION_NOT_ATTEMPTED);
 
-    const needsGroundingFallback = grounding.length === 0;
-    const groundingFallback = needsGroundingFallback
-      ? groundingCardsWithin(
-        classificationPromise,
-        serviceClient,
-        GENERATION_GROUNDING_DEADLINE_MS,
-      )
-      : Promise.resolve<GroundingCard[]>([]);
+    // NO GROUNDING-CARD WINDOW ON THE STREAMED PATH.
+    //
+    // This used to build `groundingCardsWithin(classificationPromise, ...,
+    // GENERATION_GROUNDING_DEADLINE_MS)` whenever the brief arrived without
+    // cards, and then AWAIT it before the prompt was built. It cost ~8.7
+    // seconds of the reader's wait and returned nothing, every time:
+    //
+    //   * The create studio never shapes, so `grounding` is always empty here
+    //     and the window always opened.
+    //   * Classification takes 23-25s. The window is 9s. It lost the race on
+    //     every run.
+    //   * Even had it won, a card needs a SECOND model call inside whatever
+    //     remained of the 9s, so the expected yield was zero either way.
+    //
+    // Worse, it was invisible: `startedAt` -- the origin of the `first_token`
+    // number in `done.timings` -- is set AFTER this await, so the metric we
+    // were using to judge generation speed excluded the single largest
+    // serial wait in front of it.
+    //
+    // The buffered `generate-story` keeps its window: nothing is on screen
+    // there until the whole chapter lands, so nine seconds of enrichment buys
+    // something rather than delaying the first page.
+    //
+    // The SAFETY GATE IS UNTOUCHED. `classificationPromise` still starts
+    // above, is still awaited after the chapter is persisted, and still
+    // decides `entity_gate_reason` and the applied visibility. Only the card
+    // enrichment -- prose flavour, never a safety control -- is off the path.
 
     const { data: begun, error: beginError } = await serviceClient.rpc(
       "begin_story_generation",
@@ -417,13 +435,8 @@ serve(async (req) => {
             chapterLength,
             plannedChapterCount,
           };
-          // Cards only. The classification behind them is read after the
-          // chapter is persisted, where the wait is free - see the note where
-          // `classificationPromise` is created.
-          const fallbackCards = await groundingFallback;
-          const resolvedGrounding = fallbackCards.length
-            ? fallbackCards
-            : grounding;
+          // Whatever the brief itself carried, and nothing fetched here.
+          const resolvedGrounding = grounding;
 
           // The reader's saved phrases seed their next story. Best-effort: an
           // empty list renders the prompt byte-identically, so a lookup failure
@@ -435,21 +448,40 @@ serve(async (req) => {
           );
 
           const systemPrompt = buildStoryProsePrompt(promptParams);
-          const userPrompt = buildUserPrompt({
-            ...promptParams,
-            genres,
-            seed,
-            characters,
-            whereAndWhen,
-            moments,
-            beats,
-            chapterNumber: 1,
-            storyValues,
-            writingStyle,
-            avoid,
-            savedPhrases,
-            grounding: resolvedGrounding,
-          });
+          // ASK FOR ONE THING.
+          //
+          // `buildStoryProsePrompt` ends with "Do not return JSON... Begin
+          // with the first sentence of the story itself", and this call used
+          // to let `buildUserPrompt` append its default closing line:
+          // "Respond with a JSON object only." The model was handed two
+          // contradictory output contracts in the same request and had to
+          // spend reasoning deciding which one won.
+          //
+          // The tail risk was worse than the delay: had it ever obeyed the
+          // JSON line, the first token would have been `{`, and
+          // `revealableChapterProse` would have sat waiting for a paragraph
+          // break that never arrived while the reader watched a loader.
+          //
+          // `continue-story` already builds its prompt this way; the first
+          // chapter was the one that did not.
+          const userPrompt = `${
+            buildUserPrompt({
+              ...promptParams,
+              genres,
+              seed,
+              characters,
+              whereAndWhen,
+              moments,
+              beats,
+              chapterNumber: 1,
+              storyValues,
+              writingStyle,
+              avoid,
+              savedPhrases,
+              grounding: resolvedGrounding,
+              omitClosingInstruction: true,
+            })
+          }\n\n${PROSE_CLOSING_INSTRUCTION}`;
 
           const band = wordBandFor(storyMode, audienceMode, chapterLength);
           let firstTokenAt = 0;

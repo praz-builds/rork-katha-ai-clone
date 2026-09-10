@@ -883,7 +883,14 @@ function StorySetupScreen({
                         ? <Image source={{ uri: saved.portraitUrl }} resizeMode="cover" style={styles.savedChipPortrait} />
                         : <View style={[styles.savedChipPortrait, styles.savedChipInitialWrap]}><Text style={styles.savedChipInitial}>{saved.name.trim().slice(0, 1).toUpperCase() || "?"}</Text></View>}
                       <Text numberOfLines={1} style={[styles.savedChipLabel, atCap && styles.savedChipLabelDisabled]}>{saved.name}</Text>
-                      {added ? <CheckCircle2 size={14} color={colors.accent} /> : null}
+                      {/* A tick when this person is already in the story, a
+                          plus when tapping would add them. The chip used to
+                          show a tick or nothing at all, so an unused saved
+                          character read as a label rather than as something
+                          you could put in the story. */}
+                      {added
+                        ? <CheckCircle2 size={14} color={colors.accent} />
+                        : <Plus size={14} color={atCap ? colors.tertiary : colors.accent} />}
                     </Pressable>
                   );
                 })}

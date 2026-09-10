@@ -201,7 +201,42 @@ const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: 
  * touch targets on screen to make two of them visible. One page either side
  * is enough for the next page to be drawn before the swipe lands on it.
  */
-const PAGE_RENDER_WINDOW = 1;
+
+/**
+ * "one", "two", ... for the page label.
+ *
+ * Spelled out up to twenty because that is where it stops reading as prose
+ * and starts reading as data; beyond that the digits are clearer than the
+ * words, and a chapter that long is rare enough not to matter.
+ */
+const PAGE_WORDS = [
+  "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+  "seventeen", "eighteen", "nineteen", "twenty",
+] as const;
+
+function pageWord(page: number): string {
+  return PAGE_WORDS[page - 1] ?? String(page);
+}
+
+/**
+ * How many pages either side of the visible one render their prose.
+ *
+ * Was 1, and that produced the most visible bug in the reader: a blank page
+ * with a page number under it. A page outside the window renders an empty
+ * `<Text>`, and the window is centred on `visiblePage`, which used to be
+ * updated only by `onMomentumScrollEnd`. That event does not fire for a
+ * trackpad or mouse wheel at all, and lags a fast swipe on a phone -- so
+ * jumping to page 3, whether by flinging or by dragging the page slider,
+ * landed on a page whose body had never been asked to render. It said
+ * "Page 3 of 9" over nothing.
+ *
+ * Two changes together fix it: the window now follows the live scroll offset
+ * (see `handlePagerScroll`), and it is wider. Two is not expensive -- a page
+ * body is one `<Text>` of about 600 characters -- and it means an ordinary
+ * swipe always lands on prose that is already mounted.
+ */
+const PAGE_RENDER_WINDOW = 2;
 /**
  * Roughly how tall the chapter opener is: the cover thumbnail (94 wide at 3:4,
  * so ~125), the genre line, the story title, the byline, the "Chapter N"
@@ -429,12 +464,22 @@ export default function ReaderScreen({
     && chapter.chapterNumber === session.chapterNumber;
   const hasFailedHere = session?.phase === "error"
     && chapter.chapterNumber === session.chapterNumber;
-  /** Edit and Reimagine appear here and nowhere earlier. */
-  const chapterComplete = !isWritingHere && !hasFailedHere;
+  /**
+   * Edit and Reimagine appear here and nowhere earlier.
+   *
+   * The session phase is the primary gate, and the prose check behind it is
+   * the backstop: a reader can reach a chapter that is still being written
+   * from somewhere the session is not in scope -- opening the story from
+   * Library while the studio mount is still streaming, say -- and there
+   * `isWritingHere` is false even though the chapter is half a chapter. Both
+   * controls rewrite prose, so neither may be offered against prose that is
+   * not all there yet.
+   */
+  const chapterComplete = !isWritingHere && !hasFailedHere
+    && chapterText(chapter).trim().length > 0;
   /** A bare title page: your own story, or one being written right now. */
   const bareOpener = Boolean(session) || isAuthor;
   const [editOpen, setEditOpen] = useState(false);
-  const [editWandOpen, setEditWandOpen] = useState(false);
   // Reimagine (spec §4): the sheet, the prompt to restore after a failure,
   // the failure itself, and the "Saved to Your stories" toast for a reader
   // whose rewrite landed in a private copy.
@@ -475,12 +520,36 @@ export default function ReaderScreen({
     height: Math.max(260, height - (isDesktop ? 190 : 230)),
     firstPageOffset: CHAPTER_OPENER_HEIGHT,
   }), [height, isDesktop, width]);
-  const pages = useMemo(
+  const allPages = useMemo(
     () => paginateChapter(fullText, pageViewport, {
       fontSize: preferences.typeSize,
       lineHeight: preferences.lineHeight,
     }),
     [fullText, pageViewport.height, pageViewport.width, preferences.lineHeight, preferences.typeSize],
+  );
+  /**
+   * The pages the reader may actually see.
+   *
+   * While the chapter is being written the LAST page is the one the next
+   * chunk lands in: `paginateChapter` absorbs a short trailing remainder into
+   * it (`remaining <= target * 1.12`), so it grows and re-wraps as prose
+   * arrives. Every page before it ends on a hard boundary and, because the
+   * paginator walks greedily forward from character zero, is byte-identical
+   * in every longer prefix -- it can never move again.
+   *
+   * So the rule is simply: while writing, do not draw the page that can still
+   * change. That is the whole no-reflow guarantee, enforced in the one place
+   * that knows the real page size, and it replaces the "wait for three
+   * nominal pages" threshold that used to sit in `generation-session.ts` and
+   * cost 16-29 seconds of the reader's wait to approximate the same promise
+   * less well.
+   *
+   * When nothing has settled into a full page yet this is empty, and the
+   * reader shows the opener and the writing tail exactly as before.
+   */
+  const pages = useMemo(
+    () => (isWritingHere && allPages.length > 1 ? allPages.slice(0, -1) : allPages),
+    [allPages, isWritingHere],
   );
   const searchMatches = useMemo(() => findMatches(fullText, searchQuery), [fullText, searchQuery]);
   // The generated cover first, the bundled seed asset second.
@@ -584,6 +653,8 @@ export default function ReaderScreen({
     setChapterIndex((current) => {
       if (current === at) return current;
       setPageIndex(0);
+    setVisiblePage(0);
+      setVisiblePage(0);
       setAnchorOffset(0);
       return at;
     });
@@ -669,6 +740,10 @@ export default function ReaderScreen({
   const goToPage = useCallback((nextPage: number) => {
     const next = clampIndex(nextPage, pages.length);
     setPageIndex(next);
+    // The render window moves with the jump rather than waiting for the
+    // scroll to report back, so a slider drag lands on prose rather than on
+    // an unrendered page.
+    setVisiblePage(next);
     setAnchorOffset(pages[next]?.start ?? 0);
   }, [pages]);
 
@@ -704,6 +779,29 @@ export default function ReaderScreen({
     pagerRef.current?.scrollTo({ x: target * width, y: 0, animated });
   }, [chapter.id, pageIndex, pages.length, width]);
 
+  /**
+   * The page the render window is centred on, updated on every scroll frame.
+   *
+   * Deliberately separate from `pageIndex`. `pageIndex` is the reader's
+   * COMMITTED position -- it drives the slider, the reading anchor and the
+   * chapter-end seam, and it should only move when a page turn settles.
+   * `visiblePage` is just "what is under the viewport right now", which is
+   * what deciding whether to render a page body actually needs. Keeping them
+   * apart means the window can follow a finger mid-swipe without the anchor
+   * being rewritten on every frame.
+   */
+  const [visiblePage, setVisiblePage] = useState(0);
+
+  const handlePagerScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
+    if (layoutWidth <= 0) return;
+    const next = clampIndex(
+      Math.round(event.nativeEvent.contentOffset.x / layoutWidth),
+      pages.length,
+    );
+    setVisiblePage((current) => (current === next ? current : next));
+  }, [pages.length, width]);
+
   const handlePagerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     // The pager's own width, not the window's: they are the same on a phone,
     // but reading the measured value means a rotation or a split-view resize
@@ -713,6 +811,7 @@ export default function ReaderScreen({
     if (layoutWidth <= 0) return;
     const next = clampIndex(Math.round(event.nativeEvent.contentOffset.x / layoutWidth), pages.length);
     pagerPageRef.current = next;
+    setVisiblePage(next);
     if (next === pageIndex) return;
     setPageIndex(next);
     // Keeps the anchor in the same coordinate space the slider and search
@@ -882,6 +981,8 @@ export default function ReaderScreen({
         setReimagineWaiting(false);
         setChapterEdits((prev) => ({ ...prev, [chapterId]: result.chapter.paragraphs.join("\n\n") }));
         setPageIndex(0);
+        setVisiblePage(0);
+      setVisiblePage(0);
         if (result.forked) {
           setForkToast(true);
           setTimeout(() => setForkToast(false), 2500);
@@ -1124,10 +1225,17 @@ export default function ReaderScreen({
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handlePagerMomentumEnd}
+          onScroll={handlePagerScroll}
           scrollEventThrottle={16}
         >
           {pages.map((slice, index) => {
-            const withinWindow = Math.abs(index - pageIndex) <= PAGE_RENDER_WINDOW;
+            // Centred on what is on screen, not on the committed page: see
+            // PAGE_RENDER_WINDOW. Either being close enough is sufficient, so
+            // a page is mounted whether the reader arrived by swiping, by
+            // dragging the slider, or by a jump that has not settled yet.
+            const withinWindow =
+              Math.abs(index - visiblePage) <= PAGE_RENDER_WINDOW
+              || Math.abs(index - pageIndex) <= PAGE_RENDER_WINDOW;
             // The end-of-chapter seam fires on ARRIVAL at the last page, not
             // on the last page merely being mounted. Every page of the chapter
             // is mounted for the pager's benefit, so gating on `index ===
@@ -1159,6 +1267,19 @@ export default function ReaderScreen({
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                   contentContainerStyle={styles.scrollContent}
+                  /*
+                    Bounded by the page, so it can actually scroll.
+
+                    Without a height this scroller sized itself to its own
+                    content, which means it never had anything to scroll --
+                    content simply grew past the bottom of the screen and was
+                    clipped. That is why the chapter-end module was cut off:
+                    the last page carries "What's next?", the direction chips,
+                    the engagement row and the comments, and none of it can
+                    fit one screen. `flex: 1` makes the scroller exactly one
+                    page tall, which is the whole point of an overflow valve.
+                  */
+                  style={styles.pageScroll}
                 >
                   <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
                     {index === 0 ? (
@@ -1208,6 +1329,7 @@ export default function ReaderScreen({
                     ) : null}
                     <View style={styles.pageFrame}>
                       <Text
+                        testID={`reader-page-body-${index}`}
                         selectable
                         style={[
                           styles.pageText,
@@ -1244,15 +1366,12 @@ export default function ReaderScreen({
                         : null}
                     </View>
                     {/*
-                      "Page 1 of 4 · writing" while the chapter is still being
-                      written, because the count is honest about being a count
-                      of what EXISTS rather than of what the chapter will be. It
-                      grows; when the chapter lands it is simply the total.
+                      The page number lives OUTSIDE this scroller -- see the
+                      pinned footer below the ScrollView. Keeping it in the
+                      content flow put it directly under the last line of
+                      prose, so it sat at a different height on every page and
+                      the eye had to hunt for it.
                     */}
-                    <Text style={[styles.pageFooter, { color: theme.muted }]}>
-                      Page {index + 1} of {pages.length}
-                      {isWritingHere ? " · writing" : ""}
-                    </Text>
                     {showsChapterEnd ? (
                       <View>
                       {shareToast ? (
@@ -1329,6 +1448,24 @@ export default function ReaderScreen({
                     ) : null}
                   </View>
                 </ScrollView>
+                {/*
+                  The page number, pinned to the page rather than trailing the
+                  prose.
+
+                  "Page one", not "Page 1 of 9": the total is a moving number
+                  while a chapter is being written, and watching it climb from
+                  4 to 9 as you read reads like the book is growing under you.
+                  The page you are on is the only part of that a reader needs.
+                  The "· writing" suffix is gone for the same reason -- the
+                  writing tail already says so, in the one place where it is
+                  actually happening.
+                */}
+                <Text
+                  style={[styles.pageFooter, { color: theme.muted }]}
+                  testID={`reader-page-label-${index}`}
+                >
+                  Page {pageWord(index + 1)}
+                </Text>
               </View>
             );
           })}
@@ -1692,7 +1829,12 @@ const styles = StyleSheet.create({
   page: {
     flexGrow: 0,
     flexShrink: 0,
+    /* A column: the scroller takes the room that is left, the page label sits
+       under it in its own strip. */
+    flexDirection: "column",
+    height: "100%",
   },
+  pageScroll: { flex: 1 },
   scrollContent: {
     paddingTop: spacing.xxl,
     paddingBottom: spacing.huge * 2,
@@ -1758,9 +1900,23 @@ const styles = StyleSheet.create({
     fontFamily: fonts.reader,
     letterSpacing: 0,
   },
+  /*
+    Pinned to the bottom of the page box, so it is in the same place on every
+    page instead of wherever that page's prose happened to end.
+  */
+  /*
+    A row beneath the scroller, not an overlay on top of it.
+
+    Absolutely positioning it over the page put it in the same place on every
+    page -- which was the point -- but prose then slid underneath it as the
+    page scrolled, and the last line of a full page sat behind the label. As
+    the final child of a column whose scroller is `flex: 1`, it occupies its
+    own strip at the foot of the page: same place on every page, and nothing
+    can ever be drawn under it.
+  */
   pageFooter: {
-    marginTop: spacing.xl,
-    marginBottom: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
     fontFamily: fonts.ui,
     fontSize: 13,
     fontWeight: "700",

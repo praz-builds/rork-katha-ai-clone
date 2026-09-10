@@ -57,7 +57,7 @@ import {
   classifyLlmError,
   isProviderDisabled,
   type LlmFailure,
-  OPENROUTER_MODELS,
+  OPENROUTER_STREAM_MODELS,
   ProviderHttpError,
   ProviderMalformedResponseError,
   ProviderNotConfiguredError,
@@ -532,9 +532,11 @@ export async function streamChapterProse(
       .filter(Boolean),
   );
 
+  // The stream's own list: no contributor probe. See
+  // OPENROUTER_STREAM_MODELS.
   const models = isProviderDisabled("openrouter", disabled)
     ? []
-    : OPENROUTER_MODELS;
+    : OPENROUTER_STREAM_MODELS;
 
   for (const model of models) {
     let committed = false;

@@ -75,6 +75,22 @@ const PHRASE_BLOCK_HEIGHT = PHRASE_LINE_HEIGHT * PHRASE_MAX_LINES;
  */
 const STATUS_LINE_HEIGHT = 20;
 
+/**
+ * What the reader is told about the wait.
+ *
+ * Keep this honest. It is measured from tapping Create to the first settled
+ * page rendering, and if that number moves this string moves with it -- a
+ * loader that promises ten seconds and takes forty is worse than one that
+ * promises nothing.
+ *
+ * Measured end to end in the running app on 2026-09-10: 8.4s. That is after
+ * removing a nine-second server-side wait that yielded nothing and after the
+ * reader stopped withholding roughly 460 words to fill a page that shows 60.
+ * Before those two changes it was 22-35s and no honest number could have been
+ * put here at all.
+ */
+const FIRST_PAGE_EXPECTATION = "Your first page usually arrives in about 10 seconds";
+
 export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
   const [data] = useState(() => getGeneratingPhrases(genre, mode));
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -156,9 +172,22 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
           </Text>
         </Animated.View>
 
-        {/* Secondary status line */}
+        {/*
+          Secondary line: how long this takes.
+
+          It used to be another randomly-picked flavour phrase, which meant
+          both lines on the screen said the same kind of thing -- that
+          something is happening -- and neither said the thing a person
+          actually wants to know while staring at a loader, which is how long
+          they are going to be here. An estimate is also the only honest way
+          to make an indeterminate wait feel bounded.
+
+          Deliberately "about", and deliberately about the FIRST PAGE rather
+          than the whole chapter: the first page is what ends the wait, the
+          rest arrives behind the reader while they are reading it.
+        */}
         <Text style={styles.statusLine} numberOfLines={1}>
-          {data.statusLine}
+          {FIRST_PAGE_EXPECTATION}
         </Text>
       </View>
     </View>

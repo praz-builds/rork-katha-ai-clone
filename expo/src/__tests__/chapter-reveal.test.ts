@@ -22,7 +22,6 @@
  */
 
 import {
-  REVEAL_MIN_PAGES,
   revealableChapterProse,
 } from "@/lib/generation-session";
 
@@ -40,18 +39,16 @@ function streamOf(n: number, tail = ""): string {
 }
 
 describe("what a reader may be shown mid-generation", () => {
-  it("shows nothing at all until the threshold is cleared", () => {
-    // A part-written word, a finished sentence, a finished paragraph. Under the
-    // behaviour this replaces, every one of these was on screen.
+  it("shows nothing until a paragraph has actually finished", () => {
+    // A part-written word and a sentence with no paragraph break after it are
+    // both still being written, and neither may appear.
     expect(revealableChapterProse("The door was not")).toBe("");
     expect(revealableChapterProse("The door was not there yesterday.")).toBe("");
-    expect(revealableChapterProse("The door was not there yesterday.\n\n")).toBe(
-      "",
-    );
-    expect(revealableChapterProse(streamOf(2))).toBe("");
+    // A trailing blank line with nothing before it is not a paragraph either.
+    expect(revealableChapterProse("\n\nThe door was not there")).toBe("");
   });
 
-  it("reveals once enough finished pages exist, and only whole pages", () => {
+  it("reveals settled paragraphs, and only settled paragraphs", () => {
     const revealed = revealableChapterProse(streamOf(12));
     expect(revealed.length).toBeGreaterThan(0);
 
@@ -90,15 +87,29 @@ describe("what a reader may be shown mid-generation", () => {
     expect(previous.length).toBeGreaterThan(0);
   });
 
-  it("holds back at least the threshold's worth of pages before revealing", () => {
-    // Not an assertion about the constant's value - product may retune it -
-    // but about the two numbers agreeing. A threshold of three that revealed
-    // after one page would pass every test above.
-    const perPage = 650;
-    const justUnder = revealableChapterProse(
-      streamOf(Math.max(1, Math.floor((REVEAL_MIN_PAGES * perPage) / 400))),
+  // The page threshold has gone. It lived here as REVEAL_MIN_PAGES = 3 and
+  // measured whole pages against a GUESSED 390x640 viewport, which held about
+  // 720 characters -- while the reader's real first page holds about 324,
+  // because the chapter opener takes the top of it. So it withheld roughly
+  // 460 words to fill a page that shows 60, and that wait was the largest
+  // single component of the time before anyone saw a word.
+  //
+  // The promise it was making -- never reflow a page the reader is looking at
+  // -- now lives in the reader, which knows the real geometry and simply does
+  // not draw the one page that can still grow. What is left here is the rule
+  // this function is actually for: never reveal half a sentence.
+  it("reveals a settled paragraph without waiting for a page to fill", () => {
+    const oneParagraph = "The door was not there yesterday.\n\nShe pushed it";
+    expect(revealableChapterProse(oneParagraph)).toBe(
+      "The door was not there yesterday.",
     );
-    expect(justUnder).toBe("");
+  });
+
+  it("never reveals the paragraph still being written", () => {
+    const midSentence = "Settled paragraph.\n\nShe pushed it open and the hinges";
+    const revealed = revealableChapterProse(midSentence);
+    expect(revealed).toBe("Settled paragraph.");
+    expect(revealed).not.toContain("hinges");
   });
 
   it("treats malformed and empty input as nothing to show", () => {

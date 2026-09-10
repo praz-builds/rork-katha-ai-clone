@@ -323,19 +323,37 @@ describe("the chrome while the chapter is still being written", () => {
     expect(view.getByLabelText("Reimagine")).toBeTruthy();
   });
 
-  it("counts the pages that exist, and says so, until the chapter is finished", async () => {
+  /**
+   * The page label names the page and nothing else.
+   *
+   * It used to read "Page 1 of 4 · writing", which put two moving numbers in
+   * front of the reader: a total that climbs as the chapter is written, and a
+   * status that repeats what the writing tail already says at the point where
+   * the writing is actually happening. Watching "of 4" become "of 9" while
+   * you read is the book growing under you.
+   */
+  it("names the page it is on, without a running total or a status", async () => {
     const live = liveSession();
     await live.write(REVEALED);
     const view = await renderLive(live.id);
 
     await waitFor(() =>
-      expect(view.getByText(/Page 1 of \d+ · writing/)).toBeTruthy()
+      expect(view.getByTestId("reader-page-label-0")).toHaveTextContent("Page one")
     );
+    expect(view.queryByText(/· writing/)).toBeNull();
+    // No page CARRIES a running total. The chrome's slider readout still
+    // shows one, and should: it is a navigation control in one fixed place at
+    // the foot of the screen, where knowing how far through you are is the
+    // whole point. What the reader objected to was the total riding along
+    // with the prose, at a different height on every page.
+    for (const label of view.getAllByTestId(/^reader-page-label-\d+$/)) {
+      expect(label).not.toHaveTextContent(/of \d+/);
+    }
 
     await live.complete();
-    await waitFor(() => expect(view.queryByText(/· writing/)).toBeNull());
-    // Several pages are mounted at once for the pager's benefit, so this is a
-    // count of footers, not of pages on screen.
-    expect(view.getAllByText(/Page \d+ of \d+$/).length).toBeGreaterThan(0);
+    // Still just the page, once the chapter has landed.
+    await waitFor(() =>
+      expect(view.getByTestId("reader-page-label-0")).toHaveTextContent("Page one")
+    );
   });
 });
