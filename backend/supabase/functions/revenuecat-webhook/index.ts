@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { logError } from "../_shared/errors.ts";
 import {
   constantTimeEquals,
   eventDate,
@@ -81,42 +80,22 @@ serve(async (req) => {
       //     user no longer holds, and took the yearly grant with it.
       //
       // The check is the subscription row itself. `record_revenuecat_subscription`
-      // updates only when `last_event_at <= excluded.last_event_at`, so
-      // reading the row back after that call answers the question exactly: if
-      // this event is the one recorded, it is current and the lapse stands;
-      // if the row still names some other event, this expiration lost to
-      // something newer and must not touch the money.
-      const { data: subscription, error: subscriptionError } =
-        await serviceClient
-          .from("revenuecat_subscriptions")
-          .select("last_event_id, product_id, is_active")
-          .eq("user_id", identity.userId)
-          .maybeSingle();
-      if (subscriptionError) throw subscriptionError;
-
-      if (subscription && subscription.last_event_id !== identity.eventId) {
-        // Not an error, and not a duplicate either -- a real expiration that
-        // has been overtaken. Recorded so that a wrongly-kept balance is as
-        // visible as a wrongly-cleared one would have been.
-        await logError({
-          bucket: "payments",
-          severity: "low",
-          source: "runtime",
-          errorCode: "expiration_superseded",
-          error: new Error(
-            "EXPIRATION ignored: a newer subscription event is on record",
-          ),
-          context: { provider: "revenuecat", code: eventType },
-          userId: identity.userId,
-        });
-        return jsonResponse({ ok: true, ignored: "superseded" });
-      }
-
+      // updates only when `last_event_at <= excluded.last_event_at`, so that
+      // row names whichever subscription event is most recent: if this one is
+      // it, the expiration is current and the lapse stands; if the row names
+      // something newer, this expiration lost and must not touch the money.
+      //
+      // The comparison happens INSIDE `lapse_credits`, under the per-user
+      // advisory lock every credit operation takes (00068), not out here.
+      // Reading the row in this function and then calling the RPC would leave
+      // a gap in which a concurrent RENEWAL grants a month of credits that the
+      // call then erases -- a smaller version of the bug being fixed.
       const balance = await lapseCredits(
         serviceClient,
         identity.userId,
         `revenuecat:expiration:${identity.productId}`,
         `rc:${identity.eventId}`,
+        identity.eventId,
       );
       return jsonResponse({ ok: true, balance });
     }

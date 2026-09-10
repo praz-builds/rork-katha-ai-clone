@@ -190,8 +190,12 @@ const VOICE_COLUMNS =
  * A row cannot know this; only the running deployment can. So the runtime
  * answers it, and the registry flag stops being the single point of failure:
  * an operator flipping `is_active` back on cannot re-break narration while
- * the worker is still missing, and the voices reappear on their own the
- * moment the URL is configured. No deploy, no migration, no third flip.
+ * the worker is still missing.
+ *
+ * The two conditions are AND, not OR. Bringing the Spanish voices back takes
+ * both a configured `EDGE_TTS_SERVICE_URL` and an `is_active` the rows do not
+ * currently have -- 00063 cleared it. The deployment gets a veto here; it does
+ * not get to overrule an administrator who has switched a voice off.
  */
 export function isVoiceProviderConfigured(provider: string): boolean {
   if (provider === "edge_tts") {

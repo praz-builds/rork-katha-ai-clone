@@ -56,7 +56,11 @@ jobs:
 
           # The function answers 200 with a per-failure tally rather than
           # failing the request, so a run that reached every subscriber and
-          # refreshed none of them would otherwise look like a success.
-          if echo "$response" | grep -q '"failures":{[^}]'; then
-            echo "::warning::some grants did not refresh; see the response above"
+          # refreshed none of them would otherwise look like a success. The
+          # field is `failed` (a total) alongside `failure_reasons` (the
+          # breakdown) -- not `failures`, which is only the internal variable
+          # name inside the handler.
+          failed=$(echo "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("failed", 0))')
+          if [ "$failed" != "0" ]; then
+            echo "::warning::${failed} grant(s) did not refresh; see failure_reasons above"
           fi

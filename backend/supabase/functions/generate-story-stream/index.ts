@@ -281,9 +281,18 @@ serve(async (req) => {
       // The user's only escape was to start a different story, which left the
       // credits behind.
       //
-      // Reconciling here refunds them and lets the same id start again -- and
-      // a first chapter is the most expensive thing anyone buys, so it is the
-      // worst place in the product to have been silently keeping the money.
+      // Reconciling here returns the credits and, just as importantly, changes
+      // what the user is told. The reply becomes "The previous generation
+      // failed. Start a new request." instead of "Generation is already in
+      // progress." -- and that first wording is the one the client matches to
+      // rotate its request id, so the next attempt is a fresh reservation
+      // rather than another collision with the dead one. The id is NOT reused:
+      // a refunded operation still answers 409 by design, exactly as the
+      // buffered handler has always done.
+      //
+      // A first chapter is the most expensive thing anyone buys, which makes
+      // this the worst place in the product to have been silently keeping the
+      // money.
       if (status === "reserved" && isStaleReservation(begun.updated_at)) {
         const { data: reconciliation, error: reconciliationError } =
           await serviceClient.rpc("refund_generation_operation", {
