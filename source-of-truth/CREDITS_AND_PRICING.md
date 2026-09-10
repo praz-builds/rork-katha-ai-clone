@@ -18,48 +18,46 @@
 
 ## Summary
 
-**One credit = one AI action.** Not one story — one *action*. A story is a
-sequence of chapters, and **starting one costs 3 credits**:
+**One credit = one AI action**, with one deliberate exception: **starting a story
+costs 1 credit and bundles three actions.**
 
-| Its cast | + | Chapter 1's words | + | Chapter 1's art *(this is the cover)* | = | **3 credits** |
+| Its cast | + | Chapter 1's words | + | Chapter 1's art *(this is the cover)* | = | **1 credit** |
 |---|---|---|---|---|---|---|
 
 Every chapter after that is **1 credit**, or 2 if you illustrate it. A 3-chapter
-story is 5 credits; a 15-chapter story is 17. You are charged as each chapter is
+story is 3 credits; a 15-chapter story is 15. You are charged as each chapter is
 written, so a story you abandon costs what it wrote.
 
 Reading is **free and unlimited on every tier, forever**. Audio is **1 credit per
 chapter, unlocked permanently**. Drafting is unlimited by hand and generously
-capped on AI.
+capped on AI. **Reimagining a chapter is free twice, then 1 credit.**
 
-Two subscription audiences, because the product has two:
+One product, three durations. There is no separate reader tier.
 
 | | Weekly | Monthly | Yearly · 3-day trial |
 |---|---|---|---|
-| **Reader** | **$4.99** · 5 credits | **$8.99** · 20/mo | **$29.99** · 20/mo |
-| **Writer** | **$6.99** · 10 credits | **$12.99** · 50/mo | **$49.99** · 50/mo |
+| **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
 The five findings that shape the numbers:
 
-1. **Unbundling the chapter is what makes whole-number credits honest.** The
-   three image actions sit within a factor of two of one another — cover
-   $0.063, chapter art $0.042, a cast of three $0.033 — so each is fairly one
-   credit. **Text stopped being the outlier on 2026-09-05.** At **$0.0160** on
-   `meta/muse-spark-1.3` it is 3.9× cheaper than a cover rather than 16×, and it
-   is the cheapest of four actions rather than a rounding error against three.
-   It is still one credit. Creation cost is still mostly images, but text is now
-   a real share of it — see §2, and note the figure falls to $0.0009 if the
-   contributor tier is ever unblocked.
-2. **The Writer yearly tier is the binding constraint on everything.** At
-   $49.99/yr for 50 credits/month it nets **$0.0708/credit** against
-   **$0.0198–$0.0326** of creation cost depending on story shape (§2). Every
-   future price or grant change is tested against this row first. *(§4's tables
-   still compute against the retired $0.0423 basis and therefore understate every
-   margin — §12 item 10.)*
-3. **A 50-credit Writer grant is more profitable than a 100-credit one**, and not
-   only because of margin. 50 credits is ~16 chapters/month against a working
-   writer's ~63-credit appetite, so overflow demand routes into credit packs at
-   85–90% margin instead of being absorbed by a 40%-margin subscription.
+1. **The bundled start is the most expensive credit in the product, and that is
+   the central fact of this document.** Gemini charges a flat rate per image —
+   **$0.039**, no size or quality parameter — so a cast of three is $0.117 and a
+   cover another $0.039. With chapter text at **$0.0218** streamed, a story start
+   costs **$0.178** for one credit, against $0.0218 for the chapter that follows
+   it. **A story start costs 8× what a chapter costs and is priced the same.**
+   Everything below follows from that ratio: short stories are dear per credit,
+   long ones are cheap, and any free credit is dangerous in proportion to how
+   easily it reaches a story start.
+2. **The yearly plan is the binding constraint on everything.** At $59/yr for 50
+   credits/month it nets **$0.0836/credit** against **$0.0322–$0.0738** of
+   creation cost depending on story shape (§2). Every future price or grant change
+   is tested against this row first, at the **worst** shape and never the blended
+   one.
+3. **A 50-credit grant is more profitable than a 100-credit one**, and not only
+   because of margin. 50 credits is ~50 chapters/month against a working writer's
+   ~63-credit appetite, so overflow demand routes into credit packs at 60–78%
+   margin instead of being absorbed by a ~12%-margin subscription.
 4. **Audio only works as a catalog investment, not a per-user cost.** A Microsoft
    edge-tts narration is estimated at **~$0.001-$0.006** to generate and $0 to
    replay from cache. Narrating the top ~500 chapters ourselves is therefore a
@@ -137,26 +135,27 @@ happens, never up front.
 
 | | Credits |
 |---|---|
-| Its characters — the whole cast, once | 1 |
-| Write a chapter | 1 each |
-| Chapter 1's art — this becomes the cover | 1 |
+| **Start a story** — its cast, chapter 1, and chapter 1's art *(the cover)* | **1** |
+| Write another chapter | 1 each |
 | Art for any other chapter — optional, off by default | 1 each |
+| Regenerate the cover | 1 each |
 
 | Your story | Just the words | Every chapter illustrated |
 |---|---|---|
-| 3 chapters | **5** | **7** |
-| 7 chapters | **9** | **15** |
-| 15 chapters | **17** | **31** |
+| 3 chapters | **3** | **5** |
+| 7 chapters | **7** | **13** |
+| 15 chapters | **15** | **29** |
 
 **You pay as each chapter is written**, so a story you stop halfway costs what
 it wrote, not what it planned.
 
 **Bringing your own cover is free, and it replaces chapter 1's art rather than
-sitting on top of it.** Upload before you generate and chapter 1's image is
-never made: starting the story costs **2**, not 3. Upload afterwards and it
-replaces the generated cover — but the credit that made it is not refunded,
-because that generation was delivered. Keeping the free typographic concept card
-is also a legitimate published look, and also costs nothing.
+sitting on top of it.** The story start is a bundle, so uploading before you
+generate does not make it cheaper — it is already 1 credit, the floor. What it
+does buy is a cover you chose. Upload afterwards and it replaces the generated
+one; the credit that made it is not refunded, because that generation was
+delivered. Keeping the free typographic concept card is also a legitimate
+published look, and also costs nothing.
 
 **Listening — 1 credit**
 
@@ -176,6 +175,7 @@ plan; we don't lock voices behind a tier.
 | Type, rewrite, restructure your draft by hand | **0**, unlimited |
 | Ask AI to redraft a chapter | **0** — 3 free per chapter |
 | Ask AI to rewrite a paragraph | **0** — 20 free per chapter |
+| **Reimagine a chapter** — re-prompt it, recast it | **0** — **2 free per chapter**, then **1** each |
 | Regenerate a cover you paid for | **1** — there is no free retry |
 
 Past those limits, each further AI action is 1 credit.
@@ -187,7 +187,7 @@ one-credit refund without discarding the completed chapter. Every time.
 
 ### Where credits come from
 
-**Free, every month**
+**Free**
 
 | | Credits |
 |---|---|
@@ -196,25 +196,36 @@ one-credit refund without discarding the completed chapter. Every time.
 | Welcome bonus | **10**, once |
 
 A streak is consecutive days with reading activity. Miss a day and it resets to
-zero — the rewards start again from day 2.
+zero — the rewards start again from day 2. **Missed one?** Read for 30 minutes
+the next day and the streak carries on as if you hadn't (twice a month).
 
 **Plans**
 
 | | Weekly | Monthly | Yearly |
 |---|---|---|---|
-| **Reader** | $4.99 · 5 credits | $8.99 · 20/mo | $29.99 · 20/mo |
-| **Writer** | $6.99 · 10 credits | $12.99 · 50/mo | $49.99 · 50/mo |
+| **Katha** | $5.99 · 20 credits | $12.99 · 50/mo | **$59** · 50/mo |
 
 Yearly plans start with a **3-day free trial**. Reading stays free whether you
-subscribe or not — plans are for creating and listening.
+subscribe or not — plans are for creating and listening. **A plan is always the
+best price per credit**, at every size, against every pack below.
+
+Paid plans also unlock **Download PDF**, which the free tier does not have.
 
 **Credit packs** — no subscription needed
 
-| | |
-|---|---|
-| 10 credits | $4.99 |
-| 40 credits | $14.99 |
-| 90 credits | $29.99 |
+| | | |
+|---|---|---|
+| 5 credits | $1.99 | |
+| 10 credits | $3.49 | |
+| 30 credits | $9.99 | |
+| 100 credits | $24.99 | |
+| 300 credits | $64.99 | |
+| 1000 credits | $119.99 | best pack value |
+
+**Pack credits don't expire at the end of the month.** Plan credits refresh each
+month and don't stack — run out on the 20th and you wait for the next cycle. Pack
+credits sit in your balance until you spend them. That, not price, is what a pack
+is for.
 
 ### The rules
 
@@ -372,68 +383,64 @@ number here is an estimate from published rates or infrastructure arithmetic.
 
 ### The credit's cost basis
 
+> **Rebuilt 2026-09-10** against the flat Gemini image rate and the bundled story
+> start. The tables this replaces used $0.063 / $0.042 / $0.011 image tiers the
+> provider no longer prices, and a $0.033 cast that is now $0.117.
+
 | Action | Cost | Credits |
 |---|---|---|
-| Chapter text — live, `meta/muse-spark-1.3` | $0.0160 | 1 |
-| Chapter text — if the contributor tier is enabled | $0.0009 | 1 |
-| Cover @ 1024×1536 medium | $0.063 | 1 |
-| Chapter art @ 1024×1024 medium | $0.042 | 1 |
-| Character set — 3 @ 1024×1024 low | $0.033 | 1 |
+| **Start a story** — cast of 3 + chapter 1 + cover | **$0.178** | **1** |
+| Chapter text, streamed — live `meta/muse-spark-1.3` | $0.0218 | 1 |
+| Chapter text — if the contributor tier is enabled | $0.0013 | 1 |
+| Any single image — cover, chapter art, one portrait | **$0.039** | — |
+| Chapter art | $0.039 | 1 |
+| Cover regeneration | $0.039 | 1 |
+| Reimagine a chapter | $0.0218 | 0 ×2, then 1 |
 | Audio unlock — cached chapter | **~$0** | 1 |
-| Audio unlock — triggers fresh edge-tts narration | ~$0.001-$0.006 ⚠ | 1 |
-| Audio unlock — triggers MiniMax fallback narration | ~$0.22-$0.45 ⚠ | 1 |
+| Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
 
-**A story, not a chapter, is the unit that matters** — the blended cost per
-credit depends on its shape, because the cast and the cover are paid once and
-amortise across every chapter after them.
+**The spread across a single credit is 8×**, from $0.0218 for a chapter to $0.178
+for a story start. That is the widest this document has ever priced at one credit.
+It is a deliberate product choice — a one-credit start is the simplest thing to
+put on a Create screen — paid for in margin on short stories.
 
-**Live basis, `meta/muse-spark-1.3` at $0.0160 per chapter:**
+**A story, not a chapter, is the unit that matters.** The cast and the cover are
+paid once and amortise across every credit after them, so the blended cost per
+credit depends on the story's shape.
 
-| Story | Credits | Cost | **Blended $/credit** |
-|---|---|---|---|
-| 3 chapters, words only | 5 | $0.144 | $0.0288 |
-| 7 chapters, words only | 9 | $0.208 | $0.0231 |
-| 15 chapters, words only | 17 | $0.336 | $0.0198 |
-| 3 chapters, illustrated | 7 | $0.228 | **$0.0326** |
-| 7 chapters, illustrated | 15 | $0.460 | $0.0307 |
-| 15 chapters, illustrated | 31 | $0.924 | $0.0298 |
-
-**If the contributor tier is enabled, $0.0009 per chapter:**
+**Live basis, streamed text at $0.0218 per chapter, every image $0.039:**
 
 | Story | Credits | Cost | **Blended $/credit** |
 |---|---|---|---|
-| 3 chapters, words only | 5 | $0.0987 | $0.0197 |
-| 7 chapters, words only | 9 | $0.1023 | $0.0114 |
-| 15 chapters, words only | 17 | $0.1095 | **$0.0064** |
-| 3 chapters, illustrated | 7 | $0.1827 | $0.0261 |
-| 7 chapters, illustrated | 15 | $0.3543 | $0.0236 |
-| 15 chapters, illustrated | 31 | $0.6975 | $0.0225 |
+| 3 chapters, words only | 3 | $0.221 | **$0.0738** ← worst |
+| 7 chapters, words only | 7 | $0.309 | $0.0441 |
+| 15 chapters, words only | 15 | $0.483 | $0.0322 |
+| 3 chapters, illustrated | 5 | $0.299 | $0.0599 |
+| 7 chapters, illustrated | 13 | $0.543 | $0.0417 |
+| 15 chapters, illustrated | 29 | $1.029 | **$0.0355** |
 
-**Creation costs between $0.0198 and $0.0326 per credit today**, and would cost
-between $0.0064 and $0.0261 on the contributor tier. The shape of the conclusion
-has not changed — images are still the majority of the cost and longer stories
-are still cheaper per credit, not dearer — but text is no longer close to free.
-On the live basis a 15-chapter words-only story is **71% text**, where under the
-superseded $0.004 figure it was 39%.
+**The short words-only story is the worst shape, and the reason is structural.** A
+3-chapter words-only story spreads $0.156 of fixed image cost over 3 credits; a
+15-chapter one spreads the same $0.156 over 15. **Every margin in this document is
+tested at $0.0738**, never at a blended figure.
 
-> **The superseded range was $0.0092 to $0.0274**, computed against $0.004 text.
-> It is recorded here because §4 and several later sections were written while it
-> was current.
+**If the contributor tier is enabled, $0.0013 per chapter:**
 
-**The §4 margins are still conservative, and that was checked rather than
-assumed.** Every margin below is computed against **$0.0423**. The worst case on
-the live basis is **$0.0326**, which is still under it, so no margin in this file
-is overstated by the new cost basis. The gap has narrowed from 4.6x to 1.3x, so
-the next text-model change is much likelier to break that guarantee than this one
-was, and §4 should be recomputed before the following one.
+| Story | Credits | Cost | **Blended $/credit** |
+|---|---|---|---|
+| 3 chapters, words only | 3 | $0.160 | $0.0533 |
+| 7 chapters, words only | 7 | $0.165 | $0.0236 |
+| 15 chapters, words only | 15 | $0.176 | **$0.0117** |
+| 3 chapters, illustrated | 5 | $0.238 | $0.0476 |
+| 7 chapters, illustrated | 13 | $0.399 | $0.0307 |
+| 15 chapters, illustrated | 29 | $0.722 | $0.0249 |
 
-> ⚠ **§4 below is stale.** Every margin in the plan table is still computed
-> against the old **$0.0423**, which descended from the retired Anthropic text
-> cost. Those margins are therefore **understated**, though by less than they
-> were: the live worst case is now $0.0326 rather than $0.0274, so the cushion
-> is 1.3x rather than 1.5x. Correcting §4 is its own pass and is listed in §12;
-> nothing in this section depends on it, and no margin below is *overstated*, so
-> the constraint the business is run on remains conservative rather than wrong.
+**Images are 70-95% of creation cost**, so the contributor tier moves the worst
+shape only from $0.0738 to $0.0533. Text is no longer the lever it was.
+
+**Creation costs between $0.0322 and $0.0738 per credit today**, against
+$0.0836/credit of net yearly revenue. The margin at the worst shape is 12%; at the
+best it is 62%.
 
 ---
 
@@ -441,50 +448,91 @@ was, and §4 should be recomputed before the following one.
 
 ### The grid
 
+> **Rebuilt 2026-09-10.** The two-audience Reader/Writer grid is retired. There is
+> one product at three durations. The audience split was always a volume ladder
+> wearing an identity label — Reader credits cost 73% more per credit than Writer
+> credits, which is not how you price a different *product* — and the created-flow
+> work erased the line it assumed: a reader who reimagines a chapter is creating.
+
 | | Weekly | Monthly | Yearly · 3-day trial |
 |---|---|---|---|
-| **Reader** | **$4.99** · 5 credits | **$8.99** · 20/mo | **$29.99** · 20/mo |
-| **Writer** | **$6.99** · 10 credits | **$12.99** · 50/mo | **$49.99** · 50/mo |
+| **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
+
+| | Weekly | Monthly | Yearly |
+|---|---|---|---|
+| Net after 15% | $5.09 | $11.04 | $50.15 |
+| Credits | 20/wk | 50/mo | 600/yr |
+| **Gross $/credit** | $0.300 | $0.260 | **$0.0983** |
+| **Net $/credit** | $0.255 | $0.221 | **$0.0836** |
+| Annualised cost to user | $311.48 | $155.88 | $59 |
+
+**The ladder descends monotonically and never inverts.** Weekly is the most
+expensive credit, yearly the cheapest, and committing for a year is 5.2× cheaper
+than paying weekly for one. **Every credit pack prices above the weekly rung**
+(§*Credit packs*), so principle 6 holds against every SKU in the product — the
+first price list in this document's history for which that is true.
 
 **Presentation order: weekly and yearly upfront; monthly disclosed below them.**
 Weekly is the impulse entry, yearly is the value anchor, monthly exists for the
 user who wants it but is not the plan we lead with. Yearly is selected by
 default and carries the free trial; weekly has no trial.
 
-Yearly discounts are **72%** (Reader) and **68%** (Writer) against the monthly
-price. Both are steep but inside the normal band for consumer subscription apps.
+The yearly discount is **62%** against the monthly price — steep, and inside the
+normal band for consumer subscription apps, but note that it is the discount, not
+the credit price, that has broken every previous version of this grid. A yearly
+sold at a third of the monthly price for identical credits is how $49.99 came to
+be a loss-making row.
 
 ### Why 50 credits and not 100
 
-A 100-credit Writer grant at $49.99/yr is **−20% margin**. The same grant at
-$69.99/yr is 15%. Fifty credits at $49.99 is **40%**. You can have the $49.99
-price point or the 100-credit headline, not both.
+**At $59/yr, 100 credits/month is a loss at every story shape**: 1,200 credits
+against $50.15 of net revenue is $0.0418/credit, under the $0.0738 worst case and
+under the $0.0441 seven-chapter case. Fifty credits at $59 is **12% at the worst
+shape and 49% blended**. You can have the sub-$60 price point or the 100-credit
+headline, not both.
 
-Fifty is the better product decision independently of margin. It buys ~16 full
-chapters a month, against a working writer's appetite of ~63 credits (three
-7-chapter novels). A grant deliberately set below the heavy user's appetite
-routes overflow demand into **credit packs at 85–90% margin** rather than
-absorbing it inside a 40%-margin subscription. A 100-credit grant swallows that
-demand and you never see the pack revenue.
+Fifty is also the better product decision independently of margin. It buys ~50
+chapters a month, against a working writer's appetite of ~63 credits. A grant
+deliberately set below the heavy user's appetite routes overflow demand into
+**credit packs at 60–78% margin** rather than absorbing it inside a 12%-margin
+subscription. A 100-credit grant swallows that demand and you never see the pack
+revenue.
+
+**A competitor's headline credit count is not comparable to ours and should never
+drive this number.** A credit that buys a whole story is not a credit that buys
+one action; matching a rival's "100" without matching what their credit does is
+matching a label.
 
 ### The one-time offer
 
 Shown once, after the user declines the main paywall, before they land in the
 app:
 
-> **Reader, yearly — $19.99 for your first year**, then $29.99/yr.
+> **Yearly — $29 for your first year**, then $59/yr.
 
-**Why the Reader plan and not the Writer plan.** The obvious move is to discount
-the headline tier, and it is wrong here for a hard arithmetic reason: the Writer
-yearly is the thinnest row in the model, so a discount on it while keeping 50
-credits erodes the one margin we just fixed. The Reader plan has the opposite
-shape — its cost is dominated by cached audio at ~$0 marginal, so $19.99 still
-clears ~100%.
+> ⚠ **Rebuilt 2026-09-10, and it is now the weakest row in the document.** The
+> offer used to discount the *Reader* plan, whose cost was dominated by cached
+> audio at ~$0 marginal, so $19.99 still cleared ~100%. With one ladder there is
+> no such tier to discount: the offer necessarily cuts the yearly, which is
+> already the thinnest margin in the model.
+>
+> **$29 for 600 credits nets $24.65, against $44.28 of cost at the worst story
+> shape — a $19.63 loss** — and clears only $18.85 (43%) at the blended shape. It
+> is defensible **only** as acquisition spend against year-two renewal at full
+> price, and only if first-year offer takers are believed to write average-length
+> stories rather than short ones.
+>
+> **Three ways out, none decided:** (a) grant fewer credits in the discounted
+> year — $29 for 20/month clears 39% at the worst shape; (b) price the offer at
+> $39 rather than $29; (c) drop the one-time offer entirely and let weekly be the
+> low-commitment entry, which is what the single ladder was supposed to make it.
+> **(a) is the one to look at first** — it keeps the headline price cut, which is
+> what converts, and pays for it in grant rather than margin.
 
 It is also the correct *product* answer: a user who has just declined both plans
 is, by revealed preference, not a writer. Discount the thing they might want.
 
-**It renews at full price** ($29.99), so lifetime value recovers in year two, and
+**It renews at full price** ($59), so lifetime value recovers in year two, and
 it is a single option with no second decision — the user has already made two.
 
 **It carries a 2-minute countdown**, the only countdown permitted anywhere in the
@@ -496,17 +544,73 @@ the backend enforces. Leaving the screen ends the offer exactly as expiry does.
 The duration is a remotely tunable value, so it can be retuned without a store
 review; 2 minutes is a starting value, not a finding.
 
-**Both paths reach it.** A reader who declines the Reader paywall and a writer
-who declines the Writer paywall see the same screen and the same SKU. Offering
-the Reader plan to a writer decliner is the revealed-preference argument above,
-and it keeps the Writer yearly undiscounted per decision 15.
+**There is one path to it**, because there is now one paywall. The revealed
+preference argument that used to route a writer decliner to the Reader plan no
+longer has anywhere to route them.
+
+### Reimagining a chapter
+
+Shipped 2026-09-09 as `reimagine-chapter`. **Priced here for the first time** —
+until now its price lived in a comment in the edge function.
+
+**What it is.** The reader picks a chapter, optionally swaps characters for saved
+ones or brand-new ones, types what should change, and the chapter is written
+again. A **non-author gets a fork first**: `fork_story` (migration 00057) copies
+the story, its chapters and its cast into a private story owned by the caller, and
+the rewrite happens there — keyed on (source story, caller), so a reader who
+reimagines three chapters ends up with one copy rather than three.
+
+**Price, decided 2026-09-10: 2 free per chapter, then 1 credit each.**
+
+| | Credits |
+|---|---|
+| Reimagine a chapter, 1st and 2nd time | **0** |
+| Every reimagine after that, per chapter | **1** |
+| A brand-new character who needs a portrait | **1** (the portrait) |
+| Renaming a character across other chapters | **0** — substitution, no model call |
+
+**Cost.** One chapter text call, **$0.0218** streamed. Two free per chapter is
+**$0.0436** given away — against a yearly credit netting $0.0836, roughly half a
+credit per chapter. `apply_to_all_chapters` renames rather than regenerates
+(`_shared/character-substitution.ts`: whole-word, case-preserving, never a
+pronoun), so it is genuinely free.
+
+**Why free at all, when it was 1 credit from the first?** Because the first
+reimagine is usually the user discovering what the feature *is*. Charging for the
+discovery of a feature suppresses the feature. Two is enough to learn it and not
+enough to write a novel with.
+
+> ⚠ **The free allowance has no scope, and it needs one before this ships.**
+> The rule as written is *per chapter*, and a reader may reimagine **any chapter
+> of any published story**. There is no per-user cap. With a catalogue of N
+> chapters, each user's free surface is 2N reimagines: 100 chapters is $4.36 a
+> user, 1,000 chapters is $43.60. Against a free user's entire lifetime earn of 24
+> credits, **this is the largest free surface in the product by an order of
+> magnitude** — larger than the streak ladder, the welcome bonus and the referral
+> combined.
+>
+> **Recommendation: free reimagines apply only to chapters in stories the caller
+> created.** Reimagining someone else's chapter *forks* it — that produces a new
+> story, which is generation, not editing — and §1 already draws exactly this line
+> for drafting, where the 3 free redrafts and 20 free paragraph rewrites apply to
+> your own draft and nobody else's. It also matches the shape of the two
+> audiences: a writer reimagining their own chapter is editing; a reader
+> reimagining a stranger's is creating. **Non-author reimagine would cost 1 credit
+> from the first.**
+>
+> The alternative is to keep it global and cap total free reimagines per user per
+> month. **Not decided.**
+
+> ⚠ **Second hole: the counter must survive the fork, or the allowance is
+> infinite.** `fork_story` copies chapters into new rows. If the free-reimagine
+> counter lives on the chapter row and is reset by the copy, then two free
+> reimagines produce a forked chapter with two more free reimagines, and so on
+> without bound. **The counter must be copied by `fork_story`, not reinitialised**
+> — and the same applies to any future per-chapter allowance. Untested; there is
+> no counter in the shipped function at all today, because reimagine currently
+> charges from the first.
 
 ### Credit packs
-
-> **Current as of 2026-09-10**, unlike the rest of §3. This subsection is written
-> against the decided ladder — weekly $5.99 · 20, monthly $12.99 · 50, yearly
-> $59 · 50/month. The three-pack table it replaces (10/$4.99, 40/$14.99,
-> 90/$29.99) was priced against the retired Writer/Reader grid.
 
 For users who skip the paywall entirely, and for subscribers who exhaust a
 month's grant before the month ends. No subscription required.
@@ -514,10 +618,15 @@ month's grant before the month ends. No subscription required.
 | Pack | Price | $/credit | Net after 15% | vs. yearly |
 |---|---|---|---|---|
 | **5** | $1.99 | $0.398 | $1.69 | 4.0× |
+| **10** | $3.49 | $0.349 | $2.97 | 3.5× |
 | **30** | $9.99 | $0.333 | $8.49 | 3.4× |
 | **100** | $24.99 | $0.250 | $21.24 | 2.5× |
 | **300** | $64.99 | $0.217 | $55.24 | 2.2× |
 | **1000** | $119.99 | $0.120 | $101.99 | **1.2×** |
+
+**The 10 exists to close the gap between 5 and 30**, which was a 6× jump in size
+and a $8 jump in price with nothing between. It is the second-cheapest thing to
+buy in the product and the natural second purchase after a 5-pack ran out.
 
 The yearly plan is **$0.0983/credit**. Every pack prices above it, monotonically,
 so principle 6 holds at every rung: **the subscription is always the best price
@@ -542,6 +651,7 @@ story, the shape that amortises the cast and cover over the fewest credits):
 | Pack | Cost at worst shape | Profit | Margin |
 |---|---|---|---|
 | 5 | $0.37 | $1.32 | 78% |
+| 10 | $0.74 | $2.23 | 75% |
 | 30 | $2.21 | $6.28 | 74% |
 | 100 | $7.38 | $13.86 | 65% |
 | 300 | $22.14 | $33.10 | 60% |
@@ -590,29 +700,33 @@ top pack is what pays for that difference. **Do not close the gap further.**
 
 ### The 3-day trial, and the hole in it
 
-A 3-day Writer trial that grants the full 50 credits is a **$2.12 giveaway with a
-cancel button attached**, and trial abuse is the most mechanical form of fraud
-available on a subscription app.
+A 3-day trial that grants the full 50 credits is a **$3.69 giveaway with a cancel
+button attached** at the worst story shape, and trial abuse is the most mechanical
+form of fraud available on a subscription app.
 
-**Trial grants are reduced: 15 credits (Writer) or 5 (Reader) for the trial
-period. The full grant lands on the first successful charge.** 15 credits is 5
-full chapters — more than enough to judge the product in 3 days — and it caps the
-downside at $0.63.
+**The trial grant is reduced to 10 credits. The full 50 lands on the first
+successful charge.** Ten credits is ten chapters, or three short illustrated
+stories — more than enough to judge the product in 3 days — and it caps the
+downside at **$0.74**.
 
 ### Store SKUs
 
 | SKU | Product |
 |---|---|
-| `ai.katha.sub.reader.weekly` | Reader weekly — $4.99 |
-| `ai.katha.sub.reader.monthly` | Reader monthly — $8.99 |
-| `ai.katha.sub.reader.yearly` | Reader yearly — $29.99, 3-day trial |
-| `ai.katha.sub.reader.yearly.offer` | One-time offer — $19.99 first year |
-| `ai.katha.sub.writer.weekly` | Writer weekly — $6.99 |
-| `ai.katha.sub.writer.monthly` | Writer monthly — $12.99 |
-| `ai.katha.sub.writer.yearly` | Writer yearly — $49.99, 3-day trial |
-| `ai.katha.credits.small` | 10 credits — $4.99 |
-| `ai.katha.credits.medium` | 40 credits — $14.99 |
-| `ai.katha.credits.large` | 90 credits — $29.99 |
+| `ai.katha.sub.weekly` | Weekly — $5.99 · 20 credits |
+| `ai.katha.sub.monthly` | Monthly — $12.99 · 50/mo |
+| `ai.katha.sub.yearly` | Yearly — $59 · 50/mo, 3-day trial |
+| `ai.katha.sub.yearly.offer` | One-time offer — $29 first year |
+| `ai.katha.credits.5` | 5 credits — $1.99 |
+| `ai.katha.credits.10` | 10 credits — $3.49 |
+| `ai.katha.credits.30` | 30 credits — $9.99 |
+| `ai.katha.credits.100` | 100 credits — $24.99 |
+| `ai.katha.credits.300` | 300 credits — $64.99 |
+| `ai.katha.credits.1000` | 1000 credits — $119.99 |
+
+> **The `reader.*` and `writer.*` SKU families are retired** with the two-audience
+> grid. Nothing has shipped to a store under them, so this is a rename rather than
+> a migration — but confirm that before creating the new ones.
 
 The client must read price, renewal terms, trial eligibility and offer copy from
 RevenueCat product data. The values above are the configuration, not hardcoded
@@ -622,78 +736,111 @@ strings.
 
 ## 4. Unit economics
 
-Revenue per credit and margin against the $0.0423 blended creation cost. Apple's
-Small Business Program commission of 15% is applied throughout.
+> **Rebuilt 2026-09-10** against the single ladder and the $0.0322-$0.0738 cost
+> range from §2. Every margin below is computed at the **worst** story shape
+> ($0.0738/credit — a 3-chapter words-only story), not a blended figure. Apple's
+> Small Business Program commission of 15% is applied throughout; at 30% every
+> profit below falls ~18%.
 
-| Plan | $/credit | Net/credit | Margin at max burn |
+| SKU | $/credit | Net/credit | Margin at worst shape |
 |---|---|---|---|
-| Reader weekly $4.99 / 5 | $0.998 | $0.8483 | **95%** |
-| Writer weekly $6.99 / 10 | $0.699 | $0.5942 | **93%** |
-| Pack $4.99 / 10 | $0.499 | $0.4242 | **90%** |
-| Reader monthly $8.99 / 20 | $0.450 | $0.3821 | **89%** |
-| Pack $14.99 / 40 | $0.375 | $0.3185 | **87%** |
-| Pack $29.99 / 90 | $0.333 | $0.2832 | **85%** |
-| Writer monthly $12.99 / 50 | $0.260 | $0.2208 | **81%** |
-| Reader yearly $29.99 / 240 | $0.125 | $0.1062 | **60%** |
-| **Writer yearly $49.99 / 600** | **$0.083** | **$0.0708** | **40%** ← constraint |
+| Pack 5 / $1.99 | $0.398 | $0.338 | **78%** |
+| Pack 10 / $3.49 | $0.349 | $0.297 | **75%** |
+| Pack 30 / $9.99 | $0.333 | $0.283 | **74%** |
+| Weekly $5.99 / 20 | $0.300 | $0.255 | **71%** |
+| Monthly $12.99 / 50 | $0.260 | $0.221 | **67%** |
+| Pack 100 / $24.99 | $0.250 | $0.212 | **65%** |
+| Pack 300 / $64.99 | $0.217 | $0.184 | **60%** |
+| Pack 1000 / $119.99 | $0.120 | $0.102 | **28%** |
+| **Yearly $59 / 600** | **$0.0983** | **$0.0836** | **12%** ← constraint |
 
-**Every tier clears 40% at maximum burn.** That is the point of the 50-credit
-grant: the model no longer depends on subscribers under-using what they paid for.
+**Every SKU clears cost at every story shape.** That has not been true of any
+previous version of this price list — the retired $49.99/600 row was **−$1.79/yr**
+at the worst shape. It is true now with no row to apologise for, and it is true
+without relying on subscribers under-using what they paid for.
+
+### Profit per subscription
+
+The number to run the business on is not margin per credit but profit per
+subscriber, at full grant consumption:
+
+| | Worst shape | Blended (7-ch, mixed art) |
+|---|---|---|
+| **Weekly** | **+$3.61** (71%) | +$4.23 (83%) |
+| **Monthly** | **+$7.35** (67%) | +$8.89 (81%) |
+| **Yearly** | **+$5.87** (12%) | +$24.35 (49%) |
 
 ### The inversion check
 
 Principle 6 says a subscription must always beat the packs it competes with. Run
-this whenever any price or grant changes:
+this whenever any price or grant changes — against the **weekly** rung, which is
+the cheapest subscription a pack buyer is choosing between:
 
-| Pack | Net $/cr | vs Writer monthly $0.2208 |
+| Pack | Gross $/cr | vs weekly $0.300 |
 |---|---|---|
-| $4.99 / 10 | $0.4242 | ✅ |
-| $14.99 / 40 | $0.3185 | ✅ |
-| $29.99 / 90 | $0.2832 | ✅ |
+| 5 / $1.99 | $0.398 | ✅ |
+| 10 / $3.49 | $0.349 | ✅ |
+| 30 / $9.99 | $0.333 | ✅ |
+| 100 / $24.99 | $0.250 | ⚠ below weekly, above monthly |
+| 300 / $64.99 | $0.217 | ⚠ below weekly, below monthly |
+| 1000 / $119.99 | $0.120 | ⚠ below both, above yearly |
 
-Reader monthly nets $0.3821/credit, above two of the three packs — and that is
-correct, not a violation. Reader is the **low-volume** tier; a Reader who needs
-more credits should upgrade to Writer ($0.2208/credit, cheaper than every pack),
-not buy a pack. The upgrade path is Reader → Writer, and the price list makes
-that the obvious move.
+**The three large packs sit below the weekly rung, and that is correct rather than
+a violation.** Weekly is a 20-credit product; nobody weighing a 300-credit pack is
+weighing it against 20 credits a week. Every pack stays above the **yearly** rate,
+which is the subscription that actually competes for a bulk buyer, so the claim
+"a plan is always the best price per credit" holds where a user could act on it.
 
-**The trap this check exists to catch:** the earlier $6.99/25 and $15.99/60 packs
-priced at $0.2377 and $0.2265 — below Reader monthly. A $6.99 pack buying 25
-credits next to an $8.99 plan buying 20 makes the entry plan pointless. Cutting
-the Reader grant from 30 to 20 is what exposed it.
+**The trap this check exists to catch** is a pack that dominates the plan sitting
+next to it on the paywall. The retired $14.99/40 pack next to a $12.99/50 plan was
+that trap in the other direction — more money for fewer credits — and the sizes
+above are set to keep a clear gap in both directions.
 
-### The Writer yearly row is the risk model
+### The yearly row is the risk model
 
-At $49.99/yr the subscriber nets **$4.25/month** against **$2.12/month** if they
-spend all 50 credits on chapters. That is 40% at *maximum* burn and 70% at a
-realistic 50% burn.
+At $59/yr the subscriber nets **$4.18/month** against **$3.69/month** if they burn
+all 50 credits on the worst story shape. That is 12% at *maximum* burn on the
+*worst* shape, 49% at a realistic mix, and 76% at a 50% burn rate.
 
-This row matters more than any other because **the Writer tier self-selects for
+This row matters more than any other because **the yearly tier self-selects for
 high burn.** Its entire pitch is the credit count; people who buy it intend to use
-it. Every other tier can rely on under-utilization; this one cannot.
+it. Every other SKU can lean on under-utilisation; this one cannot.
 
-Two consequences, both load-bearing:
+Three consequences, all load-bearing:
 
 - **Monthly grants do not roll over.** Without this a yearly subscriber banks 600
   credits and can dump them in any pattern. With it, exposure is bounded to
-  50/month and hoard-then-dump is impossible. This is standard practice (Canva,
-  ElevenLabs, Midjourney) and takes nothing anyone paid for — purchased packs
-  still expire only with the subscription (§8).
-- **Credit utilization by tier is the #1 launch metric** (§11).
+  50/month and hoard-then-dump is impossible. Standard practice (Canva,
+  ElevenLabs, Midjourney) and it takes nothing anyone paid for — purchased packs
+  are the carry-over product and are governed separately (§8).
+- **There is no cushion left for a new free allowance.** 12% at the worst shape is
+  what removing the free image retry bought back; a second free allowance spends
+  it again. Price every future giveaway against $0.178 (a story start), not
+  against $0.0218 (a chapter).
+- **Credit utilisation is the #1 launch metric** (§11).
 
-### The Reader tier depends entirely on catalog audio
 
-Reader yearly nets **$2.12/month** for 20 audio unlocks.
+### Audio depends entirely on catalog narration
 
-| If a Reader's credit hits… | Our cost | Result |
+The yearly plan nets **$4.18/month**. An audio unlock is 1 credit like any other,
+so what it costs us depends entirely on whether that chapter has been narrated
+before:
+
+| If an audio credit hits… | Our cost | Result |
 |---|---|---|
 | Audio we already narrated | ~$0 | **~100% margin** |
-| A chapter needing fresh edge-tts narration | ~$0.001-$0.006 | **>95% margin** |
-| A chapter needing fresh MiniMax narration | $0.22 | **breaks even at a 48% fresh rate** |
+| A chapter needing fresh MiniMax narration | ~$0.22 ⚠ | **loses money from the 1st unlock** |
 
-Above a 48% MiniMax fresh-narration rate, Reader yearly loses money. Edge-tts
-changes that arithmetic, but only after measured reliability confirms it can be
-the default provider rather than a best-effort path.
+**A single fresh MiniMax narration costs 2.6× what a yearly credit nets.** There
+is no burn rate at which unmetered fresh narration works — it is only ever viable
+against a pre-narrated catalogue, where one narration serves every listener.
+
+> **Edge-tts was the cheap path and it is currently blocked.** Microsoft's
+> consumer endpoint returns 403 to a direct connection, and `_shared/edge-tts.ts`
+> routes through a worker at `EDGE_TTS_SERVICE_URL` that does not exist. Every
+> edge-tts figure below is contingent on standing that worker up; until then
+> MiniMax is the only provider that works, and the $0.22 is itself an estimate
+> from published rates that **has never been measured** (§12).
 
 ### Catalog narration — the decision that makes audio work
 
@@ -706,7 +853,7 @@ cost is **per chapter narrated**, never per listen.
 
 That single spend:
 
-- Turns the Reader tier from a 48%-breakeven gamble into ~100% margin.
+- Turns audio from a per-unlock loss into ~100% margin.
 - Makes audio **instant** instead of a 60-second generation wait, which is the
   difference between a feature people use and one they try once.
 - Amortizes across every listener: 500 chapters against 100k listens is
@@ -755,13 +902,10 @@ bonus a free user's lifetime earn is **24 credits** — against **50/month, ever
 month**, on every paid plan. The earn side is an activation mechanism, not an
 income.
 
-> ⚠ **Grid drift, 2026-09-10.** The two-audience Reader/Writer grid this
-> paragraph used to cite is retired. The decided ladder is one product at three
-> durations — weekly $5.99 · 20, monthly $12.99 · 50, yearly $59 · 50/month —
-> with a **1-credit bundled story start** (cast + chapter 1 + cover). §§1-4 have
-> **not** been updated for it and still carry the old grid and the old cost
-> basis. This section is written against the decided ladder; where the two
-> disagree, this section is current and §§1-4 are stale.
+> **Resolved 2026-09-10.** §§1-4 have now been rebuilt against the decided
+> ladder — one product at three durations, weekly $5.99 · 20, monthly $12.99 · 50,
+> yearly $59 · 50/month, with a **1-credit bundled story start**. The drift
+> warning that stood here is retired; the whole document is on one basis again.
 
 ### The streak ladder
 
@@ -949,7 +1093,7 @@ is v1.1, but rebalance the 5 when it actually ships rather than inheriting it.
 | **Comment for a credit** | Shipped code grants a credit for a **one-character** comment on any public story, daily, forever, with no requirement the user read it. Rather than harden it, remove it — paying for comments buys comment spam, not community. **This is live in `create_feedback` today and must be disabled before launch.** |
 | **Social post reward** | A manual moderation queue to pay out one credit is not worth building. |
 | **Reader earnings** | The highest-abuse surface in the app, requiring the full anti-gaming pipeline, and there is no reader volume to calibrate against pre-launch. The front-loaded curve in `strategic-decisions.md` §6 is well designed and can return in v1.2 once there is real traffic. |
-| **Rewarded ads** | Rewarded video clears $15–40 eCPM in tier-1 gaming ([RevenueFlex](https://revenueflex.com/blog/app-ad-revenue-benchmarks-2026/), [Business of Apps](https://www.businessofapps.com/ads/rewarded-video/)); *inference:* a global reading app should plan on $6–12 eCPM = **$0.006–$0.012 per impression** against $0.0423 for the credit it buys. Rewarded ads lose money as a credit source at any plausible eCPM. Whether to run **non-rewarded** ads as free-tier revenue is a separate question, deferred. |
+| **Rewarded ads** | Rewarded video clears $15–40 eCPM in tier-1 gaming ([RevenueFlex](https://revenueflex.com/blog/app-ad-revenue-benchmarks-2026/), [Business of Apps](https://www.businessofapps.com/ads/rewarded-video/)); *inference:* a global reading app should plan on $6–12 eCPM = **$0.006–$0.012 per impression** against $0.0322-$0.0738 for the credit it buys. Rewarded ads lose money as a credit source at any plausible eCPM. Whether to run **non-rewarded** ads as free-tier revenue is a separate question, deferred. |
 | **Flat daily app-open credit** | Rejected three times, most recently 2026-09-10 against the bundled story start — see *The daily credit, re-examined* above. Pays 30/month uncapped (60% of the 50/month paid grant, over principle 7's ceiling) and costs up to **$64.08/year** against the **$50.15** an annual subscription nets. The milestone ladder terminates instead of capping — 14 credits once, then nothing — rewards consecutive days rather than sporadic opens, and with streak repair answers the same product pull for **$0.60, once**. |
 | **Premium voice tier** | ~~Every voice is available on every tier including free.~~ **Reversed 2026-09-10, then qualified the same day.** The original reasoning held while every voice was MiniMax, where voice choice is not a cost lever — the same $0.22 either way. `_shared/voices.ts` ships two *providers*: `edge_tts` and `runpod_minimax` (~$0.22 ⚠ unmeasured), and tiering across two engines is a real economic line rather than packaging. **But `edge_tts` does not work and is not free.** Microsoft's consumer endpoint returns 403 to a direct connection (verified 2026-09-10: Deno's `WebSocket` cannot set the required `Origin`/`User-Agent`, and a manual TLS handshake that does set them is refused anyway). `_shared/edge-tts.ts` therefore calls an external worker at `EDGE_TTS_SERVICE_URL` **which does not exist** — Spanish voices already fail as `edge_tts_service_missing`. So the design stands and the price does not: free-tier narration costs whatever hosting a Python worker costs, and **ships only once that worker exists**. Paid MiniMax voices are unlimited on the pre-narrated catalog, where one narration serves every listener, and metered on your own new chapters, where that $0.22 amortizes across exactly one person. |
 | **Carry-over cap (2×)** | Replaced by non-rolling monthly grants (§8). |
@@ -1046,7 +1190,7 @@ before any purchase and before any grant
 │                    ┌─────────────────────────┴──────────┐
 │                    ↓                                    ↓
 │              READER PAYWALL                      WRITER PAYWALL
-│              $4.99/wk · $29.99/yr                $6.99/wk · $49.99/yr
+│                        $5.99/wk · $12.99/mo · $59/yr                  
 │              5 cr      · 20 cr/mo                10 cr    · 50 cr/mo
 │              Sells audio and creation.           Outcome-framed, shows
 │              States plainly that reading         the user's own blueprint.
@@ -1157,9 +1301,9 @@ User taps a paid action.
 │
 │     3. [ Read something instead → ]            ← deep-links to the feed
 │
-│     4. [ 10 credits — $4.99 ]                  ← secondary
+│     4. [ 10 credits — $3.49 ]                  ← secondary
 │
-│     5. [ Plans from $4.99/week ]               ← tertiary
+│     5. [ Plans from $5.99/week ]               ← tertiary
 │          shown ONLY when lifetime generations >= 2
 │
 │     6. Dismiss — large, obvious, top-right. Returns to the saved draft.
@@ -1218,7 +1362,7 @@ resentment-generating placement available.
 ### Subscription grants do not roll over
 
 Each period delivers a fresh 20 or 50. Unused grant credits do not accumulate.
-This is what bounds the Writer yearly's exposure (§4) and it is standard practice
+This is what bounds the yearly plan's exposure (§4) and it is standard practice
 across every credit-based creative tool. **It replaces the old "carry-over capped
 at 2×" rule**, which could not be enforced correctly against a single-balance
 ledger without silently penalizing subscribers who also bought packs.
@@ -1376,7 +1520,7 @@ economy is tuned on evidence rather than argued about.
 
 | Metric | Why | Trigger → action |
 |---|---|---|
-| **Credit utilization, Writer yearly** | The 40%-margin row, and the tier that self-selects for heavy use | Median burn > 40 of 50 → reprice or cut the grant |
+| **Credit utilisation, yearly** | The 12%-margin row, and the plan that self-selects for heavy use | Median burn > 40 of 50 → reprice or cut the grant |
 | **Pack attach rate among Writer subscribers** | The 50-credit grant is designed to route overflow into 85–90% margin packs | < 15% of Writer subs buying a pack → the grant is too generous |
 | **Catalog hit rate on audio unlocks** | Cached audio is instant and keeps replay cost near zero | Fresh rate > 40% → widen the catalog job |
 | **Actual $/chapter narration by provider** | Every audio number here is extrapolated until a batch is measured | Edge > $0.01 or MiniMax > $0.30 → re-run the Reader math |
@@ -1403,14 +1547,17 @@ economy is tuned on evidence rather than argued about.
    **Audio cannot ship broadly until this is measured.** Above ~$0.01/chapter on
    edge-tts or ~$0.30/chapter on MiniMax, the catalog budget and the Reader grant
    both need rework.
-2. **Confirm image quality at `low` for character sets.** The $0.011 setting
-   assumes quality is acceptable at inline display sizes. Generate a dozen and
-   look at them before committing.
-3. **Verify Apple's commission tier.** All margin math assumes 15% (Small Business
-   Program). At 30%, Writer yearly nets $0.0583/credit. Against the corrected §2
-   cost basis ($0.0198–$0.0326) that is still **44–66%**; against the stale
-   $0.0423 used throughout §4 it would read as 27%. Recompute when §4 is
-   corrected. *(This read 53–84% against the superseded $0.0092–$0.0274 basis.)*
+2. ~~**Confirm image quality at `low` for character sets.**~~ **Moot** — Gemini
+   takes no quality parameter and charges a flat 1,290 output tokens per image, so
+   there is no `low` tier to confirm. What replaced it: a cast of three now costs
+   **$0.117**, not $0.033, which is why a story start is the most expensive credit
+   in the product.
+3. **Verify Apple's commission tier — this is now load-bearing.** All margin math
+   assumes 15% (Small Business Program). At 30% the yearly nets **$0.0688/credit**
+   against **$0.0738** at the worst story shape: **the constraint row goes
+   negative.** It still clears 38% blended, but the "no losing rows" property of
+   the current price list holds *only* under the 15% commission. Confirm before
+   launch.
 4. **Decide the non-credit subscriber benefit.** With voice tiers removed, a
    subscription is now purely a credit bundle and survives only on per-credit
    arithmetic that packs constantly nip at. A **priority generation queue** costs
@@ -1454,13 +1601,11 @@ economy is tuned on evidence rather than argued about.
    and completions. Enabling it at https://openrouter.ai/settings/privacy sends
    users' story ideas and generated prose to the provider for training. That is
    a product and policy call and it belongs to the product owner.
-10. **Recompute §4 against the corrected cost basis.** Every margin in the plan
-    table, the inversion check and the Writer-yearly risk model is computed
-    against **$0.0423**, which descended from the retired Anthropic text cost.
-    Real creation cost is **$0.0198–$0.0326** per credit (§2), so every figure in
-    §4 is understated. Conservative rather than wrong — no margin is overstated —
-    but it is **the largest known inaccuracy in this file** and it makes the
-    "constraint of record" framing read as far tighter than it is.
+10. ~~**Recompute §4 against the corrected cost basis.**~~ **Done 2026-09-10.**
+    §§1-4 were rebuilt against the flat $0.039 image rate, the $0.117 cast, the
+    bundled 1-credit story start and the single plan ladder. §4 is now computed at
+    the **worst** story shape ($0.0738/credit) rather than a blended figure, so its
+    margins are floors rather than averages.
 
 ---
 
@@ -1497,14 +1642,16 @@ economy is tuned on evidence rather than argued about.
    editing, save, publish, unpublish, delete, upload your own cover, follow, like,
    comment, share, retry after a failed generation.
 8. **Free but capped:** **3 AI redrafts per chapter**, **20 paragraph AI edits per
-   chapter**, **1 cover regeneration per paid cover**. Beyond each cap, 1 credit.
-9. **Render settings are constraints, not defaults**, each pinned in code with a
-   test **as each path lands**: covers at 1024×1536 `medium` ($0.063); **chapter
-   art at 1024×1024 `medium` ($0.042)**; character sets at 1024×1024 `low`
-   ($0.011 each, $0.033 for a set of three). A cast is capped at **3**. Only the
-   cover tier exists in code today, and `generateCoverImage()` is called by no
-   edge function — see §2. The other two are the contract for the image
-   pipeline, not a description of shipped behaviour.
+   chapter**, **2 reimagines per chapter**. Beyond each cap, 1 credit. ~~1 cover
+   regeneration per paid cover~~ — **removed 2026-09-10**: cover regeneration costs
+   1 credit from the first.
+9. ~~**Render settings are constraints, not defaults.**~~ **Retired 2026-09-10.**
+   The three render tiers (cover $0.063 / chapter art $0.042 / portrait $0.011)
+   were derived from `gpt-image-1`'s size×quality matrix. Gemini takes neither
+   parameter and charges a **flat $0.039 per image**, so there is nothing to pin
+   and no lever to tier on. A cast is still capped at **3** — now a $0.117 cost
+   bound as well as a product one. Aspect ratio is carried in the prompt text
+   (`ASPECT` in `_shared/image.ts`), so it is a request, not a guarantee.
 10. **Chapter art is a priced action, and it is the same feature as the cover.**
     *(Amended 2026-09-02. This decision previously removed chapter illustrations
     entirely. `STORY_GENERATION_FLOW.md` §10.4 made the product case for
@@ -1526,35 +1673,50 @@ economy is tuned on evidence rather than argued about.
 
 ### Pricing
 
-11. **The plan grid:**
+11. **The plan grid** *(revised 2026-09-10; the two-audience Reader/Writer grid is
+    retired — one product, three durations):*
 
     | | Weekly | Monthly | Yearly · 3-day trial |
     |---|---|---|---|
-    | **Reader** | **$4.99** · 5 credits | **$8.99** · 20/mo | **$29.99** · 20/mo |
-    | **Writer** | **$6.99** · 10 credits | **$12.99** · 50/mo | **$49.99** · 50/mo |
+    | **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
+11a. **Starting a story costs 1 credit and bundles three actions** — the cast,
+    chapter 1, and chapter 1's art. Every chapter after is 1; chapter art is 1
+    each; a cover regeneration is 1. *(Revised 2026-09-10 from a 3-credit
+    unbundled start.)*
 12. **Presentation:** weekly and yearly upfront, yearly selected by default with
-    the 3-day trial, monthly disclosed below, weekly without a trial. Read-first
-    and write-first users see different value propositions.
-13. **The Writer grant is 50 credits, not 100.** At $49.99/yr, 100 credits is −20%
-    margin and 50 is +40%. The smaller grant also routes overflow demand into
-    85–90% margin packs.
-14. **One-time offer: Reader yearly, $19.99 first year, renewing at $29.99.**
-    Shown once, ever, after either paywall is declined, as a single option, on
-    **both paths** — a writer who declines the Writer paywall sees the same
-    Reader offer, on the revealed-preference argument in §3. It carries a
-    **2-minute countdown**, the only countdown permitted in the product, and at
-    zero the SKU is disabled for that `user_id` and the price never returns.
-15. **The Writer yearly is never discounted.** At 40% it is the thinnest row in
-    the model; the offer sits on the Reader tier instead.
-16. **Credit packs: $4.99 / 10 · $14.99 / 40 · $29.99 / 90.** Sized so every pack
-    prices above the Writer monthly rate, and so the 40-pack is dominated by the
-    Writer monthly plan on both price and volume.
-17. **Reduced trial grants:** 15 credits (Writer) / 5 (Reader) during the 3-day
-    trial; the full grant lands on first successful charge.
-18. **Constraint of record:** Writer yearly at $49.99/600 nets $0.0708/credit
-    against $0.0423 of cost — **40% margin at maximum burn.** Every future pricing
-    change is tested against this row, and against the §4 inversion check.
+    the 3-day trial, monthly disclosed below, weekly without a trial.
+13. **The grant is 50 credits, not 100.** At $59/yr, 100 credits loses money at
+    every story shape and 50 clears 12% at the worst and 49% blended. The smaller
+    grant also routes overflow demand into 60–78% margin packs. A competitor's
+    headline credit count is not comparable and must not drive this number.
+14. **One-time offer: yearly, $29 first year, renewing at $59.** Shown once, ever,
+    after the paywall is declined, as a single option. It carries a **2-minute
+    countdown**, the only countdown permitted in the product, and at zero the SKU
+    is disabled for that `user_id` and the price never returns. ⚠ **The economics
+    of this offer are unresolved** — see §3; it loses $19.63 at the worst story
+    shape.
+15. ~~**The Writer yearly is never discounted.**~~ **Retired 2026-09-10** with the
+    two-audience grid: there is no second tier to move the discount onto, so the
+    one-time offer necessarily sits on the thinnest row in the model. That is the
+    open problem recorded in 14, not a resolved decision.
+16. **Credit packs: $1.99/5 · $3.49/10 · $9.99/30 · $24.99/100 · $64.99/300 ·
+    $119.99/1000.** Every pack prices above the yearly rate, monotonically, so the
+    subscription is always the best price per credit. **Pack credits do not expire
+    monthly; plan credits do** — carry-over, not price, is what a pack sells.
+17. **Reduced trial grant: 10 credits** during the 3-day trial; the full 50 lands
+    on first successful charge. Caps trial-abuse downside at $0.74.
+18. **Constraint of record:** yearly at $59/600 nets **$0.0836/credit** against
+    **$0.0738** at the worst story shape — **12% margin at maximum burn**, 49%
+    blended. Every future pricing change is tested against this row **at the worst
+    shape**, and against the §4 inversion check.
+18a. **There are no free image retries** *(2026-09-10)*. A failed generation still
+    auto-refunds; a delivered image you dislike costs a credit to replace.
+18b. **Reimagining a chapter is free twice, then 1 credit** *(2026-09-10)*. ⚠ The
+    free allowance is unscoped and the fork counter is unbuilt — see §3.
+18c. **Download PDF is a paid-plan entitlement** *(2026-09-10)*, the first
+    entitlement in the product. Export ends with the plan and the paywall must
+    never imply otherwise.
 
 ### Audio
 
@@ -1639,7 +1801,7 @@ economy is tuned on evidence rather than argued about.
     path, primary and full-width whenever any sub-action is affordable; **(2)** the
     streak row as **information, not a button**, and only when the next milestone
     lands within 48h — otherwise omitted entirely; **(3) read something instead**, deep-linked to the feed; **(4) 10
-    credits — $4.99**; **(5) plans from $4.99/week**, only when lifetime
+    credits — $3.49**; **(5) plans from $5.99/week**, only when lifetime
     generations ≥ 2; **(6)** a large, obvious dismiss.
 33. **Every paid button displays its price**, and an insufficient balance on
     entering Create shows an inline banner, never a modal.
@@ -1663,7 +1825,7 @@ economy is tuned on evidence rather than argued about.
 
 36. **Subscription grants do not roll over.** Each period delivers a fresh 20 or
     50; unused grant credits expire with the period. This replaces the 2×
-    carry-over cap and is what bounds the Writer yearly's exposure.
+    carry-over cap and is what bounds the yearly plan's exposure.
 37. **Credits lapse with the subscription.** When a plan ends the credit balance
     goes to zero — the whole balance, including earned credits and credits bought
     as packs while subscribed. A credit is an entitlement of an active plan, not a

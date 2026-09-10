@@ -230,7 +230,10 @@ Deno.test("an avatar may only point at the owner's own stored object", async () 
     );
     assertEquals(grants.rows[0].count, "0");
 
-    // What the owner *may* still write directly is unchanged plus `bio`.
+    // What the owner *may* still write directly. `display_name` joined the
+    // list in 00069: unlike a handle there is no scarcity to arbitrate, and
+    // unlike an avatar there is no impersonation surface -- it appears on the
+    // reader's own home screen, never on a byline a stranger sees.
     const editable = await db.query<{ column_name: string }>(
       `select column_name
          from information_schema.column_privileges
@@ -240,6 +243,7 @@ Deno.test("an avatar may only point at the owner's own stored object", async () 
     );
     assertEquals(editable.rows.map((r) => r.column_name), [
       "bio",
+      "display_name",
       "onboarding_purpose",
       "preferred_genres",
     ]);
@@ -428,6 +432,10 @@ Deno.test("a private story never reaches a public profile", async () => {
       "bio",
       "first_published_at",
       "followers",
+      // The other half of the pair, added in 00073. A page that showed who
+      // was interested in somebody while hiding who they were interested in
+      // read as oddly one-sided.
+      "following",
       "is_following",
       "member_since",
       "stories_published",
