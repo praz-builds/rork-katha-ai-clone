@@ -10,68 +10,84 @@ import {
   View,
 } from "react-native";
 import {
-  Bell,
-  BookOpen,
-  ChevronLeft,
   ChevronRight,
-  MessageCircle,
+  Crown,
+  FileText,
+  Flame,
+  HelpCircle,
+  LogOut,
+  Shield,
   Sparkles,
-  Star,
+  Trash2,
   UserRound,
+  Volume2,
 } from "lucide-react-native";
+import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import IdentityEditor from "@/components/profile/IdentityEditor";
-import StatGrid from "@/components/profile/StatGrid";
-import StreakCard from "@/components/profile/StreakCard";
 import {
   fetchOwnProfile,
   type OwnProfile,
   streakState,
-  writingSince,
 } from "@/lib/profile";
+import { signOutToGuest } from "@/lib/session";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
 /**
  * The reader's own profile.
  *
- * THE SHAPE OF THE SCREEN, AND WHY. The competitor's screen this was modelled
- * on leads with a settings list. This one leads with the streak, because the
- * streak is the only thing here that changes between two visits and the only
- * thing that has a deadline. Settings are below the fold, where a list of
- * things that are the same every day belongs.
+ * THE ORDER, AND WHY IT IS THIS ORDER. Premium, then Credits, then Your
+ * journey, then everything else. The first two are about what this account
+ * can currently do — the two facts a reader opens this screen to check — and
+ * the third is the only thing here that changes between two visits. Settings
+ * are a list of things that are identical every day, so they sit below all of
+ * it.
  *
- * NO PARENTAL CONTROLS. The row existed, opened an alert saying "coming soon",
- * and the owner's decision is that the product does not need them for now.
- * A settings row for a feature nobody is building is a promise, so it is gone
- * rather than disabled.
+ * NO HEADING. The tab bar already says which tab this is, in a word the reader
+ * just tapped. Home is the one screen that keeps a heading, because it says
+ * something the tab bar cannot: the reader's name.
  *
- * EVERY NUMBER OR NONE. `fetchOwnProfile` returns null when the request fails,
- * and this screen then shows the identity and the settings with no statistics
- * at all. The alternative -- zeros, or the last values we happened to have --
- * would tell a writer with forty published chapters that they have written
- * nothing, which is a worse outcome than an incomplete screen.
+ * NO STATS GRID. Reads, likes, stories, chapters and saved phrases were all
+ * here in an eight-cell grid. They are gone. Reads and likes are a scoreboard
+ * and belong to nobody but the writer; the story counts already exist in
+ * Library, next to the stories they count. What is left on the public side is
+ * followers and following, which are the only two numbers here that describe a
+ * relationship rather than a performance.
+ *
+ * WHAT OTHERS SEE IS A SEPARATE DOOR. "View public profile" opens the actual
+ * public page rather than a preview of it, so there is exactly one description
+ * of what a stranger sees and no second implementation to drift from it.
  */
 export default function ProfileScreen({
   credits,
   isAnonymous,
-  onBack,
   onCredits,
   onPaywall,
   onCustomerCenter,
   onSignIn,
+  onJourney,
+  onPublicProfile,
+  onVoices,
+  onSignedOut,
+  onDeleted,
 }: {
   credits: number;
   /** True for a guest. Almost nothing on this screen means anything to one. */
   isAnonymous?: boolean;
-  onBack: () => void;
   onCredits: () => void;
   onPaywall: () => void;
   onCustomerCenter: () => void;
   onSignIn?: () => void;
+  onJourney: (profile: OwnProfile | null) => void;
+  onPublicProfile: (authorId: string) => void;
+  onVoices: () => void;
+  onSignedOut: () => void;
+  onDeleted: (storiesKept: number) => void;
 }) {
   const [profile, setProfile] = useState<OwnProfile | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -90,38 +106,56 @@ export default function ProfileScreen({
   }, []);
 
   const applyEdits = useCallback(
-    (next: { username?: string; avatarUrl?: string; bio?: string | null }) => {
+    (
+      next: {
+        username?: string;
+        displayName?: string | null;
+        avatarUrl?: string;
+        bio?: string | null;
+      },
+    ) => {
       setProfile((current) => (current ? { ...current, ...next } : current));
     },
     [],
   );
 
-  const settingsRows = [
-    ["Notifications", "Chapter alerts and streak nudges", Bell],
-    ["Reading preferences", "Theme, font size, language", BookOpen],
-    ["Katha Plus", "Subscription, voices, ad-free", Star],
-    ["Feedback", "Comments, rating, support", MessageCircle],
-  ] as const;
+  const confirmSignOut = useCallback(() => {
+    Alert.alert(
+      "Sign out?",
+      "Your stories and streak stay with your account. You can sign back in any time.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: () => {
+            void signOutToGuest().then(onSignedOut).catch(() => {
+              Alert.alert(
+                "Could not sign out",
+                "Something went wrong. Please try again.",
+              );
+            });
+          },
+        },
+      ],
+    );
+  }, [onSignedOut]);
 
   const streak = profile ? streakState(profile) : null;
-  const since = profile ? writingSince(profile.memberSince) : null;
+  const streakDays = streak && streak.kind !== "none" && streak.kind !== "broken"
+    ? streak.days
+    : profile?.currentStreak ?? 0;
+
+  const name = profile?.displayName ?? null;
+  const handle = profile?.username ? `@${profile.username}` : null;
 
   return (
     <SafeAreaView style={styles.flex}>
       <ScrollView
-        contentContainerStyle={styles.pagePad}
+        contentContainerStyle={styles.withTabs}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.profileHeader}>
-          <Pressable onPress={onBack} style={styles.backButton}>
-            <ChevronLeft size={20} color={colors.ink} />
-            <Text style={styles.backText}>Back</Text>
-          </Pressable>
-          <Text style={styles.profileHeaderTitle}>Profile</Text>
-          <View style={styles.backButton} />
-        </View>
-
-        {/* Identity */}
+        {/* Identity. No page title above it — see the note on this component. */}
         <View style={styles.identity}>
           <View style={styles.avatarWrap}>
             {profile?.avatarUrl
@@ -135,23 +169,19 @@ export default function ProfileScreen({
               : <UserRound size={30} color={colors.tertiary} />}
           </View>
           <View style={styles.identityText}>
-            <Text style={styles.name}>
-              {profile?.username ? `@${profile.username}` : "Your profile"}
+            <Text style={styles.name} numberOfLines={1}>
+              {name ?? handle ?? "Your profile"}
             </Text>
-            <Text style={styles.meta}>
-              {profile?.bio ?? (since ? `Reading since ${since}` : "")}
-            </Text>
+            {name && handle
+              ? <Text style={styles.meta}>{handle}</Text>
+              : profile?.bio
+              ? <Text style={styles.meta} numberOfLines={2}>{profile.bio}</Text>
+              : null}
           </View>
         </View>
 
         {isAnonymous
           ? (
-            /*
-             * A guest has no handle, no followers and no stories, and the
-             * numbers below would all read zero -- which would be true and
-             * useless. Rather than a profile full of nothing, say plainly what
-             * an account is for and offer it.
-             */
             <View style={styles.guestCard} testID="profile-guest">
               <Text style={styles.guestTitle}>Sign in to keep all of this</Text>
               <Text style={styles.guestBody}>
@@ -188,41 +218,30 @@ export default function ProfileScreen({
             </Pressable>
           )}
 
-        {/* Streak and the counts. Absent entirely when nothing came back. */}
-        {streak
-          ? (
-            <View style={styles.numbers}>
-              <StreakCard state={streak} />
-              <StatGrid
-                stats={[
-                  { label: "Best streak", value: profile?.longestStreak ?? null },
-                  { label: "Stories", value: profile?.storiesWritten ?? null },
-                  { label: "Chapters", value: profile?.chaptersWritten ?? null },
-                  { label: "Reads", value: profile?.totalReads ?? null },
-                  { label: "Likes", value: profile?.totalLikes ?? null },
-                  { label: "Phrases", value: profile?.phrasesSaved ?? null },
-                  { label: "Followers", value: profile?.followers ?? null },
-                  { label: "Following", value: profile?.following ?? null },
-                ]}
-              />
-            </View>
-          )
-          : loaded && !isAnonymous
-          ? (
-            <Text style={styles.unavailable} testID="profile-stats-unavailable">
-              Your numbers could not be loaded just now.
-            </Text>
-          )
-          : null}
+        {/* 1. Premium. First because it is the answer to "what does this
+            account get", which everything below is downstream of. */}
+        <Row
+          icon={Crown}
+          title="Katha Plus"
+          subtitle="Subscription, voices, ad-free"
+          onPress={onCustomerCenter}
+          testID="profile-premium"
+          style={styles.firstGroup}
+        />
 
-        {/* Credits */}
-        <Pressable onPress={onCredits} style={styles.creditsRow}>
-          <View style={styles.settingsIcon}>
+        {/* 2. Credits. The number that gates creating anything. */}
+        <Pressable
+          onPress={onCredits}
+          accessibilityRole="button"
+          testID="profile-credits"
+          style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+        >
+          <View style={styles.rowIcon}>
             <Sparkles size={20} color={colors.accent} />
           </View>
-          <View style={styles.settingsText}>
-            <Text style={styles.settingsTitle}>Credits</Text>
-            <Text style={styles.settingsSubtitle}>{credits} available</Text>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Credits</Text>
+            <Text style={styles.rowSubtitle}>{credits} available</Text>
           </View>
           <Pressable
             onPress={onPaywall}
@@ -238,63 +257,211 @@ export default function ProfileScreen({
           </Pressable>
         </Pressable>
 
-        {/* Settings */}
-        <View style={styles.settingsList}>
-          {settingsRows.map(([title, subtitle, Icon]) => {
-            const handler = title === "Katha Plus"
-              ? onCustomerCenter
-              : () =>
-                Alert.alert("Coming soon", `${title} will be available soon.`);
-            return (
-              <Pressable
-                key={title}
-                onPress={handler}
-                accessibilityRole="button"
-                style={styles.settingsRow}
-              >
-                <View style={styles.settingsIcon}>
-                  <Icon size={20} color={colors.accent} />
-                </View>
-                <View style={styles.settingsText}>
-                  <Text style={styles.settingsTitle}>{title}</Text>
-                  <Text style={styles.settingsSubtitle}>{subtitle}</Text>
-                </View>
-                <ChevronRight size={16} color={colors.tertiary} />
-              </Pressable>
-            );
-          })}
+        {/* 3. Your journey. The streak lives behind this row rather than on
+            this screen: the calendar and the milestones need a page, and a
+            two-line summary of them here would be a second, worse version of
+            the same thing. */}
+        <Pressable
+          onPress={() => onJourney(profile)}
+          accessibilityRole="button"
+          accessibilityLabel="Your journey"
+          testID="profile-journey"
+          style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+        >
+          <View style={styles.rowIcon}>
+            <Flame size={20} color={colors.accent} />
+          </View>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Your journey</Text>
+            <Text style={styles.rowSubtitle}>
+              {streakDays > 0
+                ? `${streakDays} day streak, and the days behind it`
+                : "Your streak, your calendar and your milestones"}
+            </Text>
+          </View>
+          <ChevronRight size={16} color={colors.tertiary} />
+        </Pressable>
+
+        {/* 4. The public page. Opened, not previewed. */}
+        {!isAnonymous && profile && (
+          <Pressable
+            onPress={() => onPublicProfile(profile.userId)}
+            accessibilityRole="button"
+            accessibilityLabel="View public profile"
+            testID="profile-public"
+            style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+          >
+            <View style={styles.rowIcon}>
+              <UserRound size={20} color={colors.accent} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>View public profile</Text>
+              <Text style={styles.rowSubtitle}>
+                {profile.followers} {profile.followers === 1
+                  ? "follower"
+                  : "followers"} · {profile.following} following
+              </Text>
+            </View>
+            <ChevronRight size={16} color={colors.tertiary} />
+          </Pressable>
+        )}
+
+        {!profile && loaded && !isAnonymous && (
+          <Text style={styles.unavailable} testID="profile-unavailable">
+            Your profile could not be loaded just now.
+          </Text>
+        )}
+
+        {/* Everything below changes rarely or never. */}
+        <View style={styles.group}>
+          <Row
+            icon={Volume2}
+            title="Audiobook voices"
+            subtitle="Choose the voice chapters are read in"
+            onPress={onVoices}
+            testID="profile-voices"
+            grouped
+          />
+          <Row
+            icon={HelpCircle}
+            title="FAQ"
+            subtitle="How credits, streaks and stories work"
+            onPress={() => Alert.alert("Coming soon", "The FAQ is on its way.")}
+            testID="profile-faq"
+            grouped
+          />
+          <Row
+            icon={Shield}
+            title="Privacy Policy"
+            onPress={() =>
+              Alert.alert("Coming soon", "The privacy policy is on its way.")}
+            testID="profile-privacy"
+            grouped
+          />
+          <Row
+            icon={FileText}
+            title="Terms of Use"
+            onPress={() =>
+              Alert.alert("Coming soon", "The terms are on their way.")}
+            testID="profile-terms"
+            grouped
+            last
+          />
         </View>
 
-        <Text style={styles.legalFooter}>
-          Privacy Policy - Terms of Service - v0.1.0
-        </Text>
+        {/* The danger zone. Separated by space and by colour, and only ever
+            shown to somebody who has an account to lose — a guest signing out
+            of a session they never claimed is a button with no meaning. */}
+        {!isAnonymous && (
+          <View style={styles.dangerZone}>
+            <Text style={styles.dangerHeading}>Account</Text>
+            <Pressable
+              onPress={confirmSignOut}
+              accessibilityRole="button"
+              testID="profile-sign-out"
+              style={({ pressed }) => [
+                styles.dangerRow,
+                pressed && styles.pressed,
+              ]}
+            >
+              <LogOut size={18} color={colors.ink} />
+              <Text style={styles.signOutLabel}>Sign out</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setDeleting(true)}
+              accessibilityRole="button"
+              testID="profile-delete"
+              style={({ pressed }) => [
+                styles.dangerRow,
+                styles.dangerRowLast,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Trash2 size={18} color={colors.danger} />
+              <Text style={styles.deleteLabel}>Delete account</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <Text style={styles.version}>v0.1.0</Text>
       </ScrollView>
 
       <IdentityEditor
         visible={editing}
         username={profile?.username ?? null}
+        displayName={profile?.displayName ?? null}
         avatarUrl={profile?.avatarUrl ?? null}
         bio={profile?.bio ?? null}
         onClose={() => setEditing(false)}
         onSaved={applyEdits}
       />
+
+      <DeleteAccountSheet
+        visible={deleting}
+        onClose={() => setDeleting(false)}
+        onDeleted={(storiesKept) => {
+          setDeleting(false);
+          onDeleted(storiesKept);
+        }}
+      />
     </SafeAreaView>
+  );
+}
+
+/** One settings row. Grouped rows share a card; a lone row is its own card. */
+function Row({
+  icon: Icon,
+  title,
+  subtitle,
+  onPress,
+  testID,
+  grouped,
+  last,
+  style,
+}: {
+  icon: typeof Crown;
+  title: string;
+  subtitle?: string;
+  onPress: () => void;
+  testID?: string;
+  grouped?: boolean;
+  last?: boolean;
+  style?: object;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      testID={testID}
+      style={({ pressed }) => [
+        grouped ? styles.groupedRow : styles.card,
+        grouped && !last && styles.groupedDivider,
+        style,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.rowIcon}>
+        <Icon size={20} color={colors.accent} />
+      </View>
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
+      </View>
+      <ChevronRight size={16} color={colors.tertiary} />
+    </Pressable>
   );
 }
 
 const styles = {
   ...sharedStyles,
   ...StyleSheet.create({
-    profileHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: spacing.xl,
-    },
-    profileHeaderTitle: {
-      fontFamily: fonts.display,
-      color: colors.ink,
-      fontSize: 20,
+    /* Room for the tab bar: the profile is a tab, so the last row must not sit
+       under it. */
+    withTabs: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xl,
+      paddingBottom: 116,
     },
     identity: {
       flexDirection: "row",
@@ -368,16 +535,9 @@ const styles = {
       fontWeight: "800",
       fontSize: 15,
     },
-    numbers: { marginTop: spacing.betweenGroups, gap: spacing.md },
-    unavailable: {
-      marginTop: spacing.betweenGroups,
-      fontFamily: fonts.ui,
-      color: colors.muted,
-      fontSize: 13,
-    },
-    creditsRow: {
-      marginTop: spacing.betweenGroups,
-      marginBottom: spacing.lg,
+    firstGroup: { marginTop: spacing.betweenGroups },
+    card: {
+      marginTop: spacing.md,
       padding: spacing.lg,
       borderRadius: radius.xl,
       backgroundColor: colors.surface,
@@ -386,6 +546,42 @@ const styles = {
       flexDirection: "row",
       alignItems: "center",
       gap: spacing.md,
+    },
+    group: {
+      marginTop: spacing.betweenGroups,
+      borderRadius: radius.xl,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    groupedRow: {
+      padding: spacing.lg,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+    },
+    groupedDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+    rowIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    rowText: { flex: 1 },
+    rowTitle: {
+      fontFamily: fonts.ui,
+      color: colors.ink,
+      fontWeight: "700",
+      fontSize: 16,
+    },
+    rowSubtitle: {
+      marginTop: 2,
+      fontFamily: fonts.ui,
+      color: colors.muted,
+      fontSize: 13,
     },
     buyButton: {
       minHeight: 36,
@@ -401,7 +597,54 @@ const styles = {
       fontWeight: "800",
       fontSize: 13,
     },
-    legalFooter: {
+    unavailable: {
+      marginTop: spacing.lg,
+      fontFamily: fonts.ui,
+      color: colors.muted,
+      fontSize: 13,
+    },
+    dangerZone: {
+      marginTop: spacing.betweenGroups,
+      borderRadius: radius.xl,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    dangerHeading: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.sm,
+      fontFamily: fonts.ui,
+      color: colors.tertiary,
+      fontWeight: "800",
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    dangerRow: {
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.lg,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    dangerRowLast: {},
+    signOutLabel: {
+      fontFamily: fonts.ui,
+      color: colors.ink,
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    deleteLabel: {
+      fontFamily: fonts.ui,
+      color: colors.danger,
+      fontWeight: "700",
+      fontSize: 15,
+    },
+    version: {
       marginTop: spacing.xl,
       marginBottom: spacing.lg,
       textAlign: "center",
@@ -409,29 +652,5 @@ const styles = {
       color: colors.tertiary,
       fontSize: 12,
     },
-    settingsList: {
-      borderRadius: radius.xl,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    },
-    settingsRow: {
-      padding: spacing.lg,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    settingsIcon: {
-      width: 42,
-      height: 42,
-      borderRadius: 14,
-      backgroundColor: colors.accentSoft,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    settingsText: { flex: 1 },
   }),
 };

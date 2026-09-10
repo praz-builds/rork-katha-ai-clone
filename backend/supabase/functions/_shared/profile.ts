@@ -226,9 +226,19 @@ export function avatarStoragePath(
 export type OwnProfile = {
   userId: string;
   username: string | null;
+  /**
+   * What this person is called, from the onboarding name field.
+   *
+   * Distinct from `username` on purpose: a handle is public, unique and
+   * lowercase; this is "Priya" and appears on the reader's OWN home screen,
+   * never on a byline a stranger sees.
+   */
+  displayName: string | null;
   avatarUrl: string | null;
   bio: string | null;
   memberSince: string | null;
+  /** Non-null means a deleted account: a tombstone, not a reachable user. */
+  deletedAt: string | null;
   currentStreak: number;
   longestStreak: number;
   lastActivityDate: string | null;
@@ -252,6 +262,7 @@ export type PublicProfile = {
   totalReads: number;
   totalLikes: number;
   followers: number;
+  following: number;
   isFollowing: boolean;
 };
 
@@ -320,9 +331,11 @@ export async function readOwnProfile(
   return {
     userId,
     username: text(row.username),
+    displayName: text(row.display_name),
     avatarUrl: text(row.avatar_url),
     bio: text(row.bio),
     memberSince: text(row.member_since),
+    deletedAt: text(row.deleted_at),
     currentStreak: count(row.current_streak),
     longestStreak: count(row.longest_streak),
     lastActivityDate: text(row.last_activity_date),
@@ -360,6 +373,7 @@ export async function readPublicProfile(
     totalReads: count(row.total_reads),
     totalLikes: count(row.total_likes),
     followers: count(row.followers),
+    following: count(row.following),
     isFollowing: row.is_following === true,
   };
 }
@@ -415,6 +429,18 @@ export async function readPublicStories(
 // ---------------------------------------------------------------------------
 
 type ServiceClient = RpcClient & {
+  /**
+   * The admin surface, narrowed to the one call account deletion makes.
+   *
+   * Typed by hand like the rest of this shim: the generated client type is
+   * too deep for the compiler here, and naming exactly one method is also a
+   * statement about how much of the admin API this file is entitled to.
+   */
+  auth: {
+    admin: {
+      deleteUser(id: string): PromiseLike<{ error: unknown }>;
+    };
+  };
   storage: {
     from(bucket: string): {
       upload(
@@ -571,6 +597,115 @@ export async function handleProfile(req: Request): Promise<Response> {
       if (error) throw error;
 
       return respond({ avatarUrl: urlData.publicUrl });
+    }
+
+    if (action === "name") {
+      const raw = typeof body.displayName === "string"
+        ? body.displayName.trim()
+        : "";
+      if (raw.length > 60) {
+        return respond({ error: "That name is too long" }, 400);
+      }
+      // A name is not a handle: no character class, no reserved list, no
+      // lowercasing. People's names carry spaces, apostrophes, accents and
+      // scripts this codebase has no business having opinions about. Length
+      // is the only rule, and it is a storage bound.
+      const { error } = await service.rpc("set_display_name", {
+        p_user_id: viewerId,
+        p_display_name: raw.length === 0 ? null : raw,
+      });
+      if (error) throw error;
+      return respond({ displayName: raw.length === 0 ? null : raw });
+    }
+
+    if (action === "calendar") {
+      // Somebody else's calendar is readable, and that is the point: the
+      // contribution grid is a public artefact on GitHub and it is one here
+      // too, on the public profile. What it exposes is which days a person was
+      // active, which is the same thing their published stories and their
+      // comment timestamps already say out loud.
+      //
+      // It stays a POST with an explicit author id rather than something
+      // guessable from a URL, and the days come back with no times attached.
+      const authorId = parseUuid(body.authorId) ?? viewerId;
+      const { data, error } = await service.rpc("activity_calendar", {
+        p_user_id: authorId,
+        p_days: 365,
+      });
+      if (error) throw error;
+      const days = (Array.isArray(data) ? data : [])
+        .map((row: Record<string, unknown>) => text(row.day))
+        .filter((day): day is string => day !== null);
+      return respond({ days });
+    }
+
+    if (action === "comments") {
+      const authorId = parseUuid(body.authorId) ?? viewerId;
+      const { data, error } = await service.rpc("profile_comments", {
+        p_author_id: authorId,
+        p_limit: 20,
+      });
+      if (error) throw error;
+      const comments = (Array.isArray(data) ? data : []).map(
+        (row: Record<string, unknown>) => ({
+          id: text(row.comment_id),
+          storyId: text(row.story_id),
+          storyTitle: text(row.story_title),
+          chapterNumber: typeof row.chapter_number === "number"
+            ? row.chapter_number
+            : null,
+          content: text(row.content),
+          score: count(row.score),
+          createdAt: text(row.created_at),
+        }),
+      );
+      return respond({ comments });
+    }
+
+    if (action === "delete") {
+      // A guest has nothing to delete and no way back in afterwards; the
+      // account they would be destroying is one they never claimed.
+      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+      const detail = typeof body.detail === "string"
+        ? body.detail.trim().slice(0, 500)
+        : "";
+
+      // The database work first, and only then the auth user. The order is
+      // the whole design: `delete_account` scrubs the profile and leaves a
+      // tombstone so surviving stories still resolve, and deleting the auth
+      // user is what actually ends the ability to sign in. If the second step
+      // fails, the account is already anonymous and unusable and the call can
+      // be retried -- `delete_account` is idempotent. If they were reversed, a
+      // failure would leave a signed-out user with an intact profile and no
+      // way to ask again.
+      const { data, error } = await service.rpc("delete_account", {
+        p_user_id: viewerId,
+        p_reason: reason.length > 0 ? reason : null,
+        p_detail: detail.length > 0 ? detail : null,
+      });
+      if (error) throw error;
+      const storiesKept = typeof data === "number" ? data : 0;
+
+      const { error: authError } = await service.auth.admin.deleteUser(
+        viewerId,
+      );
+      if (authError) {
+        // Reported, not raised. The person's account is already anonymous and
+        // their private data is already gone, so answering with a 500 would
+        // tell them their deletion failed when the part they care about
+        // succeeded. What remains is an auth row that can no longer reach
+        // anything, and this row is how we find out about it.
+        await logError({
+          bucket: "engagement",
+          severity: "high",
+          errorCode: "delete_auth_user_failed",
+          error: authError,
+          context: { action },
+          userId: viewerId,
+        });
+      }
+
+      return respond({ deleted: true, storiesKept });
     }
 
     return respond({ error: "Unknown action" }, 400);

@@ -15,7 +15,9 @@ import {
   claimUsername,
   normalizeUsername,
   pickAndUploadAvatar,
+  cacheDisplayName,
   saveBio,
+  saveDisplayName,
   usernameMessage,
   USERNAME_MAX_LENGTH,
   validateUsername,
@@ -40,6 +42,7 @@ import {
 export default function IdentityEditor({
   visible,
   username,
+  displayName,
   avatarUrl,
   bio,
   onClose,
@@ -47,15 +50,19 @@ export default function IdentityEditor({
 }: {
   visible: boolean;
   username: string | null;
+  /** What this person is called. Separate from the handle; see `saveDisplayName`. */
+  displayName: string | null;
   avatarUrl: string | null;
   bio: string | null;
   onClose: () => void;
   onSaved: (next: {
     username?: string;
+    displayName?: string | null;
     avatarUrl?: string;
     bio?: string | null;
   }) => void;
 }) {
+  const [name, setName] = useState(displayName ?? "");
   const [handle, setHandle] = useState(username ?? "");
   const [bioText, setBioText] = useState(bio ?? "");
   const [avatar, setAvatar] = useState(avatarUrl);
@@ -86,10 +93,11 @@ export default function IdentityEditor({
       return;
     }
     if (edited.current) return;
+    setName(displayName ?? "");
     setHandle(username ?? "");
     setBioText(bio ?? "");
     setAvatar(avatarUrl);
-  }, [visible, username, bio, avatarUrl]);
+  }, [visible, username, displayName, bio, avatarUrl]);
 
   const editHandle = useCallback((next: string) => {
     edited.current = true;
@@ -127,7 +135,29 @@ export default function IdentityEditor({
     setSaving(true);
     setNotice(null);
 
-    const changes: { username?: string; bio?: string | null } = {};
+    const changes: {
+      username?: string;
+      displayName?: string | null;
+      bio?: string | null;
+    } = {};
+
+    // The name first, because it is the one that cannot fail for a reason the
+    // reader has to act on: there is no uniqueness to lose a race over and no
+    // reserved list to fall foul of, only a length. Doing it before the handle
+    // means the common edit -- somebody fixing their own name -- never has to
+    // get past a handle check to land.
+    if ((displayName ?? "") !== name.trim()) {
+      const stored = await saveDisplayName(name);
+      if (stored === undefined) {
+        setNotice("Your name could not be saved just now.");
+        setSaving(false);
+        return;
+      }
+      changes.displayName = stored;
+      // Kept on the device too, so Home greets them correctly on the next
+      // cold start without waiting for the profile to come back.
+      await cacheDisplayName(stored);
+    }
 
     if (!unchangedHandle && handle.trim().length > 0) {
       if (!verdict.ok) {
@@ -175,7 +205,9 @@ export default function IdentityEditor({
   }, [
     bio,
     bioText,
+    displayName,
     handle,
+    name,
     onClose,
     onSaved,
     saving,
@@ -232,6 +264,25 @@ export default function IdentityEditor({
               {avatarBusy ? "Working..." : "Change picture"}
             </Text>
           </Pressable>
+
+          {/* Name before handle, and they are different things: this is what
+              you are called, the handle is where you are found. Home greets
+              somebody by this; a byline shows the handle. */}
+          <Text style={styles.fieldLabel}>Your name</Text>
+          <TextInput
+            value={name}
+            onChangeText={(next) => {
+              setNotice(null);
+              setName(next.slice(0, 60));
+            }}
+            autoCapitalize="words"
+            maxLength={60}
+            placeholder="What should we call you?"
+            placeholderTextColor={colors.tertiary}
+            accessibilityLabel="Your name"
+            testID="display-name-input"
+            style={styles.input}
+          />
 
           <Text style={styles.fieldLabel}>Handle</Text>
           <View style={styles.handleRow}>

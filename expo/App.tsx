@@ -39,6 +39,15 @@ import {
   useGenerations,
 } from "@/lib/generation-session";
 import { loadStoryChapters } from "@/lib/search";
+import {
+  cachedDisplayName,
+  cacheDisplayName,
+  fetchOwnProfile,
+  type OwnProfile,
+  saveDisplayName,
+} from "@/lib/profile";
+import JourneyScreen from "@/screens/JourneyScreen";
+import VoicesScreen from "@/screens/VoicesScreen";
 import { fetchReadingStreak } from "@/lib/streak";
 import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
@@ -148,6 +157,24 @@ export default function App() {
    * number. See `src/lib/streak.ts`.
    */
   const [streakDays, setStreakDays] = useState<number | null>(null);
+  /**
+   * What to call this reader, for Home's greeting.
+   *
+   * Read from the device cache first so the greeting has a name on the very
+   * first frame, then overwritten by the server's answer. Onboarding asks for
+   * this on its opening screen and, until now, threw it away: the value went
+   * into React state and the next cold start lost it, so the one line in the
+   * app that is about the person has never been able to name them.
+   */
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  /**
+   * The profile handed to "Your journey" when it opens.
+   *
+   * The profile tab has already loaded these rows; passing them across means
+   * the journey page draws its streak and its join date immediately instead of
+   * showing zeros while it re-fetches the same thing.
+   */
+  const [journeyProfile, setJourneyProfile] = useState<OwnProfile | null>(null);
   const [onboarding, setOnboarding] = useState<KathaOnboardingResult | null>(
     null,
   );
@@ -216,6 +243,18 @@ export default function App() {
       if (active) {
         void fetchReadingStreak().then((streak) => {
           if (active) setStreakDays(streak?.current ?? null);
+        });
+
+        // Cache first, then the record. Both are allowed to be null: a reader
+        // who never gave a name is greeted by the time of day alone rather
+        // than by a placeholder.
+        void cachedDisplayName().then((cached) => {
+          if (active && cached) setDisplayName(cached);
+        });
+        void fetchOwnProfile().then((profile) => {
+          if (!active || !profile) return;
+          setDisplayName(profile.displayName);
+          void cacheDisplayName(profile.displayName);
         });
       }
 
@@ -473,6 +512,16 @@ export default function App() {
 
   const finishOnboarding = (result: KathaOnboardingResult) => {
     setOnboarding(result);
+    // The name is asked for on the first screen of onboarding and belongs to
+    // the account, not to this session. Written locally straight away so the
+    // greeting is right the moment they land on Home, and to the server in
+    // the background so it survives the app being reinstalled.
+    const given = result.name?.trim() ?? "";
+    if (given.length > 0) {
+      setDisplayName(given);
+      void cacheDisplayName(given);
+      void saveDisplayName(given);
+    }
     goTabs("home");
   };
   const finishWriterOnboarding = (result: WriterOnboardingResult) => {
@@ -507,6 +556,7 @@ export default function App() {
         return (
           <HomeScreen
             credits={credits}
+            displayName={displayName}
             preferredGenres={toGenreKeys(onboarding?.genres)}
             generatedStories={generatedStories}
             stories={allStories}
@@ -561,7 +611,45 @@ export default function App() {
             credits={credits}
             isAnonymous={isAnonymous}
             onSignIn={() => setScreen({ name: "onboarding" })}
-            onBack={() => goTabs("home")}
+            onJourney={(loaded) => {
+              // Handed the profile the tab already loaded, so the journey page
+              // opens with the numbers filled in instead of flashing zeros
+              // while it fetches the same rows a second time.
+              setJourneyProfile(loaded);
+              setScreen({ name: "journey" });
+            }}
+            onPublicProfile={(authorId) =>
+              setScreen({ name: "author", authorId })}
+            onVoices={() => setScreen({ name: "voices" })}
+            onSignedOut={() => {
+              // Back to a guest, not to nothing: every surface here assumes an
+              // identity behind it. `signOutToGuest` has already established
+              // the new one; this is the app catching up with it.
+              setIsAnonymous(true);
+              setDisplayName(null);
+              setGeneratedStories([]);
+              setCredits(0);
+              setStreakDays(null);
+              goTabs("home");
+            }}
+            onDeleted={(storiesKept) => {
+              setIsAnonymous(true);
+              setDisplayName(null);
+              setGeneratedStories([]);
+              setCredits(0);
+              setStreakDays(null);
+              goTabs("home");
+              Alert.alert(
+                "Your account is deleted",
+                storiesKept > 0
+                  ? `${storiesKept} published ${
+                    storiesKept === 1 ? "story stays" : "stories stay"
+                  } readable without your name on ${
+                    storiesKept === 1 ? "it" : "them"
+                  }. Everything else is gone.`
+                  : "Everything has been removed. Thanks for giving Katha a try.",
+              );
+            }}
             onCredits={() => setScreen({ name: "credits" })}
             onPaywall={() => setScreen({ name: "paywall" })}
             onCustomerCenter={() => {
@@ -779,6 +867,15 @@ export default function App() {
             onStory={openStory}
           />
         )
+        : screen.name === "journey"
+        ? (
+          <JourneyScreen
+            profile={journeyProfile}
+            onBack={() => goTabs("profile")}
+          />
+        )
+        : screen.name === "voices"
+        ? <VoicesScreen onBack={() => goTabs("profile")} />
         : screen.name === "credits"
         ? <CreditsScreen credits={credits} onBack={() => goTabs(tab)} />
         : screen.name === "paywall"

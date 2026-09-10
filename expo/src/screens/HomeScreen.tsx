@@ -11,6 +11,7 @@ import { Bell, ChevronRight, Coins, Flame } from "lucide-react-native";
 import { PrimaryButton } from "@/components/KathaPrimitives";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
+import { greetingName } from "@/lib/profile";
 import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
 
@@ -237,6 +238,7 @@ export default function HomeScreen({
   streakDays = null,
   unreadNotifications = 0,
   preferredGenres = [],
+  displayName = null,
 }: {
   credits: number;
   generatedStories: Story[];
@@ -270,14 +272,34 @@ export default function HomeScreen({
    */
   unreadNotifications?: number;
   preferredGenres?: Genre[];
+  /**
+   * What to call this reader, from the name onboarding asks for first.
+   *
+   * Undefined while it is still being read and null when they never gave one;
+   * the greeting treats both the same way and simply says the time of day.
+   */
+  displayName?: string | null;
 }) {
   const isNewUser = generatedStories.length === 0;
   const hour = new Date().getHours();
-  const greeting = hour < 12
+  const timeOfDay = hour < 12
     ? "Good morning"
     : hour < 17
     ? "Good afternoon"
     : "Good evening";
+  // The name is the point of the line, so it is not decoration around a
+  // second heading -- it IS the heading. Onboarding asks for it on the first
+  // screen, which is the only reason greeting somebody by name is honest here
+  // rather than a guess dressed up as familiarity.
+  //
+  // No name is a real state, not an error: anyone who onboarded before the
+  // field was stored has none, and a guest may never give one. The greeting
+  // simply stops after the time of day rather than falling back to "there",
+  // which reads as a form letter that failed to merge.
+  const firstName = greetingName(displayName ?? null);
+  const greeting = firstName
+    ? `${timeOfDay}, ${firstName} \u{1F44B}\u{1F3FC}`
+    : timeOfDay;
 
   const rows = buildFeedRows(stories, preferredGenres, generatedStories);
 
@@ -303,8 +325,7 @@ export default function HomeScreen({
             header does not need a second one. */}
         <View style={styles.header}>
           <View style={styles.headerGreeting}>
-            <Text style={styles.eyebrow}>{greeting}</Text>
-            <Text style={styles.h1}>Stories for you</Text>
+            <Text style={styles.h1} numberOfLines={2}>{greeting}</Text>
           </View>
           <View style={styles.headerActions}>
             {streakDays !== null && streakDays > 0 && (

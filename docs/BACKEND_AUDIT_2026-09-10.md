@@ -218,13 +218,20 @@ Suites: **763 backend function tests, 141 migration tests, 0 failures.**
 
 ## Not fixed — deliberately, and why
 
-1. **Account deletion cannot succeed.** Ten foreign keys have no `ON DELETE`,
-   and every user has a `credit_ledger` row, so `deleteUser` raises `23503` and
-   rolls back. The erasure trigger in 00025 therefore never fires. There is no
-   deletion path in the code at all. This is an App Store and GDPR requirement,
-   and the fix needs a decision per FK — cascade the content, but a credit
-   ledger is a financial record and "delete it" is not obviously right. It also
-   needs a client screen. **This is the largest remaining gap.**
+1. ~~**Account deletion cannot succeed.**~~ **Fixed the same day** (00070).
+   The owner chose anonymise-and-keep: everything private goes, published
+   stories and comments stay under an anonymous byline so a reader who saved
+   one does not lose it. The mechanism is a tombstone rather than a cascade —
+   the `profiles` row survives, scrubbed — which is what made the ten
+   undecided foreign keys a non-problem: they still point at a row that
+   exists. The `auth.users` row is deleted separately, which is why the
+   cascade on `profiles.id` had to go.
+
+   Verified end to end on production: a real account with a handle, a display
+   name, a public story and a private draft. After deletion the profile is
+   scrubbed with `deleted_at` set, the published story survives, the draft is
+   gone, the auth user 404s, the handle is immediately reclaimable, and the
+   reason is recorded in a table that has no `user_id` column to join back to.
 2. **Signed URLs for media.** Enumeration is closed; direct URL access by UUID
    is not. Needs a client change everywhere a cover is rendered.
 3. **`edit-story` and `shape-story` are free and unmetered.** Both run real

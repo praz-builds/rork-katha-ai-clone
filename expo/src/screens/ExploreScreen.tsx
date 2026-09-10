@@ -407,10 +407,14 @@ function ExploreListHeader({
 }) {
   return (
     <View style={styles.headerStack}>
-      {/* 1. Title. Explore has nothing to greet the reader with, so unlike
-          Home's time-of-day eyebrow this is one plain title. */}
-      <View style={styles.header}>
-        <Text style={styles.h1}>Explore</Text>
+      {/* 1. No title.
+          The tab bar already says Explore, in a label the reader just
+          tapped, so a heading here only repeats it and pushes the search
+          field -- the thing they came for -- further down. What stays is the
+          way out to the profile. The result count below the search field is
+          a different thing and earns its line: it says what came back, which
+          nothing else on screen can. */}
+      <View style={[styles.header, styles.headerNoTitle]}>
         <Pressable
           onPress={onProfile}
           accessibilityLabel="Open profile"
@@ -561,6 +565,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  /* With the title gone the row holds one control, which `space-between`
+     would park on the left. */
+  headerNoTitle: {
+    justifyContent: "flex-end",
+    paddingBottom: spacing.sm,
   },
   h1: {
     fontFamily: fonts.display,

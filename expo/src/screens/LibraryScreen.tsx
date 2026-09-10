@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Bookmark, PenLine, Star } from "lucide-react-native";
+import { PenLine, Star } from "lucide-react-native";
 
 import NotesTab from "@/components/library/NotesTab";
 import StoryShelf, { type ShelfState } from "@/components/library/StoryShelf";
@@ -134,14 +134,13 @@ export default function LibraryScreen({
         contentContainerStyle={styles.withTabs}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Library</Text>
-            <Text style={styles.h1}>Your collection</Text>
-          </View>
-          <Bookmark size={28} color={colors.accent} />
-        </View>
-
+        {/* No heading.
+            A tab bar already says which tab this is, in a label the reader
+            just tapped. Repeating it as a title -- "Library / Your
+            collection" -- spends the most valuable strip of the screen
+            telling somebody something they did a second ago, and pushes the
+            actual collection below the fold. Home keeps a heading because it
+            says something the tab bar cannot: the reader's name. */}
         <View style={styles.segmented}>
           {tabs.map(({ key, label }) => (
             <Pressable

@@ -455,6 +455,15 @@ export type Screen =
     returnTo: "story" | "reader" | "tabs";
   }
   | { name: "author"; authorId: string }
+  /**
+   * "Your journey" — the reader's own streak, activity calendar and
+   * milestones. A page rather than a section of the profile because the
+   * calendar and the milestone list both need room, and a two-line summary of
+   * them on the profile would be a second, worse version of the same thing.
+   */
+  | { name: "journey" }
+  /** The narration voice picker, reached from the profile. */
+  | { name: "voices" }
   | { name: "credits" }
   | { name: "paywall" }
   | { name: "practice" };

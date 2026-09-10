@@ -83,18 +83,31 @@ future feature should be decided by them without reopening this document.
 3. **Whole numbers only.** A user never sees a decimal, a fraction, a percentage,
    or a second currency. An action that cannot be priced at a whole credit
    becomes free-with-a-cap or bundled.
-4. **Never charge for our own failure.** Failed generations auto-refund. Every
-   paid image gets one free retry.
+4. **Never charge for our own failure.** Failed generations auto-refund. ~~Every
+   paid image gets one free retry.~~ **Amended 2026-09-10: there are no free
+   image retries.** The first half stands unchanged — a *failed* generation still
+   auto-refunds every credit it reserved. A delivered image you simply dislike is
+   not a failure, and regenerating it is a second paid API call, so it is a second
+   credit. See §1.
+
+   > ⚠ **This is a code change, not only a doc change.** Migration 00044 exists
+   > *specifically* to implement the free retry: `stories.cover_regen_count` is the
+   > free-versus-paid discriminator (0 means the next regeneration is free), and
+   > `finish_cover_regeneration` increments it only on success. That column and its
+   > branch are now dead logic, and `regenerate-cover` must charge from the first
+   > regeneration. **`STORY_GENERATION_FLOW.md` §10.4 still states the old rule**
+   > ("Regenerate: 1 free retry, then 1 ✦") and now contradicts this file. Neither
+   > has been updated.
 5. **Never charge twice for the same thing.** An unlocked chapter stays unlocked
    forever — re-reads, re-listens, pause/resume and library re-opens are free.
 6. **A subscription must always be the best price per credit** against any pack
    it competes with. A pack that undercuts the plan it sits next to is a bug in
    the price list, not a promotion.
 7. **Steady-state earnable free credits stay at or below 50% of the cheapest paid
-   grant** — the streak ladder pays ~4/month against every paid plan's 50 (8%),
-   leaving real headroom rather than sitting on the line. Measure the ceiling
-   against the **most expensive action a credit can buy**, never the blended
-   cost: see §5, *The daily credit, re-examined*.
+   grant** — the streak ladder pays **nothing** in steady state (14 credits
+   once, inside the first ten days), so the headroom is the whole ceiling.
+   Measure it against the **most expensive action a credit can buy**, never the
+   blended cost: see §5, *The daily credit, re-examined*.
 
 ---
 
@@ -163,7 +176,7 @@ plan; we don't lock voices behind a tier.
 | Type, rewrite, restructure your draft by hand | **0**, unlimited |
 | Ask AI to redraft a chapter | **0** — 3 free per chapter |
 | Ask AI to rewrite a paragraph | **0** — 20 free per chapter |
-| Regenerate a cover you paid for | **0** — 1 free retry |
+| Regenerate a cover you paid for | **1** — there is no free retry |
 
 Past those limits, each further AI action is 1 credit.
 
@@ -178,7 +191,7 @@ one-credit refund without discarding the completed chapter. Every time.
 
 | | Credits |
 |---|---|
-| Keep a reading streak | **1** at day 2, day 5, day 7, then every 7 days |
+| Keep a reading streak | **2** at day 2, **7** at day 5, **5** at day 10 |
 | Invite a friend who creates something | **10** to you, **5** to them |
 | Welcome bonus | **10**, once |
 
@@ -490,20 +503,88 @@ and it keeps the Writer yearly undiscounted per decision 15.
 
 ### Credit packs
 
-For users who skip the paywall entirely. No subscription required.
+> **Current as of 2026-09-10**, unlike the rest of §3. This subsection is written
+> against the decided ladder — weekly $5.99 · 20, monthly $12.99 · 50, yearly
+> $59 · 50/month. The three-pack table it replaces (10/$4.99, 40/$14.99,
+> 90/$29.99) was priced against the retired Writer/Reader grid.
 
-| Pack | Price | $/credit | Net after 15% | Margin |
+For users who skip the paywall entirely, and for subscribers who exhaust a
+month's grant before the month ends. No subscription required.
+
+| Pack | Price | $/credit | Net after 15% | vs. yearly |
 |---|---|---|---|---|
-| 10 credits | $4.99 | $0.499 | $0.4242 | **90%** |
-| 40 credits | $14.99 | $0.375 | $0.3185 | **87%** |
-| 90 credits | $29.99 | $0.333 | $0.2832 | **85%** |
+| **5** | $1.99 | $0.398 | $1.69 | 4.0× |
+| **30** | $9.99 | $0.333 | $8.49 | 3.4× |
+| **100** | $24.99 | $0.250 | $21.24 | 2.5× |
+| **300** | $64.99 | $0.217 | $55.24 | 2.2× |
+| **1000** | $119.99 | $0.120 | $101.99 | **1.2×** |
 
-**Packs are top-ups, not alternatives to subscribing**, and the sizes are set by
-principle 6 rather than by round numbers. The Writer monthly plan nets
-$0.2208/credit, so every pack must price above that — and the 40-pack is
-deliberately *dominated* by the Writer monthly plan on both axes ($14.99 for 40
-one-time versus $12.99 for 50 recurring), so anyone comparing them upgrades
-rather than tops up.
+The yearly plan is **$0.0983/credit**. Every pack prices above it, monotonically,
+so principle 6 holds at every rung: **the subscription is always the best price
+per credit**, and that claim can be made on the paywall as a fact rather than a
+slogan.
+
+**The 5-credit pack exists for the blocked moment** (§7), not for value. At
+$0.398/credit it is four times the yearly rate, and that is the point: it unblocks
+someone mid-chapter who does not want a subscription conversation right now. It is
+the most expensive credit in the product and the one most likely to be bought
+without comparing anything.
+
+**The 1000-credit pack is deliberately close to the yearly rate**, at 1.2×. It is
+not competing with the subscription — 1000 credits is more than a year's grant
+bought in one transaction, so its buyer is a power user who has already exhausted
+a plan, not a prospect choosing between the two. Pricing it near parity is what
+keeps that user from feeling punished for volume.
+
+**Margins**, at the $0.0738 worst-case blended credit cost (3-chapter words-only
+story, the shape that amortises the cast and cover over the fewest credits):
+
+| Pack | Cost at worst shape | Profit | Margin |
+|---|---|---|---|
+| 5 | $0.37 | $1.32 | 78% |
+| 30 | $2.21 | $6.28 | 74% |
+| 100 | $7.38 | $13.86 | 65% |
+| 300 | $22.14 | $33.10 | 60% |
+| 1000 | $73.80 | **$28.19** | **28%** |
+
+**The top pack's 28% is the carry-over risk, and it is real.** Pack credits do not
+expire monthly, so a 1000-credit buyer can spend the lot on the most expensive
+shape whenever they choose. It is still the largest single profit line in the
+price list at $28.19, and 58% on blended shapes. Watch it; do not enlarge it.
+
+### Carry-over is the pack's real product, not its price
+
+**Subscription credits refresh monthly and do not stack. Pack credits do not
+expire monthly.** Exhaust a month's 50 and the plan makes you wait for the next
+cycle; pack credits sit in the balance until spent. That is the honest reason to
+buy one, and it is what a pack sells that a cheaper subscription credit cannot.
+
+This is already how the ledger is built — `credit_balance_buckets` separates
+`subscription_grant_balance` from `purchased_balance`, and
+`credit_spend_allocations` records which bucket funded a debit so a refund returns
+to the right one (migration 00026).
+
+**It also creates a tension with principle 6 that should be named rather than
+finessed.** Principle 6 is a *price-per-credit* rule, and carry-over is a value
+dimension that sits outside price. A pack credit that never expires is worth more
+than a grant credit that does, so at anything approaching parity the pack becomes
+the better buy for a user who does not consume 50/month. The 1.2× floor on the
+top pack is what pays for that difference. **Do not close the gap further.**
+
+> ⚠ **This forces §8's open item, and the answer is now clear.** §8 currently
+> voids the *entire* balance on lapse, including purchased packs, and flags two
+> problems with that: voiding a separate consumable IAP because a *different*
+> product lapsed is a plausible App Store guideline issue, and it produces an
+> asymmetry where a never-subscribed pack buyer keeps credits forever while an
+> ex-subscriber who bought the identical pack loses theirs.
+>
+> **Selling carry-over as the pack's headline feature makes voiding packs on
+> lapse indefensible** — we would be advertising permanence and then removing it,
+> which is the exact failure the entitlements section above was written to avoid.
+> **Recommendation: packs survive lapse; subscription grants and earned credits do
+> not.** The bucket separation to implement it already exists. **Not yet
+> decided** — it is §8's call, and it needs the App Review confirmation §12 item 8
+> already asks for.
 
 **Do not resize a pack without re-running the inversion check** (§4).
 
@@ -636,20 +717,20 @@ fallback for the long tail.
 
 ### Free tier exposure
 
-A maximally engaged free user earns **16 credits in month one** (10 welcome, once
-+ 6 from streak milestones at days 2, 5, 7, 14, 21, 28) and **4/month in steady
-state** — $0.17/month if spent on creation, ~$0 if spent on cached audio.
+A maximally engaged free user earns **24 credits in month one** (10 welcome,
+once + 14 from streak milestones at days 2, 5 and 10) and **nothing thereafter** —
+a one-time $0.60 blended, $2.49 if every credit starts a story.
 
-**Four is 8% of the 50/month every paid plan grants**, comfortably inside the
-principle-7 ceiling of 50%. The streak ladder self-caps: it pays ~nine times in
-the first month under the front-loaded rungs (§5) and four times a month
-thereafter, so no separate monthly cap is needed. That is its main advantage over
-a flat daily grant, which needed an explicit ceiling to stop it reaching 30/month
-and out-earning the paid tier.
+**Zero in steady state is trivially inside the principle-7 ceiling of 50%.** The
+milestone ladder needs no monthly cap because it does not recur at all: it pays
+three times, inside the first ten days, and is then exhausted. That is its
+advantage over a flat daily grant, which needed an explicit ceiling to stop it
+reaching 30/month and out-earning the paid tier. The cost is that a retained free
+user has no ongoing earn — see the open item in §5.
 
 The headroom is deliberate. If free-tier engagement turns out too thin — the
 signal being D7 retention on free users tracking below subscribers by more than
-2× — the lever is to add a day-3 rung or shorten the recurring interval from 7
+2× — the lever is to add a recurring rung (§5's open item) or shorten the gap
 days to 5, not to raise the per-milestone amount.
 
 ---
@@ -661,20 +742,22 @@ users — reading is free and unlimited, so it carries no consumption burden.
 
 | Source | Credits | Cadence | Cap | `reason` | Ship |
 |---|---|---|---|---|---|
-| **Reading streak** | **1** | daily, days 2-7, then every 7 days | self-capping at ~4/month (~9 in month one) | `streak` | Launch |
+| **Reading streak** | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime — nothing repeats | `streak` | Launch |
 | **Welcome bonus** | **10** | once, on declining the offer (§6) | once per authenticated account | `welcome` | Launch |
 | **Guest bootstrap** | **3** | once, on first guest bootstrap (§9) | once per anonymous account, 3 per network prefix / 24h | `guest_bootstrap` | Launch |
 | **Referral — referrer** | **10** | on invited user's 1st generation | 3/month, 10 lifetime | `referral` | v1.1 |
 | **Referral — invited** | **5** | on own 1st generation | once | `referral` | v1.1 |
 | **Streak repair** | **0** — restores the streak | day after a missed day, on 30 min of reading | 2/month | — | Launch |
 
-**Steady state for a free user: ~4 credits/month**, and ~9 in month one under
-the front-loaded ladder below. Against **50/month on every paid plan**. Month one
-pays ~19 with the welcome bonus.
+**Steady state for a free user: zero.** The streak ladder pays **14 credits
+once**, all of it inside the first ten days, and then stops. With the welcome
+bonus a free user's lifetime earn is **24 credits** — against **50/month, every
+month**, on every paid plan. The earn side is an activation mechanism, not an
+income.
 
 > ⚠ **Grid drift, 2026-09-10.** The two-audience Reader/Writer grid this
 > paragraph used to cite is retired. The decided ladder is one product at three
-> durations — weekly $7.99 · 20, monthly $12.99 · 50, yearly $49.99 · 50/month —
+> durations — weekly $5.99 · 20, monthly $12.99 · 50, yearly $59 · 50/month —
 > with a **1-credit bundled story start** (cast + chapter 1 + cover). §§1-4 have
 > **not** been updated for it and still carry the old grid and the old cost
 > basis. This section is written against the decided ladder; where the two
@@ -682,26 +765,47 @@ pays ~19 with the welcome bonus.
 
 ### The streak ladder
 
-> **Front-loaded 2026-09-10.** The rungs used to sit at day 2, day 5 and day 7.
-> They are now daily through the first week. The reasoning that placed the
-> original three is unchanged and is what moved them: if the rungs exist to
-> bracket the D1-to-D7 retention cliff, filling in days 3, 4 and 6 is that same
-> argument carried to its conclusion. It also answers the product pull toward a
-> daily cadence without paying for one in steady state.
+> **Rebuilt to the milestone shape, 2026-09-10.** The rungs used to sit at day 2,
+> day 5, day 7 and every 7 days after. They are now **milestones at day 2, day 5
+> and day 10**, matching the *Your journey* screen, which shows exactly these and
+> renders them as locked achievements. This replaced a briefly-held plan to pay
+> daily through the first week: paying on days 3, 4 and 6 while celebrating only
+> 2, 5 and 10 would hand out credits with no milestone on screen to explain them.
+> A rung the user cannot see is a rung that cannot motivate.
 
 | Milestone | Credits | Cumulative |
 |---|---|---|
-| Day 2 | **1** | 1 |
-| Day 3 | **1** | 2 |
-| Day 4 | **1** | 3 |
-| Day 5 | **1** | 4 |
-| Day 6 | **1** | 5 |
-| Day 7 | **1** | 6 |
-| Every 7 days thereafter | **1** | +1/week |
+| Day 2 | **2** | 2 |
+| Day 5 | **7** | 9 |
+| Day 10 | **5** | 14 |
 
-**Month one pays ~9. Steady state stays ~4/month.** The daily cadence lands
-exactly where the retention data says it matters and decays to the sustainable
-rate once the user is retained.
+**The ladder pays 14 credits, once, and then stops.** With the welcome bonus a
+free user's lifetime earn is **24 credits**. There is no recurring rung.
+
+**The mass sits at day 5, deliberately.** Seven credits is the largest single
+grant in the earn table and it lands inside the D1-to-D7 cliff (below) rather
+than after it. At the bundled 1-credit story start that is seven whole stories
+arriving at the exact moment a wavering user decides whether this app is a habit.
+The earn side is an **activation** mechanism here, not an income.
+
+> ⚠ **Two open items, both deliberate rather than overlooked.**
+>
+> 1. **Day 10 pays less than day 5** (5 against 7). Every other ladder in this
+>    file rises. This one peaks at day 5 and steps down, which is the
+>    front-loading argument taken to its end — but it will read as a mistake to
+>    anyone meeting the table cold, and it means the *last* milestone is the
+>    *smallest*. Recorded as intended, flagged as worth re-reading.
+> 2. **Nothing repeats.** Past day 10 the streak pays nothing and every milestone
+>    on *Your journey* is unlocked, so a retained free user has no further reason
+>    to hold the streak and no ongoing earn. That is the cheapest possible earn
+>    side and a defensible position; it is also a visible dead end in a screen
+>    built around progress. A repeating rung — *every 10 days, 2* — would cost
+>    ~6/month (12% of the 50 grant, $0.31/month blended) and close it. **Not
+>    decided.**
+
+**Cost of the whole ladder: $0.60 blended, $2.49 if all 14 credits start
+stories** — one-time, per free user who reaches day 10. It is the cheapest earn
+side this document has ever costed.
 
 **A streak is consecutive days with reading activity**, server-recorded: one
 chapter finished, or ≥60s of dwell. Miss a day and it resets to zero, and the
@@ -716,11 +820,10 @@ day-5 and day-7 rungs then bracket the steepest part of it.
 **Why it beats a flat daily grant.** A flat "1 credit per app open" pays 30
 credits/month uncapped — 60% of the 50/month paid grant — so it needs an
 artificial monthly ceiling bolted on to stop the free tier dominating the paid
-one. The ladder needs no ceiling: its own cadence caps it at ~4/month in steady
-state even with the first week paid daily. One rule instead of two, and it
-rewards *consecutive* days rather than sporadic opens, which is the behavior
-actually worth paying for. The full cost comparison is in *The daily credit,
-re-examined* below.
+one. The milestone ladder needs no ceiling because it terminates: 14 credits,
+once, and never again. One rule instead of two, and it rewards *consecutive* days
+rather than sporadic opens, which is the behavior actually worth paying for. The
+full cost comparison is in *The daily credit, re-examined* below.
 
 **Activity is reading**, and that is the point. Reading is free, so a reading
 streak is precisely the mechanism that converts readers into creators — it pays
@@ -770,14 +873,14 @@ The flat daily grant has now been rejected twice on cost. **It is rejected a
 third time, and the bundled story start is a new reason rather than a restated
 one.**
 
-Priced against the decided ladder — a paying annual subscriber nets **$42.49/yr**
+Priced against the decided ladder — a paying annual subscriber nets **$50.15/yr**
 after the 15% store commission:
 
 | Model | Credits/mo | Cost/yr at blended $0.043 | Cost/yr if spent starting stories ($0.178) |
 |---|---|---|---|
-| **Flat daily credit** | 30 | $15.48 | **$64.08** |
-| Front-loaded ladder | ~9 first month, ~4 after | $2.60 | $10.68 |
-| Original ladder | ~4 | $2.06 | $8.54 |
+| **Flat daily credit** | 30, forever | $15.48/yr | **$64.08/yr** |
+| Milestone ladder (shipped) | 14 **once**, then 0 | **$0.60 once** | $2.49 once |
+| Retired day-2/5/7 ladder | ~4 | $2.06/yr | $8.54/yr |
 
 **The old argument, unchanged.** 30 credits/month is **60% of the 50/month paid
 grant**, over the 50% ceiling in governing principle 7. The free tier would sit
@@ -788,7 +891,7 @@ single credit — cast, chapter 1 and its cover for one — makes **starting a s
 the most expensive credit in the product at $0.178**, and simultaneously the most
 attractive thing to spend one on. Free credits flow to their highest-value use,
 so they flow there. A daily-credit user who spends every credit starting stories
-costs **$64.08/year against the $42.49 an annual subscription nets**. The flat
+costs **$64.08/year against the $50.15 an annual subscription nets**. The flat
 daily credit would not merely be uneconomic — under the bundle it would be worth
 **more than the subscription it exists to sell**.
 
@@ -798,9 +901,10 @@ every free credit becomes.** Any future bundling change re-opens the earn table,
 and any future earn-table change has to be priced against the *most* expensive
 action a credit can buy, never the blended one.
 
-**What ships instead: the front-loaded ladder plus repair.** Together they answer
+**What ships instead: the milestone ladder plus repair.** Together they answer
 what the daily credit was reaching for — a reason to open the app tomorrow, and
-forgiveness when you don't — at ~$2.60/year instead of $15.48-$64.08.
+forgiveness when you don't — for **$0.60 once** instead of $15.48-$64.08 every
+year. The gap is three orders of magnitude, which is the whole argument.
 
 ### Referral
 
@@ -846,10 +950,69 @@ is v1.1, but rebalance the 5 when it actually ships rather than inheriting it.
 | **Social post reward** | A manual moderation queue to pay out one credit is not worth building. |
 | **Reader earnings** | The highest-abuse surface in the app, requiring the full anti-gaming pipeline, and there is no reader volume to calibrate against pre-launch. The front-loaded curve in `strategic-decisions.md` §6 is well designed and can return in v1.2 once there is real traffic. |
 | **Rewarded ads** | Rewarded video clears $15–40 eCPM in tier-1 gaming ([RevenueFlex](https://revenueflex.com/blog/app-ad-revenue-benchmarks-2026/), [Business of Apps](https://www.businessofapps.com/ads/rewarded-video/)); *inference:* a global reading app should plan on $6–12 eCPM = **$0.006–$0.012 per impression** against $0.0423 for the credit it buys. Rewarded ads lose money as a credit source at any plausible eCPM. Whether to run **non-rewarded** ads as free-tier revenue is a separate question, deferred. |
-| **Flat daily app-open credit** | Rejected three times, most recently 2026-09-10 against the bundled story start — see *The daily credit, re-examined* above. Pays 30/month uncapped (60% of the 50/month paid grant, over principle 7's ceiling) and costs up to **$64.08/year** against the **$42.49** an annual subscription nets. The front-loaded ladder self-caps at ~4/month, rewards consecutive days rather than sporadic opens, and with streak repair answers the same product pull for ~$2.60/year. |
-| **Premium voice tier** | ~~Every voice is available on every tier including free.~~ **Reversed 2026-09-10.** The original reasoning held while every voice was MiniMax, where voice choice is not a cost lever — the same $0.22 either way. `_shared/voices.ts` already ships two *providers*: `edge_tts` (~$0/chapter) and `runpod_minimax` (~$0.22 ⚠ unmeasured). Tiering across the two engines is a real economic line rather than packaging, and the `tier` column ships a re-tiering as a migration. **Free tier gets `edge_tts`, unlimited and uncapped, because it genuinely costs nothing.** Expressive MiniMax voices are paid — and unlimited only on the pre-narrated catalog, where one narration serves every listener; narrating your own new chapters stays metered, because that $0.22 amortizes across exactly one person. |
+| **Flat daily app-open credit** | Rejected three times, most recently 2026-09-10 against the bundled story start — see *The daily credit, re-examined* above. Pays 30/month uncapped (60% of the 50/month paid grant, over principle 7's ceiling) and costs up to **$64.08/year** against the **$50.15** an annual subscription nets. The milestone ladder terminates instead of capping — 14 credits once, then nothing — rewards consecutive days rather than sporadic opens, and with streak repair answers the same product pull for **$0.60, once**. |
+| **Premium voice tier** | ~~Every voice is available on every tier including free.~~ **Reversed 2026-09-10, then qualified the same day.** The original reasoning held while every voice was MiniMax, where voice choice is not a cost lever — the same $0.22 either way. `_shared/voices.ts` ships two *providers*: `edge_tts` and `runpod_minimax` (~$0.22 ⚠ unmeasured), and tiering across two engines is a real economic line rather than packaging. **But `edge_tts` does not work and is not free.** Microsoft's consumer endpoint returns 403 to a direct connection (verified 2026-09-10: Deno's `WebSocket` cannot set the required `Origin`/`User-Agent`, and a manual TLS handshake that does set them is refused anyway). `_shared/edge-tts.ts` therefore calls an external worker at `EDGE_TTS_SERVICE_URL` **which does not exist** — Spanish voices already fail as `edge_tts_service_missing`. So the design stands and the price does not: free-tier narration costs whatever hosting a Python worker costs, and **ships only once that worker exists**. Paid MiniMax voices are unlimited on the pre-narrated catalog, where one narration serves every listener, and metered on your own new chapters, where that $0.22 amortizes across exactly one person. |
 | **Carry-over cap (2×)** | Replaced by non-rolling monthly grants (§8). |
 | **Generation refund as a grant table row** | It is not earning, so it is not on the earn table. The **auto-refund behavior stays** — a failed generation returns every credit it reserved, per principle 4, already implemented as `refund_generation_operation`. It is documented in §1 as a guarantee, not as a way to earn. |
+
+### Plan entitlements — the second thing a plan sells
+
+**Decided 2026-09-10: Download PDF is premium-only.** It is the first entitlement
+in the product, so what follows records the *category*, not just the feature.
+
+**Why it cannot be a credit.** Principle 2 draws the line: if we call a paid API
+on the user's behalf, that is a credit; if we do not, it is free. **A PDF export
+calls no paid API.** Rendering a story we already hold into a file is our own
+compute and costs effectively nothing per export. So under principle 2 it cannot
+honestly be priced in credits — the choice was only ever *free* or *entitlement*,
+and we chose entitlement.
+
+**That opens a second axis, and it should be opened deliberately.** This document
+is architected around one currency and one rule — one credit, one AI action. An
+entitlement is a different kind of thing: the plan now sells credits **and**
+access. That is legitimate, and zero-marginal-cost features are exactly what
+belongs on it, because pricing them in credits would be charging for nothing. But
+every future entitlement gets tested with the same question first:
+
+> **Does it call a paid API?** If yes, it is a credit and must not be an
+> entitlement — gating a metered action by plan hides a real cost behind a flat
+> fee. If no, it is a candidate.
+
+| | Free | Any paid plan |
+|---|---|---|
+| Read, unlimited, forever | ✓ | ✓ |
+| **Download PDF** | **—** | **✓** |
+
+**It does not break principle 1, but it is close enough that the copy matters.**
+Principle 1 says reading is free, always, with no cap. A PDF is a *file*, not a
+reading session; reading in the app stays free and uncapped for everyone. The
+feature is therefore always "export", never "download to read" — the second
+framing would make the gate read as a cap on reading, which is the one thing this
+document has never allowed.
+
+**Export ends with the plan, and the paywall must never imply otherwise.**
+*(Decided 2026-09-10.)* §1 promises that every story you created stays in your
+library on any plan or none — that is about **in-app access**, it still holds
+exactly, and it is the only permanence the product promises. Export is not part
+of it.
+
+The fix is in the copy, not in the entitlement: **the paywall does not promise
+permanence it cannot keep.** No "yours forever", no "keep your stories", no
+download iconography next to a permanence claim. The cancellation flow and §8's
+lapse warning say plainly that export ends with the plan. A user who is never
+told the wrong thing has nothing to be surprised by, which is cheaper and more
+honest than engineering a carve-out to satisfy a promise we should not have made.
+
+> **Open: does the free tier get one export?** A PDF carrying cover art is
+> genuinely shareable, which makes export a growth vector as well as a feature.
+> Gating it completely removes every free user from that vector — the same
+> population we make reading free for precisely because they are the top of the
+> funnel. One free export, or an unlimited export carrying a Katha footer, keeps
+> the growth path open at zero marginal cost. **Not decided.**
+
+> **Placement.** This belongs in §3 (*Pricing and plans*) once §§1-4 are rebuilt
+> against the current ladder. It sits here because §5 is where the 2026-09-10
+> decisions are currently accurate.
 
 ### No unconditional daily free chapter
 
@@ -857,9 +1020,9 @@ Google's Gemini free tier gives 20 images/day
 ([AI Free API](https://www.aifreeapi.com/en/posts/gemini-image-generation-free-api))
 because its marginal cost is near zero and it funnels to a $20/month plan.
 Katha's creation marginal cost is not near zero, and MiniMax fallback narration
-can still be materially higher than text. The entry paid tier is $7.99/week. A
+can still be materially higher than text. The entry paid tier is $5.99/week. A
 free chapter a day is 90 credits/month — **$46.44/year at the blended $0.043, or
-$192/year if those credits start stories at $0.178** — against the $42.49 an
+$192/year if those credits start stories at $0.178** — against the $50.15 an
 annual subscription nets. It beats every plan we sell by a wide margin. Daily
 replenishment is **earned and capped**, never granted.
 
@@ -1408,23 +1571,33 @@ economy is tuned on evidence rather than argued about.
 
     | Source | Credits | Cadence | Cap | Ship |
     |---|---|---|---|---|
-    | Reading streak | **1** | day 2, day 5, day 7, then every 7 days | self-capping at ~4/month | Launch |
+    | Reading streak | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime, nothing repeats | Launch |
+    | Streak repair | **0** — restores the streak | day after a missed day, on 30 min reading | 2/month | Launch |
     | Welcome bonus | **10** | on declining the one-time offer | once per authenticated account | Launch |
     | Guest bootstrap | **3** | on first guest bootstrap (§9) | once per anonymous account | Launch |
     | Referral — referrer | **10** | on invited user's 1st generation | 3/mo, 10 lifetime | v1.1 |
     | Referral — invited | **5** | on own 1st generation | once | v1.1 |
 
-22. **The streak ladder pays at day 2, day 5, day 7, then every 7 days**, 1 credit
-    per milestone. A streak is consecutive days with reading activity — one chapter
-    finished or ≥60s dwell, recorded server-side. Missing a day resets it to zero
-    and the rewards restart at day 2.
-23. **Ceiling: steady-state earnable free credits ~4/month**, 20% of the Reader
-    plan's 20 and well inside the 50% principle-7 limit. Month one is 16 including
-    the one-time welcome bonus. **The ladder is self-capping; no separate monthly
-    ceiling is needed.**
+22. **The streak ladder pays 2 at day 2, 7 at day 5, and 5 at day 10** — and then
+    nothing. *(Revised 2026-09-10; it previously paid 1 at day 2, day 5, day 7 and
+    every 7 days after.)* The rungs match the three milestones on the *Your
+    journey* screen, because a rung the user cannot see cannot motivate. A streak
+    is consecutive days with reading activity — one chapter finished or ≥60s
+    dwell, recorded server-side. Missing a day resets it to zero and the rewards
+    restart at day 2, unless repaired (22a).
+22a. **A missed day can be repaired by reading 30 minutes the next day**, capped
+    at 2/month, offered only after a *single* missed day. Repair restores the
+    streak; it does not pay the missed rung. It costs nothing, because reading is
+    free, and it buys a 30-minute reading session.
+23. **Ceiling: steady-state earnable free credits are zero.** The ladder pays 14
+    once, all inside the first ten days; lifetime free earn is 24 with the welcome
+    bonus, against 50/month on every paid plan. Trivially inside the 50%
+    principle-7 limit. **The ladder terminates rather than capping, so no monthly
+    ceiling is needed** — at the cost of a retained free user having no ongoing
+    earn, recorded as an open item in §5.
 24. **The flat daily app-open credit is rejected.** Uncapped it pays 30/month —
-    150% of the Reader grant — and it needs an artificial ceiling bolted on to
-    stay sane. The ladder caps itself and rewards consecutive days rather than
+    60% of the 50/month paid grant — and it needs an artificial ceiling bolted on
+    to stay sane. The ladder terminates instead and rewards consecutive days rather than
     sporadic opens.
 25. **Removed:** the comment/feedback reward, social post rewards, reader
     earnings, rewarded-ad credits, the flat daily app-open credit, premium voice

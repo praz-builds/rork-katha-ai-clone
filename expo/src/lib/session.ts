@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setViewerId } from "@/lib/ownership";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -198,4 +199,29 @@ export async function verifyEmailCode(
     type: "email",
   });
   if (error) throw error;
+}
+
+/**
+ * Sign out, and come back as a guest.
+ *
+ * Not just `auth.signOut()`. Every screen in Katha assumes there is an
+ * identity behind it -- the feed, the credit balance, the streak all call
+ * `bootstrapUser()` and expect a session -- so signing out into no session at
+ * all leaves the app in a state nothing is written for. Signing out INTO a
+ * fresh guest keeps that invariant: reading still works, the account's
+ * credits and library are gone with the account, and signing back in restores
+ * them.
+ *
+ * The cached greeting name is cleared here too. It is a copy of something
+ * that belonged to the account that just left, and a new guest greeted by the
+ * previous person's name is the kind of small wrongness that makes an app feel
+ * untrustworthy.
+ */
+export async function signOutToGuest(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem("katha.displayName.v1");
+  } catch {
+    // A stale cached name is a cosmetic problem; it must not block sign-out.
+  }
+  await restartGuestSession();
 }

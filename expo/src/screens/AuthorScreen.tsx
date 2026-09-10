@@ -11,16 +11,19 @@ import {
 import { ChevronLeft } from "lucide-react-native";
 import { formatNumber, StoryCard } from "@/components/KathaPrimitives";
 import FollowButton from "@/components/profile/FollowButton";
-import StatGrid from "@/components/profile/StatGrid";
+import ActivityGrid from "@/components/profile/ActivityGrid";
 import { authorFor } from "@/data/seed";
 import {
+  fetchActivityCalendar,
+  fetchProfileComments,
   fetchPublicProfile,
   isRealAuthorId,
+  type ProfileComment,
   type PublicProfile,
   type PublicStorySummary,
   writingSince,
 } from "@/lib/profile";
-import { colors, fonts, spacing } from "@/theme";
+import { colors, fonts, radius, spacing } from "@/theme";
 import { GENRES, type Genre, type Story } from "@/types/domain";
 import { sharedStyles } from "@/screens/shared";
 
@@ -62,6 +65,8 @@ export default function AuthorScreen({
 }) {
   const real = isRealAuthorId(authorId);
   const seeded = authorFor(authorId);
+  const [days, setDays] = useState<string[] | null>(null);
+  const [comments, setComments] = useState<ProfileComment[]>([]);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [published, setPublished] = useState<PublicStorySummary[] | null>(null);
 
@@ -73,6 +78,19 @@ export default function AuthorScreen({
         if (!alive || !result) return;
         setProfile(result.profile);
         setPublished(result.stories);
+      })
+      .catch(() => {});
+    // The calendar and the comments are independent of the profile and of
+    // each other: one failing leaves the other two on the page rather than
+    // taking the whole thing down.
+    fetchActivityCalendar(authorId)
+      .then((result) => {
+        if (alive) setDays(result);
+      })
+      .catch(() => {});
+    fetchProfileComments(authorId)
+      .then((result) => {
+        if (alive && result) setComments(result);
       })
       .catch(() => {});
     return () => {
@@ -160,21 +178,44 @@ export default function AuthorScreen({
         </View>
 
         {/*
-          The creator numbers. All four are counts over the public stories
-          listed below, so the count above the list and the list itself can
-          never disagree.
+          Two numbers, not four.
+          
+          Reads and likes were here and are gone. They are a scoreboard: they
+          measure how a person has performed rather than describing who they
+          are, and putting them at the top of somebody's page invites the
+          comparison rather than the reading. Followers and following are what
+          is left, because they are the only counts here that describe a
+          relationship, and they are the pair a stranger actually uses to
+          decide whether this is somebody worth following.
         */}
         {real && profile
           ? (
             <View style={styles.statsWrap}>
-              <StatGrid
-                stats={[
-                  { label: "Published", value: profile.storiesPublished },
-                  { label: "Reads", value: profile.totalReads },
-                  { label: "Likes", value: profile.totalLikes },
-                  { label: "Followers", value: profile.followers },
-                ]}
-              />
+              <View style={styles.followCounts}>
+                <View style={styles.followCount}>
+                  <Text style={styles.followValue}>
+                    {formatNumber(profile.followers)}
+                  </Text>
+                  <Text style={styles.followLabel}>
+                    {profile.followers === 1 ? "Follower" : "Followers"}
+                  </Text>
+                </View>
+                <View style={styles.followDivider} />
+                <View style={styles.followCount}>
+                  <Text style={styles.followValue}>
+                    {formatNumber(profile.following)}
+                  </Text>
+                  <Text style={styles.followLabel}>Following</Text>
+                </View>
+              </View>
+
+              {/* The activity calendar, the same one the owner sees on their
+                  journey page. Public here for the reason GitHub's is public:
+                  it says something true about how somebody shows up that no
+                  single number can. */}
+              <View style={styles.activityCard}>
+                <ActivityGrid days={days} />
+              </View>
             </View>
           )
           : !real
@@ -213,6 +254,50 @@ export default function AuthorScreen({
             <Text style={styles.empty} testID="author-no-stories">
               Nothing published yet.
             </Text>
+          )
+          : null}
+
+        {/*
+          What they have said, under what they have written.
+
+          A comment is a thing said TO other people, which is why it belongs on
+          the page other people look at rather than on the owner's own. Each
+          one names the story it was left on: a remark with no context reads as
+          a status update, and these are replies.
+
+          Visibility is the story's, decided on the server -- a comment on a
+          private or gated story never reaches here, so this page can never
+          become a way to read around a story nobody was meant to see.
+        */}
+        {real && comments.length > 0
+          ? (
+            <View style={styles.commentsSection} testID="author-comments">
+              <Text style={styles.commentsHeading}>Comments</Text>
+              {comments.map((comment) => (
+                <Pressable
+                  key={comment.id}
+                  onPress={() => onStory(comment.storyId)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Comment on ${
+                    comment.storyTitle ?? "a story"
+                  }`}
+                  style={({ pressed }) => [
+                    styles.commentCard,
+                    pressed && styles.commentPressed,
+                  ]}
+                >
+                  <Text style={styles.commentStory} numberOfLines={1}>
+                    {comment.storyTitle ?? "A story"}
+                    {comment.chapterNumber
+                      ? ` · Chapter ${comment.chapterNumber}`
+                      : ""}
+                  </Text>
+                  <Text style={styles.commentBody} numberOfLines={4}>
+                    {comment.content}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           )
           : null}
       </ScrollView>
@@ -287,7 +372,67 @@ const styles = {
       fontSize: 12,
     },
     followWrap: { marginTop: spacing.md },
-    statsWrap: { marginBottom: spacing.xl },
+    statsWrap: { marginBottom: spacing.xl, gap: spacing.lg },
+    followCounts: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.xl,
+    },
+    followCount: { alignItems: "center" },
+    followValue: {
+      fontFamily: fonts.display,
+      color: colors.ink,
+      fontSize: 24,
+    },
+    followLabel: {
+      marginTop: 2,
+      fontFamily: fonts.ui,
+      color: colors.muted,
+      fontSize: 13,
+    },
+    followDivider: {
+      width: 1,
+      height: 28,
+      backgroundColor: colors.border,
+    },
+    activityCard: {
+      padding: spacing.lg,
+      borderRadius: radius.xl,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    commentsSection: { marginTop: spacing.xl, gap: spacing.sm },
+    commentsHeading: {
+      marginBottom: spacing.xs,
+      fontFamily: fonts.display,
+      color: colors.ink,
+      fontSize: 22,
+    },
+    commentCard: {
+      padding: spacing.lg,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    commentPressed: { opacity: 0.85 },
+    commentStory: {
+      fontFamily: fonts.ui,
+      color: colors.accent,
+      fontWeight: "700",
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
+    commentBody: {
+      marginTop: 6,
+      fontFamily: fonts.ui,
+      color: colors.ink,
+      fontSize: 15,
+      lineHeight: 22,
+    },
     authorStats: {
       flexDirection: "row",
       gap: spacing.lg,
