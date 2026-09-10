@@ -7,6 +7,97 @@
 
 ---
 
+## 2026-09-10 UTC — Profile identity, avatars, and the two functions that decide what a profile may show
+
+**Session:** `fable/profiles`, backend plus both profile screens. Nothing
+deployed; nothing run against `iafeuxgoiknncgyjmugd`.
+
+### Migration 00060 — `00060_profile_identity_and_avatars.sql`
+
+`profiles.username` and `profiles.avatar_url` have existed since 00001 and
+**nothing had ever written either of them.** Making them editable needed rules
+first.
+
+- **`profiles_username_shape`** — lowercase, 3–20, letters/digits/underscore,
+  no leading or trailing underscore. Lowercase because a handle differing from
+  another only by case is a phishing primitive.
+- **`profiles_username_not_reserved`** — a CHECK constraint, not an application
+  list, so `admin`/`support`/`kathaai` and friends are reserved against every
+  write path including the service role and a psql session. Every entry is at
+  least three characters so it can never be refused as "invalid" instead.
+- **`idx_profiles_username_lower`** — a unique index on `lower(username)`. The
+  column-level `unique` from 00001 is case-sensitive; this is the one that
+  actually reserves a handle.
+- **`claim_username(uuid, text)`** — normalizes, validates, attempts the UPDATE
+  and **catches the unique violation**, returning `(ok, reason, username)` with
+  `reason = 'taken'`. Checking availability first answers about a moment that
+  has already passed; the caught 23505 is what makes the answer true. Claiming
+  your own existing handle is a no-op success.
+- **`set_avatar(uuid, text, text)`** — takes a storage *path*, refuses any path
+  outside the owner's own folder, and refuses a URL that does not address it.
+- **`set_profile_bio(uuid, text)`** and a new nullable `profiles.bio`, capped at
+  200 characters.
+- **`profile_overview(uuid)`** — the owner's own numbers, all counts and sums.
+- **`public_profile(uuid, uuid)`** — what a stranger may see. Its counts use
+  `is_public and status = 'complete' and entity_gate_reason is null and
+  content_rating <> 'explicit'`, character-for-character the predicate the list
+  query uses, so the count and the list are the same set. Nothing private is in
+  the return shape at all: not credits, not drafts, not saved phrases, not
+  streaks. `entity_gate_reason is null` is redundant given 00050's constraint
+  and stays anyway — a story kept private because it names a real living person
+  is the worst thing that could leak from this function, and it must not depend
+  on a constraint in another file staying exactly as it is.
+- **The grant changed.** 00038 gave `authenticated` UPDATE on
+  `(username, avatar_url, onboarding_purpose, preferred_genres)`. `username`
+  and `avatar_url` are now server-derived and were revoked; `bio` was added.
+  00038's own test was updated to assert the new set and to state why.
+- **The `avatars` bucket** is created by a guarded `do` block (skipped when
+  `storage.buckets` is absent, which is the PGlite test harness). Public read;
+  owner-only insert/update/delete keyed on the first path segment; 2 MB limit;
+  `image/jpeg`, `image/png`, `image/webp`. **Owner action:** confirm the bucket
+  exists in the dashboard after this migration is applied — the block is
+  idempotent and safe to re-run.
+
+### Streaks: the table that nothing had ever written to, and the half that was missing
+
+`touch_streak` (00046) was already being called by `record-read`, so the reading
+half was live. The **writing** half was not: someone who spent an evening
+editing and publishing and never opened another person's story lost the day.
+
+- `touchStreak(service, userId, context)` extracted into `_shared/engagement.ts`
+  as one best-effort helper — it never throws, because every caller reaches it
+  having already committed the work the streak is about.
+- `record-read` now uses it (behaviour unchanged).
+- **`publish-story` now calls it**, after the edits are committed and after the
+  authorization and entity-gate refusals, so a streak day means work that
+  survived.
+- A day is a **UTC day with activity**. Idempotent within a day, so five
+  chapters before bed is one day. UTC rather than the device's midnight because
+  a client-supplied timezone is a value a client can lie about to keep a streak
+  alive.
+
+### New function — `profile`
+
+One endpoint, five actions. `public` needs no session (reading a byline never
+has); `me`, `username`, `bio` and `avatar` are 401 without one. The avatar
+action decodes the data URL, checks the declared MIME against an allow-list
+**and sniffs the bytes** (a GIF announced as a PNG is refused), caps at 80 KB
+decoded, and writes to a fresh key per upload so no CDN edge serves the picture
+the user just replaced.
+
+### Verification
+
+- `deno test --allow-env --allow-net --allow-read supabase/functions`: 750
+  passed (from 735).
+- `deno test --allow-env --allow-net --allow-read supabase/migrations`: 129
+  passed (from 120).
+- `deno fmt` and `deno check` clean on every file touched. `deno fmt --check`
+  still reports three pre-existing unformatted files this session did not
+  touch: `functions/feed/index.test.ts`, `functions/send-push/index.ts`,
+  `migrations/00052_read_visibility_gate_test.ts`.
+
+---
+
 ## 2026-09-09 UTC — The entity visibility gate has never once fired, and the fix is a budget, a fail-closed publish, and a log line
 
 **Session:** `fable/entity-gate-fix`, backend plus the one client modal the new

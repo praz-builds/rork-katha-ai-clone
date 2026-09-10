@@ -1,5 +1,5 @@
+import type { ComponentType } from "react";
 import {
-  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { ChevronRight, Search } from "lucide-react-native";
+import { Bell, ChevronRight, Coins, Flame } from "lucide-react-native";
 import { PrimaryButton } from "@/components/KathaPrimitives";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
@@ -179,6 +179,51 @@ export function buildFeedRows(
   return rows;
 }
 
+/**
+ * One header action: a 44x44 target, a glyph, and an optional value beside it.
+ *
+ * 44x44 is the floor Apple's HIG and WCAG 2.2 both land on, and it is a
+ * MINIMUM on the touch target rather than on the ink: the flame and the bell
+ * draw at 20pt inside a 44pt box. Three of these sit shoulder to shoulder in
+ * the top-right corner, which is exactly where a too-small target hurts most
+ * — the thumb arrives there at an angle, at the edge of its reach.
+ *
+ * `value` is rendered only when there is one, so the same component draws a
+ * bare bell and a flame carrying a day count without a second variant.
+ */
+function HeaderAction({
+  icon: Icon,
+  value,
+  label,
+  onPress,
+  dot = false,
+}: {
+  icon: ComponentType<{ size?: number; color?: string }>;
+  value?: string;
+  label: string;
+  onPress: () => void;
+  /** An unread marker. Drawn only for something the reader has not seen. */
+  dot?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={4}
+      style={({ pressed }) => [
+        styles.headerAction,
+        value !== undefined && styles.headerActionWide,
+        pressed && styles.headerActionPressed,
+      ]}
+    >
+      <Icon size={20} color={colors.strong} />
+      {value !== undefined && <Text style={styles.headerActionValue}>{value}</Text>}
+      {dot && <View style={styles.headerActionDot} />}
+    </Pressable>
+  );
+}
+
 export default function HomeScreen({
   credits,
   generatedStories,
@@ -187,6 +232,10 @@ export default function HomeScreen({
   onProfile,
   onCreate,
   onSeeAll,
+  onCredits,
+  onNotifications,
+  streakDays = null,
+  unreadNotifications = 0,
   preferredGenres = [],
 }: {
   credits: number;
@@ -197,6 +246,29 @@ export default function HomeScreen({
   onCreate: () => void;
   /** Jumps to the Explore tab. */
   onSeeAll: () => void;
+  /** Opens the credits screen. Falls back to the profile tab. */
+  onCredits?: () => void;
+  /** Opens where notifications are managed. Falls back to the profile tab. */
+  onNotifications?: () => void;
+  /**
+   * The reader's current streak in days, or null when there is no true value.
+   *
+   * NULL IS A REAL ANSWER and the header honours it by drawing nothing. See
+   * `src/lib/streak.ts`: the count comes from the `streaks` row that
+   * `touch_streak` writes when a read is recorded, and every other case —
+   * no session, no row, a failed request, a lapsed streak — arrives here as
+   * null rather than as a placeholder. A flame that invents a number is a
+   * daily lie to the one person who knows whether it is true.
+   */
+  streakDays?: number | null;
+  /**
+   * Unread notifications. Nothing feeds this yet: there is no notifications
+   * table and no inbox, only push tokens and follows, so the dot is
+   * unreachable today by construction rather than by accident. It is a prop
+   * and not a hardcoded `false` so that the day an inbox lands, the header
+   * needs no change — and until then the bell is honestly quiet.
+   */
+  unreadNotifications?: number;
   preferredGenres?: Genre[];
 }) {
   const isNewUser = generatedStories.length === 0;
@@ -215,38 +287,50 @@ export default function HomeScreen({
         contentContainerStyle={styles.withTabs}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header. No search field and no genre chips here anymore - both
-            moved to Explore, so this header's only jobs are to greet the
-            reader and hand them the two doors out: search (via onSeeAll)
-            and their own profile. */}
+        {/* Header. NO SEARCH FIELD AND NO MAGNIFIER: search is Explore's, and
+            a second entry point on Home only teaches the reader that the two
+            surfaces do the same thing. What sits here instead is the reader's
+            own standing — streak, credits, notifications — because those are
+            the three facts about THEM that change between one morning and the
+            next, and this corner is the only place on Home that is about the
+            person rather than about the stories.
+
+            Order is left to right by how often it changes and how much it is
+            worth interrupting for: the streak is the day's first thing to
+            check, credits is the number that gates creating, and the bell is
+            the one that only speaks when it has something. The avatar is
+            gone; the "You" tab is a permanent door to the profile and the
+            header does not need a second one. */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerGreeting}>
             <Text style={styles.eyebrow}>{greeting}</Text>
             <Text style={styles.h1}>Stories for you</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable
-              onPress={onSeeAll}
-              accessibilityLabel="Search stories"
-              accessibilityRole="button"
-              style={styles.searchButton}
-            >
-              <Search size={20} color={colors.strong} />
-            </Pressable>
-            <Pressable
-              onPress={onProfile}
-              accessibilityLabel="Open profile"
-              accessibilityRole="button"
-              style={styles.avatarButton}
-            >
-              <Image
-                source={require("../../assets/icon.png")}
-                style={styles.headerAvatar}
+            {streakDays !== null && streakDays > 0 && (
+              <HeaderAction
+                icon={Flame}
+                value={String(streakDays)}
+                label={`Reading streak: ${streakDays} ${
+                  streakDays === 1 ? "day" : "days"
+                }`}
+                onPress={onProfile}
               />
-              <View style={styles.creditBadge}>
-                <Text style={styles.creditBadgeText}>{credits}</Text>
-              </View>
-            </Pressable>
+            )}
+            <HeaderAction
+              icon={Coins}
+              value={String(credits)}
+              label={`${credits} credits`}
+              onPress={onCredits ?? onProfile}
+            />
+            <HeaderAction
+              icon={Bell}
+              label={unreadNotifications > 0
+                ? `Notifications, ${unreadNotifications} unread`
+                : "Notifications"}
+              onPress={onNotifications ?? onProfile}
+              dot={unreadNotifications > 0}
+            />
           </View>
         </View>
 
@@ -330,40 +414,47 @@ const styles = StyleSheet.create({
     lineHeight: 35,
   },
 
-  /* ── Header actions: search entry point + avatar/credits ── */
+  /* ── Header actions: streak, credits, notifications ──
+     Three targets in a row, each at least 44x44. `headerGreeting` takes the
+     flex so a long greeting wraps instead of squeezing the actions below
+     their minimum - the targets are the part that must not shrink. */
+  headerGreeting: { flexShrink: 1, paddingRight: spacing.sm },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.related,
+    gap: spacing.xs,
   },
-  searchButton: {
-    width: 40,
-    height: 40,
+  headerAction: {
+    position: "relative",
+    minWidth: 44,
+    height: 44,
     borderRadius: radius.pill,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
     backgroundColor: colors.surface,
     boxShadow: shadows.card,
   },
-  avatarButton: { position: "relative" },
-  headerAvatar: { width: 40, height: 40, borderRadius: 20 },
-  creditBadge: {
-    position: "absolute",
-    top: -4,
-    right: -6,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  creditBadgeText: {
+  /** A value beside the glyph needs the room the bare glyph does not. */
+  headerActionWide: { paddingHorizontal: spacing.related },
+  headerActionPressed: { opacity: 0.86, transform: [{ scale: 0.97 }] },
+  headerActionValue: {
     fontFamily: fonts.ui,
-    color: colors.surface,
-    fontSize: 10,
-    fontWeight: "900",
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  headerActionDot: {
+    position: "absolute",
+    top: 9,
+    right: 10,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+    borderWidth: 1.5,
+    borderColor: colors.surface,
   },
 
   /* ── Write CTA (new user) ── */

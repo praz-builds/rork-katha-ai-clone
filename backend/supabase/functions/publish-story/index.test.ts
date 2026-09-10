@@ -83,6 +83,12 @@ async function publish(
         created_at: new Date().toISOString(),
       });
     }
+    // The writing streak. Recorded like everything else, and answered rather
+    // than thrown at, so the streak assertions read a deliberate stub instead
+    // of the shape of an unhandled error.
+    if (url.includes("/rest/v1/rpc/touch_streak")) {
+      return json({ current_streak: 1, longest_streak: 1 });
+    }
     if (url.includes("/rest/v1/stories")) {
       if (request.method === "PATCH") return json([]);
       return json({
@@ -527,6 +533,92 @@ Deno.test("a story from before the column existed publishes exactly as before", 
 
     assertEquals(status, 200);
     assert(wentPublic(requests), "a legacy story must still publish");
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The writing streak, and what may not advance it
+// ---------------------------------------------------------------------------
+
+/** Did the handler record a writing day for this request? */
+function countedAWritingDay(requests: Recorded[]): boolean {
+  return requests.some((r) => r.url.includes("/rest/v1/rpc/touch_streak"));
+}
+
+Deno.test("a refused publish does not count as a day's writing", async () => {
+  // `touchStreak` used to run before the gate checks -- about fifty lines
+  // above the refusal its own comment claimed it came after. So a writer
+  // whose story the gate turned down was still credited with a writing day
+  // for work the server declined to do. A streak is worth nothing if it
+  // counts days on which nothing happened.
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+      false,
+      "living_public_figure",
+    );
+
+    assertEquals(status, 403);
+    assertFalse(
+      countedAWritingDay(requests),
+      "a publish the gate refused must not advance the streak",
+    );
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a story whose classification never answered does not count either", async () => {
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+      false,
+      null,
+      "unavailable",
+    );
+
+    assertEquals(status, 403);
+    assertFalse(countedAWritingDay(requests));
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a publish that actually goes through counts the day", async () => {
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+    );
+
+    assertEquals(status, 200);
+    assert(wentPublic(requests));
+    assert(
+      countedAWritingDay(requests),
+      "publishing is writing, and the streak is what says so",
+    );
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a private save counts too - the edits are the work", async () => {
+  // The gate refuses PUBLISHING, not saving. A gated story saved privately
+  // has real, committed edits behind it, and that is a writing day.
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, requests } = await publish(
+      { story_id: STORY_ID, visibility: "private", title: "Kept private" },
+      false,
+      "living_public_figure",
+    );
+
+    assertEquals(status, 200);
+    assert(countedAWritingDay(requests));
   } finally {
     restoreEnv(beforeEnv);
   }

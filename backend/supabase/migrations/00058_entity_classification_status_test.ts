@@ -65,7 +65,8 @@ Deno.test("a story records whether its entity classification ever answered", asy
     await db.query("insert into auth.users(id) values ($1)", [AUTHOR]);
     await db.query("insert into profiles(id, username) values ($1, $2)", [
       AUTHOR,
-      "classification_author",
+      // Twenty characters at most: migration 00060 gave `username` a shape.
+      "classify_author",
     ]);
 
     // The three legal states, and the distinction the whole migration exists

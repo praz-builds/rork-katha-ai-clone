@@ -63,7 +63,92 @@ export type SavedPhrase = {
    * indistinguishable and one of them is always handled wrongly.
    */
   syncedAt?: string;
+  /**
+   * The language the reader is learning this phrase in.
+   *
+   * `saved_phrases.language` exists (00047, default `'English'`, and part of
+   * the `(user_id, language, phrase_key)` uniqueness key), so the same phrase
+   * can be saved once per language. `save-phrase` does not accept the field
+   * yet, so today this is a local record only; see `saveManualPhrases`.
+   */
+  language?: string;
+  /**
+   * Where the phrase came from.
+   *
+   * `reader` means it was tapped out of a story and carries a real story,
+   * chapter and sentence. `manual` means it was typed into Library's Notes
+   * tab, so it has no story behind it and cannot be sent to `save-phrase`,
+   * which requires a `storyId` and `chapterId` that resolve to real rows.
+   */
+  origin?: "reader" | "manual";
 };
+
+/** The Notes field accepts this many characters in one go. */
+export const MAX_PHRASE_INPUT_LENGTH = 1000;
+
+/**
+ * One phrase may be this long, matching `saved_phrases_phrase_present` in
+ * migration 00047. A longer entry is dropped rather than truncated: half a
+ * sentence the reader did not ask for is worse than being told it was skipped.
+ */
+export const MAX_PHRASE_LENGTH = 160;
+
+export type ParsedPhraseInput = {
+  /** The phrases worth saving, in the order they were typed. */
+  phrases: string[];
+  /** How many were dropped for already existing, or for repeating within the input. */
+  duplicates: number;
+  /** How many were dropped for exceeding `MAX_PHRASE_LENGTH`. */
+  tooLong: number;
+  /** The raw text is longer than `MAX_PHRASE_INPUT_LENGTH`. Nothing is parsed. */
+  overLimit: boolean;
+};
+
+/**
+ * Turn one blob of typed text into individual phrases.
+ *
+ * Readers paste. They paste a comma-separated line from a notebook, a column
+ * copied out of a spreadsheet with a newline between every entry, and often
+ * both at once with trailing commas and blank lines throughout. All three
+ * separators mean the same thing here, so all three are treated the same way,
+ * and the result is deduped against what they have already saved so pasting
+ * the same list twice does not double it.
+ */
+export function parsePhraseInput(
+  raw: string,
+  existing: readonly string[] = [],
+): ParsedPhraseInput {
+  if (raw.length > MAX_PHRASE_INPUT_LENGTH) {
+    return { phrases: [], duplicates: 0, tooLong: 0, overLimit: true };
+  }
+
+  const seen = new Set(existing.map(normalizeForDedupe).filter(Boolean));
+  const phrases: string[] = [];
+  let duplicates = 0;
+  let tooLong = 0;
+
+  for (const candidate of raw.split(/[,\n\r;]+/)) {
+    const phrase = candidate.trim().replace(/\s+/g, " ");
+    if (!phrase) continue;
+    if (phrase.length > MAX_PHRASE_LENGTH) {
+      tooLong += 1;
+      continue;
+    }
+    const key = normalizeForDedupe(phrase);
+    if (!key || seen.has(key)) {
+      duplicates += 1;
+      continue;
+    }
+    seen.add(key);
+    phrases.push(phrase);
+  }
+
+  return { phrases, duplicates, tooLong, overLimit: false };
+}
+
+function normalizeForDedupe(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
 
 export type PracticeOutcome = "know" | "again";
 
@@ -85,7 +170,44 @@ const PRACTICE_OUTCOME_WIRE_VALUE: Record<PracticeOutcome, "again" | "good"> = {
 };
 
 const STORE_KEY = "katha.phrases.v1";
+const REINFORCEMENT_KEY = "katha.phrases.reinforcement.v1";
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether saved phrases should be woven back into new stories.
+ *
+ * WHAT THIS REACHES TODAY, EXACTLY: the device, and nothing else. Weaving
+ * happens in `generate-story`, which calls `fetchPhraseSeeds` on
+ * `saved_phrases` for the requesting user and consults no preference at all
+ * (`backend/supabase/functions/_shared/phrases.ts`). There is no column to
+ * write and no request field the function would read, so the honest thing is
+ * to persist the reader's answer, keep it, and record what is missing rather
+ * than send a flag into a void and call the feature done.
+ *
+ * Default on: a reader who has saved phrases while reading has already opted
+ * into the behaviour by saving them, and defaulting off would make the
+ * feature look broken the first time they looked for it.
+ */
+export async function isPhraseReinforcementEnabled(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(REINFORCEMENT_KEY);
+    return raw === null ? true : raw === "true";
+  } catch {
+    return true;
+  }
+}
+
+export async function setPhraseReinforcementEnabled(
+  enabled: boolean,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(REINFORCEMENT_KEY, enabled ? "true" : "false");
+  } catch {
+    // The switch has already moved in the interface for this session. A
+    // storage failure costs the preference on next launch, which is not worth
+    // interrupting the reader over.
+  }
+}
 
 type Store = { phrases: SavedPhrase[] };
 
@@ -95,6 +217,24 @@ function localId(): string {
 
 function dedupeKey(storyId: string, phrase: string): string {
   return `${storyId}::${phrase.trim().toLowerCase()}`;
+}
+
+/**
+ * The dedupe key for a phrase somebody TYPED rather than tapped.
+ *
+ * A manual phrase has no `storyId`, so `dedupeKey` collapses every one of
+ * them onto `"::<text>"` and the language is not part of the identity. That
+ * is wrong in the one direction this feature exists for: "gracias" saved
+ * while learning Spanish and "gracias" saved while learning Portuguese are
+ * two different things to practise, and the second was silently discarded as
+ * a duplicate of the first. The language is what distinguishes them, so the
+ * language is in the key.
+ *
+ * Captured phrases keep `dedupeKey`: they are already identified by the
+ * story they came out of, which pins the language along with everything else.
+ */
+function manualDedupeKey(language: string, phrase: string): string {
+  return `manual::${language}::${phrase.trim().toLowerCase()}`;
 }
 
 async function readStore(): Promise<Store> {
@@ -332,6 +472,13 @@ async function unsavePhraseImpl(phraseId: string): Promise<boolean> {
   const nextPhrases = store.phrases.filter((entry) => entry.id !== phraseId);
   await writeStore({ phrases: nextPhrases });
 
+  // A manually typed phrase was never sent to `save-phrase` (it has no story
+  // to send), so there is nothing on the server to delete. Calling anyway
+  // hands `unsave-phrase` a local id it correctly rejects as not a UUID, and
+  // the rejection would be read here as "a reachable server said no" - which
+  // restores the row and makes the remove button look broken.
+  if (removed.origin === "manual") return true;
+
   const result = await invokeGuarded("unsave-phrase", { body: { phraseId } });
 
   if (result.ok || result.unavailable) return true;
@@ -472,6 +619,73 @@ export function savePhrase(
   input: Parameters<typeof savePhraseImpl>[0],
 ): Promise<SavedPhrase | null> {
   return serialize(() => savePhraseImpl(input));
+}
+
+/**
+ * Save phrases typed into Library rather than tapped out of a story.
+ *
+ * THESE STAY ON THE DEVICE, AND THAT IS NOT AN OVERSIGHT. `save-phrase`
+ * requires `storyId` and `chapterId` to be UUIDs that resolve to real rows,
+ * and `save_phrase` (00047) re-checks that the chapter belongs to the story
+ * before writing. A phrase somebody typed from memory has neither, so there
+ * is no request this function could send that the endpoint would accept. It
+ * writes locally, marks the record `manual`, and leaves `syncedAt` unset -
+ * which `mergeSavedPhrases` already reads as "the reader's unsent work",
+ * so a later server refresh lists them alongside the captured ones instead
+ * of quietly deleting them.
+ *
+ * Returns the records it actually wrote, which is the input minus anything
+ * already saved. An empty array means everything was already there.
+ */
+async function saveManualPhrasesImpl(
+  phrases: readonly string[],
+  language: string,
+): Promise<SavedPhrase[]> {
+  const store = await readStore();
+  // Only manual phrases can collide with a manual phrase, and they collide
+  // per language. Captured entries are keyed by their story and are simply
+  // not in this namespace.
+  const seen = new Set(
+    store.phrases
+      .filter((entry) => entry.origin === "manual")
+      .map((entry) => manualDedupeKey(entry.language ?? "", entry.phrase)),
+  );
+
+  const now = new Date();
+  const created: SavedPhrase[] = [];
+  for (const candidate of phrases) {
+    const phrase = candidate.trim();
+    if (!phrase || phrase.length > MAX_PHRASE_LENGTH) continue;
+    const key = manualDedupeKey(language, phrase);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    created.push({
+      id: localId(),
+      phrase,
+      // No story sentence exists for a typed phrase, and inventing one would
+      // put words in the reader's mouth. The phrase stands as its own context.
+      sentence: phrase,
+      storyId: "",
+      storyTitle: "",
+      chapterId: "",
+      createdAt: now.toISOString(),
+      dueAt: now.toISOString(),
+      reviewCount: 0,
+      language,
+      origin: "manual",
+    });
+  }
+
+  if (created.length === 0) return [];
+  await writeStore({ phrases: [...created, ...store.phrases] });
+  return created;
+}
+
+export function saveManualPhrases(
+  phrases: readonly string[],
+  language: string,
+): Promise<SavedPhrase[]> {
+  return serialize(() => saveManualPhrasesImpl(phrases, language));
 }
 
 export function unsavePhrase(phraseId: string): Promise<boolean> {

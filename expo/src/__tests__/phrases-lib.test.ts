@@ -10,6 +10,7 @@ import {
   listDuePhrases,
   listSavedPhrases,
   recordPracticeOutcome,
+  saveManualPhrases,
   savePhrase,
   unsavePhrase,
 } from "@/lib/phrases";
@@ -103,5 +104,40 @@ describe("phrases (no backend configured)", () => {
     const [afterAgain] = await listSavedPhrases();
     expect(afterAgain.reviewCount).toBe(0);
     expect(Date.parse(afterAgain.dueAt)).toBeLessThanOrEqual(Date.now());
+  });
+});
+
+/**
+ * A phrase somebody TYPED has no story to be identified by, so the language
+ * is the thing that tells two of them apart.
+ */
+describe("phrases typed into Library", () => {
+  it("keeps the same words as two phrases in two languages", async () => {
+    // These are not duplicates. Somebody learning both languages has two
+    // things to practise, and the second used to be silently discarded
+    // because manual phrases were deduped on an empty story id alone.
+    expect(await saveManualPhrases(["gracias"], "Spanish")).toHaveLength(1);
+    expect(await saveManualPhrases(["gracias"], "Portuguese")).toHaveLength(1);
+
+    const all = await listSavedPhrases();
+    expect(all).toHaveLength(2);
+    expect(all.map((entry) => entry.language).sort()).toEqual([
+      "Portuguese",
+      "Spanish",
+    ]);
+  });
+
+  it("still refuses the same words twice in the same language", async () => {
+    await saveManualPhrases(["gracias"], "Spanish");
+    expect(await saveManualPhrases([" GRACIAS "], "Spanish")).toEqual([]);
+    expect(await listSavedPhrases()).toHaveLength(1);
+  });
+
+  it("does not collide with a phrase captured out of a story", async () => {
+    await savePhrase(INPUT);
+    // Same word, but one was tapped out of a chapter and carries its
+    // sentence; the other was typed from memory. Different records.
+    expect(await saveManualPhrases(["lighthouse"], "English")).toHaveLength(1);
+    expect(await listSavedPhrases()).toHaveLength(2);
   });
 });

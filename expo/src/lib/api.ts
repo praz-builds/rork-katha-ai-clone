@@ -518,15 +518,31 @@ export async function getLibrary(
  * the app to a network blip should get the app, not an error about a list.
  */
 export async function fetchMyStories(): Promise<Story[]> {
-  if (!isSupabaseConfigured) return [];
+  const shelf = await fetchCreatedShelf();
+  return shelf.ok ? shelf.stories : [];
+}
+
+/**
+ * A shelf read that can say it failed.
+ *
+ * `fetchMyStories` swallows every failure into `[]` because it runs on boot,
+ * where an error banner would be noise. Library's tabs need the other answer:
+ * "we could not load this" is a different thing to show a reader than "you
+ * have not written anything yet", and collapsing the two is how an interface
+ * tells someone their work is gone when it is only unreachable.
+ */
+export type ShelfResult = { ok: true; stories: Story[] } | { ok: false };
+
+export async function fetchCreatedShelf(): Promise<ShelfResult> {
+  if (!isSupabaseConfigured) return { ok: true, stories: [] };
 
   let userId: string;
   try {
     const user = await bootstrapUser();
-    if (!user) return [];
+    if (!user) return { ok: true, stories: [] };
     userId = user.userId;
   } catch {
-    return [];
+    return { ok: false };
   }
 
   // Read straight from PostgREST rather than through the `library` function.
@@ -554,17 +570,82 @@ export async function fetchMyStories(): Promise<Story[]> {
       // once, right after generating (where `mapGeneratedStory` reads them
       // from the response), and never again, because this query never asked
       // for the columns and `hydrateStoryRow` filled in empties.
-      "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, beats, series_state, planned_chapter_count, entity_gate_reason, like_count, bookmark_count, read_count, created_at",
+      SHELF_STORY_COLUMNS,
     )
     .eq("author_id", userId)
     .eq("status", "complete")
     .order("created_at", { ascending: false })
     .limit(30);
 
-  if (error || !Array.isArray(data)) return [];
+  if (error || !Array.isArray(data)) return { ok: false };
 
   const stories = await Promise.all(data.map((row) => hydrateStoryRow(row)));
-  return stories.filter((story): story is Story => story !== null);
+  return { ok: true, stories: stories.filter((story): story is Story => story !== null) };
+}
+
+/** The column list every shelf read selects. Kept in one place so they stay identical. */
+const SHELF_STORY_COLUMNS =
+  "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, beats, series_state, planned_chapter_count, entity_gate_reason, like_count, bookmark_count, read_count, created_at";
+
+/**
+ * The stories this reader starred, newest star first.
+ *
+ * Read from `bookmarks` directly. The row is the only record of the act, and
+ * Library used to fake this tab with `bookmarks > 100` on the feed - a
+ * popularity filter wearing a saved-stories label, which showed a reader
+ * stories they had never touched and hid every one they had.
+ *
+ * RLS on `bookmarks` already scopes the select to `auth.uid()`; the explicit
+ * filter is there so the query reads correctly on its own.
+ */
+export async function fetchStarredShelf(): Promise<ShelfResult> {
+  if (!isSupabaseConfigured) return { ok: true, stories: [] };
+
+  let userId: string;
+  try {
+    const user = await bootstrapUser();
+    if (!user) return { ok: true, stories: [] };
+    userId = user.userId;
+  } catch {
+    return { ok: false };
+  }
+
+  const { data: bookmarkRows, error: bookmarkError } = await supabase
+    .from("bookmarks")
+    .select("story_id, bookmarked_at")
+    .eq("user_id", userId)
+    .order("bookmarked_at", { ascending: false })
+    .limit(50);
+
+  if (bookmarkError || !Array.isArray(bookmarkRows)) return { ok: false };
+
+  const orderedIds = bookmarkRows
+    .map((row) => (row as { story_id?: unknown }).story_id)
+    .filter((id): id is string => typeof id === "string");
+  if (orderedIds.length === 0) return { ok: true, stories: [] };
+
+  const { data, error } = await supabase
+    .from("stories")
+    .select(SHELF_STORY_COLUMNS)
+    .in("id", orderedIds);
+
+  if (error || !Array.isArray(data)) return { ok: false };
+
+  const hydrated = await Promise.all(data.map((row) => hydrateStoryRow(row)));
+  const byId = new Map(
+    hydrated
+      .filter((story): story is Story => story !== null)
+      .map((story) => [story.id, story]),
+  );
+
+  // Ordered by when it was starred, not by whatever order PostgREST returned
+  // the story rows in, and every one of them is starred by definition.
+  const stories = orderedIds
+    .map((id) => byId.get(id))
+    .filter((story): story is Story => story !== undefined)
+    .map((story) => ({ ...story, viewerHasBookmarked: true }));
+
+  return { ok: true, stories };
 }
 
 /** One library row plus its chapters, or null when the row is unusable. */

@@ -1,101 +1,122 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import {
-  ChevronDown,
-  LayoutGrid,
-  Rows3,
-  Search,
-  SlidersHorizontal,
-} from "lucide-react-native";
-import { Chip, FocalImage, formatNumber } from "@/components/KathaPrimitives";
+import { ChevronDown, SlidersHorizontal } from "lucide-react-native";
+import { Chip } from "@/components/KathaPrimitives";
 import { StoryFeedCard } from "@/components/feed/StoryFeedCard";
-import { imageAssets } from "@/data/images";
-import { authorFor } from "@/data/seed";
+import { GenreStrip, genreChipLabel } from "@/components/explore/GenreStrip";
+import { SearchField } from "@/components/explore/SearchField";
 import {
-  colors,
-  fonts,
-  genreGradients,
-  genreLabels,
-  radius,
-  shadows,
-  spacing,
-  type,
-} from "@/theme";
+  useStorySearch,
+  type UseStorySearchOptions,
+} from "@/components/explore/useStorySearch";
+import { hasUsableTerm } from "@/lib/search";
+import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
 import { UI_GENRES } from "@/types/domain";
 import type { Genre, Story } from "@/types/domain";
 
-/** How the list is sorted. `newest` reads `publishedOffset` ascending - the
- * seed data's offset is "how long ago", so the smallest number is the most
- * recent story. */
+/** How the results are ordered once they arrive. */
 type SortOption = "trending" | "loved" | "newest";
 
-/** Two densities: the wide `StoryFeedCard` a reader browses, and a dense
- * one-line row for a reader who already knows the title they want. */
-type Density = "comfortable" | "compact";
-
-/** A row this dense stops being useful past a dozen or so choices - past that
- * point a tag stops discriminating and just becomes noise in the panel. */
+/** A row this dense stops discriminating past a dozen or so choices. */
 const MAX_VISIBLE_TAGS = 12;
 
+/** Genres offered as a way out of a search that found nothing. */
+const SUGGESTED_GENRES: readonly Genre[] = ["fantasy", "mystery", "romance"];
+
 /**
- * Explore - the full, filterable catalogue Home's "See everything" row hands
- * off to. Home is curated and finite (a handful of named rails); this screen
- * is the opposite: one flat list, searchable, filterable, sortable, and built
- * to grow past what a rail could ever hold. That is why it is a `FlatList`
- * and not a `ScrollView` - a `ScrollView` renders every row it is given,
- * which is fine for ten curated shelves and wrong for a catalogue that keeps
- * growing.
+ * Explore — the discovery surface Home is not.
+ *
+ * Home is curated, finite and personal: a handful of named rails built from
+ * what the reader already chose. Explore is the opposite, and the split is
+ * the product decision the owner asked for: **search lives here and only
+ * here**, because two search boxes teach a reader that the two screens do the
+ * same thing, and a curated home page with a search bar on it is really just
+ * a search page with some rails above it.
+ *
+ * THREE THINGS MAKE UP THIS SCREEN, in the order a reader meets them:
+ *
+ * 1. **A search field** that queries the live catalogue — title, summary and
+ *    author handle — debounced, cancellable, and race-guarded. See
+ *    `components/explore/useStorySearch.ts` for why all three are needed and
+ *    why the third is not implied by the first two.
+ * 2. **Every genre, as one horizontal strip**, in the create brief's own chip
+ *    language. Selecting one filters; selecting it again clears it.
+ * 3. **The results**, as `StoryFeedCard`s — the same card Home's rails use,
+ *    so a story looks like itself wherever the reader meets it.
+ *
+ * THE DEFAULT STATE IS NOT BLANK. With nothing typed and no genre chosen,
+ * this runs the same query with no filters, which is the catalogue ordered by
+ * `like_count` — most loved first. That is the right default for a discovery
+ * page for a reason worth stating: a reader who opens Explore without a
+ * question has not failed to use it, and the honest answer to "show me
+ * anything" is the work other readers liked most. It also means the screen
+ * has ONE data path instead of a browse mode and a search mode that can
+ * disagree with each other, and it means the genre strip and the sort control
+ * do something on first paint rather than waiting for a query.
+ *
+ * WHERE THE ROWS COME FROM. `useStorySearch` returns `source`, which is
+ * `local` whenever the live catalogue could not be reached — no Supabase
+ * configuration, no network, a failed request. The bundled catalogue is
+ * filtered instead so the page still answers, and the eyebrow says so rather
+ * than presenting a handful of seed stories as the whole library.
  *
  * THE HEADER-IN-A-LIST TRAP. Search, the genre strip and the filter panel all
- * live in `ListHeaderComponent` so the whole screen scrolls as one surface -
- * the header travels with the list instead of pinning above it. The one way
- * this goes wrong is re-creating the header's REACT COMPONENT TYPE on every
- * render: if `ExploreListHeader` were declared inside `ExploreScreen`'s body,
- * every keystroke in the search box would re-run `ExploreScreen`, produce a
- * brand-new `ExploreListHeader` function, and hand `FlatList` a component
- * whose *type* differs from the one it rendered last frame. React treats a
- * changed type as a different component and unmounts the old subtree before
- * mounting the new one - which unmounts the `TextInput` mid-keystroke and
- * drops focus. `ExploreListHeader` is therefore declared at module scope
- * below, as a plain controlled component: its type never changes across
- * renders, only its props do, so React reconciles it in place like any other
- * child and the input never loses focus.
+ * live in `ListHeaderComponent` so the whole screen scrolls as one surface.
+ * The one way this goes wrong is re-creating the header's REACT COMPONENT
+ * TYPE on every render: React treats a changed type as a different component,
+ * unmounts the old subtree, and the `TextInput` loses focus mid-keystroke.
+ * `ExploreListHeader` is therefore declared at module scope below, as a plain
+ * controlled component — its type never changes across renders, only its
+ * props do.
  */
 export default function ExploreScreen({
   stories,
   onStory,
+  onOpenStory,
   onProfile,
+  searchOptions,
 }: {
+  /** The bundled catalogue. Also what the offline fallback filters. */
   stories: Story[];
   onStory: (id: string) => void;
+  /**
+   * Opens a story that is NOT in `stories` — a live result the app has never
+   * seen. Search returns metadata only (see `mapSearchRow`), so the caller
+   * owns fetching its chapters and putting it somewhere the reader can be
+   * navigated to. Without this, a live result would be tapped into a story id
+   * nothing can resolve.
+   */
+  onOpenStory?: (story: Story) => void;
   onProfile: () => void;
+  /** Test seam, forwarded to `useStorySearch`. */
+  searchOptions?: UseStorySearchOptions;
 }) {
   const [query, setQuery] = useState("");
-  const [genreFilter, setGenreFilter] = useState<Genre | "all">("all");
-  const [density, setDensity] = useState<Density>("comfortable");
+  const [genre, setGenre] = useState<Genre | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState<SortOption>("trending");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // Tags are a property of the CATALOGUE, not a fixed list this screen knows
-  // ahead of time - the panel must offer whatever tags the stories actually
-  // carry, ranked by how often they occur, so a reader always sees choices
-  // that narrow the list rather than empty it. Capped so the panel stays a
-  // panel instead of growing to the size of the tag vocabulary.
+  const { status, stories: results, source } = useStorySearch(
+    { text: query, genre },
+    { catalogue: stories, ...searchOptions },
+  );
+
+  // Tags are a property of whatever came BACK, not a fixed list this screen
+  // knows ahead of time - so the panel always offers choices that narrow the
+  // current results rather than emptying them. Live rows carry no tags yet,
+  // which is why the panel's tag section renders only when there are some.
   const availableTags = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const story of stories) {
+    for (const story of results) {
       for (const tag of story.tags) {
         counts.set(tag, (counts.get(tag) ?? 0) + 1);
       }
@@ -104,7 +125,7 @@ export default function ExploreScreen({
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, MAX_VISIBLE_TAGS)
       .map(([tag]) => tag);
-  }, [stories]);
+  }, [results]);
 
   const toggleTag = useCallback((tag: string) => {
     setSelectedTags((current) =>
@@ -114,92 +135,122 @@ export default function ExploreScreen({
     );
   }, []);
 
-  // Sort defaulting to "trending" and no tags selected is the screen's rest
-  // state; the badge and the "Clear" affordance both key off drifting away
-  // from it. Genre and search have their own, always-visible resets (the
-  // "All" chip, an empty text field) so they are not double-counted here.
-  const activeFilterCount = (sort !== "trending" ? 1 : 0) +
-    selectedTags.length;
+  // "Trending" with no tags is the screen's rest state; the badge and the
+  // Clear affordance both key off drifting away from it. Search and genre
+  // have their own always-visible resets (the clear button, tapping the
+  // selected chip) so they are not double-counted here.
+  const activeFilterCount = (sort !== "trending" ? 1 : 0) + selectedTags.length;
 
   const clearFilters = useCallback(() => {
     setSort("trending");
     setSelectedTags([]);
   }, []);
 
+  const clearSearch = useCallback(() => setQuery(""), []);
+  const clearGenre = useCallback(() => setGenre(null), []);
+
   const clearAll = useCallback(() => {
     setQuery("");
-    setGenreFilter("all");
+    setGenre(null);
     clearFilters();
   }, [clearFilters]);
 
-  // How many stories exist in the selected genre before search or tags narrow
-  // anything further. This is what tells "nobody has published here yet" (a
-  // catalogue gap - honest, and expected to close as writers publish) apart
-  // from "your search matched nothing" (a search problem the reader can fix
-  // themselves). Computed from the live `stories` prop rather than a
-  // hardcoded genre list, so it reads correctly for every genre in
-  // `UI_GENRES` today and for any genre added later - a genre only reads as
-  // empty here because the catalogue it was actually checked against is
-  // empty, never because of a name on a list.
-  const genreCatalogueCount = useMemo(() => {
-    if (genreFilter === "all") return null;
-    return stories.filter((story) => story.genre === genreFilter).length;
-  }, [stories, genreFilter]);
-
-  const clearGenre = useCallback(() => {
-    setGenreFilter("all");
-  }, []);
-
-  const filteredStories = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matches = stories.filter((story) => {
-      const matchesGenre = genreFilter === "all" || story.genre === genreFilter;
-      const matchesQuery = !q ||
-        story.title.toLowerCase().includes(q) ||
-        story.synopsis.toLowerCase().includes(q) ||
-        story.tags.join(" ").toLowerCase().includes(q) ||
-        authorFor(story.authorId).displayName.toLowerCase().includes(q);
+  // Sorting and tag-narrowing happen on the page that came back, not in the
+  // query. That is deliberate: they refine at most `SEARCH_PAGE_SIZE` rows a
+  // reader is already looking at, so doing them here costs one pass over a
+  // short array and, crucially, does not spend a round trip - a sort that
+  // re-queries makes the cheapest control on the screen the slowest one.
+  const visible = useMemo(() => {
+    const narrowed = selectedTags.length === 0
+      ? results
       // OR, not AND: a reader who checks "noir" and "atmospheric" wants
-      // either mood, not the rare story tagged with both. AND over a seed
-      // catalogue this small collapses to nothing almost immediately.
-      const matchesTags = selectedTags.length === 0 ||
-        story.tags.some((tag) => selectedTags.includes(tag));
-      return matchesGenre && matchesQuery && matchesTags;
-    });
+      // either mood, not the rare story tagged with both.
+      : results.filter((story) =>
+        story.tags.some((tag) => selectedTags.includes(tag))
+      );
 
-    return [...matches].sort((a, b) => {
+    return [...narrowed].sort((a, b) => {
       if (sort === "trending") return b.views - a.views;
       if (sort === "loved") return b.likes - a.likes;
       return a.publishedOffset - b.publishedOffset;
     });
-  }, [stories, query, genreFilter, selectedTags, sort]);
+  }, [results, selectedTags, sort]);
+
+  // A live result is not in the bundled catalogue, and handing its id to a
+  // navigator that resolves ids against that catalogue would open the wrong
+  // story - or nothing. Ids the caller already knows go the ordinary way;
+  // everything else is handed over whole.
+  const knownIds = useMemo(
+    () => new Set(stories.map((story) => story.id)),
+    [stories],
+  );
+
+  const open = useCallback((story: Story) => {
+    if (knownIds.has(story.id) || !onOpenStory) {
+      onStory(story.id);
+      return;
+    }
+    onOpenStory(story);
+  }, [knownIds, onOpenStory, onStory]);
 
   const renderItem = useCallback(({ item }: { item: Story }) => (
     <View style={styles.itemPad}>
-      {density === "comfortable"
-        ? (
-          <StoryFeedCard
-            story={item}
-            variant="list"
-            onPress={() => onStory(item.id)}
-          />
-        )
-        : <CompactStoryRow story={item} onPress={() => onStory(item.id)} />}
+      <StoryFeedCard
+        story={item}
+        variant="list"
+        onPress={() => open(item)}
+      />
     </View>
-  ), [density, onStory]);
+  ), [open]);
+
+  const searching = hasUsableTerm(query);
+
+  /**
+   * What the reader is looking at, in one line above the results.
+   *
+   * A results list with no caption is ambiguous in exactly the case that
+   * matters: a reader who typed something and got a full page cannot tell a
+   * search that matched from a search that was ignored.
+   */
+  const eyebrow = useMemo(() => {
+    if (status === "loading" && visible.length === 0) return "Searching";
+    const scope = searching
+      ? `${visible.length} ${visible.length === 1 ? "result" : "results"}`
+      : genre
+      ? genreLabels[genre]
+      : "Most loved";
+    return source === "local" && !searching
+      ? `${scope} · offline catalogue`
+      : scope;
+  }, [genre, searching, source, status, visible.length]);
 
   const listEmpty = useMemo(() => {
-    // The catalogue itself has nothing in this genre - not a search problem,
-    // so the copy and the way out are both different from a search miss.
-    // Search and tags cannot be why the list is empty here: if they narrowed
-    // a non-empty genre to nothing, `genreCatalogueCount` above zero would
-    // have caught that case and this branch would not run.
-    if (genreFilter !== "all" && genreCatalogueCount === 0) {
+    // Still fetching, with nothing to show underneath. A spinner rather than
+    // an empty-state headline: telling a reader "no stories match" while the
+    // answer is still in flight is simply wrong, and they will have moved on
+    // by the time it corrects itself.
+    if (status === "loading") {
       return (
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyTitle}>No {genreLabels[genreFilter]} stories yet</Text>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.emptyBody}>Looking through the catalogue…</Text>
+        </View>
+      );
+    }
+
+    // Nothing typed, a genre chosen, and that genre is empty. Not a search
+    // problem, so both the copy and the way out differ from a search miss:
+    // this is a gap in the catalogue, it is honest, and it closes as writers
+    // publish.
+    if (!searching && genre) {
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>
+            No {genreLabels[genre]} stories yet
+          </Text>
           <Text style={styles.emptyBody}>
-            This genre is new here. More stories will appear as writers publish in it - you could be the first.
+            This genre is new here. More will appear as writers publish in it —
+            you could be the first.
           </Text>
           <Pressable
             onPress={clearGenre}
@@ -211,37 +262,79 @@ export default function ExploreScreen({
         </View>
       );
     }
+
+    if (searching) {
+      // A search that matched nothing. The reader is told what did not match,
+      // and then given somewhere to go: three genres, one tap each. A dead
+      // end that only offers "clear your filters" hands the problem back to
+      // the person who just told us they do not know what they want.
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>No stories match “{query.trim()}”</Text>
+          <Text style={styles.emptyBody}>
+            Try a different spelling, or start from a genre instead.
+          </Text>
+          <View style={styles.suggestionRow}>
+            {SUGGESTED_GENRES.map((suggested) => (
+              <Chip
+                key={suggested}
+                label={genreChipLabel(suggested)}
+                onPress={() => {
+                  setQuery("");
+                  setGenre(suggested);
+                }}
+              />
+            ))}
+          </View>
+          <Pressable
+            onPress={clearAll}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.emptyButtonText}>Clear search</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    // No search, no genre, and still nothing: the catalogue itself is empty,
+    // or tags have narrowed it to nothing.
     return (
       <View style={styles.emptyWrap}>
-        <Text style={styles.emptyTitle}>No stories match</Text>
+        <Text style={styles.emptyTitle}>Nothing to show yet</Text>
         <Text style={styles.emptyBody}>
-          Try a different search, or clear your filters to see everything again.
+          {activeFilterCount > 0
+            ? "Your filters are narrower than the catalogue. Clear them to see everything."
+            : "Stories will appear here as they are published."}
         </Text>
-        <Pressable
-          onPress={clearAll}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.emptyButtonText}>Clear filters</Text>
-        </Pressable>
+        {activeFilterCount > 0 && (
+          <Pressable
+            onPress={clearAll}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.emptyButtonText}>Clear filters</Text>
+          </Pressable>
+        )}
       </View>
     );
-  }, [clearAll, clearGenre, genreCatalogueCount, genreFilter]);
+  }, [activeFilterCount, clearAll, clearGenre, genre, query, searching, status]);
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <FlatList
-        data={filteredStories}
+        data={visible}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         ListHeaderComponent={
           <ExploreListHeader
             query={query}
             onQueryChange={setQuery}
-            genreFilter={genreFilter}
-            onGenreChange={setGenreFilter}
-            density={density}
-            onDensityChange={setDensity}
+            onClearSearch={clearSearch}
+            busy={status === "loading"}
+            genre={genre}
+            onGenreChange={setGenre}
+            eyebrow={eyebrow}
             filtersOpen={filtersOpen}
             onToggleFilters={() => setFiltersOpen((open) => !open)}
             sort={sort}
@@ -259,6 +352,7 @@ export default function ExploreScreen({
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       />
     </SafeAreaView>
   );
@@ -269,18 +363,19 @@ function ItemSeparator() {
 }
 
 /**
- * Every control above the list, as one controlled component. It owns no
- * state of its own - every value comes in as a prop and every change goes
- * out as a callback - which is what keeps its component type stable across
+ * Every control above the list, as one controlled component. It owns no state
+ * of its own — every value comes in as a prop and every change goes out as a
+ * callback — which is what keeps its component type stable across
  * `ExploreScreen` re-renders (see the doc comment on `ExploreScreen` above).
  */
 function ExploreListHeader({
   query,
   onQueryChange,
-  genreFilter,
+  onClearSearch,
+  busy,
+  genre,
   onGenreChange,
-  density,
-  onDensityChange,
+  eyebrow,
   filtersOpen,
   onToggleFilters,
   sort,
@@ -294,10 +389,11 @@ function ExploreListHeader({
 }: {
   query: string;
   onQueryChange: (value: string) => void;
-  genreFilter: Genre | "all";
-  onGenreChange: (value: Genre | "all") => void;
-  density: Density;
-  onDensityChange: (value: Density) => void;
+  onClearSearch: () => void;
+  busy: boolean;
+  genre: Genre | null;
+  onGenreChange: (value: Genre | null) => void;
+  eyebrow: string;
   filtersOpen: boolean;
   onToggleFilters: () => void;
   sort: SortOption;
@@ -311,62 +407,33 @@ function ExploreListHeader({
 }) {
   return (
     <View style={styles.headerStack}>
-      {/* 1. Title + avatar. Explore has nothing to greet the reader with, so
-          unlike Home's time-of-day eyebrow this is one plain title. */}
+      {/* 1. Title. Explore has nothing to greet the reader with, so unlike
+          Home's time-of-day eyebrow this is one plain title. */}
       <View style={styles.header}>
         <Text style={styles.h1}>Explore</Text>
         <Pressable
           onPress={onProfile}
           accessibilityLabel="Open profile"
           accessibilityRole="button"
-          style={styles.avatarButton}
+          hitSlop={8}
+          style={({ pressed }) => [styles.profileLink, pressed && styles.pressed]}
         >
-          <Image
-            source={require("../../assets/icon.png")}
-            style={styles.headerAvatar}
-          />
+          <Text style={styles.profileLinkText}>You</Text>
         </Pressable>
       </View>
 
-      {/* 2. Search. Same fields Home used to filter on before this screen
-          existed: title, synopsis, tags and the author's display name. */}
-      <View style={styles.searchBox}>
-        <Search size={18} color={colors.muted} />
-        <TextInput
-          value={query}
-          onChangeText={onQueryChange}
-          placeholder="Search stories, moods, authors"
-          placeholderTextColor={colors.tertiary}
-          style={styles.searchInput}
-          returnKeyType="search"
-          autoCorrect={false}
-        />
-      </View>
+      {/* 2. Search — the field Home does not have. */}
+      <SearchField
+        value={query}
+        onChange={onQueryChange}
+        onClear={onClearSearch}
+        busy={busy}
+      />
 
-      {/* 3. Genre strip. "All" plus every UI genre, in the fixed catalogue
-          order - unlike the ranked tag list below, a genre isn't something
-          the reader should have to re-learn the order of every visit. */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.genreRow}
-      >
-        <Chip
-          label="All"
-          selected={genreFilter === "all"}
-          onPress={() => onGenreChange("all")}
-        />
-        {UI_GENRES.map((genre) => (
-          <Chip
-            key={genre}
-            label={genreLabels[genre]}
-            selected={genreFilter === genre}
-            onPress={() => onGenreChange(genre)}
-          />
-        ))}
-      </ScrollView>
+      {/* 3. Every genre, scrollable, one at a time. */}
+      <GenreStrip selected={genre} onSelect={onGenreChange} />
 
-      {/* 4. Filters pill (with an inline, no-modal panel) + density toggle. */}
+      {/* 4. Filters pill (inline panel, no modal) + what you're looking at. */}
       <View style={styles.controlRow}>
         <Pressable
           onPress={onToggleFilters}
@@ -399,38 +466,7 @@ function ExploreListHeader({
           />
         </Pressable>
 
-        <View style={styles.densityToggle}>
-          <Pressable
-            onPress={() => onDensityChange("comfortable")}
-            accessibilityRole="button"
-            accessibilityLabel="Comfortable list"
-            accessibilityState={{ selected: density === "comfortable" }}
-            style={[
-              styles.densitySegment,
-              density === "comfortable" && styles.densitySegmentSelected,
-            ]}
-          >
-            <Rows3
-              size={16}
-              color={density === "comfortable" ? colors.ink : colors.muted}
-            />
-          </Pressable>
-          <Pressable
-            onPress={() => onDensityChange("compact")}
-            accessibilityRole="button"
-            accessibilityLabel="Compact list"
-            accessibilityState={{ selected: density === "compact" }}
-            style={[
-              styles.densitySegment,
-              density === "compact" && styles.densitySegmentSelected,
-            ]}
-          >
-            <LayoutGrid
-              size={16}
-              color={density === "compact" ? colors.ink : colors.muted}
-            />
-          </Pressable>
-        </View>
+        <Text style={styles.eyebrow} numberOfLines={1}>{eyebrow}</Text>
       </View>
 
       {filtersOpen && (
@@ -439,16 +475,19 @@ function ExploreListHeader({
           <View style={styles.filterPanelRow}>
             <Chip
               label="Trending"
+              testID="explore-sort-trending"
               selected={sort === "trending"}
               onPress={() => onSortChange("trending")}
             />
             <Chip
               label="Most loved"
+              testID="explore-sort-loved"
               selected={sort === "loved"}
               onPress={() => onSortChange("loved")}
             />
             <Chip
               label="Newest"
+              testID="explore-sort-newest"
               selected={sort === "newest"}
               onPress={() => onSortChange("newest")}
             />
@@ -456,7 +495,9 @@ function ExploreListHeader({
 
           {availableTags.length > 0 && (
             <>
-              <Text style={[styles.filterPanelLabel, styles.filterPanelLabelSpaced]}>
+              <Text
+                style={[styles.filterPanelLabel, styles.filterPanelLabelSpaced]}
+              >
                 TAGS
               </Text>
               <View style={styles.filterPanelRow}>
@@ -490,59 +531,12 @@ function ExploreListHeader({
   );
 }
 
-/**
- * The dense row `density === "compact"` swaps in. AI Dungeon's compact list
- * trades the wide cover and two-line synopsis for a small square thumbnail
- * and one stat line, so the same screen shows roughly triple the titles at a
- * glance - the point of a density toggle is letting a reader who already
- * knows what they want scan faster, not showing them more prose.
- */
-function CompactStoryRow({
-  story,
-  onPress,
-}: {
-  story: Story;
-  onPress: () => void;
-}) {
-  const image = story.coverImage ? imageAssets[story.coverImage] : undefined;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Read ${story.title}`}
-      style={({ pressed }) => [styles.compactRow, pressed && styles.pressed]}
-    >
-      <View style={styles.compactCover}>
-        {image
-          ? (
-            <FocalImage
-              source={image}
-              focalX={story.focalX ?? 0.5}
-              focalY={story.focalY ?? 0.5}
-              style={{ width: "100%", height: "100%" }}
-            />
-          )
-          : (
-            <LinearGradient
-              colors={genreGradients[story.genre]}
-              style={StyleSheet.absoluteFill}
-            />
-          )}
-      </View>
-      <View style={styles.compactBody}>
-        <Text numberOfLines={1} style={styles.compactTitle}>{story.title}</Text>
-        <Text numberOfLines={1} style={styles.compactMeta}>
-          {genreLabels[story.genre]} {"·"} {formatNumber(story.views)} reads
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
 function capitalize(value: string) {
   return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
 }
+
+/** Exported so a test can assert the strip offers the whole catalogue. */
+export const EXPLORE_GENRES = UI_GENRES;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
@@ -574,36 +568,18 @@ const styles = StyleSheet.create({
     fontSize: 31,
     lineHeight: 35,
   },
-  avatarButton: { position: "relative" },
-  headerAvatar: { width: 40, height: 40, borderRadius: 20 },
-
-  /* ── 2. Search ── */
-  searchBox: {
-    marginHorizontal: spacing.xl,
-    height: 52,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    boxShadow: shadows.card,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+  profileLink: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
   },
-  searchInput: {
-    flex: 1,
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontSize: 15,
+  profileLinkText: {
+    ...type.subhead,
+    fontWeight: "800",
+    color: colors.accent,
   },
 
-  /* ── 3. Genre strip ── */
-  genreRow: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    gap: spacing.sm,
-  },
-
-  /* ── 4. Filters + density ── */
+  /* ── 4. Filters + eyebrow ── */
   controlRow: {
     paddingHorizontal: spacing.xl,
     flexDirection: "row",
@@ -611,11 +587,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.sm,
   },
+  eyebrow: {
+    ...type.caption,
+    flexShrink: 1,
+    textAlign: "right",
+    color: colors.muted,
+    fontWeight: "700",
+  },
   filtersPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
@@ -644,25 +627,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   chevronOpen: { transform: [{ rotate: "180deg" }] },
-
-  densityToggle: {
-    flexDirection: "row",
-    gap: 4,
-    padding: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface2,
-  },
-  densitySegment: {
-    width: 34,
-    height: 32,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  densitySegmentSelected: {
-    backgroundColor: colors.surface,
-    boxShadow: shadows.card,
-  },
 
   /* ── Filter panel (inline, no modal) ── */
   filterPanel: {
@@ -694,7 +658,8 @@ const styles = StyleSheet.create({
   clearButton: {
     alignSelf: "flex-end",
     marginTop: spacing.related,
-    paddingVertical: spacing.xs,
+    minHeight: 44,
+    justifyContent: "center",
     paddingHorizontal: spacing.sm,
   },
   clearButtonText: {
@@ -703,38 +668,7 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
 
-  /* ── Compact row ── */
-  compactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    boxShadow: shadows.card,
-  },
-  compactCover: {
-    // 3:4, matching the source art and StoryFeedCard. See the note on
-    // COVER_WIDTH in components/feed/StoryFeedCard.tsx.
-    width: 56,
-    height: 75,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-    backgroundColor: colors.sepiaPlaceholder,
-  },
-  compactBody: { flex: 1, gap: spacing.xs },
-  compactTitle: {
-    ...type.subhead,
-    fontFamily: fonts.display,
-    fontWeight: "600",
-    color: colors.ink,
-  },
-  compactMeta: {
-    ...type.caption,
-    color: colors.muted,
-  },
-
-  /* ── Empty state ── */
+  /* ── Empty / loading states ── */
   emptyWrap: {
     paddingHorizontal: spacing.huge,
     paddingTop: spacing.huge,
@@ -751,6 +685,13 @@ const styles = StyleSheet.create({
     ...type.subhead,
     color: colors.muted,
     textAlign: "center",
+  },
+  suggestionRow: {
+    marginTop: spacing.related,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: spacing.sm,
   },
   emptyButton: {
     marginTop: spacing.related,

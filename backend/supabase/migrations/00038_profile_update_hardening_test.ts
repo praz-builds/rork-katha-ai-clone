@@ -68,18 +68,42 @@ Deno.test("a profile owner may edit the fields the product exposes", async () =>
     assertEquals(
       await attempt(
         db,
-        `update profiles set username = 'renamed', avatar_url = 'https://example.test/a.png',
-           onboarding_purpose = 'casual', preferred_genres = array['romance']
+        `update profiles set onboarding_purpose = 'casual',
+           preferred_genres = array['romance'], bio = 'Writes at night.'
          where id = '${OWNER}'`,
       ),
       null,
     );
     await db.exec("reset role;");
-    const row = await db.query<{ username: string }>(
-      "select username from profiles where id = $1",
+    const row = await db.query<{ bio: string }>(
+      "select bio from profiles where id = $1",
       [OWNER],
     );
-    assertEquals(row.rows[0].username, "renamed");
+    assertEquals(row.rows[0].bio, "Writes at night.");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("the handle and the avatar left the owner's own grant", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+
+    // Both were in this migration's grant and migration 00060 took them out,
+    // because both became server-derived when the profile became editable:
+    // `username` is claimed through `claim_username` so a lost race can be
+    // reported as "taken" rather than a raw 23505, and `avatar_url` must
+    // address an object in our own bucket rather than any URL on the internet.
+    // A direct UPDATE would route around both, so the privilege is gone.
+    for (
+      const statement of [
+        `update profiles set username = 'renamed' where id = '${OWNER}'`,
+        `update profiles set avatar_url = 'https://tracker.test/pixel.gif' where id = '${OWNER}'`,
+      ]
+    ) {
+      assertEquals(await attempt(db, statement), "42501", statement);
+    }
   } finally {
     await db.close();
   }
@@ -135,19 +159,22 @@ Deno.test("another user's profile stays out of reach", async () => {
   try {
     await seed(db);
     // RLS filters the row out rather than raising, so the write is a no-op.
+    // Written against `bio` rather than `username` since 00060: the handle is
+    // no longer in the owner's grant at all, so a `username` write would fail
+    // on the privilege and never reach the policy this test is about.
     assertEquals(
       await attempt(
         db,
-        `update profiles set username = 'stolen' where id = '${VICTIM}'`,
+        `update profiles set bio = 'stolen' where id = '${VICTIM}'`,
       ),
       null,
     );
     await db.exec("reset role;");
-    const row = await db.query<{ username: string }>(
-      "select username from profiles where id = $1",
+    const row = await db.query<{ bio: string | null }>(
+      "select bio from profiles where id = $1",
       [VICTIM],
     );
-    assertEquals(row.rows[0].username, "victim");
+    assertEquals(row.rows[0].bio, null);
   } finally {
     await db.close();
   }
