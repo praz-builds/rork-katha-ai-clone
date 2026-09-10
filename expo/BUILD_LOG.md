@@ -2,6 +2,207 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-10: Search moves to Explore, and Home's corner tells the reader about themselves
+
+### Changed
+
+- **Home has no search box, and no magnifier either.** Tapping the magnifier
+  used to bounce the reader over to Explore, which meant Home advertised a
+  feature it did not have and Explore inherited a search the reader had
+  already started somewhere else. Search now exists in exactly one place. What
+  took the corner instead is the reader's own standing: their **streak**,
+  their **credits**, and a **notification bell** — the three facts about
+  *them* that change between one morning and the next. Each is a real 44x44
+  target with its own spoken label ("Reading streak: 6 days", "42 credits",
+  "Notifications"), rather than the old 40pt avatar with a credit number
+  stuck to its corner as a badge. The avatar is gone; the "You" tab is already
+  a permanent door to the profile and the header does not need a second one.
+- **The streak is real or it is not there.** There is a `streaks` table, and
+  until now nothing in the app had ever read it — the only other place a
+  streak appeared was a hardcoded "3-day streak" on the profile. The number in
+  the header comes from that row, written by `touch_streak` when a read is
+  recorded. Every other case — no session, no row yet, a lapsed streak, a
+  failed request — draws **nothing at all**. A flame that invents a day count
+  is a claim about the reader they have no way to check, shown to them every
+  single morning, and a gap is the honest version of not knowing.
+- **The bell is honestly quiet.** There is no notifications table and no
+  inbox, only push tokens and follows, so there is nothing that could be
+  unread. The unread dot is wired to a count the header already accepts and
+  simply never fires today, rather than being faked or hardcoded off.
+
+### Added
+
+- **Explore is a real discovery surface.** It opens on a browsable page rather
+  than a blank one: with nothing typed and no genre chosen it shows the
+  catalogue's most loved, and a line above the list says what the reader is
+  looking at ("Most loved", or a genre name, or "12 results"). That is the
+  right default because a reader who arrives without a question has not failed
+  to use the screen, and the honest answer to "show me anything" is what other
+  readers liked most.
+- **A search field that queries the live catalogue** — title, story summary
+  and author handle, in one query. There is no search endpoint, so the query
+  goes straight to PostgREST from `src/lib/search.ts` and mirrors the `feed`
+  function's visibility rules clause for clause: complete stories only, public
+  or curated only, never explicit, never an author the reader has blocked. A
+  row the feed would hide is a row search cannot return. Author handles resolve
+  through `profiles` first and join the same `or` as title and summary, so
+  "search by author" is part of one result list rather than a second one
+  stapled on.
+- **Searching feels instant, and it cannot go backwards.** A word typed at
+  speed is one request, not one per keystroke; the request being replaced is
+  aborted; and — the part the first two do not fix — every run carries a
+  sequence number so an older answer arriving last is discarded rather than
+  painted over the newer one. Without that guard, typing "wolf" then "wolves"
+  on a slow connection can leave the reader looking at results for a word that
+  is no longer in the box, with nothing to retry and no way to tell.
+- **Every genre, as one horizontal strip**, in the create brief's own emoji
+  chip language — the 🐉 Fantasy a reader picked to write with is the 🐉
+  Fantasy they meet when they go looking to read. One genre at a time, and
+  tapping the selected chip clears it. Multi-select was the alternative and it
+  narrows nothing: a multi-genre choice has to mean *or*, and an *or* across
+  most of a twelve-genre list returns the whole catalogue while looking like a
+  filter. There is no "All" chip, because no selection already means every
+  genre.
+- **Four states, each saying something different.** While a query is in flight
+  the screen says it is looking rather than claiming nothing matched. A search
+  that found nothing names the term and offers three genres as a way out, one
+  tap each. A genre with nothing published in it says so — a catalogue gap,
+  not a failed search — and offers the whole catalogue back. And when the live
+  catalogue cannot be reached at all, the bundled stories are filtered
+  instead and the eyebrow says "offline catalogue" rather than passing a
+  handful of seed stories off as the library.
+- **Results use `StoryFeedCard`**, the same card Home's rails are built from,
+  so a story looks like itself wherever the reader meets it. A live result is
+  not in the bundled catalogue, so opening one fetches that single story's
+  chapters first and hands the whole story to the navigator — search itself
+  carries metadata only, because paying for twenty-four chapter bodies to draw
+  twenty-four covers would make the fast surface the expensive one.
+## 2026-09-10: Library stops making things up, and Notes gives the phrases a home
+
+### Changed
+
+- **Library had four tabs and three of them were fiction.** "Saved" was
+  `stories.filter(s => s.bookmarks > 100)` — a popularity filter wearing the
+  reader's own label, so it listed stories they had never opened and hid every
+  one they had actually starred. "History" was `slice(0, 5)` of whatever the
+  feed array happened to hold, presented as what they had read. "Comments" was
+  a permanent empty state with nothing behind it at all. Three of four tabs
+  were telling a reader things about themselves that were not true, which is
+  worse than a shorter Library, so this is a shorter Library: **Created**,
+  **Starred**, **Notes**. History comes back the day something actually
+  records a read.
+- **Created is the writer's own rows.** `fetchCreatedShelf` in `lib/api.ts`
+  reads `stories` filtered to `author_id`, private ones included, and the
+  stories written in this session are merged in ahead of it so a story made a
+  minute ago is in Library before the fetch lands. The session copy wins on a
+  collision: it carries the beats and series state the shelf query does not
+  select. Empty invites them to write.
+- **Starred is the `bookmarks` table.** `fetchStarredShelf` reads the reader's
+  own bookmark rows newest first, hydrates the stories behind them and keeps
+  that order. Empty explains what starring does and offers Explore.
+- **Every shelf can now say "we could not load this".** `StoryShelf` has three
+  states, not one. Collapsing a failed fetch into an empty state is how an
+  interface tells a writer their work is gone when it is only unreachable; a
+  failed shelf says so, keeps whatever it already had on screen, and offers a
+  retry.
+
+### Added
+
+- **Notes: language learning reinforcement.** A header row with the switch and
+  an info affordance, an explanation of what saving a phrase actually buys
+  (repetition without drilling, the same phrase in a new context each time, a
+  memory attached to a story rather than a flashcard), an **Add phrases**
+  button, and the reader's saved phrases below it with a remove on each.
+- **The Add phrases sheet** takes a language, then one field for the whole
+  list. `parsePhraseInput` splits on commas, newlines and semicolons, trims,
+  drops blanks, drops anything over the 160-character column limit, and dedupes
+  case-insensitively against what is already saved — so pasting the same list
+  twice adds only what is new. A live counter runs against a 1000-character
+  limit, and the sheet says what it made of the paste ("3 phrases ready · 1
+  already saved") before anything is written. A save that did not happen leaves
+  the sheet open saying so rather than closing on a lie.
+
+### Known gaps
+
+- **The reinforcement switch reaches the device and nothing else, and that is
+  deliberate rather than finished.** Weaving happens in `generate-story`,
+  which calls `fetchPhraseSeeds` on `saved_phrases` for the requesting user and
+  consults no preference at all. There is no column to write and no request
+  field the function would read. The preference is persisted under
+  `katha.phrases.reinforcement.v1` and read back on launch; sending a flag into
+  a void and calling the feature done was the alternative. **To make it real:**
+  a `phrase_reinforcement_enabled boolean not null default true` on
+  `profiles`, a read of it in `fetchPhraseSeeds` (return `[]` when off), and a
+  client write on toggle.
+- **A phrase typed into Notes stays on the device.** `save-phrase` requires a
+  `storyId` and `chapterId` that resolve to real rows, and `save_phrase`
+  (00047) re-checks that the chapter belongs to the story, so there is no
+  request a manually typed phrase could send that the endpoint would accept.
+  Those records are marked `manual` and left unsynced, which
+  `mergeSavedPhrases` already reads as the reader's unsent work, so a server
+  refresh lists them beside the captured ones instead of deleting them. **To
+  make it real:** `saved_phrases.story_id` and `chapter_id` become nullable,
+  `save-phrase` accepts a body with neither plus an optional `language`, and
+  the manual path in `lib/phrases.ts` syncs like the captured one.
+## 2026-09-10: A profile you can actually edit, a streak that is real, and somebody else's page
+
+Branch `fable/profiles`. Nothing deployed; nothing run against
+`iafeuxgoiknncgyjmugd`.
+
+### Two surfaces, and they are different products
+
+**Your own profile** (`ProfileScreen`) now leads with the streak instead of a
+settings list, because the streak is the only thing on that screen that changes
+between two visits and the only thing with a deadline. Under it: best streak,
+stories, chapters, reads, likes, phrases saved, followers, following — every one
+a count of rows returned by `profile_overview`, and every one absent rather than
+zeroed when the request fails. A writer with forty published chapters must never
+be told they have written nothing because a request timed out.
+
+**Somebody else's profile** (`AuthorScreen`) is reachable from a byline and a
+comment author, as before, and now shows a real person: handle, picture, bio,
+how long they have been writing, a Follow button, their public stories, and four
+counts taken over exactly those stories. It no longer renders anything from the
+client's own story array — a private draft, or a story the entity gate kept
+private, could previously have been listed there by author id.
+
+### Changed
+
+- **Editable handle.** `IdentityEditor` sheet: pick or change `@handle`,
+  validated on every keystroke against the same rule the database enforces
+  (lowercase, letters/digits/underscore, 3–20, no edge underscores, a reserved
+  list). "Taken" comes back from a caught unique violation on the server, not
+  from an availability check, so two people typing the same handle at the same
+  instant get one winner and one honest refusal — with their text still in the
+  field.
+- **Avatar upload.** `expo-image-picker` (already a dependency) plus
+  `expo-image-manipulator` (added, `~14.0.8`). Square crop, downscaled 512 →
+  256 → 160 until the encoded image fits under the endpoint's body limit, JPEG.
+  A refused photo permission returns immediately with one explanatory line and
+  no picker, no alert and no retry loop; the rest of the profile keeps working.
+- **The streak is real.** `streakState()` reads the server's UTC day and reports
+  one of four things: no streak, counted today (calm), ends tonight (the only
+  state allowed to use the accent), or broken (says so, and shows the best
+  instead of dressing a zero up as a streak). A milestone is named only within
+  three days of one, and nothing is promised for reaching it, because nothing is
+  awarded for reaching it.
+- **Follow/unfollow** is optimistic with a true rollback: the previous flag and
+  count are captured and restored on failure, never decremented a second time.
+  A guest is stopped before the optimistic flip, so the button never turns
+  "Following" and springs back.
+- **Guests** get one clear card explaining what an account keeps, instead of a
+  profile full of honest and useless zeros.
+- **Parental controls row removed.** It opened a "coming soon" alert and the
+  owner's decision is that the product does not need them for now.
+
+### Verification
+
+- `pnpm typecheck` clean.
+- `pnpm lint`: 0 errors, the existing warning set unchanged.
+- `pnpm exec jest`: 92 suites, 871 tests passing (from 90 / 840).
+- `pnpm exec expo export --platform web --output-dir /tmp/katha-web-profile`
+  compiled the web bundle.
+
 ## 2026-09-10: The cover finally arrives, and Home is put in the reader's order
 
 ### Fixed

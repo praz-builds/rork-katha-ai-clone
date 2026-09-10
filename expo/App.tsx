@@ -38,6 +38,8 @@ import {
   startChapterGeneration,
   useGenerations,
 } from "@/lib/generation-session";
+import { loadStoryChapters } from "@/lib/search";
+import { fetchReadingStreak } from "@/lib/streak";
 import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
 import HomeScreen from "@/screens/HomeScreen";
@@ -125,6 +127,27 @@ export default function App() {
   );
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
+  /**
+   * Stories found through Explore's search that are not in the bundled
+   * catalogue.
+   *
+   * Every screen below resolves a story by looking its id up in
+   * `allStories`, so a live search result has to be PUT there before the
+   * reader can be navigated to it - otherwise the tap resolves to nothing
+   * and the reader lands on whatever `allStories[0]` happens to be. Kept
+   * separate from `generatedStories` because these are not the writer's own
+   * work and must never appear in "Your stories".
+   */
+  const [discoveredStories, setDiscoveredStories] = useState<Story[]>([]);
+  /**
+   * The reader's streak in days, or null while it is unknown.
+   *
+   * Null is the honest starting value and the honest resting value: nothing
+   * writes a streak from the client, and `fetchReadingStreak` returns null
+   * for every case that is not a real row. Home draws the flame only for a
+   * number. See `src/lib/streak.ts`.
+   */
+  const [streakDays, setStreakDays] = useState<number | null>(null);
   const [onboarding, setOnboarding] = useState<KathaOnboardingResult | null>(
     null,
   );
@@ -186,6 +209,15 @@ export default function App() {
       // value. This never asks for permission; it re-registers a token the
       // user has already granted, and does nothing at all if they have not.
       void syncPushToken();
+
+      // The reading streak, once there is an identity to read it for. It
+      // rides the same boot as the credit balance and fails to `null`, which
+      // Home renders as no flame at all rather than as a zero.
+      if (active) {
+        void fetchReadingStreak().then((streak) => {
+          if (active) setStreakDays(streak?.current ?? null);
+        });
+      }
 
       // A writer's own stories, restored.
       //
@@ -354,9 +386,10 @@ export default function App() {
    */
   const gatedSession = generations.find((session) => session.gatedReason);
 
-  const allStories = useMemo(() => [...generatedStories, ...stories], [
-    generatedStories,
-  ]);
+  const allStories = useMemo(
+    () => [...generatedStories, ...discoveredStories, ...stories],
+    [generatedStories, discoveredStories],
+  );
 
   /**
    * The generation writing into the story the reader is open on, if any.
@@ -397,6 +430,47 @@ export default function App() {
         : { name: "reader", storyId },
     );
   };
+  /**
+   * Opens a story that came back from Explore's search.
+   *
+   * Two things have to happen before the navigation, and in this order.
+   * First the chapters are fetched: search returns metadata only, so the
+   * story in hand has an empty `chapters` array and the reader would open on
+   * a blank page. Then it is merged into `discoveredStories`, so the id the
+   * screen is about to be pointed at actually resolves in `allStories`.
+   *
+   * The series-or-standalone decision is made on the HYDRATED copy, not on
+   * `allStories`: state set a line earlier is not visible to a read on the
+   * same tick, so consulting the list here would route every live result as
+   * a standalone and drop series readers past their own chapter list.
+   *
+   * And if the fetch FAILS, nothing is navigated to. Opening the reader on
+   * the metadata-only copy put people inside a story with a cover, a title
+   * and no words, with nothing to retry — indistinguishable from a story
+   * that had never been written. Staying on Explore with an explanation
+   * leaves the tap available to try again.
+   */
+  const openDiscoveredStory = async (story: Story) => {
+    const { ok, story: full } = await loadStoryChapters(story);
+    if (!ok) {
+      Alert.alert(
+        "We could not open that story",
+        "Check your connection and try again.",
+      );
+      return;
+    }
+    setDiscoveredStories((current) =>
+      current.some((item) => item.id === full.id)
+        ? current.map((item) => (item.id === full.id ? full : item))
+        : [...current, full]
+    );
+    setScreen(
+      isSeries(full)
+        ? { name: "story", storyId: full.id }
+        : { name: "reader", storyId: full.id },
+    );
+  };
+
   const finishOnboarding = (result: KathaOnboardingResult) => {
     setOnboarding(result);
     goTabs("home");
@@ -440,6 +514,9 @@ export default function App() {
             onProfile={() => goTabs("profile")}
             onCreate={() => goTabs("create")}
             onSeeAll={() => goTabs("explore")}
+            onCredits={() => setScreen({ name: "credits" })}
+            onNotifications={() => goTabs("profile")}
+            streakDays={streakDays}
           />
         );
       case "explore":
@@ -447,6 +524,7 @@ export default function App() {
           <ExploreScreen
             stories={allStories}
             onStory={openStory}
+            onOpenStory={(story) => void openDiscoveredStory(story)}
             onProfile={() => goTabs("profile")}
           />
         );
@@ -471,9 +549,9 @@ export default function App() {
         return (
           <LibraryScreen
             generatedStories={generatedStories}
-            stories={allStories}
             onStory={openStory}
             onCreate={() => goTabs("create")}
+            onExplore={() => goTabs("explore")}
             onPractice={() => setScreen({ name: "practice" })}
           />
         );
@@ -481,6 +559,8 @@ export default function App() {
         return (
           <ProfileScreen
             credits={credits}
+            isAnonymous={isAnonymous}
+            onSignIn={() => setScreen({ name: "onboarding" })}
             onBack={() => goTabs("home")}
             onCredits={() => setScreen({ name: "credits" })}
             onPaywall={() => setScreen({ name: "paywall" })}
@@ -693,6 +773,8 @@ export default function App() {
           <AuthorScreen
             authorId={screen.authorId}
             stories={allStories}
+            canEngage={!isAnonymous}
+            onRequireSignIn={() => setScreen({ name: "onboarding" })}
             onBack={() => goTabs(tab)}
             onStory={openStory}
           />

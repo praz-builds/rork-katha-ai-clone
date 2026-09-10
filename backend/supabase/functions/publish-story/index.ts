@@ -5,6 +5,7 @@ import {
   parseGatingReason,
   STORY_GATED_PRIVATE_ERROR_CODE,
 } from "../_shared/entity-visibility-gate.ts";
+import { touchStreak } from "../_shared/engagement.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
 /**
@@ -217,6 +218,29 @@ export async function handleRequest(req: Request): Promise<Response> {
       if (storyWordError) throw storyWordError;
     }
 
+    // The writing half of the streak.
+    //
+    // `record-read` has kept `streaks` for the reading half since 00046, and
+    // nothing kept it for writing -- so a person who spent an evening editing
+    // and publishing a chapter and never opened somebody else's story lost the
+    // day. That is the wrong lesson for the surface to teach, and it is exactly
+    // the person a writing app should be counting.
+    //
+    // CALLED AT EACH SUCCESSFUL EXIT, NOT ONCE HERE. An earlier version ran it
+    // at this point and its comment claimed "a gated publish returns before
+    // it" -- which was simply false: both gate refusals are ~50 lines BELOW,
+    // so a publish the gate turned down still recorded a writing day. A day
+    // credited for work the server refused to do is the counter lying, and a
+    // streak is only worth anything if it is true.
+    //
+    // The private branch below is a success and does count: the edits are
+    // committed, which is the work. Only the 403s skip it.
+    //
+    // Best effort by construction (`touchStreak` never throws) -- a counter
+    // must not be able to fail a publish that succeeded.
+    const countWritingDay = () =>
+      touchStreak(serviceClient, user.id, { story_id: storyId });
+
     // Private is a save operation. Edits are durable, but neither chapters nor
     // the story enter public feeds - and this is the branch a request that
     // omitted `visibility` takes.
@@ -225,6 +249,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       // story that is already public keeps its edits and keeps its visibility:
       // a client that omits `visibility` is saving, not asking to unpublish.
       // Taking a live story out of the feed has to be an explicit act.
+      await countWritingDay();
       if (alreadyPublic) {
         return respond({ saved: true, published: true, story_id: storyId });
       }
@@ -302,6 +327,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     if (updateError) throw updateError;
 
+    await countWritingDay();
     return respond({ published: true, story_id: storyId });
   } catch (error) {
     console.error("publish-story error:", error);

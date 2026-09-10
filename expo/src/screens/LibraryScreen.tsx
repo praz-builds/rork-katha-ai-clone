@@ -1,127 +1,132 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Bookmark, ChevronRight, GraduationCap, MessageCircle } from "lucide-react-native";
-import { StoryCard } from "@/components/KathaPrimitives";
+import { Bookmark, PenLine, Star } from "lucide-react-native";
+
+import NotesTab from "@/components/library/NotesTab";
+import StoryShelf, { type ShelfState } from "@/components/library/StoryShelf";
+import { fetchCreatedShelf, fetchStarredShelf } from "@/lib/api";
 import { colors, fonts, radius, spacing } from "@/theme";
 import type { Story } from "@/types/domain";
 import { sharedStyles } from "@/screens/shared";
 
-type LibrarySegment = "saved" | "history" | "myStories" | "comments";
+type LibraryTab = "created" | "starred" | "notes";
 
-/* ─────────────────────────────── Library Screen ─────────────────────────────── */
-
+/**
+ * Library, rebuilt around what can actually be known.
+ *
+ * WHAT THIS REPLACED. Four segments, three of them inventions. "Saved" was
+ * `stories.filter(s => s.bookmarks > 100)` - a popularity filter labelled as
+ * the reader's own saves, so it listed stories they had never opened and
+ * omitted every one they had actually starred. "History" was `slice(0, 5)` of
+ * whatever the feed happened to hold, presented as what they had read.
+ * "Comments" was a permanent empty state with nothing behind it at all. Three
+ * of four tabs were telling the reader things about themselves that were not
+ * true, which is worse than a shorter Library, so this is a shorter Library.
+ *
+ * The three that remain each have a real source: the writer's own rows
+ * (`fetchCreatedShelf`), the `bookmarks` table (`fetchStarredShelf`), and
+ * saved phrases (`lib/phrases`). History is gone until something records
+ * reads; it will come back the day `record-read` has a list to answer with.
+ */
 export default function LibraryScreen({
   generatedStories,
-  stories: allStories,
   onStory,
   onCreate,
+  onExplore,
   onPractice,
 }: {
+  /**
+   * Stories written in THIS session, which the shelf fetch has not
+   * necessarily caught up with yet. Merged ahead of the fetched rows so a
+   * story someone just made is in Library the moment they land here.
+   */
   generatedStories: Story[];
-  stories: Story[];
   onStory: (id: string) => void;
   onCreate: () => void;
+  /** Somewhere to go from an empty Starred shelf. */
+  onExplore?: () => void;
   /**
-   * Opens the Practice surface. A dedicated screen rather than a fifth
-   * segment here: the segmented control is four equal-width labels in a
-   * 342pt row on a 390pt phone, and "Practice" alongside "My Stories" left
-   * two labels wrapping onto a second line. Practice also does not behave
-   * like the other tabs - it runs a session, not just a list - so it reads
-   * better as its own place than as a cramped fifth tab.
+   * Opens the Practice surface. A dedicated screen rather than a fourth tab:
+   * it runs a session rather than showing a list, and the segmented control
+   * is three equal labels in a 342pt row on a 390pt phone with no space for
+   * a fourth.
    */
   onPractice: () => void;
 }) {
-  const [segment, setSegment] = useState<LibrarySegment>("saved");
-  const saved = allStories.filter((story) => story.bookmarks > 100);
-  const history = allStories.slice(0, 5);
+  const [tab, setTab] = useState<LibraryTab>("created");
 
-  const segments: { key: LibrarySegment; label: string }[] = [
-    { key: "saved", label: "Saved" },
-    { key: "history", label: "History" },
-    { key: "myStories", label: "My Stories" },
-    { key: "comments", label: "Comments" },
-  ];
+  const [createdState, setCreatedState] = useState<ShelfState>("loading");
+  const [created, setCreated] = useState<Story[]>([]);
+  const [starredState, setStarredState] = useState<ShelfState>("loading");
+  const [starred, setStarred] = useState<Story[]>([]);
 
-  const renderSegmentContent = () => {
-    switch (segment) {
-      case "saved":
-        return saved.length > 0
-          ? (
-            <View style={styles.stack}>
-              {saved.map((story) => (
-                <StoryCard
-                  key={story.id}
-                  story={story}
-                  onPress={() => onStory(story.id)}
-                  compact
-                />
-              ))}
-            </View>
-          )
-          : (
-            <View style={styles.emptyState}>
-              <Bookmark size={32} color={colors.tertiary} />
-              <Text style={styles.emptyStateText}>
-                Bookmark stories you love
-              </Text>
-            </View>
-          );
-      case "history":
-        return history.length > 0
-          ? (
-            <View style={styles.stack}>
-              {history.map((story) => (
-                <StoryCard
-                  key={story.id}
-                  story={story}
-                  onPress={() => onStory(story.id)}
-                  compact
-                />
-              ))}
-            </View>
-          )
-          : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>
-                Stories you read will appear here
-              </Text>
-            </View>
-          );
-      case "myStories":
-        return generatedStories.length > 0
-          ? (
-            <View style={styles.stack}>
-              {generatedStories.map((story) => (
-                <StoryCard
-                  key={story.id}
-                  story={story}
-                  onPress={() => onStory(story.id)}
-                  compact
-                />
-              ))}
-            </View>
-          )
-          : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>
-                No stories yet.{" "}
-                <Text style={styles.accentLink} onPress={onCreate}>
-                  Create your first!
-                </Text>
-              </Text>
-            </View>
-          );
-      case "comments":
-        return (
-          <View style={styles.emptyState}>
-            <MessageCircle size={32} color={colors.tertiary} />
-            <Text style={styles.emptyStateText}>
-              Your comments on stories will appear here
-            </Text>
-          </View>
-        );
+  const loadCreated = useCallback(async () => {
+    setCreatedState("loading");
+    const result = await fetchCreatedShelf();
+    if (result.ok) {
+      setCreated(result.stories);
+      setCreatedState("ready");
+    } else {
+      setCreatedState("error");
     }
-  };
+  }, []);
+
+  const loadStarred = useCallback(async () => {
+    setStarredState("loading");
+    const result = await fetchStarredShelf();
+    if (result.ok) {
+      setStarred(result.stories);
+      setStarredState("ready");
+    } else {
+      setStarredState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchCreatedShelf().then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setCreated(result.stories);
+        setCreatedState("ready");
+      } else {
+        setCreatedState("error");
+      }
+    });
+    void fetchStarredShelf().then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setStarred(result.stories);
+        setStarredState("ready");
+      } else {
+        setStarredState("error");
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  /**
+   * Session stories first, then fetched rows, deduped by id.
+   *
+   * The session copy wins where both exist: it carries beats and series state
+   * the shelf query does not select, and dropping it in favour of the row
+   * would strip the continuation UI off a story written a minute ago.
+   */
+  const createdStories = useMemo(() => {
+    const seen = new Set(generatedStories.map((story) => story.id));
+    return [
+      ...generatedStories,
+      ...created.filter((story) => !seen.has(story.id)),
+    ];
+  }, [generatedStories, created]);
+
+  const tabs: { key: LibraryTab; label: string }[] = [
+    { key: "created", label: "Created" },
+    { key: "starred", label: "Starred" },
+    { key: "notes", label: "Notes" },
+  ];
 
   return (
     <SafeAreaView style={styles.flex}>
@@ -137,39 +142,21 @@ export default function LibraryScreen({
           <Bookmark size={28} color={colors.accent} />
         </View>
 
-        <Pressable
-          onPress={onPractice}
-          accessibilityLabel="Practice your saved phrases"
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.practiceBanner, pressed && styles.pressed]}
-        >
-          <View style={styles.practiceIcon}>
-            <GraduationCap size={20} color={colors.accent} />
-          </View>
-          <View style={styles.practiceBannerBody}>
-            <Text style={styles.practiceBannerTitle}>Practice</Text>
-            <Text style={styles.practiceBannerSubtitle}>
-              Review the phrases you saved while reading
-            </Text>
-          </View>
-          <ChevronRight size={18} color={colors.tertiary} />
-        </Pressable>
-
-        {/* Segment selector */}
         <View style={styles.segmented}>
-          {segments.map(({ key, label }) => (
+          {tabs.map(({ key, label }) => (
             <Pressable
               key={key}
-              onPress={() => setSegment(key)}
-              style={[
-                styles.segment,
-                segment === key && styles.segmentSelected,
-              ]}
+              onPress={() => setTab(key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === key }}
+              accessibilityLabel={label}
+              testID={`library-tab-${key}`}
+              style={[styles.segment, tab === key && styles.segmentSelected]}
             >
               <Text
                 style={[
                   styles.segmentText,
-                  segment === key && styles.segmentTextSelected,
+                  tab === key && styles.segmentTextSelected,
                 ]}
               >
                 {label}
@@ -178,8 +165,47 @@ export default function LibraryScreen({
           ))}
         </View>
 
-        <View style={styles.segmentContent}>
-          {renderSegmentContent()}
+        <View style={styles.tabContent}>
+          {tab === "created" ? (
+            <StoryShelf
+              testID="library-created"
+              state={createdState}
+              stories={createdStories}
+              onStory={onStory}
+              onRetry={() => void loadCreated()}
+              loadingLabel="Loading your stories"
+              emptyIcon={<PenLine size={30} color={colors.tertiary} />}
+              emptyTitle="Nothing written yet"
+              // "Every story you finish", not "every story you make". The
+              // shelf reads rows with `status = 'complete'`, so a generation
+              // still running and one that failed are not in it -- and they
+              // should not be: a card for a story with no chapters opens a
+              // reader on nothing. The copy says what the shelf actually
+              // holds. What "published or not" promises is VISIBILITY, and
+              // that promise is kept: private complete stories are here.
+              emptyBody="Every story you finish lands here, published or not. Start with a sentence and see where it goes."
+              emptyAction={{ label: "Write a story", onPress: onCreate }}
+            />
+          ) : null}
+
+          {tab === "starred" ? (
+            <StoryShelf
+              testID="library-starred"
+              state={starredState}
+              stories={starred}
+              onStory={onStory}
+              onRetry={() => void loadStarred()}
+              loadingLabel="Loading your starred stories"
+              emptyIcon={<Star size={30} color={colors.tertiary} />}
+              emptyTitle="Nothing starred yet"
+              emptyBody="Star a story while you read it and it waits here for you, however long it takes to get back to it."
+              emptyAction={
+                onExplore ? { label: "Find something to read", onPress: onExplore } : undefined
+              }
+            />
+          ) : null}
+
+          {tab === "notes" ? <NotesTab onPractice={onPractice} /> : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -189,94 +215,38 @@ export default function LibraryScreen({
 const styles = {
   ...sharedStyles,
   ...StyleSheet.create({
-  withTabs: { paddingBottom: 116 },
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  accentLink: { color: colors.accent, fontWeight: "800" },
-  pressed: { opacity: 0.7 },
-
-  /* ── Practice entry point ── */
-  practiceBanner: {
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.lg,
-    minHeight: 64,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  practiceIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  practiceBannerBody: { flex: 1 },
-  practiceBannerTitle: {
-    fontFamily: fonts.display,
-    color: colors.ink,
-    fontSize: 16,
-    letterSpacing: 0,
-  },
-  practiceBannerSubtitle: {
-    marginTop: 2,
-    fontFamily: fonts.ui,
-    color: colors.muted,
-    fontSize: 12.5,
-    letterSpacing: 0,
-  },
-
-  /* ── Library ── */
-  segmented: {
-    marginHorizontal: spacing.xl,
-    padding: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface2,
-    flexDirection: "row",
-    gap: 4,
-  },
-  segment: {
-    flex: 1,
-    minHeight: 38,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentSelected: { backgroundColor: colors.surface },
-  segmentText: {
-    fontFamily: fonts.ui,
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  segmentTextSelected: { color: colors.ink },
-  segmentContent: { marginTop: spacing.xl, paddingHorizontal: spacing.xl },
-  emptyState: {
-    paddingVertical: spacing.huge,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.md,
-  },
-  emptyStateText: {
-    fontFamily: fonts.ui,
-    color: colors.muted,
-    fontSize: 14,
-    textAlign: "center",
-    paddingHorizontal: spacing.xl,
-  },
-
-  /* ── Profile screen ── */
+    withTabs: { paddingBottom: 116 },
+    header: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.lg,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    segmented: {
+      marginHorizontal: spacing.xl,
+      padding: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface2,
+      flexDirection: "row",
+      gap: 4,
+    },
+    segment: {
+      flex: 1,
+      minHeight: 38,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    segmentSelected: { backgroundColor: colors.surface },
+    segmentText: {
+      fontFamily: fonts.ui,
+      color: colors.muted,
+      fontSize: 12.5,
+      fontWeight: "800",
+    },
+    segmentTextSelected: { color: colors.ink },
+    tabContent: { marginTop: spacing.xl, paddingHorizontal: spacing.xl },
   }),
 };

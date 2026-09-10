@@ -40,6 +40,13 @@ type StreakRow = {
   last_activity_date: string;
 };
 
+/** The streak as a caller reports it, already renamed for the client. */
+export type StreakSummary = {
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: string;
+};
+
 function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -147,6 +154,59 @@ export async function handleToggle(
   }
 }
 
+/**
+ * Record that this person did something today, and answer with their streak.
+ *
+ * A day is a **UTC day with activity** -- `touch_streak` (migration 00046)
+ * compares `(now() at time zone 'UTC')::date` against `last_activity_date` and
+ * increments only when the last one was yesterday. Two things follow, and both
+ * are the point rather than side effects:
+ *
+ *   * Reading five chapters before bed is one day, not five. The RPC is
+ *     idempotent within a day, so callers may call it as often as they like.
+ *   * A reader's day boundary is UTC, not their own midnight. That is a real
+ *     compromise -- someone in UTC+13 reading at 11pm has already rolled over
+ *     -- and it is the honest one available: the server has no reliable
+ *     timezone for a device, and a client-supplied one is a value the client
+ *     can lie about to keep a streak alive. One rule everybody shares beats a
+ *     rule some people can bend.
+ *
+ * ALWAYS BEST-EFFORT. Every caller reaches here having already committed the
+ * work the streak is *about* -- a read, a save, a publish. Throwing would
+ * report that committed work as failed because a counter did not move, so a
+ * failure degrades to null and a log line, and the caller reports what it
+ * actually did.
+ */
+export async function touchStreak(
+  service: RpcClient,
+  userId: string,
+  context: JsonRecord = {},
+): Promise<StreakSummary | null> {
+  const { data, error } = await service.rpc("touch_streak", {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error("touch_streak failed", error);
+    await logError({
+      bucket: "engagement",
+      severity: "low",
+      errorCode: "touch_streak",
+      error,
+      context: safeContext(context),
+      userId,
+    });
+    return null;
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as StreakRow | null;
+  if (!row) return null;
+  return {
+    currentStreak: row.current_streak,
+    longestStreak: row.longest_streak,
+    lastActivityDate: row.last_activity_date,
+  };
+}
+
 export async function handleRecordRead(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -207,26 +267,9 @@ export async function handleRecordRead(req: Request): Promise<Response> {
     // succeeded, and the client would be told its read was lost when it was
     // recorded. These are two RPCs and cannot be one transaction from here, so
     // the honest shape is to report the read and degrade the streak to null.
-    let streak: StreakRow | null = null;
-    const { data: streakData, error: streakError } = await auth.service.rpc(
-      "touch_streak",
-      { p_user_id: userId },
-    );
-    if (streakError) {
-      console.error("record-read: touch_streak failed", streakError);
-      await logError({
-        bucket: "engagement",
-        severity: "low",
-        errorCode: "touch_streak",
-        error: streakError,
-        context: safeContext({ story_id: storyId }),
-        userId,
-      });
-    } else {
-      streak = (Array.isArray(streakData) ? streakData[0] : streakData) as
-        | StreakRow
-        | null;
-    }
+    const streak = await touchStreak(auth.service, userId, {
+      story_id: storyId,
+    });
 
     return respond({
       recorded: row.recorded,
@@ -235,13 +278,7 @@ export async function handleRecordRead(req: Request): Promise<Response> {
       readId: row.read_id,
       isOwnStory: row.is_own_story,
       countsForEarnings: row.counts_for_earnings,
-      streak: streak
-        ? {
-          currentStreak: streak.current_streak,
-          longestStreak: streak.longest_streak,
-          lastActivityDate: streak.last_activity_date,
-        }
-        : null,
+      streak,
     });
   } catch (error) {
     console.error("record-read error:", error);

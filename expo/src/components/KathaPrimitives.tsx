@@ -108,14 +108,28 @@ export function PrimaryButton({
 export function Chip({
   label,
   selected,
-  onPress
+  onPress,
+  testID
 }: {
   label: string;
   selected?: boolean;
   onPress?: () => void;
+  /**
+   * A handle that is not the label. Chip labels are not unique on a screen
+   * -- Explore's eyebrow reads "Most loved" at the same moment its sort chip
+   * does -- so anything that needs to address one specific chip addresses it
+   * by id rather than by the words on it.
+   */
+  testID?: string;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
+    <Pressable
+      onPress={onPress}
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityState={{ selected: selected === true }}
+      style={[styles.chip, selected && styles.chipSelected]}
+    >
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
     </Pressable>
   );
