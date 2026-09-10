@@ -91,7 +91,12 @@ describe("Toggle", () => {
       <Toggle value={false} disabled onValueChange={jest.fn()} accessibilityLabel="Public" />,
     );
 
-    expect(trackOf(off).backgroundColor).toBe(colors.borderStrong);
+    // The off track is `track`, the recessed step, with a `borderStrong`
+    // edge. It used to be `borderStrong` with no edge, which on the warm page
+    // was so close to the background that the control read as switched ON --
+    // the owner reported exactly that about the Kids Mode row.
+    expect(trackOf(off).backgroundColor).toBe(colors.track);
+    expect(trackOf(off).borderColor).toBe(colors.borderStrong);
     expect(trackOf(disabled).backgroundColor).toBe(colors.border);
     expect(trackOf(off).backgroundColor).not.toBe(trackOf(disabled).backgroundColor);
   });

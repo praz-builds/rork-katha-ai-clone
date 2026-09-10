@@ -12,7 +12,6 @@ import {
   __resetGenerationSessions,
   adoptReimagineGeneration,
   getGeneration,
-  REVEAL_MIN_PAGES,
 } from "@/lib/generation-session";
 import type { ReimagineRun, ReimagineResult } from "@/lib/reimagine-client";
 import { stories } from "@/data/seed";
@@ -67,7 +66,8 @@ function fakeRun() {
 function longProse(): string {
   const paragraph = "She counted the lamps along the water and lost the number twice. "
     .repeat(40).trim();
-  return Array.from({ length: REVEAL_MIN_PAGES * 6 }, () => paragraph).join("\n\n") + "\n\n";
+  // Enough paragraphs that the reader has several settled pages behind it.
+  return Array.from({ length: 18 }, () => paragraph).join("\n\n") + "\n\n";
 }
 
 beforeEach(() => {

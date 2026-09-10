@@ -679,6 +679,15 @@ describe("draft restoration across a remount", () => {
       ),
     );
 
+    // ...but NOT the audience. Kids Mode decides who a story is for -- it
+    // shrinks the genre list, forces spice to sweet and changes the content
+    // rating -- and a draft lives for seven days. Restoring it silently means
+    // opening Create to find the switch on with no memory of setting it,
+    // which is what the owner reported and read as the app guessing.
+    expect(
+      second.getByLabelText("Kids Mode").props.accessibilityState.checked,
+    ).toBe(false);
+
     await fireEvent.press(second.getByRole("button", { name: "More options" }));
     expect(
       second.getByRole("switch", { name: "Make it public" }).props
@@ -705,20 +714,21 @@ describe("draft restoration across a remount", () => {
       "Grey coat, a satchel that has outlived three owners.",
     );
   });
-  it("shows the same chapter length default for a restored Kids draft that never set one, as generation will actually send", async () => {
-    // A Kids draft reached through the switch always gets an explicit
-    // `chapterLength` (see `chooseAudience`), and a fresh draft's own default
-    // is "standard" (see `INITIAL_DRAFT`) regardless of audience -- so the
-    // case that silently diverged, a Kids draft with the field truly unset,
-    // only arises for one already sitting in storage from before this
-    // default existed, or otherwise saved without it. `effectiveChapterLength`
-    // in `lib/api.ts` is the one place that default is computed now, and
-    // both this display and the request body (see
-    // `api-generation-contract.test.ts`) read it from there, so they cannot
-    // say different things.
+  it("shows the same chapter length a restored draft without one will actually send", async () => {
+    // The invariant: `effectiveChapterLength` in `lib/api.ts` is the ONE
+    // place the default is computed, and both this display and the request
+    // body (see `api-generation-contract.test.ts`) read it from there, so
+    // they cannot say different things.
+    //
+    // This used to be posed as a restored KIDS draft, because kids and adult
+    // defaults differ. That case is now unreachable: Kids Mode is no longer
+    // restored from storage, and turning it on through the switch always sets
+    // an explicit `chapterLength` (`chooseAudience`). So the only draft that
+    // can still arrive with the field truly unset is an ordinary one saved
+    // before the field existed, which is what this now uses.
     mockLoadDraft.mockResolvedValue({
       primaryGenre: "adventure",
-      audienceMode: "kids",
+      audienceMode: "adult",
       spiceLevel: "sweet",
       identityLenses: [],
       seed: "A child follows a map hidden in a library book.",
@@ -739,6 +749,6 @@ describe("draft restoration across a remount", () => {
 
     expect(
       view.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
-    ).toEqual({ text: "Short" });
+    ).toEqual({ text: "Standard" });
   });
 });

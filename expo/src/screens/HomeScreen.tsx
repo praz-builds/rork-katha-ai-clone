@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Bell, ChevronRight, Coins, Flame } from "lucide-react-native";
+import { Bell, ChevronRight, Flame, Sparkles } from "lucide-react-native";
 import { PrimaryButton } from "@/components/KathaPrimitives";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
@@ -198,13 +198,28 @@ function HeaderAction({
   label,
   onPress,
   dot = false,
+  tint,
+  fill,
 }: {
-  icon: ComponentType<{ size?: number; color?: string }>;
+  icon: ComponentType<{ size?: number; color?: string; fill?: string }>;
   value?: string;
   label: string;
   onPress: () => void;
   /** An unread marker. Drawn only for something the reader has not seen. */
   dot?: boolean;
+  /**
+   * The icon's colour, when it should be one.
+   *
+   * All three of these were `colors.strong` -- one grey row of glyphs, in
+   * which the streak and the credit balance, the two numbers on Home that are
+   * about the reader and that they check every day, looked exactly as
+   * important as the bell. Colour is what separates a standing you are proud
+   * of from a control. The bell keeps the neutral: it earns attention with
+   * its dot when it has something, and it should not compete before then.
+   */
+  tint?: string;
+  /** Fills the glyph, so the flame reads as lit rather than outlined. */
+  fill?: string;
 }) {
   return (
     <Pressable
@@ -218,8 +233,12 @@ function HeaderAction({
         pressed && styles.headerActionPressed,
       ]}
     >
-      <Icon size={20} color={colors.strong} />
-      {value !== undefined && <Text style={styles.headerActionValue}>{value}</Text>}
+      <Icon size={20} color={tint ?? colors.strong} fill={fill ?? "none"} />
+      {value !== undefined && (
+        <Text style={[styles.headerActionValue, tint ? { color: tint } : null]}>
+          {value}
+        </Text>
+      )}
       {dot && <View style={styles.headerActionDot} />}
     </Pressable>
   );
@@ -331,6 +350,8 @@ export default function HomeScreen({
             {streakDays !== null && streakDays > 0 && (
               <HeaderAction
                 icon={Flame}
+                tint={colors.accent}
+                fill={colors.accent}
                 value={String(streakDays)}
                 label={`Reading streak: ${streakDays} ${
                   streakDays === 1 ? "day" : "days"
@@ -338,8 +359,16 @@ export default function HomeScreen({
                 onPress={onProfile}
               />
             )}
+            {/* Not `Coins`: a stack of discs reads as money, and credits are
+                not money -- they are the thing you spend to make a story, and
+                the app already draws that idea as a spark everywhere else
+                (the Create button, the cost card, the credits row on the
+                profile). One idea, one glyph, and it is the warm gold the
+                palette already keeps for a mark of value. */}
             <HeaderAction
-              icon={Coins}
+              icon={Sparkles}
+              tint={colors.chromeStar}
+              fill={colors.chromeStar}
               value={String(credits)}
               label={`${credits} credits`}
               onPress={onCredits ?? onProfile}

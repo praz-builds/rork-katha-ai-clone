@@ -1654,7 +1654,7 @@ const JSON_CLOSING_INSTRUCTION =
   "Respond with a JSON object only. No markdown fences. Follow the output schema from your instructions.";
 
 /** The last line of a prompt that wants prose and nothing else. */
-const PROSE_CLOSING_INSTRUCTION =
+export const PROSE_CLOSING_INSTRUCTION =
   "Respond with the chapter text only. No title, no heading, no commentary, no JSON.";
 
 /**

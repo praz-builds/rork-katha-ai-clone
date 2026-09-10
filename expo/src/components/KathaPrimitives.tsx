@@ -190,7 +190,10 @@ export function StoryCard({ story, onPress, compact }: { story: Story; onPress?:
 export function CreditPill({ credits }: { credits: number }) {
   return (
     <View style={styles.creditPill}>
-      <Sparkles size={16} color={colors.accent} />
+      {/* Gold and filled, matching the credit glyph on Home. The spark was
+          accent-orange and hollow here and grey on Home, so the same number
+          wore two different faces depending on which screen you were on. */}
+      <Sparkles size={16} color={colors.chromeStar} fill={colors.chromeStar} />
       <Text style={styles.creditText}>{credits} credits</Text>
     </View>
   );
