@@ -556,7 +556,10 @@ const styles = StyleSheet.create({
   itemPad: { paddingHorizontal: spacing.xl },
   separator: { height: spacing.md },
 
-  headerStack: { paddingTop: spacing.related },
+  /* The title used to carry this space with it. Without one the row starts at
+     the very top of the safe area and the profile link is clipped, so the
+     padding the heading was implicitly providing is now explicit. */
+  headerStack: { paddingTop: spacing.lg },
 
   /* ── 1. Header ── */
   header: {
@@ -570,7 +573,8 @@ const styles = StyleSheet.create({
      would park on the left. */
   headerNoTitle: {
     justifyContent: "flex-end",
-    paddingBottom: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   h1: {
     fontFamily: fonts.display,
