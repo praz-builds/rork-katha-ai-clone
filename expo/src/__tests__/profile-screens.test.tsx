@@ -21,6 +21,8 @@ import {
 const mockSetAuthorFollow = jest.fn();
 const mockFetchPublicProfile = jest.fn();
 const mockFetchOwnProfile = jest.fn();
+const mockFetchProfileComments = jest.fn();
+const mockFetchActivityCalendar = jest.fn();
 
 jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn() }));
 jest.mock("@/lib/api", () => {
@@ -36,6 +38,10 @@ jest.mock("@/lib/profile", () => {
     ...actual,
     fetchPublicProfile: (...args: unknown[]) => mockFetchPublicProfile(...args),
     fetchOwnProfile: (...args: unknown[]) => mockFetchOwnProfile(...args),
+    fetchProfileComments: (...args: unknown[]) =>
+      mockFetchProfileComments(...args),
+    fetchActivityCalendar: (...args: unknown[]) =>
+      mockFetchActivityCalendar(...args),
   };
 });
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
@@ -45,6 +51,27 @@ import ProfileScreen from "@/screens/ProfileScreen";
 import FollowButton from "@/components/profile/FollowButton";
 
 const AUTHOR = "11111111-1111-4111-8111-111111111111";
+
+/** A signed-in reader with a name, a handle, a live streak and two follows. */
+const ownProfileFixture = () => ({
+  userId: "u1",
+  username: "ada",
+  displayName: "Ada Lovelace",
+  avatarUrl: null,
+  bio: null,
+  memberSince: "2026-01-01T00:00:00Z",
+  deletedAt: null,
+  currentStreak: 4,
+  longestStreak: 9,
+  lastActivityDate: new Date().toISOString().slice(0, 10),
+  storiesWritten: 2,
+  chaptersWritten: 7,
+  totalReads: 42,
+  totalLikes: 8,
+  phrasesSaved: 12,
+  followers: 3,
+  following: 1,
+});
 
 const publicProfile = {
   authorId: AUTHOR,
@@ -76,6 +103,10 @@ const publicStory = {
 beforeEach(() => {
   mockSetAuthorFollow.mockReset();
   mockFetchPublicProfile.mockReset();
+    mockFetchProfileComments.mockReset();
+    mockFetchProfileComments.mockResolvedValue([]);
+    mockFetchActivityCalendar.mockReset();
+    mockFetchActivityCalendar.mockResolvedValue([]);
   mockFetchOwnProfile.mockReset();
   mockFetchOwnProfile.mockResolvedValue(null);
 });
@@ -238,13 +269,59 @@ describe("somebody else's profile", () => {
     expect(view.queryByText("An Unpublished Draft")).toBeNull();
     expect(view.queryByText("Names A Real Person")).toBeNull();
 
-    // The four public numbers, and no private one.
+    // Two relationship counts, and nothing private.
     expect(view.getByText("@ada")).toBeTruthy();
-    expect(view.getByText("Published")).toBeTruthy();
     expect(view.getByText("Followers")).toBeTruthy();
+    expect(view.getByText("Following")).toBeTruthy();
     expect(view.queryByText("Phrases")).toBeNull();
     expect(view.queryByText("Best streak")).toBeNull();
     expect(view.queryByText("Credits")).toBeNull();
+
+    // The scoreboard is gone. Reads and likes measure a performance rather
+    // than describing a person, and a profile that leads with them invites
+    // the comparison instead of the reading.
+    expect(view.queryByText("Reads")).toBeNull();
+    expect(view.queryByText("Likes")).toBeNull();
+    expect(view.queryByText("Published")).toBeNull();
+  });
+
+  it("shows what an author has said, under what they have written", async () => {
+    mockFetchPublicProfile.mockResolvedValue({
+      profile: publicProfile,
+      stories: [],
+    });
+    mockFetchProfileComments.mockResolvedValue([
+      {
+        id: "c1",
+        storyId: "s1",
+        storyTitle: "The Night Cartographer",
+        chapterNumber: 2,
+        content: "The bit about the compass stayed with me.",
+        score: 3,
+        createdAt: "2026-09-01T00:00:00Z",
+      },
+    ]);
+
+    const onStory = jest.fn();
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        canEngage
+        onBack={jest.fn()}
+        onStory={onStory}
+      />,
+    );
+
+    await waitFor(() => view.getByTestId("author-comments"));
+    expect(view.getByText("The bit about the compass stayed with me."))
+      .toBeTruthy();
+    // Each comment names the story it was left on: a remark with no context
+    // reads as a status update, and these are replies.
+    expect(view.getByText("The Night Cartographer · Chapter 2")).toBeTruthy();
+
+    fireEvent.press(view.getByText("The bit about the compass stayed with me."));
+    expect(onStory).toHaveBeenCalledWith("s1");
   });
 
   it("says nothing published rather than falling back to local stories", async () => {
@@ -325,19 +402,28 @@ describe("somebody else's profile", () => {
 // The owner's profile
 // ---------------------------------------------------------------------------
 
+/**
+ * The profile is a tab now, not a pushed screen, so there is no `onBack`. The
+ * four new destinations it opens are stubs here; what each of them renders is
+ * that screen's own business.
+ */
+const profileProps = () => ({
+  credits: 5,
+  onCredits: jest.fn(),
+  onPaywall: jest.fn(),
+  onCustomerCenter: jest.fn(),
+  onJourney: jest.fn(),
+  onPublicProfile: jest.fn(),
+  onVoices: jest.fn(),
+  onSignedOut: jest.fn(),
+  onDeleted: jest.fn(),
+});
+
 describe("the reader's own profile", () => {
   it("offers a guest sign-in instead of a page of zeros", async () => {
     const onSignIn = jest.fn();
     const view = await render(
-      <ProfileScreen
-        credits={5}
-        isAnonymous
-        onSignIn={onSignIn}
-        onBack={jest.fn()}
-        onCredits={jest.fn()}
-        onPaywall={jest.fn()}
-        onCustomerCenter={jest.fn()}
-      />,
+      <ProfileScreen {...profileProps()} isAnonymous onSignIn={onSignIn} />,
     );
 
     await waitFor(() => view.getByTestId("profile-guest"));
@@ -347,74 +433,91 @@ describe("the reader's own profile", () => {
     expect(view.queryByTestId("profile-edit")).toBeNull();
   });
 
-  it("shows the streak and the counts once they load", async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    mockFetchOwnProfile.mockResolvedValue({
-      userId: "u1",
-      username: "ada",
-      avatarUrl: null,
-      bio: null,
-      memberSince: "2026-01-01T00:00:00Z",
-      currentStreak: 4,
-      longestStreak: 9,
-      lastActivityDate: today,
-      storiesWritten: 2,
-      chaptersWritten: 7,
-      totalReads: 42,
-      totalLikes: 8,
-      phrasesSaved: 12,
-      followers: 3,
-      following: 1,
-    });
+  it("leads with who they are, then what the account can do", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
 
     const view = await render(
-      <ProfileScreen
-        credits={5}
-        onBack={jest.fn()}
-        onCredits={jest.fn()}
-        onPaywall={jest.fn()}
-        onCustomerCenter={jest.fn()}
-      />,
+      <ProfileScreen {...profileProps()} />,
     );
 
-    await waitFor(() => view.getByTestId("streak-card"));
-    expect(view.getByText("4 days")).toBeTruthy();
+    await waitFor(() => view.getByTestId("profile-journey"));
+    // The name leads, with the handle beneath it: a handle is an address, a
+    // name is what the person is called.
+    expect(view.getByText("Ada Lovelace")).toBeTruthy();
     expect(view.getByText("@ada")).toBeTruthy();
-    expect(view.getByTestId("stat-grid")).toBeTruthy();
-    expect(view.getByText("Phrases")).toBeTruthy();
-    // Parental controls are gone. The owner decided the product does not need
-    // them, and a settings row for a feature nobody is building is a promise.
-    expect(view.queryByText("Parental controls")).toBeNull();
+    // The streak is summarised behind the row and lives on its own page.
+    expect(view.getByText("4 day streak, and the days behind it")).toBeTruthy();
+    // Followers and following are the only public numbers left.
+    expect(view.getByText("3 followers · 1 following")).toBeTruthy();
+  });
+
+  // Reads, likes, chapter and phrase counts were an eight-cell grid here. They
+  // are a scoreboard, they belong to nobody but the writer, and the story
+  // counts already exist in Library next to the stories they count.
+  it("no longer shows reads, likes or story counts", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+
+    const view = await render(<ProfileScreen {...profileProps()} />);
+
+    await waitFor(() => view.getByTestId("profile-journey"));
+    expect(view.queryByTestId("stat-grid")).toBeNull();
+    for (const gone of ["Reads", "Likes", "Phrases", "Chapters", "Stories"]) {
+      expect(view.queryByText(gone)).toBeNull();
+    }
+  });
+
+  // No page title: the tab bar already said "You" in a word they just tapped.
+  it("has no heading of its own", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    await waitFor(() => view.getByTestId("profile-journey"));
+    expect(view.queryByText("Profile")).toBeNull();
+  });
+
+  it("opens the journey page with the profile it already loaded", async () => {
+    const profile = ownProfileFixture();
+    mockFetchOwnProfile.mockResolvedValue(profile);
+    const props = profileProps();
+
+    const view = await render(<ProfileScreen {...props} />);
+    await waitFor(() => view.getByTestId("profile-journey"));
+    fireEvent.press(view.getByTestId("profile-journey"));
+    expect(props.onJourney).toHaveBeenCalledWith(profile);
+  });
+
+  // Sign out and Delete are only shown to somebody who has an account to lose.
+  it("shows no danger zone to a guest", async () => {
+    const view = await render(
+      <ProfileScreen {...profileProps()} isAnonymous onSignIn={jest.fn()} />,
+    );
+    await waitFor(() => view.getByTestId("profile-guest"));
+    expect(view.queryByTestId("profile-sign-out")).toBeNull();
+    expect(view.queryByTestId("profile-delete")).toBeNull();
+  });
+
+  it("gives a signed-in reader both a way out and a way to delete", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    await waitFor(() => view.getByTestId("profile-journey"));
+    expect(view.getByTestId("profile-sign-out")).toBeTruthy();
+    expect(view.getByTestId("profile-delete")).toBeTruthy();
   });
 
   it("says the numbers are missing rather than showing invented ones", async () => {
     mockFetchOwnProfile.mockResolvedValue(null);
 
     const view = await render(
-      <ProfileScreen
-        credits={5}
-        onBack={jest.fn()}
-        onCredits={jest.fn()}
-        onPaywall={jest.fn()}
-        onCustomerCenter={jest.fn()}
-      />,
+      <ProfileScreen {...profileProps()} />,
     );
 
-    await waitFor(() => view.getByTestId("profile-stats-unavailable"));
-    expect(view.queryByTestId("streak-card")).toBeNull();
-    expect(view.queryByTestId("stat-grid")).toBeNull();
+    await waitFor(() => view.getByTestId("profile-unavailable"));
+    expect(view.queryByTestId("profile-public")).toBeNull();
   });
 
   it("routes a reader who wants more credits to the paywall", async () => {
     const onPaywall = jest.fn();
     const view = await render(
-      <ProfileScreen
-        credits={5}
-        onBack={jest.fn()}
-        onCredits={jest.fn()}
-        onPaywall={onPaywall}
-        onCustomerCenter={jest.fn()}
-      />,
+      <ProfileScreen {...profileProps()} onPaywall={onPaywall} />,
     );
 
     await waitFor(() => view.getByTestId("profile-buy-credits"));

@@ -76,6 +76,22 @@ export const colors = {
    */
   selectionTint: "rgba(118, 114, 138, 0.30)",
   heart: "#E85D5D",
+  /**
+   * Destructive, and used for exactly one thing: deleting an account.
+   *
+   * Deliberately NOT `heart` (#E85D5D), which is a like, and deliberately not
+   * `accent`, which is the colour of every primary action in the app. A
+   * delete button that looks like every other button is how somebody deletes
+   * an account by muscle memory. This is the only red in the palette that
+   * means "this will destroy something", and it should stay that way -- if a
+   * second destructive action ever needs it, it should look identical to this
+   * one, not similar to it.
+   *
+   * Darker than `heart` so it passes contrast for white label text at 16pt.
+   */
+  danger: "#C0342B",
+  /** The ground under a destructive warning. Tinted, never saturated. */
+  dangerSoft: "#FBEAE8",
   info: "#4A78C2",
   premium: "#C44536",
   success: "#12B5A5",

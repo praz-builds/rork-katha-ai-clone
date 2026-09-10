@@ -20,12 +20,15 @@ jest.mock("lucide-react-native", () => {
 
 const mockClaimUsername = jest.fn();
 const mockSaveBio = jest.fn();
+const mockSaveDisplayName = jest.fn();
 
 jest.mock("@/lib/profile", () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   ...jest.requireActual("@/lib/profile"),
   claimUsername: (raw: string) => mockClaimUsername(raw),
   saveBio: (raw: string) => mockSaveBio(raw),
+  saveDisplayName: (raw: string) => mockSaveDisplayName(raw),
+  cacheDisplayName: jest.fn(),
   pickAndUploadAvatar: jest.fn(),
 }));
 
@@ -39,6 +42,7 @@ const renderEditor = async (overrides: Partial<Props> = {}) => {
   const props: Props = {
     visible: true,
     username: null,
+    displayName: null,
     avatarUrl: null,
     bio: null,
     onClose: jest.fn(),

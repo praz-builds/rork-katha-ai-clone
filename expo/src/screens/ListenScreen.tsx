@@ -26,6 +26,7 @@ import { PlayerBar, type PlaybackRate } from "@/components/listen/PlayerBar";
 import { TranscriptView } from "@/components/listen/TranscriptView";
 import { imageAssets } from "@/data/images";
 import { getDefaultVoices, type VoiceId } from "@/data/voices";
+import { preferredVoiceId } from "@/lib/voices";
 import { captureError } from "@/lib/analytics";
 import {
   canRetry,
@@ -157,10 +158,28 @@ export default function ListenScreen({
 
   const storyLang = story.language === "Spanish" ? "es" : "en";
   const [femaleVoice] = getDefaultVoices(storyLang) as VoiceId[];
-  // One voice per session for now: the female default, exactly what the reader
-  // sheet defaulted to. The voice picker is a follow-up, and the machinery
-  // below is already keyed by voice id so adding it changes only this line.
-  const voiceId: VoiceId = femaleVoice ?? "aria";
+  // The reader's chosen voice, from Audiobook voices in the profile, falling
+  // back to the language default. Without this the picker was a setting
+  // nothing consulted -- it stored a preference and every chapter was still
+  // narrated in the default voice, which is worse than not offering the choice.
+  //
+  // Read asynchronously and applied when it arrives; `null` until then, which
+  // is why narration waits for it rather than starting on the fallback and
+  // switching. The machinery below is keyed by voice id, so this is the only
+  // place that decides.
+  const [preferred, setPreferred] = useState<string | null | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    let alive = true;
+    void preferredVoiceId().then((id) => {
+      if (alive) setPreferred(id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const voiceId: VoiceId = ((preferred ?? femaleVoice) ?? "aria") as VoiceId;
 
   const coverSource = story.coverImageUrl
     ? { uri: story.coverImageUrl }

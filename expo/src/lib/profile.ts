@@ -17,6 +17,7 @@
  * yours -- that shape is exactly how a private field ends up rendered on
  * somebody else's page one refactor later.
  */
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { bootstrapUser } from "@/lib/session";
@@ -294,9 +295,20 @@ export async function pickAndUploadAvatar(): Promise<AvatarResult> {
 export type OwnProfile = {
   userId: string;
   username: string | null;
+  /**
+   * What this person is called, from the name onboarding asks for first.
+   *
+   * Not the handle. `username` is public, unique and lowercase and goes on a
+   * byline; this goes on the reader's own home screen, in the greeting, and
+   * nowhere a stranger can see. Null for anyone who onboarded before the
+   * field was stored, which is why every use of it has a fallback.
+   */
+  displayName: string | null;
   avatarUrl: string | null;
   bio: string | null;
   memberSince: string | null;
+  /** Non-null means a deleted account. Nothing should render one. */
+  deletedAt: string | null;
   currentStreak: number;
   longestStreak: number;
   lastActivityDate: string | null;
@@ -320,6 +332,8 @@ export type PublicProfile = {
   totalReads: number;
   totalLikes: number;
   followers: number;
+  /** How many people this author follows. The other half of the pair. */
+  following: number;
   isFollowing: boolean;
 };
 
@@ -406,6 +420,128 @@ export async function saveBio(bio: string): Promise<string | null | undefined> {
     return typeof data?.bio === "string" ? data.bio : null;
   } catch {
     return undefined;
+  }
+}
+
+
+/**
+ * Save what this person is called.
+ *
+ * Returns the stored value, `null` when it was cleared, and `undefined` when
+ * the write did not happen -- the same three-way answer `saveBio` gives, so a
+ * caller can tell "now empty" from "we do not know".
+ */
+export async function saveDisplayName(
+  displayName: string,
+): Promise<string | null | undefined> {
+  if (!isSupabaseConfigured) return undefined;
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("profile", {
+      body: { action: "name", displayName },
+    });
+    if (error) return undefined;
+    return typeof data?.displayName === "string" ? data.displayName : null;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The days this reader was active, as `YYYY-MM-DD` strings.
+ *
+ * An empty array means "no active days", which is a real answer for a new
+ * account. `null` means the request failed, and the calendar renders nothing
+ * rather than an empty year -- a grid of blank squares says "you did nothing"
+ * to somebody who may well have done something.
+ *
+ * With no `authorId` this is the caller's own calendar; with one it is that
+ * author's, which is what the public profile draws.
+ */
+export async function fetchActivityCalendar(
+  authorId?: string,
+): Promise<string[] | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("profile", {
+      body: { action: "calendar", ...(authorId ? { authorId } : {}) },
+    });
+    if (error || !Array.isArray(data?.days)) return null;
+    return (data.days as unknown[]).filter(
+      (day): day is string => typeof day === "string",
+    );
+  } catch {
+    return null;
+  }
+}
+
+export type ProfileComment = {
+  id: string;
+  storyId: string;
+  storyTitle: string | null;
+  chapterNumber: number | null;
+  content: string;
+  score: number;
+  createdAt: string | null;
+};
+
+/**
+ * Comments somebody has left, for their public profile.
+ *
+ * Visibility is the STORY's, decided on the server: a comment on a private or
+ * gated story never appears here, so a profile cannot become a way to read
+ * around a story nobody was meant to see.
+ */
+export async function fetchProfileComments(
+  authorId?: string,
+): Promise<ProfileComment[] | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("profile", {
+      body: { action: "comments", ...(authorId ? { authorId } : {}) },
+    });
+    if (error || !Array.isArray(data?.comments)) return null;
+    return (data.comments as ProfileComment[]).filter(
+      (comment) => typeof comment?.content === "string",
+    );
+  } catch {
+    return null;
+  }
+}
+
+export type DeleteAccountResult =
+  | { ok: true; storiesKept: number }
+  | { ok: false };
+
+/**
+ * Delete this account.
+ *
+ * The policy, and what the confirmation screen promises: everything private
+ * goes -- drafts, library, saved phrases, follows, handle, avatar -- and
+ * published stories and comments stay under an anonymous byline, because a
+ * reader who saved one of them should not lose it because the author left.
+ * `storiesKept` is how many survive, so the last screen can say so plainly
+ * rather than leaving somebody to find out later.
+ */
+export async function deleteAccount(
+  reason: string,
+  detail?: string,
+): Promise<DeleteAccountResult> {
+  if (!isSupabaseConfigured) return { ok: false };
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("profile", {
+      body: { action: "delete", reason, detail: detail ?? "" },
+    });
+    if (error || data?.deleted !== true) return { ok: false };
+    return {
+      ok: true,
+      storiesKept: typeof data.storiesKept === "number" ? data.storiesKept : 0,
+    };
+  } catch {
+    return { ok: false };
   }
 }
 
@@ -507,4 +643,60 @@ export function writingSince(iso: string | null): string | null {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+// ---------------------------------------------------------------------------
+// The greeting name, cached on the device
+// ---------------------------------------------------------------------------
+
+const DISPLAY_NAME_KEY = "katha.displayName.v1";
+
+/**
+ * Remember the name locally as well as on the server.
+ *
+ * Home greets the reader by name in its first line. Waiting for
+ * `profile_overview` to come back means that line renders once without a name
+ * and then again with one, which reads as a glitch on every cold start. The
+ * cache is the answer to "what were they called last time", the server is the
+ * answer to "what are they called", and the second overwrites the first as
+ * soon as it arrives.
+ *
+ * Device-local by design: it is a copy, never the record. Losing it costs one
+ * render of a nameless greeting.
+ */
+export async function cacheDisplayName(name: string | null): Promise<void> {
+  try {
+    if (name && name.trim().length > 0) {
+      await AsyncStorage.setItem(DISPLAY_NAME_KEY, name.trim());
+    } else {
+      await AsyncStorage.removeItem(DISPLAY_NAME_KEY);
+    }
+  } catch {
+    // A cache that cannot write is a cache that misses. Nothing else breaks.
+  }
+}
+
+export async function cachedDisplayName(): Promise<string | null> {
+  try {
+    const value = await AsyncStorage.getItem(DISPLAY_NAME_KEY);
+    return value && value.trim().length > 0 ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The first name to greet somebody by, from whatever they gave us.
+ *
+ * Onboarding asks for a first name, but people type what they like -- a full
+ * name, a name with a title, an empty string with a stray space. The greeting
+ * has one line to work with, so it takes the first word and caps it, and
+ * returns null rather than greeting somebody as "" or as their whole legal
+ * name.
+ */
+export function greetingName(displayName: string | null): string | null {
+  if (!displayName) return null;
+  const first = displayName.trim().split(/\s+/)[0] ?? "";
+  if (first.length === 0 || first.length > 20) return null;
+  return first;
 }
