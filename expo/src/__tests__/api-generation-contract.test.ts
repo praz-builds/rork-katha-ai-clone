@@ -209,6 +209,34 @@ describe("continueStory request contract", () => {
       "Open the locked attic.",
     );
   });
+
+  /**
+   * `extend` is what turns a refusal into a chapter, so it must never be sent
+   * by accident. The server answers 400 to an over-plan chapter that omits it,
+   * which is the behaviour that protects a writer's balance from every caller
+   * except the one deliberate tap.
+   */
+  it("sends extend false unless the caller asked to grow the story", async () => {
+    mockInvoke.mockResolvedValue(chapterResponse);
+    await continueStory("story-1", "req-9", false, 2, "Open the attic.", []);
+
+    expect(bodyOf(mockInvoke.mock.calls[0]).extend).toBe(false);
+  });
+
+  it("sends extend true when a reader grows a finished story", async () => {
+    mockInvoke.mockResolvedValue(chapterResponse);
+    await continueStory(
+      "story-1",
+      "req-10",
+      false,
+      2,
+      "Open the attic.",
+      [],
+      true,
+    );
+
+    expect(bodyOf(mockInvoke.mock.calls[0]).extend).toBe(true);
+  });
 });
 
 describe("shapeStoryIdea", () => {

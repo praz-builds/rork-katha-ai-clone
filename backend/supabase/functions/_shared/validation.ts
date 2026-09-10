@@ -28,7 +28,9 @@ import {
   MAX_CAST_SIZE,
   MAX_MOMENTS,
   MAX_STORY_GENRES,
-  PLANNED_CHAPTER_COUNT_SET,
+  isPlannedChapterCount,
+  MAX_PLANNED_CHAPTER_COUNT,
+  MIN_PLANNED_CHAPTER_COUNT,
   type PlannedChapterCount,
   PRIMARY_GENRES,
   type PrimaryGenre,
@@ -367,13 +369,24 @@ export function validateGenerationRequest(
     chapterLength = cl as ChapterLength;
   }
 
+  // A RANGE, not the four values the picker offers.
+  //
+  // The picker offers 1, 3, 7 and 15, but a reader extending a finished story
+  // raises the stored plan one chapter at a time, so a brief replayed from a
+  // story that has already grown can legitimately name 4 or 9. Rejecting
+  // anything but the offered four would refuse a plan this system itself
+  // wrote. The bound is what matters, and it is the same bound migration 00079
+  // puts on the column.
   let plannedChapterCount: PlannedChapterCount = DEFAULT_PLANNED_CHAPTER_COUNT;
   if (body.planned_chapter_count !== undefined) {
     const n = body.planned_chapter_count;
-    if (typeof n !== "number" || !PLANNED_CHAPTER_COUNT_SET.has(n)) {
-      return { error: "planned_chapter_count must be 3, 7, or 15" };
+    if (!isPlannedChapterCount(n)) {
+      return {
+        error:
+          `planned_chapter_count must be a whole number between ${MIN_PLANNED_CHAPTER_COUNT} and ${MAX_PLANNED_CHAPTER_COUNT}`,
+      };
     }
-    plannedChapterCount = n as PlannedChapterCount;
+    plannedChapterCount = n;
   }
 
   // The plan is clamped to the planned length rather than rejected. A plan

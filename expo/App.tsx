@@ -1005,17 +1005,26 @@ export default function App() {
                       // is the one thing left, so the pill has to be reachable
                       // from the ending itself and not only from the chrome.
                       onReimagine={reimagine ?? undefined}
-                      onContinue={(direction, offered) => {
+                      onContinue={(direction, offered, extend) => {
                         const next = chapter.chapterNumber + 1;
                         startChapterGeneration({
                           story,
                           nextChapterNumber: next,
-                          isFinale:
-                            typeof story.plannedChapterCount === "number"
-                              ? next >= story.plannedChapterCount
-                              : false,
+                          // An extension is never a finale. The plan is about
+                          // to be raised to exactly this chapter, so the old
+                          // test is true of every extension -- and a chapter
+                          // written as a finale closes its threads, which is
+                          // what the next set of chips is derived from. A
+                          // story extendable once would then be extendable
+                          // never again.
+                          isFinale: extend
+                            ? false
+                            : typeof story.plannedChapterCount === "number"
+                            ? next >= story.plannedChapterCount
+                            : false,
                           direction,
                           directionsOffered: offered,
+                          extend,
                         });
                       }}
                     />

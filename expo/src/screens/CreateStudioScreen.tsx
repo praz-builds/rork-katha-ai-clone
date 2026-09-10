@@ -15,6 +15,7 @@ import type {
   CreateDraft,
   Genre,
   IdentityLens,
+  PlannedChapterCountOffer,
   SpiceLevel,
 } from "@/types/domain";
 
@@ -85,7 +86,7 @@ type StudioDraft = {
   writingStyle?: string;
   avoid?: string;
   chapterLength?: "short" | "standard" | "long";
-  plannedChapterCount?: 3 | 7 | 15;
+  plannedChapterCount?: PlannedChapterCountOffer;
   illustrateChapters?: boolean;
   imageStyle?: CreateDraft["imageStyle"];
   storyFlow?: CreateDraft["storyFlow"];

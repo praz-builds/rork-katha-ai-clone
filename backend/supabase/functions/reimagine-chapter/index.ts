@@ -136,7 +136,9 @@ import {
   type ChapterLength,
   type ChapterRole,
   type CharacterInput,
+  DEFAULT_PLANNED_CHAPTER_COUNT,
   type IdentityLens,
+  isPlannedChapterCount,
   type PlannedChapterCount,
   type SpiceLevel,
   type StoryMode,
@@ -521,10 +523,13 @@ serve(async (req) => {
     const spiceLevel =
       (rawSpice === "explicit" ? "steamy" : rawSpice) as SpiceLevel;
     const chapterLength = (story.chapter_length ?? "standard") as ChapterLength;
-    const plannedChapterCount =
-      ([3, 7, 15].includes(story.planned_chapter_count as number)
+    // A range, not the four values the picker offers: a story extended past
+    // its plan stores 2, 4, 9 and so on. Matching against a fixed set here
+    // would rewrite a chapter of a 4-chapter story against a 3-chapter plan.
+    const plannedChapterCount: PlannedChapterCount =
+      isPlannedChapterCount(story.planned_chapter_count)
         ? story.planned_chapter_count
-        : 3) as PlannedChapterCount;
+        : DEFAULT_PLANNED_CHAPTER_COUNT;
     const chapterRole: ChapterRole =
       CHAPTER_ROLES.has(targetChapter.chapter_role as string)
         ? targetChapter.chapter_role as ChapterRole

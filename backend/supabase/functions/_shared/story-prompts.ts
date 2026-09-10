@@ -34,6 +34,7 @@ import {
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_MIGRATION_MAP,
+  type PlannedChapterCount,
   wordBandFor,
 } from "./types.ts";
 
@@ -371,12 +372,29 @@ The series_state you return is the state AFTER this chapter, not a copy of the s
 function buildPlannedLengthRules(
   storyMode: StoryMode | undefined,
   chapterRole: ChapterRole | undefined,
-  plannedChapterCount: 3 | 7 | 15 | undefined,
+  plannedChapterCount: PlannedChapterCount | undefined,
 ): string {
   if (storyMode !== "series") return "";
   const total = plannedChapterCount ?? DEFAULT_PLANNED_CHAPTER_COUNT;
   const role = chapterRole ?? "series_opening";
-  const position = role === "series_opening"
+  /*
+    A ONE-CHAPTER SERIES IS ITS OWN OPENING AND ITS OWN ENDING.
+
+    `generate-story` labels chapter one of every series `series_opening`, and
+    that branch tells the model to leave escalation "for later chapters". Under
+    a one-chapter plan there are no later chapters yet, so the instruction and
+    the sentence above it contradict each other and the model is left to pick
+    one -- most often by writing an unfinished chapter and calling it done.
+
+    What a one-chapter story actually needs is both halves: a chapter that
+    satisfies on its own, and a live thread at the end of it. The thread is not
+    decoration -- the reader's direction chips at a finished story's end are
+    derived from `series_state` and the closing hook, so a chapter that closes
+    every door leaves nothing to extend the story WITH.
+  */
+  const position = total === 1
+    ? "This chapter is the whole story: land a complete, satisfying arc inside it. Still close on one live thread the story could be continued from, and record it in the series state."
+    : role === "series_opening"
     ? "Establish the central pressure and leave meaningful escalation for later chapters."
     : role === "finale"
     ? "Resolve the promise of the complete arc; do not create a fresh central conflict."
@@ -1034,7 +1052,7 @@ interface SystemPromptParams {
   spiceLevel?: SpiceLevel;
   language?: string;
   chapterLength?: "short" | "standard" | "long";
-  plannedChapterCount?: 3 | 7 | 15;
+  plannedChapterCount?: PlannedChapterCount;
 }
 
 /**
@@ -1422,7 +1440,7 @@ export function buildUserPrompt(params: {
   omitClosingInstruction?: boolean;
   continuationInstruction?: string;
   chapterLength?: "short" | "standard" | "long";
-  plannedChapterCount?: 3 | 7 | 15;
+  plannedChapterCount?: PlannedChapterCount;
   seed: string;
   characters?: CharacterInput[];
   language?: string;
@@ -1462,7 +1480,7 @@ export function buildUserPrompt(params: {
   omitClosingInstruction?: boolean;
   continuationInstruction?: string;
   chapterLength?: "short" | "standard" | "long";
-  plannedChapterCount?: 3 | 7 | 15;
+  plannedChapterCount?: PlannedChapterCount;
   seed?: string;
   topic?: string;
   whereAndWhen?: string;
@@ -1828,7 +1846,7 @@ export interface ContinuationPromptInput {
   chapterRole: ChapterRole;
   chapterNumber: number;
   chapterLength: "short" | "standard" | "long";
-  plannedChapterCount: 3 | 7 | 15;
+  plannedChapterCount: PlannedChapterCount;
   seed: string;
   whereAndWhen?: string;
   moments: string[];

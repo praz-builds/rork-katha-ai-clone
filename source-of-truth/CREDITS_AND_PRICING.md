@@ -28,6 +28,16 @@ Every chapter after that is **1 credit**, or 2 if you illustrate it. A 3-chapter
 story is 3 credits; a 15-chapter story is 15. You are charged as each chapter is
 written, so a story you abandon costs what it wrote.
 
+**A story's total is what it was planned for, not what it is fixed at.** Since
+2026-09-11 the planned length is a starting length: a finished series whose
+plan is below 15 offers its author direction chips at its end instead of "the
+story is complete", and picking one writes the next chapter and charges the
+ordinary chapter price for it — 1 credit, or 2 illustrated. Extension is
+neither discounted nor surcharged, so the arithmetic above is unchanged; a
+1-chapter story grown to four has simply been charged as a 4-chapter story, one
+chapter at a time. It always takes a deliberate tap: auto-continue stops at the
+plan and never extends by itself.
+
 Reading is **free and unlimited on every tier, forever**. Audio is **1 credit per
 chapter, unlocked permanently**. Drafting is unlimited by hand and generously
 capped on AI. **Reimagining a chapter is free twice, then 1 credit.**

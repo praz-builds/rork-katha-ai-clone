@@ -49,8 +49,13 @@ import {
   spacing,
   type,
 } from "@/theme";
-import { UI_GENRES } from "@/types/domain";
-import type { CreateDraft, Genre, WriterEntryContext } from "@/types/domain";
+import { PLANNED_CHAPTER_COUNT_OFFER, UI_GENRES } from "@/types/domain";
+import type {
+  CreateDraft,
+  Genre,
+  PlannedChapterCountOffer,
+  WriterEntryContext,
+} from "@/types/domain";
 
 /**
  * The writer path through onboarding.
@@ -166,7 +171,14 @@ const MAX_ONBOARDING_CAST = 2;
 
 const DEFAULT_GENRE: Genre = "mystery";
 
-const CHAPTER_COUNTS = [3, 7, 15] as const;
+/**
+ * One chapter is on the list, and picking it still writes `isSeries: true`.
+ *
+ * A one-chapter story is a series of one, not a standalone: it ends on the
+ * ordinary direction chips, and picking one buys chapter two. A standalone has
+ * no chapter two to offer.
+ */
+const CHAPTER_COUNTS = PLANNED_CHAPTER_COUNT_OFFER;
 
 /**
  * Chapter length, labelled by the number a reader actually feels.
@@ -351,7 +363,7 @@ export default function WriterOnboarding(
   const [momentInput, setMomentInput] = useState("");
   const [writingStyle, setWritingStyle] = useState("");
   const [avoid, setAvoid] = useState("");
-  const [chapterCount, setChapterCount] = useState<3 | 7 | 15>(3);
+  const [chapterCount, setChapterCount] = useState<PlannedChapterCountOffer>(3);
   const [chapterLength, setChapterLength] = useState<
     "short" | "standard" | "long"
   >("standard");
@@ -1240,11 +1252,13 @@ export default function WriterOnboarding(
                     }}
                     accessibilityRole="button"
                     accessibilityState={{ expanded: chapterCountOpen }}
-                    accessibilityLabel={`Chapters, ${chapterCount} chapters`}
+                    accessibilityLabel={`Chapters, ${chapterCount} ${
+                      chapterCount === 1 ? "chapter" : "chapters"
+                    }`}
                     style={styles.filterChip}
                   >
                     <Text style={styles.filterChipText}>
-                      {chapterCount} chapters
+                      {chapterCount} {chapterCount === 1 ? "chapter" : "chapters"}
                     </Text>
                     <IconChevronDown size={14} color={colors.accent} />
                   </Pressable>
@@ -1275,7 +1289,7 @@ export default function WriterOnboarding(
                                 styles.filterMenuTextActive,
                               ]}
                             >
-                              {count} chapters
+                              {count} {count === 1 ? "chapter" : "chapters"}
                             </Text>
                             {chapterCount === count
                               ? <IconCheck size={14} color={colors.accent} />
@@ -1291,7 +1305,7 @@ export default function WriterOnboarding(
               <View style={styles.section}>
                 <Text style={styles.helper}>
                   About {totalMinutes} minutes to read, across {chapterCount}{" "}
-                  chapters.
+                  {chapterCount === 1 ? "chapter" : "chapters"}.
                 </Text>
               </View>
 

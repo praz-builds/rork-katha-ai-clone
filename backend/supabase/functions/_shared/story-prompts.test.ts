@@ -2099,3 +2099,59 @@ Deno.test("the system prompt is invariant across the chapters of one story", () 
   assertEquals(chapterOne.includes("<series_state>"), false);
   assertEquals(chapterOne.includes("Who erased the camera feed?"), false);
 });
+
+/**
+ * A one-chapter series is its own opening and its own ending.
+ *
+ * `generate-story` labels chapter one of every series `series_opening`, and
+ * that branch tells the model to leave escalation "for later chapters". Under
+ * a one-chapter plan there are none yet, so the two sentences contradicted
+ * each other and the model was left to pick one -- usually by writing an
+ * unfinished chapter and calling it done.
+ */
+Deno.test("a one-chapter plan asks for a whole story that still leaves a thread", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "series_opening",
+    plannedChapterCount: 1,
+  });
+  assertStringIncludes(prompt, "This is a 1-chapter story.");
+  assertStringIncludes(prompt, "the whole story");
+  // The live thread is not decoration: the direction chips a reader is offered
+  // at the end of a finished story are derived from the series state and the
+  // closing hook, so a chapter that closes every door leaves nothing to extend
+  // the story with.
+  assertStringIncludes(prompt, "one live thread");
+  assert(
+    !prompt.includes("leave meaningful escalation for later chapters"),
+    "a one-chapter story has no later chapters to defer to",
+  );
+});
+
+Deno.test("a longer plan still opens on escalation", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "series_opening",
+    plannedChapterCount: 3,
+  });
+  assertStringIncludes(prompt, "This is a 3-chapter story.");
+  assertStringIncludes(prompt, "leave meaningful escalation for later chapters");
+});
+
+/**
+ * The stored plan is a range. A story extended by hand to four chapters says
+ * four, and the prompt has to say four -- a prompt that rounds it back to one
+ * of the offered lengths paces the chapter against a story that does not
+ * exist.
+ */
+Deno.test("an extended plan is stated as the number it actually is", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "mid_series",
+    plannedChapterCount: 4,
+  });
+  assertStringIncludes(prompt, "This is a 4-chapter story.");
+});

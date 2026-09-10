@@ -56,10 +56,15 @@ import type {
   CreationLanguage,
   Genre,
   ImageStyle,
+  PlannedChapterCountOffer,
   SavedCharacter,
   StoryFlow,
 } from "@/types/domain";
-import { KIDS_UI_GENRES, UI_GENRES } from "@/types/domain";
+import {
+  KIDS_UI_GENRES,
+  PLANNED_CHAPTER_COUNT_OFFER,
+  UI_GENRES,
+} from "@/types/domain";
 
 type CharacterDraft = CreateDraft["characters"][number];
 
@@ -229,7 +234,16 @@ export const CHAPTER_LENGTHS = [
   { id: "long", label: "Long", minutes: 9, words: "~2,000-2,600 words" },
 ] as const;
 
-const CHAPTER_COUNTS = [3, 7, 15] as const;
+/**
+ * One chapter is on the list, and picking it still sets `isSeries`.
+ *
+ * A one-chapter story is a SERIES OF ONE, not a standalone. That is what makes
+ * it growable: a series that has reached its plan offers the reader direction
+ * chips at its end, and picking one buys the next chapter. A standalone has no
+ * chapter two at all -- its ending is a rewrite -- so routing 1 there would
+ * turn the shortest option into the only dead end.
+ */
+const CHAPTER_COUNTS = PLANNED_CHAPTER_COUNT_OFFER;
 
 /**
  * The six dropdowns, defined once.
@@ -306,12 +320,21 @@ const CHAPTER_COVER_OPTIONS: DropdownOption<ChapterCover>[] = [
   },
 ];
 
-const CHAPTER_COUNT_OPTIONS: DropdownOption<string>[] = CHAPTER_COUNTS.map((count) => ({
-  value: String(count),
-  label: `${count} chapters`,
-  valueLabel: String(count),
-  accessibilityLabel: `${count} chapters`,
-}));
+const CHAPTER_COUNT_OPTIONS: DropdownOption<string>[] = CHAPTER_COUNTS.map((count) => {
+  const label = count === 1 ? "1 chapter" : `${count} chapters`;
+  return {
+    value: String(count),
+    label,
+    detail: count === 1
+      // Not a warning, and not a standalone. The reader is told what the end
+      // of a one-chapter story actually offers, because "1" otherwise reads
+      // as the option that gets them the least.
+      ? "One chapter, and the option to keep going at the end of it."
+      : undefined,
+    valueLabel: String(count),
+    accessibilityLabel: label,
+  };
+});
 
 const CHAPTER_LENGTH_OPTIONS: DropdownOption<string>[] = CHAPTER_LENGTHS.map((item) => ({
   value: item.id,
@@ -916,7 +939,7 @@ function StorySetupScreen({
           value={String(draft.plannedChapterCount ?? 3)}
           options={CHAPTER_COUNT_OPTIONS}
           onChange={(value) => {
-            const count = Number(value) as 3 | 7 | 15;
+            const count = Number(value) as PlannedChapterCountOffer;
             update({ plannedChapterCount: count, isSeries: true, beats: draft.beats?.slice(0, count) });
             onSelect();
           }}

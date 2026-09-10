@@ -7,6 +7,124 @@
 
 ---
 
+## 2026-09-11 UTC — One-chapter stories, and a plan a reader can grow
+
+**Session:** `codex/one-chapter-stories`, backend plus reader and create
+surfaces. Nothing deployed; migration 00079 written and tested but **not run**
+against `iafeuxgoiknncgyjmugd`.
+
+### The product change
+
+The Chapters picker now offers **1 · 3 · 7 · 15** (default still 3), and a
+one-chapter story is a **series of one** rather than a standalone — it is
+stored with `story_mode = 'series'`, which is precisely what makes it
+extendable. A series that has reached its planned ending and is below the
+fifteen-chapter ceiling no longer says "The story is complete" to its author:
+it shows the ordinary direction chips, and picking one writes the next chapter
+and charges for it, raising `planned_chapter_count` by one.
+
+### Migration 00079 — `00079_extendable_chapter_plan.sql`
+
+1. **`stories_planned_chapter_count_check` becomes a range.** It has been
+   `IN (3, 7, 15)` since 00027; it is now null or 1–15. Additive and safe
+   against live data: the new check is strictly wider than the old one, so
+   every existing row satisfies it — which is why it is validated in this
+   migration rather than deferred the way 00027 had to defer to 00028.
+2. **`reserve_generation_operation` gains `p_extend_to_chapter`.** Dropped and
+   recreated, not `create or replace`: a different parameter count is a
+   different function, and the 6-argument version would otherwise stand beside
+   the 7-argument one and make a 6-argument call ambiguous (the precedent is
+   00075/00076/00077). The new parameter is last and defaulted, so the
+   currently deployed `continue-story`, `reimagine-chapter` and
+   `cover-regeneration` — none of which name it — keep resolving here during
+   the window where code and schema disagree.
+
+   **The raise happens inside the reservation, not beside it.** An
+   `update stories set planned_chapter_count = ...` from the edge function
+   would be a second transaction, and both orderings fail visibly:
+   raise-then-reserve leaves a story permanently claiming a chapter a 402 meant
+   nobody paid for, and reserve-then-raise debits the credit and then refuses
+   the chapter it just charged for if the update loses a race or the worker
+   dies between the two. Inside the RPC the raise sits behind the same
+   `pg_advisory_xact_lock` on the story that already serialises concurrent
+   reservations. It is taken **after** the replay branch, so a retried request
+   cannot walk the plan forward twice, and it refuses with **`KTH03`** rather
+   than silently declining — a silent decline would charge for a chapter the
+   story then refuses to number. Extension is charged the ordinary chapter
+   price: 1 credit, or 2 illustrated.
+
+   Written under the 00071 rule: `coalesce`, `greatest` and `least` are parser
+   constructs and are left unqualified under `set search_path = ''`.
+
+### The widened stored type
+
+`planned_chapter_count` is no longer one of a fixed set anywhere. The picker
+keeps a narrow union (`PLANNED_CHAPTER_COUNT_OFFER`, `1 | 3 | 7 | 15`); the
+stored value is a bounded `number`. Sites changed: `_shared/types.ts` (the
+offer, `MIN`/`MAX`, `isPlannedChapterCount`), `_shared/validation.ts` (range,
+not membership), `_shared/story-shape.ts`, `_shared/story-prompts.ts` (five
+signatures), `continue-story`, `reimagine-chapter`, and on the client
+`types/domain.ts`, `lib/api.ts` (the row parser, which was silently dropping
+any value outside the three), `lib/generation-session.ts`
+(`plannedChapterCountOf`), `CreateStudioScreen`, `CreateBriefFlow` and
+`WriterOnboarding`.
+
+`buildPlannedLengthRules` also gained a one-chapter branch. Chapter one of
+every series is labelled `series_opening`, whose instruction is to "leave
+meaningful escalation for later chapters" — under a one-chapter plan that
+contradicts the sentence above it, and the model resolves the contradiction by
+writing an unfinished chapter. A one-chapter story is now asked for a complete
+arc that still closes on one live thread, because the direction chips at its
+end are derived from the series state and the closing hook.
+
+### The safety call: auto-continue must not auto-extend
+
+`autoChapterToWriteAhead` still stops at `plannedChapterCountOf(story)` and
+`startAutoChapterAhead` never passes `extend`. Auto mode writes ahead with
+nobody watching; a story that could extend itself would spend a reader's whole
+balance on chapters past the plan they chose, and the first they would know of
+it is the number. `ChapterEnd`'s auto effect is gated on `planReached`, not on
+`seriesComplete` — an extendable story is deliberately *not* complete, so the
+old gate would have let auto mode buy the extension itself. An auto story that
+reaches its plan falls through to the chips like any other, and is grown by
+hand.
+
+An extension is also **not a finale**, even though it is the last planned
+chapter by construction: a chapter told to resolve the arc closes the threads
+the next set of chips is derived from, so a story extendable once would be
+extendable never again.
+
+### Tests
+
+- `00079_extendable_chapter_plan_test.ts` — six PGlite tests, executed rather
+  than inspected: the range accepts 1/2/4/9/15 and refuses 0/16, extension
+  raises the plan and charges 1 (2 illustrated), a replayed request does not
+  raise twice, the ceiling refuses and charges nothing, a standalone and a
+  mismatched target are refused, and an in-plan continuation never shrinks the
+  plan.
+- Expo: 1 in the offer routed to `isSeries` (`create-flow-contract`), the
+  widened row parser (`my-stories-restore`), the extendable chapter end and the
+  15-chapter ceiling (`chapter-end`), `extend` on the wire
+  (`api-generation-contract`, `chapter-continuation-direction`), and
+  auto-continue refusing to extend (`auto-continue-ahead`, `chapter-end`).
+- `validation.test.ts` and `story-prompts.test.ts` updated for the range and
+  the one-chapter prompt branch.
+
+**Results:** expo `pnpm typecheck` clean, `pnpm lint` 0 errors,
+`pnpm test` 107 suites / 1080 tests passing. Backend `deno check` clean on
+every changed file; `deno test supabase/functions/` 816 passed;
+`deno test supabase/migrations/` passing.
+
+### Docs
+
+`source-of-truth/STORY_GENERATION_FLOW.md` — the six-dropdown table, the
+More-options and validation rows in §12, §15's supersession table, decision 33,
+and a new **§10.2a Extending a finished story**.
+`source-of-truth/CREDITS_AND_PRICING.md` §1 — a story's total is what it was
+planned for, not what it is fixed at.
+
+---
+
 ## 2026-09-10 UTC — Profile identity, avatars, and the two functions that decide what a profile may show
 
 **Session:** `fable/profiles`, backend plus both profile screens. Nothing

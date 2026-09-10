@@ -65,6 +65,8 @@ import type { Chapter, Story } from "@/types/domain";
 
 /** Position of `nextInstruction` in the `continueStoryStreaming` signature. */
 const DIRECTION_ARG = 5;
+/** Position of `extend` in the same signature. */
+const EXTEND_ARG = 7;
 
 function chapterTwo(): Chapter {
   return {
@@ -163,6 +165,27 @@ describe("the direction the reader chose reaches the request", () => {
     expect(args[0]).toBe("story-1");
     expect(args[3]).toBe(true);
     expect(args[4]).toBe(3);
+  });
+
+  /**
+   * Extending is opt-in on the wire, not inferred from the chapter number.
+   *
+   * The server refuses a chapter past the plan unless this flag is set, and
+   * that refusal is what stops every other caller -- auto-continue above all
+   * -- from spending a credit on a story its author said was finished.
+   */
+  it("asks to grow the story only when the reader tapped to grow it", async () => {
+    await continueWith(undefined);
+    expect(mockContinueStoryStreaming.mock.calls[0][EXTEND_ARG]).toBe(false);
+
+    const session = startChapterGeneration({
+      story,
+      nextChapterNumber: 4,
+      direction: "One more night at the door.",
+      extend: true,
+    });
+    await waitForGeneration(session.id).catch(() => {});
+    expect(mockContinueStoryStreaming.mock.calls[1][EXTEND_ARG]).toBe(true);
   });
 
   it("does not let one chapter's direction steer the next one", async () => {

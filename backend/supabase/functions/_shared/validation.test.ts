@@ -540,15 +540,24 @@ Deno.test("character portrait_url survives validation", () => {
   );
 });
 
-Deno.test("planned_chapter_count accepts only 3, 7, 15", () => {
-  for (const n of [3, 7, 15]) {
+/**
+ * A RANGE, not the four lengths the picker offers.
+ *
+ * The picker offers 1, 3, 7 and 15, but every extension of a finished story
+ * raises the stored plan by one -- so a brief replayed from a story that has
+ * already grown legitimately names 4 or 9. Rejecting those would refuse a plan
+ * this system wrote itself. The bound is what matters, and it is the same
+ * bound the column's check constraint enforces (migration 00079).
+ */
+Deno.test("planned_chapter_count accepts any whole number from 1 to 15", () => {
+  for (const n of [1, 2, 3, 4, 7, 9, 14, 15]) {
     const r = validateGenerationRequest(
       validRequest({ planned_chapter_count: n }),
     );
     if ("error" in r) throw new Error(`${n} rejected: ${r.error}`);
     assertEquals(r.plannedChapterCount, n);
   }
-  for (const n of [1, 2, 4, 10, 30, 0, -3, 7.5]) {
+  for (const n of [0, -3, 16, 30, 7.5]) {
     const r = validateGenerationRequest(
       validRequest({ planned_chapter_count: n }),
     );

@@ -107,6 +107,23 @@ export function normalizeCreationLanguage(value: unknown): CreationLanguage {
   return value === "Portuguese" ? "Portuguese" : "English";
 }
 export type StoryMode = "standalone" | "series";
+
+/**
+ * The story lengths the picker OFFERS.
+ *
+ * One chapter is a series of one, deliberately, and not the standalone path:
+ * a series that has reached its plan can be extended a chapter at a time from
+ * the end of the reader, and a standalone cannot. Offering 1 here and routing
+ * it to `isSeries: true` is what makes a one-chapter story a story that can
+ * grow rather than a story that is over.
+ */
+export const PLANNED_CHAPTER_COUNT_OFFER = [1, 3, 7, 15] as const;
+
+export type PlannedChapterCountOffer =
+  typeof PLANNED_CHAPTER_COUNT_OFFER[number];
+
+/** The ceiling on a stored plan, matching the SQL check added in 00079. */
+export const MAX_PLANNED_CHAPTER_COUNT = 15;
 export type ChapterRole =
   | "standalone"
   | "series_opening"
@@ -200,7 +217,17 @@ export type Story = {
    * chapter end is a different session from the brief, often a different day.
    */
   storyFlow?: StoryFlow;
-  plannedChapterCount?: 3 | 7 | 15;
+  /**
+   * How many chapters this story is planned to run: 1..15, or absent.
+   *
+   * NOT the four values the picker offers. A reader who extends a finished
+   * story raises the stored plan by exactly one chapter, so 2, 4, 5 and every
+   * other number in range are real rows. Typing this as the offer union made
+   * all of them unrepresentable, and the parser below then dropped them --
+   * which read to the app as "no plan" and to the reader as a 4-chapter story
+   * that thought it was planned for 3.
+   */
+  plannedChapterCount?: number;
   chapterLength?: "short" | "standard" | "long";
   /**
    * The approved chapter plan. Beat N briefs chapter N, so beat `n + 1` is
@@ -508,7 +535,8 @@ export type CreateDraft = {
   writingStyle?: string;
   avoid?: string;
   chapterLength?: "short" | "standard" | "long";
-  plannedChapterCount?: 3 | 7 | 15;
+  /** What the writer picked in the brief. The picker offers only these four. */
+  plannedChapterCount?: PlannedChapterCountOffer;
   illustrateChapters?: boolean;
   /** The look every image in this story is drawn in. Absent means `auto`. */
   imageStyle?: ImageStyle;

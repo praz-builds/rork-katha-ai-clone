@@ -9,6 +9,7 @@ import { useReducedMotion } from "react-native-reanimated";
 import { Sparkles } from "lucide-react-native";
 import DirectionChoices from "@/components/DirectionChoices";
 import {
+  canExtend,
   hasGenerationForChapter,
   plannedChapterCountOf,
   retryGeneration,
@@ -179,6 +180,12 @@ export type ChapterEndProps = {
   onContinue: (
     direction?: string,
     offered?: readonly ContinuationOption[],
+    /**
+     * True when this chapter is past the story's plan, so the caller must ask
+     * the server to raise it. Sent only from a story that has reached its
+     * planned ending and can still grow -- never from auto-continue.
+     */
+    extend?: boolean,
   ) => void;
   /**
    * Opens Reimagine for a standalone story, which has no next chapter to offer
@@ -214,8 +221,32 @@ export default function ChapterEnd({
   // Shared with the write-ahead path, which must stop at the same chapter this
   // surface stops offering.
   const effectivePlannedCount = plannedChapterCountOf(story);
-  const seriesComplete = !isSeries
-    || chapter.chapterNumber >= effectivePlannedCount;
+  const planReached = isSeries
+    && chapter.chapterNumber >= effectivePlannedCount;
+
+  /**
+   * The story has run out of plan, and the person reading it can buy more.
+   *
+   * This is what turns "The story is complete" into a question. A story that
+   * has reached its plan is finished only until its author says otherwise: the
+   * ordinary direction chips are offered again, and picking one raises the
+   * plan by a chapter and charges for it.
+   *
+   * `canExtend` carries the three conditions -- a series, below the fifteen
+   * chapter ceiling, viewed by its own author. Someone else's finished story
+   * still says it is complete, because the alternative is offering a stranger
+   * a button that spends their credits writing into a story they do not own.
+   */
+  const extendable = planReached && canExtend(story);
+
+  /**
+   * Nothing more to offer here at all.
+   *
+   * A standalone (no chapter two ever existed), a story at the ceiling, or
+   * anybody else's finished series. An extendable story is deliberately NOT
+   * complete: it takes the ordinary chapter-end path below, chips and all.
+   */
+  const seriesComplete = !isSeries || (planReached && !extendable);
 
   /**
    * Auto-continue: the writer said in the brief that they do not want to be
@@ -298,6 +329,12 @@ export default function ChapterEnd({
   // resolved option list does not mint a new callback and re-run the auto
   // effect that depends on it.
   const optionsRef = useRef<ContinuationOption[]>([]);
+  // Read inside `continueOnce` for the same reason `optionsRef` is: the
+  // callback is memoised on `onContinue` alone, so reading `extendable`
+  // directly would either capture a stale value or re-mint the callback and
+  // re-run the auto effect that depends on it.
+  const extendRef = useRef(false);
+  extendRef.current = extendable;
   useEffect(() => {
     firedRef.current = false;
   }, [chapter.id]);
@@ -308,10 +345,17 @@ export default function ChapterEnd({
     // were on screen when a reader chose is recorded against the chapter so
     // the path a story took can be shown later; they are derived from a story
     // state that has already moved on by the time anyone could ask again.
-    onContinue(direction, optionsRef.current);
+    // `extend` is decided here rather than by the caller, because this is the
+    // only place that knows the story has run out of plan. It rides with the
+    // pick so the server raises the plan in the same transaction that charges
+    // for the chapter -- a raise sent separately could commit against a
+    // reservation that never happened, or fail after one that did.
+    onContinue(direction, optionsRef.current, extendRef.current);
   }, [onContinue]);
 
   useEffect(() => {
+    // Resolved for an extendable story too: `seriesComplete` is false there,
+    // and the chips it renders are exactly these.
     if (seriesComplete || !isLatestChapter) return;
     let cancelled = false;
     setStatus("loading");
@@ -359,7 +403,14 @@ export default function ChapterEnd({
   // single-fire guard the tap path uses, and it is reset per chapter id, so a
   // re-render or a status change cannot buy a second chapter.
   useEffect(() => {
-    if (!isAuto || seriesComplete || !isLatestChapter) return;
+    /*
+      `planReached`, NOT `seriesComplete`. An extendable story is not complete
+      -- that is the whole point of it -- so gating this on `seriesComplete`
+      would let auto mode buy the extension itself, with no tap behind it, on
+      a story whose author asked for exactly three chapters. Auto-continue
+      stops at the plan; extending is a deliberate tap every time.
+    */
+    if (!isAuto || planReached || !isLatestChapter) return;
     if (status === "loading") return;
     if (hasGenerationForChapter(story.id, nextChapterNumber)) return;
     /*
@@ -383,7 +434,7 @@ export default function ChapterEnd({
     setAutoStarted(true);
   }, [
     isAuto,
-    seriesComplete,
+    planReached,
     isLatestChapter,
     status,
     options,
@@ -397,9 +448,10 @@ export default function ChapterEnd({
   /*
     Two ways a story ends here, and they are different endings.
 
-    A SERIES that has reached its planned last chapter says so: there is no
-    further chapter to write, and offering one would be selling a credit against
-    a story the plan has already finished.
+    A SERIES that has reached its planned last chapter AND cannot be grown says
+    so: at the fifteen-chapter ceiling, or read by somebody who does not own it.
+    One its author can still extend is not complete and never reaches here --
+    it takes the chip surface below, and a tap there buys the next chapter.
 
     A STANDALONE never had a next chapter to offer. It ends on the one thing it
     can still be: written again, differently. So it gets the Reimagine pill
@@ -445,7 +497,13 @@ export default function ChapterEnd({
   // No chips in auto mode. Rendering them and then firing behind the reader's
   // back would offer a choice that was already made, and a tap on one would be
   // a second chapter and a second credit.
-  if (isAuto) {
+  //
+  // Except at the plan. An auto story that has reached its planned ending has
+  // stopped writing itself -- the effect above refuses to extend, and so does
+  // `autoChapterToWriteAhead` -- so there is nothing in flight to report. It
+  // falls through to the chips like any other extendable story, and the reader
+  // grows it by tapping one.
+  if (isAuto && !planReached) {
     /*
       The copy states what is TRUE, which is why it asks the session store
       rather than assuming.
@@ -523,8 +581,16 @@ export default function ChapterEnd({
   return (
     <View style={styles.wrap}>
       <DirectionChoices
-        heading="What's next?"
-        priceNote={`Any of these writes chapter ${chapter.chapterNumber + 1} · ${CHAPTER_TEXT_CREDITS} credit`}
+        heading={extendable ? "Keep it going?" : "What's next?"}
+        priceNote={extendable
+          // Said out loud, because this chapter is past what the writer
+          // planned and paid attention to. A reader who thought the story was
+          // three chapters long should not discover the fourth by watching
+          // their balance drop.
+          ? `This story is planned for ${effectivePlannedCount} ${
+            effectivePlannedCount === 1 ? "chapter" : "chapters"
+          }. Any of these writes chapter ${chapter.chapterNumber + 1} anyway · ${CHAPTER_TEXT_CREDITS} credit`
+          : `Any of these writes chapter ${chapter.chapterNumber + 1} · ${CHAPTER_TEXT_CREDITS} credit`}
         status={status}
         options={options}
         unavailableReason={unavailableReason}

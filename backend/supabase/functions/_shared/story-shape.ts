@@ -14,7 +14,7 @@ import {
   MAX_MOMENTS,
   MAX_PLAN_BEATS,
   MAX_STORY_GENRES,
-  PLANNED_CHAPTER_COUNTS,
+  isPlannedChapterCount,
   type PlannedChapterCount,
   PRIMARY_GENRES,
   type PrimaryGenre,
@@ -274,11 +274,8 @@ export function normalizeStoryShapeBrief(input: {
         CHAPTER_LENGTHS.has(input.chapterLength)
       ? input.chapterLength as ChapterLength
       : DEFAULT_CHAPTER_LENGTH,
-    plannedChapterCount: typeof input.plannedChapterCount === "number" &&
-        (PLANNED_CHAPTER_COUNTS as readonly number[]).includes(
-          input.plannedChapterCount,
-        )
-      ? input.plannedChapterCount as PlannedChapterCount
+    plannedChapterCount: isPlannedChapterCount(input.plannedChapterCount)
+      ? input.plannedChapterCount
       : DEFAULT_PLANNED_CHAPTER_COUNT,
   };
 }

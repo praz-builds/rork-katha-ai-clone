@@ -55,6 +55,7 @@ import {
   CHAPTER_TEXT_CREDITS,
   STORY_START_CREDITS,
 } from "@/lib/pricing-limits";
+import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
 import type {
   AudienceMode,
   Chapter,
@@ -177,7 +178,8 @@ export type GenerationSession = {
   readonly language: string;
   readonly audienceMode: AudienceMode;
   readonly spiceLevel: SpiceLevel;
-  readonly plannedChapterCount?: 3 | 7 | 15;
+  /** The story's stored plan: 1..15, or absent. Not one of a fixed set. */
+  readonly plannedChapterCount?: number;
   /**
    * What the brief asked for. A story session carries it because the client
    * still has to state it out loud after the chapter lands - see
@@ -230,6 +232,16 @@ export type StartChapterInput = {
    * they were derived from a story state that has already moved on.
    */
   directionsOffered?: readonly { id: string; prompt: string }[];
+  /**
+   * Grow the story one chapter past its planned ending, and pay for it.
+   *
+   * Set only by a tap on a direction chip at the end of a story that has
+   * reached its plan. `startAutoChapterAhead` never sets it and must never
+   * learn how: auto-continue writes chapters with nobody watching, and a story
+   * that could extend itself would spend a reader's balance on chapters they
+   * never planned and never asked for.
+   */
+  extend?: boolean;
 };
 
 type Deferred = {
@@ -663,6 +675,7 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
     isFinale = false,
     direction,
     directionsOffered,
+    extend = false,
   } = input;
   const record: SessionRecord = {
     session: {
@@ -713,6 +726,7 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
       nextChapterNumber,
       direction,
       directionsOffered,
+      extend,
     ).then(({ chapter }) => {
       settle(record, {
         phase: "complete",
@@ -989,13 +1003,43 @@ function storyIsBeingWritten(storyId: string): boolean {
  */
 export const DEFAULT_PLANNED_CHAPTER_COUNT = 3;
 
+/**
+ * The plan this story actually runs to.
+ *
+ * A RANGE CHECK, not a membership test. Extending a finished story raises the
+ * stored plan by one, so 2, 4 and 9 are ordinary values; the old version
+ * matched `3 | 7 | 15` and resolved everything else to 3, which would have
+ * told the author of a four-chapter story that it was complete at three and
+ * refused them the chapter they had already paid for.
+ */
 export function plannedChapterCountOf(
   story: Pick<Story, "plannedChapterCount">,
-): 3 | 7 | 15 {
+): number {
   const planned = story.plannedChapterCount;
-  return planned === 3 || planned === 7 || planned === 15
+  return typeof planned === "number" && Number.isInteger(planned) &&
+      planned >= 1 && planned <= MAX_PLANNED_CHAPTER_COUNT
     ? planned
     : DEFAULT_PLANNED_CHAPTER_COUNT;
+}
+
+/**
+ * Can this story be grown past its planned ending by the person reading it?
+ *
+ * Three conditions, and all three are load-bearing. It must be a SERIES -- a
+ * standalone has no plan to raise and no chapter two, and its ending is a
+ * rewrite. It must be below the CEILING, which is the same 15 the SQL check
+ * enforces, because offering a chapter the server will refuse is the client
+ * promising something the backend has already decided against. And the viewer
+ * must OWN it: extending spends the viewer's credits on someone else's story.
+ *
+ * Deliberately says nothing about whether the story has reached its plan yet.
+ * A story mid-plan simply has an ordinary next chapter; this answers what
+ * happens when it runs out.
+ */
+export function canExtend(story: Story): boolean {
+  if (story.storyMode !== "series") return false;
+  if (!isOwnStory(story)) return false;
+  return plannedChapterCountOf(story) < MAX_PLANNED_CHAPTER_COUNT;
 }
 
 // ---------------------------------------------------------------------------
@@ -1068,9 +1112,22 @@ export function autoChapterToWriteAhead(
     request it knows will be refused.
   */
 
-  // The planned ending is an ending. `continue-story` refuses anything past it,
-  // so firing would reserve a credit, take a 4xx, and hang a failure off a
-  // story the reader was enjoying.
+  /*
+    THE PLANNED ENDING IS AN ENDING, AND AUTO MODE NEVER EXTENDS PAST IT.
+
+    A reader at a finished story's end can now grow it a chapter at a time by
+    tapping a direction chip, which raises `planned_chapter_count` and charges
+    for the chapter. This path must never do that, and the rule is not a
+    performance or a correctness one -- it is money. Auto-continue fires with
+    nobody watching and no tap behind it, so a story that could extend itself
+    would walk a reader's balance to zero on chapters past the plan they
+    actually chose, and the first they would know of it is the number.
+
+    So the chain stops here, exactly as it always has, and the reader extends
+    by hand like anyone else. `startAutoChapterAhead` correspondingly never
+    passes `extend`, and `continue-story` refuses an over-plan chapter that
+    does not carry it.
+  */
   if (next > plannedChapterCountOf(story)) return null;
 
   /*

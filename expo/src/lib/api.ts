@@ -8,7 +8,7 @@ import {
   SUPABASE_URL,
   supabase,
 } from "@/lib/supabase";
-import { GENRES } from "@/types/domain";
+import { GENRES, MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
 import type {
   Chapter,
   ChapterRole,
@@ -1238,8 +1238,22 @@ function isStoryMode(value: unknown): value is StoryMode {
   return value === "standalone" || value === "series";
 }
 
-function isPlannedChapterCount(value: unknown): value is 3 | 7 | 15 {
-  return value === 3 || value === 7 || value === 15;
+/**
+ * A stored plan is any whole number in `[1, 15]`, not one of the four the
+ * picker offers.
+ *
+ * This used to test `value === 3 || value === 7 || value === 15`, which was
+ * true while the picker was the only writer of the column. A reader extending
+ * a finished story raises it one chapter at a time, so a 4-chapter story's row
+ * would have failed this test, been dropped to `undefined`, and read back as a
+ * story with no plan -- which `plannedChapterCountOf` then resolves to 3, and
+ * the reader is told a story it has four chapters of is complete at three.
+ *
+ * The bound is the same one migration 00079 puts on the column.
+ */
+function isPlannedChapterCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) &&
+    value >= 1 && value <= MAX_PLANNED_CHAPTER_COUNT;
 }
 
 function isChapterLength(
@@ -1584,6 +1598,16 @@ export async function continueStoryStreaming(
    * has moved on by the time anyone could ask for them again.
    */
   directionsOffered?: readonly { id: string; prompt: string }[],
+  /**
+   * Grow the story one chapter past its planned ending.
+   *
+   * An explicit opt-in, sent by exactly one surface: a direction chip tapped
+   * at the end of a finished series by its own author. The server refuses a
+   * chapter past the plan without it, and that refusal is the point -- an
+   * extension spends a credit on a story the writer said was finished, so it
+   * takes a deliberate tap every time. Auto-continue never sends it.
+   */
+  extend?: boolean,
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
     return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
@@ -1617,6 +1641,7 @@ export async function continueStoryStreaming(
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
       directions_offered: directionsOffered ?? [],
+      extend: extend === true,
       notify_on_ready: notifyOnReady,
       stream: true,
     },
@@ -1988,6 +2013,16 @@ export async function continueStory(
    * has moved on by the time anyone could ask for them again.
    */
   directionsOffered?: readonly { id: string; prompt: string }[],
+  /**
+   * Grow the story one chapter past its planned ending.
+   *
+   * An explicit opt-in, sent by exactly one surface: a direction chip tapped
+   * at the end of a finished series by its own author. The server refuses a
+   * chapter past the plan without it, and that refusal is the point -- an
+   * extension spends a credit on a story the writer said was finished, so it
+   * takes a deliberate tap every time. Auto-continue never sends it.
+   */
+  extend?: boolean,
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
     return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
@@ -2009,6 +2044,7 @@ export async function continueStory(
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
       directions_offered: directionsOffered ?? [],
+      extend: extend === true,
       notify_on_ready: await pushPermissionGranted(),
     },
   });
