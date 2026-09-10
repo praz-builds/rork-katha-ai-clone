@@ -4722,3 +4722,33 @@ bounded (`directions_offered` at 3 × 300 chars, ids at 64), the new migrations
 concatenate only allowlisted values into ledger operation keys, the chapter
 direction UPDATE targets only the chapter its own reservation created, and the
 one new AsyncStorage key holds a voice gender, not PII.
+
+### CodeAnt review, PR #90 — four findings
+
+CodeAnt auto-skipped this PR for size (102 files) and was asked for a review
+rather than allowed to pass on the skip. All four findings were real.
+
+**An unhandled rejection could have killed a paid generation.** The early-naming
+callback is deliberately detached — the prose never awaits it — but a detached
+promise with no `.catch` has nowhere to put a failure. `send` guarded on
+`closed`, and `closed` only ever tracked our OWN `close()`: a reader who
+navigates away or loses signal leaves it false, so `controller.enqueue` throws
+`Invalid state`, the rejection goes unhandled, and on this runtime that can take
+the isolate down along with a chapter the writer has already been charged for.
+Fixed on both streamed paths in two places: `send` now latches `closed` when an
+enqueue throws, turning one throw into a no-op for the rest of the run instead
+of a throw per event, and the detached promise swallows and logs. The
+generation deliberately continues either way — the chapter is paid for and still
+has to be persisted for the reader to come back to.
+
+**Three comment/doc mismatches**, all of them the same class of defect this log
+keeps recording: prose that stopped matching the thing it describes.
+`00077`'s test header still carried the 5-credit arithmetic after the code was
+corrected to 7 (it now states the code's number and names the unresolved
+disagreement rather than quietly picking a side); `STORY_GENERATION_FLOW.md` §9
+still listed Chapters, Chapter length, Chapter cover and Visibility inside More
+options after §2 promoted them out (they are struck through rather than deleted,
+because a row that disappears reads as a control that was cut rather than
+moved); and §2 described `story_flow` as "a column, not a request field" when it
+is in fact both — the request is how it gets there, the column is how it
+survives to the chapter end where it means anything.

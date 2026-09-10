@@ -7,9 +7,17 @@
 // calls the function and reads the ledger afterwards, because the thing under
 // test is money.
 //
-// The price table (`source-of-truth/CREDITS_AND_PRICING.md` §1): starting a
-// story is 3, every chapter after the first is 1, or 2 when illustrated. A
-// 3-chapter illustrated story is 5 = 1 + 2 + 2.
+// What the CODE charges: starting a story is 3 (`begin_story_generation`),
+// every chapter after the first is 1, or 2 when illustrated. So a 3-chapter
+// illustrated story is 7 = 3 + 2 + 2, which is what the assertions below
+// actually reserve.
+//
+// `source-of-truth/CREDITS_AND_PRICING.md` §1 disagrees: it prices the start at
+// 1 and the same story at 5. That disagreement is real, unresolved, and
+// recorded in AGENTS.md as a decision for the product owner -- it is a price,
+// not a bug, and it must not be settled by editing one side to match the
+// other. This file states the code's arithmetic because this file tests the
+// code.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
@@ -124,8 +132,8 @@ Deno.test("an illustrated chapter costs two credits and a plain one costs one", 
     assertEquals(artChapter.spent, 2);
     assertEquals(artChapter.credits, 2);
 
-    // The whole contracted arithmetic for a 3-chapter illustrated story:
-    // 3 to start, then 2 and 2.
+    // The whole arithmetic for a 3-chapter illustrated story, as charged:
+    // 3 to start, then 2 and 2 -- seven.
     const third = await reserve(db, illustrated, "cont-art-3", 3, true);
     assertEquals(third.spent, 2);
   } finally {

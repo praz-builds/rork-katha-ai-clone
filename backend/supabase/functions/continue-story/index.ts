@@ -704,11 +704,20 @@ serve(async (req) => {
           let closed = false;
           const send = (event: string, data: unknown) => {
             if (closed) return;
-            controller.enqueue(
-              encoder.encode(
-                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-              ),
-            );
+            try {
+              controller.enqueue(
+                encoder.encode(
+                  `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+                ),
+              );
+            } catch {
+              // The reader hung up. `closed` only tracks our own `close()`, so
+              // a client that navigates away leaves it false and every later
+              // enqueue throws. Latching it turns one throw into a no-op for
+              // the rest of the run rather than a throw per event, and the
+              // chapter still finishes and persists -- it is already paid for.
+              closed = true;
+            }
           };
           const startedAt = Date.now();
           try {
@@ -742,6 +751,14 @@ serve(async (req) => {
             namingPromise.then((names) => {
               if (!names?.chapterTitle) return;
               send("title", { chapter_title: names.chapterTitle });
+              // Detached on purpose, so it has to swallow its own failures: an
+              // unhandled rejection on this runtime can take the isolate down,
+              // and with it a chapter the reader has already paid for.
+            }).catch((error) => {
+              console.error(
+                "early chapter title could not be sent:",
+                safeErrorMessage(error),
+              );
             });
 
             const prose = await streamChapterProse({

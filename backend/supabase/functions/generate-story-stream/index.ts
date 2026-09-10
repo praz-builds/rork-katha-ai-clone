@@ -387,11 +387,22 @@ serve(async (req) => {
         let closed = false;
         const send = (event: string, data: unknown) => {
           if (closed) return;
-          controller.enqueue(
-            encoder.encode(
-              `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-            ),
-          );
+          try {
+            controller.enqueue(
+              encoder.encode(
+                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+              ),
+            );
+          } catch {
+            // The READER hung up. `closed` only tracks our own `close()`, so a
+            // client that navigates away or loses signal leaves this flag false
+            // and every subsequent enqueue throws `Invalid state`. Latching it
+            // here turns one throw into a silent no-op for the rest of the
+            // generation instead of a throw per event -- and the generation
+            // itself must not be abandoned, because the chapter is already paid
+            // for and still has to be persisted for the reader to come back to.
+            closed = true;
+          }
         };
         const close = () => {
           if (closed) return;
@@ -530,6 +541,17 @@ serve(async (req) => {
               title: names.title,
               chapter_title: names.chapterTitle,
             });
+            // DETACHED, SO IT MUST SWALLOW ITS OWN FAILURES. Nothing awaits
+            // this promise -- that is the point of it -- so a rejection here
+            // has no handler and becomes an unhandled rejection, which on this
+            // runtime can take the isolate down and with it a chapter the
+            // writer has already been charged for. A title that cannot be
+            // delivered is worth a log line and nothing more.
+          }).catch((error) => {
+            console.error(
+              "early chapter title could not be sent:",
+              safeErrorMessage(error),
+            );
           });
 
           const prose = await streamChapterProse({

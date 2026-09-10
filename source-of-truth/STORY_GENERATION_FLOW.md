@@ -195,9 +195,14 @@ refinement of it:
 
 **Story mode** is `stories.story_flow` (migration 00076). `interactive` is the
 existing behaviour: direction chips at every chapter end, nothing written until
-one is picked. `auto` picks the direction itself and continues. It is a column,
-not a request field, because it is honoured at every chapter end — a different
-session from the brief, often a different day. An unrecognised value clamps to
+one is picked. `auto` picks the direction itself and continues.
+
+It is **sent on the create request AND persisted as a column**, and the column
+is the part that matters: the pick is honoured at every chapter end, which is a
+different session from the brief and often a different day, so a value that
+lived only in the request that wrote chapter one would be forgotten by the
+moment it means anything. The request field is how it gets there; the column is
+how it survives. An unrecognised value clamps to
 `interactive`: the mode that asks before it spends.
 
 **Image style** is `stories.image_style` (migration 00075). It **replaces** the
@@ -602,14 +607,23 @@ Collapsed by default. Identical in both modes except where §3 says otherwise.
 | Control | Values | Default |
 |---|---|---|
 | ~~Writing mode~~ | *Removed — see §15* | — |
-| **Chapters** | 3 · 7 · 15 | 3 |
-| **Chapter length** | Short · Standard · Long | Standard *(Short in kids)* |
-| **Chapter cover** | Cover art only · Auto-generated per chapter — **+1 ✦ per chapter** | Cover art only |
+| ~~Chapters~~ | *Promoted out of More options — see §2* | — |
+| ~~Chapter length~~ | *Promoted out of More options — see §2* | — |
+| ~~Chapter cover~~ | *Promoted out of More options — see §2* | — |
+| ~~Visibility~~ | *Promoted out of More options — see §2* | — |
 | Writing style | Free text — *poetic, Shakespearean, hardboiled* | empty |
 | Spice | Sweet · Steamy · Explicit — **adult only**, flag-gated | Sweet |
+| Moments to include | Chip builder, capped at 5 | empty |
 | Language | English | English |
 | Avoid | Free text — *exclude a topic* | empty |
-| Visibility | Private · Public | Private |
+
+**Four of these controls left More options** (2026-09-11) and are now dropdowns
+on the main surface: Chapters, Chapter length, Chapter cover and Visibility.
+They are listed above as removed rather than deleted from the table, because a
+row that silently disappears reads as a control that was cut rather than moved.
+The live list of the six dropdowns, with their values and defaults, is in §2 and
+is the one to read. **Moments** and **Language** are the last two entries here
+by design: Moments sits directly above Language at the foot of the panel.
 
 Guests see Public as locked and stay Private. Public publishing unlocks only
 after a real account is linked; the backend enforces the same rule independently
