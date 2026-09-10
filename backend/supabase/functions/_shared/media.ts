@@ -614,12 +614,29 @@ async function readCastForCover(
 ): Promise<
   { name: string; description?: string; isHero?: boolean }[] | undefined
 > {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("characters")
     // Same as the chapter-art read above: `appearance` is the live field and
     // `description` the retired one, and this feeds the COVER.
     .select("name, description, appearance, is_hero")
     .eq("story_id", storyId);
+  /*
+    A CAST THAT COULD NOT BE READ IS NOT AN EMPTY CAST -- the same rule the
+    chapter-art read follows, and the same defect, in the path that draws the
+    picture every reader sees first.
+
+    The error was dropped on the floor, so a transient failure produced a cover
+    with no cast context and a `cover_status: ready` on top of it. That is worse
+    than the chapter-art case it mirrors: a cover is generated once, it is the
+    story's face in every rail, and nothing ever revisits it -- the writer would
+    have to pay for a regeneration to undo a second's network trouble.
+
+    Thrown rather than degraded, so `generateAndStoreCover` catches it, marks
+    the cover failed and refunds, and the concept card stands in (decision 39).
+    A story that genuinely has no cast still returns no rows and no error, and
+    is drawn as the genre cover it should be.
+  */
+  if (error) throw error;
   if (!data?.length) return undefined;
   return data.map((c) => ({
     name: c.name,

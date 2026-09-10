@@ -4855,3 +4855,12 @@ selection mid-drag. Removed rather than kept "in case".
 artwork, which is `bareOpener` behaving as designed since PR #85 -- their own
 story opens on a bare title page, and chapter one's art IS the cover, so it is
 not also drawn as a chapter plate. Unchanged by this PR.
+
+**Round four: the same defect in its sibling.** The cover's cast read
+(`readCastForCover`) dropped its error exactly as the chapter-art read did --
+one call site was fixed and its twin was not. It matters more here: a cover is
+generated once, it is the story's face in every rail, and nothing revisits it,
+so a second of network trouble would have produced a cast-less cover marked
+`ready` and the writer would have to pay for a regeneration to undo it. It now
+throws into `generateAndStoreCover`'s catch, which marks the cover failed,
+refunds, and lets the concept card stand in (decision 39).
