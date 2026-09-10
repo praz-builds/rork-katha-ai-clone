@@ -12,14 +12,40 @@ import { viewerStateForStories } from "../_shared/engagement.ts";
 type ServiceClient = ReturnType<typeof makeServiceClient>;
 const makeServiceClient = (url: string, key: string) => createClient(url, key);
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { logError } from "../_shared/errors.ts";
 
 const MAX_PAGE = 500;
+
+/**
+ * How much of a reader's history the Continue reading rail looks at.
+ *
+ * The rail renders a handful of cards from the most recently read stories, so
+ * it never needed the whole table -- and an unbounded select here would be
+ * silently truncated by PostgREST's 1000-row ceiling long before anyone
+ * noticed the transfer cost.
+ */
+const CONTINUE_READING_HISTORY_ROWS = 200;
+
+/**
+ * How much read history the ranked feed consults to demote finished stories.
+ *
+ * Deliberately under PostgREST's default 1000-row ceiling, so the window is
+ * one this code chose rather than one the API silently imposed.
+ */
+const READ_HISTORY_RANKING_ROWS = 800;
 
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
   const respond = (body: unknown, status = 200) =>
     jsonResponse(req, body, status);
+
+  // Hoisted so the catch below can attribute a failure to a caller. The
+  // handler had no telemetry at all until 2026-09-10, which is how a feed
+  // that was 500ing for every user went unnoticed: `console.error` is not
+  // readable (the Supabase CLI has no `functions logs`), and the client
+  // falls back to local content on a failed fetch, so nothing surfaced.
+  let observedUserId: string | null = null;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -34,6 +60,7 @@ serve(async (req) => {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return respond({ error: "Unauthorized" }, 401);
+    observedUserId = user.id;
 
     const url = new URL(req.url);
     const page = parsePositiveInteger(url.searchParams.get("page"), 1);
@@ -66,6 +93,21 @@ serve(async (req) => {
     // the primary key, so this is a single indexed lookup -- one cheap extra
     // query, run in parallel so it costs no wall-clock time even for the
     // overwhelmingly common case where it comes back empty.
+    //
+    // Read through `supabase` (the caller's own JWT), NOT `serviceClient`.
+    // Migration 00043 ends with `revoke all on table public.user_blocks from
+    // public, anon` and grants only `authenticated`, so `service_role` has no
+    // SELECT on this table at all and the read fails with 42501 -- which this
+    // handler turns into a 500 for every request, for every user, because the
+    // block list is fetched before any feed is built. That is what shipped:
+    // the feed was returning "Internal server error" to everyone in
+    // production while the client quietly fell back to local content, so the
+    // home screen still looked populated. Verified on production 2026-09-10.
+    //
+    // The caller's client is also the correct client on the merits: RLS on
+    // `user_blocks` is `select using (auth.uid() = blocker_id)`, so the read
+    // is scoped to the caller by the database rather than by the filter
+    // below, and the block list stays as narrow as 00043 intended.
     const [profileResult, readCountResult, blockedRowsResult] = await Promise
       .all([
         serviceClient
@@ -77,7 +119,7 @@ serve(async (req) => {
           .from("story_reads")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id),
-        serviceClient
+        supabase
           .from("user_blocks")
           .select("blocked_id")
           .eq("blocker_id", user.id),
@@ -152,6 +194,18 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("feed error:", error);
+    // `discovery` has been a permitted bucket since 00058 and no code had
+    // ever written to it. A home feed that fails is the most user-visible
+    // failure in the product, so it is the one that must be visible to us.
+    await logError({
+      bucket: "discovery",
+      severity: "high",
+      source: "runtime",
+      errorCode: "feed_unhandled",
+      error,
+      context: { feature: "feed" },
+      userId: observedUserId,
+    });
     return respond({ error: "Internal server error" }, 500);
   }
 });
@@ -279,10 +333,22 @@ async function buildReturningUserFeed(
       .from("user_followers")
       .select("author_id")
       .eq("follower_id", userId),
+    // Ordered and bounded rather than unbounded.
+    //
+    // This set demotes stories the reader has already finished. Asking for
+    // every row would be silently cut off at PostgREST's 1000-row ceiling in
+    // whatever order the planner happened to return -- so a heavy reader
+    // would get an arbitrary slice of their history and watch finished
+    // stories drift back into the feed. Taking the most recent window is a
+    // deliberate slice instead of an accidental one, and it is the half that
+    // matters: a story read two years ago resurfacing is a re-recommendation,
+    // one read on Tuesday is a bug.
     serviceClient
       .from("story_reads")
-      .select("story_id")
-      .eq("user_id", userId),
+      .select("story_id, read_at")
+      .eq("user_id", userId)
+      .order("read_at", { ascending: false })
+      .limit(READ_HISTORY_RANKING_ROWS),
   ]);
 
   if (followingResult.error) throw followingResult.error;
@@ -427,11 +493,21 @@ async function buildContinueReading(
   serviceClient: ServiceClient,
   userId: string,
 ): Promise<unknown[]> {
-  // Stories the user has read at least one chapter of
+  // Stories the user has read at least one chapter of.
+  //
+  // Bounded on purpose. `record_story_read` writes one row per (user,
+  // chapter, 24h), so a reader who finishes three chapters a day passes a
+  // thousand rows inside a year -- and PostgREST's default `max-rows` is
+  // exactly 1000, so this select would silently truncate rather than error.
+  // The rail shows at most a handful of cards and only ever wants the recent
+  // end of this list, so asking for the recent end is both correct and
+  // cheaper than shipping the reader's entire history twice per feed load.
   const { data: readStories, error: readError } = await serviceClient
     .from("story_reads")
-    .select("story_id")
-    .eq("user_id", userId);
+    .select("story_id, read_at")
+    .eq("user_id", userId)
+    .order("read_at", { ascending: false })
+    .limit(CONTINUE_READING_HISTORY_ROWS);
 
   if (readError) throw readError;
   if (!readStories?.length) return [];
@@ -452,6 +528,19 @@ async function buildContinueReading(
     .in("id", storyIds)
     .eq("status", "complete")
     .neq("content_rating", "explicit")
+    // Visibility, which this query alone was missing.
+    //
+    // Every other feed query filters on it; this one selected purely by "the
+    // caller has read it", so a story kept its place on the reader's home
+    // screen -- title, topic, cover -- after its author took it private. That
+    // includes a story forced private by 00050 for naming a real living
+    // person, where continuing to show it is the specific outcome the gate
+    // exists to prevent. Having read something once is not a standing licence
+    // to keep seeing it.
+    //
+    // The author keeps their own: a writer reading back their own private
+    // draft should still find it here.
+    .or(`is_public.eq.true,is_curated.eq.true,author_id.eq.${userId}`)
     .limit(10);
 
   if (storiesError) throw storiesError;

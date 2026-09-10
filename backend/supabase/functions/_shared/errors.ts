@@ -47,9 +47,22 @@ export type LogErrorInput = {
   userId?: string | null;
 };
 
+// Every key a call site passes in `context` must appear here or it is dropped
+// without a word. That is the right default -- the allowlist is what keeps
+// prose, seeds, titles and character names out of the error log -- but it
+// also means telemetry silently loses its payload whenever a new call site
+// adds a field and nobody adds it here. That had happened to ten keys by
+// 2026-09-10: `streamed_chapter_outside_band` rows on production carried a
+// `model` and nothing else, so the one number the log exists to report --
+// how far off its band the chapter ran -- was never recorded on a single
+// row. Everything added for that reason is a count, a boolean or a fixed
+// enum; nothing here can carry user text.
 const ALLOWED_CONTEXT_KEYS = new Set([
+  "attempted_status",
   "attempts",
   "author_id",
+  "band_max",
+  "band_min",
   "chapter_id",
   "chapter_number",
   "chapter_role",
@@ -60,8 +73,10 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "failure",
   "feature",
   "genre",
+  "had_cover_url",
   "http_status",
   "job_id",
+  "kind",
   "model",
   "models",
   "operation_id",
@@ -69,6 +84,7 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "phrase_id",
   "primary_genre",
   "provider",
+  "renames",
   "providers",
   "recovered_by",
   "request_id",
@@ -76,9 +92,13 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "status",
   "statuses",
   "status_name",
+  "streamed",
   "story_id",
   "story_mode",
+  "term_count",
+  "truncated",
   "upstream_status",
+  "words",
 ]);
 
 const UUID_RE =

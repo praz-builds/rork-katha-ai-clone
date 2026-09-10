@@ -67,7 +67,11 @@ import {
   AllProvidersFailedError,
   generateFastStructuredText,
 } from "../_shared/llm.ts";
-import { errorMessage, readJsonObject } from "../_shared/operations.ts";
+import {
+  errorMessage,
+  isStaleReservation,
+  readJsonObject,
+} from "../_shared/operations.ts";
 import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
   buildStoryProsePrompt,
@@ -262,13 +266,54 @@ serve(async (req) => {
     // refunded, in which case there is no prose to show. Both are ordinary JSON,
     // and both are why the stream cannot open until this point has passed.
     if (begun.replayed) {
-      if (begun.status !== "completed" || !begun.result_chapter_id) {
+      let status: string = begun.status;
+      let resultChapterId: string | null = begun.result_chapter_id;
+
+      // A reservation that nothing ever finished. The buffered handler has
+      // reconciled this since it was written; this one did not, and the
+      // client only ever calls this one -- `generateStory` in the Expo client
+      // has no callers at all. So the three credits a first chapter costs
+      // were stranded permanently: the isolate dies mid-stream (wall-clock
+      // kill, deploy eviction, the worker torn down after a disconnect), the
+      // refund never runs, and every retry of the same request id lands here
+      // and is told "Generation is already in progress." forever, because the
+      // client deliberately keeps its request id across a transport error.
+      // The user's only escape was to start a different story, which left the
+      // credits behind.
+      //
+      // Reconciling here refunds them and lets the same id start again -- and
+      // a first chapter is the most expensive thing anyone buys, so it is the
+      // worst place in the product to have been silently keeping the money.
+      if (status === "reserved" && isStaleReservation(begun.updated_at)) {
+        const { data: reconciliation, error: reconciliationError } =
+          await serviceClient.rpc("refund_generation_operation", {
+            p_operation_id: begun.operation_id,
+            p_user_id: user.id,
+            p_error: "Stale generation reservation reconciled on retry",
+          });
+        // A failed reconciliation must not read as "in progress": that is the
+        // message that taught the user to stop retrying. 503 is the honest
+        // answer, and it is the one the client retries.
+        if (reconciliationError || !reconciliation) {
+          return jsonResponse({
+            error: "Generation recovery is pending retry.",
+            operation_id: begun.operation_id,
+            story_id: begun.story_id,
+          }, 503);
+        }
+        status = reconciliation.status;
+        if (reconciliation.result_chapter_id) {
+          resultChapterId = reconciliation.result_chapter_id;
+        }
+      }
+
+      if (status !== "completed" || !resultChapterId) {
         return jsonResponse({
-          error: begun.status === "refunded"
+          error: status === "refunded"
             ? "The previous generation failed. Start a new request."
             : "Generation is already in progress.",
           story_id: begun.story_id,
-          status: begun.status,
+          status,
         }, 409);
       }
       const [storyResult, chapterResult] = await Promise.all([
@@ -276,7 +321,7 @@ serve(async (req) => {
           .single(),
         serviceClient.from("chapters").select("*").eq(
           "id",
-          begun.result_chapter_id,
+          resultChapterId,
         ).single(),
       ]);
       if (storyResult.error || chapterResult.error) {

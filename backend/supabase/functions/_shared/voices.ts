@@ -176,6 +176,31 @@ const VOICE_COLUMNS =
   "id, display_name, language, gender, tier, provider, provider_voice_params, preview_path, sort_order, is_active";
 
 /**
+ * Is this voice's provider actually reachable from this deployment?
+ *
+ * `is_active` says an administrator wants a voice offered. It cannot say
+ * whether the machinery behind it exists, and the two have now disagreed in
+ * production twice in opposite directions: 00053 deactivated the edge_tts
+ * pair because the provider was a stub, and 00059 reactivated them on the
+ * expectation of a worker that was never deployed. `EDGE_TTS_SERVICE_URL` is
+ * unset, so on 2026-09-10 the picker offered Elvira and Alvaro to every
+ * Spanish reader and every tap failed with `edge_tts_service_missing` -- the
+ * exact user experience 00053 was written to prevent.
+ *
+ * A row cannot know this; only the running deployment can. So the runtime
+ * answers it, and the registry flag stops being the single point of failure:
+ * an operator flipping `is_active` back on cannot re-break narration while
+ * the worker is still missing, and the voices reappear on their own the
+ * moment the URL is configured. No deploy, no migration, no third flip.
+ */
+export function isVoiceProviderConfigured(provider: string): boolean {
+  if (provider === "edge_tts") {
+    return Boolean(Deno.env.get("EDGE_TTS_SERVICE_URL"));
+  }
+  return true;
+}
+
+/**
  * Active voices, optionally filtered by language, ordered the way the voice
  * picker displays them. Falls back to `STATIC_VOICES` on a missing client, a
  * query error, or an empty result, so an outage on this table narrows the
@@ -186,7 +211,8 @@ export async function listVoices(
   language?: string,
 ): Promise<VoiceRecord[]> {
   const fallback = STATIC_VOICES.filter((voice) =>
-    !language || voice.language === language
+    (!language || voice.language === language) &&
+    isVoiceProviderConfigured(voice.provider)
   );
   if (!supabase) return fallback;
 
@@ -205,7 +231,9 @@ export async function listVoices(
     // Only a failure to reach the table falls back.
     if (error) return fallback;
     if (!data) return fallback;
-    return data as VoiceRecord[];
+    return (data as VoiceRecord[]).filter((voice) =>
+      isVoiceProviderConfigured(voice.provider)
+    );
   } catch {
     return fallback;
   }
@@ -227,16 +255,28 @@ export async function getVoiceRecord(
       if (error) {
         // The table could not answer. Degrade to the static list rather than
         // taking narration down with it.
-        return STATIC_VOICES.find((voice) => voice.id === voiceId) ?? null;
+        return staticVoice(voiceId);
       }
       // The table answered. Whatever it said is the truth, including "no row",
       // which is how a disabled or removed voice presents. Falling back here
       // resurrected voices that had been switched off and let generation run on
       // stale provider parameters.
-      return (data as VoiceRecord | null) ?? null;
+      const record = (data as VoiceRecord | null) ?? null;
+      // A voice the picker cannot offer is also a voice generation must not
+      // accept, including from a stale client that cached the old list. Same
+      // rule as `listVoices`, applied at the point where money gets spent.
+      if (record && !isVoiceProviderConfigured(record.provider)) return null;
+      return record;
     } catch {
-      return STATIC_VOICES.find((voice) => voice.id === voiceId) ?? null;
+      return staticVoice(voiceId);
     }
   }
-  return STATIC_VOICES.find((voice) => voice.id === voiceId) ?? null;
+  return staticVoice(voiceId);
+}
+
+/** The static-list lookup, with the same provider-availability rule applied. */
+function staticVoice(voiceId: string): VoiceRecord | null {
+  const voice = STATIC_VOICES.find((candidate) => candidate.id === voiceId);
+  if (!voice) return null;
+  return isVoiceProviderConfigured(voice.provider) ? voice : null;
 }

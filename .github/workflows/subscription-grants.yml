@@ -1,0 +1,62 @@
+# The monthly credit refresh for annual subscribers.
+#
+# `refresh-subscription-grants` has existed, secured and idempotent, since
+# 00026, and nothing has ever called it. An annual plan bills once and is meant
+# to deliver its credits every month; without a caller it delivers them once,
+# on purchase, and the subscriber gets eleven months of nothing they paid for.
+# That is the kind of defect that arrives as a refund request rather than a bug
+# report.
+#
+# Daily rather than monthly on purpose. The function keys its work on
+# `subscription:{user}:{yearMonth}` under a per-user advisory lock, so every
+# run after the first in a calendar month is a no-op -- which means a daily
+# schedule costs nothing and a single missed run (GitHub skips scheduled jobs
+# under load, and disables them entirely on a repository with no activity for
+# 60 days) cannot cost a subscriber their month.
+name: subscription grants
+
+on:
+  schedule:
+    # 03:00 UTC. Nothing about the work is time-of-day sensitive; it is simply
+    # a quiet hour for the Seoul project.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: subscription-grants
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Refresh annual subscription grants
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          CRON_SECRET: ${{ secrets.SUBSCRIPTION_GRANT_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::SUPABASE_URL or SUBSCRIPTION_GRANT_CRON_SECRET is not configured"
+            exit 1
+          fi
+
+          # `--fail-with-body` so a non-2xx is a failed job AND the body is
+          # still printed: a silent failure here is indistinguishable from the
+          # silence we are fixing.
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 300 \
+            -X POST "${SUPABASE_URL}/functions/v1/refresh-subscription-grants" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          echo "$response"
+
+          # The function answers 200 with a per-failure tally rather than
+          # failing the request, so a run that reached every subscriber and
+          # refreshed none of them would otherwise look like a success.
+          if echo "$response" | grep -q '"failures":{[^}]'; then
+            echo "::warning::some grants did not refresh; see the response above"
+          fi

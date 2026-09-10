@@ -244,7 +244,6 @@ Deno.test("a nonexistent story and a private one the caller cannot read fail ide
   }
 });
 
-
 // A null author must not make the guard evaporate.
 //
 // The check was `v_author_id <> p_user_id`, and `<>` against NULL evaluates to

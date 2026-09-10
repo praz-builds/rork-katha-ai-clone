@@ -44,6 +44,17 @@ import {
   uploadAudio,
 } from "../_shared/narration-audio.ts";
 
+/**
+ * The longest chapter this endpoint will send to a text-to-speech provider.
+ *
+ * At the 128 kbps mono RunPod returns, 40,000 characters is roughly 45
+ * minutes of audio, which lands just under the 50 MB ceiling
+ * `narration-audio.ts` enforces on the response. Generated chapters are an
+ * order of magnitude shorter -- the length bands top out near 2,000 words --
+ * so only a hand-edited chapter can approach this.
+ */
+const MAX_NARRATION_CHARS = 40_000;
+
 export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -158,6 +169,38 @@ export async function handleRequest(req: Request): Promise<Response> {
     const voice = await getVoiceRecord(serviceClient, voiceId);
     if (!voice) return respond({ error: "Unknown voice_id" }, 400);
 
+    // Refuse before spending, not after.
+    //
+    // Nothing on this path capped the text. `chapter.content` went to the
+    // provider whole, and `edit-story`'s notepad save accepts a chapter body
+    // of up to 200,000 characters, so a reader could hand RunPod four times
+    // more text than the 50 MB ceiling `narration-audio.ts` enforces on the
+    // way back. The provider bills for all of it and the result is then
+    // discarded as `audio_too_large` -- the worst possible order: full cost,
+    // no audio, and a Try again button that repeats it.
+    //
+    // Checked here, after the cache lookups and the entitlement gate, so a
+    // chapter that was narrated before it grew still replays for free; and
+    // before the claim, so a refusal does not occupy the (chapter, voice) row.
+    const narrationText = chapter.content ?? "";
+    if (narrationText.length > MAX_NARRATION_CHARS) {
+      await reportError({
+        bucket: "generation.audio",
+        severity: "low",
+        errorCode: "chapter_too_long_to_narrate",
+        error: new Error(
+          `Chapter is ${narrationText.length} characters against a ${MAX_NARRATION_CHARS} cap`,
+        ),
+        userId: user.id,
+        context: { story_id: storyId, chapter_id: chapterId },
+      });
+      return respond({
+        error:
+          "This chapter is too long to narrate. Split it into two chapters and try again.",
+        code: "chapter_too_long_to_narrate",
+      }, 413);
+    }
+
     const storagePath = stableChapterAudioPath(storyId, chapterId, voiceId);
     const claim = await claimChapterAudioGeneration(
       serviceClient,
@@ -196,7 +239,7 @@ export async function handleRequest(req: Request): Promise<Response> {
           ? params.voice
           : voice.id;
         const audioBytes = await generateWithEdgeTts(
-          chapter.content,
+          narrationText,
           edgeVoice,
         );
         await uploadAudio(serviceClient, storagePath, audioBytes);
@@ -210,7 +253,7 @@ export async function handleRequest(req: Request): Promise<Response> {
           cached: false,
         });
       }
-      jobId = await startProviderJob(voice, chapter.content);
+      jobId = await startProviderJob(voice, narrationText);
     } catch (providerError) {
       // The provider never accepted a job, so there is nothing to reconcile
       // -- this is the ordinary "generation failed to start" path.

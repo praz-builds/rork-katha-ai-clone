@@ -45,19 +45,25 @@ async function createDatabase(): Promise<PGlite> {
   return db;
 }
 
-Deno.test("the edge_tts voices are offered once their provider is implemented", async () => {
+// This test used to assert the opposite, because 00059 reactivated the pair on
+// the expectation of an `EDGE_TTS_SERVICE_URL` worker. The worker was never
+// deployed and the secret was never set, so between 00059 and 00063 the picker
+// offered both Spanish voices, `ListenScreen` defaulted every Spanish story to
+// Elvira, and every tap failed. 00063 put them back, and this is now the
+// assertion that a fourth flip has to argue with.
+Deno.test("the edge_tts voices stay hidden while nothing can speak with them", async () => {
   const db = await createDatabase();
   try {
     const offered = await db.query<{ id: string }>(
       "select id from public.voices where is_active = true order by id",
     );
     const ids = offered.rows.map((row) => row.id);
-    assertEquals(ids.includes("elvira"), true, "elvira must be offered");
-    assertEquals(ids.includes("alvaro"), true, "alvaro must be offered");
+    assertEquals(ids.includes("elvira"), false, "elvira must not be offered");
+    assertEquals(ids.includes("alvaro"), false, "alvaro must not be offered");
 
-    // The migration must not reactivate by collapsing the catalogue to only the
-    // Microsoft voices.
-    assertEquals(ids.length, 8);
+    // ...and hiding them must not empty the picker: the six RunPod voices
+    // that do work are still offered.
+    assertEquals(ids.length, 6);
   } finally {
     await db.close();
   }

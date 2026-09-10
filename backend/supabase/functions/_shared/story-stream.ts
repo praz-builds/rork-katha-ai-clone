@@ -241,7 +241,13 @@ function openRouterKey(): string | undefined {
  */
 export function parseSseData(
   line: string,
-): { done: boolean; delta?: string; finishReason?: string; model?: string } {
+): {
+  done: boolean;
+  delta?: string;
+  finishReason?: string;
+  model?: string;
+  error?: string;
+} {
   const trimmed = line.trim();
   // An SSE comment. OpenRouter uses these as a keep-alive while a slow model
   // spins up, so they arrive before any content and must not reset nothing.
@@ -252,6 +258,11 @@ export function parseSseData(
   try {
     const frame = JSON.parse(payload) as {
       model?: string;
+      // OpenRouter reports a mid-stream failure IN BAND: the HTTP status was
+      // already 200 and some prose may already have been sent, so the only
+      // signal is this object arriving in a later frame, usually alongside
+      // `finish_reason: "error"` and never followed by `[DONE]`.
+      error?: { code?: number | string; message?: string } | null;
       choices?: Array<
         { delta?: { content?: string | null }; finish_reason?: string | null }
       >;
@@ -265,6 +276,11 @@ export function parseSseData(
         : undefined,
       finishReason: choice?.finish_reason ?? undefined,
       model: frame.model,
+      error: frame.error
+        ? `${frame.error.code ?? "unknown"}: ${
+          frame.error.message ?? "no message"
+        }`
+        : undefined,
     };
   } catch {
     // A frame that is not JSON is a provider bug, not a reason to lose the
@@ -370,6 +386,10 @@ async function streamOnce(
     let resolvedModel = input.model;
     let finishReason: string | undefined;
     let committed = false;
+    // Did the provider actually say it was finished? A stream that simply
+    // stops -- a dropped socket, a killed upstream -- is indistinguishable
+    // from a completed one without this.
+    let sawDone = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -387,7 +407,19 @@ async function streamOnce(
         const frame = parseSseData(line);
         if (frame.model) resolvedModel = frame.model;
         if (frame.finishReason) finishReason = frame.finishReason;
+        if (frame.error) {
+          // Thrown, not accumulated. The provider has stopped writing, and
+          // every byte after this point would be a chapter we invented by
+          // omission. If prose was already streamed the caller wraps this as
+          // a `StreamCommittedError`, refunds, and leaves what the reader saw
+          // on screen without persisting it.
+          throw new ProviderHttpError(
+            `OpenRouter reported a mid-stream error (${frame.error})`,
+            502,
+          );
+        }
         if (frame.done) {
+          sawDone = true;
           buffer = "";
           break;
         }
@@ -414,6 +446,33 @@ async function streamOnce(
         `OpenRouter streamed no content (finish_reason: ${
           finishReason ?? "none"
         })`,
+      );
+    }
+
+    // Everything below is the difference between "the model finished" and
+    // "the bytes stopped arriving", which this function treated as the same
+    // thing until 2026-09-10. Three shapes all resolved as a clean success:
+    // an in-band provider error (handled above), a socket that closed with no
+    // `[DONE]` and no `finish_reason`, and a `finish_reason` of `error` or
+    // `content_filter`. Each one produced a chapter that stopped mid-sentence,
+    // persisted it with `status='complete'`, and kept the credit -- and on
+    // `reimagine-chapter`, which updates in place, replaced a finished chapter
+    // with the stub and deleted its narration. A chapter we are not sure is
+    // finished must not be persisted as one.
+    if (!sawDone && !finishReason) {
+      throw new ProviderMalformedResponseError(
+        "OpenRouter ended the stream without finishing: no [DONE] sentinel " +
+          "and no finish_reason, so the prose is incomplete by an unknown " +
+          "amount",
+      );
+    }
+    // `stop` is a finished chapter. `length` is a chapter cut at the output
+    // cap, which `trimToParagraph` makes readable and the caller records as
+    // truncated -- a known, bounded shortfall the product already handles.
+    // Anything else is the model telling us it did not finish.
+    if (finishReason && finishReason !== "stop" && finishReason !== "length") {
+      throw new ProviderMalformedResponseError(
+        `OpenRouter stopped early (finish_reason: ${finishReason})`,
       );
     }
 

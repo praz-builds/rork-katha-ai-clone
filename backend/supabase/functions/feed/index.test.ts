@@ -132,7 +132,9 @@ async function curatedPage(
 }
 
 async function seedThreeAuthorsNineCurated(db: PGlite) {
-  for (const id of [READER_NO_BLOCKS, BLOCKER, AUTHOR_A, AUTHOR_B, AUTHOR_BLOCKED]) {
+  for (
+    const id of [READER_NO_BLOCKS, BLOCKER, AUTHOR_A, AUTHOR_B, AUTHOR_BLOCKED]
+  ) {
     await createUser(db, id);
   }
   // Interleaved like_count ranking so a blocked author's rows land in the
@@ -287,6 +289,74 @@ Deno.test("pagination does not short-page or skip rows when a block is active", 
       [AUTHOR_BLOCKED],
     );
     assertEquals(combined, expected.rows.map((r) => r.id)); // no gaps, right order
+  } finally {
+    await db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The privilege the whole handler turned on
+//
+// `feed` read `user_blocks` with the SERVICE client, and 00043 ends with
+// `revoke all on table public.user_blocks from public, anon` while granting
+// only `authenticated` -- so `service_role` had no SELECT on it and the read
+// returned 42501. That read happens before any feed is built, so the throw
+// reached the catch and EVERY request from EVERY user answered
+// `500 Internal server error`, from the day 00043 was applied until
+// 2026-09-10. Nobody saw it: the client falls back to bundled content on a
+// failed fetch, so the home screen still looked full, and the handler wrote
+// no telemetry at all.
+//
+// Two independent things now have to hold, and this pair asserts both,
+// because either one alone would have prevented the outage.
+// ---------------------------------------------------------------------------
+
+Deno.test("the caller's own role can read its block list, which is the role feed now uses", async () => {
+  const db = await createDatabase();
+  try {
+    await createUser(db, BLOCKER);
+    await createUser(db, AUTHOR_BLOCKED);
+    await db.query(
+      "insert into user_blocks(blocker_id, blocked_id) values ($1, $2)",
+      [BLOCKER, AUTHOR_BLOCKED],
+    );
+
+    // `feed` issues this through the anon-key client carrying the caller's
+    // JWT, so it runs as `authenticated` with RLS scoping it to the caller.
+    await db.exec(`set local role authenticated`);
+    await db.query(
+      `select set_config('request.jwt.claim.sub', $1, true)`,
+      [BLOCKER],
+    );
+    const mine = await db.query<{ blocked_id: string }>(
+      "select blocked_id from user_blocks where blocker_id = $1",
+      [BLOCKER],
+    );
+    assertEquals(mine.rows.map((r) => r.blocked_id), [AUTHOR_BLOCKED]);
+
+    // ...and RLS, not the filter, is what keeps it to the caller: asking for
+    // somebody else's list returns nothing rather than their blocks.
+    const theirs = await db.query<{ blocked_id: string }>(
+      "select blocked_id from user_blocks where blocker_id = $1",
+      [AUTHOR_BLOCKED],
+    );
+    assertEquals(theirs.rows, []);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("service_role can also read user_blocks, so a service-side reader no longer 500s", async () => {
+  const db = await createDatabase();
+  try {
+    const granted = await db.query<{ ok: boolean }>(
+      `select has_table_privilege('service_role', 'public.user_blocks', 'SELECT') as ok`,
+    );
+    assertEquals(
+      granted.rows[0].ok,
+      true,
+      "service_role cannot SELECT user_blocks; the feed handler will 500 again",
+    );
   } finally {
     await db.close();
   }

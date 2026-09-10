@@ -95,6 +95,13 @@ const TEST_ENV: Record<string, string> = {
   SUPABASE_URL: "https://project.supabase.test",
   SUPABASE_ANON_KEY: "test-anon-key",
   SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
+  // The fixture's Spanish voice is `edge_tts`, and `listVoices` now refuses
+  // to offer a voice whose provider is not configured in this deployment.
+  // These tests are about language filtering, tiers, preview URLs and
+  // `is_active` -- all orthogonal to that -- so they run as a deployment
+  // where the worker exists. The rule itself is covered on its own below and
+  // in `_shared/voices.test.ts`.
+  EDGE_TTS_SERVICE_URL: "https://edge-tts.test/synthesize",
 };
 
 function setTestEnv(): Record<string, string | undefined> {
@@ -165,6 +172,31 @@ Deno.test("with no language filter, every active voice is returned", async () =>
 // passed whether or not the endpoint actually filtered on `is_active` --
 // removing the filter entirely would not have failed this suite. This test
 // exists specifically to fail if that filtering regresses.
+// The failure this pair exists to prevent: from 00059 until 2026-09-10 the
+// registry said both Spanish voices were active and no worker existed, so the
+// picker offered Elvira to every Spanish reader and every tap failed. The
+// endpoint must not offer a voice this deployment cannot speak with, whatever
+// the row says.
+Deno.test("a voice whose provider has no backend here is not offered", async () => {
+  const env = setTestEnv();
+  Deno.env.delete("EDGE_TTS_SERVICE_URL");
+  try {
+    const { status, json: body } = await run("");
+    assertEquals(status, 200);
+    const ids = (body.voices as Array<Record<string, unknown>>).map((v) =>
+      v.id
+    );
+    assertEquals(ids.includes("testvoice-es"), false);
+    assertEquals(ids.includes("testvoice-en"), true);
+
+    const spanish = await run("language=es");
+    assertEquals(spanish.status, 200);
+    assertEquals((spanish.json.voices as unknown[]).length, 0);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
 Deno.test("an inactive voice is filtered out even though it is in the table", async () => {
   const env = setTestEnv();
   try {

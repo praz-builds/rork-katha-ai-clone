@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logError } from "../_shared/errors.ts";
 import {
   constantTimeEquals,
   eventDate,
@@ -60,6 +61,57 @@ serve(async (req) => {
     if (eventType === "EXPIRATION") {
       const identity = resolveRevenueCatIdentity(event);
       await recordSubscription(serviceClient, event, false, false);
+
+      // Only the expiration that actually won gets to zero the balance.
+      //
+      // `lapse_credits` empties every bucket -- subscription grant, purchased
+      // packs and earned credits alike (decision 37, pending App Review) --
+      // and it ran on any EXPIRATION at all, keyed only on the event id being
+      // new. Two ordinary sequences made that destructive:
+      //
+      //   * A retry or a straggler. RevenueCat redelivers, and events arrive
+      //     out of order. A previous period's EXPIRATION landing seconds
+      //     after this period's RENEWAL wiped the grant the renewal had just
+      //     paid for, while `record_revenuecat_subscription` -- which IS
+      //     ordered, by `last_event_at` -- correctly ignored the same event
+      //     and left the subscription showing active. Active tier, zero
+      //     credits, no explanation.
+      //   * An upgrade. Monthly to yearly is a PRODUCT_CHANGE; when the old
+      //     monthly period ends, its EXPIRATION arrives for a product the
+      //     user no longer holds, and took the yearly grant with it.
+      //
+      // The check is the subscription row itself. `record_revenuecat_subscription`
+      // updates only when `last_event_at <= excluded.last_event_at`, so
+      // reading the row back after that call answers the question exactly: if
+      // this event is the one recorded, it is current and the lapse stands;
+      // if the row still names some other event, this expiration lost to
+      // something newer and must not touch the money.
+      const { data: subscription, error: subscriptionError } =
+        await serviceClient
+          .from("revenuecat_subscriptions")
+          .select("last_event_id, product_id, is_active")
+          .eq("user_id", identity.userId)
+          .maybeSingle();
+      if (subscriptionError) throw subscriptionError;
+
+      if (subscription && subscription.last_event_id !== identity.eventId) {
+        // Not an error, and not a duplicate either -- a real expiration that
+        // has been overtaken. Recorded so that a wrongly-kept balance is as
+        // visible as a wrongly-cleared one would have been.
+        await logError({
+          bucket: "payments",
+          severity: "low",
+          source: "runtime",
+          errorCode: "expiration_superseded",
+          error: new Error(
+            "EXPIRATION ignored: a newer subscription event is on record",
+          ),
+          context: { provider: "revenuecat", code: eventType },
+          userId: identity.userId,
+        });
+        return jsonResponse({ ok: true, ignored: "superseded" });
+      }
+
       const balance = await lapseCredits(
         serviceClient,
         identity.userId,
