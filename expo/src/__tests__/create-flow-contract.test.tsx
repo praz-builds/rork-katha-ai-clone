@@ -714,6 +714,45 @@ describe("draft restoration across a remount", () => {
       "Grey coat, a satchel that has outlived three owners.",
     );
   });
+  it("discards what Kids Mode derived, not just the switch", async () => {
+    // Turning Kids Mode on forces `spiceLevel` to sweet and `chapterLength`
+    // to short, and `storyValues` exists only for kids. Resetting the switch
+    // alone would leave those behind and quietly send a short, sweet,
+    // values-laden brief as an adult story. A half-reverted setting is worse
+    // than either state.
+    mockLoadDraft.mockResolvedValue({
+      primaryGenre: "adventure",
+      audienceMode: "kids",
+      spiceLevel: "sweet",
+      chapterLength: "short",
+      storyValues: ["courage"],
+      identityLenses: [],
+      seed: "A child follows a map hidden in a library book.",
+      language: "English",
+      visibility: "private",
+      characters: [],
+      isSeries: false,
+    });
+
+    const view = await renderCreate();
+    await waitFor(() =>
+      expect(view.getByLabelText("Story idea").props.value).toBe(
+        "A child follows a map hidden in a library book.",
+      ),
+    );
+    expect(
+      view.getByLabelText("Kids Mode").props.accessibilityState.checked,
+    ).toBe(false);
+
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+    // Back to the adult default, not the length kids forced.
+    expect(
+      view.getByRole("button", { name: "Chapter length" }).props.accessibilityValue,
+    ).toEqual({ text: "Standard" });
+    // And the kids-only Values section is gone with the mode.
+    expect(view.queryByText("Values")).toBeNull();
+  });
+
   it("shows the same chapter length a restored draft without one will actually send", async () => {
     // The invariant: `effectiveChapterLength` in `lib/api.ts` is the ONE
     // place the default is computed, and both this display and the request

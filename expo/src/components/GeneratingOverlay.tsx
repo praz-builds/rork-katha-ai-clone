@@ -88,6 +88,12 @@ const STATUS_LINE_HEIGHT = 20;
  * reader stopped withholding roughly 460 words to fill a page that shows 60.
  * Before those two changes it was 22-35s and no honest number could have been
  * put here at all.
+ *
+ * FIRST-CHAPTER MODE ONLY. This number is the time to the first PAGE, which
+ * only means anything where a page can appear while the rest is still being
+ * written. A chapter rewrite or a continuation keeps this overlay up until the
+ * whole thing lands -- roughly forty seconds -- so promising ten there would
+ * be a straightforward lie. Those modes keep their flavour line.
  */
 const FIRST_PAGE_EXPECTATION = "Your first page usually arrives in about 10 seconds";
 
@@ -187,7 +193,7 @@ export default function GeneratingOverlay({ genre, mode = "story" }: Props) {
           rest arrives behind the reader while they are reading it.
         */}
         <Text style={styles.statusLine} numberOfLines={1}>
-          {FIRST_PAGE_EXPECTATION}
+          {mode === "story" ? FIRST_PAGE_EXPECTATION : data.statusLine}
         </Text>
       </View>
     </View>

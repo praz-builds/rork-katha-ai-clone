@@ -220,7 +220,21 @@ export default function CreateStudioScreen({
           // They will see that they need to -- it is the first control on the
           // screen and it is now legible -- whereas the reverse mistake is
           // invisible until the story comes back wrong.
+          //
+          // And everything Kids Mode DERIVED goes with it. `chooseAudience`
+          // forces `spiceLevel` to sweet and `chapterLength` to short when the
+          // switch goes on, and `storyValues` exists only for kids. Resetting
+          // the switch alone would leave those behind, and the next generation
+          // would quietly send a short, sweet, values-laden brief as an adult
+          // story -- a half-reverted setting is worse than either state.
           audienceMode: INITIAL_DRAFT.audienceMode,
+          ...(restored.audienceMode === "kids"
+            ? {
+              spiceLevel: INITIAL_DRAFT.spiceLevel,
+              chapterLength: INITIAL_DRAFT.chapterLength,
+              storyValues: [],
+            }
+            : {}),
         });
       })
       .finally(() => {

@@ -544,13 +544,23 @@ export default function ReaderScreen({
    * cost 16-29 seconds of the reader's wait to approximate the same promise
    * less well.
    *
-   * When nothing has settled into a full page yet this is empty, and the
-   * reader shows the opener and the writing tail exactly as before.
+   * When nothing has settled into a full page yet, the reader shows one empty
+   * page -- the opener and the writing tail -- exactly as it did before any of
+   * this. That empty page is why the slice below cannot simply return `[]`:
+   * the pager, the slider and the search all index `pages`, and an empty array
+   * would be a second shape for them all to handle.
+   *
+   * The `length > 1` guard this replaces was wrong in the one case it existed
+   * for. With a single page it fell through to `allPages` and drew that page
+   * -- the very page that can still grow -- so a chapter whose settled prose
+   * fits one page reflowed under the reader, which is the whole thing this is
+   * supposed to prevent.
    */
-  const pages = useMemo(
-    () => (isWritingHere && allPages.length > 1 ? allPages.slice(0, -1) : allPages),
-    [allPages, isWritingHere],
-  );
+  const pages = useMemo(() => {
+    if (!isWritingHere) return allPages;
+    const fixed = allPages.slice(0, -1);
+    return fixed.length > 0 ? fixed : [{ text: "", start: 0, end: 0 }];
+  }, [allPages, isWritingHere]);
   const searchMatches = useMemo(() => findMatches(fullText, searchQuery), [fullText, searchQuery]);
   // The generated cover first, the bundled seed asset second.
   //

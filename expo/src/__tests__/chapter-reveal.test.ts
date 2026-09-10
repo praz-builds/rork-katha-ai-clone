@@ -118,3 +118,33 @@ describe("what a reader may be shown mid-generation", () => {
     expect(revealableChapterProse("   \n\n   ")).toBe("");
   });
 });
+
+/**
+ * The single-page case, which the first version of this fix got wrong.
+ *
+ * The reader draws every page whose end can no longer move, and drops the
+ * last one while writing because a trailing remainder gets absorbed into it.
+ * The guard for "what if there is only one page" fell through and drew that
+ * page -- the very page that can still grow -- so a chapter whose settled
+ * prose fits a single page reflowed under the reader.
+ *
+ * This asserts the rule at the level it can be tested without a viewport:
+ * whatever is revealed only ever grows and never rewrites what it showed, so
+ * a reader who has seen a prefix keeps seeing exactly that prefix.
+ */
+it("what has been shown is never rewritten, even one page in", () => {
+  const paragraph =
+    "She pushed it open and the hinges gave without a sound, which was the "
+    + "first thing that felt wrong about it.";
+  let previous = "";
+  for (let count = 1; count <= 10; count += 1) {
+    const raw = Array.from({ length: count }, () => paragraph).join("\n\n")
+      + "\n\nand a half-written";
+    const revealed = revealableChapterProse(raw);
+    if (previous) {
+      expect(revealed.startsWith(previous)).toBe(true);
+    }
+    expect(revealed).not.toContain("half-written");
+    previous = revealed;
+  }
+});
