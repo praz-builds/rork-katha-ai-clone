@@ -244,6 +244,7 @@ Deno.test("a public profile never carries a private field", async () => {
       total_reads: 120,
       total_likes: 14,
       followers: 9,
+      following: 4,
       is_following: true,
       // A future change to the RPC that started returning something private
       // must not reach the client just because it was in the row.
@@ -260,6 +261,10 @@ Deno.test("a public profile never carries a private field", async () => {
     "bio",
     "firstPublishedAt",
     "followers",
+    // The other half of the pair, added in 00073: a page that showed who was
+    // interested in somebody while hiding who they were interested in read as
+    // oddly one-sided. Public, and deliberately in this list.
+    "following",
     "isFollowing",
     "memberSince",
     "storiesPublished",
