@@ -4809,3 +4809,12 @@ describing a 2-minute clock as a legitimate carve-out.
   unverified reading of a pricing document.
 - *Margin basis calls a three-chapter total a story-start cost.* The same
   unresolved 1-vs-3 disagreement recorded in AGENTS.md. It is a price.
+
+**One more, on the follow-up commit.** The "Katha is writing" card on Home
+routed through `onStory`, which sends a series to `StoryDetailScreen` -- and a
+story mid-generation IS a series by then, because the provisional row carries a
+planned chapter count from the moment the first prose reveals. So the one card
+that says a chapter is being written opened a static page and hid the live
+generation behind it. It now routes into the reader at the chapter actually
+being written, for the same reason `finish` does: the reader is the only surface
+that resolves the live session and shows prose arriving.

@@ -278,6 +278,7 @@ export default function HomeScreen({
   liveStoryIds = [],
   savedDraftGenre,
   onContinueStory,
+  writingChapterIndex,
   onPaywall,
 }: {
   credits: number;
@@ -340,6 +341,8 @@ export default function HomeScreen({
   /** The saved brief's genre, `null` if none, `undefined` while unknown. */
   savedDraftGenre?: string | null;
   onContinueStory?: (storyId: string, chapterIndex: number) => void;
+  /** Zero-based index of the chapter being written, for the `writing` card. */
+  writingChapterIndex?: number;
   onPaywall?: () => void;
 }) {
   const hour = new Date().getHours();
@@ -376,7 +379,24 @@ export default function HomeScreen({
   const ctaAction = () => {
     switch (ctaState.kind) {
       case "writing":
-        return onStory(ctaState.storyId);
+        /*
+          STRAIGHT INTO THE READER, NOT THE STORY PAGE.
+
+          `onStory` sends a series to `StoryDetailScreen`, and a story that is
+          being written IS a series by then -- the provisional row carries a
+          planned chapter count from the moment the first prose reveals. So the
+          one card on Home that says "Katha is writing" opened a static detail
+          page and hid the live generation behind it, which is the opposite of
+          what it offers.
+
+          Routed at the chapter actually being written, for the same reason
+          `finish` is routed at the last written one: the reader resolves the
+          live session for whatever story it opens, so it is the only surface
+          that can show prose arriving.
+        */
+        return onContinueStory
+          ? onContinueStory(ctaState.storyId, writingChapterIndex ?? 0)
+          : onStory(ctaState.storyId);
       case "finish":
         // Straight into the reader at the last written chapter. The story
         // page has no write-next control -- the only continuation UI is the

@@ -688,6 +688,11 @@ export default function App() {
             shelfLoaded={shelfLoaded}
             savedDraftGenre={savedDraftGenre}
             writingStoryId={writingSession?.storyId ?? writingSession?.id ?? null}
+            // The chapter the live session is on, so the card opens the reader
+            // where the prose is arriving rather than at chapter one.
+            writingChapterIndex={writingSession
+              ? Math.max(0, writingSession.chapterNumber - 1)
+              : undefined}
             liveStoryIds={liveStoryIds}
             onContinueStory={(storyId, chapterIndex) =>
               setScreen({ name: "reader", storyId, chapterIndex })}
