@@ -622,6 +622,7 @@ export default function App() {
               setScreen({ name: "author", authorId })}
             onVoices={() => setScreen({ name: "voices" })}
             onSignedOut={() => {
+              void cacheDisplayName(null);
               // Back to a guest, not to nothing: every surface here assumes an
               // identity behind it. `signOutToGuest` has already established
               // the new one; this is the app catching up with it.
@@ -635,6 +636,10 @@ export default function App() {
             onDeleted={(storiesKept) => {
               setIsAnonymous(true);
               setDisplayName(null);
+              // The DEVICE copy too, not just the state. Otherwise the next
+              // guest on this phone is greeted by the name of the person who
+              // just deleted their account, the moment a profile fetch fails.
+              void cacheDisplayName(null);
               setGeneratedStories([]);
               setCredits(0);
               setStreakDays(null);

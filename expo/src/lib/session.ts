@@ -223,5 +223,16 @@ export async function signOutToGuest(): Promise<void> {
   } catch {
     // A stale cached name is a cosmetic problem; it must not block sign-out.
   }
-  await restartGuestSession();
+
+  // `restartGuestSession` signs out FIRST and then signs in, so a failure in
+  // the second half leaves the app with no session at all -- and every screen
+  // here assumes there is one. Retried once, because the common cause is a
+  // single dropped request, and the failure is surfaced rather than swallowed
+  // so the caller can say so instead of navigating into a signed-out app that
+  // cannot render.
+  try {
+    await restartGuestSession();
+  } catch {
+    await restartGuestSession();
+  }
 }

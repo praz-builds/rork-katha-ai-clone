@@ -168,6 +168,18 @@ describe("your journey", () => {
     expect(reached.length).toBe(2);
   });
 
+  // A failed request is not a streak of zero. Rendering the page with `?? 0`
+  // would tell somebody with a 40 day streak that they have none and lock
+  // every milestone they had already reached, because the network blipped.
+  it("says it cannot answer rather than showing a profile of zeros", async () => {
+    const view = await render(
+      <JourneyScreen profile={null} onBack={jest.fn()} />,
+    );
+    await waitFor(() => view.getByTestId("journey-unavailable"));
+    expect(view.queryByTestId("journey-current-streak")).toBeNull();
+    expect(view.queryByTestId("milestone-3")).toBeNull();
+  });
+
   // Reads, likes and chapter counts were on the old profile. They are a
   // scoreboard and they are not coming to this page.
   it("shows no reads, likes or story counts", async () => {

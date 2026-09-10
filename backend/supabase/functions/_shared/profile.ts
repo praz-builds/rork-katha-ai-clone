@@ -449,6 +449,13 @@ type ServiceClient = RpcClient & {
         options: { contentType: string; upsert: boolean },
       ): PromiseLike<{ error: unknown }>;
       getPublicUrl(path: string): { data: { publicUrl: string } };
+      /** Account deletion removes the avatar object, not just the row pointing at it. */
+      list(prefix: string): PromiseLike<
+        { data: { name: string }[] | null; error: unknown }
+      >;
+      remove(
+        paths: string[],
+      ): PromiseLike<{ error: unknown }>;
     };
   };
 };
@@ -619,18 +626,18 @@ export async function handleProfile(req: Request): Promise<Response> {
     }
 
     if (action === "calendar") {
-      // Somebody else's calendar is readable, and that is the point: the
-      // contribution grid is a public artefact on GitHub and it is one here
-      // too, on the public profile. What it exposes is which days a person was
-      // active, which is the same thing their published stories and their
-      // comment timestamps already say out loud.
-      //
-      // It stays a POST with an explicit author id rather than something
-      // guessable from a URL, and the days come back with no times attached.
+      // Somebody else's calendar is readable when they have a public profile,
+      // and that is the point: the contribution grid is a public artefact on
+      // GitHub and it is one here too. But only then -- `activity_calendar`
+      // (00074) refuses an author with nothing published, because "when is
+      // this person usually online" is not something a private reader offers
+      // to strangers merely by existing. The viewer is passed explicitly so
+      // that rule is the database's to apply rather than this handler's.
       const authorId = parseUuid(body.authorId) ?? viewerId;
       const { data, error } = await service.rpc("activity_calendar", {
         p_user_id: authorId,
         p_days: 365,
+        p_viewer_id: viewerId,
       });
       if (error) throw error;
       const days = (Array.isArray(data) ? data : [])
@@ -678,6 +685,39 @@ export async function handleProfile(req: Request): Promise<Response> {
       // be retried -- `delete_account` is idempotent. If they were reversed, a
       // failure would leave a signed-out user with an intact profile and no
       // way to ask again.
+      // The avatar FILE, before the row that points at it.
+      //
+      // `delete_account` nulls `avatar_url`, which removes the reference and
+      // not the object. The bucket is public-read, so the picture of somebody
+      // who asked to be deleted would go on being served at its old URL to
+      // anyone who had ever seen it. Deleting the folder is the only part of
+      // this that actually makes the image go away.
+      //
+      // Best effort and first: a storage hiccup must not stop the deletion,
+      // but it must not be silent either.
+      const { data: avatarFiles } = await service.storage
+        .from(AVATAR_BUCKET)
+        .list(viewerId);
+      if (avatarFiles && avatarFiles.length > 0) {
+        const { error: removeError } = await service.storage
+          .from(AVATAR_BUCKET)
+          .remove(
+            avatarFiles.map((file: { name: string }) =>
+              `${viewerId}/${file.name}`
+            ),
+          );
+        if (removeError) {
+          await logError({
+            bucket: "engagement",
+            severity: "high",
+            errorCode: "delete_avatar_failed",
+            error: removeError,
+            context: { action },
+            userId: viewerId,
+          });
+        }
+      }
+
       const { data, error } = await service.rpc("delete_account", {
         p_user_id: viewerId,
         p_reason: reason.length > 0 ? reason : null,
@@ -690,11 +730,16 @@ export async function handleProfile(req: Request): Promise<Response> {
         viewerId,
       );
       if (authError) {
-        // Reported, not raised. The person's account is already anonymous and
-        // their private data is already gone, so answering with a 500 would
-        // tell them their deletion failed when the part they care about
-        // succeeded. What remains is an auth row that can no longer reach
-        // anything, and this row is how we find out about it.
+        // Reported, not raised. Everything that identified the person is
+        // already gone and their private data with it, so a 500 here would
+        // tell them the deletion failed when the part they care about
+        // succeeded.
+        //
+        // What is left is a credential that still authenticates. It can no
+        // longer DO anything -- every profile writer refuses a tombstone
+        // (00074), so the account cannot be given a name, a handle or a
+        // picture again -- but the sign-in itself would still work, and the
+        // caller is told so rather than left to assume otherwise.
         await logError({
           bucket: "engagement",
           severity: "high",
@@ -703,9 +748,10 @@ export async function handleProfile(req: Request): Promise<Response> {
           context: { action },
           userId: viewerId,
         });
+        return respond({ deleted: true, storiesKept, signInRevoked: false });
       }
 
-      return respond({ deleted: true, storiesKept });
+      return respond({ deleted: true, storiesKept, signInRevoked: true });
     }
 
     return respond({ error: "Unknown action" }, 400);

@@ -80,6 +80,36 @@ export default function JourneyScreen({
   const longest = profile?.longestStreak ?? 0;
   const earnedToday = streak?.kind === "today";
 
+  // No profile is not a profile of zeros.
+  //
+  // Rendering the page with `?? 0` would tell somebody with a 40 day streak
+  // that they have none, and lock every milestone they have already reached,
+  // because a request failed. That is the specific dishonesty the rest of this
+  // surface is built to avoid, so the page says it cannot answer instead.
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.pagePad}>
+          <View style={styles.topBar}>
+            <Pressable
+              onPress={onBack}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={8}
+              style={styles.backButton}
+            >
+              <ChevronLeft size={22} color={colors.ink} />
+            </Pressable>
+            <Text style={styles.title}>Your journey</Text>
+          </View>
+          <Text style={styles.unavailable} testID="journey-unavailable">
+            Your journey could not be loaded just now.
+          </Text>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.flex}>
       <ScrollView
@@ -234,6 +264,11 @@ const styles = {
       alignItems: "center",
       gap: spacing.xs,
       marginBottom: spacing.lg,
+    },
+    unavailable: {
+      fontFamily: fonts.ui,
+      color: colors.muted,
+      fontSize: 14,
     },
     memberSinceText: {
       fontFamily: fonts.ui,

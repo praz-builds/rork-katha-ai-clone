@@ -167,6 +167,11 @@ export default function IdentityEditor({
       }
       const claimed = await claimUsername(handle);
       if (!claimed.ok) {
+        // The name above has already landed on the server. Reporting it before
+        // bailing out is what stops the profile screen showing the old name
+        // while the database holds the new one -- the same rule the bio branch
+        // below already follows.
+        if (changes.displayName !== undefined) onSaved({ ...changes });
         setNotice(
           claimed.reason === "taken"
             ? "Someone already has that handle. Try another."
@@ -273,6 +278,11 @@ export default function IdentityEditor({
             value={name}
             onChangeText={(next) => {
               setNotice(null);
+              // Marks the form dirty, like the handle and bio fields do. The
+              // reset effect uses this to decide whether an incoming prop --
+              // an avatar upload landing, say -- may overwrite the fields, and
+              // without it a name being typed could be wiped mid-word.
+              edited.current = true;
               setName(next.slice(0, 60));
             }}
             autoCapitalize="words"

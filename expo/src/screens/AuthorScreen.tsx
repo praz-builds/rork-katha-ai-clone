@@ -73,6 +73,11 @@ export default function AuthorScreen({
   useEffect(() => {
     if (!real) return;
     let alive = true;
+    // Cleared on every author change, before anything is fetched. Without this
+    // a failed or empty request leaves the PREVIOUS author's comments and
+    // calendar on screen, attributed to whoever is being looked at now.
+    setComments([]);
+    setDays(null);
     fetchPublicProfile(authorId)
       .then((result) => {
         if (!alive || !result) return;

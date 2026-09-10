@@ -328,3 +328,75 @@ Deno.test("the stored reason cannot be joined back to who left", async () => {
     await db.close();
   }
 });
+
+// Review on PR #88: the deletion is not finished until nothing can undo it.
+// The auth row is deleted by a SEPARATE call that can fail, so a tombstone can
+// briefly still authenticate -- and if it could then write to its own profile,
+// a deleted person could put their name back on bylines that had stopped being
+// theirs.
+Deno.test("a tombstone cannot be given a name, a bio, a picture or a handle again", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+    await db.query(`select public.delete_account($1, null, null)`, [LEAVER]);
+
+    const attempts: { what: string; sql: string; params: unknown[] }[] = [
+      {
+        what: "a display name",
+        sql: `select public.set_display_name($1, 'Back Again')`,
+        params: [LEAVER],
+      },
+      {
+        what: "a bio",
+        sql: `select public.set_profile_bio($1, 'Still here.')`,
+        params: [LEAVER],
+      },
+      {
+        what: "an avatar",
+        sql: `select public.set_avatar($1, $2, $3)`,
+        params: [LEAVER, `${LEAVER}/a.png`, `https://x.test/${LEAVER}/a.png`],
+      },
+    ];
+    for (const { what, sql, params } of attempts) {
+      let raised = false;
+      try {
+        await db.query(sql, params);
+      } catch {
+        raised = true;
+      }
+      assertEquals(raised, true, `a tombstone was given ${what}`);
+    }
+
+    // `claim_username` answers rather than raising, because a refusal there is
+    // a normal outcome the client renders.
+    const { rows } = await db.query<{ ok: boolean }>(
+      `select ok from public.claim_username($1, 'backagain')`,
+      [LEAVER],
+    );
+    assertEquals(rows[0].ok, false, "a tombstone claimed a handle");
+
+    // And none of it landed.
+    const { rows: after } = await db.query<{ display_name: string | null }>(
+      `select display_name from public.profiles where id = $1`,
+      [LEAVER],
+    );
+    assertEquals(after[0].display_name, null);
+  } finally {
+    await db.close();
+  }
+});
+
+// A living account must be unaffected by the guard above.
+Deno.test("an ordinary account can still edit its own profile", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+    const { rows } = await db.query<{ display_name: string }>(
+      `select display_name from public.set_display_name($1, 'Renamed')`,
+      [READER],
+    );
+    assertEquals(rows[0].display_name, "Renamed");
+  } finally {
+    await db.close();
+  }
+});
