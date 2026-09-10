@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
+// renders a plain View and the screen starts at y=0, under the status bar.
+// The safe-area-context one works on both. `SafeAreaProvider` is already
+// mounted in App.tsx, so this is a swap, not new plumbing.
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, GraduationCap, RotateCcw, Sparkles, X } from "lucide-react-native";
 import {
   listSavedPhrases,
@@ -85,7 +89,7 @@ export default function PracticeScreen({ onBack, onStory }: PracticeScreenProps)
   );
 
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView contentContainerStyle={sharedStyles.pagePad} showsVerticalScrollIndicator={false}>
         <Pressable
           onPress={onBack}

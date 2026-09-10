@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { normalizeCoverArtStyle } from "../_shared/cover-prompts.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { generateDraftCharacterPortrait } from "../_shared/image.ts";
 import { parseRequestId, readJsonObject } from "../_shared/operations.ts";
@@ -125,20 +126,24 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
 
     const name = stringField(body.name);
-    const description = stringField(body.description);
     const appearance = stringField(body.appearance);
+    // Still read, never asked for. The Craft sheet stopped collecting
+    // Description, but a client on an older build is still sending one, and
+    // refusing it would take the portrait button away from every writer who
+    // has not updated. `_shared/types.ts` explains why the field survives.
+    const legacyDescription = stringField(body.description);
 
     if (!name) return respond({ error: "name is required" }, 400);
     if (
       name.length > 100 ||
-      description.length > MAX_CHARACTER_FIELD_LENGTH ||
-      appearance.length > MAX_CHARACTER_FIELD_LENGTH
+      appearance.length > MAX_CHARACTER_FIELD_LENGTH ||
+      legacyDescription.length > MAX_CHARACTER_FIELD_LENGTH
     ) {
       return respond({ error: "Character image fields are too long" }, 400);
     }
-    if (!description && !appearance) {
+    if (!appearance && !legacyDescription) {
       return respond(
-        { error: "description or appearance is required" },
+        { error: "appearance is required" },
         400,
       );
     }
@@ -152,12 +157,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     const reference = parseReferenceImage(body.reference_image);
     if ("error" in reference) return respond({ error: reference.error }, 400);
 
+    // The look every image in this story is drawn in, sent from the brief.
+    //
+    // This endpoint used to accept no style at all, so the writer compared a
+    // house-style portrait against a cover they had asked to be watercolour
+    // and concluded the setting did nothing. `normalizeCoverArtStyle` maps
+    // anything it does not recognise to `auto`, which is the genre's own look
+    // -- exactly what an absent field should mean.
+    const artStyle = normalizeCoverArtStyle(body.image_style);
+
     const image = await generateDraftCharacterPortrait(user.id, requestId, {
       name,
-      description,
       appearance,
+      description: legacyDescription,
       referenceImage: reference.value,
-    });
+    }, artStyle);
     if (!image) {
       return respond({ error: "Character image could not be generated" }, 502);
     }

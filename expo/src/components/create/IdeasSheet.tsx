@@ -148,7 +148,7 @@ export function IdeasSheet({ visible, genre, onClose, onPick }: IdeasSheetProps)
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "flex-end" },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,14,12,0.26)" },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.scrim },
   sheet: {
     maxHeight: "82%",
     backgroundColor: colors.surface,

@@ -33,17 +33,19 @@ const LOCAL_KEY = "katha.saved-characters.v1";
 const TABLE = "user_characters";
 
 /**
- * The column the library stores a character's role in.
+ * The retired column, still selected and never written.
  *
- * `description` in the database, `role` in the app's own vocabulary (a brief's
- * cast list calls it a description, the library calls it a role, and
- * `savedCharacterInputFromDraft` is where the two meet). Named once here so
- * the select list and the write cannot drift apart again.
+ * `user_characters.description` held what the Craft sheet used to call
+ * Description, back when the sheet asked for that AND an Appearance. Appearance
+ * is the only field now, but a character saved before the change has its text
+ * only here -- so this is still read, and `fromRow` resolves it into
+ * `appearance` when that column is empty. Dropping it from the select would
+ * turn every previously saved character into a bare name.
  */
-const ROLE_COLUMN = "description";
+const LEGACY_ROLE_COLUMN = "description";
 
 const SELECT_COLUMNS =
-  `id, name, ${ROLE_COLUMN}, background, appearance, portrait_url, source_story_id, created_at`;
+  `id, name, ${LEGACY_ROLE_COLUMN}, background, appearance, portrait_url, source_story_id, created_at`;
 
 /**
  * Escapes a name for a PostgREST `ilike` pattern.
@@ -60,7 +62,6 @@ type DraftCharacter = CreateDraft["characters"][number];
 
 export type SavedCharacterInput = {
   name: string;
-  role?: string;
   background?: string;
   appearance?: string;
   portraitUrl?: string;
@@ -78,7 +79,6 @@ export function savedCharacterInputFromDraft(
 ): SavedCharacterInput {
   return {
     name: character.name.trim(),
-    role: character.description?.trim() || undefined,
     background: character.background?.trim() || undefined,
     appearance: character.appearance?.trim() || undefined,
     portraitUrl: character.portraitStatus === "ready" ? character.portraitUrl : undefined,
@@ -93,9 +93,8 @@ export function draftCharacterFromSaved(
 ): DraftCharacter {
   return {
     name: saved.name,
-    description: saved.role ?? "",
     background: saved.background,
-    appearance: saved.appearance,
+    appearance: saved.appearance ?? "",
     portraitUrl: saved.portraitUrl,
     portraitStatus: saved.portraitUrl ? "ready" : "idle",
     isHero,
@@ -106,6 +105,7 @@ export function draftCharacterFromSaved(
 type Row = {
   id: string;
   name: string;
+  /** Retired. Read as `appearance`'s fallback only -- see `LEGACY_ROLE_COLUMN`. */
   description: string | null;
   background: string | null;
   appearance: string | null;
@@ -118,9 +118,11 @@ function fromRow(row: Row): SavedCharacter {
   return {
     id: row.id,
     name: row.name,
-    role: row.description ?? undefined,
     background: row.background ?? undefined,
-    appearance: row.appearance ?? undefined,
+    // The retired column is the fallback, never a second field. A character
+    // saved before Description was merged into Appearance has its text only
+    // there, and the picker would otherwise list them with no detail at all.
+    appearance: row.appearance?.trim() || row.description?.trim() || undefined,
     portraitUrl: row.portrait_url ?? undefined,
     sourceStoryId: row.source_story_id ?? undefined,
     createdAt: row.created_at,
@@ -130,7 +132,9 @@ function fromRow(row: Row): SavedCharacter {
 function toRow(input: SavedCharacterInput) {
   return {
     name: input.name.trim(),
-    [ROLE_COLUMN]: input.role ?? null,
+    // The retired column is read, never written: a save must not resurrect the
+    // field the sheet stopped collecting. `LEGACY_ROLE_COLUMN` says why the
+    // column is still selected.
     background: input.background ?? null,
     appearance: input.appearance ?? null,
     portrait_url: input.portraitUrl ?? null,
@@ -202,7 +206,6 @@ export async function saveCharacterToLibrary(
     const next: SavedCharacter = {
       id: existing?.id ?? localId(),
       name,
-      role: input.role,
       background: input.background,
       appearance: input.appearance,
       portraitUrl: input.portraitUrl ?? existing?.portraitUrl,

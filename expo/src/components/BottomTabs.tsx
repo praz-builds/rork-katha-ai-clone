@@ -104,7 +104,9 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontFamily: fonts.ui,
     color: colors.tertiary,
-    fontSize: 10,
+    // 11 is the ramp's floor (`type.micro`). At 10 a tab label was below the
+    // size iOS treats as legible and shrank further under a fontScale of 0.85.
+    fontSize: 11,
     fontWeight: "800",
   },
   tabLabelActive: { color: colors.accent },

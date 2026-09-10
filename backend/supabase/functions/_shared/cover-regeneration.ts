@@ -297,6 +297,11 @@ async function runClaimedRegeneration(args: {
       themes: stringArray(claim.themes),
       whereAndWhen: optionalString(claim.where_and_when),
       avoid: optionalString(claim.avoid),
+      // Off the claim, not off the request. A regeneration is the writer
+      // asking for a different picture in the same style they already picked;
+      // rebuilding the prompt without it would charge them a credit to have
+      // their anime cover replaced by the genre default.
+      artStyle: optionalString(claim.image_style),
       variation: buildVariationSteer(
         args.promptNote,
         optionalString(claim.cover_prompt),

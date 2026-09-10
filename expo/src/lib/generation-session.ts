@@ -47,9 +47,14 @@ import {
 } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { clearDraft } from "@/lib/draft-storage";
+import { isOwnStory } from "@/lib/ownership";
 import { normalizeText } from "@/lib/paginate";
 import type { ReimagineRun } from "@/lib/reimagine-client";
-import { CHAPTER_TEXT_CREDITS, STORY_START_CREDITS } from "@/lib/pricing-limits";
+import {
+  CHAPTER_ART_CREDITS,
+  CHAPTER_TEXT_CREDITS,
+  STORY_START_CREDITS,
+} from "@/lib/pricing-limits";
 import type {
   AudienceMode,
   Chapter,
@@ -129,6 +134,24 @@ export type GenerationPhase = "writing" | "complete" | "error";
  */
 export const REFUND_NOTICE = "Katha stopped early. Your credit is back.";
 
+/**
+ * A `title` event as a session patch, dropping whatever it did not carry.
+ *
+ * The server names a chapter before it writes it, but a naming call that fails
+ * simply omits the field, and a continuation is never sent a story title at
+ * all. Spreading an absent name in as `undefined` would blank a title the
+ * session already has -- a story would lose its own name when its fourth
+ * chapter started. Only what actually arrived is applied.
+ */
+export function namePatch(
+  names: { title?: string; chapterTitle?: string },
+): Partial<GenerationSession> {
+  const patch: { storyTitle?: string; chapterTitle?: string } = {};
+  if (names.title?.trim()) patch.storyTitle = names.title.trim();
+  if (names.chapterTitle?.trim()) patch.chapterTitle = names.chapterTitle.trim();
+  return patch;
+}
+
 export type GenerationSession = {
   /**
    * Stable for the life of the session, across retries. A story session's
@@ -142,7 +165,12 @@ export type GenerationSession = {
   readonly storyId: string | null;
   readonly chapterNumber: number;
   readonly standalone: boolean;
-  /** Null until known. A new story's title arrives only when it completes. */
+  /**
+   * Null until known. The server names a chapter before it writes it, so both
+   * of these normally arrive on the `title` event a few seconds in, ahead of
+   * the first paragraph; a naming call that failed leaves them null until the
+   * session completes, which is where they used to come from always.
+   */
   readonly storyTitle: string | null;
   readonly chapterTitle: string | null;
   readonly genre: Genre;
@@ -192,6 +220,16 @@ export type StartChapterInput = {
   isFinale?: boolean;
   /** Trimmed by the caller; `undefined` means Katha decides. */
   direction?: string;
+  /**
+   * Every direction that was on the table, in ranked order.
+   *
+   * Sent whether or not one of them was picked here. In auto mode the SERVER
+   * chooses among them -- the client's own ranking is a sort, not a choice --
+   * and in both modes the offer is recorded against the chapter so the paths
+   * that existed can be shown later. They cannot be reconstructed afterwards:
+   * they were derived from a story state that has already moved on.
+   */
+  directionsOffered?: readonly { id: string; prompt: string }[];
 };
 
 type Deferred = {
@@ -237,6 +275,44 @@ function update(id: string, patch: Partial<GenerationSession>): void {
   if (!record) return;
   record.session = { ...record.session, ...patch };
   publish();
+}
+
+/**
+ * Chapters an auto write-ahead has already tried and failed, by `story:number`.
+ *
+ * SEPARATE FROM `records` BECAUSE `records` IS SWEPT. `pruneFinished` drops any
+ * session finished more than `RETENTION_MS` ago, and `hasGenerationForChapter`
+ * -- the only thing standing between the auto chain and re-buying a chapter --
+ * reads `records`. So a failed chapter became eligible again the moment its
+ * session aged out: the writer starts something else, comes back half an hour
+ * later, and the effect in `App` fires a fresh paid request for the chapter
+ * that already failed, with no tap and nothing on screen having asked.
+ *
+ * "Retrying is a decision, and there is a button for it" is the rule the auto
+ * path documents; this is what makes it true past thirty minutes. It is
+ * deliberately not persisted: a new app session has no in-flight state to
+ * protect and the reader can retry from the chapter end, which is a tap.
+ */
+const failedAutoChapters = new Set<string>();
+
+function autoChapterKey(storyId: string, chapterNumber: number): string {
+  return `${storyId}:${chapterNumber}`;
+}
+
+/** Remember a failed chapter for longer than its session survives. */
+export function markAutoChapterFailed(
+  storyId: string,
+  chapterNumber: number,
+): void {
+  failedAutoChapters.add(autoChapterKey(storyId, chapterNumber));
+}
+
+/** Forget it, so a deliberate retry is allowed to run. */
+export function clearAutoChapterFailure(
+  storyId: string,
+  chapterNumber: number,
+): void {
+  failedAutoChapters.delete(autoChapterKey(storyId, chapterNumber));
 }
 
 function pruneFinished(now: number): void {
@@ -458,6 +534,13 @@ function fail(record: SessionRecord, error: unknown): void {
   if (error instanceof GenerationRequestError && error.resetRequestId) {
     record.requestId = createGenerationRequestId();
   }
+  // A chapter that failed is remembered past its session's lifetime, so the
+  // auto write-ahead cannot quietly buy it again once `pruneFinished` has swept
+  // the record. `retryGeneration` clears it, because a retry is a decision.
+  const { kind, storyId, chapterNumber } = record.session;
+  if (kind === "chapter" && storyId) {
+    markAutoChapterFailed(storyId, chapterNumber);
+  }
   settle(record, { phase: "error", error: failureMessage(error) });
 }
 
@@ -510,6 +593,7 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
         if (storyId) update(id, { storyId });
       },
       onStage: (stage) => update(id, { stage }),
+      onTitle: (names) => update(id, namePatch(names)),
       onDelta: (chunk) => acceptChunk(record, chunk),
     }).then((story) => {
       // The brief is spent. Clearing it here rather than in the studio means
@@ -536,12 +620,36 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
   return record.session;
 }
 
+/**
+ * What one continuation of this story actually costs.
+ *
+ * Since migration 00077 a chapter is one credit for its text and a second for
+ * its art when the story illustrates its chapters. Every caller that quoted a
+ * flat `CHAPTER_TEXT_CREDITS` was therefore under-reporting by one per chapter
+ * for illustrated stories, and the client's running balance drifted upward:
+ * `App` derives the balance by subtracting `creditsCharged`, and nothing in the
+ * `done` payload re-syncs it. On an illustrated auto story the drift is one
+ * credit per chapter, so the write-ahead's balance gate -- which documents
+ * itself as exact rather than optimistic -- eventually passed on a balance the
+ * server did not have and fired a request it had been built never to fire.
+ */
+function chapterCost(story: Pick<Story, "illustrateChapters">): number {
+  return CHAPTER_TEXT_CREDITS +
+    (story.illustrateChapters ? CHAPTER_ART_CREDITS : 0);
+}
+
 /** Start writing the next chapter of a story that already exists. */
 export function startChapterGeneration(input: StartChapterInput): GenerationSession {
   const now = Date.now();
   pruneFinished(now);
   const id = createGenerationRequestId();
-  const { story, nextChapterNumber, isFinale = false, direction } = input;
+  const {
+    story,
+    nextChapterNumber,
+    isFinale = false,
+    direction,
+    directionsOffered,
+  } = input;
   const record: SessionRecord = {
     session: {
       id,
@@ -584,18 +692,20 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
       record.requestId,
       {
         onStage: (stage) => update(id, { stage }),
+        onTitle: (names) => update(id, namePatch(names)),
         onDelta: (chunk) => acceptChunk(record, chunk),
       },
       isFinale,
       nextChapterNumber,
       direction,
+      directionsOffered,
     ).then(({ chapter }) => {
       settle(record, {
         phase: "complete",
         stage: "done",
         chapterTitle: chapter.title,
         chapter,
-        creditsCharged: CHAPTER_TEXT_CREDITS,
+        creditsCharged: chapterCost(story),
       });
     }).catch((error) => fail(record, error));
   };
@@ -753,6 +863,13 @@ export function adoptReimagineGeneration(input: {
 export function retryGeneration(id: string): void {
   const record = records.get(id);
   if (!record || record.session.phase === "writing") return;
+  // A retry is the decision the durable failure guard was holding out for, so
+  // it is lifted here. Without this the retry would run once and the chapter
+  // would stay permanently barred from the auto chain for the session.
+  const { kind, storyId, chapterNumber } = record.session;
+  if (kind === "chapter" && storyId) {
+    clearAutoChapterFailure(storyId, chapterNumber);
+  }
   record.start();
 }
 
@@ -778,6 +895,256 @@ export function getGeneration(id: string): GenerationSession | null {
  * The newest session that belongs to a story, by the server's id or by the
  * session's own id (which is what a provisional story is keyed by).
  */
+/**
+ * Has this story's chapter N already been asked for, in any state?
+ *
+ * Exists for auto-continue, and it exists because a `useRef` could not do the
+ * job. The chapter-end module is mounted only while the reader is physically on
+ * the last page, so leaving that page and coming back is an unmount and a
+ * remount and a brand-new ref -- and in auto mode the effect behind that ref
+ * SPENDS A CREDIT. A reader who opened the chapter list, went back to chapter
+ * N and paged to its end fired a second request for chapter N+1 with a fresh
+ * request id, which the server correctly refused as a duplicate reservation
+ * (KTH01/409) and which the client then followed as the newest session for the
+ * story -- showing a failure tail and a Retry button over a chapter that was
+ * being written successfully the whole time.
+ *
+ * Every phase counts, `error` included. A failed attempt must not silently
+ * re-fire on the next remount either; retrying is a decision, and there is a
+ * button for it.
+ *
+ * Records are pruned on a timer, so this is a guard against the tight loop it
+ * describes, not a permanent ledger. The durable guard is the server's own
+ * reservation.
+ */
+export function hasGenerationForChapter(
+  storyId: string,
+  chapterNumber: number,
+): boolean {
+  for (const record of records.values()) {
+    const { session } = record;
+    if (session.kind !== "chapter") continue;
+    if (session.storyId !== storyId) continue;
+    if (session.chapterNumber === chapterNumber) return true;
+  }
+  return false;
+}
+
+/**
+ * The newest session writing this story's chapter N, whoever started it.
+ *
+ * Differs from {@link hasGenerationForChapter} in the two ways the auto-ahead
+ * path needs. It returns the session rather than a boolean, so a caller can
+ * tell "being written" from "failed" -- copy that says a chapter is on its way
+ * over a request that was refused is the exact lie this feature must not tell.
+ * And it counts a STORY session too: chapter one is written by one, so a lookup
+ * that filtered them out would report the opening chapter as unwritten while it
+ * was streaming. A story session is matched on its own id as well, because that
+ * is what its provisional `Story` is keyed by until the server's id lands.
+ */
+export function generationForChapter(
+  storyId: string,
+  chapterNumber: number,
+): GenerationSession | null {
+  let found: GenerationSession | null = null;
+  for (const record of records.values()) {
+    const { session } = record;
+    if (session.chapterNumber !== chapterNumber) continue;
+    if (session.storyId !== storyId && session.id !== storyId) continue;
+    if (!found || session.startedAt >= found.startedAt) found = session;
+  }
+  return found;
+}
+
+/** Is anything at all being written into this story right now? */
+function storyIsBeingWritten(storyId: string): boolean {
+  for (const record of records.values()) {
+    const { session } = record;
+    if (session.phase !== "writing") continue;
+    if (session.storyId === storyId || session.id === storyId) return true;
+  }
+  return false;
+}
+
+/**
+ * What `continue-story` falls back to when a story has no usable
+ * `planned_chapter_count`. Kept in step with the backend deliberately: the
+ * server resolves an unrecognised count to 3 and refuses anything past it, so a
+ * client that assumes more offers -- and in auto mode silently BUYS -- a chapter
+ * the backend has already decided against.
+ */
+export const DEFAULT_PLANNED_CHAPTER_COUNT = 3;
+
+export function plannedChapterCountOf(
+  story: Pick<Story, "plannedChapterCount">,
+): 3 | 7 | 15 {
+  const planned = story.plannedChapterCount;
+  return planned === 3 || planned === 7 || planned === 15
+    ? planned
+    : DEFAULT_PLANNED_CHAPTER_COUNT;
+}
+
+// ---------------------------------------------------------------------------
+// Auto-continue, written ahead of the reader
+// ---------------------------------------------------------------------------
+
+/**
+ * The chapter to start now so the reader never waits for it, or null.
+ *
+ * WHAT THIS IS FOR. A continuation's first token lands 7.0-7.9 seconds after
+ * the request -- roughly twice chapter one's 4.0s, because the prompt carries
+ * the previous chapters verbatim, and chapter five carries four of them. In
+ * auto mode nobody is being asked anything, so every second of that used to be
+ * spent standing on the last page of chapter N reading "Chapter N+1 is being
+ * written". Started the moment chapter N is persisted instead, the same wait
+ * runs underneath a chapter the reader still has in front of them.
+ *
+ * INTERACTIVE MODE NEVER REACHES HERE, and that is the first line of the
+ * function rather than an afterthought. There is nothing to speculate on before
+ * the reader has picked a direction, and a guess would spend a credit on a
+ * chapter they did not choose.
+ *
+ * `storyFlow` is read off the story ROW, not off the brief that created it: the
+ * brief is a different session, and the server clamps a mode it does not
+ * recognise to `interactive`.
+ */
+export function autoChapterToWriteAhead(
+  story: Story,
+  credits: number,
+): number | null {
+  if (story.storyFlow !== "auto") return null;
+  /*
+    `story_flow` rides on the story row, and public reads select it. Without
+    this gate every reader who opened somebody else's public auto story would
+    fire `continue-story` against a story they do not own -- with no tap, and
+    charged to them. Nothing but which columns one edge function happens to
+    select stands between that and production.
+  */
+  if (!isOwnStory(story)) return null;
+  // A standalone has no chapter two. Its ending is Reimagine, not more prose.
+  if (story.storyMode === "standalone") return null;
+
+  const latest = story.chapters.reduce(
+    (max, chapter) => Math.max(max, chapter.chapterNumber),
+    0,
+  );
+  // Nothing persisted yet: there is no chapter to continue FROM, and the
+  // prompt for chapter two is the text of chapter one.
+  if (latest === 0) return null;
+
+  const next = latest + 1;
+
+  /*
+    THE CHAIN RUNS TO THE PLAN OR TO THE BALANCE, WHICHEVER STOPS IT FIRST.
+
+    This is a product decision, taken deliberately (2026-09-11) over a
+    one-chapter-of-runway bound. Auto mode means the reader asked not to be
+    interrupted, and a lookahead that stops one chapter ahead still leaves them
+    waiting at every chapter after the first. So chapter N+1 landing starts
+    N+2, and the story writes itself forward until the plan ends or the credits
+    do.
+
+    The consequence, stated plainly because it is the reason the alternative
+    was considered: a fifteen-chapter auto story can consume the whole
+    remaining balance while the reader is still inside chapter one. That is
+    what was asked for. The two things that make it defensible are that it only
+    ever happens for `auto`, which is opt-in and never the default, and that
+    the balance check below is exact rather than optimistic -- the chain stops
+    at the last chapter the reader can actually afford, and never fires a
+    request it knows will be refused.
+  */
+
+  // The planned ending is an ending. `continue-story` refuses anything past it,
+  // so firing would reserve a credit, take a 4xx, and hang a failure off a
+  // story the reader was enjoying.
+  if (next > plannedChapterCountOf(story)) return null;
+
+  /*
+    ONE CHAPTER AT A TIME, AND ONE REQUEST PER CHAPTER.
+
+    The in-flight check is what sequences the whole feature: chapter N+1 may
+    only start once chapter N has finished streaming and been persisted,
+    because `continue-story` numbers the new chapter from what is stored and
+    two concurrent runs would both claim the same number.
+
+    `hasGenerationForChapter` is then the once-per-chapter guard, and it counts
+    every phase including `error`. A duplicate request reserves the same
+    chapter, is refused 409 (KTH01), and then becomes the newest session the
+    reader follows -- showing a failure tail over a chapter that was being
+    written successfully the whole time. A failed attempt does not silently
+    re-fire either; retrying is a decision, and there is a button for it.
+  */
+  if (storyIsBeingWritten(story.id)) return null;
+  if (hasGenerationForChapter(story.id, next)) return null;
+  // Survives `pruneFinished`, which `hasGenerationForChapter` does not. See
+  // `failedAutoChapters`: without this, a chapter that failed became eligible
+  // to be bought again the moment its session aged out of the store.
+  if (failedAutoChapters.has(autoChapterKey(story.id, next))) return null;
+
+  /*
+    A reader who cannot pay for this must never be put in front of copy saying
+    their next chapter is on its way. The server answers 402 and refunds
+    nothing because nothing was charged, but the client would already have said
+    "Chapter N+1 is being written" -- and there is no tap here for them to
+    regret, so the lie is entirely ours. The balance the app holds can be
+    stale, which is why `ChapterEnd` also reads the session's phase rather than
+    its existence: a 402 that gets through still renders as a failure and a
+    retry, never as progress.
+  */
+  /*
+    THE PRICE OF THE CHAPTER THIS ACTUALLY IS, not of a chapter in general.
+
+    Since migration 00077 a continuation costs one credit for its text and a
+    second if the story illustrates its chapters. Checking against the text
+    credit alone would let the chain fire its last chapter with exactly one
+    credit in hand, take a 402 for a two-credit reservation, and hang a failure
+    off the end of a story the reader was enjoying -- which is precisely the
+    outcome the balance check exists to prevent, arrived at by being one
+    constant out of date.
+  */
+  if (credits < chapterCost(story)) return null;
+
+  return next;
+}
+
+export type WriteAheadInput = {
+  story: Story;
+  /** The viewer's balance, as this client last knew it. */
+  credits: number;
+  /**
+   * The directions to OFFER, resolved only if a chapter is actually going to
+   * be written.
+   *
+   * A thunk because this runs again on every chunk the currently-streaming
+   * chapter publishes, so deriving eagerly would be a few hundred wasted
+   * passes per chapter.
+   *
+   * It returns the whole ranked list, not a winner. Auto mode's choice is the
+   * SERVER's: `chooseDirection` reads how the last chapter actually ended and
+   * picks the direction it earned, which a client-side sort cannot do -- the
+   * plan beat outranks an open hook whatever the chapter just did. An empty
+   * list is "Katha decides", the same thing the surprise-me path sends.
+   */
+  resolveDirections?: () => readonly { id: string; prompt: string }[];
+};
+
+/** Start the write-ahead chapter if {@link autoChapterToWriteAhead} allows one. */
+export function startAutoChapterAhead(
+  input: WriteAheadInput,
+): GenerationSession | null {
+  const { story, credits, resolveDirections } = input;
+  const next = autoChapterToWriteAhead(story, credits);
+  if (next === null) return null;
+  return startChapterGeneration({
+    story,
+    nextChapterNumber: next,
+    isFinale: next >= plannedChapterCountOf(story),
+    // No `direction`: in auto mode the server chooses among the offer. Sending
+    // one here would be the client deciding and the model rubber-stamping.
+    directionsOffered: resolveDirections?.(),
+  });
+}
+
 export function findStoryGeneration(storyId: string): GenerationSession | null {
   let found: GenerationSession | null = null;
   for (const record of records.values()) {
@@ -838,6 +1205,23 @@ export function useGeneration(id: string | null): GenerationSession | null {
   return sessions.find((session) => session.id === id) ?? null;
 }
 
+/**
+ * The session writing one chapter, re-read on every publish.
+ *
+ * The chapter end asks this rather than calling `generationForChapter` in
+ * render, because the answer CHANGES underneath a mounted component: a chapter
+ * written ahead of the reader can fail while they are still three pages from
+ * the end of the one before it, and a surface that read the store once would go
+ * on saying it was being written.
+ */
+export function useChapterGeneration(
+  storyId: string,
+  chapterNumber: number,
+): GenerationSession | null {
+  useGenerations();
+  return generationForChapter(storyId, chapterNumber);
+}
+
 export function useStoryGeneration(storyId: string): GenerationSession | null {
   // Subscribing through the snapshot keeps the lookup in step with every
   // publish; the search itself is cheap because only a handful of sessions
@@ -848,6 +1232,7 @@ export function useStoryGeneration(storyId: string): GenerationSession | null {
 
 /** Test seam: forget every session. */
 export function __resetGenerationSessions(): void {
+  failedAutoChapters.clear();
   for (const record of records.values()) stopCoverPoll(record);
   records.clear();
   publish();

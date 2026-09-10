@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "flex-end" },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(15, 14, 12, 0.45)",
+    backgroundColor: colors.scrimStrong,
   },
   sheet: {
     backgroundColor: colors.bg,

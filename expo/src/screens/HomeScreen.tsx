@@ -1,17 +1,21 @@
 import type { ComponentType } from "react";
 import {
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
+// renders a plain View and the screen starts at y=0, under the status bar.
+// The safe-area-context one works on both. `SafeAreaProvider` is already
+// mounted in App.tsx, so this is a swap, not new plumbing.
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Bell, ChevronRight, Flame, Sparkles } from "lucide-react-native";
-import { PrimaryButton } from "@/components/KathaPrimitives";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
 import { greetingName } from "@/lib/profile";
+import { homeCtaCopy, resolveHomeCta } from "@/lib/home-cta";
 import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
 
@@ -200,6 +204,7 @@ function HeaderAction({
   dot = false,
   tint,
   fill,
+  iconSize = 20,
 }: {
   icon: ComponentType<{ size?: number; color?: string; fill?: string }>;
   value?: string;
@@ -220,6 +225,13 @@ function HeaderAction({
   tint?: string;
   /** Fills the glyph, so the flame reads as lit rather than outlined. */
   fill?: string;
+  /**
+   * Glyph size. The default matches the bell, which is a plain outline; a
+   * FILLED glyph at the same nominal size reads noticeably heavier, so the
+   * credit spark is set smaller to sit level with the others rather than
+   * looming over them.
+   */
+  iconSize?: number;
 }) {
   return (
     <Pressable
@@ -233,11 +245,14 @@ function HeaderAction({
         pressed && styles.headerActionPressed,
       ]}
     >
-      <Icon size={20} color={tint ?? colors.strong} fill={fill ?? "none"} />
+      {/* The glyph carries the colour; the NUMBER stays ink.
+          Tinting both made the credit balance a gold number on a warm ground,
+          which is the least legible thing in the header and also the one
+          thing there you actually read. Colour marks what the row is about;
+          black is what makes the value readable. */}
+      <Icon size={iconSize} color={tint ?? colors.strong} fill={fill ?? "none"} />
       {value !== undefined && (
-        <Text style={[styles.headerActionValue, tint ? { color: tint } : null]}>
-          {value}
-        </Text>
+        <Text style={styles.headerActionValue}>{value}</Text>
       )}
       {dot && <View style={styles.headerActionDot} />}
     </Pressable>
@@ -258,6 +273,12 @@ export default function HomeScreen({
   unreadNotifications = 0,
   preferredGenres = [],
   displayName = null,
+  shelfLoaded = false,
+  writingStoryId = null,
+  liveStoryIds = [],
+  savedDraftGenre,
+  onContinueStory,
+  onPaywall,
 }: {
   credits: number;
   generatedStories: Story[];
@@ -298,8 +319,29 @@ export default function HomeScreen({
    * the greeting treats both the same way and simply says the time of day.
    */
   displayName?: string | null;
+  /**
+   * Has the writer's own shelf actually come back?
+   *
+   * `fetchMyStories` turns every failure into an empty array, so without this
+   * a writer with three stories and a bad connection is told to start their
+   * first one. "First story" is a claim; it is only made when the shelf is
+   * known to be empty.
+   */
+  shelfLoaded?: boolean;
+  /** The story being written right now, if any. */
+  writingStoryId?: string | null;
+  /**
+   * Stories a live session is writing. Excluded from the "finish this series"
+   * search: a provisional row is inserted into the shelf as soon as the first
+   * prose reveals, carrying a planned count and one chapter -- exactly the
+   * shape of a part-written series, for a story you are watching being written.
+   */
+  liveStoryIds?: readonly string[];
+  /** The saved brief's genre, `null` if none, `undefined` while unknown. */
+  savedDraftGenre?: string | null;
+  onContinueStory?: (storyId: string, chapterIndex: number) => void;
+  onPaywall?: () => void;
 }) {
-  const isNewUser = generatedStories.length === 0;
   const hour = new Date().getHours();
   const timeOfDay = hour < 12
     ? "Good morning"
@@ -322,8 +364,36 @@ export default function HomeScreen({
 
   const rows = buildFeedRows(stories, preferredGenres, generatedStories);
 
+  const ctaState = resolveHomeCta({
+    stories: generatedStories,
+    credits,
+    shelfLoaded,
+    writingStoryId,
+    liveStoryIds,
+    savedDraftGenre,
+  });
+  const ctaCopy = homeCtaCopy(ctaState);
+  const ctaAction = () => {
+    switch (ctaState.kind) {
+      case "writing":
+        return onStory(ctaState.storyId);
+      case "finish":
+        // Straight into the reader at the last written chapter. The story
+        // page has no write-next control -- the only continuation UI is the
+        // chapter-end module inside the reader -- so routing through it would
+        // be a dead end.
+        return onContinueStory
+          ? onContinueStory(ctaState.storyId, ctaState.written - 1)
+          : onStory(ctaState.storyId);
+      case "paywall":
+        return (onPaywall ?? onCredits ?? onProfile)();
+      default:
+        return onCreate();
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.withTabs}
         showsVerticalScrollIndicator={false}
@@ -369,6 +439,7 @@ export default function HomeScreen({
               icon={Sparkles}
               tint={colors.chromeStar}
               fill={colors.chromeStar}
+              iconSize={16}
               value={String(credits)}
               label={`${credits} credits`}
               onPress={onCredits ?? onProfile}
@@ -384,29 +455,27 @@ export default function HomeScreen({
           </View>
         </View>
 
-        {isNewUser
-          ? (
-            // A reader with nothing generated yet has no "continue" to offer,
-            // so the CTA is the biggest thing on the screen instead of a band
-            // competing with it.
-            <View style={styles.writeCTACard}>
-              <Text style={styles.writeCTATitle}>Start your first story</Text>
-              <Text style={styles.writeCTASubtitle}>
-                Genre, characters, your idea. Katha brings it to life
-              </Text>
-              <View style={styles.writeCTAButtonWrap}>
-                <PrimaryButton onPress={onCreate}>
-                  Create a story
-                </PrimaryButton>
-              </View>
-            </View>
-          )
-          // The invitation sits above the shelves, not between them: the top
-          // of the scroll is where it reads as an offer rather than as the
-          // footer of whatever section preceded it. It also holds the visual
-          // weight the removed "Continue reading" hero card used to carry, so
-          // the page still opens on something rather than on a rail eyebrow.
-          : <WriteAnotherCTA onPress={onCreate} />}
+        {/*
+          ONE CARD, FIVE STATES.
+
+          There used to be two components here -- a bespoke first-run block and
+          the CTA -- rendering the same invitation into the same slot, which is
+          why the copy could never move together. Now it is one card whose
+          words come from `resolveHomeCta`: what Katha is writing right now, a
+          series left half-finished, a brief saved and never generated, a
+          balance too small to start, or the plain invitation. See
+          `lib/home-cta.ts` for the ordering and why it is that order.
+
+          It stays above the shelves. The top of the scroll is where an
+          invitation reads as an offer rather than as the footer of whatever
+          section preceded it.
+        */}
+        <WriteAnotherCTA
+          onPress={ctaAction}
+          heading={ctaCopy.heading}
+          support={ctaCopy.support}
+          tone={ctaCopy.tone}
+        />
 
         {/* The editorial stack. Every row is named, every row scrolls its own
             axis, and a row that would render empty was already filtered out
@@ -508,32 +577,6 @@ const styles = StyleSheet.create({
   },
 
   /* ── Write CTA (new user) ── */
-  writeCTACard: {
-    marginHorizontal: spacing.xl,
-    padding: spacing.xl,
-    borderRadius: radius.xl,
-    backgroundColor: colors.ink,
-    boxShadow: shadows.raised,
-  },
-  writeCTATitle: {
-    fontFamily: fonts.display,
-    color: colors.surface,
-    fontSize: 24,
-    lineHeight: 28,
-  },
-  writeCTASubtitle: {
-    marginTop: spacing.related,
-    fontFamily: fonts.ui,
-    // `tertiary` reads as muted body copy on the light ground it was tuned
-    // for, and does the same job here: on `colors.ink` it is the lightest
-    // neutral in the ramp, so it still lands as "quieter than the title"
-    // without inventing a one-off white-at-70%-opacity that isn't a token.
-    color: colors.tertiary,
-    fontWeight: "700",
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  writeCTAButtonWrap: { marginTop: spacing.betweenGroups },
 
   /* ── See everything (bottom exit into Explore) ── */
   seeEverythingRow: {

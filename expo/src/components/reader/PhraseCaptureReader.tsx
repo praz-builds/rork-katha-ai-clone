@@ -93,6 +93,16 @@ export type PhraseCaptureReaderProps = {
    * a void because the sign-in gate never reached the reader.
    */
   onRequireSignIn?: () => void;
+  /**
+   * Which chapter the reader is on, forwarded up rather than swallowed.
+   *
+   * This wrapper consumes `ReaderScreen`'s `onChapterChange` for its own
+   * selection bookkeeping, and consuming it without forwarding was the same as
+   * deleting the seam for every caller above -- the same failure every other
+   * prop in this list carries a note about. Forwarded on those grounds rather
+   * than for a current consumer.
+   */
+  onChapterChange?: (chapter: Chapter, chapterIndex: number) => void;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -146,6 +156,7 @@ export default function PhraseCaptureReader({
   onRequireSignIn,
   onReimagineStarted,
   onListen,
+  onChapterChange,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
   const savedPhrasesRef = useRef<SavedPhrase[]>([]);
@@ -502,13 +513,17 @@ export default function PhraseCaptureReader({
     );
   }, [beginSelection, handleWordPress, pendingKeys, savedPhrases, screenReaderEnabled, selection, story.id]);
 
-  const onChapterChange = useCallback((chapter: Chapter) => {
-    setActiveChapter(chapter);
-    // A range is a set of indices into ONE chapter's word list. Carrying it
-    // across a chapter change would light an unrelated run of words in the new
-    // one.
-    clearSelection();
-  }, [clearSelection]);
+  const handleChapterChange = useCallback(
+    (chapter: Chapter, chapterIndex: number) => {
+      setActiveChapter(chapter);
+      // A range is a set of indices into ONE chapter's word list. Carrying it
+      // across a chapter change would light an unrelated run of words in the
+      // new one.
+      clearSelection();
+      onChapterChange?.(chapter, chapterIndex);
+    },
+    [clearSelection, onChapterChange],
+  );
 
   return (
     <GestureHandlerRootView style={styles.flex}>
@@ -519,7 +534,7 @@ export default function PhraseCaptureReader({
             onBack={onBack}
             initialChapterIndex={initialChapterIndex}
             renderWord={renderWord}
-            onChapterChange={onChapterChange}
+            onChapterChange={handleChapterChange}
             autoplay={autoplay}
             renderChapterEnd={renderChapterEnd}
             liveSessionId={liveSessionId}

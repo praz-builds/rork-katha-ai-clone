@@ -1,5 +1,5 @@
 /**
- * Product-owner feedback on the Craft character sheet and the Review screen.
+ * Product-owner feedback on the Craft character sheet and the create flow.
  *
  * The headline bug: the portrait panel drew the first letter of the
  * character's NAME whenever the image was ready and never mounted an <Image>
@@ -14,7 +14,7 @@
  * removal of the "Edit" button, Reimagine re-reading the CURRENT form fields
  * rather than a stale closure, the unsaved-changes friction dialog, "@" on the
  * moment composer's cast chips, Chapter plan leaving More options, and the
- * review screen's strength meter.
+ * direction step that replaced the review screen.
  */
 import React, { useState } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
@@ -79,7 +79,13 @@ const BASE_DRAFT: StudioCreateDraft = {
  * every `setDraft` would be discarded and a saved character would never appear
  * in the cast list.
  */
-function Harness({ initial = BASE_DRAFT }: { initial?: StudioCreateDraft }) {
+function Harness({
+  initial = BASE_DRAFT,
+  onGenerate = () => undefined,
+}: {
+  initial?: StudioCreateDraft;
+  onGenerate?: (choice?: { direction?: string; beats?: string[] }) => void;
+}) {
   const [draft, setDraft] = useState<StudioCreateDraft>(initial);
   return (
     <CreateBriefFlow
@@ -87,7 +93,7 @@ function Harness({ initial = BASE_DRAFT }: { initial?: StudioCreateDraft }) {
       isAnonymous={false}
       draft={draft}
       setDraft={setDraft}
-      onGenerate={() => undefined}
+      onGenerate={onGenerate}
       onBack={() => undefined}
     />
   );
@@ -103,9 +109,9 @@ async function openCharacterSheet() {
   await fireEvent.press(screen.getByLabelText("Add a character"));
 }
 
-async function fillCharacter(name: string, description: string) {
+async function fillCharacter(name: string, appearance: string) {
   await fireEvent.changeText(screen.getByLabelText("Name"), name);
-  await fireEvent.changeText(screen.getByLabelText("Description"), description);
+  await fireEvent.changeText(screen.getByLabelText("Appearance"), appearance);
 }
 
 beforeEach(() => {
@@ -166,7 +172,7 @@ describe("character portrait", () => {
           ...BASE_DRAFT,
           characters: [{
             name: "Priya",
-            description: "A baker.",
+            appearance: "A baker.",
             isHero: true,
             portraitUrl: PORTRAIT_URL,
             portraitStatus: "ready",
@@ -207,10 +213,9 @@ describe("character portrait", () => {
     await screen.findByText("Reimagine");
 
     // Change every field the call sends, then Reimagine. A stale closure here
-    // would resend the first description and look like the model ignoring the
+    // would resend the first appearance and look like the model ignoring the
     // user rather than like a client bug.
     await fireEvent.changeText(screen.getByLabelText("Name"), "Naina");
-    await fireEvent.changeText(screen.getByLabelText("Description"), "A retired cartographer.");
     await fireEvent.changeText(screen.getByLabelText("Appearance"), "Ink-stained cuffs.");
 
     await act(async () => {
@@ -220,7 +225,6 @@ describe("character portrait", () => {
     expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(2);
     expect(mockGenerateCharacterImage.mock.calls[1][0]).toMatchObject({
       name: "Naina",
-      description: "A retired cartographer.",
       appearance: "Ink-stained cuffs.",
     });
   });
@@ -279,9 +283,9 @@ describe("unsaved character changes", () => {
   it("offers Keep editing instead of an unusable Save when the name is empty", async () => {
     await render(<Harness />);
     await openCharacterSheet();
-    // Description only: `saveCharacter` no-ops without a name, so a "Save"
+    // Appearance only: `saveCharacter` no-ops without a name, so a "Save"
     // button here would be a dead end rather than a way out.
-    await fireEvent.changeText(screen.getByLabelText("Description"), "A baker.");
+    await fireEvent.changeText(screen.getByLabelText("Appearance"), "A baker.");
 
     await fireEvent.press(screen.getByLabelText("Back to review and start"));
 
@@ -294,7 +298,7 @@ describe("unsaved character changes", () => {
 describe("more options", () => {
   const draftWithCastAndBeats: StudioCreateDraft = {
     ...BASE_DRAFT,
-    characters: [{ name: "Priya", description: "A baker.", isHero: true }],
+    characters: [{ name: "Priya", appearance: "A baker.", isHero: true }],
     beats: ["The first letter arrives.", "The keeper writes back."],
   };
 
@@ -305,9 +309,13 @@ describe("more options", () => {
     expect(screen.getByText("@Priya")).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText("Add Priya to this moment"));
-    // The moment text reaches the prompt and is echoed on the review screen,
-    // so the "@" stays in the chip's label and out of the value.
-    expect(screen.getByPlaceholderText("Add a moment").props.value).toBe("Priya");
+    // The moment text reaches the prompt verbatim, so the "@" stays in the
+    // chip's label and out of the value.
+    expect(
+      screen.getByPlaceholderText(
+        "Moments to include in general or between characters",
+      ).props.value,
+    ).toBe("Priya");
   });
 
   it("does not show the chapter plan", async () => {
@@ -319,21 +327,95 @@ describe("more options", () => {
   });
 });
 
-describe("review screen", () => {
-  it("shows brief strength as an accessible meter, not a card", async () => {
-    // Idea + premise = 2 of the 4 scored slots, so "Good".
-    await render(<Harness initial={{ ...BASE_DRAFT, whereAndWhen: "A tidal island, 1974" }} />);
-    await fireEvent.press(screen.getByText("Create · 3 credits"));
+describe("the direction step, in place of review", () => {
+  it("replaces the review screen with the reader's own direction chips", async () => {
+    const onGenerate = jest.fn();
+    await render(<Harness onGenerate={onGenerate} />);
+    // The button no longer states a price: the number moves with chapter art,
+    // cover mode and chapter count, so putting it on the button meant two
+    // places to be wrong about the same thing.
+    await fireEvent.press(screen.getByText("Create story"));
 
-    const meter = screen.getByRole("progressbar");
-    // A coloured bar alone tells a screen reader nothing; the level and the
-    // count have to be in the name.
-    expect(meter.props.accessibilityLabel).toContain("Brief strength");
-    expect(meter.props.accessibilityLabel).toContain("Good");
-    expect(meter.props.accessibilityValue).toEqual({ min: 0, max: 4, now: 2 });
-    expect(screen.getByText("2/4")).toBeTruthy();
+    // The question the reader gets between chapters, asked before chapter one
+    // exists -- not a restatement of the brief the writer just filled in.
+    expect(await screen.findByText("Where does it begin?")).toBeTruthy();
+    expect(screen.queryByText("Here is what Katha will write")).toBeNull();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    // Nothing is spent by arriving here.
+    expect(onGenerate).not.toHaveBeenCalled();
 
-    // The old card's own line is gone.
-    expect(screen.queryByText("2 of 4 filled")).toBeNull();
+    // Shaping is unconfigured in this suite, so no opening can be derived and
+    // the step degrades to the writer's own words -- honestly, and with the
+    // way on already open rather than behind one more tap.
+    const submit = await screen.findByTestId("create-direction-composer-submit");
+    await fireEvent.changeText(
+      screen.getByTestId("create-direction-composer-input"),
+      "Open on the night the lamp fails.",
+    );
+    await fireEvent.press(submit);
+
+    // The writer's sentence travels as chapter one's beat, unaltered.
+    expect(onGenerate).toHaveBeenCalledTimes(1);
+    expect(onGenerate.mock.calls[0][0]).toMatchObject({
+      direction: "Open on the night the lamp fails.",
+    });
+  });
+
+  it("starts with no direction at all when the writer asks for a surprise", async () => {
+    const onGenerate = jest.fn();
+    await render(<Harness onGenerate={onGenerate} />);
+    await fireEvent.press(screen.getByText("Create story"));
+
+    await fireEvent.press(
+      await screen.findByTestId("create-direction-let-katha-decide"),
+    );
+
+    // `undefined`, never an invented opening: a generic instruction would fit
+    // every story in the app and tell the model something this one never said.
+    expect(onGenerate).toHaveBeenCalledTimes(1);
+    expect(onGenerate.mock.calls[0][0].direction).toBeUndefined();
+  });
+
+  it("fires one generation on a double tap, not two", async () => {
+    const onGenerate = jest.fn();
+    await render(<Harness onGenerate={onGenerate} />);
+    await fireEvent.press(screen.getByText("Create story"));
+
+    const submit = await screen.findByTestId("create-direction-composer-submit");
+    // Two presses as two separate events, which is what a real double tap
+    // produces. Each one would reserve credits and write a story.
+    await act(async () => {
+      fireEvent.press(submit);
+    });
+    await act(async () => {
+      fireEvent.press(submit);
+    });
+
+    expect(onGenerate).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The Craft sheet is where the writer sees a portrait and the cover style pick
+ * on the same screen. `generate-character-image` accepted no style at all, so
+ * a writer who chose Watercolour got a house-style cast next to a watercolour
+ * cover and read the picker as doing nothing.
+ */
+describe("character portrait style", () => {
+  it("draws the draft portrait in the style the brief is set to", async () => {
+    mockGenerateCharacterImage.mockResolvedValue({ url: PORTRAIT_URL });
+    await render(<Harness initial={{ ...BASE_DRAFT, imageStyle: "watercolor" }} />);
+    await openCharacterSheet();
+    await fillCharacter("Priya", "A baker with flour on her sleeves.");
+
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Create image"));
+    });
+
+    expect(mockGenerateCharacterImage.mock.calls[0][0]).toMatchObject({
+      name: "Priya",
+      appearance: "A baker with flour on her sleeves.",
+      imageStyle: "watercolor",
+    });
   });
 });

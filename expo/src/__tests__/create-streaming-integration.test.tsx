@@ -366,7 +366,7 @@ describe("a generation hands over finished pages, never a typewriter", () => {
     // the chapter is written, and no "· writing" duplicating what the writing
     // tail already says where the writing is happening.
     const writing = visibleText(view);
-    expect(writing).toContain("Page one");
+    expect(writing).toContain("Page 1");
     expect(writing).not.toMatch(/Page \d+ of \d+ · writing/);
     expect(writing).toContain("Still writing...");
 

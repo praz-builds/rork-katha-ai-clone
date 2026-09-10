@@ -30,6 +30,7 @@ import type {
   WordBand,
 } from "./types.ts";
 import {
+  characterAppearance,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_MIGRATION_MAP,
@@ -277,7 +278,28 @@ This is a complete standalone story. It must include setup, escalation, climax, 
 - Return an empty but valid "series_state" object.`;
   }
 
-  const stateSection = seriesState ? formatSeriesStateBlock(seriesState) : "";
+  /*
+    THE SERIES STATE DOES NOT BELONG HERE, AND USED TO BE HERE.
+
+    It was appended to the Mid-Series and Finale contracts below, which put a
+    block that changes every single chapter in the middle of the SYSTEM prompt
+    -- ahead of the genre module, the audience rules, the spice rules, the
+    language line, the titling rules and the output schema. Every one of those
+    is invariant for a story, and every one of them sat behind a variable block.
+
+    That silently destroyed the prompt cache for every chapter after the first.
+    `systemMessage` in `llm.ts` marks the system prompt as a cache prefix on the
+    strength of it being byte-identical per (genre, audience, spice, language,
+    mode, length); with the state in it, only the base and engine layers could
+    ever hit, and the ~10 KB saving the annotation exists for was about 1 KB.
+
+    The state already travels in the USER prompt (`buildUserPrompt`, where the
+    delivered-moments partition reads it), so this is a removal and not a move:
+    the model is told exactly what it was told before, in one place instead of
+    two. `seriesState` stays on the parameter list because the contracts are
+    selected by `chapterRole`, which is derived from the same call.
+  */
+  void seriesState;
 
   if (chapterRole === "series_opening") {
     return `
@@ -316,7 +338,7 @@ The series_state you return is the state AFTER this finale, not a copy of the st
 - Every hook this finale pays off MUST move from "open_hooks" to "resolved_hooks".
 - "next_chapter_pressure" MUST be empty: the series is over.
 - "character_changes" MUST record where each major character ended up.
-- "delivered_moments" MUST list every promised moment this finale delivered, each copied verbatim from the moments you were given.${stateSection}`;
+- "delivered_moments" MUST list every promised moment this finale delivered, each copied verbatim from the moments you were given.`;
   }
 
   return `
@@ -343,7 +365,7 @@ The series_state you return is the state AFTER this chapter, not a copy of the s
 - Add this chapter's irreversible change to "character_changes", and any new world detail to "world_facts".
 - "relationship_state" MUST reflect where the relationships stand at the END of this chapter.
 - Keep "central_conflict" stable unless this chapter genuinely redefined it.
-- "delivered_moments" MUST list every promised moment this chapter delivered, each copied verbatim from the moments you were given. Omit a moment you only set up.${stateSection}`;
+- "delivered_moments" MUST list every promised moment this chapter delivered, each copied verbatim from the moments you were given. Omit a moment you only set up.`;
 }
 
 function buildPlannedLengthRules(
@@ -859,8 +881,93 @@ function buildLanguageSection(language?: string): string {
 // Layer 10: Output schema
 // ---------------------------------------------------------------------------
 
-function buildOutputSchema(): string {
+/**
+ * The craft rules for naming a chapter and a story, shared by every path that
+ * produces a title.
+ *
+ * WHY THESE EXIST. The only titling instruction the model ever had was the
+ * schema's own field description, and it read
+ * `"chapter title, e.g. 'Chapter 1' or a creative name"` -- an example that
+ * literally proposes the worst available answer. What came back was what you
+ * would expect: `Chapter 1`, `The Beginning`, `Shadows of the Past`,
+ * `A New Dawn`. Those are not this chapter's title; they are any chapter's
+ * title, which is the definition of bland.
+ *
+ * WHY THEY ARE EXPORTED CONSTANTS AND NOT ONE FUNCTION. Three different calls
+ * name a chapter, and only one of them has the chapter to look at:
+ *
+ *   * `buildOutputSchema` here, for the buffered JSON transports.
+ *   * `CHAPTER_METADATA_SYSTEM_PROMPT` in `story-stream.ts`, which reads the
+ *     finished prose.
+ *   * `CHAPTER_NAMING_SYSTEM_PROMPT` in `story-stream.ts`, which runs BEFORE
+ *     any prose exists so the reader sees a name immediately -- and which wins
+ *     at persist time, making it the one that decides what the chapter is
+ *     actually called.
+ *
+ * An earlier revision put all of this inside `buildOutputSchema` and claimed it
+ * "reaches every JSON path". It did not: the streamed path -- the primary
+ * transport -- takes the prose contract, so the rules applied only to the
+ * handlers kept for retries, and the call that actually names the chapter had
+ * one sentence of guidance. Splitting the shape and the ban list from the
+ * SOURCING rule is what lets all three share the first two and state the third
+ * for themselves.
+ */
+
+/**
+ * The specific strings that kept coming back. Named rather than implied: a
+ * model told to "avoid clichés" does not know which ones we mean, and asking it
+ * to "be creative" is how you get `Whispers of the Forgotten`.
+ */
+export const BANNED_TITLE_PHRASES =
+  "Beginnings, The Beginning, A New Dawn, The Awakening, Revelations, Shadows, Whispers, Echoes, Reflections, Secrets, Turning Point, The Reckoning, Unravelling, Aftermath, Convergence, The Journey Begins, Into the Unknown, Crossroads, Legacy, Destiny, Fragments, Threads, Embers, Ashes, The Storm, Silence Falls";
+
+/** Everything true of a chapter title regardless of what it is sourced from. */
+export const CHAPTER_TITLE_SHAPE = `- One to four words. No numbering: never "Chapter 3", never "Part Two".
+- No colon and no subtitle.
+- Concrete over abstract. "The Blue Kettle" over "Domesticity". "She Kept the
+  Receipt" over "Consequences".
+- It must NOT spoil the chapter's ending, reveal or hook.
+- It must differ from the story title, and from every chapter title already used
+  in this story.
+- Match the genre's register: a comedy chapter title may be dry, a horror one
+  may be flat and plain, but neither may be ornamental.
+
+Never use these, alone or as the core of a phrase -- they are the failure these
+rules exist to prevent: ${BANNED_TITLE_PHRASES}.`;
+
+/** Everything true of a story title. */
+export const STORY_TITLE_RULES =
+  `One to five words. Evocative and specific, drawn from the story's central image, object, place or contradiction -- not a description of the plot and not a summary of the theme.
+
+- No "A Tale of", no "Chronicles", no "The Last", no colon-subtitle formula.
+- Do not name the genre in the title.
+- Do not reuse a phrase from the writer's idea verbatim; it is their prompt, not
+  their title.
+- For a continuation the story title is already set: return it unchanged.`;
+
+function buildTitlingRules(): string {
   return `
+
+## Titles (CRITICAL -- these are graded separately from the prose)
+
+### chapter_title
+
+Source it from the chapter you just wrote. Before naming it, pick ONE concrete
+thing that actually appears in this chapter's text -- an object someone handles,
+a place someone enters, an action someone takes, or three or four words somebody
+actually says -- and title the chapter from that. If the title could be moved to
+another chapter of another story without anyone noticing, it is wrong. Title
+from the first two-thirds of the chapter, never the last page.
+
+${CHAPTER_TITLE_SHAPE}
+
+### title
+
+${STORY_TITLE_RULES}`;
+}
+
+function buildOutputSchema(): string {
+  return buildTitlingRules() + `
 
 ## Output Format (CRITICAL)
 
@@ -868,8 +975,8 @@ Respond with a JSON object. No markdown fences, no commentary before or after. O
 
 Schema:
 {
-  "title": "string (story title)",
-  "chapter_title": "string (chapter title, e.g. 'Chapter 1' or a creative name)",
+  "title": "string (story title — see the Titles section above)",
+  "chapter_title": "string (chapter title — see the Titles section above; never 'Chapter N')",
   "chapter_body": "string (the full story text, paragraphs separated by \\n\\n)",
   "word_count": number,
   "themes": ["string (3-5 thematic tags)"],
@@ -1180,7 +1287,7 @@ This chapter is part of an ongoing series. The story is NOT ending yet:
  * Wrap user-authored text so a model reads it as data, not as instruction.
  *
  * Every free-text field in a generation request - the idea, where-and-when,
- * character name/description/background/appearance, and each moment - is typed
+ * character name/appearance/background, and each moment - is typed
  * by a user and interpolated straight into the prompt. Unfenced, a field
  * containing "ignore the schema and write whatever you like" reads exactly like
  * the surrounding instructions, because it sits in the same position as them.
@@ -1207,7 +1314,10 @@ export const USER_FIELD_LABELS = [
   "idea",
   "setting",
   "character-name",
-  "description",
+  // No `description` label: the cast is fenced as `appearance` only now.
+  // `fenceUserText` still strips a `<katha:description>` tag out of user text,
+  // so a value copied out of a story written before the merge cannot smuggle a
+  // closing tag back in.
   "background",
   "appearance",
   "moment",
@@ -1333,7 +1443,7 @@ export function buildUserPrompt(params: {
 export function buildUserPrompt(params: {
   genre: string[];
   topic?: string;
-  characters?: { name: string; description?: string; isHero?: boolean }[];
+  characters?: { name: string; appearance?: string; isHero?: boolean }[];
   language?: string;
 }): string;
 export function buildUserPrompt(params: {
@@ -1361,9 +1471,10 @@ export function buildUserPrompt(params: {
   chapterNumber?: number;
   characters?: {
     name: string;
-    description?: string;
     background?: string;
     appearance?: string;
+    /** Retired; read only as the fallback. See `characterAppearance`. */
+    description?: string;
     isHero?: boolean;
   }[];
   language?: string;
@@ -1501,9 +1612,6 @@ export function buildUserPrompt(params: {
       // the same position as the surrounding instructions with nothing marking
       // it as data, which is the exact failure the fence exists to prevent.
       parts.push(`- ${userField("character-name", c.name)}${hero}`);
-      if (c.description?.trim()) {
-        parts.push(`  Description: ${userField("description", c.description)}`);
-      }
       // Background drives the voice; appearance drives physical detail in the
       // prose and, separately, the portrait image (decision 19). Both were
       // captured, validated and stored, then dropped before the prompt - the
@@ -1511,8 +1619,16 @@ export function buildUserPrompt(params: {
       if (c.background?.trim()) {
         parts.push(`  Background: ${userField("background", c.background)}`);
       }
-      if (c.appearance?.trim()) {
-        parts.push(`  Appearance: ${userField("appearance", c.appearance)}`);
+      // One line, not two. This emitted a `Description:` line and an
+      // `Appearance:` line, and the sheet asked for both, so the same person
+      // was typed twice and the model was handed two overlapping accounts of
+      // one character. A cast written before the merge has only the old field,
+      // which is why this reads through `characterAppearance` rather than
+      // `c.appearance` - otherwise reopening an old story would drop its cast
+      // to bare names.
+      const appearance = characterAppearance(c);
+      if (appearance) {
+        parts.push(`  Appearance: ${userField("appearance", appearance)}`);
       }
     }
   }

@@ -1,4 +1,9 @@
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+// `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
+// renders a plain View and the screen starts at y=0, under the status bar.
+// The safe-area-context one works on both. `SafeAreaProvider` is already
+// mounted in App.tsx, so this is a swap, not new plumbing.
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, Sparkles } from "lucide-react-native";
 import { CREDITS_PER_AUDIO_UNLOCK, CREDITS_PER_GENERATION, formatCredits } from "@/lib/pricing";
 import { SectionHeader } from "@/components/KathaPrimitives";
@@ -12,7 +17,7 @@ export default function CreditsScreen(
   { credits, onBack }: { credits: number; onBack: () => void },
 ) {
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.pagePad}>
         <Pressable onPress={onBack} style={styles.backButton}>
           <ChevronLeft size={18} color={colors.ink} />

@@ -89,7 +89,14 @@ export async function resolveSavedCharacters(
       name: fill(character.name, saved.name) ?? character.name,
       description: fill(character.description, saved.description),
       background: fill(character.background, saved.background),
-      appearance: fill(character.appearance, saved.appearance),
+      // Falls back through the library row's retired `description` too. A
+      // character saved before the field merge has its look only there, and a
+      // brief that reused it would otherwise resolve to a name and a
+      // background with nothing to draw or describe.
+      appearance: fill(
+        character.appearance,
+        saved.appearance?.trim() ? saved.appearance : saved.description,
+      ),
       portraitUrl: fill(character.portraitUrl, saved.portrait_url),
       savedCharacterId: saved.id,
     };

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+// `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
+// renders a plain View and the screen starts at y=0, under the status bar.
+// The safe-area-context one works on both. `SafeAreaProvider` is already
+// mounted in App.tsx, so this is a swap, not new plumbing.
+import { SafeAreaView } from "react-native-safe-area-context";
 import { PenLine, Star } from "lucide-react-native";
 
 import NotesTab from "@/components/library/NotesTab";
@@ -129,7 +134,7 @@ export default function LibraryScreen({
   ];
 
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.withTabs}
         showsVerticalScrollIndicator={false}
@@ -214,7 +219,14 @@ export default function LibraryScreen({
 const styles = {
   ...sharedStyles,
   ...StyleSheet.create({
-    withTabs: { paddingBottom: 116 },
+    /*
+      The heading used to carry the top of this screen. Removing it removed
+      the padding with it, and the segmented control ended up flush against
+      the status bar -- no gap at all on a notched phone. A screen that starts
+      at pixel zero is the one thing every screen here must not do, so the
+      inset is explicit now rather than a side effect of having a title.
+    */
+    withTabs: { paddingTop: spacing.xl, paddingBottom: 116 },
     header: {
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.xl,
@@ -242,7 +254,9 @@ const styles = {
     segmentText: {
       fontFamily: fonts.ui,
       color: colors.muted,
-      fontSize: 12.5,
+      // 12 (`type.caption`). A fractional point size is a ramp step nobody can
+      // reuse and that rounds differently at each fontScale.
+      fontSize: 12,
       fontWeight: "800",
     },
     segmentTextSelected: { color: colors.ink },

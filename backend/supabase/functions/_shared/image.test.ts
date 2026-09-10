@@ -3,6 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  generateCharacterPortrait,
   generateCoverImage,
   generateDraftCharacterPortrait,
   isModerationError,
@@ -443,5 +444,191 @@ Deno.test("a portrait with no reference is byte-for-byte the request it always w
   for (const attempt of attempts) {
     assertEquals(attempt.referenceImage, undefined);
     assert(!attempt.prompt.includes("STYLE AND APPEARANCE REFERENCE ONLY"));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The writer's picked image style
+// ---------------------------------------------------------------------------
+
+// One pick, one book.
+//
+// `generateStoryMedia` draws the cover and every cast portrait from the same
+// `stories.image_style` (migration 00075), and the two go out on separate calls
+// minutes apart. A style carried on one and not the other is invisible in code
+// review and obvious on the shelf: an anime cover fronting a cast drawn in the
+// house painterly style.
+//
+// It must also survive the safety ladder. The ladder rebuilds the prompt from
+// scratch at each rung, so a style threaded only into level 0 would be dropped
+// by the first content-filter rejection - meaning the writers whose briefs
+// press hardest against a filter are exactly the ones who never get the look
+// they chose.
+Deno.test("the picked image style reaches the cover at every safety level", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCoverImage({
+        ...cover,
+        // What `media.ts` passes straight through from the story row.
+        artStyle: "anime",
+      }),
+  );
+
+  assert(
+    attempts.length >= 4,
+    `expected a full ladder, saw ${attempts.length}`,
+  );
+  for (const [index, attempt] of attempts.entries()) {
+    assert(
+      attempt.prompt.includes("modern anime illustration"),
+      `attempt ${index} (${attempt.model}) lost the style: ${attempt.prompt}`,
+    );
+    // The override REPLACES the genre's style clause. Both in one prompt is
+    // two contradictory instructions, which the model splits the difference on.
+    assert(
+      !attempt.prompt.includes("dark atmospheric"),
+      `attempt ${index} kept the horror style clause beside the override`,
+    );
+  }
+});
+
+Deno.test("a cast portrait is drawn in the story's style, not the house style", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCharacterPortrait(
+        cover.storyId,
+        "22222222-2222-2222-2222-222222222222",
+        {
+          name: "Mira",
+          description: "a lighthouse keeper",
+          appearance: "tall",
+        },
+        "watercolor",
+      ),
+  );
+
+  assert(attempts.length > 0, "the portrait chain made no request");
+  for (const [index, attempt] of attempts.entries()) {
+    assert(
+      attempt.prompt.includes("delicate watercolour painting"),
+      `attempt ${index} lost the style: ${attempt.prompt}`,
+    );
+    assert(
+      !attempt.prompt.includes("Painterly book-illustration style"),
+      `attempt ${index} kept the house style beside the override`,
+    );
+  }
+});
+
+// Absent and unrecognised are the same answer, and it is the look every story
+// written before the picker had. A raw string reaching the prompt would put
+// whatever a stale client sent into a paid provider request.
+Deno.test("an unknown image style draws the genre's own look", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () => generateCoverImage({ ...cover, artStyle: "oil-painting" }),
+  );
+
+  assert(attempts.length > 0);
+  for (const attempt of attempts) {
+    assert(attempt.prompt.includes("dark atmospheric"));
+    assert(!attempt.prompt.includes("oil-painting"));
+  }
+});
+
+// A cast row written before Description was retired has its look only there,
+// and `media.ts` draws portraits straight from those rows. Skipping them would
+// leave every pre-merge story's cast permanently portrait-less.
+Deno.test("a portrait is drawn from a legacy description when there is no appearance", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCharacterPortrait(
+        cover.storyId,
+        "33333333-3333-3333-3333-333333333333",
+        { name: "Mira", description: "a lighthouse keeper, weathered hands" },
+      ),
+  );
+
+  assert(attempts.length > 0, "the portrait chain made no request");
+  assert(attempts[0].prompt.includes("a lighthouse keeper"));
+});
+
+// Every rung of the ladder shortens the ONE free-text field there is now, and
+// a rung that shortened it to nothing would ask the provider to illustrate the
+// empty string -- the portrait equivalent of "suggesting undefined".
+Deno.test("no rung of the portrait ladder illustrates an empty subject", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCharacterPortrait(
+        cover.storyId,
+        "44444444-4444-4444-4444-444444444444",
+        { name: "Mira", appearance: "tall, cropped grey hair. Oilskin coat." },
+      ),
+  );
+
+  assert(attempts.length > 0);
+  for (const [index, attempt] of attempts.entries()) {
+    assert(
+      !attempt.prompt.includes("illustration of ."),
+      `attempt ${index} lost its subject: ${attempt.prompt}`,
+    );
+    assert(!attempt.prompt.includes("undefined"), `attempt ${index}`);
+  }
+  // The last rung keeps the first clause, not the whole look.
+  const last = attempts[attempts.length - 1].prompt;
+  assert(last.includes("tall"), last);
+  assert(!last.includes("Oilskin"), last);
+});
+
+// A character whose only text is punctuation survives a `.trim()` on the raw
+// field and then sanitizes down to nothing. Filtering before sanitizing is how
+// that reached a paid provider request as a subject-less prompt.
+Deno.test("a character whose appearance sanitizes to nothing is dropped, not drawn", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCoverImage({
+        ...cover,
+        characters: [{ name: "Elena", appearance: "<<>>", isHero: true }],
+      }),
+  );
+
+  assert(attempts.length > 0);
+  for (const attempt of attempts) {
+    assert(!attempt.prompt.includes("silhouetted figure suggesting ."));
+    assert(!attempt.prompt.includes("undefined"));
+  }
+});
+
+// The Craft sheet is where the writer compares a portrait against the cover
+// they are about to get. `generate-character-image` sent no style at all, so a
+// writer who picked Watercolour got a house-style cast and read the picker as
+// doing nothing.
+Deno.test("a draft portrait is drawn in the style the brief is set to", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait(
+        "user-1",
+        "req-style",
+        { name: "Naina", appearance: "Curly hair, a satchel" },
+        "watercolor",
+      ),
+  );
+
+  assert(attempts.length > 0, "the draft portrait chain made no request");
+  for (const [index, attempt] of attempts.entries()) {
+    assert(
+      attempt.prompt.includes("delicate watercolour painting"),
+      `attempt ${index} lost the style: ${attempt.prompt}`,
+    );
+    assert(
+      !attempt.prompt.includes("Painterly book-illustration style"),
+      `attempt ${index} kept the house style beside the override`,
+    );
   }
 });

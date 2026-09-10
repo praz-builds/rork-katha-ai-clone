@@ -18,6 +18,10 @@
 import React from "react";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import ChapterEnd, { deriveContinuationOptions } from "@/components/reader/ChapterEnd";
+import {
+  __resetGenerationSessions,
+  startChapterGeneration,
+} from "@/lib/generation-session";
 import ReaderScreen from "@/screens/ReaderScreen";
 import type { Chapter, SeriesState, Story } from "@/types/domain";
 
@@ -110,6 +114,10 @@ function makeStory(overrides: Partial<Story> = {}): Story {
 
 afterEach(() => {
   cleanup();
+  // The session store is module state and outlives a render. Auto-continue's
+  // once-per-chapter guard reads it, so a leftover session from one test would
+  // silently suppress the next test's fire.
+  __resetGenerationSessions();
 });
 
 describe("deriveContinuationOptions", () => {
@@ -315,9 +323,18 @@ describe("ChapterEnd", () => {
     // The card's own sentence, unaltered, is the direction handed upward - and
     // the caller passes it straight through as `next_instruction`. What the
     // reader read is what the model is told.
-    await waitFor(() => expect(onContinue).toHaveBeenCalledWith(
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0]).toBe(
       "Follow the map fragment found under the floorboard.",
-    ));
+    );
+    // The whole offer travels with the pick. Which chips were on screen when a
+    // reader chose is recorded against the chapter so the path the story took
+    // can be surfaced later; they are derived from a story state that has
+    // already moved on by the time anyone could ask for them again.
+    expect(onContinue.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ id: "planned-beat" }),
+      expect.objectContaining({ id: "open-hook-0" }),
+    ]);
   });
 
   /**
@@ -513,9 +530,11 @@ describe("ChapterEnd", () => {
 
     // Trimmed, and never the empty string: `""` still renders the
     // reader-direction block in the prompt and claims a steer that is not there.
-    await waitFor(() => expect(onContinue).toHaveBeenCalledWith(
-      "She climbs down to meet the storm.",
-    ));
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0]).toBe("She climbs down to meet the storm.");
+    // Words the reader typed are not one of the offered chips, but the offer
+    // they turned down is still what was on screen, and still worth recording.
+    expect(onContinue.mock.calls[0][1]).toHaveLength(2);
   });
 });
 
@@ -681,3 +700,177 @@ describe("agreeing with the server about where a series ends", () => {
 // answered. The behaviour is gone from the product, not moved, and these tests
 // went with it rather than being left asserting a surface that no longer
 // exists.
+
+/**
+ * Auto-continue. The writer chose this in the brief, so the chapter end must
+ * spend a credit without asking - which is exactly why every guard around it
+ * is pinned here rather than left to the tap path's tests.
+ */
+describe("auto-continue", () => {
+  it("offers the directions and lets the server choose, picking none itself", async () => {
+    const onContinue = jest.fn();
+    const story = makeStory({ storyFlow: "auto", authorId: "me" });
+    await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        onContinue={onContinue}
+      />,
+    );
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    /*
+      NO direction. This used to send the client's top-ranked chip, which the
+      server reads as "the reader has been asked and answered": it skipped the
+      direction model entirely, so every chapter down this path was chosen by
+      exactly the client sort the feature replaced, and was then recorded as
+      `direction_chosen_by: 'reader'` -- a human tap that never happened, in the
+      column the chip surface will read.
+    */
+    expect(onContinue.mock.calls[0][0]).toBeUndefined();
+    // The offer still travels, so the server has something to choose among.
+    expect(onContinue.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ id: "planned-beat" }),
+      expect.objectContaining({ id: "open-hook-0" }),
+    ]);
+  });
+
+  it("shows no direction chips, because the choice was already made", async () => {
+    const story = makeStory({ storyFlow: "auto", authorId: "me" });
+    const { queryByTestId, getByTestId } = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        onContinue={jest.fn()}
+      />,
+    );
+    await waitFor(() => expect(getByTestId("chapter-end-auto")).toBeTruthy());
+    // A chip rendered here would be a second chapter and a second credit for a
+    // decision the reader was told they would not be asked to make.
+    expect(queryByTestId("chapter-end-option-0")).toBeNull();
+    expect(queryByTestId("chapter-end-write-own")).toBeNull();
+  });
+
+  it("still continues when the story carries no usable direction", async () => {
+    const onContinue = jest.fn();
+    // Nothing to derive from: no beats, no series state, no hook. Interactive
+    // mode degrades to the composer here; auto has nobody to ask, so it sends
+    // `undefined` -- the same "Katha decides" the surprise-me path sends.
+    const story = makeStory({
+      storyFlow: "auto",
+      authorId: "me",
+      beats: [],
+      seriesState: undefined,
+      chapters: [
+        makeChapter({ id: "chapter-1", chapterNumber: 1 }),
+        makeChapter({ hookText: undefined, hookType: "none" }),
+      ],
+    });
+    await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        onContinue={onContinue}
+      />,
+    );
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    expect(onContinue.mock.calls[0][0]).toBeUndefined();
+  });
+
+  it("does not fire when re-reading an earlier chapter", async () => {
+    const onContinue = jest.fn();
+    const story = makeStory({ storyFlow: "auto", authorId: "me" });
+    const { queryByTestId } = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[0]}
+        onContinue={onContinue}
+      />,
+    );
+    await waitFor(() => expect(queryByTestId("chapter-end-auto")).toBeNull());
+    // Re-reading chapter 1 of a three-chapter story must not branch the series
+    // from the middle, and in auto mode that would happen with no tap at all.
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
+  it("does not fire once the series has reached its planned ending", async () => {
+    const onContinue = jest.fn();
+    const story = makeStory({
+      storyFlow: "auto",
+      authorId: "me",
+      plannedChapterCount: 3,
+      chapters: [
+        makeChapter({ id: "chapter-1", chapterNumber: 1 }),
+        makeChapter({ id: "chapter-2", chapterNumber: 2 }),
+        makeChapter({ id: "chapter-3", chapterNumber: 3 }),
+      ],
+    });
+    const { getByText } = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[2]}
+        onContinue={onContinue}
+      />,
+    );
+    expect(getByText("The story is complete")).toBeTruthy();
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
+  it("leaves an interactive story asking, as it always did", async () => {
+    const onContinue = jest.fn();
+    const story = makeStory({ storyFlow: "interactive" });
+    const { queryByTestId } = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        onContinue={onContinue}
+      />,
+    );
+    await waitFor(() => expect(queryByTestId("chapter-end-auto")).toBeNull());
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The guard that survives a remount.
+ *
+ * `ChapterEnd` is mounted only while the reader is on the last page, so a ref
+ * guards one visit. In auto mode the effect behind that guard spends a credit,
+ * which is why these are pinned separately from the once-per-tap tests above.
+ */
+describe("auto-continue does not re-fire across remounts", () => {
+  it("stays quiet when a session for the next chapter already exists", async () => {
+    const onContinue = jest.fn();
+    const story = makeStory({ storyFlow: "auto", authorId: "me" });
+    // Exactly the state after the reader leaves the last page and comes back:
+    // the store still holds the session, `story.chapters` still ends at N.
+    startChapterGeneration({ story, nextChapterNumber: 3 });
+    const { getByTestId } = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        onContinue={onContinue}
+      />,
+    );
+    await waitFor(() => expect(getByTestId("chapter-end-auto")).toBeTruthy());
+    // A second request here reserves the same chapter, is refused 409, and then
+    // becomes the newest session the reader follows -- a failure tail over a
+    // chapter that is being written successfully.
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
+  it("never fires for a reader who does not own the story", async () => {
+    const onContinue = jest.fn();
+    // `story_flow` rides on the row. The only thing standing between this and
+    // production is which columns one edge function happens to select.
+    const story = makeStory({ storyFlow: "auto", authorId: "someone-else" });
+    const { queryByTestId } = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        onContinue={onContinue}
+      />,
+    );
+    await waitFor(() => expect(queryByTestId("chapter-end-auto")).toBeNull());
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+});

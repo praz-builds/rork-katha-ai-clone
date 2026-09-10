@@ -7,8 +7,10 @@
  * - It read and wrote a table called `saved_characters`. Migration 00057
  *   creates `user_characters`, and no migration has ever created the other
  *   one, so a list resolved to a PostgREST error and a save threw.
- * - The role a writer types is `description` in the database. Selecting `role`
- *   would have failed even against the right table.
+ * - What the writer types goes in `appearance`, and there has never been a
+ *   column called `role`. Selecting one would have failed even against the
+ *   right table. The retired `description` column is still read as the
+ *   fallback for characters saved before Craft merged the two fields.
  *
  * And one that would have corrupted a writer's own data: the
  * update-or-insert lookup used `ilike` with the name as the pattern, so `%`
@@ -26,12 +28,12 @@ const mockCalls: {
 
 let mockLookupRows: Record<string, unknown>[] = [];
 
-const row = {
+const row: Record<string, unknown> = {
   id: "saved-1",
   name: "Naina",
   description: "A 29-year-old baker",
   background: null,
-  appearance: null,
+  appearance: null as string | null,
   portrait_url: null,
   source_story_id: null,
   created_at: "2026-09-09T00:00:00Z",
@@ -103,22 +105,39 @@ it("reads the table migration 00057 actually creates, by the column it actually 
   const characters = await listSavedCharacters();
 
   expect(mockCalls[0].table).toBe("user_characters");
+  // `description` is still SELECTED although nothing writes it: a character
+  // saved before Craft merged Description into Appearance has its text only
+  // there, and dropping the column from the read would list them as a name.
   expect(mockCalls[0].select).toContain("description");
   expect(mockCalls[0].select).not.toMatch(/\brole\b/);
-  // And the app's own vocabulary is unchanged on the way out.
-  expect(characters[0].role).toBe("A 29-year-old baker");
+  expect(characters[0].appearance).toBe("A 29-year-old baker");
 });
 
-it("writes the role into `description`, never into a column called `role`", async () => {
-  await saveCharacterToLibrary({ name: "Naina", role: "A 29-year-old baker" });
+it("writes the appearance into `appearance`, and never resurrects `description`", async () => {
+  await saveCharacterToLibrary({ name: "Naina", appearance: "A 29-year-old baker" });
 
   const insert = mockCalls.find((call) => call.insert)?.insert;
   expect(insert).toMatchObject({
     name: "Naina",
-    description: "A 29-year-old baker",
+    appearance: "A 29-year-old baker",
     owner_id: "user-1",
   });
   expect(insert).not.toHaveProperty("role");
+  // The retired column is read-only. A save that wrote it would keep two
+  // spellings of one field alive indefinitely.
+  expect(insert).not.toHaveProperty("description");
+});
+
+// The stored row wins when it has one; the retired column is the fallback and
+// never a second value shown beside it.
+it("prefers a stored appearance over the retired description", async () => {
+  row.appearance = "Flour on her sleeves";
+  try {
+    const characters = await listSavedCharacters();
+    expect(characters[0].appearance).toBe("Flour on her sleeves");
+  } finally {
+    row.appearance = null;
+  }
 });
 
 describe("the name a writer typed is not a search pattern", () => {
@@ -142,10 +161,10 @@ describe("the name a writer typed is not a search pattern", () => {
 it("updates the entry already carrying the name rather than adding a second", async () => {
   mockLookupRows = [{ id: "saved-1", portrait_url: "https://example.test/naina.png" }];
 
-  await saveCharacterToLibrary({ name: "Naina", role: "A baker, older now" });
+  await saveCharacterToLibrary({ name: "Naina", appearance: "A baker, older now" });
 
   const update = mockCalls.find((call) => call.update)?.update;
-  expect(update).toMatchObject({ description: "A baker, older now" });
+  expect(update).toMatchObject({ appearance: "A baker, older now" });
   // A save that carries no new portrait keeps the one already paid for.
   expect(update?.portrait_url).toBe("https://example.test/naina.png");
   expect(mockCalls.some((call) => call.insert)).toBe(false);

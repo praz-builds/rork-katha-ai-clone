@@ -38,20 +38,38 @@ export const CREDITS_PER_AUDIO_UNLOCK = 1;
 // ---------------------------------------------------------------------------
 
 /**
- * Starting a story once the flow is built: the cast, chapter 1's words, and
- * chapter 1's art, which becomes the cover. Three separate reservations.
+ * THESE ARE NO LONGER CONTRACTED. They are what the backend charges.
  *
- * Blocked on the image pipeline (bucket B4) and the character sheet (B6).
+ * The name is kept because every call site reads it, and a rename is a
+ * mechanical change that would bury the fact underneath it — but the fact is
+ * the important part, so it is stated here rather than in a commit message:
+ *
+ *   * Starting a story is 3, reserved by `begin_story_generation`.
+ *   * Each further chapter is 1, or **2 when the story illustrates its
+ *     chapters** — reserved by `reserve_generation_operation` since migration
+ *     00077, which takes the illustrated flag from `stories.illustrate_chapters`
+ *     rather than from the caller.
+ *
+ * So `contractedCreditsForNextChapter` now returns a LIVE price and may be
+ * rendered to a user. The separation this module exists to keep is still real
+ * for anything else on the roadmap; it stopped being real for these.
  */
 export const CONTRACTED_CREDITS_TO_START_STORY = 3;
 
-/** Each chapter after the first, once the per-chapter loop is built. */
+/** Each chapter after the first. Live. */
 export const CONTRACTED_CREDITS_PER_CHAPTER = 1;
 
-/** A chapter's art, when the illustrate toggle is on. */
+/** A chapter's art, when the story illustrates its chapters. Live. */
 export const CONTRACTED_CREDITS_PER_CHAPTER_ART = 1;
 
-/** What one Continue will cost, given whether the story illustrates chapters. */
+/**
+ * What one Continue costs, given whether the story illustrates chapters.
+ *
+ * Live as of migration 00077, and safe to render. It must be given the story's
+ * OWN `illustrateChapters`: passing `false` for an illustrated story quotes 1
+ * for a chapter the server will reserve 2 for, which is the reader being told
+ * a price they are not charged.
+ */
 export function contractedCreditsForNextChapter(
   illustrateChapters: boolean,
 ): number {
@@ -62,8 +80,9 @@ export function contractedCreditsForNextChapter(
 /**
  * Total to take a story from nothing to `chapterCount` chapters.
  *
- * For the review screen and the *Write the rest* confirm, both of which must
- * state a total before the user commits to it.
+ * For any surface that must state a total before the user commits to it. (The
+ * review screen it was written for is retired; the *Write the rest* confirm and
+ * the brief's own totals still need this.)
  */
 export function contractedCreditsForWholeStory(
   chapterCount: number,

@@ -115,6 +115,8 @@ serve(async (req) => {
       chapterLength,
       plannedChapterCount,
       illustrateChapters,
+      imageStyle,
+      storyFlow,
       notifyOnReady,
       grounding,
       groundingEntities,
@@ -235,6 +237,8 @@ serve(async (req) => {
         p_avoid: avoid ?? null,
         p_illustrate_chapters: illustrateChapters,
         p_beats: beats,
+        p_image_style: imageStyle,
+        p_story_flow: storyFlow,
       },
     );
     mark("begin");
@@ -326,9 +330,13 @@ serve(async (req) => {
             characters.map((c) => ({
               story_id: story.id,
               name: c.name,
-              description: c.description,
+              // The retired field, written only so a story created now is still
+              // readable by anything that has not moved to `appearance` yet. Nothing
+              // reads it in preference to `appearance` any more: `characterAppearance`
+              // in `types.ts` is the single resolver and it puts `appearance` first.
+              description: c.appearance ?? c.description ?? null,
               background: c.background,
-              appearance: c.appearance,
+              appearance: c.appearance ?? c.description ?? null,
               portrait_url: c.portraitUrl,
               is_hero: c.isHero ?? false,
               saved_character_id: c.savedCharacterId ?? null,
@@ -598,6 +606,7 @@ serve(async (req) => {
           themes: output.themes,
           whereAndWhen,
           avoid,
+          imageStyle,
           notifyOnReady,
         }));
       } catch (mediaError) {

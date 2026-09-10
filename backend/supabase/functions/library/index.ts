@@ -118,7 +118,15 @@ export async function handleRequest(req: Request): Promise<Response> {
         // them was why the chips appeared once, after generating, and never
         // again after a reload: the columns were never fetched, so the client
         // hydrated every story with `beats: []` and no series state.
-        "id, title, genre, primary_genre, topic, cover_image_url, cover_status, previously_summary, length_type, word_count, created_at, content_rating, author_id, is_public, story_mode, beats, series_state, planned_chapter_count, entity_gate_reason, chapters(count)",
+        //
+        // `story_flow` and `image_style` are here for the same reason. Without
+        // them a story read through this endpoint reported `interactive` and
+        // `auto` whatever the writer picked, so the same story behaved one way
+        // when read straight from PostgREST and another when read from here.
+        // The chapter end reads `story_flow` to decide whether to ask before
+        // writing, and it is gated on ownership there -- a reader who does not
+        // own the story never auto-continues it, whichever read supplied it.
+        "id, title, genre, primary_genre, topic, cover_image_url, cover_status, previously_summary, length_type, word_count, created_at, content_rating, author_id, is_public, story_mode, story_flow, image_style, illustrate_chapters, beats, series_state, planned_chapter_count, entity_gate_reason, chapters(count)",
         { count: "planned" },
       )
       .eq("status", "complete")

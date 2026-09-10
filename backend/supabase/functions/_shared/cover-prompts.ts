@@ -6,6 +6,25 @@
  * (title, themes, characters) to generate a cohesive cover prompt.
  */
 
+import { characterAppearance } from "./types.ts";
+
+/**
+ * A cast member as an image prompt sees one.
+ *
+ * `appearance` is the field; `description` is its retired predecessor, still
+ * accepted because callers hand this shape rows straight out of `characters`,
+ * and a story written before the merge has its cast only there. Both are
+ * optional and both may be blank — `buildCharacterNote` treats a character
+ * with nothing to draw as absent rather than drawing "undefined".
+ */
+export interface PromptCharacter {
+  name: string;
+  appearance?: string;
+  /** Retired. Read only through `characterAppearance`. */
+  description?: string;
+  isHero?: boolean;
+}
+
 interface GenrePromptConfig {
   style: string;
   palette: string;
@@ -281,6 +300,262 @@ function normalizeGenre(genre: string): string {
  * still need a cover when an existing story's chapter art regenerates) has a
  * real entry here rather than silently falling back to `contemporary`'s look.
  */
+/**
+ * The art style the writer picked, independent of genre.
+ *
+ * Genre already carries a look — `GENRE_PROMPTS[genre].style` — and that look
+ * is the default, which is what `auto` means. This is the writer overriding it:
+ * the same mystery rendered as anime, as a comic panel, as watercolour. It
+ * REPLACES the genre's style clause rather than being appended to it, because
+ * appending gives the model two contradictory style instructions in one prompt
+ * ("rich painterly detail" and "flat cel-shaded anime") and it resolves that by
+ * splitting the difference into something that is neither.
+ *
+ * Palette, composition and mood are NOT overridden. Those are the genre's
+ * emotional read, and a watercolour thriller should still be a thriller.
+ */
+export type CoverArtStyle =
+  | "auto"
+  | "anime"
+  | "cinematic"
+  | "comic"
+  | "watercolor";
+
+const ART_STYLE_OVERRIDES: Record<Exclude<CoverArtStyle, "auto">, string> = {
+  anime:
+    "modern anime illustration, clean cel shading, expressive linework, crisp character focus, high-quality key-visual finish",
+  cinematic:
+    "cinematic film-still realism, dramatic depth of field, motivated key lighting, anamorphic framing, colour-graded like a feature poster",
+  comic:
+    "graphic-novel comic art, bold confident inking, halftone texture, flat saturated colour blocking, high-contrast panel composition",
+  watercolor:
+    "delicate watercolour painting, visible paper grain, soft wet-on-wet bleeds, translucent washes, hand-painted edges",
+};
+
+/**
+ * The writer's picked style as a prompt clause, or null for `auto`.
+ *
+ * Exported because cast portraits take the same pick: a story rendered as
+ * watercolour whose characters come back in the house painterly style reads as
+ * two different books, and the writer picked once.
+ *
+ * Anything unrecognised is `auto`. An unknown style arriving from a stale
+ * client must render the default look, never a prompt containing the raw string
+ * a client happened to send.
+ */
+export function coverArtStyleClause(artStyle?: string): string | null {
+  const picked = normalizeCoverArtStyle(artStyle);
+  if (picked === "auto") return null;
+  return ART_STYLE_OVERRIDES[picked];
+}
+
+/**
+ * The value that is safe to store, from whatever the client sent.
+ *
+ * Lives here rather than in `validation.ts` so the accepted set is read from
+ * `ART_STYLE_OVERRIDES` itself. A second hand-written list of the five names
+ * would be one rename away from a request the validator accepts and the prompt
+ * builder ignores -- the writer picks a style, the story records it, and the
+ * cover comes back in the genre default with nothing anywhere saying why.
+ *
+ * Anything unrecognised is `auto`, never the raw string: an unknown style from
+ * a stale client must render the default look, and the column has a CHECK
+ * constraint that a passed-through string would abort a paid generation on.
+ */
+export function normalizeCoverArtStyle(artStyle?: unknown): CoverArtStyle {
+  const picked = typeof artStyle === "string"
+    ? artStyle.trim().toLowerCase()
+    : "";
+  // `hasOwnProperty.call`, never `in`. `in` walks the prototype chain, so
+  // `image_style: "constructor"` answered true, was returned as if it were a
+  // real style, and reached the provider as
+  // `Visual style: function Object() { [native code] }.` The row was still
+  // clamped to 'auto' by the CHECK constraint, which is exactly why this was
+  // invisible: the damage is in the prompt built from the REQUEST value, not
+  // from the row. `hasCoverPromptConfig` in this same file already did it the
+  // safe way.
+  if (
+    picked && picked !== "auto" &&
+    Object.prototype.hasOwnProperty.call(ART_STYLE_OVERRIDES, picked)
+  ) {
+    return picked as CoverArtStyle;
+  }
+  return "auto";
+}
+
+/** The style clause for a cover: the writer's pick, or the genre's own. */
+function styleClause(config: GenrePromptConfig, artStyle?: string): string {
+  return coverArtStyleClause(artStyle) ?? config.style;
+}
+
+/**
+ * What everyone in the picture is wearing, unless the story said otherwise.
+ *
+ * WHY THIS CLAUSE EXISTS. Nothing in this file ever asked for cultural or
+ * period dress, and covers came back with it anyway: give the model an Indian
+ * character and it reaches for a sari or a sherwani, given no instruction at
+ * all. That is the model's own prior, and left alone it means the app renders
+ * non-white characters in costume while rendering white characters in a shirt
+ * — which is the entire problem, and it is ours the moment we ship it.
+ *
+ * So the default is stated rather than assumed. "Appropriate to the setting"
+ * is what keeps a 1890s story in 1890s clothes and a festival scene in festival
+ * clothes: the escape hatch is the brief, not the character's ethnicity.
+ */
+const WARDROBE_CLAUSE =
+  "Wardrobe: ordinary everyday clothing appropriate to the setting and era of the story, the same register of dress for every character regardless of ethnicity. Do not add ceremonial, festival, folk or traditional national dress unless the story explicitly calls for it.";
+
+/**
+ * The craft rules that separate a cover from a picture.
+ *
+ * WHY. The prompt used to be genre + palette + mood + "inspired by the story
+ * X, with themes of Y" and nothing about how a cover has to WORK. What came
+ * back was busy: four competing focal points, symbols of every abstract theme
+ * stacked in one frame, detail at a scale nobody ever sees it at. A Katha cover
+ * is displayed at 390x340 as a hero, at 108x152 in a card, and at 74x96 in a
+ * mini row — the mini is the size most covers are seen at, and an image with
+ * four subjects is mud at 74 points wide.
+ *
+ * So the two things a book cover must actually do are stated: ONE subject, and
+ * a silhouette that survives being shrunk. Neither is something a model does by
+ * default when asked for "a book cover"; both are what an illustrator does
+ * first.
+ *
+ * The quiet-upper-third clause is about CROPPING, not about type. No client
+ * surface overlays a title on a cover -- `StoryCard` and the feed cards set the
+ * title beside or beneath the image -- and an earlier version of this comment
+ * claimed otherwise, which would have made the instruction pure superstition.
+ * It earns its place for a different reason: one square source image is
+ * centre-cropped to a 390x340 landscape hero, and a landscape crop of a
+ * portrait composition discards the top and bottom. Detail packed into the
+ * upper third is detail the hero never shows, so the subject is better served
+ * by it being quiet.
+ */
+const SUBJECT_DISCIPLINE_CLAUSE =
+  "Compose it as a real book cover: ONE clear subject, one focal point, and a strong readable silhouette that still reads at thumbnail size. No collage, no split panels, no multiple vignettes, no floating symbolic objects. Keep the upper third relatively quiet -- it is cropped away in the landscape hero. Depth over detail: simplify the background rather than filling it.";
+
+/**
+ * How the cast enters the picture, per the genre's `characterApproach`.
+ *
+ * Shared by the cover and by chapter art so the two cannot drift: a story whose
+ * cover shows a distant silhouette and whose chapter plates show close
+ * portraits reads as two different books, which is the same failure the shared
+ * `artStyle` pick exists to prevent.
+ */
+function buildCharacterNote(
+  config: GenrePromptConfig,
+  characters?: PromptCharacter[],
+): string {
+  if (!characters?.length || config.characterApproach === "scene") return "";
+  // Resolve BEFORE filtering, and interpolate the resolved string below.
+  // The look is interpolated straight into the prompt, and the Craft sheet
+  // requires only a Name, so a name-only character used to put the literal
+  // string "suggesting undefined" into the prompt. Reading through
+  // `characterAppearance` also keeps a cast written before the field merge --
+  // which has only the retired `description` -- drawable.
+  const described = characters
+    .map((c) => ({ isHero: c.isHero, look: characterAppearance(c) }))
+    .filter((c) => c.look);
+  // No usable look anywhere in the cast leaves `hero` undefined, and the
+  // prompt falls through to the genre cover — a legitimate result, not a
+  // degraded one.
+  const hero = described.find((c) => c.isHero) ?? described[0];
+  if (!hero) return "";
+  if (config.characterApproach === "silhouette") {
+    return `. Include a distant silhouetted figure suggesting ${hero.look}`;
+  }
+  return `. Feature a character: ${hero.look}, shown from shoulders up or three-quarter view`;
+}
+
+/**
+ * How much of a chapter's own text may describe the picture.
+ *
+ * The moment comes from generated prose — a hook line, a first line — so it is
+ * model output going to a third-party image provider, sanitized on the same
+ * terms as the *Avoid* field. Long enough for a sentence with a subject and a
+ * place in it; short enough that the genre, palette and composition clauses
+ * around it are not crowded out of the model's attention.
+ */
+export const MAX_CHAPTER_MOMENT_LENGTH = 240;
+
+/**
+ * The prompt for a chapter's own illustration.
+ *
+ * WHY THIS IS NOT `buildCoverPrompt`. A cover is drawn from the STORY: its
+ * title, its themes, its cast. Chapter art drawn that way is the cover again,
+ * chapter after chapter — same title, same themes, same hero, same genre
+ * config — and a reader paying a credit a chapter for illustrations would get
+ * one picture repeated with different noise. So the subject here is the
+ * CHAPTER: its own title and the one moment in it worth drawing, with the
+ * story's title kept only as context for who these people are.
+ *
+ * Everything that makes the two look like one book is deliberately shared:
+ * the genre config, the writer's `artStyle` pick (00075), the wardrobe default
+ * and the subject discipline. Only the subject changes.
+ */
+export function buildChapterArtPrompt(input: {
+  genre: string;
+  storyTitle: string;
+  chapterNumber: number;
+  chapterTitle?: string;
+  /**
+   * The one thing to draw: the chapter's hook line, its first line, or its
+   * opening sentence, in that order of preference at the call site.
+   *
+   * Optional, and the prompt is well-formed without it — a chapter whose
+   * metadata came back empty still gets a genre-and-title plate rather than
+   * no art at all.
+   */
+  moment?: string;
+  themes?: string[];
+  characters?: PromptCharacter[];
+  whereAndWhen?: string;
+  avoid?: string;
+  artStyle?: string;
+}): string {
+  const safeGenre = normalizeGenre(input.genre);
+  const config = GENRE_PROMPTS[safeGenre];
+
+  const chapterTitle = input.chapterTitle?.trim();
+  let sceneDescription = chapterTitle
+    ? `A scene from chapter ${input.chapterNumber}, "${chapterTitle}", of the story "${input.storyTitle}"`
+    : `A scene from chapter ${input.chapterNumber} of the story "${input.storyTitle}"`;
+
+  // The moment is prose, not a brief field, so it is sanitized rather than
+  // interpolated raw the way `title` and `whereAndWhen` are: a chapter body
+  // is full of sentence terminators, and one of them ending our clause is all
+  // it takes for the rest of the line to read as a fresh instruction.
+  const moment = sanitizeExclusion(input.moment, MAX_CHAPTER_MOMENT_LENGTH);
+  if (moment) {
+    sceneDescription += `. Illustrate this moment: ${moment}`;
+  }
+  if (input.themes?.length) {
+    sceneDescription +=
+      `. Let these themes set the atmosphere WITHOUT being drawn as objects or symbols: ${
+        input.themes.slice(0, 3).join(", ")
+      }`;
+  }
+  if (input.whereAndWhen?.trim()) {
+    sceneDescription += `, set in ${input.whereAndWhen.trim()}`;
+  }
+
+  const exclusion = sanitizeExclusion(input.avoid);
+
+  return [
+    `Interior chapter illustration for a ${safeGenre} story.`,
+    `Visual style: ${styleClause(config, input.artStyle)}.`,
+    `Color palette: ${config.palette}.`,
+    `Composition: ${config.composition}.`,
+    `Mood: ${config.mood}.`,
+    `${sceneDescription}${buildCharacterNote(config, input.characters)}.`,
+    WARDROBE_CLAUSE,
+    SUBJECT_DISCIPLINE_CLAUSE,
+    ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
+    `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
+    `Portrait orientation, subject centered in frame, high quality, professional book illustration.`,
+  ].join(" ");
+}
+
 export function hasCoverPromptConfig(genre: string): boolean {
   return Object.prototype.hasOwnProperty.call(GENRE_PROMPTS, genre);
 }
@@ -289,9 +564,10 @@ export function buildCoverPrompt(
   genre: string,
   title: string,
   themes: string[],
-  // `description` is optional because the Craft character sheet only requires a
-  // Name; characters without one are filtered out below rather than trusted.
-  characters?: { name: string; description?: string; isHero?: boolean }[],
+  // Every field is optional because the Craft character sheet only requires a
+  // Name; characters with nothing to draw are filtered out below rather than
+  // trusted.
+  characters?: PromptCharacter[],
   /**
    * World and era, from the create flow's where-and-when chip.
    *
@@ -330,41 +606,38 @@ export function buildCoverPrompt(
    * precisely because it is the one most likely to survive.
    */
   variation?: string,
+  /**
+   * The writer's *Image style* pick — see `CoverArtStyle`.
+   *
+   * Last in the list and carried at every rung of the safety ladder in
+   * `image.ts`: a style name is a fixed string from our own table, never user
+   * free text, so it cannot be the thing a content filter objected to, and a
+   * simplified retry that silently changed art style would read to the writer
+   * as the setting having been ignored.
+   */
+  artStyle?: string,
 ): string {
   const safeGenre = normalizeGenre(genre);
   const config = GENRE_PROMPTS[safeGenre];
 
   let sceneDescription = `Inspired by the story "${title}"`;
   if (themes.length > 0) {
-    sceneDescription += `, with themes of ${themes.slice(0, 4).join(", ")}`;
+    // Themes are handed to the model as ATMOSPHERE, explicitly, because handed
+    // over bare they are drawn. `themes` comes back from the story model as
+    // abstract nouns - grief, memory, betrayal, freedom - and "with themes of
+    // grief, memory, freedom" produced covers with a wilting rose, an hourglass
+    // and a bird in one frame: three literal icons of three abstractions,
+    // which is the single most recognisable failure mode of a generated cover.
+    sceneDescription +=
+      `. Let these themes set the atmosphere WITHOUT being drawn as objects or symbols: ${
+        themes.slice(0, 4).join(", ")
+      }`;
   }
   if (whereAndWhen?.trim()) {
     sceneDescription += `, set in ${whereAndWhen.trim()}`;
   }
 
-  let characterNote = "";
-  if (
-    characters &&
-    characters.length > 0 &&
-    config.characterApproach !== "scene"
-  ) {
-    // Only a character with a usable description can contribute to an image.
-    // `hero.description` is interpolated directly below, and the Craft
-    // character sheet requires only a Name, so a name-only character used to
-    // put the literal string "suggesting undefined" into the prompt.
-    const described = characters.filter((c) => c.description?.trim());
-    // No usable description anywhere in the cast leaves `hero` undefined, and
-    // the prompt falls through to the genre cover — a legitimate result, not a
-    // degraded one.
-    const hero = described.find((c) => c.isHero) ?? described[0];
-    if (hero && config.characterApproach === "silhouette") {
-      characterNote =
-        `. Include a distant silhouetted figure suggesting ${hero.description}`;
-    } else if (hero) {
-      characterNote =
-        `. Feature a character: ${hero.description}, shown from shoulders up or three-quarter view`;
-    }
-  }
+  const characterNote = buildCharacterNote(config, characters);
 
   // These two are sanitized here rather than at the call site so every path
   // into the image provider is covered *for these two fields*, including the
@@ -383,15 +656,17 @@ export function buildCoverPrompt(
 
   return [
     `Book cover illustration for a ${safeGenre} story.`,
-    `Visual style: ${config.style}.`,
+    `Visual style: ${styleClause(config, artStyle)}.`,
     `Color palette: ${config.palette}.`,
-    `Composition: ${config.composition}. Subject centered in frame for multi-crop display.`,
+    `Composition: ${config.composition}.`,
     `Mood: ${config.mood}.`,
     `${sceneDescription}${characterNote}.`,
+    WARDROBE_CLAUSE,
+    SUBJECT_DISCIPLINE_CLAUSE,
     ...(steer ? [`${steer}.`] : []),
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
-    `Portrait orientation, centered composition, high quality, professional book cover art.`,
+    `Portrait orientation, subject centered in frame, high quality, professional book cover art.`,
   ].join(" ");
 }
 

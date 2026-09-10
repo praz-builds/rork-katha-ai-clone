@@ -1187,6 +1187,7 @@ async function generateOpenRouterText(
         userPrompt: moderationSafePrompt(userPrompt, attempt),
         deadline,
         requestShape: openRouterRequestShape,
+        cachePrefix: true,
         headers: {
           "HTTP-Referer": "https://katha.ai",
           "X-Title": "Katha AI",
@@ -1212,6 +1213,44 @@ async function generateOpenRouterText(
   );
 }
 
+/**
+ * The system message, with a cache breakpoint on it when the provider takes one.
+ *
+ * THE FREE 10 KB. Every story prompt is assembled as a stable half and a
+ * variable half, and the split is already clean: the system prompt is base +
+ * engine + genre + audience + identity + spice + language + titling + schema,
+ * which is byte-identical for every chapter of every story sharing those
+ * settings, while everything about THIS chapter -- the brief, the cast, the
+ * series state, the previous chapters -- lives in the user message. That is a
+ * ~10 KB prefix that was being re-sent, re-billed and re-processed on every
+ * single call, including every rung of a retry ladder.
+ *
+ * Marking it is all that is needed. Providers that price a cache read (the
+ * Anthropic dialect) want an explicit breakpoint and charge a fraction for a
+ * hit; providers that cache automatically ignore the annotation and still hit,
+ * because the prefix was already stable. OpenRouter normalises the field for
+ * whichever model actually serves, which is why the flag is set there and
+ * nowhere else -- a raw endpoint that has never seen `cache_control` gets the
+ * plain string it has always been sent.
+ *
+ * Nothing about the prompt's CONTENT changes here. If a provider silently
+ * ignores this, the request is the request it was yesterday.
+ */
+export function systemMessage(
+  systemPrompt: string,
+  cachePrefix = true,
+): Record<string, unknown> {
+  if (!cachePrefix) return { role: "system", content: systemPrompt };
+  return {
+    role: "system",
+    content: [{
+      type: "text",
+      text: systemPrompt,
+      cache_control: { type: "ephemeral" },
+    }],
+  };
+}
+
 async function chatCompletionRequest(input: {
   providerName: string;
   url: string;
@@ -1229,6 +1268,8 @@ async function chatCompletionRequest(input: {
    * rather than inheriting the plain chat-completions contract.
    */
   requestShape?: (options: ChainOptions) => Record<string, unknown>;
+  /** See `systemMessage`. Only OpenRouter is asked for this today. */
+  cachePrefix?: boolean;
 }): Promise<unknown> {
   return await withAbortTimeout(
     remainingDuration(input.deadline, input.timeoutMs),
@@ -1244,7 +1285,7 @@ async function chatCompletionRequest(input: {
         body: JSON.stringify({
           model: input.model,
           messages: [
-            { role: "system", content: input.systemPrompt },
+            systemMessage(input.systemPrompt, input.cachePrefix === true),
             { role: "user", content: input.userPrompt },
           ],
           ...(input.requestShape

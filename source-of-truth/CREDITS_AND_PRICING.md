@@ -176,6 +176,8 @@ plan; we don't lock voices behind a tier.
 | Ask AI to redraft a chapter | **0** — 3 free per chapter |
 | Ask AI to rewrite a paragraph | **0** — 20 free per chapter |
 | **Reimagine a chapter** — re-prompt it, recast it | **0** — **2 free per chapter**, then **1** each |
+| **Create or edit a character image** | **0** — **4 free per account**, then **1** each |
+| Use a saved character in a new story | **0**, always |
 | Regenerate a cover you paid for | **1** — there is no free retry |
 
 Past those limits, each further AI action is 1 credit.
@@ -336,8 +338,9 @@ with `google/gemini-3.1-flash-image` behind it.
 > That is straightforwardly better for the two cheap tiers and worse for none —
 > a cover falls from $0.063 to $0.039 — but it removes the lever the tiering was
 > built on. **The three tiers below are retained as a record of the intent, not
-> as a live constraint**, and the per-cast portrait arithmetic in §10.6 needs
-> redoing against a flat rate before the portrait path is priced. Aspect ratio
+> as a live constraint**. The per-cast portrait arithmetic has since been redone
+> against the flat rate — a cast of three is **$0.117**, not $0.033 — and the
+> portrait path is priced in §3 (*Character portraits*). Aspect ratio
 > is now carried in the prompt text rather than a parameter (`ASPECT` in
 > `_shared/image.ts`), so it is a request, not a guarantee.
 
@@ -395,7 +398,9 @@ number here is an estimate from published rates or infrastructure arithmetic.
 | Any single image — cover, chapter art, one portrait | **$0.039** | — |
 | Chapter art | $0.039 | 1 |
 | Cover regeneration | $0.039 | 1 |
-| Reimagine a chapter | $0.0218 | 0 ×2, then 1 |
+| Reimagine a chapter | $0.0218 | 0 ×2 per chapter, then 1 |
+| Character image — create or edit | $0.039 | 0 ×4 per account, then 1 |
+| Reusing a saved character's portrait | **$0** | 0 |
 | Audio unlock — cached chapter | **~$0** | 1 |
 | Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
 
@@ -503,50 +508,119 @@ drive this number.** A credit that buys a whole story is not a credit that buys
 one action; matching a rival's "100" without matching what their credit does is
 matching a label.
 
-### The one-time offer
+### The one-time offer — removed
 
-Shown once, after the user declines the main paywall, before they land in the
-app:
+**Removed 2026-09-10.** The offer discounted the yearly to $29 for the first year,
+renewing at $59. Under the two-audience grid it discounted the *Reader* plan,
+whose cost was dominated by cached audio at ~$0 marginal, so $19.99 still cleared
+~100%. **The single ladder left nothing to discount but the thinnest row in the
+model**, and the arithmetic never recovered: $29 for 600 credits nets $24.65
+against **$44.28** of cost at the worst story shape — a **$19.63 loss** — and
+clears only 43% at the blended shape.
 
-> **Yearly — $29 for your first year**, then $59/yr.
+It is removed rather than repriced because every fix cost something the offer
+existed to buy. Granting fewer credits in the discounted year keeps the headline
+cut but makes the offer a worse product than the plan beside it. Pricing it at
+$39 shrinks the discount to the point where it stops converting. And the whole
+mechanism was designed for a two-tier grid that no longer exists.
 
-> ⚠ **Rebuilt 2026-09-10, and it is now the weakest row in the document.** The
-> offer used to discount the *Reader* plan, whose cost was dominated by cached
-> audio at ~$0 marginal, so $19.99 still cleared ~100%. With one ladder there is
-> no such tier to discount: the offer necessarily cuts the yearly, which is
-> already the thinnest margin in the model.
->
-> **$29 for 600 credits nets $24.65, against $44.28 of cost at the worst story
-> shape — a $19.63 loss** — and clears only $18.85 (43%) at the blended shape. It
-> is defensible **only** as acquisition spend against year-two renewal at full
-> price, and only if first-year offer takers are believed to write average-length
-> stories rather than short ones.
->
-> **Three ways out, none decided:** (a) grant fewer credits in the discounted
-> year — $29 for 20/month clears 39% at the worst shape; (b) price the offer at
-> $39 rather than $29; (c) drop the one-time offer entirely and let weekly be the
-> low-commitment entry, which is what the single ladder was supposed to make it.
-> **(a) is the one to look at first** — it keeps the headline price cut, which is
-> what converts, and pays for it in grant rather than margin.
+**What replaces it: the weekly plan.** The single ladder was supposed to make
+weekly the low-commitment entry, and at $5.99 it is — a genuine try-it price that
+does not need a countdown, cannot expire, and is profitable at every story shape
+(71% at the worst). A user who declines the yearly now sees a plan, not a
+liquidation.
 
-It is also the correct *product* answer: a user who has just declined both plans
-is, by revealed preference, not a writer. Discount the thing they might want.
+**Consequences that follow from the removal:**
 
-**It renews at full price** ($59), so lifetime value recovers in year two, and
-it is a single option with no second decision — the user has already made two.
+| | Before | After |
+|---|---|---|
+| Onboarding path | Paywall → one-time offer → welcome | **Paywall → welcome** |
+| Welcome bonus trigger | On declining the offer | **On declining the paywall** |
+| Countdown timers in the product | One permitted exception (§7) | **None. The ban is now absolute** |
+| SKU `ai.katha.sub.yearly.offer` | Configured | **Not created** |
 
-**It carries a 2-minute countdown**, the only countdown permitted anywhere in the
-product (§7). The clock is legitimate rather than theatrical: at zero the offer
-SKU is disabled for that `user_id` server-side, the screen auto-advances, and the
-price never returns — no Home banner, no recovery push, no second showing. The
-on-screen line is *"You'll never see this again,"* and it is a statement of fact
-the backend enforces. Leaving the screen ends the offer exactly as expiry does.
-The duration is a remotely tunable value, so it can be retuned without a store
-review; 2 minutes is a starting value, not a finding.
+**The countdown ban becoming absolute is worth more than the offer was.** §7's
+prohibition on false scarcity carried a single carve-out that had to be defended,
+audited and kept honest; removing the offer removes the carve-out. There is now no
+surface in Katha where a clock pressures a purchase, which is a simpler promise to
+keep and a simpler one to state.
 
-**There is one path to it**, because there is now one paywall. The revealed
-preference argument that used to route a writer decliner to the Reader plan no
-longer has anywhere to route them.
+> **Revisit only with a reason to.** A first-year discount is a legitimate
+> instrument; it failed here because it landed on a 12%-margin row. If the yearly
+> ever prices high enough to carry one — or if a genuinely cheaper tier returns —
+> this decision is worth reopening. It is not a principle, it is arithmetic.
+
+
+### Character portraits
+
+**Decided 2026-09-10: 4 free character images per account, then 1 credit each.
+Generating and editing both count against the same four.**
+
+**Why the counter is on the account and not the character or the story.** Saved
+characters are cross-story now (migration 00057) — the same character is used in
+as many stories as the user likes. A per-story allowance would reset every time
+they start one; a per-character allowance would reset every time they make a new
+one. Neither bounds anything. **The account is the only level at which four means
+four.**
+
+**Editing counts because editing costs.** A portrait is generated from the Name,
+Description and Appearance fields, so an edit that changes any of them is a fresh
+image and a fresh paid API call. Counting the generation and not the edit would
+make "edit the appearance" a free regeneration button, which is the same loophole
+under a different label.
+
+| | Credits |
+|---|---|
+| Create or edit a character image — first 4, per account | **0** |
+| Every one after that | **1** |
+| Reusing a saved character in a new story | **0** — the portrait already exists |
+
+**This is the pricing decision migration 00055 deferred**, and it closes a live
+hole. `generate-character-image` charges nothing today; it is bounded only by a
+rate limit of 12 requests/hour, and the migration says so in its own comments —
+*"This is a rate limit, not pricing... inventing one in a migration would be making
+a pricing decision in the wrong place."* One call can walk two providers across
+three safety levels, so a single request is **up to six paid generations**. Today's
+worst case is therefore **~$2.80–$5.50 per user per hour, unbounded over time.** A
+four-per-account cap makes the lifetime worst case **~$0.92–$1.85**, and the
+typical case $0.156. The rate limit stays — it bounds a loop; the cap bounds a
+user.
+
+> **The four are scoped to the standalone character path**, not to the cast
+> generated inside a story start. A story start's cast of three is already paid
+> for by its credit; it does not consume the free four, and the free four do not
+> subsidise it. Without this, one story start would eat three of four before the
+> user had touched the character sheet.
+
+> **Written as a lifetime allowance**, like the welcome bonus and the streak
+> ladder, both of which terminate rather than recur. If it should instead refresh
+> monthly, the cost is 4 × $0.039 = **$0.156/month** per active user against a
+> yearly credit netting $0.0836 — affordable, but it is a different decision and
+> is **not** the one recorded here.
+
+### Saved characters make the story start cheaper, and that changes the risk model
+
+The §2 story-start cost of **$0.178** assumes a cast of **three new portraits**
+($0.117 of it). A user who reuses saved characters generates none of them.
+
+| A 3-chapter words-only story | Cost | $/credit |
+|---|---|---|
+| All-new cast | $0.221 | **$0.0738** |
+| All-saved cast | $0.104 | **$0.0348** |
+
+**The worst story shape more than halves when the cast is reused**, and the yearly
+plan's margin at that shape goes from **12% to 58%** — $29.27 of profit against
+$5.87.
+
+That is worth stating as a finding rather than a footnote: **the thin row in this
+document is thin only for first-time creators.** The margin improves with exactly
+the behaviour the product wants — a user building a recurring cast and writing
+more stories with it. Saved characters are not only a retention feature; they are
+the mechanism by which a heavy user becomes *cheaper* to serve rather than dearer.
+
+**It also means the free four are an investment, not a giveaway.** Four portraits
+is a cast the user keeps. Every story they write with it afterwards costs us
+$0.117 less than one written with strangers.
 
 ### Reimagining a chapter
 
@@ -716,7 +790,6 @@ downside at **$0.74**.
 | `ai.katha.sub.weekly` | Weekly — $5.99 · 20 credits |
 | `ai.katha.sub.monthly` | Monthly — $12.99 · 50/mo |
 | `ai.katha.sub.yearly` | Yearly — $59 · 50/mo, 3-day trial |
-| `ai.katha.sub.yearly.offer` | One-time offer — $29 first year |
 | `ai.katha.credits.5` | 5 credits — $1.99 |
 | `ai.katha.credits.10` | 10 credits — $3.49 |
 | `ai.katha.credits.30` | 30 credits — $9.99 |
@@ -890,7 +963,7 @@ users — reading is free and unlimited, so it carries no consumption burden.
 | Source | Credits | Cadence | Cap | `reason` | Ship |
 |---|---|---|---|---|---|
 | **Reading streak** | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime — nothing repeats | `streak` | Launch |
-| **Welcome bonus** | **10** | once, on declining the offer (§6) | once per authenticated account | `welcome` | Launch |
+| **Welcome bonus** | **10** | once, on declining the paywall (§6) | once per authenticated account | `welcome` | Launch |
 | **Guest bootstrap** | **3** | once, on first guest bootstrap (§9) | once per anonymous account, 3 per network prefix / 24h | `guest_bootstrap` | Launch |
 | **Referral — referrer** | **10** | on invited user's 1st generation | 3/month, 10 lifetime | `referral` | v1.1 |
 | **Referral — invited** | **5** | on own 1st generation | once | `referral` | v1.1 |
@@ -1174,8 +1247,9 @@ replenishment is **earned and capped**, never granted.
 
 ## 6. Onboarding and the paywall flow
 
-Onboarding branches on a purpose question and the two paths meet again at the
-offer. Screen-level design is specified in
+Onboarding branches on a purpose question and both paths reach the same paywall.
+*(The one-time offer that used to follow it was removed 2026-09-10 — §3.)*
+Screen-level design is specified in
 [`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md), the canonical onboarding specification;
 only the money is defined here.
 
@@ -1205,22 +1279,9 @@ before any purchase and before any grant
 │                    └─ Declines ──────────┬──────────────┘
 │                                          │
 │                                          ↓
-│                    ONE-TIME OFFER  (shown once, ever, both paths)
-│                     "Reader, yearly — $19.99 for your first year"
-│                     Single option. No second choice to make.
-│                     ⏳ 2:00 countdown. At zero the SKU is disabled
-│                        for this user_id and the price never returns.
-│                     "You'll never see this again."
-│                     Dismiss is equally obvious, full size from frame one.
+│                                  10 credits granted
 │                                          │
-│                                          ├─ Accepts → into the app
-│                                          │
-│                                          └─ Declines or expires
-│                                                │
-│                                                ↓
-│                                        10 credits granted
-│                                                │
-│                                                ↓
+│                                          ↓
 │                                    WELCOME  "Reading is always free."
 │                                    No numbers on this screen; the
 │                                    balance is announced by the in-app
@@ -1346,14 +1407,13 @@ resentment-generating placement available.
 - Block reading. Ever. On any tier. For any reason.
 - Auto-open the paywall on launch or after a generation completes.
 - Countdown timers, "only 2 left today!", or scarcity framing **on any in-app
-  surface**. The onboarding one-time offer (§6) is the single exception, and it
+  surface**, with **no exceptions** since the one-time offer was removed (§3).
   is an exception only because its deadline is real: a 2-minute clock, enforced
   server-side, after which the SKU is disabled for that user and the price never
   returns. False scarcity stays banned everywhere, including there — no
   "only 2 left", no restock, no recovery push, no second showing.
 - Hide, shrink, or delay a dismiss control.
 - Charge for a retry after our own failure.
-- Show the one-time offer more than once.
 
 ---
 
@@ -1489,7 +1549,7 @@ the abuse.
 | **Edge functions** | Separate spend paths for text, cover, character set, audio unlock | Unbundling |
 | **Edge function (new)** | Catalog narration job — top ~500 chapters by read volume, weekly refresh | §4 |
 | **Client** | Not-enough-credits sheet replaces the `Alert.alert` calls in `CreateStudioScreen.tsx:376` and `:683` | §7 |
-| Client | Paywall → one-time offer → welcome sequence | §6 |
+| Client | Paywall → welcome sequence | §6 |
 | Client | Cancellation flow must state the exact balance at risk before confirming | §8 |
 | Client | Price label on every paid action | §7 |
 | **Copy** | `expo/App.tsx` `CreditsScreen` — the credit explainer still describes the retired bundle (*"one credit each for the text, its cover and its characters"*). It must read: starting a story is 3, each further chapter 1, or 2 illustrated | Unbundling |
@@ -1504,7 +1564,7 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 
 | Phase | Contents |
 |---|---|
-| **1 — Launch** | Story start unbundled at 3 credits, further chapters at 1 (2 illustrated); free unlimited reading; free caps on drafting; streak ladder; welcome bonus; lapse warnings; paywall + one-time offer; packs; all 10 SKUs |
+| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; free caps on drafting and reimagine; streak ladder + repair; welcome bonus; lapse warnings; paywall (no offer); 6 packs; 9 SKUs |
 | **2 — Audio** | Only after edge-tts cost/reliability is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
 | **3 — v1.1** | Referral with deep-link attribution |
 
@@ -1525,9 +1585,8 @@ economy is tuned on evidence rather than argued about.
 | **Catalog hit rate on audio unlocks** | Cached audio is instant and keeps replay cost near zero | Fresh rate > 40% → widen the catalog job |
 | **Actual $/chapter narration by provider** | Every audio number here is extrapolated until a batch is measured | Edge > $0.01 or MiniMax > $0.30 → re-run the Reader math |
 | **D3 / D7 / D30 retention, streak-holders vs not** | Validates the ladder against the 26% / 13% / 7% baseline ([Adjust](https://uxcam.com/blog/mobile-app-retention-benchmarks/)) | No D7 lift after 8 weeks → the ladder is decoration; re-cadence it |
-| **Streak milestone claim rate, by rung** | Whether day 2 / 5 / 7 are the right rungs | Day-2 claim < 50% of D2-actives → the first rung lands too late; move it to day 1 |
-| **Free → paid conversion at D35** | Benchmark is 2.1% freemium median ([RevenueCat](https://www.revenuecat.com/blog/growth/subscription-app-trends-benchmarks-2026)) | < 1% → the paywall sequence is wrong before the earn table is; the free tier is already at 20% of the Reader grant |
-| **One-time-offer take rate** | Whether the second ask earns its friction | < 3% → drop the step entirely |
+| **Streak milestone claim rate, by rung** | Whether day 2 / 5 / 10 are the right rungs | Day-2 claim < 50% of D2-actives → the first rung lands too late; move it to day 1 |
+| **Free → paid conversion at D35** | Benchmark is 2.1% freemium median ([RevenueCat](https://www.revenuecat.com/blog/growth/subscription-app-trends-benchmarks-2026)) | < 1% → the paywall sequence is wrong before the earn table is; the free tier earns nothing in steady state, so the paywall is the only lever |
 | **Refund/chargeback rate after lapse** | Voiding a purchased balance is the highest-risk rule in this document | Any measurable lift over baseline → carve packs out of the lapse rule |
 | **Win-back rate on lapsed users** | Lapsing credits removes the strongest win-back hook we had | Below 5% reactivation at 90 days → reconsider zeroing earned credits |
 | **Reader → Writer upgrade rate** | Validates that the price list makes upgrading obvious rather than buying packs | Pack purchases by Readers > upgrades → re-run the §4 inversion check |
@@ -1642,7 +1701,8 @@ economy is tuned on evidence rather than argued about.
    editing, save, publish, unpublish, delete, upload your own cover, follow, like,
    comment, share, retry after a failed generation.
 8. **Free but capped:** **3 AI redrafts per chapter**, **20 paragraph AI edits per
-   chapter**, **2 reimagines per chapter**. Beyond each cap, 1 credit. ~~1 cover
+   chapter**, **2 reimagines per chapter**, **4 character images per account
+   (create or edit)**. Beyond each cap, 1 credit. ~~1 cover
    regeneration per paid cover~~ — **removed 2026-09-10**: cover regeneration costs
    1 credit from the first.
 9. ~~**Render settings are constraints, not defaults.**~~ **Retired 2026-09-10.**
@@ -1690,16 +1750,16 @@ economy is tuned on evidence rather than argued about.
     every story shape and 50 clears 12% at the worst and 49% blended. The smaller
     grant also routes overflow demand into 60–78% margin packs. A competitor's
     headline credit count is not comparable and must not drive this number.
-14. **One-time offer: yearly, $29 first year, renewing at $59.** Shown once, ever,
-    after the paywall is declined, as a single option. It carries a **2-minute
-    countdown**, the only countdown permitted in the product, and at zero the SKU
-    is disabled for that `user_id` and the price never returns. ⚠ **The economics
-    of this offer are unresolved** — see §3; it loses $19.63 at the worst story
-    shape.
-15. ~~**The Writer yearly is never discounted.**~~ **Retired 2026-09-10** with the
-    two-audience grid: there is no second tier to move the discount onto, so the
-    one-time offer necessarily sits on the thinnest row in the model. That is the
-    open problem recorded in 14, not a resolved decision.
+14. ~~**One-time offer: yearly, $29 first year.**~~ **Removed 2026-09-10.** It lost
+    $19.63 at the worst story shape and cleared only 43% blended. The single ladder
+    left nothing to discount but the thinnest row in the model. **The weekly plan
+    at $5.99 is the low-commitment entry instead** — profitable at every shape, no
+    countdown, no expiry. Onboarding is now paywall → welcome, and the welcome
+    bonus fires on declining the paywall.
+15. **There are no countdown timers anywhere in Katha.** *(Absolute since
+    2026-09-10.)* §7's ban on false scarcity previously carried one carve-out for
+    the one-time offer; removing the offer removes the carve-out. No surface in the
+    product uses a clock to pressure a purchase.
 16. **Credit packs: $1.99/5 · $3.49/10 · $9.99/30 · $24.99/100 · $64.99/300 ·
     $119.99/1000.** Every pack prices above the yearly rate, monotonically, so the
     subscription is always the best price per credit. **Pack credits do not expire
@@ -1714,6 +1774,20 @@ economy is tuned on evidence rather than argued about.
     auto-refunds; a delivered image you dislike costs a credit to replace.
 18b. **Reimagining a chapter is free twice, then 1 credit** *(2026-09-10)*. ⚠ The
     free allowance is unscoped and the fork counter is unbuilt — see §3.
+18d. **Character images: 4 free per account, then 1 credit each** *(2026-09-10)*.
+    **Generating and editing draw on the same four**, because a portrait is made
+    from the Name/Description/Appearance fields and an edit to any of them is a
+    fresh paid image. The counter is on the **account** because saved characters
+    are cross-story, so no per-story or per-character allowance bounds anything.
+    The four are scoped to the standalone character path — a story start's cast of
+    three is already paid for by its credit and does not consume them. Written as
+    a lifetime allowance. This closes the pricing question migration 00055
+    deferred; the 12/hour rate limit stays alongside it.
+18e. **Reusing a saved character costs nothing, and that is load-bearing**
+    *(2026-09-10)*. A story start with an all-saved cast costs $0.104 rather than
+    $0.221, so the worst story shape falls from $0.0738 to $0.0348/credit and the
+    yearly margin at that shape rises from 12% to 58%. Never reprice the story
+    start without checking which cast it assumes.
 18c. **Download PDF is a paid-plan entitlement** *(2026-09-10)*, the first
     entitlement in the product. Export ends with the plan and the paywall must
     never imply otherwise.
@@ -1735,7 +1809,7 @@ economy is tuned on evidence rather than argued about.
     |---|---|---|---|---|
     | Reading streak | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime, nothing repeats | Launch |
     | Streak repair | **0** — restores the streak | day after a missed day, on 30 min reading | 2/month | Launch |
-    | Welcome bonus | **10** | on declining the one-time offer | once per authenticated account | Launch |
+    | Welcome bonus | **10** | on declining the paywall | once per authenticated account | Launch |
     | Guest bootstrap | **3** | on first guest bootstrap (§9) | once per anonymous account | Launch |
     | Referral — referrer | **10** | on invited user's 1st generation | 3/mo, 10 lifetime | v1.1 |
     | Referral — invited | **5** | on own 1st generation | once | v1.1 |
@@ -1775,8 +1849,9 @@ economy is tuned on evidence rather than argued about.
 
 ### Onboarding
 
-29. **Sequence: purpose branch → path-specific paywall → decline → one-time
-    offer → decline or expiry → 10 welcome credits → welcome → app.** Readers
+29. **Sequence: purpose branch → path-specific paywall → decline → 10 welcome
+    credits → welcome → app.** *(Revised 2026-09-10: the one-time offer step is
+    removed.)* Readers
     reach their paywall after the shelf reveal; writers reach theirs after the
     blueprint and preview. The welcome bonus is a consolation on the decline
     path, not a greeting; subscribers do not receive it, and it is **10 for
@@ -1787,7 +1862,7 @@ economy is tuned on evidence rather than argued about.
     balance is announced separately by the in-app message system on landing, so
     the screen needs no per-path copy and does not duplicate that message.
 30. **The paywall is skippable at every step**, with a large and obvious dismiss,
-    and the one-time offer is shown once ever.
+    and there is no one-time offer.
 31. **All grants require a server-verified Supabase JWT.** Named-account grants
     require a named account; the narrowly rate-limited guest bootstrap exception
     is defined in §9 and cannot publish publicly.
@@ -1810,8 +1885,9 @@ economy is tuned on evidence rather than argued about.
 35. **Prohibitions:** never block reading; no launch-time or post-generation
     auto-paywall; no countdown timers or false scarcity **on any in-app
     surface**; no hidden or delayed dismiss control; no charging for a retry
-    after our own failure; never re-show the one-time offer.
-35a. **The one exception to the countdown ban is the onboarding one-time offer**
+    after our own failure. **The countdown ban is absolute** — the one-time offer
+    that carried the single exception was removed 2026-09-10.
+35a. ~~**The one exception to the countdown ban is the onboarding one-time offer**
     (§6): a **2-minute** clock on a single screen, shown once ever, carrying the
     line *"You'll never see this again."* It is permitted only because the
     deadline is honestly enforced — at zero the SKU is disabled for that
@@ -1885,7 +1961,10 @@ economy is tuned on evidence rather than argued about.
     and takes no size or quality parameter, so the per-tier costing above no
     longer has a mechanism behind it. The cover got cheaper ($0.063 → $0.039);
     the character portrait got ~3.5× dearer ($0.011 → $0.039), which is exactly
-    the number the "a whole cast is one credit" claim rests on. Re-run §10.6
-    before the portrait path is priced.
+    the number the "a whole cast is one credit" claim rests on. **Resolved
+    2026-09-10:** a cast of three is $0.117 and stays bundled into the 1-credit
+    story start; standalone character images are 4 free per account then 1 credit
+    each (§3). Reusing a saved character's portrait costs nothing, which is what
+    keeps the bundled start affordable for repeat creators.
 
 <!-- markdownlint-enable MD029 -->

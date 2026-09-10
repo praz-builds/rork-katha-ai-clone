@@ -31,9 +31,9 @@ const story: Story = {
   plannedChapterCount: 7,
   synopsis: "",
   characters: [
-    { name: "Aarav", role: "A returning engineer" },
-    { name: "Maya", role: "The one who stayed" },
-    { name: "Uncle Farooq", role: "Never on this page" },
+    { name: "Aarav", appearance: "A returning engineer" },
+    { name: "Maya", appearance: "The one who stayed" },
+    { name: "Uncle Farooq", appearance: "Never on this page" },
   ],
   chapters: [chapter, chapter],
   likes: 0,
@@ -48,7 +48,7 @@ const story: Story = {
 const kabir: SavedCharacter = {
   id: "saved-kabir",
   name: "Kabir",
-  role: "A courier",
+  appearance: "A courier",
   createdAt: "2026-09-09T00:00:00Z",
 };
 

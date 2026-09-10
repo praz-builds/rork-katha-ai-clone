@@ -93,3 +93,41 @@ export async function setPreferredVoiceId(id: string): Promise<void> {
     // depends on it.
   }
 }
+
+const PREFERRED_VOICE_GENDER_KEY = "katha.voice.gender.v1";
+
+export type VoiceGender = "female" | "male";
+
+/**
+ * The reader's female/male narration toggle, remembered on the device.
+ *
+ * Separate from `preferredVoiceId` on purpose: that is a specific voice chosen
+ * in the Voices screen, this is the binary switch the reader's Listen sheet
+ * offers between the two narrations a chapter is rendered with
+ * (`chapter.audioUrls.female` / `.male`). They answer different questions and
+ * collapsing them would make picking a voice in one place silently change the
+ * other.
+ *
+ * Device-local for the same reason every other reading preference is: it is a
+ * fact about how this phone is being listened to, not about the person, and it
+ * costs nothing to re-pick. Do not give it a database column.
+ */
+export async function preferredVoiceGender(): Promise<VoiceGender | null> {
+  try {
+    const value = await AsyncStorage.getItem(PREFERRED_VOICE_GENDER_KEY);
+    return value === "female" || value === "male" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setPreferredVoiceGender(
+  gender: VoiceGender,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PREFERRED_VOICE_GENDER_KEY, gender);
+  } catch {
+    // A preference that cannot be saved is re-picked next time. Nothing else
+    // depends on it.
+  }
+}

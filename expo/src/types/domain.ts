@@ -86,11 +86,22 @@ export const KIDS_UI_GENRES: readonly Genre[] = UI_GENRES.filter(isKidsGenre);
 export type AudienceMode = "adult" | "kids";
 export type SpiceLevel = "sweet" | "steamy";
 export type IdentityLens = "queer";
-/** New drafts may be created in these languages. Existing stories keep theirs. */
+/**
+ * New drafts may be created in these languages. Existing stories keep theirs.
+ *
+ * PORTUGUESE IS GONE from the offer. It was in every language picker in the
+ * app -- the create brief, the add-phrases sheet -- and nothing behind it was
+ * ever built for it: no narration voice, no phrase corpus, none of the prose
+ * rules tuned for it. Offering a language the product cannot actually write
+ * or speak is a promise broken at the moment somebody takes it up.
+ *
+ * The TYPE deliberately still admits it, and `normalizeCreationLanguage` still
+ * recognises it, because stories and saved phrases already carry it and those
+ * rows must keep resolving. It simply cannot be chosen any more.
+ */
 export type CreationLanguage = "English" | "Portuguese";
 export const CREATION_LANGUAGES: readonly CreationLanguage[] = [
   "English",
-  "Portuguese",
 ];
 export function normalizeCreationLanguage(value: unknown): CreationLanguage {
   return value === "Portuguese" ? "Portuguese" : "English";
@@ -144,6 +155,19 @@ export type Chapter = {
   hookType?: HookType;
   hookText?: string;
   isPublished: boolean;
+  /**
+   * This chapter's own illustration, when the writer asked for illustrated
+   * chapters (`stories.illustrate_chapters`, 1 extra credit per chapter --
+   * `source-of-truth/CREDITS_AND_PRICING.md` §1).
+   *
+   * Chapter 1's is the story's cover and is also `story.coverImageUrl`; every
+   * later chapter has only this. It is drawn on a background task minutes
+   * after the chapter is readable, so it is absent on the chapter the author
+   * has just watched being written and present when a reader opens it later.
+   * A chapter whose art failed keeps this undefined for good and reads
+   * perfectly well without it.
+   */
+  imageUrl?: string;
   audioUrl?: string;
   audioUrls?: { female?: string; male?: string };
 };
@@ -167,6 +191,15 @@ export type Story = {
   genre: Genre;
   primaryGenre?: Genre;
   storyMode?: StoryMode;
+  /**
+   * Who picks the direction between chapters, read from the story row.
+   *
+   * Absent means `interactive`, which is what every story written before the
+   * Story mode picker existed was. The reader consults this at a chapter end;
+   * it is on the STORY rather than the request that made it because the
+   * chapter end is a different session from the brief, often a different day.
+   */
+  storyFlow?: StoryFlow;
   plannedChapterCount?: 3 | 7 | 15;
   chapterLength?: "short" | "standard" | "long";
   /**
@@ -204,6 +237,17 @@ export type Story = {
    * absent for every draft younger than that.
    */
   coverImageUrl?: string;
+  /**
+   * Whether every chapter of this story gets its own illustration.
+   *
+   * The brief's *Chapter cover* pick, off `stories.illustrate_chapters`. The
+   * reader needs it, not just the generator: chapter art lands on a background
+   * task, so a chapter opened before its picture exists must already be
+   * holding the space the picture will take. Reserving it only once
+   * `chapter.imageUrl` arrives is what reflows page one under a reader who is
+   * mid-sentence.
+   */
+  illustrateChapters?: boolean;
   /**
    * The story this one is a private copy OF.
    *
@@ -268,9 +312,16 @@ export type CoverStatus = "pending" | "generating" | "ready" | "failed";
 export type StoryCharacter = {
   id?: string;
   name: string;
-  /** Role, age, who they are - the brief's `description`. */
-  role?: string;
   background?: string;
+  /**
+   * Who they are and what they look like — the Craft sheet's one field.
+   *
+   * This used to be two: a `role` (the brief called it Description) beside an
+   * `appearance`, which meant the same person was typed twice and each half
+   * reached a different prompt. For a story written before that merge the
+   * server resolves the retired column into this one, so a cast loaded here
+   * is never half-empty.
+   */
   appearance?: string;
   portraitUrl?: string;
   isHero?: boolean;
@@ -285,9 +336,14 @@ export type StoryCharacter = {
 export type SavedCharacter = {
   id: string;
   name: string;
-  /** Role, age, who they are. Maps to the brief's `description`. */
-  role?: string;
   background?: string;
+  /**
+   * Who they are and what they look like. One field, as in Craft.
+   *
+   * A character saved before the merge has its text in `user_characters`'
+   * retired `description` column; `fromRow` resolves that into this field on
+   * read, so the library never shows a saved person as a bare name.
+   */
   appearance?: string;
   portraitUrl?: string;
   /** The story this character was first written for, when known. */
@@ -332,6 +388,41 @@ export type CreditLedgerEntry = {
   label: string;
 };
 
+/**
+ * The look every image in a story is drawn in — its cover, its chapter art and
+ * its portraits.
+ *
+ * `auto` is the default and is NOT a style: it means "the genre decides", which
+ * is what every cover did before this control existed (`GENRE_PROMPTS` in
+ * `backend/supabase/functions/_shared/cover-prompts.ts` carries a style per
+ * genre). Naming it explicitly is what lets a writer go back to it after
+ * picking one, rather than the absence of a choice being unreachable once a
+ * choice is made.
+ *
+ * The values are the wire values: they travel as `image_style` in lower case
+ * and are read by the backend's own prompt assembly.
+ */
+export const IMAGE_STYLES = [
+  "auto",
+  "anime",
+  "cinematic",
+  "comic",
+  "watercolor",
+] as const;
+export type ImageStyle = typeof IMAGE_STYLES[number];
+
+/**
+ * Who picks the direction between chapters.
+ *
+ * `interactive` is what the app has always done: the chapter ends, the reader
+ * is offered direction chips, and nothing is written until one is chosen.
+ * `auto` is the same flow with the choice made for them — the model takes the
+ * direction it would have suggested and keeps going. It is a decision about
+ * WHO CHOOSES, not about what is written, which is why it is one field rather
+ * than a separate generation mode.
+ */
+export type StoryFlow = "interactive" | "auto";
+
 export type CreateDraft = {
   primaryGenre: Genre;
   /** Primary first. Extra values are editable secondary shelf tags. */
@@ -345,11 +436,19 @@ export type CreateDraft = {
   visibility?: "private" | "public";
   characters: {
     name: string;
-    description: string;
     /** Voice and motivation. Reaches the story prompt only. */
     background?: string;
-    /** Physical detail. Reaches the story prompt and the portrait image. */
-    appearance?: string;
+    /**
+     * Who they are and what they look like. Reaches the story prompt, the
+     * cover prompt and the portrait image.
+     *
+     * The sheet used to ask for this twice — a Description for the role and an
+     * Appearance for the look — and every prompt downstream then had to pick
+     * one or awkwardly join both. It is one field now. Nothing on the client
+     * writes `description` any more; the server still reads the retired column
+     * so a story written before the change keeps its cast.
+     */
+    appearance: string;
     /** Draft portrait generated before the story call, when available. */
     portraitUrl?: string;
     /** UI state for the separate character-image call. */
@@ -411,6 +510,10 @@ export type CreateDraft = {
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
   illustrateChapters?: boolean;
+  /** The look every image in this story is drawn in. Absent means `auto`. */
+  imageStyle?: ImageStyle;
+  /** Who picks the direction between chapters. Absent means `interactive`. */
+  storyFlow?: StoryFlow;
 };
 
 export type WriterEntryContext = {

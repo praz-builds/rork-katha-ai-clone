@@ -28,10 +28,10 @@ import CreateBriefFlow, { type StudioCreateDraft } from "@/components/create/Cre
 /* eslint-enable import/first */
 
 const saved: SavedCharacter[] = [
-  { id: "s-naina", name: "Naina", role: "A baker", createdAt: "2026-09-09T00:00:03Z" },
-  { id: "s-aarav", name: "Aarav", role: "An engineer", createdAt: "2026-09-09T00:00:02Z" },
-  { id: "s-maya", name: "Maya", role: "The one who stayed", createdAt: "2026-09-09T00:00:01Z" },
-  { id: "s-kabir", name: "Kabir", role: "A courier", createdAt: "2026-09-09T00:00:00Z" },
+  { id: "s-naina", name: "Naina", appearance: "A baker", createdAt: "2026-09-09T00:00:03Z" },
+  { id: "s-aarav", name: "Aarav", appearance: "An engineer", createdAt: "2026-09-09T00:00:02Z" },
+  { id: "s-maya", name: "Maya", appearance: "The one who stayed", createdAt: "2026-09-09T00:00:01Z" },
+  { id: "s-kabir", name: "Kabir", appearance: "A courier", createdAt: "2026-09-09T00:00:00Z" },
 ];
 
 const initialDraft: StudioCreateDraft = {
@@ -94,7 +94,7 @@ it("adds a saved character with one tap, makes the first the lead, and removes i
   expect(latest.characters).toHaveLength(1);
   expect(latest.characters[0]).toEqual(expect.objectContaining({
     name: "Naina",
-    description: "A baker",
+    appearance: "A baker",
     isHero: true,
     savedCharacterId: "s-naina",
   }));
@@ -120,11 +120,23 @@ it("stops at three, disables the rest, and says why", async () => {
   expect(view.getByText("3 of 3")).toBeTruthy();
 });
 
-it("keeps the visibility toggle in More options with the spec's copy", async () => {
-  const view = await render(<Harness library={[]} />);
-  await fireEvent.press(await view.findByLabelText("More options"));
-  expect(view.getByText("Make it public")).toBeTruthy();
+/**
+ * Visibility is a dropdown at the foot of the brief now, not a switch inside
+ * More options. It moved OUT of the collapsed section deliberately: a writer
+ * who never opened More options never saw the one control that decides whether
+ * anybody else can read what they are about to spend credits on.
+ */
+it("offers Private and Public as named states, with the spec's copy on each", async () => {
+  let latest: StudioCreateDraft = initialDraft;
+  const view = await render(<Harness library={[]} onDraft={(draft) => { latest = draft; }} />);
+
+  const trigger = await view.findByRole("button", { name: "Who can read it" });
+  expect(trigger.props.accessibilityValue).toEqual({ text: "Private" });
+
+  await fireEvent.press(trigger);
   expect(view.getByText("Only you can see this story.")).toBeTruthy();
-  await fireEvent.press(view.getByRole("switch", { name: "Make it public" }));
-  await waitFor(() => expect(view.getByText("Anyone on Katha can read it once it's written.")).toBeTruthy());
+  expect(view.getByText("Anyone on Katha can read it once it's written.")).toBeTruthy();
+
+  await fireEvent.press(view.getByRole("button", { name: "Public" }));
+  await waitFor(() => expect(latest.visibility).toBe("public"));
 });

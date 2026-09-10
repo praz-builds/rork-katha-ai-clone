@@ -243,7 +243,7 @@ creates the `profiles` row), run it, then reload.
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00056` applied (pushed 2026-09-09) except the deliberately absent `00016` and `00024`. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00074` applied (verified with `supabase migration list` on 2026-09-11) except the deliberately absent `00016` and `00024`. `00075`-`00078` are written but **not yet applied**: they add `stories.image_style`, `stories.story_flow`, the illustrated-chapter credit, and the chapter direction columns. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 `_test.ts` files live alongside the `.sql` in this directory. The CLI skips them by filename pattern, which is why they are safe there, but they are not migrations and must never be numbered as if they were.
 
@@ -422,7 +422,7 @@ Locked product decisions are in the design handoff at `docs/design/created-flow.
   prompt?: string,
   character_replacements?: [
     { from_name,
-      to: { saved_character_id } | { name, role?, appearance?, background? },
+      to: { saved_character_id } | { name, appearance?, background? },
       apply_to_all_chapters: boolean } ] }
 ```
 
@@ -579,6 +579,29 @@ without pretending to price the feature: `source-of-truth/CREDITS_AND_PRICING.md
 moved to Gemini's flat per-image rate. **That number needs re-running before
 portraits are priced.**
 
+**One field describes a character, and it is `appearance`.** The Craft sheet
+asked for a Description ("who they are") beside an Appearance ("what they look
+like"), so the same person was typed twice and every prompt downstream had to
+choose between two overlapping accounts. Description was retired from
+collection on 2026-09-11: nothing on the client writes it, `story-prompts.ts`
+and `story-shape.ts` emit a single `Appearance:` line, and the shape schema no
+longer asks for it. **The `characters.description` and
+`user_characters.description` columns stay, and stay readable** -- a story
+written before the change has its cast only there. `characterAppearance()` in
+`_shared/types.ts` is the ONE place that fallback lives; never read
+`.description` directly. `generate-story` and `generate-story-stream` still
+write the retired column as a mirror of `appearance`, because `_shared/media.ts`
+reads the cover and chapter-art cast with `select("name, description, is_hero")`
+-- delete the mirror the day those two selects read `appearance`. The reimagine
+wire's `role` is the same retired field under its own name; it is still
+accepted and lands in `appearance`.
+
+**The draft portrait is drawn in the brief's `image_style`.**
+`generate-character-image` accepts `image_style`, normalised by
+`normalizeCoverArtStyle` (anything unrecognised, or absent, means `auto`).
+Without it a writer who picked Watercolour got a house-style cast on the one
+screen where they compare a portrait against the cover.
+
 **A writer may attach a reference photo**, JPEG/PNG/WebP up to 6 MB as a data
 URL. SVG is refused by allowlist — it is a document that can carry script and
 remote references, not a bitmap. The image is a STYLE reference and never a
@@ -724,7 +747,8 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 ### Key Product Decisions
 
 - **Single currency: Credits.** No coins, no gems, no dual wallets. Backend tracks provenance via `credit_ledger.reason`.
-- **1 credit = 1 AI action**, not 1 story. **Charged today: 1 credit per generation** -- `generate-story` makes exactly one reservation, because neither the cast nor chapter art is built. **Contracted** (`source-of-truth/CREDITS_AND_PRICING.md` §1, not yet shipped): starting a story is 3 -- cast + chapter 1's words + chapter 1's art, which becomes the cover -- then 1 per further chapter, or 2 illustrated. `expo/src/lib/pricing.ts` keeps the two apart; never render a contracted price to a user.
+- **1 credit = 1 AI action**, not 1 story. **Charged today** (`source-of-truth/CREDITS_AND_PRICING.md` §1): starting a story is 3 -- cast + chapter 1's words + chapter 1's art, which becomes the cover -- then **1 per further chapter, or 2 if the story illustrates its chapters** (migration 00077, enforced in `reserve_generation_operation`). The illustrated price is taken from `stories.illustrate_chapters`, never from the caller, so a request can lower it and never raise it. A 3-chapter illustrated story is **7 = 3 + 2 + 2**.
+- **UNRESOLVED PRICING DISAGREEMENT (2026-09-11).** `source-of-truth/CREDITS_AND_PRICING.md` §1 says starting a story costs **1** credit (a bundle of three actions) and prices a 3-chapter illustrated story at **5**. `begin_story_generation` deducts **3**, and the client shows 3. Both numbers above are therefore live-code facts, not source-of-truth facts. Nobody may quietly change the code to match the document or the document to match the code: it is a price the product owner has to pick. Until then, treat the code as the authority for what a user is charged and this line as the record that the two disagree. `expo/src/lib/pricing.ts` still separates shipped prices from contracted ones for anything not on that list; never render a contracted price to a user.
 - **Reading is free, unlimited, on every tier, forever.** No caps, no metering, no daily pass.
 - **Audio is 1 credit per chapter, unlocked permanently.** No voice tiers.
 - **Drafting is free**: unlimited manual editing, 3 free AI redrafts and 20 free paragraph edits per chapter, 1 free cover regeneration per paid cover.

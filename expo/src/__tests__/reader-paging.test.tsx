@@ -132,15 +132,15 @@ it("lays the chapter out as one horizontal, snapping page per computed page", as
   // One page column is mounted per page the paginator produced, so the
   // pager's scroll offsets and the page indices are the same coordinate.
   //
-  // The footer says "Page three", not "Page 3 of 19". The total is a moving
+  // The footer says "Page 3", not "Page 3 of 19". The total is a moving
   // number while a chapter is being written and watching it climb reads like
   // the book growing under you; the page you are on is the part that is
   // stable and the part a reader uses.
   const labels = view.getAllByTestId(/^reader-page-label-\d+$/);
   expect(labels.length).toBeGreaterThan(2);
-  expect(labels[0]).toHaveTextContent("Page one");
-  expect(labels[1]).toHaveTextContent("Page two");
-  expect(labels[2]).toHaveTextContent("Page three");
+  expect(labels[0]).toHaveTextContent("Page 1");
+  expect(labels[1]).toHaveTextContent("Page 2");
+  expect(labels[2]).toHaveTextContent("Page 3");
   // No page carries a running total any more.
   expect(view.queryAllByText(/^Page \d+ of \d+$/)).toHaveLength(1);
 });

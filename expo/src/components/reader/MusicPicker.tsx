@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   scrim: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(15,14,12,0.26)",
+    backgroundColor: colors.scrim,
   },
   sheet: {
     backgroundColor: colors.surface,

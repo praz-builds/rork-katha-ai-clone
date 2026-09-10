@@ -109,8 +109,13 @@ export function parseReplacements(
       fromName,
       character: {
         name,
-        description: optionalText(target.role),
-        appearance: optionalText(target.appearance),
+        // `role` is the wire's retired spelling of the Craft sheet's
+        // Description field. It is still accepted so a client on an older
+        // build can still swap a character, and it lands in `appearance`
+        // rather than in `description` -- one field reaches the prompt now,
+        // and a replacement whose only text arrived as `role` must not be
+        // the character nobody can see.
+        appearance: optionalText(target.appearance) ?? optionalText(target.role),
         background: optionalText(target.background),
       },
       applyToAllChapters: entry.apply_to_all_chapters === true,

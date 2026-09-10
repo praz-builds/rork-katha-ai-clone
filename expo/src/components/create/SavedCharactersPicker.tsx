@@ -38,6 +38,12 @@ export type SavedCharactersPickerProps = {
    * test can hand in fixtures. Defaults to `listSavedCharacters`.
    */
   loadCharacters?: () => Promise<SavedCharacter[]>;
+  /**
+   * The brief's *Image style* pick, so a portrait drawn from this sheet is in
+   * the same look as the cover. Absent where there is no brief (the Reimagine
+   * sheet), which the endpoint reads as `auto`.
+   */
+  imageStyle?: CreateDraft["imageStyle"];
   /** Overrides the write for the New character path. */
   saveCharacter?: (input: ReturnType<typeof savedCharacterInputFromDraft>) => Promise<SavedCharacter>;
 };
@@ -56,6 +62,7 @@ export function SavedCharactersPicker({
   onClose,
   loadCharacters = listSavedCharacters,
   saveCharacter = saveCharacterToLibrary,
+  imageStyle,
 }: SavedCharactersPickerProps) {
   const insets = useSafeAreaInsets();
   const [characters, setCharacters] = useState<SavedCharacter[] | null>(null);
@@ -98,8 +105,8 @@ export function SavedCharactersPicker({
 
   const requestCloseCraft = useCallback(() => {
     const dirty = Boolean(
-      buffer.name.trim() || buffer.description.trim() || buffer.background?.trim() ||
-        buffer.appearance?.trim() || buffer.portraitUrl,
+      buffer.name.trim() || buffer.background?.trim() ||
+        buffer.appearance.trim() || buffer.portraitUrl,
     );
     if (dirty) {
       setUnsavedPromptOpen(true);
@@ -116,15 +123,15 @@ export function SavedCharactersPicker({
       const { url } = await storyApi.generateCharacterImage({
         requestId: storyApi.createGenerationRequestId(),
         name,
-        description: buffer.description,
         appearance: buffer.appearance,
         referenceImage: buffer.referenceImage,
+        imageStyle,
       });
       setBuffer((previous) => ({ ...previous, portraitUrl: url, portraitStatus: "ready" }));
     } catch {
       setBuffer((previous) => ({ ...previous, portraitStatus: "failed" }));
     }
-  }, [buffer]);
+  }, [buffer, imageStyle]);
 
   const pickReference = useCallback(async () => {
     const referenceImage = await pickReferenceImage();
@@ -204,8 +211,8 @@ export function SavedCharactersPicker({
                   <Portrait name={character.name} uri={character.portraitUrl} />
                   <View style={styles.rowCopy}>
                     <Text style={styles.rowName}>{character.name}</Text>
-                    {character.role ? (
-                      <Text numberOfLines={1} style={styles.rowDetail}>{character.role}</Text>
+                    {character.appearance ? (
+                      <Text numberOfLines={1} style={styles.rowDetail}>{character.appearance}</Text>
                     ) : null}
                   </View>
                 </Pressable>
@@ -261,7 +268,7 @@ const styles = StyleSheet.create({
   scrim: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(15,14,12,0.26)",
+    backgroundColor: colors.scrim,
   },
   sheet: {
     maxHeight: "80%",

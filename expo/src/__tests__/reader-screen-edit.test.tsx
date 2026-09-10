@@ -338,7 +338,7 @@ describe("the chrome while the chapter is still being written", () => {
     const view = await renderLive(live.id);
 
     await waitFor(() =>
-      expect(view.getByTestId("reader-page-label-0")).toHaveTextContent("Page one")
+      expect(view.getByTestId("reader-page-label-0")).toHaveTextContent("Page 1")
     );
     expect(view.queryByText(/· writing/)).toBeNull();
     // No page CARRIES a running total. The chrome's slider readout still
@@ -353,7 +353,7 @@ describe("the chrome while the chapter is still being written", () => {
     await live.complete();
     // Still just the page, once the chapter has landed.
     await waitFor(() =>
-      expect(view.getByTestId("reader-page-label-0")).toHaveTextContent("Page one")
+      expect(view.getByTestId("reader-page-label-0")).toHaveTextContent("Page 1")
     );
   });
 });

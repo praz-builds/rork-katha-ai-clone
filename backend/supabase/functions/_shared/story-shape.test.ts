@@ -67,7 +67,10 @@ Deno.test("story shape bounds inferred fields and strips invalid genres", () => 
   assertEquals(shape.genres, ["fantasy", "mystery", "horror"]);
   assertEquals(shape.whereAndWhen?.length, 300);
   assertEquals(shape.characters.length, 3);
-  assertEquals(shape.characters[0].description?.length, 500);
+  // The model answers in `appearance` now; a legacy `description` is still
+  // read as its fallback, and clamped by the same bound.
+  assertEquals(shape.characters[0].appearance?.length, 500);
+  assertEquals(shape.characters[0].description, undefined);
   assertEquals(shape.suggestedMoments.length, 5);
 });
 

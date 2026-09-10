@@ -199,7 +199,8 @@ const styles = StyleSheet.create({
     top: 0,
     fontFamily: fonts.ui,
     color: colors.tertiary,
-    fontSize: 10,
+    // The ramp's floor. `monthRow` is 16pt tall, which holds 11 without change.
+    fontSize: 11,
   },
   columns: { flexDirection: "row", gap: GAP },
   column: { gap: GAP },

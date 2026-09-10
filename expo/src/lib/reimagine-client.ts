@@ -33,7 +33,7 @@ import type { Chapter, SavedCharacter, Story, StoryCharacter } from "@/types/dom
 
 export type CharacterReplacementTarget =
   | { savedCharacterId: string; name: string; portraitUrl?: string }
-  | { name: string; role?: string; appearance?: string; background?: string; portraitUrl?: string };
+  | { name: string; appearance?: string; background?: string; portraitUrl?: string };
 
 export type CharacterReplacement = {
   fromName: string;
@@ -164,7 +164,6 @@ function serializeReplacement(replacement: CharacterReplacement) {
       ? { saved_character_id: to.savedCharacterId }
       : {
         name: to.name,
-        role: to.role,
         appearance: to.appearance,
         background: to.background,
       },

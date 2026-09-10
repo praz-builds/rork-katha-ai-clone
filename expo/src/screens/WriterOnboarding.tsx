@@ -327,8 +327,10 @@ function normalizeTypedCast(cast: CastMember[]): CreateDraft["characters"] {
     .filter((member) => member.name.trim())
     .map((member, index) => ({
       name: member.name.trim(),
-      description: "",
       background: member.background.trim() || undefined,
+      // Onboarding asks for a name and a background only. Appearance is blank
+      // here and the writer fills it in Craft; a blank one is simply absent
+      // from the prompt rather than an empty clause in it.
       appearance: "",
       isHero: index === 0,
     }));

@@ -190,8 +190,8 @@ export function ReimagineSheet({
                           <Text style={styles.characterName}>{character.name}</Text>
                           {replacement ? (
                             <Text style={styles.replacedWith}>{`→ ${replacement.to.name}`}</Text>
-                          ) : character.role ? (
-                            <Text numberOfLines={1} style={styles.characterDetail}>{character.role}</Text>
+                          ) : character.appearance ? (
+                            <Text numberOfLines={1} style={styles.characterDetail}>{character.appearance}</Text>
                           ) : null}
                         </View>
                         <Pressable
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   scrim: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(15,14,12,0.26)",
+    backgroundColor: colors.scrim,
   },
   keyboard: {
     flex: 1,

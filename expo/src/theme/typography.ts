@@ -12,6 +12,26 @@ export const type = {
     fontFamily: fonts.display,
     fontWeight: '600' as const,
   },
+  /**
+   * A screen section's heading. 22.
+   *
+   * ADDED BECAUSE IT WAS ALREADY THERE. A `fontSize: 22` appears seventeen
+   * times across the app, hand-typed, because the ramp jumped 24 -> 18 and a
+   * section heading is neither a screen title nor a row label. A step that is
+   * used seventeen times is a step; leaving it out of the ramp did not prevent
+   * it, it only prevented it from being consistent.
+   */
+  section: {
+    fontSize: 22,
+    fontFamily: fonts.display,
+    fontWeight: '600' as const,
+  },
+  /** A row title or a prominent control label. 20. */
+  titleSmall: {
+    fontSize: 20,
+    fontFamily: fonts.display,
+    fontWeight: '600' as const,
+  },
   headline: {
     fontSize: 18,
     fontFamily: fonts.ui,
@@ -22,8 +42,27 @@ export const type = {
     fontFamily: fonts.ui,
     fontWeight: '400' as const,
   },
+  /** Body text in a dense surface: a card, a list row, a sheet. 15. */
+  bodySmall: {
+    fontSize: 15,
+    fontFamily: fonts.ui,
+    fontWeight: '400' as const,
+  },
   subhead: {
     fontSize: 14,
+    fontFamily: fonts.ui,
+    fontWeight: '400' as const,
+  },
+  /**
+   * Secondary information beside or beneath body text. 13.
+   *
+   * The single most-used size in the app after 14, and it had no name. 14 and
+   * 12 are one step apart in the token ramp and three steps apart in practice,
+   * because the gap between "body" and "caption" is where every timestamp,
+   * byline, credit count and helper line lives.
+   */
+  meta: {
+    fontSize: 13,
     fontFamily: fonts.ui,
     fontWeight: '400' as const,
   },
@@ -31,6 +70,20 @@ export const type = {
     fontSize: 12,
     fontFamily: fonts.ui,
     fontWeight: '400' as const,
+  },
+  /**
+   * The floor. 11.
+   *
+   * Nothing may be smaller. A tab label and a grid legend are already at the
+   * edge of legibility at 11, and the app currently has text at 10 and at 9 —
+   * sizes that are unreadable at any `fontScale` below 1.0 and that iOS's own
+   * accessibility guidance puts below the minimum. Anything reaching for less
+   * than this needs less text, not smaller text.
+   */
+  micro: {
+    fontSize: 11,
+    fontFamily: fonts.ui,
+    fontWeight: '500' as const,
   },
   reader: {
     fontSize: 18,

@@ -18,7 +18,7 @@ const VARIANTS: WriteAnotherVariant[] = ["gradient", "editorial"];
 
 it.each(VARIANTS)("says the same thing in the %s variant", async (variant) => {
   const view = await render(
-    <WriteAnotherCTA onPress={() => {}} variant={variant} />,
+    <WriteAnotherCTA onPress={() => {}} tone={variant === "gradient" ? "loud" : "quiet"} />,
   );
 
   expect(view.getByText("Write another story")).toBeTruthy();
@@ -30,7 +30,7 @@ it.each(VARIANTS)("says the same thing in the %s variant", async (variant) => {
 it.each(VARIANTS)("is one tap target in the %s variant", async (variant) => {
   const onPress = jest.fn();
   const view = await render(
-    <WriteAnotherCTA onPress={onPress} variant={variant} />,
+    <WriteAnotherCTA onPress={onPress} tone={variant === "gradient" ? "loud" : "quiet"} />,
   );
 
   // One target, not a card plus a button plus a chevron: a screen reader must

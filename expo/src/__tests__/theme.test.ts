@@ -206,10 +206,28 @@ describe('theme tokens', () => {
   });
 
   describe('typography', () => {
-    it('exports 7 text styles', () => {
+    it('exports the full ramp', () => {
       const styles = Object.keys(type);
-      expect(styles.length).toBe(7);
-      expect(styles).toEqual(expect.arrayContaining(['largeTitle', 'title', 'headline', 'body', 'subhead', 'caption', 'reader']));
+      expect(styles.length).toBe(12);
+      expect(styles).toEqual(expect.arrayContaining([
+        'largeTitle', 'title', 'section', 'titleSmall', 'headline', 'body',
+        'bodySmall', 'subhead', 'meta', 'caption', 'micro', 'reader',
+      ]));
+    });
+
+    it('is a real ramp: every step distinct, in order, no fractions', () => {
+      // The ramp went 34/24/18/16/14/12 while the app hand-typed 22, 20, 15,
+      // 13 and 11 across two hundred call sites, plus a 12.5 and a 19 and a 21
+      // that belonged to nothing. Steps that exist but are not named are how a
+      // scale stops being one, so the named steps are pinned here.
+      const ladder = ['largeTitle', 'title', 'section', 'titleSmall', 'headline', 'body', 'bodySmall', 'subhead', 'meta', 'caption', 'micro'] as const;
+      const sizes = ladder.map((k) => type[k].fontSize);
+      expect(sizes).toEqual([34, 24, 22, 20, 18, 16, 15, 14, 13, 12, 11]);
+      for (const size of Object.values(type).map((s) => s.fontSize)) {
+        expect(Number.isInteger(size)).toBe(true);
+        // 11 is the floor. Below it text is illegible at any fontScale under 1.
+        expect(size).toBeGreaterThanOrEqual(11);
+      }
     });
 
     it('every style has fontSize and fontFamily', () => {
@@ -327,7 +345,7 @@ describe('theme tokens', () => {
 
     it('leaves the app-wide `type` scale untouched', () => {
       expect(type.title.fontFamily).toBe(fonts.display);
-      expect(Object.keys(type).length).toBe(7);
+      expect(Object.keys(type).length).toBe(12);
     });
   });
 

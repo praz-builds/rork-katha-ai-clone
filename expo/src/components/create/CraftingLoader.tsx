@@ -268,7 +268,8 @@ const styles = StyleSheet.create({
   headlineText: {
     fontFamily: fonts.display,
     fontWeight: "700",
-    fontSize: 21,
+    // 22 (`type.section`), the step this was one point short of.
+    fontSize: 22,
     color: colors.ink,
     textAlign: "center",
   },
