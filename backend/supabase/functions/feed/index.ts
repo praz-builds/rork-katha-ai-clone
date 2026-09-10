@@ -203,7 +203,15 @@ serve(async (req) => {
       source: "runtime",
       errorCode: "feed_unhandled",
       error,
-      context: { feature: "feed" },
+      // The PostgREST/Postgres code, which is the whole diagnosis for this
+      // handler: `42501` is a missing grant, `42703` a column that does not
+      // exist, `PGRST116` no rows, `57014` a statement timeout. The first
+      // failure logged here recorded `{ feature: "feed" }` and nothing else,
+      // which proved the row lands and then could not say what went wrong --
+      // and the message is deliberately the safe generic one, so this is the
+      // only field that can carry it. `code` is already on the context
+      // allowlist and is a short identifier, never user text.
+      context: { feature: "feed", code: pgErrorCode(error) },
       userId: observedUserId,
     });
     return respond({ error: "Internal server error" }, 500);
@@ -624,6 +632,19 @@ function parsePositiveInteger(
   if (!/^[1-9]\d*$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed <= max ? parsed : null;
+}
+
+/**
+ * The database's own error code, when the failure came from the database.
+ *
+ * PostgREST returns `{ code, message, details, hint }`; a thrown `Error` has
+ * none of them. Undefined is dropped by the context sanitizer, so a non-database
+ * failure simply records no code rather than a misleading one.
+ */
+function pgErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && code.length > 0 ? code : undefined;
 }
 
 function jsonResponse(req: Request, body: unknown, status = 200): Response {
