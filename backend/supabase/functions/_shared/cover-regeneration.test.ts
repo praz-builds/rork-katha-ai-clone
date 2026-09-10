@@ -848,3 +848,77 @@ Deno.test("neither half of the steer can crowd the other out", () => {
   assertStringIncludes(steer, "The writer asks for this cover");
   assertStringIncludes(steer, "clearly different");
 });
+
+/**
+ * The style the writer picked survives a regeneration, because the claim
+ * carries it.
+ *
+ * A regeneration builds its prompt entirely from what
+ * `claim_cover_regeneration` returns -- deliberately, so it does not follow the
+ * claim with a second SELECT of the same row. That is exactly why a field
+ * missing from the claim is invisible here: the code compiles, the cover
+ * generates, and the writer pays a credit to have their anime cover replaced
+ * by one in the genre's default look with nothing anywhere saying why.
+ */
+Deno.test("a regeneration keeps the writer's image style", async () => {
+  const { client } = stubClient({
+    claim: {
+      claimed: true,
+      previous_cover_status: "ready",
+      regen_count: 0,
+      requires_credit: false,
+      title: "The Quiet Door",
+      primary_genre: "mystery",
+      themes: ["doors"],
+      where_and_when: "A hill town, off-season",
+      avoid: "graphic violence",
+      cover_prompt: null,
+      image_style: "anime",
+    },
+  });
+
+  let seen: Record<string, unknown> | null = null;
+  await regenerateCover({
+    client,
+    ...BASE,
+    generate: (input) => {
+      seen = input as unknown as Record<string, unknown>;
+      return Promise.resolve(imageResult());
+    },
+  });
+
+  const request = seen as unknown as { artStyle?: string; genre?: string };
+  assertEquals(request.artStyle, "anime");
+
+  // And it is the style clause the provider actually receives, not merely a
+  // field that was carried. The genre's own style must be gone from the
+  // prompt: appending both gives the model two contradictory instructions.
+  const prompt = buildCoverPrompt(
+    "mystery",
+    "The Quiet Door",
+    ["doors"],
+    undefined,
+    "A hill town, off-season",
+    "graphic violence",
+    undefined,
+    request.artStyle,
+  );
+  assertStringIncludes(prompt, "modern anime illustration");
+
+  // A story with no pick reaches the generator as `auto`-equivalent (absent),
+  // which is what every cover regenerated before 00075 did.
+  const legacy = stubClient();
+  let legacySeen: Record<string, unknown> | null = null;
+  await regenerateCover({
+    client: legacy.client,
+    ...BASE,
+    generate: (input) => {
+      legacySeen = input as unknown as Record<string, unknown>;
+      return Promise.resolve(imageResult());
+    },
+  });
+  assertEquals(
+    (legacySeen as unknown as { artStyle?: string }).artStyle,
+    undefined,
+  );
+});

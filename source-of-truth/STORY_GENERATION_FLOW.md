@@ -140,29 +140,79 @@ idea or a moment, where the creator can see and correct it.
 ### Screen order
 
 ```text
-Create  ──▶  1. Idea      ──▶  2. Review and start
-             (one box)        (correct the guesses,
-                               craft characters,
-                               see the cost)
+Create  ──▶  1. Idea      ──▶  2. Where does it begin?
+             (one box)        (direction chips derived
+                               from the idea just typed)
 ```
 
 The main Create surface is one scrollable screen. Genre and Kids Mode sit in one
-parent row at the top, then the user's idea, starter prompts, optional Premise,
-Values for kids, and Characters. All lower-priority craft controls sit inside
-**More options**. The only second surface in main Create is the
-full-screen Craft character modal opened by **Add a character**.
+parent row at the top, then **six dropdowns** (below), the user's idea, starter
+prompts, optional Premise, Values for kids, and Characters. Remaining
+lower-priority craft controls sit inside **More options**. The only second
+surface in main Create is the full-screen Craft character modal opened by **Add
+a character**.
 
-What is retired for main Create is the three-step **Idea → Shape → Review**
-pattern, and specifically its separate **Shape** step: the user does not stop to
-approve a shaped brief before they can continue. The **Review and start** step in
-the screen order above is not that step and is not retired. It is the last screen
-before generation, it shows the user what they are about to spend a generation on,
-and going back from it preserves every value rather than resetting the draft.
+**The Review step is retired** (2026-09-11), along with the separate **Shape**
+step retired before it. Neither survives: the user does not stop to approve a
+shaped brief, and they do not stop to confirm a summary of what they typed.
 
-This paragraph previously read "the older Idea → Shape → Review pattern is
-retired", which was ambiguous enough to be read as retiring review itself, and it
-sat directly under a diagram that shows a review step. It has been read the wrong
-way at least once and cost a rebuild, so the distinction is now spelled out.
+What replaced Review is not nothing, and that distinction is the whole reason
+this section was rewritten rather than deleted. A confirmation screen asks the
+user to re-read their own input and press a button; it spends a screen to
+produce no new decision. The **direction step** spends the same screen to hand
+them a real one — the same `DirectionChoices` cards the reader gets between
+chapters, derived here from the idea they just typed, so the writer chooses how
+chapter one opens instead of approving a restatement of the brief.
+
+The directions come from `shape-story`, the free shaping call the brief already
+makes: `beats[n]` briefs chapter `n + 1`, so `beats[0]` is the opening. They run
+through the same `toDirection` converter the reader's chips use, and a beat that
+cannot be converted is dropped rather than padded with filler. A chosen
+direction travels as beat zero with the rest of the plan intact; **Surprise me**
+sends the plan untouched.
+
+**Why the earlier warning here no longer applies.** This section used to argue
+at length that Review must not be confused with Shape, because an ambiguous
+sentence had once been read as retiring review and cost a rebuild. That warning
+is obsolete: review is now genuinely retired, deliberately, and replaced by a
+step that makes a decision rather than confirming one. Cost is still shown — it
+sits on the direction step's own submit label.
+
+### The six dropdowns
+
+Four sit above the text fields and two at the foot of the surface, outside
+**More options**, because each is a decision about the story rather than a
+refinement of it:
+
+| Dropdown | Values | Default |
+|---|---|---|
+| Story mode | Interactive · Auto-continue | Interactive |
+| Chapters | 3 · 7 · 15 | 3 |
+| Chapter length | Short · Standard · Long | Standard |
+| Chapter cover | Cover art only · Auto-generated per chapter | Cover art only |
+| Image style | Auto · Anime · Cinematic · Comic · Watercolor | Auto |
+| Who can read it | Private · Public | Private |
+
+**Story mode** is `stories.story_flow` (migration 00076). `interactive` is the
+existing behaviour: direction chips at every chapter end, nothing written until
+one is picked. `auto` picks the direction itself and continues.
+
+It is **sent on the create request AND persisted as a column**, and the column
+is the part that matters: the pick is honoured at every chapter end, which is a
+different session from the brief and often a different day, so a value that
+lived only in the request that wrote chapter one would be forgotten by the
+moment it means anything. The request field is how it gets there; the column is
+how it survives. An unrecognised value clamps to
+`interactive`: the mode that asks before it spends.
+
+**Image style** is `stories.image_style` (migration 00075). It **replaces** the
+genre's own style clause rather than being appended to it — two style
+instructions in one prompt produce neither — while palette, composition and mood
+stay the genre's. It reaches the cover and every cast portrait, survives every
+rung of the content-filter retry ladder, and is carried on regenerations.
+
+**Who can read it** is disabled for guests, with the reason in the option copy
+rather than in a separate error.
 
 A lightweight two-step preview also belongs to onboarding, where the product needs
 a short first-run path before the user reaches the full Create surface.
@@ -557,14 +607,23 @@ Collapsed by default. Identical in both modes except where §3 says otherwise.
 | Control | Values | Default |
 |---|---|---|
 | ~~Writing mode~~ | *Removed — see §15* | — |
-| **Chapters** | 3 · 7 · 15 | 3 |
-| **Chapter length** | Short · Standard · Long | Standard *(Short in kids)* |
-| **Chapter art** | on / off for chapters 2–N — **1 ✦ each** | off |
+| ~~Chapters~~ | *Promoted out of More options — see §2* | — |
+| ~~Chapter length~~ | *Promoted out of More options — see §2* | — |
+| ~~Chapter cover~~ | *Promoted out of More options — see §2* | — |
+| ~~Visibility~~ | *Promoted out of More options — see §2* | — |
 | Writing style | Free text — *poetic, Shakespearean, hardboiled* | empty |
 | Spice | Sweet · Steamy · Explicit — **adult only**, flag-gated | Sweet |
-| Language | English · Portuguese | English |
+| Moments to include | Chip builder, capped at 5 | empty |
+| Language | English | English |
 | Avoid | Free text — *exclude a topic* | empty |
-| Visibility | Private · Public | Private |
+
+**Four of these controls left More options** (2026-09-11) and are now dropdowns
+on the main surface: Chapters, Chapter length, Chapter cover and Visibility.
+They are listed above as removed rather than deleted from the table, because a
+row that silently disappears reads as a control that was cut rather than moved.
+The live list of the six dropdowns, with their values and defaults, is in §2 and
+is the one to read. **Moments** and **Language** are the last two entries here
+by design: Moments sits directly above Language at the foot of the panel.
 
 Guests see Public as locked and stay Private. Public publishing unlocks only
 after a real account is linked; the backend enforces the same rule independently
@@ -573,11 +632,19 @@ of the client.
 **The cover image toggle is removed.** Chapter 1's art is compulsory and becomes
 the cover — see §10.4. The toggle here governs chapters 2–N only.
 
-**Language is a compact menu-style control, not a chip row.** Create offers only
-**English** and **Portuguese**, with English selected by default. Spanish is not
-an authoring option anywhere in Create. Existing Spanish stories remain readable
-and retain their stored language; that legacy support must not reintroduce Spanish
-to the creation UI.
+**Language is a compact menu-style control, not a chip row.** Create offers
+**English only** (2026-09-11). Portuguese was withdrawn from the offer along
+with Spanish before it, and for the same reason: neither had a narration voice,
+neither had been quality-checked for prose, and offering a language the product
+cannot actually deliver well is worse than offering one.
+
+`CreationLanguage` still ADMITS Portuguese and `normalizeCreationLanguage`
+still resolves it, and that is deliberate rather than leftover: stories written
+in Portuguese exist, and they must stay readable and continuable in the language
+they were written in. The withdrawal is from the OFFER, not from the type — a
+distinction that also governs Spanish, which was withdrawn the same way earlier.
+Neither may be reintroduced to the creation UI as a side effect of touching the
+stored-value path.
 
 ### Writing mode — removed
 
@@ -1144,7 +1211,7 @@ derived value.
 | `cover-regeneration.ts` | The claim / price / generate / settle transaction behind Regenerate, kept out of the handler so the paths that cost a credit can be tested. **Migration 00044 is required.** `stories.cover_regen_count` is what makes "1 free retry, then 1 ✦" expressible at all; `stories.cover_attempt_count` is what bounds provider spend when the free retry keeps failing; `stories.cover_last_request_id` is what makes the *free* path idempotent, which `reserve_generation_operation` only does for the paid one — written **only** by `finish_cover_regeneration`, so it records the request that delivered the cover on the row rather than the last one to claim it, and a retry after a failed regeneration re-attempts instead of being handed the old cover as a success; and `stories.cover_prompt` — which §10.4 assumed existed and did not — is what lets a regeneration vary from the cover it replaces instead of re-sending the request that produced it. It is written by the original cover too (`media.ts`), not only by a regeneration: the *first* regeneration is the free one and therefore the common case, and it is the one that reads a column no regeneration has yet written. All four are server-derived and deliberately outside the owner-update grant of 00015, like `cover_status`. The price, the ceiling, the replay check and the claim all happen inside `claim_cover_regeneration`, under one advisory lock and one `for update`: reading any of them in one round trip and acting in the next is what makes two fast taps two free covers. |
 | `regenerate-cover` | Client-callable cover endpoint. **POST** re-rolls the cover — reserving `kind = 'cover'` on chapter 1 when a credit is due, refunding it when the image does not arrive. **GET** reports the current cover state, which is how the client learns chapter 1's art landed: it is generated on a background task after the response is flushed, so without a read there is no second moment at which the client could find out. Same shape as `audio-status`. |
 | `cover-prompts.ts` / `image.ts` | A regeneration steer, carried beside the *Avoid* exclusion — but **dropped at the last safety rung**, which the exclusion is not. Level 2 exists to be the prompt that cannot be refused; the steer is the only per-request caller-supplied text in a cover prompt, so leaving it there lets a note written to trip a content filter trip every rung of every provider, and one request becomes nine image calls. The two free-text fields a cover prompt carries — the *Avoid* exclusion and the steer — are each collapsed to a single clause, every `.` `!` `?` `;` `:` becoming a comma, because the value is emitted inside `Do not depict: X.` and a terminator inside X ends our sentence and starts the caller's. That is a promise about those two fields and not about the whole prompt: `title` and `where_and_when` are interpolated as written, because collapsing punctuation in them would turn "Dr. Smith's Door" into "Dr, Smiths Door". The steer's two halves — the writer's note and a description of the cover being replaced — are budgeted separately rather than sharing one cap, or a maximum-length note truncates the "make it clearly different" half away and the regeneration is free to reproduce the cover it was asked to replace. Plus a per-attempt storage key. The cover URL carries no version, so overwriting the object would leave every CDN edge serving the picture the writer just paid to replace. |
-| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; accept only English or Portuguese from the Create contract |
+| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; reject any creation language but English (`validation.ts`), while a continuation reads `stories.language` off the row and never passes it through the validator -- so an existing Portuguese or Spanish story keeps being written in its own language; normalize `image_style` and `story_flow`, falling back to `auto` and `interactive` respectively |
 
 ### `expo/src/i18n/`
 

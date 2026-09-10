@@ -439,7 +439,7 @@ export default function ListenScreen({
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={handleClose}
-          style={styles.closeButton}
+          style={[styles.closeButton, { top: insets.top + spacing.sm }]}
         >
           <X size={22} color={colors.ink} />
         </Pressable>
@@ -449,7 +449,7 @@ export default function ListenScreen({
 
   return (
     <View style={styles.root} testID="listen-screen">
-      <View style={[styles.cover, { paddingTop: insets.top }]}>
+      <View style={styles.cover}>
         {coverSource
           ? (
             <FocalImage
@@ -470,7 +470,7 @@ export default function ListenScreen({
           accessibilityLabel="Close player"
           onPress={handleClose}
           hitSlop={8}
-          style={styles.closeButton}
+          style={[styles.closeButton, { top: insets.top + spacing.sm }]}
         >
           <X size={22} color={colors.chromeText} />
         </Pressable>
@@ -571,14 +571,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
     overflow: "hidden",
   },
+  /**
+   * `top` is supplied INLINE from `insets.top`, never from this object.
+   *
+   * It used to be `spacing.xxxl` — a flat 32pt — and the reference device's
+   * notch is 47pt, so the close button sat underneath it and could not be
+   * pressed. The value cannot live here because a safe-area inset is not a
+   * design token: it is 0 on a flat display, 47 on one device and 59 on
+   * another, and any constant is wrong on all but one of them.
+   *
+   * The cover behind it no longer carries `paddingTop: insets.top` either. It
+   * is a fixed 300pt box and `coverFill` is `height: "100%"`, which resolves
+   * against the CONTENT box — so padding for the notch squashed the artwork by
+   * the height of the notch and left a canvas-coloured strip above it. A player
+   * cover is meant to run full-bleed under the status bar; the button floats
+   * over it, and only the button needs to clear the notch.
+   */
   closeButton: {
     position: "absolute",
-    top: spacing.xxxl,
     right: spacing.lg,
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(28, 26, 23, 0.55)",
+    backgroundColor: colors.scrimHeavy,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -595,7 +610,7 @@ const styles = StyleSheet.create({
   },
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(15, 14, 12, 0.45)",
+    backgroundColor: colors.scrimStrong,
   },
   sheet: {
     position: "absolute",

@@ -25,6 +25,7 @@ import {
   ProviderMalformedResponseError,
   ProviderNotConfiguredError,
   requireUsableStoryOutput,
+  systemMessage,
 } from "./llm.ts";
 import {
   HOOK_TYPE_VALUES,
@@ -1126,4 +1127,25 @@ Deno.test("the contributor tier serves the moment the account policy allows it",
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// Prompt caching. The ~10 KB system prefix is byte-identical across every
+// chapter of every story sharing its settings, and was re-sent and re-processed
+// on every call including every retry rung.
+Deno.test("the system prompt carries a cache breakpoint where the provider takes one", () => {
+  const cached = systemMessage("SYSTEM", true) as {
+    role: string;
+    content: { type: string; text: string; cache_control: unknown }[];
+  };
+  assertEquals(cached.role, "system");
+  assertEquals(cached.content[0].text, "SYSTEM");
+  assertEquals(cached.content[0].cache_control, { type: "ephemeral" });
+
+  // A provider that has never seen `cache_control` gets the plain string it has
+  // always been sent. The prompt's CONTENT is identical either way -- this is a
+  // transport annotation, not a change to what the model reads.
+  assertEquals(systemMessage("SYSTEM", false), {
+    role: "system",
+    content: "SYSTEM",
+  });
 });

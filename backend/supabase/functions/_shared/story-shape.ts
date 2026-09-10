@@ -2,6 +2,7 @@ import { fenceUserText, userField } from "./story-prompts.ts";
 import {
   CHAPTER_LENGTHS,
   type ChapterLength,
+  characterAppearance,
   type CharacterInput,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
@@ -85,16 +86,19 @@ export function buildStoryShapeOutput(variant: StoryShapeVariant) {
         items: {
           type: "object",
           additionalProperties: false,
+          // No `description`. It asked the model for the same character
+          // twice -- "who they are" and "what they look like" -- and the two
+          // answers then had to be reconciled by every prompt downstream.
+          // Appearance is the one field now, and it is the one the writer
+          // edits in Craft.
           required: [
             "name",
-            "description",
             "background",
             "appearance",
             "isHero",
           ],
           properties: {
             name: { type: "string" },
-            description: { type: "string" },
             background: { type: "string" },
             appearance: { type: "string" },
             isHero: { type: "boolean" },
@@ -216,19 +220,19 @@ export function buildStoryShapePrompt(
     for (const character of brief.characters.slice(0, MAX_CAST_SIZE)) {
       parts.push(`- ${userField("character-name", character.name)}`);
       if (character.isHero) parts.push("  Role: lead character");
-      if (character.description?.trim()) {
-        parts.push(
-          `  Description: ${userField("description", character.description)}`,
-        );
-      }
       if (character.background?.trim()) {
         parts.push(
           `  Background: ${userField("background", character.background)}`,
         );
       }
-      if (character.appearance?.trim()) {
+      // Through `characterAppearance`, not `character.appearance`: a brief
+      // rebuilt from a story written before the field merge carries its cast
+      // in the retired `description` only, and shaping it must not hand the
+      // model a nameless roster.
+      const appearance = characterAppearance(character);
+      if (appearance) {
         parts.push(
-          `  Appearance: ${userField("appearance", character.appearance)}`,
+          `  Appearance: ${userField("appearance", appearance)}`,
         );
       }
     }
@@ -383,9 +387,13 @@ function normalizeCharacters(value: unknown): CharacterInput[] {
     if (!name || characters.length >= MAX_CAST_SIZE) continue;
     characters.push({
       name,
-      description: normalizeText(character.description, 500),
       background: normalizeText(character.background, 500),
-      appearance: normalizeText(character.appearance, 500),
+      // `description` is no longer in the schema, so a compliant model never
+      // sends one. It is still read here because a provider that ignores the
+      // schema -- the case the plain-text fallback exists for -- would
+      // otherwise return a cast with no look at all.
+      appearance: normalizeText(character.appearance, 500) ??
+        normalizeText(character.description, 500),
       isHero: character.isHero === true,
     });
   }

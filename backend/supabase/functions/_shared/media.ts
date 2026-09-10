@@ -28,7 +28,11 @@ import {
   createClient,
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
-import { generateCharacterPortrait, generateCoverImage } from "./image.ts";
+import {
+  generateChapterImage,
+  generateCharacterPortrait,
+  generateCoverImage,
+} from "./image.ts";
 import { logError, safeErrorMessage } from "./errors.ts";
 
 export interface StoryMediaInput {
@@ -48,6 +52,15 @@ export interface StoryMediaInput {
    * a cover full of it.
    */
   avoid?: string;
+  /**
+   * The writer's *Image style* pick, off `stories.image_style` (00075).
+   *
+   * Threaded to the portraits as well as the cover, and that is the point: the
+   * cast is drawn by this same task, so a story whose cover came back in
+   * watercolour and whose characters came back in the house painterly style
+   * would read as two different books from one pick.
+   */
+  imageStyle?: string;
   /**
    * Whether to tell the author the story is finished.
    *
@@ -117,6 +130,7 @@ export async function generateStoryMedia(
     supabase,
     input.storyId,
     input.userId,
+    input.imageStyle,
   );
   if (!castReady) await refundMissingMedia(supabase, input, "cast");
 
@@ -146,8 +160,8 @@ export async function generateStoryMedia(
 
 async function refundMissingMedia(
   supabase: SupabaseClient,
-  input: StoryMediaInput,
-  component: "cast" | "cover",
+  input: { storyId: string; operationId: string; userId: string },
+  component: "cast" | "cover" | "chapter_art",
 ): Promise<void> {
   const { error } = await supabase.rpc("refund_story_media_component", {
     p_operation_id: input.operationId,
@@ -173,6 +187,218 @@ async function refundMissingMedia(
     },
     userId: input.userId,
   });
+}
+
+export interface ChapterArtInput {
+  storyId: string;
+  chapterId: string;
+  chapterNumber: number;
+  /**
+   * The continuation operation that paid for this chapter.
+   *
+   * The art credit is reserved by that same operation (migration 00077), so it
+   * is also what a failed illustration is refunded against. Without it there is
+   * no way to give back the second credit without inventing a second ledger
+   * key for the same purchase.
+   */
+  operationId: string;
+  userId: string;
+}
+
+/**
+ * Draw one chapter's illustration, persist it, and give the credit back if it
+ * never arrives.
+ *
+ * ## Why this exists at all
+ *
+ * `stories.illustrate_chapters` has been validated, passed to
+ * `begin_story_generation` and stored since migration 00027, and until now
+ * nothing read it: only chapter 1 was ever illustrated, because chapter 1's
+ * art *is* the cover and comes from `generateStoryMedia`. A writer who ticked
+ * "illustrate every chapter" got one picture and paid for one picture.
+ *
+ * ## Why it reads its own rows
+ *
+ * Everything the prompt needs — the story's genre, brief and `image_style`,
+ * the chapter's title and hook — is already in the database by the time this
+ * runs, and this runs after the response has been flushed. Reading it here
+ * keeps the continuation handler's hot path untouched and means the caller
+ * passes identifiers only, which is also all a retry would need.
+ *
+ * ## Why a failure is never fatal
+ *
+ * Same contract as the cover: the reader paid for a chapter and has one. A
+ * chapter with no illustration is the typographic look decision 39 treats as
+ * legitimate, so the failure is logged, the art credit is refunded, and the
+ * chapter stands.
+ */
+export async function generateChapterArt(input: ChapterArtInput): Promise<void> {
+  const supabase = serviceClient();
+  try {
+    const [storyRead, chapterRead, castRead] = await Promise.all([
+      supabase
+        .from("stories")
+        .select(
+          "title, genre, primary_genre, themes, where_and_when, avoid, image_style, illustrate_chapters",
+        )
+        .eq("id", input.storyId)
+        .single(),
+      supabase
+        .from("chapters")
+        .select("title, first_line, hook_text, content")
+        .eq("id", input.chapterId)
+        .single(),
+      supabase
+        .from("characters")
+        // `appearance` first, `description` as the legacy fallback: the two
+        // were merged (`characterAppearance` in `types.ts`) and stories written
+        // before that carry only the retired column. Selecting one without the
+        // other loses half the cast's look on one side of the cutover or the
+        // other -- and this read feeds the CHAPTER ART, so the failure is a
+        // picture of nobody in particular.
+        .select("name, description, appearance, is_hero")
+        .eq("story_id", input.storyId),
+    ]);
+
+    if (storyRead.error || !storyRead.data) {
+      throw storyRead.error ?? new Error("Story row not found for chapter art");
+    }
+    const story = storyRead.data as Record<string, unknown>;
+    // Read again here rather than trusted from the caller. The credit was
+    // reserved against the stored flag (00077 checks the row inside the
+    // reservation), so drawing on any other basis would let a paid-for chapter
+    // get art nobody was charged for, or the reverse.
+    if (story.illustrate_chapters !== true) return;
+
+    if (chapterRead.error || !chapterRead.data) {
+      throw chapterRead.error ??
+        new Error("Chapter row not found for chapter art");
+    }
+    const chapter = chapterRead.data as Record<string, unknown>;
+
+    /*
+      A CAST THAT COULD NOT BE READ IS NOT AN EMPTY CAST.
+
+      `castRead.error` was ignored and `?? []` swallowed it, so a transient read
+      failure produced a picture drawn with no cast context at all -- and then
+      the art component was marked delivered and the credit kept. The writer
+      pays for a chapter illustration and gets a scene with nobody in it,
+      because a query failed for a second.
+      Thrown rather than degraded: the caller treats a throw as a failed art
+      component and refunds the credit, which is the honest outcome. A story
+      that genuinely has no cast still reads as an empty array with no error and
+      is drawn as the scene it is.
+    */
+    if (castRead.error) {
+      throw castRead.error;
+    }
+
+    const art = await generateChapterImage({
+      storyId: input.storyId,
+      chapterNumber: input.chapterNumber,
+      genre: asText(story.primary_genre) ?? firstGenre(story.genre) ??
+        "contemporary",
+      storyTitle: asText(story.title) ?? "Untitled",
+      chapterTitle: asText(chapter.title),
+      moment: chapterMoment(chapter),
+      themes: Array.isArray(story.themes)
+        ? story.themes.filter((t): t is string => typeof t === "string")
+        : undefined,
+      characters: (castRead.data ?? []).map((c) => ({
+        name: c.name as string,
+        appearance: (c.appearance as string | null) ?? undefined,
+        description: (c.description as string | null) ?? undefined,
+        isHero: c.is_hero === true,
+      })),
+      whereAndWhen: asText(story.where_and_when),
+      avoid: asText(story.avoid),
+      artStyle: asText(story.image_style),
+    });
+
+    if (!art) {
+      await logError({
+        bucket: "generation.cover",
+        severity: "medium",
+        source: "runtime",
+        errorCode: "chapter_art_all_providers_failed",
+        error: new Error("Chapter art exhausted every provider"),
+        context: {
+          story_id: input.storyId,
+          chapter_number: input.chapterNumber,
+          operation_id: input.operationId,
+        },
+        userId: input.userId,
+      });
+      await refundMissingMedia(supabase, input, "chapter_art");
+      return;
+    }
+
+    // The prompt is stored beside the URL for the same reason the cover's is
+    // (migration 00027's `image_prompt`): a regeneration must be able to vary
+    // from the picture it is replacing rather than re-send the request that
+    // produced it.
+    const { error: updateError } = await supabase
+      .from("chapters")
+      .update({ image_url: art.url, image_prompt: art.prompt })
+      .eq("id", input.chapterId);
+    if (updateError) throw updateError;
+
+    console.log(
+      `[media] chapter art ready for ${input.storyId}#${input.chapterNumber} via ${art.provider}/${art.model}`,
+    );
+  } catch (error) {
+    // An image that exists in storage but whose URL never reached the row is
+    // the same outcome for the reader as no image at all, so it refunds too.
+    console.error(
+      `[media] chapter art failed for ${input.storyId}#${input.chapterNumber}:`,
+      safeErrorMessage(error),
+    );
+    await logError({
+      bucket: "generation.cover",
+      severity: "medium",
+      source: "runtime",
+      errorCode: "chapter_art_failed",
+      error,
+      context: {
+        story_id: input.storyId,
+        chapter_number: input.chapterNumber,
+        operation_id: input.operationId,
+      },
+      userId: input.userId,
+    });
+    await refundMissingMedia(supabase, input, "chapter_art");
+  }
+}
+
+/** A trimmed string, or undefined — never the empty string or a null column. */
+function asText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/** `stories.genre` is a text[]; its first entry is the legacy primary. */
+function firstGenre(value: unknown): string | undefined {
+  return Array.isArray(value) ? asText(value[0]) : asText(value);
+}
+
+/**
+ * The one thing in the chapter worth drawing.
+ *
+ * The hook is the chapter's own turn and the sharpest single image in it; the
+ * first line is the next best, and both are model-written summaries rather
+ * than prose the reader is mid-way through. The opening sentence of the body
+ * is the last resort, for a chapter whose metadata call came back thin — an
+ * illustration of the chapter's first paragraph is still an illustration of
+ * THIS chapter, which is the whole point of drawing it separately.
+ */
+function chapterMoment(chapter: Record<string, unknown>): string | undefined {
+  const hook = asText(chapter.hook_text);
+  if (hook) return hook;
+  const firstLine = asText(chapter.first_line);
+  if (firstLine) return firstLine;
+  const body = asText(chapter.content);
+  if (!body) return undefined;
+  const sentence = body.split(/(?<=[.!?])\s/)[0];
+  return asText(sentence) ?? body.slice(0, 240);
 }
 
 /**
@@ -257,6 +483,7 @@ async function generateCastPortraits(
   supabase: SupabaseClient,
   storyId: string,
   userId: string,
+  artStyle?: string,
 ): Promise<boolean> {
   const { data: cast, error } = await supabase
     .from("characters")
@@ -280,7 +507,7 @@ async function generateCastPortraits(
         name: character.name,
         description: character.description ?? undefined,
         appearance: character.appearance ?? undefined,
-      });
+      }, artStyle);
       if (!portrait) continue;
 
       const { error: updateError } = await supabase
@@ -321,6 +548,7 @@ async function generateAndStoreCover(
       themes: input.themes,
       whereAndWhen: input.whereAndWhen,
       avoid: input.avoid,
+      artStyle: input.imageStyle,
       characters: await readCastForCover(supabase, input.storyId),
     });
 
@@ -386,13 +614,33 @@ async function readCastForCover(
 ): Promise<
   { name: string; description?: string; isHero?: boolean }[] | undefined
 > {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("characters")
-    .select("name, description, is_hero")
+    // Same as the chapter-art read above: `appearance` is the live field and
+    // `description` the retired one, and this feeds the COVER.
+    .select("name, description, appearance, is_hero")
     .eq("story_id", storyId);
+  /*
+    A CAST THAT COULD NOT BE READ IS NOT AN EMPTY CAST -- the same rule the
+    chapter-art read follows, and the same defect, in the path that draws the
+    picture every reader sees first.
+
+    The error was dropped on the floor, so a transient failure produced a cover
+    with no cast context and a `cover_status: ready` on top of it. That is worse
+    than the chapter-art case it mirrors: a cover is generated once, it is the
+    story's face in every rail, and nothing ever revisits it -- the writer would
+    have to pay for a regeneration to undo a second's network trouble.
+
+    Thrown rather than degraded, so `generateAndStoreCover` catches it, marks
+    the cover failed and refunds, and the concept card stands in (decision 39).
+    A story that genuinely has no cast still returns no rows and no error, and
+    is drawn as the genre cover it should be.
+  */
+  if (error) throw error;
   if (!data?.length) return undefined;
   return data.map((c) => ({
     name: c.name,
+    appearance: c.appearance ?? undefined,
     description: c.description ?? undefined,
     isHero: c.is_hero ?? false,
   }));

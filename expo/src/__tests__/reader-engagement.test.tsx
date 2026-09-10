@@ -139,16 +139,15 @@ it("sends a guest to sign-in instead of pretending to engage", async () => {
     <ReaderScreen story={story} onBack={jest.fn()} onRequireSignIn={onRequireSignIn} />,
   );
   await openChapterEnd(view);
-  await waitFor(() => expect(view.getByTestId("reader-like")).toBeTruthy());
+  await waitFor(() => expect(view.getByTestId("reader-follow")).toBeTruthy());
 
-  const before = view.getByLabelText(/^Like/).props.accessibilityLabel;
+  // Like, save and share are no longer at the end of a chapter -- a strip of
+  // counters under the last sentence is the worst moment to ask somebody to
+  // rate what they just read. What is still here, and still gated, is
+  // following the author and posting a comment.
+  expect(view.queryByTestId("reader-like")).toBeNull();
+  expect(view.queryByTestId("reader-save")).toBeNull();
 
-  await act(async () => {
-    fireEvent.press(view.getByTestId("reader-like"));
-  });
-  await act(async () => {
-    fireEvent.press(view.getByTestId("reader-save"));
-  });
   await act(async () => {
     fireEvent.press(view.getByTestId("reader-follow"));
   });
@@ -157,9 +156,8 @@ it("sends a guest to sign-in instead of pretending to engage", async () => {
     fireEvent.press(view.getByTestId("reader-comment-send"));
   });
 
-  expect(onRequireSignIn).toHaveBeenCalledTimes(4);
-  // And nothing moved: no optimistic like, no "Following", no posted comment.
-  expect(view.getByLabelText(/^Like/).props.accessibilityLabel).toBe(before);
+  expect(onRequireSignIn).toHaveBeenCalledTimes(2);
+  // And nothing moved: no "Following", no posted comment.
   expect(view.getByText("Follow")).toBeTruthy();
   expect(view.queryByText("Lovely.")).toBeNull();
 });
@@ -184,7 +182,7 @@ it("leaves reading itself completely open to a guest", async () => {
 it("engages normally with no gate supplied", async () => {
   const view = await render(<ReaderScreen story={story} onBack={jest.fn()} />);
   await openChapterEnd(view);
-  await waitFor(() => expect(view.getByTestId("reader-like")).toBeTruthy());
+  await waitFor(() => expect(view.getByTestId("reader-follow")).toBeTruthy());
 
   await act(async () => {
     fireEvent.press(view.getByTestId("reader-follow"));

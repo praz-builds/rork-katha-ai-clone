@@ -141,6 +141,83 @@ describe("generateStoryStreaming delivers prose progressively", () => {
     expect(order[0]).toBe("meta:7");
   });
 
+  it("names the story before a word of prose arrives", async () => {
+    // The title used to come out of the metadata call, which reads the
+    // FINISHED chapter -- so it could not exist until 40-50s in and page one
+    // painted under a blank heading. The server now names the chapter from the
+    // brief and sends it on its own event; this pins that the client hands it
+    // over BEFORE the first delta rather than merely handling it.
+    mockExpoFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: pacedStream([
+        'event: meta\ndata: {"story_id":"s1","balance":9}\n\n',
+        'event: title\ndata: {"title":"Tuesday Ferry","chapter_title":"The Crossing"}\n\n',
+        'event: delta\ndata: {"text":"The ferry left."}\n\n',
+        'event: done\ndata: {"story":{"id":"s1","title":"Tuesday Ferry","author_id":"a1","primary_genre":"mystery","story_mode":"standalone","themes":["sea"],"word_count":3,"status":"complete"},"chapter":{"id":"c1","chapter_number":1,"title":"The Crossing","content":"The ferry left."}}\n\n',
+      ]),
+      json: async () => ({}),
+    });
+
+    const order: string[] = [];
+    await act(async () => {
+      await generateStoryStreaming(draft, "req-title", {
+        onTitle: (names) => order.push(`title:${names.title}/${names.chapterTitle}`),
+        onDelta: () => order.push("delta"),
+      });
+    });
+
+    expect(order).toEqual(["title:Tuesday Ferry/The Crossing", "delta"]);
+  });
+
+  it("ignores a title event that carries no usable name", async () => {
+    // A naming call that failed sends nothing, but a half-filled payload must
+    // not blank a name the client already holds: `""` reaching the session
+    // would replace a real title with an empty heading.
+    mockExpoFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: pacedStream([
+        'event: title\ndata: {"title":"   ","chapter_title":""}\n\n',
+        'event: delta\ndata: {"text":"x"}\n\n',
+        'event: done\ndata: {"story":{"id":"s1","title":"T","author_id":"a1","primary_genre":"mystery","story_mode":"standalone","themes":["sea"],"word_count":1,"status":"complete"},"chapter":{"id":"c1","chapter_number":1,"title":"Chapter 1","content":"x"}}\n\n',
+      ]),
+      json: async () => ({}),
+    });
+
+    const titles: unknown[] = [];
+    await act(async () => {
+      await generateStoryStreaming(draft, "req-title-2", {
+        onTitle: (names) => titles.push(names),
+        onDelta: () => {},
+      });
+    });
+
+    expect(titles).toEqual([]);
+  });
+
+  it("still finishes for a stream that never names the story", async () => {
+    // The naming call is never load-bearing: it can fail, and then the title
+    // arrives with `done` exactly as it always did.
+    mockExpoFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: pacedStream([
+        'event: delta\ndata: {"text":"x"}\n\n',
+        'event: done\ndata: {"story":{"id":"s1","title":"Named At The End","author_id":"a1","primary_genre":"mystery","story_mode":"standalone","themes":["sea"],"word_count":1,"status":"complete"},"chapter":{"id":"c1","chapter_number":1,"title":"Chapter 1","content":"x"}}\n\n',
+      ]),
+      json: async () => ({}),
+    });
+
+    let fired = false;
+    const story = await generateStoryStreaming(draft, "req-title-3", {
+      onTitle: () => { fired = true; },
+      onDelta: () => {},
+    });
+    expect(fired).toBe(false);
+    expect(story.title).toBe("Named At The End");
+  });
+
   it("surfaces a terminal error event rather than resolving empty", async () => {
     // A stream that reported a failure must not look like a success with no
     // story: that would silently drop a chapter the user paid for.

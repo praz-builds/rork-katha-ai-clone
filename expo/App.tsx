@@ -3,7 +3,7 @@ import * as Font from "expo-font";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
-import { fetchMyStories } from "@/lib/api";
+import { fetchCreatedShelf } from "@/lib/api";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
@@ -27,7 +27,9 @@ import ListenScreen from "@/screens/ListenScreen";
 import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
 import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
-import ChapterEnd from "@/components/reader/ChapterEnd";
+import ChapterEnd, {
+  deriveContinuationOptions,
+} from "@/components/reader/ChapterEnd";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import StoryGatedPrivateModal from "@/components/create/StoryGatedPrivateModal";
 import {
@@ -35,6 +37,7 @@ import {
   adoptReimagineGeneration,
   findStoryGeneration,
   provisionalStory,
+  startAutoChapterAhead,
   startChapterGeneration,
   useGenerations,
 } from "@/lib/generation-session";
@@ -57,6 +60,7 @@ import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
 import WriterOnboarding from "@/screens/WriterOnboarding";
 import type { WriterOnboardingResult } from "@/screens/WriterOnboarding";
 import { genreLabels } from "@/theme";
+import { loadDraft } from "@/lib/draft-storage";
 import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 import type {
   KathaOnboardingResult,
@@ -137,6 +141,19 @@ export default function App() {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [generatedStories, setGeneratedStories] = useState<Story[]>([]);
   /**
+   * Has the writer's own shelf come back from the server?
+   *
+   * `fetchMyStories` swallows every failure into an empty array, so the boot
+   * read uses `fetchCreatedShelf`, which can say it failed. Without
+   * this Home cannot tell "you have written nothing" from "we could not find
+   * out", and tells a writer with a bad connection to start their first story.
+   */
+  const [shelfLoaded, setShelfLoaded] = useState(false);
+  /** The genre of the saved, never-generated brief. Undefined until read. */
+  const [savedDraftGenre, setSavedDraftGenre] = useState<string | null | undefined>(
+    undefined,
+  );
+  /**
    * Stories found through Explore's search that are not in the bundled
    * catalogue.
    *
@@ -190,6 +207,31 @@ export default function App() {
     WriterOnboardingResult["draft"] | null
   >(null);
   const generations = useGenerations();
+  /**
+   * What is being written right now, for Home's invitation card.
+   *
+   * `writingStoryId` is the live one; `liveStoryIds` is every story a session
+   * has touched, which Home subtracts from its "finish this series" search --
+   * a provisional row looks exactly like a part-written series, and telling
+   * somebody to finish the story they are watching being written is the one
+   * thing that card must never do.
+   */
+  const writingSession = generations.find((session) => session.phase === "writing")
+    ?? null;
+  /*
+    ONLY THE ONES STILL BEING WRITTEN.
+
+    `home-cta.ts` excludes these from its "Finish your story" search, because a
+    provisional row inserted mid-generation is, to the letter, the shape of a
+    part-written series. This mapped over EVERY session regardless of phase, so
+    a story that finished generating minutes ago stayed excluded until its
+    session was pruned -- and the freshest series, the one the writer is most
+    likely to want to continue, was the one the card refused to offer.
+  */
+  const liveStoryIds = generations
+    .filter((session) => session.phase === "writing")
+    .map((session) => session.storyId ?? session.id)
+    .filter((id): id is string => Boolean(id));
 
   useEffect(() => {
     Font.loadAsync({
@@ -271,11 +313,23 @@ export default function App() {
       // state the list query does not select), so the local copy wins where
       // both exist.
       if (active) {
-        void fetchMyStories().then((mine) => {
-          if (!active || mine.length === 0) return;
+        // `fetchCreatedShelf`, not `fetchMyStories`: the latter turns every
+        // failure into an empty array, and flagging the shelf loaded off that
+        // is precisely the bug `home-cta.ts` documents itself as preventing --
+        // a writer with three stories and a bad connection being told to start
+        // their first one. "Empty" and "we could not ask" are different
+        // answers, and only the first of them licenses that copy.
+        void fetchCreatedShelf().then((shelf) => {
+          if (!active) return;
+          if (!shelf.ok) return;
+          setShelfLoaded(true);
+          if (shelf.stories.length === 0) return;
           setGeneratedStories((current) => {
             const seen = new Set(current.map((story) => story.id));
-            return [...current, ...mine.filter((story) => !seen.has(story.id))];
+            return [
+              ...current,
+              ...shelf.stories.filter((story) => !seen.has(story.id)),
+            ];
           });
         });
       }
@@ -400,6 +454,17 @@ export default function App() {
 
   /** The credit each generation charged, deducted once, when it settles. */
   const chargedRef = useRef<Set<string>>(new Set());
+  /**
+   * The balance as of the last charge, readable synchronously.
+   *
+   * `credits` is state and lands a render after the charge that changed it.
+   * Anything that decides whether to SPEND needs the number as it is now, not
+   * as it was before the chapter that just finished. See the charge effect.
+   */
+  const availableCreditsRef = useRef(credits);
+  useEffect(() => {
+    availableCreditsRef.current = credits;
+  }, [credits]);
   useEffect(() => {
     const charges = generations.filter((session) =>
       session.phase === "complete"
@@ -412,6 +477,22 @@ export default function App() {
       (sum, session) => sum + session.creditsCharged,
       0,
     );
+    /*
+      THE REF IS DECREMENTED SYNCHRONOUSLY, THE STATE IS NOT.
+
+      Both this effect and the auto write-ahead below key on `generations`, so
+      the tick a chapter completes runs both -- this one first, in declaration
+      order. But `setCredits` is a state update: the `credits` the write-ahead
+      closes over in that same pass is still the pre-charge number, one chapter
+      too high. Auto mode would then start a chapter the balance could not pay
+      for and take a 402, with nobody having tapped anything.
+
+      Too-high is the dangerous direction, and it is the exact failure the
+      write-ahead's balance gate exists to prevent. So the gate reads this ref,
+      which is correct the instant the charge is known, rather than the state,
+      which is correct one render later.
+    */
+    availableCreditsRef.current = Math.max(0, availableCreditsRef.current - total);
     setCredits((value) => Math.max(0, value - total));
   }, [generations]);
 
@@ -443,6 +524,82 @@ export default function App() {
   const readerSession = readerStoryId
     ? findStoryGeneration(readerStoryId)
     : null;
+
+  /**
+   * Auto-continue writes the next chapter while the reader is still inside
+   * this one.
+   *
+   * WHY IT IS HERE AND NOT IN `ChapterEnd`. That component is mounted only
+   * while the reader is physically on the last page of a chapter, which makes
+   * it exactly the wrong place to START something early -- by the time it
+   * exists, the reader is already at the end and the 7-to-8 second wait for a
+   * continuation is theirs to sit through. Above the reader, watching the
+   * session store, is the one place that learns a chapter was persisted at the
+   * instant it happens, whichever screen asked for it and whether or not that
+   * screen still exists. `ChapterEnd` keeps its own fire as the fallback for
+   * when this did not run.
+   *
+   * IT NEEDS SOMEBODY READING. Gated on the reader being open on this story,
+   * not merely on a session completing: a writer who started a story and went
+   * back to Home has not asked for the rest of the series to be bought in the
+   * background. Leaving the reader stops the chain at the chapter in hand, and
+   * returning to it picks up again.
+   *
+   * Every other rule -- auto only, owner only, never past the planned ending,
+   * never while a chapter is in flight, never twice for one chapter, never
+   * without the credit -- lives in `autoChapterToWriteAhead`, so this and the
+   * chapter end cannot drift into disagreeing about them.
+   */
+  useEffect(() => {
+    if (!readerStoryId) return;
+    const story = allStories.find((item) => item.id === readerStoryId);
+    if (!story) return;
+    startAutoChapterAhead({
+      story,
+      // The ref, not the state: on the tick a chapter completes, the state is
+      // still one charge behind. See `availableCreditsRef`.
+      credits: availableCreditsRef.current,
+      // The same derivation the chapter end shows a reader, off the newest
+      // persisted chapter -- but the WHOLE ranked list, not its head. Which
+      // one gets written is the server's call: `chooseDirection` reads how the
+      // chapter actually ended and takes the direction it earned, where this
+      // ranking can only ever say "the plan beat comes first". An empty list
+      // is "Katha decides", so an auto story never stalls on a chapter the
+      // resolver could not read.
+      resolveDirections: () => {
+        const latest = story.chapters.reduce(
+          (newest, item) =>
+            item.chapterNumber > newest.chapterNumber ? item : newest,
+          story.chapters[0],
+        );
+        return latest ? deriveContinuationOptions(story, latest) : [];
+      },
+    });
+  }, [readerStoryId, allStories, credits, generations]);
+
+  /**
+   * The saved brief, re-read every time Home comes into view.
+   *
+   * It is not stable state: `loadDraft` deletes anything older than seven days
+   * as it reads, and a completed generation clears it. Reading once on mount
+   * would leave Home offering a draft that no longer exists.
+   */
+  useEffect(() => {
+    if (screen.name !== "tabs" || tab !== "home") return;
+    let active = true;
+    void loadDraft().then((draft) => {
+      if (!active) return;
+      const seed = typeof draft?.seed === "string" ? draft.seed.trim() : "";
+      setSavedDraftGenre(
+        seed.length > 0 ? (genreLabels[draft?.primaryGenre as Genre] ?? null) : null,
+      );
+    }).catch(() => {
+      if (active) setSavedDraftGenre(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [screen.name, tab]);
 
   if (!fontsReady) return <LaunchScreen />;
 
@@ -557,6 +714,18 @@ export default function App() {
           <HomeScreen
             credits={credits}
             displayName={displayName}
+            shelfLoaded={shelfLoaded}
+            savedDraftGenre={savedDraftGenre}
+            writingStoryId={writingSession?.storyId ?? writingSession?.id ?? null}
+            // The chapter the live session is on, so the card opens the reader
+            // where the prose is arriving rather than at chapter one.
+            writingChapterIndex={writingSession
+              ? Math.max(0, writingSession.chapterNumber - 1)
+              : undefined}
+            liveStoryIds={liveStoryIds}
+            onContinueStory={(storyId, chapterIndex) =>
+              setScreen({ name: "reader", storyId, chapterIndex })}
+            onPaywall={() => setScreen({ name: "paywall" })}
             preferredGenres={toGenreKeys(onboarding?.genres)}
             generatedStories={generatedStories}
             stories={allStories}
@@ -836,7 +1005,7 @@ export default function App() {
                       // is the one thing left, so the pill has to be reachable
                       // from the ending itself and not only from the chrome.
                       onReimagine={reimagine ?? undefined}
-                      onContinue={(direction) => {
+                      onContinue={(direction, offered) => {
                         const next = chapter.chapterNumber + 1;
                         startChapterGeneration({
                           story,
@@ -846,6 +1015,7 @@ export default function App() {
                               ? next >= story.plannedChapterCount
                               : false,
                           direction,
+                          directionsOffered: offered,
                         });
                       }}
                     />

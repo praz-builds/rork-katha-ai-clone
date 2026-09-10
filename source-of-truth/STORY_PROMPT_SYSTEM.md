@@ -508,6 +508,66 @@ so a partial, malformed or inventive response can neither shrink the delivered
 set nor write arbitrary text into stored state. Chapter 1 is verified the same
 way, since it is where the set starts.
 
+### The Previous-Chapters Window
+
+A continuation is written from the four most recent chapters (`.limit(4)` in
+`continue-story`). **Only the newest of them travels as prose, and only its ends
+do.**
+
+Time-to-first-token scales with prompt size at roughly **0.21 s per KB** against
+the pinned model (measured 2026-09-11): chapter 1's prompt is 14.7 KB and starts
+in 4.0 s; chapter 2's is 30.5 KB and starts in 7.0-7.9 s. The entire difference
+is the previous chapter travelling verbatim. When all four travelled in full the
+cost was not a fixed penalty on chapter 2 — it grew with the series, reaching
+roughly 66 KB by chapter 5, which extrapolates to about 15 s before a reader
+sees a word.
+
+So the window is bounded rather than proportional:
+
+- **The chapter immediately before this one** keeps its opening (~600
+  characters) and its ending (~5,000 characters) verbatim. The end is what a
+  continuation is written from — the scene it closed on, the line still
+  hanging, the voice as it actually sounds — and the opening is where the
+  chapter's register is set, which a model handed only an ending will drift
+  away from. The elision between them is **stated out loud** rather than the
+  halves being silently joined: a model given a paragraph that ends mid-scene
+  and resumes elsewhere treats the join as a jump cut it must explain.
+- **Every older chapter** travels as its stored `previously_summary` — the
+  field the model itself wrote for this purpose, and which the finale's
+  chapter-1 callback already trusted. This is not a downgrade to a summary; it
+  is the summary being used where it was always meant to be used.
+- **`series_state` travels separately** and carries the open hooks, promised
+  payoffs, world facts and character changes — which is the continuity older
+  prose was being re-read for.
+
+A chapter already shorter than the head-plus-tail budget is sent untouched, so
+nothing changes for the stories where nothing needed to.
+
+`buildPreviousChapterWindow` and `trimToEnds` in
+`_shared/continuation-window.ts` own this. Changing the budgets is a story-quality decision, not a tuning knob:
+verify against output quality, not against a stopwatch.
+
+### Prompt Caching
+
+The prompt is assembled as a stable half and a variable half, and the split is
+already clean. The **system prompt** — base + engine + genre + audience +
+identity + spice + language + titling + schema — is byte-identical for every
+chapter of every story sharing those settings; everything about *this* chapter
+lives in the **user message**. That is a ~10 KB prefix, and before
+`systemMessage` in `llm.ts` it was re-sent, re-billed and re-processed on every
+call including every rung of a retry ladder.
+
+The system message therefore carries a cache breakpoint
+(`cache_control: { type: "ephemeral" }`) on the OpenRouter paths, streamed and
+buffered. Providers that price a cache read want the explicit breakpoint;
+providers that cache automatically ignore the annotation and hit anyway, because
+the prefix was already stable. **Nothing about the prompt's content changes** —
+a provider that ignores the field receives the request it always received.
+
+The consequence for anyone editing the prompt: **do not move per-story or
+per-chapter content into the system prompt.** A single variable byte in the
+prefix costs every subsequent call its cache hit.
+
 ### The Exclusion Layer (`avoid`)
 
 `avoid` is the **last** content layer, after the moments and before the language
@@ -1082,6 +1142,40 @@ Bedtime substitutions:
 - however/although -> but
 - perhaps/probably -> maybe
 
+## Titles
+
+**Three different calls name a chapter, and they share their rules.** The shape
+constraints and the banned-phrase list live in `story-prompts.ts` as
+`CHAPTER_TITLE_SHAPE`, `STORY_TITLE_RULES` and `BANNED_TITLE_PHRASES`, and are
+composed into all three:
+
+| Call | Where | What it can see |
+|---|---|---|
+| `buildOutputSchema` | `story-prompts.ts` | The chapter it just wrote (buffered JSON transports) |
+| `CHAPTER_METADATA_SYSTEM_PROMPT` | `story-stream.ts` | The finished prose |
+| `CHAPTER_NAMING_SYSTEM_PROMPT` | `story-stream.ts` | Only the brief — it runs *before* any prose exists |
+
+The last of these **wins at persist time**, because its whole purpose is to give
+the reader a chapter name immediately rather than 40 s in. Weak guidance there
+is not a second-best title; it is the title.
+
+**The rule is a sourcing rule, not an instruction to be creative.** Asking a
+model to be creative produces *Whispers of the Forgotten*. Asking it to name one
+concrete thing that occurs in the material it was given cannot produce a generic
+title, because the material was not generic. The three calls differ only in
+where they read that thing from — the written chapter, or the beat that briefs
+it.
+
+The banned list is **explicit and named**. A model told to "avoid clichés" does
+not know which ones we mean; these are the specific strings that came back over
+and over. A chapter title is one to four words, never numbered, never a colon
+subtitle, and never a spoiler for the chapter's own ending.
+
+An earlier revision put all of this inside `buildOutputSchema` alone and claimed
+it reached every path. It did not: the streamed transport takes the prose
+contract, so the rules governed only the handlers kept for retries while the
+call that actually named the chapter had one sentence of guidance.
+
 ## Output Schema
 
 Use API-level structured output where supported. The prompt should still remind
@@ -1173,9 +1267,19 @@ Required request fields:
   present, exactly one character is the lead. Appearance feeds the character
   portrait prompt, Background feeds voice and motivation, and the lead anchors
   the story engine.
-- `language`: optional `English | Portuguese`; Create defaults to `English`. Do
-  not accept Spanish from new Create submissions. Existing Spanish stories
-  retain their stored language for reading and continuation compatibility.
+- `language`: optional; Create **offers English only** (2026-09-11). Do not
+  accept Spanish or Portuguese from new Create submissions. Existing Spanish and
+  Portuguese stories retain their stored language for reading and continuation
+  compatibility — the withdrawal is from the offer, not from the stored value.
+- `image_style`: optional `auto | anime | cinematic | comic | watercolor`,
+  defaulting to `auto`. Normalised, never rejected: it decides only what the art
+  looks like, and refusing a paid generation over art direction is the wrong
+  trade. Persisted as `stories.image_style` (migration 00075).
+- `story_flow`: optional `interactive | auto`, defaulting to `interactive`.
+  Normalised the same way but with the opposite bias — `auto` writes the next
+  chapter and spends a credit without asking, so anything unrecognised must
+  resolve to the mode that asks first. Persisted as `stories.story_flow`
+  (migration 00076).
 - `audience_mode`: defaults to `adult`
 - `identity_lenses`: optional, currently only `queer`
 - `spice_level`: optional, defaults by genre and account permissions

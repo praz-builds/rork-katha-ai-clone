@@ -5,6 +5,7 @@
  * constraints, and derives server-side content ratings.
  */
 
+import { normalizeCoverArtStyle } from "./cover-prompts.ts";
 import { validateGroundingCards } from "./grounding-card.ts";
 import { validateEntityMentions } from "./grounding-pipeline.ts";
 import type { GroundingCard } from "./grounding-types.ts";
@@ -35,6 +36,7 @@ import {
   SPICE_LEVELS,
   type SpiceLevel,
   type StoredSpiceLevel,
+  type StoryFlow,
   STORY_MODES,
   type StoryMode,
   type ValidatedGenerationParams,
@@ -205,6 +207,10 @@ export function validateGenerationRequest(
           error: "Each character needs a name of 100 characters or fewer",
         };
       }
+      // `description` is still validated, and still stored, although nothing
+      // collects it any more: a client on an older build sends one, and
+      // letting an unbounded value through unchecked would be worse than
+      // rejecting it. `_shared/types.ts` explains why the field survives.
       for (
         const field of ["description", "background", "appearance"] as const
       ) {
@@ -274,12 +280,28 @@ export function validateGenerationRequest(
     return { error: "visibility must be private or public" };
   }
 
-  // --- Language ---
+  /*
+    --- Language ---
+
+    ENGLISH ONLY FOR A NEW STORY (2026-09-11). Portuguese was withdrawn from the
+    Create offer along with Spanish before it, and for the same reason: neither
+    had a narration voice, neither had been quality-checked for prose, and
+    offering a language the product cannot deliver well is worse than offering
+    one. The client stopped offering it; this is the half that makes it true,
+    because a client is not a validator and the old list here would still have
+    accepted a Portuguese story from a stale build or a hand-rolled request.
+
+    THIS IS ABOUT CREATION, NOT ABOUT READING. Stories already written in
+    Portuguese and Spanish keep their stored language and continue in it --
+    `continue-story` reads `stories.language` off the row and never passes it
+    through this function. Narrowing the offer must never orphan a story
+    somebody already paid for.
+  */
   let language: string | undefined;
   if (typeof body.language === "string") {
     const raw = body.language.trim();
-    if (raw && !["English", "Portuguese"].includes(raw)) {
-      return { error: "language must be English or Portuguese" };
+    if (raw && raw !== "English") {
+      return { error: "language must be English" };
     }
     if (raw) {
       language = raw;
@@ -294,6 +316,21 @@ export function validateGenerationRequest(
         `Where and when must be ${MAX_BRIEF_FIELD_LENGTH} characters or fewer`,
     };
   }
+
+  // The picture style is normalised, never rejected. Unlike a genre or a
+  // chapter length, this field decides only what the art looks like, and
+  // refusing a paid generation because a client shipped a style name this
+  // deploy has not heard of would cost the writer their story to protect the
+  // look of the cover. An unknown value renders the genre's own look, which is
+  // what every story had before the picker existed.
+  const imageStyle = normalizeCoverArtStyle(body.image_style);
+
+  // Normalised rather than rejected, on the same terms as the style above and
+  // for a sharper reason: falling back to `interactive` means the reader gets
+  // asked before the next chapter is written. The failure this avoids is the
+  // opposite one - an unrecognised value treated as `auto` would spend a
+  // writer's credits on a chapter they never asked for.
+  const storyFlow = normalizeStoryFlow(body.story_flow);
 
   const avoid = optionalText(body.avoid);
   if (avoid === TOO_LONG) {
@@ -389,6 +426,8 @@ export function validateGenerationRequest(
     chapterLength,
     plannedChapterCount,
     illustrateChapters,
+    imageStyle,
+    storyFlow,
     notifyOnReady,
     grounding,
     groundingEntities,
@@ -712,3 +751,18 @@ const KIDS_BLOCKED_GENRES: ReadonlyMap<string, string> = new Map([
   ["horror", "Horror"],
   ["thriller", "Thriller"],
 ]);
+
+/**
+ * The Story mode pick, or `interactive`.
+ *
+ * Deliberately falls back to the mode that ASKS. `auto` writes the next chapter
+ * without a prompt and spends a credit doing it, so a value this deploy does
+ * not recognise - a stale client, a renamed mode, a typo in a hand-rolled
+ * request - must never be read as consent to spend. The column's CHECK
+ * constraint is the second half of the same guarantee.
+ */
+export function normalizeStoryFlow(value?: unknown): StoryFlow {
+  return typeof value === "string" && value.trim().toLowerCase() === "auto"
+    ? "auto"
+    : "interactive";
+}

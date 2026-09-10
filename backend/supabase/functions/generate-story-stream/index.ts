@@ -24,6 +24,7 @@
  * |---------|----------------------------|----------------------------------|
  * | `meta`  | once, before any prose     | `{ story_id, operation_id }`     |
  * | `stage` | at each real transition    | `{ stage }`                      |
+ * | `title` | once, as soon as it exists | `{ title, chapter_title }`       |
  * | `delta` | per chunk of prose         | `{ text }`                       |
  * | `done`  | once, terminal             | `{ story, chapter, balance, .. }`|
  * | `error` | once, terminal             | `{ error, operation_id, .. }`    |
@@ -34,6 +35,12 @@
  * were no real transitions to drive it with.
  *
  * Exactly one of `done` or `error` is ever sent, and the stream closes after it.
+ *
+ * `title` is the one event that may be absent: it carries the name the story
+ * was given before it was written, and a naming call that failed simply does
+ * not send one. A client must therefore treat the title in `done` as
+ * authoritative and this as an early paint of the same value, never the
+ * reverse.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -81,6 +88,7 @@ import {
   CHAPTER_METADATA_OUTPUT,
   CHAPTER_METADATA_SYSTEM_PROMPT,
   chapterLengthVerdict,
+  nameChapterEarly,
   streamChapterProse,
   StreamCommittedError,
 } from "../_shared/story-stream.ts";
@@ -157,6 +165,8 @@ serve(async (req) => {
       chapterLength,
       plannedChapterCount,
       illustrateChapters,
+      imageStyle,
+      storyFlow,
       notifyOnReady,
       grounding,
       groundingEntities,
@@ -263,6 +273,8 @@ serve(async (req) => {
         p_avoid: avoid ?? null,
         p_illustrate_chapters: illustrateChapters,
         p_beats: beats,
+        p_image_style: imageStyle,
+        p_story_flow: storyFlow,
       },
     );
 
@@ -375,11 +387,22 @@ serve(async (req) => {
         let closed = false;
         const send = (event: string, data: unknown) => {
           if (closed) return;
-          controller.enqueue(
-            encoder.encode(
-              `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-            ),
-          );
+          try {
+            controller.enqueue(
+              encoder.encode(
+                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+              ),
+            );
+          } catch {
+            // The READER hung up. `closed` only tracks our own `close()`, so a
+            // client that navigates away or loses signal leaves this flag false
+            // and every subsequent enqueue throws `Invalid state`. Latching it
+            // here turns one throw into a silent no-op for the rest of the
+            // generation instead of a throw per event -- and the generation
+            // itself must not be abandoned, because the chapter is already paid
+            // for and still has to be persisted for the reader to come back to.
+            closed = true;
+          }
         };
         const close = () => {
           if (closed) return;
@@ -405,10 +428,20 @@ serve(async (req) => {
               ? serviceClient.from("characters").insert(
                 characters.map((c) => ({
                   story_id: story.id,
-                  name: c.name,
-                  description: c.description,
-                  background: c.background,
-                  appearance: c.appearance,
+                name: c.name,
+                // The retired field, written only so a story created now is still
+                // readable by anything that has not moved to `appearance` yet. Nothing
+                // reads it in preference to `appearance` any more: `characterAppearance`
+                // in `types.ts` is the single resolver and it puts `appearance` first.
+                description: c.appearance || c.description || null,
+                background: c.background,
+                // `||`, NOT `??`. An empty-string appearance is what a client
+                // sends for a character the writer left blank, and `??` only
+                // falls through on null/undefined -- so a legacy character whose
+                // text lives in `description` would have had BOTH columns written
+                // empty and their details lost for good. `characterAppearance`
+                // in `types.ts` resolves the same way for the same reason.
+                appearance: c.appearance || c.description || null,
                   // A portrait the writer generated on the brief screen, and
                   // paid for. Dropping it here silently discards that work and
                   // the cast is re-rendered from scratch by the media task.
@@ -487,6 +520,46 @@ serve(async (req) => {
           let firstTokenAt = 0;
           const startedAt = Date.now();
 
+          // THE STORY IS NAMED BEFORE IT IS WRITTEN.
+          //
+          // The title used to come out of the metadata call, which reads the
+          // FINISHED chapter -- so it could not exist until the last word did,
+          // 40-50s after the reader was already reading. Page one painted with
+          // a blank heading over prose, and the story got its name last.
+          //
+          // This call derives the name from the same brief the prose is derived
+          // from and is fired in the same tick as the stream, so it costs the
+          // chapter nothing: the prose never awaits it, and the `title` event
+          // goes out the moment it lands (measured against the model on
+          // 2026-09-11, first prose token at 4.0s, so the title paints first).
+          //
+          // It is never load-bearing. `nameChapterEarly` answers null on any
+          // failure and the metadata title is used exactly as it was before.
+          const namingPromise = nameChapterEarly({
+            seed,
+            primaryGenre,
+            chapterNumber: 1,
+            characterNames: characters?.map((c) => c.name).filter(Boolean),
+          });
+          namingPromise.then((names) => {
+            if (!names) return;
+            send("title", {
+              title: names.title,
+              chapter_title: names.chapterTitle,
+            });
+            // DETACHED, SO IT MUST SWALLOW ITS OWN FAILURES. Nothing awaits
+            // this promise -- that is the point of it -- so a rejection here
+            // has no handler and becomes an unhandled rejection, which on this
+            // runtime can take the isolate down and with it a chapter the
+            // writer has already been charged for. A title that cannot be
+            // delivered is worth a log line and nothing more.
+          }).catch((error) => {
+            console.error(
+              "early chapter title could not be sent:",
+              safeErrorMessage(error),
+            );
+          });
+
           const prose = await streamChapterProse({
             systemPrompt,
             userPrompt,
@@ -518,12 +591,24 @@ serve(async (req) => {
             METADATA_MAX_TOKENS,
             METADATA_DEADLINE_MS,
           );
+          // Settled long ago -- its deadline is 12s and the prose above took
+          // 40-50s -- so this await never actually waits. It is awaited rather
+          // than read from a mutable binding so the name that is PERSISTED is
+          // always the same one the `title` event announced: a story whose
+          // heading changes at the end is the bug this whole change removes.
+          const earlyNames = await namingPromise;
           // Reuse the same parser the non-streamed path uses, so a field that
           // is missing or malformed degrades identically on both.
           const output = parseStructuredOutput(
             JSON.stringify({
               ...(JSON.parse(metadata.text) as Record<string, unknown>),
               chapter_body: prose.text,
+              // The metadata call still returns both names, and it is still the
+              // fallback for a naming call that failed. It only loses.
+              ...(earlyNames?.title ? { title: earlyNames.title } : {}),
+              ...(earlyNames?.chapterTitle
+                ? { chapter_title: earlyNames.chapterTitle }
+                : {}),
             }),
             "Untitled Story",
           );
@@ -685,6 +770,7 @@ serve(async (req) => {
               themes: output.themes,
               whereAndWhen,
               avoid,
+              imageStyle,
               notifyOnReady,
             }));
           } catch (mediaError) {

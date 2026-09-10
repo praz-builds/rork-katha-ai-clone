@@ -2,12 +2,16 @@ import { useEffect, useState } from "react";
 import {
   Image,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
+// renders a plain View and the screen starts at y=0, under the status bar.
+// The safe-area-context one works on both. `SafeAreaProvider` is already
+// mounted in App.tsx, so this is a swap, not new plumbing.
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft } from "lucide-react-native";
 import { formatNumber, StoryCard } from "@/components/KathaPrimitives";
 import FollowButton from "@/components/profile/FollowButton";
@@ -122,7 +126,7 @@ export default function AuthorScreen({
     : allStories.filter((story) => story.authorId === seeded.id);
 
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.pagePad}>
         <Pressable onPress={onBack} style={styles.backButton}>
           <ChevronLeft size={18} color={colors.ink} />

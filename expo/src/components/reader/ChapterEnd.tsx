@@ -1,41 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import { PenLine, Shuffle, Sparkles, X } from "lucide-react-native";
+import { Sparkles } from "lucide-react-native";
+import DirectionChoices from "@/components/DirectionChoices";
+import {
+  hasGenerationForChapter,
+  plannedChapterCountOf,
+  retryGeneration,
+  useChapterGeneration,
+} from "@/lib/generation-session";
+import { isOwnStory } from "@/lib/ownership";
+import type { ContinuationOption, DirectionStatus } from "@/components/DirectionChoices";
 import { toDirection } from "@/lib/directions";
-import { CHAPTER_TEXT_CREDITS, MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
-import { colors, fonts, radius, spacing, type } from "@/theme";
+import { CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
+import { colors, radius, spacing, type } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
 /**
- * One concrete direction the reader can send the next chapter toward.
+ * The cards, the composer and the surprise-me path are `DirectionChoices` --
+ * shared with the create flow, which asks the same question before chapter one
+ * exists. This file owns only what is specific to a chapter end: where the
+ * directions come from, whether there is a next chapter to offer at all, and
+ * what one costs.
  *
- * `prompt` is specific prose AND AN INSTRUCTION -- "Ask Aaji to open the stuck
- * page and share the old fort song", never a question ("Who left the page
- * stuck?") and never a generic label ("Continue the plot"). It becomes
- * `next_instruction` on the `continue-story` request unchanged, so what the
- * reader reads on the card is exactly what the model is told.
+ * Re-exported because callers and tests already import the option type from
+ * here, and a second spelling of it would be one more thing to keep in step.
  */
-export type ContinuationOption = {
-  id: string;
-  prompt: string;
-};
+export type { ContinuationOption } from "@/components/DirectionChoices";
 
-type SuggestionStatus = "loading" | "ready" | "unavailable";
-
-/**
- * What `continue-story` falls back to when a story has no usable
- * `planned_chapter_count`. Kept in step with the backend deliberately: if the
- * client assumes more, it offers a continuation the server will refuse.
- */
-const DEFAULT_PLANNED_CHAPTER_COUNT = 3;
+type SuggestionStatus = DirectionStatus;
 
 const UNAVAILABLE_REASON = {
   insufficient:
@@ -45,12 +43,6 @@ const UNAVAILABLE_REASON = {
 
 /** The resolver is given this long before its result is treated as failed. */
 const RESOLVE_TIMEOUT_MS = 4000;
-
-/**
- * The character counter appears only when the limit is close enough to matter.
- * A counter on an empty field is a word budget nobody asked for.
- */
-const COUNTER_VISIBLE_AT = Math.round(MAX_NEXT_INSTRUCTION_CHARS * 0.8);
 
 function nonEmpty(value: string | undefined | null): string | undefined {
   const trimmed = value?.trim();
@@ -184,7 +176,10 @@ export type ChapterEndProps = {
    * caller now starts the generation and puts the ordinary wait on screen; when
    * it lands, the reader opens on page 1 of the new chapter.
    */
-  onContinue: (direction?: string) => void;
+  onContinue: (
+    direction?: string,
+    offered?: readonly ContinuationOption[],
+  ) => void;
   /**
    * Opens Reimagine for a standalone story, which has no next chapter to offer
    * and so ends on this instead. Omitted and the pill is not rendered.
@@ -200,7 +195,6 @@ export default function ChapterEnd({
   onReimagine,
 }: ChapterEndProps) {
   const reduceMotion = useReducedMotion();
-  const plannedChapterCount = story.plannedChapterCount;
   const isSeries = story.storyMode === "series";
   const latestChapterNumber = story.chapters.reduce(
     (max, item) => Math.max(max, item.chapterNumber),
@@ -217,24 +211,76 @@ export default function ChapterEnd({
   // `planned_chapter_count` to 3 and refuses anything past it, so a story
   // without one was being offered a continuation the server would reject --
   // the client promising something the backend had already decided against.
-  const effectivePlannedCount =
-    plannedChapterCount === 3 || plannedChapterCount === 7 ||
-      plannedChapterCount === 15
-      ? plannedChapterCount
-      : DEFAULT_PLANNED_CHAPTER_COUNT;
+  // Shared with the write-ahead path, which must stop at the same chapter this
+  // surface stops offering.
+  const effectivePlannedCount = plannedChapterCountOf(story);
   const seriesComplete = !isSeries
     || chapter.chapterNumber >= effectivePlannedCount;
+
+  /**
+   * Auto-continue: the writer said in the brief that they do not want to be
+   * asked between chapters.
+   *
+   * The flow is deliberately identical to interactive -- the same directions
+   * are resolved from the same story state -- and only the decision changes
+   * hands. The first derived option is taken because the resolver already
+   * ranks them: `beats[n]` is the plan the writer approved for this exact
+   * chapter, and it sorts ahead of an open hook. With nothing derived the
+   * direction is `undefined`, which is the same "Katha decides" the surprise-me
+   * path sends, so an auto story never stalls on a chapter the resolver could
+   * not read.
+   *
+   * `storyFlow` is read from the story ROW, not from the draft that created it:
+   * the brief is a different session from this one, and the server clamps a
+   * mode it does not recognise to `interactive`.
+   */
+  const nextChapterNumber = chapter.chapterNumber + 1;
+
+  /**
+   * Auto-continue fires only for the story's AUTHOR, and only once per chapter.
+   *
+   * The ownership gate is not theoretical. `story_flow` travels on the row, and
+   * the moment any read that feeds a public shelf starts selecting it, every
+   * reader who reached the end of somebody else's auto story would fire
+   * `continue-story` against a story they do not own -- with no tap, and with a
+   * "chapter is being written" message in front of them that the 404 makes a
+   * lie. Nothing but which columns one edge function happens to select is
+   * standing between that and production, so the gate belongs here.
+   *
+   * The once-per-chapter guard is `hasGenerationForChapter`, not a ref: this
+   * component unmounts the moment the reader leaves the last page, so a ref
+   * guards a single visit and nothing more. See the note on that function.
+   */
+  const isAuto = story.storyFlow === "auto" && isOwnStory(story);
+
+  /**
+   * Whether chapter N+1 is under way, as far as this mount can tell.
+   *
+   * Seeded from the session store rather than from `false`, because the store
+   * is the only thing that survives this component being unmounted -- which
+   * happens every time the reader leaves the last page. Seeded state and not a
+   * ref, because the copy on screen depends on the answer and a ref does not
+   * re-render.
+   */
+  const [autoStarted, setAutoStarted] = useState(false);
+
+  /**
+   * The session writing chapter N+1, whoever started it.
+   *
+   * Usually nobody here started it. In auto mode the next chapter is begun the
+   * moment THIS one is persisted, minutes before the reader pages down to this
+   * surface, so by the time it mounts the work is normally done and this
+   * component is the fallback rather than the trigger. Subscribed rather than
+   * read once, because a write-ahead can fail while the reader is still inside
+   * the previous chapter and the copy below has to follow that.
+   */
+  const nextSession = useChapterGeneration(story.id, nextChapterNumber);
 
   const [status, setStatus] = useState<SuggestionStatus>("loading");
   const [options, setOptions] = useState<ContinuationOption[]>([]);
   const [unavailableReason, setUnavailableReason] = useState<string>(
     UNAVAILABLE_REASON.failed,
   );
-  // The composer starts closed on purpose. Suggested directions are the
-  // primary surface; typing your own is the escape hatch, and an escape hatch
-  // that is open by default reads as the main path.
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerText, setComposerText] = useState("");
 
   /**
    * One continuation per chapter end, however many times it is tapped.
@@ -248,13 +294,21 @@ export default function ChapterEnd({
    * double tap can arrive before a re-render.
    */
   const firedRef = useRef(false);
+  // Read inside `continueOnce`, which is memoised on `onContinue` alone so a
+  // resolved option list does not mint a new callback and re-run the auto
+  // effect that depends on it.
+  const optionsRef = useRef<ContinuationOption[]>([]);
   useEffect(() => {
     firedRef.current = false;
   }, [chapter.id]);
   const continueOnce = useCallback((direction?: string) => {
     if (firedRef.current) return;
     firedRef.current = true;
-    onContinue(direction);
+    // The whole offer travels with the pick, not just the pick. Which chips
+    // were on screen when a reader chose is recorded against the chapter so
+    // the path a story took can be shown later; they are derived from a story
+    // state that has already moved on by the time anyone could ask again.
+    onContinue(direction, optionsRef.current);
   }, [onContinue]);
 
   useEffect(() => {
@@ -268,26 +322,75 @@ export default function ChapterEnd({
         // perfectly good single suggestion and leave the reader facing only
         // the free-text box - the defect this surface was rebuilt to fix.
         if (resolved.length >= 1) {
+          optionsRef.current = resolved.slice(0, MAX_OPTIONS);
           setOptions(resolved.slice(0, MAX_OPTIONS));
           setStatus("ready");
         } else {
+          // `DirectionChoices` opens its own composer on "unavailable": with
+          // nothing derived, the reader's own words are the only way on.
           setUnavailableReason(UNAVAILABLE_REASON.insufficient);
           setStatus("unavailable");
-          // With nothing derived, the reader's own words are the only way on,
-          // so the composer opens rather than hiding behind one more tap.
-          setComposerOpen(true);
         }
       })
       .catch(() => {
         if (cancelled) return;
         setUnavailableReason(UNAVAILABLE_REASON.failed);
         setStatus("unavailable");
-        setComposerOpen(true);
       });
     return () => {
       cancelled = true;
     };
   }, [story, chapter, isLatestChapter, seriesComplete, resolveOptions]);
+
+  // THIS IS THE FALLBACK, NOT THE TRIGGER. In auto mode the next chapter is
+  // normally begun by `startAutoChapterAhead` the moment this one is persisted,
+  // so that the reader arrives here to prose that already exists instead of to
+  // an eight-second wait. This effect covers the cases where that did not
+  // happen: the reader was not in the reader when the chapter landed, the
+  // balance was short at the time, an older story reopened past its last
+  // written chapter. `hasGenerationForChapter` is what keeps the two from both
+  // buying the same chapter -- it counts every phase, so a write-ahead that is
+  // still streaming, already finished, or failed all stop this dead.
+  //
+  // Fires once the directions have resolved either way -- `ready` or
+  // `unavailable` -- and never while they are still loading, so an auto story
+  // gets the direction its own state suggests rather than the fallback that
+  // merely happened to be on screen first. `continueOnce` carries the same
+  // single-fire guard the tap path uses, and it is reset per chapter id, so a
+  // re-render or a status change cannot buy a second chapter.
+  useEffect(() => {
+    if (!isAuto || seriesComplete || !isLatestChapter) return;
+    if (status === "loading") return;
+    if (hasGenerationForChapter(story.id, nextChapterNumber)) return;
+    /*
+      NO DIRECTION IS SENT, and that is the whole point of the fallback being
+      auto mode's fallback rather than a tap without a finger.
+
+      This used to send `options[0].prompt` -- the client's top-ranked chip --
+      as `next_instruction`. Two things were wrong with that. The server treats
+      an explicit instruction as "the reader has been asked and answered", so it
+      skipped `chooseDirection` entirely: every chapter that came through this
+      path was chosen by exactly the client sort the feature was built to
+      replace. And it was then recorded as `direction_chosen_by: 'reader'`,
+      which is a human tap that never happened -- a lie in the column the future
+      chip surface will read.
+
+      Passing `undefined` with the offer intact hands the choice to the server,
+      which can see how the chapter actually ended, and records `model` or
+      `ranking` truthfully.
+    */
+    continueOnce(undefined);
+    setAutoStarted(true);
+  }, [
+    isAuto,
+    seriesComplete,
+    isLatestChapter,
+    status,
+    options,
+    continueOnce,
+    story.id,
+    nextChapterNumber,
+  ]);
 
   if (!isLatestChapter) return null;
 
@@ -339,164 +442,101 @@ export default function ChapterEnd({
     );
   }
 
+  // No chips in auto mode. Rendering them and then firing behind the reader's
+  // back would offer a choice that was already made, and a tap on one would be
+  // a second chapter and a second credit.
+  if (isAuto) {
+    /*
+      The copy states what is TRUE, which is why it asks the session store
+      rather than assuming.
+
+      A FAILURE OUTRANKS EVERYTHING ELSE HERE, including this mount's own
+      belief that it started something. The next chapter is normally begun
+      minutes earlier, while the reader was still inside this one, so by the
+      time they reach this page a refusal has often already happened -- most
+      obviously a 402 on a balance that ran out. Reading only "does a session
+      exist" put "Chapter N+1 is being written" over a request the server had
+      declined, with no tap behind it for the reader to regret. They get the
+      failure and the way out of it instead, and the retry is a TAP because
+      re-firing automatically is how one refusal becomes a loop.
+
+      `status === "loading"` counts as pending: the directions are still being
+      resolved, the effect below has not had its turn, and telling the reader
+      nothing started would be wrong for the second it takes.
+    */
+    const failed = nextSession?.phase === "error";
+    /*
+      A COMPLETED SESSION IS NOT A PENDING ONE. This read `nextSession !== null`,
+      which is true of a chapter that has already finished writing -- so between
+      the session settling and the app appending the new chapter to the story,
+      the reader was told their finished chapter was still being written. The
+      window is small and it is not zero, and the sentence is simply false
+      inside it.
+
+      `autoStarted` is still ORed in because it covers the opposite gap: this
+      mount has fired but the session has not registered yet.
+    */
+    const inFlight = nextSession?.phase === "writing";
+    const pending = !failed
+      && (inFlight || autoStarted || status === "loading");
+    return (
+      <View style={styles.wrap} testID="chapter-end-auto">
+        <Text style={styles.heading}>
+          {pending ? "Katha is writing on" : "Chapter " + nextChapterNumber + " didn't start"}
+        </Text>
+        <Text style={styles.body}>
+          {pending
+            ? `You chose to let Katha pick what happens next. Chapter ${nextChapterNumber} is being written.`
+            : "Something stopped the next chapter from starting. Nothing was charged for it."}
+        </Text>
+        {pending ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Write chapter ${nextChapterNumber}`}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && !reduceMotion && styles.textCtaPressed,
+            ]}
+            // A failed session is retried IN PLACE, not started again. A second
+            // `startChapterGeneration` mints a new request id against a chapter
+            // the server may still hold a reservation for, which comes back 409
+            // and buries the real failure under a duplicate one -- and this
+            // mount's own single-fire ref may already be spent, which would
+            // make the button do nothing at all.
+            onPress={() =>
+              failed && nextSession
+                ? retryGeneration(nextSession.id)
+                // Same as the auto effect above: no direction, so the server
+                // chooses and records who chose truthfully.
+                : continueOnce(undefined)}
+            testID="chapter-end-auto-retry"
+          >
+            <Text style={styles.secondaryButtonText}>
+              Write chapter {nextChapterNumber}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
-      <Text style={styles.heading}>What&apos;s next?</Text>
-      {/* The price rides with the surface, not with one button, because every
-        * path out of here - a suggested direction, a typed one, or letting
-        * Katha decide - writes one chapter and costs the same. §10.2 requires
-        * the continuation to carry its own price; putting it only on the
-        * composer's submit button hid it from the cards, which are now the
-        * path most readers will take. */}
-      <Text style={styles.priceNote}>
-        Any of these writes chapter {chapter.chapterNumber + 1} ·{" "}
-        {CHAPTER_TEXT_CREDITS} credit
-      </Text>
-      {status === "loading" ? (
-        <View
-          style={styles.loadingRow}
-          accessibilityLabel="Loading suggested directions"
-        >
-          <ActivityIndicator color={colors.muted} />
-          <Text style={styles.mutedBody}>Finding directions for this story...</Text>
-        </View>
-      ) : null}
-      {status === "unavailable" ? (
-        <Text style={styles.mutedBody}>{unavailableReason}</Text>
-      ) : null}
-      {/* The suggested directions ARE the surface. They were previously one
-        * card among equals next to a full-width free-text box, and a reader
-        * whose story yielded fewer than two suggestions saw the box alone -
-        * which reads as "tell us what to write", the opposite of what this
-        * feature is for. Each card is the whole tap target and fires the
-        * continuation immediately; the prose on it is the exact
-        * `next_instruction` the request sends, so what the reader reads is
-        * what the model is told. */}
-      {status === "ready"
-        ? options.map((option, index) => (
-          <Pressable
-            key={option.id}
-            accessibilityRole="button"
-            accessibilityLabel={`Continue: ${option.prompt}`}
-            accessibilityHint={
-              `Writes chapter ${chapter.chapterNumber + 1} in this direction`
-            }
-            style={({ pressed }) => [
-              styles.optionCard,
-              pressed && !reduceMotion && styles.optionCardPressed,
-            ]}
-            onPress={() => continueOnce(option.prompt)}
-            testID={`chapter-end-option-${index}`}
-          >
-            <Sparkles size={16} color={colors.accent} />
-            <Text style={styles.optionText}>{option.prompt}</Text>
-          </Pressable>
-        ))
-        : null}
-      {/*
-        THE THIRD CARD.
-
-        "Write your own" used to be a small muted text link under the cards,
-        next to a second one called "Let Katha decide" -- two lightweight
-        controls competing for the same decision, both of them visually arguing
-        that they were afterthoughts. It is one card now, the same weight and
-        the same width as the directions above it, because it is the same kind
-        of choice: this is the third thing the reader can tell the story to do.
-
-        "or a surprise" is the second control folded in rather than dropped.
-        Katha deciding means sending NO instruction at all -- the model uses the
-        plan and series state it already holds -- so it belongs with the box
-        where the reader would otherwise type one, not in a row of its own.
-      */}
-      {composerOpen ? (
-        <View style={styles.composerCard} testID="chapter-end-composer">
-          <View style={styles.composerHeader}>
-            <PenLine size={16} color={colors.accent} />
-            <Text style={styles.composerTitle}>Write your own</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close your own direction"
-              hitSlop={8}
-              style={styles.composerClose}
-              onPress={() => setComposerOpen(false)}
-              testID="chapter-end-composer-close"
-            >
-              <X size={18} color={colors.muted} />
-            </Pressable>
-          </View>
-          {/* The register is taught once, with an example, rather than left for
-            * the reader to discover by writing a question and getting a chapter
-            * that answers one. */}
-          <Text style={styles.composerHint}>
-            An instruction, not a question — &ldquo;Take Meera to the fort path.&rdquo;
-          </Text>
-          <TextInput
-            multiline
-            autoFocus
-            value={composerText}
-            onChangeText={setComposerText}
-            maxLength={MAX_NEXT_INSTRUCTION_CHARS}
-            placeholder="Tell Katha what happens next."
-            placeholderTextColor={colors.tertiary}
-            style={styles.composerInput}
-            accessibilityLabel="Write your own direction"
-            accessibilityHint="Optional. Leave it blank and Katha decides what happens next."
-            testID="chapter-end-composer-input"
-          />
-          {composerText.length >= COUNTER_VISIBLE_AT ? (
-            <Text style={styles.composerCount} testID="chapter-end-composer-count">
-              {composerText.length} / {MAX_NEXT_INSTRUCTION_CHARS}
-            </Text>
-          ) : null}
-          <View style={styles.composerFooter}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Surprise me, let Katha decide what happens next"
-              style={({ pressed }) => [
-                styles.textCta,
-                pressed && !reduceMotion && styles.textCtaPressed,
-              ]}
-              onPress={() => continueOnce(undefined)}
-              testID="chapter-end-let-katha-decide"
-            >
-              <Shuffle size={16} color={colors.muted} />
-              <Text style={styles.textCtaLabel}>Surprise me</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                composerText.trim()
-                  ? "Continue with your direction"
-                  : "Continue and let Katha decide"
-              }
-              style={styles.primaryButton}
-              onPress={() => continueOnce(nonEmpty(composerText))}
-              testID="chapter-end-composer-submit"
-            >
-              <Text style={styles.primaryButtonText}>
-                Continue · {CHAPTER_TEXT_CREDITS} credit
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Write your own direction, or let Katha surprise you"
-          accessibilityHint={`Writes chapter ${chapter.chapterNumber + 1}`}
-          accessibilityState={{ expanded: false }}
-          style={({ pressed }) => [
-            styles.optionCard,
-            styles.writeOwnCard,
-            pressed && !reduceMotion && styles.optionCardPressed,
-          ]}
-          onPress={() => setComposerOpen(true)}
-          testID="chapter-end-write-own"
-        >
-          <PenLine size={16} color={colors.accent} />
-          <Text style={styles.optionText}>Write your own — or get a surprise</Text>
-        </Pressable>
-      )}
+      <DirectionChoices
+        heading="What's next?"
+        priceNote={`Any of these writes chapter ${chapter.chapterNumber + 1} · ${CHAPTER_TEXT_CREDITS} credit`}
+        status={status}
+        options={options}
+        unavailableReason={unavailableReason}
+        loadingLabel="Loading suggested directions"
+        loadingMessage="Finding directions for this story..."
+        chooseHint={`Writes chapter ${chapter.chapterNumber + 1}`}
+        submitLabel={`Continue · ${CHAPTER_TEXT_CREDITS} credit`}
+        writeOwnLabel="Write your own — or get a surprise"
+        composerPlaceholder="Tell Katha what happens next."
+        testIDPrefix="chapter-end"
+        onChoose={continueOnce}
+      />
     </View>
   );
 }
@@ -514,135 +554,10 @@ const styles = StyleSheet.create({
     ...type.body,
     color: colors.ink,
   },
-  mutedBody: {
-    ...type.subhead,
-    color: colors.muted,
-  },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 44,
-  },
-  optionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 44,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  optionCardPressed: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
-  },
-  priceNote: {
-    ...type.caption,
-    color: colors.muted,
-    marginTop: -spacing.related,
-  },
-  // The third card. Same shape as a derived direction so the row reads as
-  // three peers, with a dashed edge as the one signal that this one is the
-  // reader's to fill in.
-  writeOwnCard: {
-    borderStyle: "dashed",
-    borderColor: colors.borderStrong,
-    backgroundColor: "transparent",
-  },
-  composerCard: {
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  composerHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  composerTitle: {
-    ...type.headline,
-    flex: 1,
-    color: colors.ink,
-  },
-  composerClose: {
-    width: 44,
-    height: 44,
-    marginRight: -spacing.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  composerHint: {
-    ...type.caption,
-    color: colors.muted,
-  },
-  composerCount: {
-    ...type.caption,
-    textAlign: "right",
-    color: colors.muted,
-  },
-  composerFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
-  // Deliberately not a card: no border, no fill, muted icon and label. The
-  // weight difference between this and `optionCard` is the whole point of the
-  // rebuild, so it must stay visible at a glance.
-  textCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    minHeight: 44,
-    paddingRight: spacing.xs,
-  },
+  // The pressed state of the Reimagine pill. Every other card and composer
+  // style moved to `DirectionChoices` with the surface that used them.
   textCtaPressed: {
     opacity: 0.6,
-  },
-  textCtaLabel: {
-    ...type.subhead,
-    color: colors.muted,
-    fontWeight: "600",
-  },
-  optionText: {
-    ...type.body,
-    color: colors.ink,
-    flex: 1,
-  },
-  composerInput: {
-    minHeight: 96,
-    borderRadius: radius.md,
-    // The recessed inset fill, not another white card on a white card. Focus
-    // needs no accent frame here either: the field is the only thing in the
-    // card that takes a caret.
-    backgroundColor: colors.surface2,
-    padding: spacing.md,
-    color: colors.ink,
-    fontFamily: fonts.ui,
-    fontSize: 15,
-    textAlignVertical: "top",
-    outlineWidth: 0,
-  },
-  primaryButton: {
-    flex: 1,
-    minHeight: 48,
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  primaryButtonText: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontWeight: "800",
-    fontSize: 15,
   },
   secondaryButton: {
     flexDirection: "row",

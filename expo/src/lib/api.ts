@@ -16,6 +16,7 @@ import type {
   CreateDraft,
   Genre,
   HookType,
+  ImageStyle,
   SeriesState,
   Story,
   StoryMode,
@@ -248,15 +249,16 @@ export async function inferStoryBrief(
       (character as { name: string }).name.trim().length > 0
     ).map((character) => ({
       name: character.name.trim(),
-      description: typeof character.description === "string"
-        ? character.description
-        : "",
       background: typeof character.background === "string"
         ? character.background
         : undefined,
+      // Required on the draft, so it is a string or "". The shape endpoint no
+      // longer returns a `description`; a cast is one field now, and a blank
+      // here is a character the writer still has to fill in rather than a
+      // second field that quietly went missing.
       appearance: typeof character.appearance === "string"
         ? character.appearance
-        : undefined,
+        : "",
       isHero: character.isHero === true,
     }))
     : [];
@@ -408,10 +410,18 @@ export async function setAuthorFollow(
 export type CharacterImageInput = {
   requestId: string;
   name: string;
-  description?: string;
   appearance?: string;
   /** Optional style reference as a `data:` URL. See `CreateDraft.characters`. */
   referenceImage?: string;
+  /**
+   * The brief's *Image style* pick, sent so the draft portrait is drawn in the
+   * look the cover will use.
+   *
+   * The endpoint accepted no style at all, so a writer who chose Watercolour
+   * got a house-style cast on the very screen where they compare the two. An
+   * absent value is normalised server-side to `auto`, the genre's own look.
+   */
+  imageStyle?: ImageStyle;
 };
 
 /**
@@ -445,8 +455,8 @@ export async function generateCharacterImage(
       body: {
         request_id: input.requestId,
         name: input.name,
-        description: input.description,
         appearance: input.appearance,
+        image_style: input.imageStyle ?? "auto",
         // Omitted rather than sent as null when absent: the endpoint treats a
         // present-but-unusable field as an error, which is right, and an
         // explicit null is present.
@@ -585,7 +595,7 @@ export async function fetchCreatedShelf(): Promise<ShelfResult> {
 
 /** The column list every shelf read selects. Kept in one place so they stay identical. */
 const SHELF_STORY_COLUMNS =
-  "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, beats, series_state, planned_chapter_count, entity_gate_reason, like_count, bookmark_count, read_count, created_at";
+  "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, story_flow, beats, series_state, planned_chapter_count, illustrate_chapters, entity_gate_reason, like_count, bookmark_count, read_count, created_at";
 
 /**
  * The stories this reader starred, newest star first.
@@ -659,7 +669,7 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
   const { data: chapterRows } = await supabase
     .from("chapters")
     .select(
-      "id, story_id, chapter_number, title, content, first_line, previously_summary, hook_type, hook_text, is_published, audio_url",
+      "id, story_id, chapter_number, title, content, first_line, previously_summary, hook_type, hook_text, is_published, audio_url, image_url",
     )
     .eq("story_id", id)
     .order("chapter_number", { ascending: true });
@@ -681,6 +691,7 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
       hookType: parseHookType(c.hook_type),
       hookText: stringOrUndefined(c.hook_text),
       isPublished: c.is_published === true,
+      imageUrl: stringOrUndefined(c.image_url),
       audioUrl: typeof c.audio_url === "string" ? c.audio_url : undefined,
     };
   });
@@ -715,6 +726,12 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
     plannedChapterCount: isPlannedChapterCount(record.planned_chapter_count)
       ? record.planned_chapter_count
       : undefined,
+    // Read from the row, not inferred. This is the only place the reader can
+    // learn it: the pick is made once in the brief and honoured at every
+    // chapter end afterwards, which is a different session from the one that
+    // created the story. Anything but the literal 'auto' is interactive -- the
+    // mode that asks before it spends a credit.
+    storyFlow: record.story_flow === "auto" ? "auto" : "interactive",
     chapterLength: isChapterLength(record.length_type)
       ? record.length_type
       : undefined,
@@ -742,6 +759,11 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
     isFeatured: record.is_curated === true,
     language: typeof record.language === "string" ? record.language : "English",
     coverImageUrl: stringOrUndefined(record.cover_image_url),
+    // Absent means "this row was read from a surface that does not carry the
+    // column" (the `library` edge function's field list, a seed story), not
+    // "no illustrations". The reader falls back to whether the chapter itself
+    // has art, which is the honest answer when the flag is unknown.
+    illustrateChapters: record.illustrate_chapters === true ? true : undefined,
     coverStatus: parseCoverStatus(record.cover_status),
     coverRegenCount: numberOrZero(record.cover_regen_count),
   };
@@ -783,8 +805,36 @@ export interface StreamedStoryHandlers {
   onMeta?: (meta: { storyId: string; balance: number }) => void;
   /** Fired at each real pipeline transition, for an honest progress display. */
   onStage?: (stage: string) => void;
+  /**
+   * The story's name, as soon as the server has one - which is before the
+   * first paragraph, not after the last. May never fire: a naming call that
+   * failed sends nothing and the title arrives with `done` as it always did.
+   */
+  onTitle?: (names: { title?: string; chapterTitle?: string }) => void;
   /** Fired for every chunk of prose, in order. */
   onDelta: (text: string) => void;
+}
+
+/**
+ * Read a `title` event's payload, keeping only fields that are really there.
+ *
+ * The server omits a name it could not produce, and an omitted name must stay
+ * omitted rather than becoming the empty string: `""` would overwrite a title
+ * the client already has (a continuation knows its story's name) with nothing.
+ */
+function titleEventNames(
+  payload: Record<string, unknown>,
+): { title?: string; chapterTitle?: string } {
+  const names: { title?: string; chapterTitle?: string } = {};
+  if (typeof payload.title === "string" && payload.title.trim()) {
+    names.title = payload.title.trim();
+  }
+  if (
+    typeof payload.chapter_title === "string" && payload.chapter_title.trim()
+  ) {
+    names.chapterTitle = payload.chapter_title.trim();
+  }
+  return names;
 }
 
 /**
@@ -812,16 +862,21 @@ export async function generateStoryStreaming(
     return await localGeneratedStory(draft);
   }
 
+  // Overlapped for the same reason the continuation path overlaps them: a
+  // round trip and an OS permission read, neither needing the other's answer,
+  // both in front of a writer watching a loader.
+  const notifyPromise = pushPermissionGranted();
   try {
     await bootstrapUser();
   } catch {
+    void notifyPromise.catch(() => false);
     throw new GenerationRequestError(
       "Unable to set up your story account. Please try again.",
       false,
     );
   }
 
-  const notifyOnReady = await pushPermissionGranted();
+  const notifyOnReady = await notifyPromise;
 
   const done = await runStreamedCall({
     fn: "generate-story-stream",
@@ -832,6 +887,9 @@ export async function generateStoryStreaming(
         if (typeof text === "string") handlers.onDelta(text);
       } else if (event === "stage") {
         handlers.onStage?.(String(payload.stage ?? ""));
+      } else if (event === "title") {
+        const names = titleEventNames(payload);
+        if (names.title || names.chapterTitle) handlers.onTitle?.(names);
       } else if (event === "meta") {
         handlers.onMeta?.({
           storyId: String(payload.story_id ?? ""),
@@ -907,7 +965,6 @@ function buildGenerationRequestBody(
         .filter((c) => c.name.trim())
         .map((c) => ({
           name: c.name,
-          description: c.description,
           background: c.background,
           appearance: c.appearance,
           isHero: c.isHero,
@@ -930,6 +987,26 @@ function buildGenerationRequestBody(
       chapter_length: effectiveChapterLength(draft),
       planned_chapter_count: draft.plannedChapterCount,
       illustrate_chapters: draft.illustrateChapters,
+      /**
+       * The look every image in this story is drawn in.
+       *
+       * Always sent, `auto` included, because `auto` is a choice the writer
+       * can return to and not merely the absence of one -- a request that
+       * omitted it would be indistinguishable from a client too old to have
+       * the control, and the server could never tell "match the genre" from
+       * "this client cannot say".
+       */
+      image_style: draft.imageStyle ?? "auto",
+      /**
+       * Who picks the direction between chapters.
+       *
+       * Always sent, for the same reason `image_style` is. Persisted on the
+       * story row by migration 00076 and read back at every chapter end, which
+       * is where the pick means anything and which is a different session from
+       * this one. The server clamps an unrecognised value to `interactive` --
+       * the mode that asks before it spends a credit.
+       */
+      story_flow: draft.storyFlow ?? "interactive",
       // story_mode is the current request contract. The backend still accepts
       // the legacy is_series boolean, but story_mode takes precedence there and
       // is what new callers are expected to send.
@@ -1053,6 +1130,14 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
     plannedChapterCount: isPlannedChapterCount(story.planned_chapter_count)
       ? story.planned_chapter_count
       : draft.plannedChapterCount,
+    // The row wins over the draft: the server clamps an unrecognised mode to
+    // `interactive`, and a client that kept its own value would auto-continue
+    // a story the database says is interactive.
+    storyFlow: story.story_flow === "auto"
+      ? "auto"
+      : story.story_flow === "interactive"
+      ? "interactive"
+      : draft.storyFlow ?? "interactive",
     chapterLength: isChapterLength(story.chapter_length)
       ? story.chapter_length
       : draft.chapterLength,
@@ -1087,6 +1172,7 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
       hookType: parseHookType(chapter.hook_type),
       hookText: stringOrUndefined(chapter.hook_text),
       isPublished: chapter.is_published === true,
+      imageUrl: stringOrUndefined(chapter.image_url),
       audioUrl: typeof chapter.audio_url === "string"
         ? chapter.audio_url
         : undefined,
@@ -1106,6 +1192,7 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
     // lets the studio show a progress line instead of guessing from a null URL,
     // which is the same value a cover that failed leaves behind.
     coverImageUrl: stringOrUndefined(story.cover_image_url),
+    illustrateChapters: draft.illustrateChapters === true ? true : undefined,
     coverStatus: parseCoverStatus(story.cover_status),
     coverRegenCount: numberOrZero(story.cover_regen_count),
   };
@@ -1462,6 +1549,8 @@ async function runStreamedCall(input: {
 
 export interface StreamedChapterHandlers {
   onStage?: (stage: string) => void;
+  /** The chapter's name, ahead of its prose. See `StreamedStoryHandlers.onTitle`. */
+  onTitle?: (names: { title?: string; chapterTitle?: string }) => void;
   onDelta: (text: string) => void;
 }
 
@@ -1481,19 +1570,44 @@ export async function continueStoryStreaming(
   isFinale?: boolean,
   expectedChapterNum?: number,
   nextInstruction?: string,
+  /**
+   * The direction chips that were on screen, in the order they were ranked.
+   *
+   * Sent in BOTH modes and recorded either way. Interactive: the reader picked
+   * one and it also arrives as `next_instruction`. Auto: nobody was asked, and
+   * the server's direction model chooses among these rather than the client
+   * taking its own top-ranked one -- a client sort is not a choice, and the
+   * plan beat outranks an open hook regardless of what the last chapter did.
+   *
+   * Recording the offer is what makes a future "here is the path your story
+   * took" surface possible: the options were derived from a story state that
+   * has moved on by the time anyone could ask for them again.
+   */
+  directionsOffered?: readonly { id: string; prompt: string }[],
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
     return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
   }
 
+  // Both of these used to be awaited one after the other, in front of a reader
+  // who has already tapped for the next chapter: a round trip to
+  // `bootstrap-user`, and then an OS permission read that needs none of its
+  // answer. Overlapped, the request leaves as soon as the slower one is done.
+  // `bootstrapUser` still decides whether the call happens at all, so its
+  // failure is still the account error and never a push error.
+  const notifyPromise = pushPermissionGranted();
   try {
     await bootstrapUser();
   } catch {
+    // Not left dangling: an unhandled rejection would surface as a crash long
+    // after the account error the reader actually sees.
+    void notifyPromise.catch(() => false);
     throw new GenerationRequestError(
       "Unable to set up your story account. Please try again.",
       false,
     );
   }
+  const notifyOnReady = await notifyPromise;
 
   const done = await runStreamedCall({
     fn: "continue-story",
@@ -1502,7 +1616,8 @@ export async function continueStoryStreaming(
       request_id: requestId,
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
-      notify_on_ready: await pushPermissionGranted(),
+      directions_offered: directionsOffered ?? [],
+      notify_on_ready: notifyOnReady,
       stream: true,
     },
     onEvent: (event, payload) => {
@@ -1511,6 +1626,9 @@ export async function continueStoryStreaming(
         if (typeof text === "string") handlers.onDelta(text);
       } else if (event === "stage") {
         handlers.onStage?.(String(payload.stage ?? ""));
+      } else if (event === "title") {
+        const names = titleEventNames(payload);
+        if (names.title || names.chapterTitle) handlers.onTitle?.(names);
       }
     },
   });
@@ -1543,7 +1661,6 @@ export interface ReimagineReplacement {
     | { savedCharacterId: string }
     | {
       name: string;
-      role?: string;
       appearance?: string;
       background?: string;
     };
@@ -1611,7 +1728,6 @@ export async function reimagineChapterStreaming(
           ? { saved_character_id: replacement.to.savedCharacterId }
           : {
             name: replacement.to.name,
-            role: replacement.to.role,
             appearance: replacement.to.appearance,
             background: replacement.to.background,
           },
@@ -1677,7 +1793,6 @@ export async function reimagineChapterStreaming(
 export interface SavedCharacter {
   id: string;
   name: string;
-  description?: string;
   background?: string;
   appearance?: string;
   portraitUrl?: string;
@@ -1715,9 +1830,12 @@ export async function listSavedCharacters(): Promise<SavedCharacter[]> {
       return {
         id,
         name,
-        description: stringOrUndefined(record.description),
         background: stringOrUndefined(record.background),
-        appearance: stringOrUndefined(record.appearance),
+        // The retired `description` column is the fallback, never a second
+        // field: a character saved before Craft merged the two has its text
+        // only there.
+        appearance: stringOrUndefined(record.appearance) ??
+          stringOrUndefined(record.description),
         portraitUrl: stringOrUndefined(record.portrait_url),
         createdAt: stringOrUndefined(record.created_at),
       };
@@ -1799,6 +1917,7 @@ export async function saveChapterText(
     hookType: parseHookType(chapter.hook_type),
     hookText: stringOrUndefined(chapter.hook_text),
     isPublished: chapter.is_published === true,
+    imageUrl: stringOrUndefined(chapter.image_url),
   };
 }
 
@@ -1855,6 +1974,20 @@ export async function continueStory(
   isFinale?: boolean,
   expectedChapterNum?: number,
   nextInstruction?: string,
+  /**
+   * The direction chips that were on screen, in the order they were ranked.
+   *
+   * Sent in BOTH modes and recorded either way. Interactive: the reader picked
+   * one and it also arrives as `next_instruction`. Auto: nobody was asked, and
+   * the server's direction model chooses among these rather than the client
+   * taking its own top-ranked one -- a client sort is not a choice, and the
+   * plan beat outranks an open hook regardless of what the last chapter did.
+   *
+   * Recording the offer is what makes a future "here is the path your story
+   * took" surface possible: the options were derived from a story state that
+   * has moved on by the time anyone could ask for them again.
+   */
+  directionsOffered?: readonly { id: string; prompt: string }[],
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
     return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
@@ -1875,6 +2008,7 @@ export async function continueStory(
       request_id: requestId,
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
+      directions_offered: directionsOffered ?? [],
       notify_on_ready: await pushPermissionGranted(),
     },
   });
@@ -1922,6 +2056,10 @@ function mapContinuedChapter(
       hookType: parseHookType(chapter.hook_type),
       hookText: stringOrUndefined(chapter.hook_text),
       isPublished: false,
+      // Always absent on a fresh continuation: an illustrated chapter's art is
+      // drawn on a background task after this response is flushed, so it
+      // arrives with the next read of the story, not with the chapter.
+      imageUrl: stringOrUndefined(chapter.image_url),
     },
     model: typeof data.model === "string" ? data.model : "unknown",
   };

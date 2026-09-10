@@ -47,18 +47,21 @@ import type {
 
 type DraftCharacter = {
   name: string;
-  description: string;
   isHero: boolean;
   /** Voice, motivation, relationships. Drives the prose, never the portrait. */
   background?: string;
-  /** Face, build, clothing. Drives the portrait, and detail in the prose. */
-  appearance?: string;
+  /**
+   * Who they are and what they look like. Drives the prose, the cover and the
+   * portrait. One field: Craft used to ask for a Description beside this and
+   * the two said the same thing to different prompts.
+   */
+  appearance: string;
   portraitUrl?: string;
   portraitStatus?: "idle" | "generating" | "ready" | "failed";
   /**
    * The `user_characters` row this character came from, when the writer picked
    * them out of their saved library rather than writing a new one. Lets the
-   * server reuse the stored description and a portrait already paid for, and
+   * server reuse the stored appearance and a portrait already paid for, and
    * lets tapping the same chip again remove exactly this row.
    */
   savedCharacterId?: string;
@@ -84,6 +87,17 @@ type StudioDraft = {
   chapterLength?: "short" | "standard" | "long";
   plannedChapterCount?: 3 | 7 | 15;
   illustrateChapters?: boolean;
+  imageStyle?: CreateDraft["imageStyle"];
+  storyFlow?: CreateDraft["storyFlow"];
+  /**
+   * The chapter plan, and with it the opening the writer chose.
+   *
+   * Shaping produces it on the direction step and `beats[0]` is chapter one's
+   * brief, so a chosen direction travels as beat zero. It was missing from
+   * this screen's `createDraft` entirely, which meant the plan the writer was
+   * shown and the story they received were unrelated.
+   */
+  beats?: string[];
   /**
    * Grounding resolved during onboarding, carried through to generation.
    *
@@ -143,7 +157,7 @@ const INITIAL_DRAFT: StudioDraft = {
   language: "English",
   // No phantom character.
   //
-  // This seeded one blank `{ name: "", description: "" }` row, which the client
+  // This seeded one blank `{ name: "", appearance: "" }` row, which the client
   // sent verbatim. `validation.ts` rejects any supplied character without a
   // name, so every user who did not fill in a cast -- the common case, since
   // characters are optional -- got a 400 on the primary path. The cast starts
@@ -153,6 +167,11 @@ const INITIAL_DRAFT: StudioDraft = {
   chapterLength: "standard",
   plannedChapterCount: 3,
   illustrateChapters: false,
+  // The genre decides the art, and the writer decides what happens next.
+  // Both are named rather than left absent so the controls open on a real
+  // value instead of on their own label.
+  imageStyle: "auto",
+  storyFlow: "interactive",
   visibility: "private",
 };
 
@@ -280,16 +299,32 @@ export default function CreateStudioScreen({
   const [publicEntityWarning, setPublicEntityWarning] = useState<StoryGatingReason | null>(null);
 
   const startedRef = useRef(false);
-  const handleGenerate = useCallback((options?: { forcePrivate?: boolean }) => {
+  /**
+   * The opening the writer chose, held across the entity warning.
+   *
+   * The direction step hands its choice to `handleGenerate` directly rather
+   * than writing it into the draft, because `setDraft` lands on the next
+   * render and the generation would read the state as it was before the tap.
+   * When the warning interrupts, "Keep it private" calls back in with no
+   * choice of its own -- so it is kept here, or the story would be written
+   * without the opening the writer had just picked.
+   */
+  const pendingChoiceRef = useRef<{ direction?: string; beats?: string[] } | null>(null);
+  const handleGenerate = useCallback((options?: {
+    forcePrivate?: boolean;
+    choice?: { direction?: string; beats?: string[] };
+  }) => {
     // Synchronous, and first: two presses in the same tick must not each start
     // a generation, because each one reserves and spends credits.
     if (startedRef.current) return;
+    const choice = options?.choice ?? pendingChoiceRef.current ?? undefined;
     if (!options?.forcePrivate && draft.visibility === "public") {
       const reason = pendingGatingReason({
         gatingReason: draft.gatingReason,
         groundingEntities: draft.groundingEntities,
       });
       if (reason) {
+        pendingChoiceRef.current = choice ?? null;
         setPublicEntityWarning(reason);
         return;
       }
@@ -328,6 +363,15 @@ export default function CreateStudioScreen({
       chapterLength: draft.chapterLength,
       plannedChapterCount: draft.plannedChapterCount,
       illustrateChapters: draft.illustrateChapters,
+      imageStyle: draft.imageStyle,
+      storyFlow: draft.storyFlow,
+      // The plan shaping produced on the direction step, with the writer's
+      // chosen opening as chapter one's beat. Nothing is invented here: with
+      // no direction chosen the plan travels exactly as it was shaped, and
+      // with no plan at all the direction stands alone as beat zero.
+      beats: choice?.direction
+        ? [choice.direction, ...(choice.beats ?? draft.beats ?? []).slice(1)]
+        : choice?.beats ?? draft.beats,
       // Carried through from onboarding, where shaping already resolved it for
       // free. Omitting them here meant the paid generation arrived ungrounded
       // and re-derived what had already been paid for -- or, past the fallback
@@ -338,6 +382,7 @@ export default function CreateStudioScreen({
     };
 
     startedRef.current = true;
+    pendingChoiceRef.current = null;
     onGenerationStarted(startStoryGeneration({ draft: createDraft }));
   }, [canGenerate, credits, draft, onGenerationStarted]);
 
@@ -348,7 +393,7 @@ export default function CreateStudioScreen({
         isAnonymous={isAnonymous}
         draft={draft}
         setDraft={setDraft}
-        onGenerate={handleGenerate}
+        onGenerate={(choice) => handleGenerate({ choice })}
         onBack={onBack}
       />
       <PublicEntityWarningModal

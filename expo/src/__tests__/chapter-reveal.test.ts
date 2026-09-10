@@ -22,6 +22,7 @@
  */
 
 import {
+  namePatch,
   revealableChapterProse,
 } from "@/lib/generation-session";
 
@@ -147,4 +148,28 @@ it("what has been shown is never rewritten, even one page in", () => {
     expect(revealed).not.toContain("half-written");
     previous = revealed;
   }
+});
+
+/**
+ * The title arrives on its own event, ahead of the prose, and what it carries
+ * is not always both names -- a continuation is never sent a story title, and
+ * a naming call that failed sends none at all. Spreading an absent name in as
+ * `undefined` would blank one the session already holds, so a story would lose
+ * its own name at the moment its fourth chapter started.
+ */
+describe("a title event applied to a session", () => {
+  it("takes both names when both are there", () => {
+    expect(namePatch({ title: "Tuesday Ferry", chapterTitle: "The Crossing" }))
+      .toEqual({ storyTitle: "Tuesday Ferry", chapterTitle: "The Crossing" });
+  });
+
+  it("leaves the story's own name alone when only the chapter is named", () => {
+    expect(namePatch({ chapterTitle: "The Crossing" }))
+      .toEqual({ chapterTitle: "The Crossing" });
+  });
+
+  it("patches nothing at all rather than blanking what is already known", () => {
+    expect(namePatch({})).toEqual({});
+    expect(namePatch({ title: "   ", chapterTitle: "" })).toEqual({});
+  });
 });

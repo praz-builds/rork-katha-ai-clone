@@ -30,6 +30,7 @@ jest.mock("@/lib/session", () => ({
 /* eslint-disable import/first */
 import {
   continueStory,
+  generateCharacterImage,
   generateStory,
   inferStoryBrief,
   publishStory,
@@ -123,6 +124,37 @@ describe("generateStory request contract", () => {
     expect(bodyOf(mockInvoke.mock.calls[0])).not.toHaveProperty("is_series");
   });
 
+  /**
+   * `image_style` and `story_flow` are ALWAYS sent, defaults included.
+   *
+   * An omitted field cannot be told apart from a client too old to have the
+   * control, so the server could never distinguish "the writer chose Auto"
+   * from "this client cannot say" -- and the difference decides whether the
+   * genre picks the art or the request is treated as unversioned.
+   */
+  it("sends the image style and the story flow, defaulting them rather than omitting them", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory(draft, "req-style-default");
+
+    const body = bodyOf(mockInvoke.mock.calls[0]);
+    expect(body.image_style).toBe("auto");
+    expect(body.story_flow).toBe("interactive");
+  });
+
+  it("sends the writer's chosen image style and story flow in the wire spelling", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("series"));
+    await generateStory(
+      { ...draft, imageStyle: "watercolor", storyFlow: "auto" },
+      "req-style-chosen",
+    );
+
+    const body = bodyOf(mockInvoke.mock.calls[0]);
+    // Lower case, and the backend's own vocabulary -- not the label the
+    // dropdown shows.
+    expect(body.image_style).toBe("watercolor");
+    expect(body.story_flow).toBe("auto");
+  });
+
   it("passes through the request id for idempotent retries", async () => {
     mockInvoke.mockResolvedValue(storyResponse("standalone"));
     await generateStory(draft, "req-5");
@@ -185,7 +217,7 @@ describe("shapeStoryIdea", () => {
       data: {
         shape: {
           genres: ["romance"],
-          characters: [{ name: "   ", description: "A placeholder" }],
+          characters: [{ name: "   ", appearance: "A placeholder" }],
         },
       },
       error: null,
@@ -203,7 +235,7 @@ describe("shapeStoryIdea", () => {
           whereAndWhen: "A hill town, off-season",
           characters: [{
             name: "Elena",
-            description: "a restorer",
+            appearance: "a restorer",
             isHero: true,
           }],
           suggestedMoments: ["The door is warm to the touch"],
@@ -299,9 +331,9 @@ describe("character payload", () => {
       {
         ...draft,
         characters: [
-          { name: "", description: "", isHero: true },
-          { name: "   ", description: "ghost row", isHero: false },
-          { name: "Elena", description: "a restorer", isHero: true },
+          { name: "", appearance: "", isHero: true },
+          { name: "   ", appearance: "ghost row", isHero: false },
+          { name: "Elena", appearance: "a restorer", isHero: true },
         ],
       },
       "req-characters",
@@ -315,7 +347,7 @@ describe("character payload", () => {
   it("sends an empty array when the whole cast is blank", async () => {
     mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
     await generateStory(
-      { ...draft, characters: [{ name: "", description: "", isHero: true }] },
+      { ...draft, characters: [{ name: "", appearance: "", isHero: true }] },
       "req-blank-cast",
     );
     expect(bodyOf(mockInvoke.mock.calls[0]).characters).toEqual([]);
@@ -328,7 +360,6 @@ describe("character payload", () => {
         ...draft,
         characters: [{
           name: "Elena",
-          description: "a restorer",
           background: "Has not spoken to her mother in six years.",
           appearance: "Dark hair pinned up, paint on her hands.",
           portraitUrl: "https://example.com/elena.png",
@@ -487,5 +518,53 @@ describe("push token registration", () => {
     mockInvoke.mockResolvedValueOnce({ data: null, error: new Error("nope") });
     await expect(registerPushToken("ExponentPushToken[abc]", "android"))
       .rejects.toThrow();
+  });
+});
+
+/**
+ * The Craft-sheet portrait call.
+ *
+ * `generate-character-image` accepted no style, so a portrait came back in the
+ * house style beside a cover the writer had asked to be something else -- on
+ * the one screen where the two are compared. The style is always sent, `auto`
+ * included, because `auto` is a choice the writer can return to.
+ */
+describe("generateCharacterImage", () => {
+  it("sends the appearance and the brief's image style, and no description", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: { url: "https://example.test/priya.png" },
+      error: null,
+    });
+
+    await generateCharacterImage({
+      requestId: "req-portrait",
+      name: "Priya",
+      appearance: "A baker with flour on her sleeves.",
+      imageStyle: "watercolor",
+    });
+
+    const body = bodyOf(mockInvoke.mock.calls[0]);
+    expect(body).toMatchObject({
+      request_id: "req-portrait",
+      name: "Priya",
+      appearance: "A baker with flour on her sleeves.",
+      image_style: "watercolor",
+    });
+    expect(body).not.toHaveProperty("description");
+  });
+
+  it("falls back to auto rather than omitting the style", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: { url: "https://example.test/priya.png" },
+      error: null,
+    });
+
+    await generateCharacterImage({
+      requestId: "req-portrait-2",
+      name: "Priya",
+      appearance: "A baker.",
+    });
+
+    expect(bodyOf(mockInvoke.mock.calls[0]).image_style).toBe("auto");
   });
 });

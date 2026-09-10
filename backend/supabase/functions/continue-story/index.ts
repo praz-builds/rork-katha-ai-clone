@@ -1,8 +1,17 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import {
+  buildPreviousChapterWindow,
+  summarizeChapterForPrompt,
+  trimToEnds,
+} from "../_shared/continuation-window.ts";
+import {
+  chooseDirection,
+  type OfferedDirection,
+} from "../_shared/direction-choice.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { notifyInBackground } from "../_shared/notify.ts";
-import { runInBackground } from "../_shared/media.ts";
+import { generateChapterArt, runInBackground } from "../_shared/media.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { validateGroundingCards } from "../_shared/grounding-card.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
@@ -16,6 +25,7 @@ import {
   CHAPTER_METADATA_OUTPUT,
   CHAPTER_METADATA_SYSTEM_PROMPT,
   chapterLengthVerdict,
+  nameChapterEarly,
   streamChapterProse,
   StreamCommittedError,
 } from "../_shared/story-stream.ts";
@@ -86,13 +96,54 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // FOUR READS, ONE ROUND TRIP'S WORTH OF WAITING.
+    //
+    // These used to run one after another, and nothing downstream of the first
+    // decides what the others ask for -- the replay lookup, the story row, the
+    // cast and the recent-chapter window are all keyed on ids already in hand.
+    // Serially they measured ~290 ms of dead time in front of a reader who has
+    // just tapped "next chapter" and is watching a loader; issued together they
+    // cost the slowest of them.
+    //
+    // The DECISION order below is unchanged, deliberately: a replay still
+    // answers before ownership, ownership still answers before the chapter
+    // window. Only the waiting moved. Reading a row for a caller who turns out
+    // not to own the story is harmless -- these are service-role reads whose
+    // results are discarded, and the response is byte-identical to what it was.
+    const [operationRead, storyRead, castRead, chapterWindowRead] =
+      await Promise
+        .all([
+          serviceClient
+            .from("generation_operations")
+            .select("id, story_id, status, result_chapter_id, updated_at")
+            .eq("user_id", user.id)
+            .eq("request_id", requestId)
+            .maybeSingle(),
+          serviceClient
+            .from("stories")
+            .select(
+              "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, illustrate_chapters, story_flow, image_style",
+            )
+            .eq("id", story_id)
+            .single(),
+          serviceClient
+            .from("characters")
+            .select("name, description, background, appearance, is_hero")
+            .eq("story_id", story_id)
+            .order("name", { ascending: true }),
+          // Keep prompt context bounded while deriving the next chapter from latest.
+          serviceClient
+            .from("chapters")
+            .select(
+              "chapter_number, title, content, chapter_role, previously_summary, hook_type, hook_text",
+            )
+            .eq("story_id", story_id)
+            .order("chapter_number", { ascending: false })
+            .limit(4),
+        ]);
+
     const { data: existingOperation, error: existingOperationError } =
-      await serviceClient
-        .from("generation_operations")
-        .select("id, story_id, status, result_chapter_id, updated_at")
-        .eq("user_id", user.id)
-        .eq("request_id", requestId)
-        .maybeSingle();
+      operationRead;
     if (existingOperationError) throw existingOperationError;
     if (existingOperation) {
       if (existingOperation.story_id !== story_id) {
@@ -144,26 +195,16 @@ serve(async (req) => {
     }
 
     // Verify story ownership
-    const { data: story, error: storyError } = await serviceClient
-      .from("stories")
-      .select(
-        "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding",
-      )
-      .eq("id", story_id)
-      .single();
+    const { data: story, error: storyError } = storyRead;
 
     if (storyError || !story || story.author_id !== user.id) {
       return respond({ error: "Story not found" }, 404);
     }
 
-    // Character sheets are part of the durable brief. Re-load them for every
+    // Character sheets are part of the durable brief. Re-loaded for every
     // continuation so later chapters retain the cast's voice, motivations, and
     // physical detail instead of relying only on recent prose excerpts.
-    const { data: castRows, error: castError } = await serviceClient
-      .from("characters")
-      .select("name, description, background, appearance, is_hero")
-      .eq("story_id", story_id)
-      .order("name", { ascending: true });
+    const { data: castRows, error: castError } = castRead;
     if (castError) throw castError;
     const characters: CharacterInput[] = (castRows ?? []).map((character) => ({
       name: character.name,
@@ -183,15 +224,20 @@ serve(async (req) => {
       );
     }
 
-    // Keep prompt context bounded while deriving the next chapter from latest.
-    const { data: chapters, error: chaptersError } = await serviceClient
-      .from("chapters")
-      .select(
-        "chapter_number, title, content, chapter_role, previously_summary, hook_type, hook_text",
-      )
-      .eq("story_id", story_id)
-      .order("chapter_number", { ascending: false })
-      .limit(4);
+    /**
+     * The direction chips the client had on screen, in the order it ranked
+     * them.
+     *
+     * Sent for BOTH modes and recorded either way. In interactive mode the
+     * reader picked one and it arrives as `next_instruction`; in auto mode
+     * nobody was asked and the choosing happens below. Recording the offer in
+     * both cases is what makes the future "here is the path your story took"
+     * surface possible at all -- the options were derived from a story state
+     * that has already moved on by the time anyone asks.
+     */
+    const directionsOffered = parseOfferedDirections(body.directions_offered);
+
+    const { data: chapters, error: chaptersError } = chapterWindowRead;
     if (chaptersError) throw chaptersError;
     if (!chapters?.length) {
       return respond({ error: "Story has no chapter to continue" }, 409);
@@ -210,6 +256,20 @@ serve(async (req) => {
       }, 400);
     }
 
+    // Whether this chapter gets its own picture, and therefore what it costs.
+    //
+    // `source-of-truth/CREDITS_AND_PRICING.md` §1: a chapter after the first is
+    // 1 credit, or 2 when it is illustrated. Both credits are taken by the ONE
+    // reservation below, under one advisory lock — reserving the art
+    // separately would let a balance run out between the two and produce
+    // either a chapter whose art nobody paid for or a charge for art against a
+    // chapter that was never written.
+    //
+    // The RPC re-reads `stories.illustrate_chapters` for itself and charges
+    // two only if the row agrees, so this flag can lower the price and never
+    // raise it.
+    const illustrateChapter = story.illustrate_chapters === true;
+
     const { data: operation, error: reservationError } = await serviceClient
       .rpc(
         "reserve_generation_operation",
@@ -219,6 +279,7 @@ serve(async (req) => {
           p_story_id: story_id,
           p_chapter_number: nextChapterNum,
           p_kind: "continuation",
+          p_illustrate_chapter: illustrateChapter,
         },
       );
     if (reservationError || !operation) {
@@ -243,10 +304,7 @@ serve(async (req) => {
     observedOperationId = operation.id;
 
     // Build continuation prompt
-    const previousText = chapters
-      ?.toReversed()
-      ?.map((c) => `Chapter ${c.chapter_number}: ${c.content}`)
-      .join("\n\n");
+    const previousText = buildPreviousChapterWindow(chapters ?? []);
 
     const primaryGenre: string = story.primary_genre ??
       (Array.isArray(story.genre)
@@ -300,6 +358,40 @@ serve(async (req) => {
       }
     }
 
+    /**
+     * Auto mode: the model picks the direction, not the client's sort order.
+     *
+     * `story_flow = 'auto'` means the reader asked not to be interrupted
+     * between chapters. The first implementation of that took the
+     * highest-ranked chip, which is a client sort and not a choice: the plan
+     * beat outranks an open hook every time, so an auto story followed its
+     * beat list regardless of what had actually happened in the chapter that
+     * just ended. `chooseDirection` reads the ending and picks the direction
+     * the chapter has earned.
+     *
+     * An explicit `next_instruction` always wins. A reader who typed something
+     * has been asked and answered, whatever mode the story is in.
+     */
+    const autoFlow = story.story_flow === "auto";
+    const directionChoice = autoFlow && !nextInstruction
+      ? await chooseDirection({
+        offered: directionsOffered,
+        chapterEnding: trimToEnds(chapters[0].content ?? ""),
+        chapterTitle: chapters[0].title,
+        hookText: chapters[0].hook_text,
+      })
+      : {
+        offered: directionsOffered,
+        chosen: nextInstruction || null,
+        chosenBy: (nextInstruction ? "reader" : "none") as
+          | "reader"
+          | "model"
+          | "ranking"
+          | "none",
+      };
+    // Whatever was chosen is what the chapter is written from.
+    const effectiveInstruction = directionChoice.chosen ?? "";
+
     const systemPrompt = buildContinuationSystemPrompt({
       primaryGenre,
       audienceMode,
@@ -351,7 +443,7 @@ serve(async (req) => {
         storyValues,
         writingStyle,
         avoid,
-        continuationInstruction: nextInstruction || undefined,
+        continuationInstruction: effectiveInstruction || undefined,
         characters,
         seriesState,
         title: story.title,
@@ -440,6 +532,77 @@ serve(async (req) => {
       );
       if (chapterError || !chapter) {
         throw chapterError ?? new Error("Chapter persistence failed");
+      }
+
+      /*
+        The directions this chapter was offered, and the one it took.
+
+        A follow-up update rather than three more parameters on
+        `complete_continuation_generation`. That RPC completes the operation
+        and settles the credit in one transaction, and this is metadata for a
+        reader-facing surface that does not exist yet: worth recording at the
+        only moment it is recordable, not worth a fourth arity change to a
+        credit-bearing function. A failure here logs and is dropped -- the
+        chapter is written and paid for, and losing the record of which chips
+        were on screen must never undo that.
+      */
+      /*
+        RECORDED EITHER WAY, INCLUDING WHEN NOTHING WAS OFFERED.
+
+        This was gated on `chosenBy !== "none"`, which made the surrounding
+        comment false: a "Katha decides" chapter -- interactive with no chips
+        derivable, or auto with an empty offer -- recorded nothing at all. The
+        future chip surface would then have had two indistinguishable cases,
+        "this chapter predates the feature" and "this chapter genuinely had no
+        directions", with no way to tell them apart and no way to recover the
+        difference afterwards.
+
+        Writing the row makes that a KNOWN empty rather than an unknown. The
+        `direction_chosen_by` column is nullable precisely so `none` can be
+        stored as null and still be a fact.
+      */
+      if (typeof chapter.id === "string") {
+        const { error: directionError } = await serviceClient
+          .from("chapters")
+          .update({
+            directions_offered: directionChoice.offered,
+            direction_chosen: directionChoice.chosen,
+            // `none` is not one of the three the CHECK allows; it is the
+            // absence of a chooser, which the column spells as null.
+            direction_chosen_by: directionChoice.chosenBy === "none"
+              ? null
+              : directionChoice.chosenBy,
+          })
+          .eq("id", chapter.id);
+        if (directionError) {
+          console.error(
+            "chapter direction record failed:",
+            safeErrorMessage(directionError),
+          );
+        }
+      }
+
+      // The chapter's own illustration, off the response's critical path.
+      //
+      // Chapter 1's art IS the cover and is drawn by `generateStoryMedia`;
+      // this is the path for every chapter after it, which until now had none
+      // at all — `illustrate_chapters` was stored and read by nobody, so a
+      // writer who asked for illustrations got exactly one.
+      //
+      // Background for the same reason the cover is: an image adds tens of
+      // seconds to work the reader is already waiting on, and the chapter is
+      // finished and paid for the moment the row above exists. Nothing here
+      // can fail the chapter — `generateChapterArt` resolves on every path,
+      // logs its own failures, and refunds the art credit if the picture never
+      // arrives (decision 39 makes an unillustrated chapter a legitimate look).
+      if (illustrateChapter && typeof chapter.id === "string") {
+        runInBackground(generateChapterArt({
+          storyId: story_id,
+          chapterId: chapter.id,
+          chapterNumber: nextChapterNum,
+          operationId: operation.id,
+          userId: user.id,
+        }));
       }
 
       // The continuity the chapter just wrote, handed back with it.
@@ -541,11 +704,20 @@ serve(async (req) => {
           let closed = false;
           const send = (event: string, data: unknown) => {
             if (closed) return;
-            controller.enqueue(
-              encoder.encode(
-                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-              ),
-            );
+            try {
+              controller.enqueue(
+                encoder.encode(
+                  `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+                ),
+              );
+            } catch {
+              // The reader hung up. `closed` only tracks our own `close()`, so
+              // a client that navigates away leaves it false and every later
+              // enqueue throws. Latching it turns one throw into a no-op for
+              // the rest of the run rather than a throw per event, and the
+              // chapter still finishes and persists -- it is already paid for.
+              closed = true;
+            }
           };
           const startedAt = Date.now();
           try {
@@ -555,6 +727,39 @@ serve(async (req) => {
               chapter_number: nextChapterNum,
             });
             send("stage", { stage: "context" });
+
+            // The chapter is named before it is written, for the same reason a
+            // first chapter is (see `generate-story-stream`): the metadata call
+            // reads the finished prose, so its chapter title cannot arrive
+            // until ~50s in and the reader watches page one fill under a blank
+            // heading. Fired in the same tick as the stream, never awaited by
+            // it, and null on any failure -- in which case the metadata title
+            // is used exactly as before.
+            //
+            // The story already has a name, so it is passed in and echoed back
+            // rather than re-invented; only `chapter_title` is used here.
+            const namingPromise = nameChapterEarly({
+              seed: story.topic ?? "",
+              primaryGenre,
+              chapterNumber: nextChapterNum,
+              storyTitle: typeof story.title === "string" ? story.title : null,
+              previously: chapters[0].previously_summary ??
+                story.previously_summary,
+              instruction: effectiveInstruction || null,
+              characterNames: characters.map((c) => c.name).filter(Boolean),
+            });
+            namingPromise.then((names) => {
+              if (!names?.chapterTitle) return;
+              send("title", { chapter_title: names.chapterTitle });
+              // Detached on purpose, so it has to swallow its own failures: an
+              // unhandled rejection on this runtime can take the isolate down,
+              // and with it a chapter the reader has already paid for.
+            }).catch((error) => {
+              console.error(
+                "early chapter title could not be sent:",
+                safeErrorMessage(error),
+              );
+            });
 
             const prose = await streamChapterProse({
               systemPrompt: buildContinuationSystemPrompt({
@@ -591,10 +796,18 @@ serve(async (req) => {
               2_000,
               45_000,
             );
+            // Settled tens of seconds ago (12s deadline against a ~50s
+            // chapter), so this never waits. Awaited rather than read from a
+            // mutable binding so the title that is PERSISTED is the one the
+            // `title` event already put on screen.
+            const earlyNames = await namingPromise;
             const output = parseStructuredOutput(
               JSON.stringify({
                 ...(JSON.parse(metadata.text) as Record<string, unknown>),
                 chapter_body: prose.text,
+                ...(earlyNames?.chapterTitle
+                  ? { chapter_title: earlyNames.chapterTitle }
+                  : {}),
               }),
               `Chapter ${nextChapterNum}`,
             );
@@ -777,21 +990,31 @@ function jsonResponse(req: Request, body: unknown, status = 200): Response {
   });
 }
 
-function summarizeChapterForPrompt(chapter: {
-  chapter_number: number;
-  title?: string | null;
-  content?: string | null;
-  previously_summary?: string | null;
-  hook_type?: string | null;
-  hook_text?: string | null;
-}): string {
-  const summary = chapter.previously_summary?.trim();
-  const body = chapter.content?.trim() ?? "";
-  const excerpt = body.length > 1200 ? `${body.slice(0, 1200)}...` : body;
-  const hook = chapter.hook_text?.trim()
-    ? `\nOpening hook: ${chapter.hook_type ?? "unknown"} - ${chapter.hook_text}`
-    : "";
-  return `Chapter ${chapter.chapter_number}: ${chapter.title ?? "Untitled"}\n${
-    summary || excerpt
-  }${hook}`;
+
+/**
+ * Read the offered directions off the request, bounded.
+ *
+ * Client-supplied, so it is bounded rather than trusted: it reaches a model
+ * prompt in auto mode and a jsonb column in both. The caps mirror what the
+ * client can actually put on screen -- three chips, each within the beat
+ * length the create contract already enforces -- so a request that respects
+ * the UI is never truncated, and one that does not cannot make the choosing
+ * prompt or the stored row unbounded.
+ */
+function parseOfferedDirections(value: unknown): OfferedDirection[] {
+  if (!Array.isArray(value)) return [];
+  const out: OfferedDirection[] = [];
+  for (const entry of value.slice(0, 3)) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const prompt = typeof record.prompt === "string"
+      ? record.prompt.trim().slice(0, 300)
+      : "";
+    if (!prompt) continue;
+    const id = typeof record.id === "string" && record.id.trim()
+      ? record.id.trim().slice(0, 64)
+      : `direction-${out.length}`;
+    out.push({ id, prompt });
+  }
+  return out;
 }

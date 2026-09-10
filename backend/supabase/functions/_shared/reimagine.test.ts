@@ -51,6 +51,24 @@ Deno.test("a new character is read as fields, and blanks stay absent", () => {
   assertEquals(replacement.applyToAllChapters, false);
 });
 
+// `role` is the wire's retired spelling of Description. A client on an older
+// build still sends it, and it now has to land in the one field the prompts
+// read -- otherwise the swapped-in character reaches the model as a bare name.
+Deno.test("a legacy role lands in appearance, and never displaces one", () => {
+  const [fromRole] = ok(parseReplacements([{
+    from_name: "Maya",
+    to: { name: "Priya", role: "a courier" },
+  }]));
+  assertEquals(fromRole.character?.appearance, "a courier");
+  assertEquals(fromRole.character?.description, undefined);
+
+  const [both] = ok(parseReplacements([{
+    from_name: "Maya",
+    to: { name: "Priya", role: "a courier", appearance: "tall, cropped hair" },
+  }]));
+  assertEquals(both.character?.appearance, "tall, cropped hair");
+});
+
 Deno.test("malformed replacements are refused with a message, not guessed at", () => {
   assertEquals(
     err(parseReplacements("Maya")),

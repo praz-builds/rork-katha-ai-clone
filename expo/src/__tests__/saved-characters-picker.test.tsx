@@ -16,7 +16,7 @@ jest.mock("expo-image-picker", () => ({
 const naina: SavedCharacter = {
   id: "saved-naina",
   name: "Naina Mistry",
-  role: "A 29-year-old baker",
+  appearance: "A 29-year-old baker",
   createdAt: "2026-09-09T00:00:00Z",
 };
 
@@ -55,7 +55,7 @@ it("saves a crafted character to the library first, then selects it", async () =
   const saveCharacter = jest.fn(async (input) => ({
     id: "saved-new",
     name: input.name,
-    role: input.role,
+    appearance: input.appearance,
     createdAt: "2026-09-09T00:00:00Z",
   }));
   const view = await render(
@@ -71,10 +71,10 @@ it("saves a crafted character to the library first, then selects it", async () =
   await fireEvent.press(view.getByLabelText("New character"));
   await waitFor(() => expect(view.getByText("Craft character")).toBeTruthy());
   await fireEvent.changeText(view.getByLabelText("Name"), "Kabir");
-  await fireEvent.changeText(view.getByLabelText("Description"), "A courier");
+  await fireEvent.changeText(view.getByLabelText("Appearance"), "A courier");
   await fireEvent.press(view.getByText("Save"));
 
   await waitFor(() => expect(onSelect).toHaveBeenCalled());
-  expect(saveCharacter).toHaveBeenCalledWith(expect.objectContaining({ name: "Kabir", role: "A courier" }));
+  expect(saveCharacter).toHaveBeenCalledWith(expect.objectContaining({ name: "Kabir", appearance: "A courier" }));
   expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "saved-new", name: "Kabir" }));
 });

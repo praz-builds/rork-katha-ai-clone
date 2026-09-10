@@ -502,11 +502,23 @@ export default function PhraseCaptureReader({
     );
   }, [beginSelection, handleWordPress, pendingKeys, savedPhrases, screenReaderEnabled, selection, story.id]);
 
-  const onChapterChange = useCallback((chapter: Chapter) => {
+  /*
+    NOT FORWARDED UPWARD, DELIBERATELY.
+
+    A `onChapterChange` pass-through was added here for the auto write-ahead's
+    reading-position bound, and that bound was then removed as a product
+    decision -- the chain runs to the credit balance, not to the reader. The
+    prop went with it rather than being left in place "in case": an inline
+    callback from a parent is a new identity on every parent render, which
+    re-runs this memo, which makes `ReaderScreen` fire the change again and
+    dismiss a phrase selection the reader was in the middle of. An unused seam
+    with a live footgun is worse than no seam.
+  */
+  const handleChapterChange = useCallback((chapter: Chapter) => {
     setActiveChapter(chapter);
     // A range is a set of indices into ONE chapter's word list. Carrying it
-    // across a chapter change would light an unrelated run of words in the new
-    // one.
+    // across a chapter change would light an unrelated run of words in the
+    // new one.
     clearSelection();
   }, [clearSelection]);
 
@@ -519,7 +531,7 @@ export default function PhraseCaptureReader({
             onBack={onBack}
             initialChapterIndex={initialChapterIndex}
             renderWord={renderWord}
-            onChapterChange={onChapterChange}
+            onChapterChange={handleChapterChange}
             autoplay={autoplay}
             renderChapterEnd={renderChapterEnd}
             liveSessionId={liveSessionId}

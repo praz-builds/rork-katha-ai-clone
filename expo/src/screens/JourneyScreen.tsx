@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
+// renders a plain View and the screen starts at y=0, under the status bar.
+// The safe-area-context one works on both. `SafeAreaProvider` is already
+// mounted in App.tsx, so this is a swap, not new plumbing.
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   CalendarDays,
   Check,
@@ -88,7 +92,7 @@ export default function JourneyScreen({
   // surface is built to avoid, so the page says it cannot answer instead.
   if (!profile) {
     return (
-      <SafeAreaView style={styles.flex}>
+      <SafeAreaView style={styles.flex} edges={["top"]}>
         <ScrollView contentContainerStyle={styles.pagePad}>
           <View style={styles.topBar}>
             <Pressable
@@ -111,7 +115,7 @@ export default function JourneyScreen({
   }
 
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.pagePad}
         showsVerticalScrollIndicator={false}

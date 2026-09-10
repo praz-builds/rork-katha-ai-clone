@@ -8,6 +8,7 @@
  *  - every picker in the create flow is the shared Dropdown component
  */
 import { readFileSync } from "fs";
+import { CHAPTER_ART_CREDITS, CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
 import { resolve } from "path";
 import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
@@ -99,11 +100,11 @@ const generatedStory: Story = {
   language: "English",
 };
 
-async function renderCreate() {
+async function renderCreate({ isAnonymous = false } = {}) {
   return await render(
     <CreateStudioScreen
       credits={12}
-      isAnonymous={false}
+      isAnonymous={isAnonymous}
       onGenerationStarted={jest.fn()}
       onBack={jest.fn()}
     />,
@@ -157,7 +158,9 @@ describe("More options -- moments display cap vs. data cap", () => {
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
 
     const longMoment = "A ".repeat(90).trim(); // 179 chars: over the 60-char display cap, under the 300-char data cap
-    const composer = view.getByPlaceholderText("Add a moment");
+    const composer = view.getByPlaceholderText(
+      "Moments to include in general or between characters",
+    );
     // The composer itself caps input at the documented server limit.
     expect(composer.props.maxLength).toBe(300);
 
@@ -169,8 +172,13 @@ describe("More options -- moments display cap vs. data cap", () => {
     expect(chipText.props.children.length).toBeLessThan(longMoment.length);
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    // The direction step replaced review. Shaping is mocked with no beats, so
+    // no opening can be derived and the composer is already open -- submitting
+    // it empty starts the story with no direction, exactly as review's Create
+    // used to.
+    await fireEvent.press(
+      await view.findByTestId("create-direction-composer-submit"),
+    );
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
     // Sent in full -- not silently cut down to the display length.
@@ -190,8 +198,13 @@ describe("More options -- spice control removed", () => {
     expect(view.queryByText("Steamy")).toBeNull();
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    // The direction step replaced review. Shaping is mocked with no beats, so
+    // no opening can be derived and the composer is already open -- submitting
+    // it empty starts the story with no direction, exactly as review's Create
+    // used to.
+    await fireEvent.press(
+      await view.findByTestId("create-direction-composer-submit"),
+    );
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
     // The client still sends the existing safe default -- inference is a
@@ -200,16 +213,120 @@ describe("More options -- spice control removed", () => {
   });
 });
 
-describe("More options -- chapter art copy", () => {
-  it("names the per-chapter cover and its credit cost from CREDITS_AND_PRICING.md", async () => {
+describe("chapter cover -- the dropdown that replaced the chapter-art switch", () => {
+  it("prices auto-generated chapter covers from the credit constants, not a literal", async () => {
     const view = await renderCreate();
     await fillIdea(view);
-    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+    await fireEvent.press(view.getByRole("button", { name: "Chapter cover" }));
 
-    // CREDITS_AND_PRICING.md: "Every chapter after that is 1 credit, or 2 if
-    // you illustrate it" -- chapter art is +1 credit per illustrated chapter.
-    const copy = view.getByText(/illustration to every chapter after the first/i);
-    expect(String(copy.props.children)).toMatch(/1 more credit/i);
+    // CREDITS_AND_PRICING.md prices a 3-chapter illustrated story at 5 credits
+    // = 1 (start, which bundles chapter one's art as the cover) + 2 + 2. So
+    // every chapter this option actually BILLS for is text plus art, and there
+    // is no chapter on it that costs one. An earlier revision of the copy said
+    // "1 credit for the first, 2 from the next", which mis-numbered which
+    // chapter "the first" is and quoted a price no chapter is charged.
+    const copy = view.getByText(/its own art for every chapter/i);
+    const text = String(copy.props.children);
+    expect(text).toContain(
+      `${CHAPTER_TEXT_CREDITS + CHAPTER_ART_CREDITS} credits a chapter`,
+    );
+    expect(text).toContain(`instead of ${CHAPTER_TEXT_CREDITS}`);
+    // The bundled cover is stated, because it is the reason the number is not
+    // simply "double".
+    expect(text).toMatch(/cover is already included/i);
+  });
+
+  it("writes the illustrate_chapters the generation contract still sends", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate();
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: "Chapter cover" }));
+    await fireEvent.press(
+      view.getByRole("button", { name: "Auto-generated per chapter" }),
+    );
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await fireEvent.press(
+      await view.findByTestId("create-direction-composer-submit"),
+    );
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      illustrateChapters: true,
+    });
+  });
+});
+
+describe("the six dropdowns", () => {
+  /**
+   * Four above the text fields (Story mode, Chapters, Chapter length, Chapter
+   * cover) and two at the foot of the brief beside the Create button (Image
+   * style, Who can read it). Asserted WITHOUT opening More options, because
+   * the whole point of the layout is that none of the six is hidden behind a
+   * disclosure the writer may never open.
+   */
+  it("are all reachable without opening More options", async () => {
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+
+    for (const label of [
+      "Story mode",
+      "Chapters",
+      "Chapter length",
+      "Chapter cover",
+      "Image style",
+      "Who can read it",
+    ]) {
+      expect(view.getByRole("button", { name: label })).toBeTruthy();
+    }
+  });
+
+  it("opens on a real value rather than on its own label", async () => {
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+
+    expect(
+      view.getByRole("button", { name: "Story mode" }).props.accessibilityValue,
+    ).toEqual({ text: "Interactive" });
+    expect(
+      view.getByRole("button", { name: "Image style" }).props.accessibilityValue,
+    ).toEqual({ text: "Auto" });
+    expect(
+      view.getByRole("button", { name: "Chapter cover" }).props.accessibilityValue,
+    ).toEqual({ text: "Cover art only" });
+  });
+
+  it("sends the story mode and the image style the writer picked", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: "Story mode" }));
+    await fireEvent.press(view.getByRole("button", { name: "Auto-continue" }));
+    await fireEvent.press(view.getByRole("button", { name: "Image style" }));
+    await fireEvent.press(view.getByRole("button", { name: "Watercolor" }));
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await fireEvent.press(
+      await view.findByTestId("create-direction-composer-submit"),
+    );
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      storyFlow: "auto",
+      imageStyle: "watercolor",
+    });
+  });
+
+  it("shows a guest the visibility choice and refuses to let them make it", async () => {
+    const view = await renderCreate({ isAnonymous: true });
+    await fillIdea(view);
+
+    const trigger = view.getByRole("button", { name: "Who can read it" });
+    // Visible, so the guest can see what they are missing, and disabled, so
+    // they cannot request a public story the server would refuse anyway.
+    expect(trigger.props.accessibilityState.disabled).toBe(true);
+    expect(trigger.props.accessibilityValue).toEqual({ text: "Private" });
   });
 });
 

@@ -3,12 +3,16 @@ import {
   Alert,
   Image,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+// `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
+// renders a plain View and the screen starts at y=0, under the status bar.
+// The safe-area-context one works on both. `SafeAreaProvider` is already
+// mounted in App.tsx, so this is a swap, not new plumbing.
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ChevronRight,
   Crown,
@@ -150,7 +154,7 @@ export default function ProfileScreen({
   const handle = profile?.username ? `@${profile.username}` : null;
 
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.withTabs}
         showsVerticalScrollIndicator={false}
@@ -514,7 +518,9 @@ const styles = {
       borderColor: colors.border,
       gap: spacing.related,
     },
-    guestTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 19 },
+    // 20 (`type.titleSmall`), not the 19 this was. A single off-ramp point is
+    // invisible on its own and is how a ramp stops being one.
+    guestTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 20 },
     guestBody: {
       fontFamily: fonts.ui,
       color: colors.muted,

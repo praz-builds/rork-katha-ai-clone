@@ -24,6 +24,22 @@ export const MAX_CAST_SIZE = 3;
 export const MAX_NEXT_INSTRUCTION_CHARS = 300;
 
 /**
+ * The cap on one beat of the chapter plan, in characters.
+ *
+ * Mirrors `MAX_BEAT_LENGTH` in
+ * `backend/supabase/functions/_shared/types.ts`, which `validation.ts`
+ * enforces on every entry of `beats`.
+ *
+ * It is NOT the same number as `MAX_NEXT_INSTRUCTION_CHARS`, and the difference
+ * is a real one that cost a real bug: the opening direction the writer types in
+ * the create flow becomes `beats[0]`, not `next_instruction`, so the composer
+ * shared with the chapter end was letting them type 300 characters into a field
+ * bounded at 200. The tail went missing on the server with the input and the
+ * counter both saying it fit.
+ */
+export const MAX_BEAT_LENGTH = 200;
+
+/**
  * The cap on the writer's optional cover note, in characters.
  *
  * Mirrors `MAX_COVER_NOTE_LENGTH` in
@@ -65,17 +81,31 @@ export const COVER_POLL_MAX_ATTEMPTS = 40;
  * an order of magnitude at the exact moment they are deciding whether to
  * commit.
  *
- * The table's neighbouring line — "Art for any other chapter — optional, off by
- * default — 1 each" — has no constant here on purpose. Nothing in the codebase
- * charges for per-chapter art: `chapter_art` is only an enum value on
- * `generation_operations.kind`, no caller reserves it, and `continue-story`
- * never reads `illustrate_chapters`. A constant nothing reads is an invitation
- * to quote a price nothing collects, which is how the run sheet came to refuse
- * chapters the balance could afford. It comes back when the feature does.
- *
  * Canonical: `source-of-truth/CREDITS_AND_PRICING.md` §"Creating".
  */
 export const CHAPTER_TEXT_CREDITS = 1;
+
+/**
+ * What illustrating one chapter adds on top of its text.
+ *
+ * `CREDITS_AND_PRICING.md` §"Creating": "Art for any other chapter — optional,
+ * off by default — 1 each". Chapter one's art is not priced by this line: it is
+ * the story's cover and is already inside `STORY_START_CREDITS`.
+ *
+ * THIS IS NOW A CHARGE, NOT A QUOTE. When this constant was introduced the
+ * comment here said the opposite, and correctly: nothing reserved against
+ * chapter art, and `continue-story` never read `illustrate_chapters`. Migration
+ * 00077 changed that. `reserve_generation_operation` now takes
+ * `p_illustrate_chapter` and settles both credits in one transaction, taking
+ * the flag from `stories.illustrate_chapters` rather than from the caller — so
+ * a request can lower the price and never raise it.
+ *
+ * Everything that quotes a per-chapter total must therefore add this whenever
+ * the story illustrates its chapters. Quoting the text credit alone is now
+ * quoting a price the reader is not charged, which is the failure this note
+ * exists to prevent.
+ */
+export const CHAPTER_ART_CREDITS = 1;
 
 /**
  * What starting a story costs: its characters, chapter one and its cover.

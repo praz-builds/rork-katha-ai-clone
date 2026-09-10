@@ -1,5 +1,6 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { toDirection } from "@/lib/directions";
 import { genreLabels } from "@/theme";
 import { KIDS_UI_GENRES, UI_GENRES } from "@/types/domain";
 import type { Story } from "@/types/domain";
@@ -129,6 +130,22 @@ async function fillIdea(
   await view.findByRole("button", { name: "Add a character" });
 }
 
+/**
+ * Walk the direction step, the screen that replaced review.
+ *
+ * The suite's shaping mock returns no `beats`, so no opening can be derived
+ * and the step degrades to its write-your-own composer with the surprise-me
+ * submit -- which is the path that starts the story with no direction, and so
+ * asserts the same payload the review screen's Create used to.
+ */
+async function startFromDirectionStep(
+  view: Awaited<ReturnType<typeof render>>,
+) {
+  await fireEvent.press(
+    await view.findByTestId("create-direction-composer-submit"),
+  );
+}
+
 beforeEach(() => {
   mockGenerateStory.mockReset();
   mockInferStoryBrief.mockReset();
@@ -172,14 +189,15 @@ describe("approved Create flow", () => {
       await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
       expect(view.getByText("Craft character")).toBeTruthy();
       expect(view.getByText("Name")).toBeTruthy();
-      expect(view.getByText("Description")).toBeTruthy();
       expect(view.getByText("Background")).toBeTruthy();
       expect(view.getByText("Appearance")).toBeTruthy();
+      // Description is retired: the sheet asks who they are and what they
+      // look like once, in Appearance.
+      expect(view.queryByText("Description")).toBeNull();
 
       await fireEvent.changeText(view.getByLabelText("Name"), name);
-      await fireEvent.changeText(view.getByLabelText("Description"), "A determined explorer");
       await fireEvent.changeText(view.getByLabelText("Background"), "Keeps a promise to their family.");
-      await fireEvent.changeText(view.getByLabelText("Appearance"), "Curly hair and a red backpack.");
+      await fireEvent.changeText(view.getByLabelText("Appearance"), "A determined explorer, curly hair and a red backpack.");
       await fireEvent.press(view.getByRole("button", { name: "Save" }));
       await view.findByRole("button", { name: `Edit ${name}` });
     }
@@ -335,7 +353,7 @@ describe("approved Create flow", () => {
     },
   );
 
-  it("sends the reviewed Kids brief and More options to generation", async () => {
+  it("sends the Kids brief and every dropdown to generation", async () => {
     mockGenerateStory.mockResolvedValueOnce(generatedStory);
     const view = await renderCreate();
     await fillIdea(view, "A child follows a map hidden in a library book.");
@@ -349,14 +367,18 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "7 chapters" }));
     await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
-    await fireEvent.press(view.getByRole("switch", { name: "Chapter art" }));
+    // Chapter art is a dropdown now: one cover, or auto-generated art per
+    // chapter. The wire field it writes is still `illustrate_chapters`.
+    await fireEvent.press(view.getByRole("button", { name: "Chapter cover" }));
+    await fireEvent.press(
+      view.getByRole("button", { name: "Auto-generated per chapter" }),
+    );
     // Language now offers English only -- see the dedicated Language test --
     // so it is left untouched here rather than switched to Portuguese.
     // The setup screen's Create button opens the pre-generation review screen;
     // its own Create button is the one that actually fires generation.
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await startFromDirectionStep(view);
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
     expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
@@ -409,8 +431,7 @@ describe("approved Create flow", () => {
     // the review's own Create commits. The assertion arrived from the grounding
     // branch, which predates that screen and pressed once.
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await startFromDirectionStep(view);
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
     expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
@@ -426,8 +447,7 @@ describe("approved Create flow", () => {
 
     await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
     await fireEvent.changeText(view.getByLabelText("Name"), "Praz");
-    await fireEvent.changeText(view.getByLabelText("Description"), "A young explorer");
-    await fireEvent.changeText(view.getByLabelText("Appearance"), "Dark hair and travel clothes");
+    await fireEvent.changeText(view.getByLabelText("Appearance"), "A young explorer, dark hair and travel clothes");
     await fireEvent.press(view.getByRole("button", { name: "Create image" }));
 
     await waitFor(() => expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(1));
@@ -436,8 +456,7 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "Save" }));
     await view.findByText("Image ready");
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await startFromDirectionStep(view);
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
     expect(mockGenerateStory.mock.calls[0][0].characters[0]).toMatchObject({
       name: "Praz",
@@ -459,8 +478,7 @@ describe("approved Create flow", () => {
         view.getByRole("button", { name: `${count} chapters` }),
       );
       await fireEvent.press(view.getByRole("button", { name: /create/i }));
-      await view.findByText("Here is what Katha will write");
-      await fireEvent.press(view.getByRole("button", { name: /create/i }));
+      await startFromDirectionStep(view);
       await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
       expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
@@ -481,8 +499,7 @@ describe("approved Create flow", () => {
       await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
       await fireEvent.press(view.getByRole("button", { name: label }));
       await fireEvent.press(view.getByRole("button", { name: /create/i }));
-      await view.findByText("Here is what Katha will write");
-      await fireEvent.press(view.getByRole("button", { name: /create/i }));
+      await startFromDirectionStep(view);
       await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
       expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
@@ -499,11 +516,15 @@ describe("approved Create flow", () => {
     expect(
       view.getByRole("switch", { name: "Kids Mode" }),
     ).toBeTruthy();
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    expect(view.getByText("Private")).toBeTruthy();
+    // The control itself says so before anything is spent -- there is no
+    // review screen left to restate it on.
+    expect(
+      view.getByRole("button", { name: "Who can read it" }).props
+        .accessibilityValue,
+    ).toEqual({ text: "Private" });
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await startFromDirectionStep(view);
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
     expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
@@ -516,18 +537,15 @@ describe("approved Create flow", () => {
     const view = await renderCreate({ isAnonymous: false });
     await fillIdea(view);
 
-    await fireEvent.press(view.getByRole("button", { name: "More options" }));
-    const visibilitySwitch = view.getByRole("switch", {
-      name: "Make it public",
-    });
-    expect(visibilitySwitch.props.accessibilityState.checked).toBe(false);
-    await fireEvent.press(visibilitySwitch);
+    await fireEvent.press(view.getByRole("button", { name: "Who can read it" }));
+    await fireEvent.press(view.getByRole("button", { name: "Public" }));
+    expect(
+      view.getByRole("button", { name: "Who can read it" }).props
+        .accessibilityValue,
+    ).toEqual({ text: "Public" });
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    expect(view.getByText("Public")).toBeTruthy();
-
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await startFromDirectionStep(view);
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
     expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
@@ -543,10 +561,6 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "Add a character" }));
     await fireEvent.changeText(view.getByLabelText("Name"), "Elena");
     await fireEvent.changeText(
-      view.getByLabelText("Description"),
-      "A historical restorer, 34",
-    );
-    await fireEvent.changeText(
       view.getByLabelText("Background"),
       "Hasn't spoken to her mother in six years.",
     );
@@ -557,19 +571,23 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "Save" }));
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await startFromDirectionStep(view);
     await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
 
     expect(mockGenerateStory.mock.calls[0][0].characters[0]).toMatchObject({
       name: "Elena",
-      description: "A historical restorer, 34",
       background: "Hasn't spoken to her mother in six years.",
       appearance: "Dark hair pinned up, paint on her hands.",
     });
   });
 
-  it("shows every chosen value on the review screen and preserves them when going back", async () => {
+  /**
+   * There is no review screen to restate the brief on any more -- Create goes
+   * straight to the direction step. What still has to hold is the half of
+   * review that was doing real work: leaving the brief and coming back must
+   * not cost the writer a single choice.
+   */
+  it("keeps every choice when the direction step is backed out of", async () => {
     const view = await renderCreate({ isAnonymous: false });
     await fillIdea(view, "A lighthouse keeper receives a letter from tomorrow.");
 
@@ -586,24 +604,13 @@ describe("approved Create flow", () => {
     await fireEvent.press(view.getByRole("button", { name: "15 chapters" }));
     await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
     await fireEvent.press(view.getByRole("button", { name: "Long" }));
-    const visibilitySwitch = view.getByRole("switch", {
-      name: "Make it public",
-    });
-    await fireEvent.press(visibilitySwitch);
+    await fireEvent.press(view.getByRole("button", { name: "Who can read it" }));
+    await fireEvent.press(view.getByRole("button", { name: "Public" }));
 
     await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await view.findByText("Here is what Katha will write");
-
-    // Every choice made on the setup screen is restated here before anything
-    // is spent.
-    expect(
-      view.getByText("A lighthouse keeper receives a letter from tomorrow."),
-    ).toBeTruthy();
-    expect(view.getByText(/Mara/)).toBeTruthy();
-    expect(view.getByText("15")).toBeTruthy();
-    expect(view.getByText(/Long/)).toBeTruthy();
-    expect(view.getByText("Lyrical, present tense")).toBeTruthy();
-    expect(view.getByText("Public")).toBeTruthy();
+    // The direction step, and nothing spent yet.
+    await view.findByText("Where does it begin?");
+    expect(mockGenerateStory).not.toHaveBeenCalled();
 
     // Going back does not reset anything: it is the same draft, not a copy.
     await fireEvent.press(view.getByRole("button", { name: "Back to edit" }));
@@ -611,12 +618,11 @@ describe("approved Create flow", () => {
       "A lighthouse keeper receives a letter from tomorrow.",
     );
     expect(
-      view.getByRole("switch", { name: "Make it public" }).props
-        .accessibilityState.checked,
-    ).toBe(true);
-    // The Chapters and Chapter length dropdowns reset to closed on this fresh
-    // mount, so their options are not in the tree -- the committed value is
-    // read from the closed trigger's announced value instead.
+      view.getByRole("button", { name: "Who can read it" }).props
+        .accessibilityValue,
+    ).toEqual({ text: "Public" });
+    // The dropdowns reset to closed, so their options are not in the tree --
+    // the committed value is read from the closed trigger's announced value.
     expect(
       view.getByRole("button", { name: "Chapters" }).props.accessibilityValue,
     ).toEqual({ text: "15" });
@@ -629,6 +635,124 @@ describe("approved Create flow", () => {
 
     await fireEvent.press(view.getByRole("button", { name: "Edit Mara" }));
     expect(view.getByLabelText("Name").props.value).toBe("Mara");
+  });
+});
+
+/**
+ * THE DIRECTION STEP, WHICH REPLACED THE REVIEW SCREEN.
+ *
+ * Review restated the brief and asked the writer to agree with themselves. The
+ * step in its place asks the question the reader is asked between chapters,
+ * with the same chips, derived from the idea the writer just typed -- so the
+ * first chapter stops being the one chapter nobody gets a say in.
+ *
+ * There is no endpoint that produces continuation chips: at a chapter end they
+ * are derived on the client from a story that already exists. `shape-story` is
+ * the only call that can answer for one that does not, which is why these
+ * assertions run against the shaping mock's `beats`.
+ */
+describe("the direction step", () => {
+  const beats = [
+    "Anjali finds the first letter behind the lamp housing",
+    "Anjali writes back to a name she does not know",
+    "The keeper's log names her mother",
+  ];
+
+  it("offers openings derived from the writer's own idea, and sends the one they pick", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    mockInferStoryBrief.mockResolvedValue({
+      genres: ["mystery"],
+      characters: [],
+      suggestedMoments: [],
+      beats,
+    });
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view, "A lighthouse keeper receives a letter from tomorrow.");
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+
+    // Two cards, not three: the third is always the writer's own. Each is the
+    // story's own sentence pointed at the model as an instruction.
+    const first = await view.findByTestId("create-direction-option-0");
+    expect(view.getByTestId("create-direction-option-1")).toBeTruthy();
+    expect(view.queryByTestId("create-direction-option-2")).toBeNull();
+    // The same converter the chapter-end chips use, asserted through it rather
+    // than against a copy of its output: a beat is a statement, and a chip is
+    // an instruction.
+    const opening = toDirection(beats[0]);
+    expect(view.getByText(String(opening))).toBeTruthy();
+
+    await fireEvent.press(first);
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    // The chosen opening travels as chapter one's beat, and the rest of the
+    // plan travels with it: `beats[n]` is the brief for chapter `n + 1`, so
+    // replacing the whole plan with one line would throw away the outline the
+    // same free call had already produced.
+    const sent = mockGenerateStory.mock.calls[0][0];
+    expect(sent.beats[0]).toBe(opening);
+    expect(sent.beats.slice(1)).toEqual(beats.slice(1));
+  });
+
+  it("keeps the whole shaped plan when the writer asks for a surprise", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    mockInferStoryBrief.mockResolvedValue({
+      genres: ["mystery"],
+      characters: [],
+      suggestedMoments: [],
+      beats,
+    });
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view, "A lighthouse keeper receives a letter from tomorrow.");
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+
+    await fireEvent.press(await view.findByTestId("create-direction-write-own"));
+    await fireEvent.press(view.getByTestId("create-direction-let-katha-decide"));
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    // Nothing invented, nothing overwritten: no direction was chosen, so the
+    // plan is exactly what shaping returned.
+    expect(mockGenerateStory.mock.calls[0][0].beats).toEqual(beats);
+  });
+
+  it("says so honestly when no opening can be derived, and still lets the writer start", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    mockInferStoryBrief.mockResolvedValue({
+      genres: ["mystery"],
+      characters: [],
+      suggestedMoments: [],
+      beats: [],
+    });
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+
+    // The composer is already open rather than behind one more tap: with
+    // nothing derived, the writer's own words are the only way on.
+    await view.findByTestId("create-direction-composer-input");
+    expect(view.queryByTestId("create-direction-option-0")).toBeNull();
+    expect(
+      view.getByText(/Katha has no opening to suggest for this idea yet/),
+    ).toBeTruthy();
+
+    await fireEvent.changeText(
+      view.getByTestId("create-direction-composer-input"),
+      "Open on the night the lamp fails.",
+    );
+    await fireEvent.press(view.getByTestId("create-direction-composer-submit"));
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+    expect(mockGenerateStory.mock.calls[0][0].beats).toEqual([
+      "Open on the night the lamp fails.",
+    ]);
+  });
+
+  it("has no review screen left to walk through", async () => {
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+
+    await view.findByText("Where does it begin?");
+    expect(view.queryByText("Here is what Katha will write")).toBeNull();
+    expect(view.queryByText("Review and create")).toBeNull();
   });
 });
 
@@ -645,9 +769,8 @@ describe("draft restoration across a remount", () => {
       isSeries: true,
       characters: [{
         name: "Iris",
-        description: "A retired postman",
         background: "Delivers one final letter every winter.",
-        appearance: "Grey coat, a satchel that has outlived three owners.",
+        appearance: "A retired postman. Grey coat, a satchel that has outlived three owners.",
         isHero: true,
       }],
       moments: [],
@@ -690,9 +813,9 @@ describe("draft restoration across a remount", () => {
 
     await fireEvent.press(second.getByRole("button", { name: "More options" }));
     expect(
-      second.getByRole("switch", { name: "Make it public" }).props
-        .accessibilityState.checked,
-    ).toBe(true);
+      second.getByRole("button", { name: "Who can read it" }).props
+        .accessibilityValue,
+    ).toEqual({ text: "Public" });
     expect(second.getByLabelText("Writing style").props.value).toBe(
       "Wry, first person",
     );
@@ -711,7 +834,7 @@ describe("draft restoration across a remount", () => {
       "Delivers one final letter every winter.",
     );
     expect(second.getByLabelText("Appearance").props.value).toBe(
-      "Grey coat, a satchel that has outlived three owners.",
+      "A retired postman. Grey coat, a satchel that has outlived three owners.",
     );
   });
   it("discards what Kids Mode derived, not just the switch", async () => {

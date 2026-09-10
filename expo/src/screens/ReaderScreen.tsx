@@ -2,14 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  Bookmark,
-  BookmarkCheck,
-  Heart,
-  MessageCircle,
   Pause,
   Play,
   Send,
-  Share2,
   X,
 } from "lucide-react-native";
 import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,13 +12,13 @@ import {
   Alert,
   Animated as RNAnimated,
   BackHandler,
+  Image,
   Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -36,7 +31,7 @@ import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import { ReimagineSheet } from "@/components/reader/ReimagineSheet";
 import { startReimagine, type ReimagineRequest, type ReimagineRun } from "@/lib/reimagine-client";
-import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
+import { FocalImage } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
@@ -66,6 +61,11 @@ import {
   type ReaderTheme,
   type ReadingThemeName,
 } from "@/lib/reading-themes";
+import {
+  preferredVoiceGender,
+  setPreferredVoiceGender,
+  type VoiceGender,
+} from "@/lib/voices";
 import { colors, fonts, genreGradients, genreLabels, motion, radius, shadows, spacing, type } from "@/theme";
 import type { Chapter, Story } from "@/types/domain";
 
@@ -202,40 +202,6 @@ const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: 
  * is enough for the next page to be drawn before the swipe lands on it.
  */
 
-/**
- * "one", "two", ... for the page label.
- *
- * Spelled out up to twenty because that is where it stops reading as prose
- * and starts reading as data; beyond that the digits are clearer than the
- * words, and a chapter that long is rare enough not to matter.
- */
-const PAGE_WORDS = [
-  "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-  "seventeen", "eighteen", "nineteen", "twenty",
-] as const;
-
-function pageWord(page: number): string {
-  return PAGE_WORDS[page - 1] ?? String(page);
-}
-
-/**
- * How many pages either side of the visible one render their prose.
- *
- * Was 1, and that produced the most visible bug in the reader: a blank page
- * with a page number under it. A page outside the window renders an empty
- * `<Text>`, and the window is centred on `visiblePage`, which used to be
- * updated only by `onMomentumScrollEnd`. That event does not fire for a
- * trackpad or mouse wheel at all, and lags a fast swipe on a phone -- so
- * jumping to page 3, whether by flinging or by dragging the page slider,
- * landed on a page whose body had never been asked to render. It said
- * "Page 3 of 9" over nothing.
- *
- * Two changes together fix it: the window now follows the live scroll offset
- * (see `handlePagerScroll`), and it is wider. Two is not expensive -- a page
- * body is one `<Text>` of about 600 characters -- and it means an ordinary
- * swipe always lands on prose that is already mounted.
- */
 const PAGE_RENDER_WINDOW = 2;
 /**
  * Roughly how tall the chapter opener is: the cover thumbnail (94 wide at 3:4,
@@ -251,6 +217,24 @@ const PAGE_RENDER_WINDOW = 2;
  * absorbs whatever this estimate gets wrong.
  */
 const CHAPTER_OPENER_HEIGHT = 300;
+/**
+ * The space a chapter's own illustration takes at the top of its opener,
+ * `spacing.sm` gap included.
+ *
+ * A FIXED number, reserved whether or not the picture has loaded and whether
+ * or not its URL has even arrived yet. Chapter art is drawn on a background
+ * task minutes after the chapter is readable (`_shared/media.ts`), so the
+ * chapter a reader opens today may gain a URL on the next read of the story --
+ * and an opener that changes height re-paginates the chapter under them, which
+ * is the one defect the settle rule in `pages` exists to prevent. Reserving the
+ * slot from `story.illustrateChapters` rather than from the URL is what makes
+ * page one's prose budget the same before and after the picture lands.
+ *
+ * 220 is the plate itself (2:3, so ~147 wide, a book-plate rather than a
+ * banner) and the rest is the gap under it.
+ */
+const CHAPTER_ART_HEIGHT = 220;
+const CHAPTER_ART_BLOCK_HEIGHT = CHAPTER_ART_HEIGHT + 12;
 /** Full-volume level for background music when narration is not playing. */
 const MUSIC_FULL_VOLUME = 1;
 /** Ducked level while narration plays, so the two never compete at equal volume. */
@@ -498,7 +482,7 @@ export default function ReaderScreen({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSearchMatch, setActiveSearchMatch] = useState(0);
-  const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
   const [isPlaying, setIsPlaying] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoadingAudioRef = useRef(false);
@@ -515,17 +499,40 @@ export default function ReaderScreen({
   const audioGenerationRef = useRef(0);
   const fullText = useMemo(() => chapterText(chapter), [chapter]);
   const theme = READER_THEMES[preferences.theme];
+  /**
+   * This chapter's own picture, and whether the opener is holding space for
+   * one.
+   *
+   * Chapter 1's art IS the cover, and the opener already shows the cover above
+   * the title for somebody else's story -- so a plate carrying the same image
+   * again is the same picture twice on one page. Comparing the URLs is what
+   * catches that without having to special-case chapter numbers, since the two
+   * columns genuinely hold the same URL for chapter 1.
+   *
+   * The SLOT is reserved from the story's setting, not from the URL: the URL
+   * arrives on a background task, and a slot that appears when it does would
+   * reflow the page the reader is on.
+   */
+  const chapterArtUrl = chapter.imageUrl && chapter.imageUrl !== story.coverImageUrl
+    ? chapter.imageUrl
+    : undefined;
+  const showsChapterArt = Boolean(chapterArtUrl)
+    || (story.illustrateChapters === true && chapter.chapterNumber > 1);
   const pageViewport = useMemo(() => ({
     width: Math.min(width, 680) - spacing.xl * 2,
     height: Math.max(260, height - (isDesktop ? 190 : 230)),
-    firstPageOffset: CHAPTER_OPENER_HEIGHT,
-  }), [height, isDesktop, width]);
+    firstPageOffset: CHAPTER_OPENER_HEIGHT
+      + (showsChapterArt ? CHAPTER_ART_BLOCK_HEIGHT : 0),
+  }), [height, isDesktop, showsChapterArt, width]);
   const allPages = useMemo(
     () => paginateChapter(fullText, pageViewport, {
       fontSize: preferences.typeSize,
       lineHeight: preferences.lineHeight,
     }),
-    [fullText, pageViewport.height, pageViewport.width, preferences.lineHeight, preferences.typeSize],
+    // `firstPageOffset` is a dependency like any other: it is the space page
+    // one does NOT have for prose, so a chapter that gains an art slot has to
+    // be re-paginated rather than keeping page one's old budget.
+    [fullText, pageViewport.firstPageOffset, pageViewport.height, pageViewport.width, preferences.lineHeight, preferences.typeSize],
   );
   /**
    * The pages the reader may actually see.
@@ -581,9 +588,6 @@ export default function ReaderScreen({
   const maleVoice = getVoice(voicePair[1] ?? "kai");
   const hasBothVoices = !!(chapter.audioUrls?.female && chapter.audioUrls?.male);
 
-  const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(story.likes);
-  const [isSaved, setIsSaved] = useState(false);
   const [comments, setComments] = useState<ReaderComment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -614,10 +618,44 @@ export default function ReaderScreen({
     });
   }, [chapter.id]);
 
+  /*
+    EVERY RENDERING PREFERENCE THE READER CHANGES OUTLIVES THE READER.
+
+    Type size, line height and reading mode are stored under one key;
+    the narration voice is stored by `lib/voices.ts` beside the voice id, so
+    the Voices screen and this toggle keep their preferences in one place.
+    All of them are device-local AsyncStorage, deliberately: they are facts
+    about how this phone is being read on, not about the person, and none of
+    them is worth a database column.
+
+    Both reads are guarded by "a choice made by the person beats a value read
+    from disk", the same rule the music restore below is written to -- these
+    resolve a tick or two after mount, and a reader who reached the sheet
+    first had their brand-new choice overwritten by the older stored one.
+  */
+  const prefsChosenByUserRef = useRef(false);
+  const voiceChosenByUserRef = useRef(false);
+  /**
+   * Whether the stored narrator preference has been read back yet.
+   *
+   * Autoplay waits for it. The read resolves a tick or two after mount, and
+   * autoplay fired on mount — so a reader who had saved the male narrator
+   * opened Listen and heard the female one, which is the preference persisting
+   * and then being ignored at the one moment it was for.
+   */
+  const [voiceRestored, setVoiceRestored] = useState(false);
   useEffect(() => {
     let alive = true;
     AsyncStorage.getItem(READER_PREFS_KEY).then((raw) => {
-      if (alive) setPreferences(readStoredPrefs(raw));
+      if (alive && !prefsChosenByUserRef.current) setPreferences(readStoredPrefs(raw));
+    });
+    void preferredVoiceGender().then((gender) => {
+      if (alive && gender && !voiceChosenByUserRef.current) setVoiceGender(gender);
+    }).finally(() => {
+      // Settled either way. Autoplay waits on this, so it must be set on the
+      // failure path too or a reader whose storage read throws never hears
+      // anything at all.
+      if (alive) setVoiceRestored(true);
     });
     return () => {
       alive = false;
@@ -743,6 +781,7 @@ export default function ReaderScreen({
   }, [isPlaying]);
 
   const updatePreferences = useCallback((next: ReaderPreferences) => {
+    prefsChosenByUserRef.current = true;
     setPreferences(next);
     void AsyncStorage.setItem(READER_PREFS_KEY, JSON.stringify(next));
   }, []);
@@ -945,18 +984,40 @@ export default function ReaderScreen({
   const autoplayFiredRef = useRef(false);
   useEffect(() => {
     if (!autoplay || autoplayFiredRef.current) return;
+    // The narrator preference decides which audio file is fetched, so firing
+    // before it lands does not merely start early -- it starts with the wrong
+    // voice, and reuses that URL for the whole chapter.
+    if (!voiceRestored) return;
     autoplayFiredRef.current = true;
     setListenOpen(true);
     void handlePlayTap();
-  }, [autoplay, handlePlayTap]);
-  const handleVoiceChange = useCallback(async (gender: "female" | "male") => {
+  }, [autoplay, handlePlayTap, voiceRestored]);
+  const handleVoiceChange = useCallback(async (gender: VoiceGender) => {
     if (gender === voiceGender || isLoadingAudioRef.current) return;
     if (soundRef.current) {
-      await soundRef.current.unloadAsync();
-      soundRef.current = null;
+      /*
+        THE HANDLE IS TAKEN BEFORE THE AWAIT, NOT AFTER.
+
+        `unloadAsync` yields, and a chapter change or a play tap during that
+        window assigns a NEW sound to `soundRef.current`. Clearing the ref
+        afterwards then threw away the live handle instead of the dead one:
+        playback carried on with nothing able to reach it, and every control
+        that reads the ref -- pause, seek, the next voice change -- did nothing.
+        Nulling only when the ref still holds the sound we unloaded is what
+        makes this safe to interleave.
+      */
+      const previous = soundRef.current;
+      await previous.unloadAsync();
+      if (soundRef.current === previous) soundRef.current = null;
     }
     setIsPlaying(false);
     setVoiceGender(gender);
+    // Remembered for the next chapter and the next story. A reader who picked
+    // the male narrator was handed the female one again on every chapter they
+    // opened, because this lived only in component state and the reader
+    // remounts per story.
+    voiceChosenByUserRef.current = true;
+    void setPreferredVoiceGender(gender);
   }, [voiceGender]);
 
   const handleMusicSelect = useCallback((trackId: string | null) => {
@@ -1077,40 +1138,13 @@ export default function ReaderScreen({
     return true;
   }, [onRequireSignIn]);
 
-  const handleLike = useCallback(() => {
-    if (requireSignIn()) return;
-    setIsLiked((prev) => {
-      setLikeCount((count) => prev ? count - 1 : count + 1);
-      return !prev;
-    });
-  }, [requireSignIn]);
 
-  const handleToggleSaved = useCallback(() => {
-    if (requireSignIn()) return;
-    setIsSaved((prev) => !prev);
-  }, [requireSignIn]);
 
   const handleToggleFollow = useCallback(() => {
     if (requireSignIn()) return;
     setIsFollowing((prev) => !prev);
   }, [requireSignIn]);
 
-  const handleShare = useCallback(async () => {
-    const text = `${story.title} by ${author.displayName}\n\nRead on Katha AI`;
-    if (Platform.OS === "web") {
-      try {
-        await navigator.clipboard.writeText(text);
-        setShareToast(true);
-        setTimeout(() => setShareToast(false), 2000);
-      } catch {
-        Alert.alert("Share", text);
-      }
-    } else {
-      try {
-        await Share.share({ message: text });
-      } catch {}
-    }
-  }, [author.displayName, story.title]);
 
   /*
     The comment is POSTED, not just prepended.
@@ -1310,6 +1344,33 @@ export default function ReaderScreen({
                         a way to navigate rather than a label on prose.
                       */
                       <>
+                        {/*
+                          The chapter's own illustration, at the top of the
+                          chapter it belongs to.
+
+                          The frame is drawn whether or not there is an image in
+                          it. That is deliberate: the picture is generated in
+                          the background after the chapter is readable, so it
+                          can appear on a later read of the same chapter, and a
+                          frame that only exists once the URL does would push
+                          page one's prose down under a reader mid-sentence.
+                          An empty frame for a picture that never comes is a
+                          quiet rectangle; a reflow is lost reading position.
+                        */}
+                        {showsChapterArt ? (
+                          <View style={styles.chapterArtWrap}>
+                            {chapterArtUrl ? (
+                              <Image
+                                source={{ uri: chapterArtUrl }}
+                                style={styles.chapterArt}
+                                resizeMode="cover"
+                                accessibilityIgnoresInvertColors
+                                accessible
+                                accessibilityLabel={`Illustration for ${chapter.title || `chapter ${chapter.chapterNumber}`}`}
+                              />
+                            ) : null}
+                          </View>
+                        ) : null}
                         {bareOpener ? null : (
                           <>
                             <View style={styles.coverWrap}>
@@ -1389,23 +1450,24 @@ export default function ReaderScreen({
                           <Text style={styles.shareToastText}>Copied to clipboard!</Text>
                         </View>
                       ) : null}
-                      <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-                      <View style={styles.engagementRow}>
-                        <Pressable onPress={handleLike} accessibilityLabel={`Like, ${formatNumber(likeCount)}`} accessibilityRole="button" testID="reader-like" style={styles.engagementAction}>
-                          <Heart size={16} color={isLiked ? colors.heart : theme.text} fill={isLiked ? colors.heart : "none"} />
-                          <Text style={[styles.engagementCount, { color: theme.text }]}>{formatNumber(likeCount)}</Text>
-                        </Pressable>
-                        <View style={styles.engagementAction}>
-                          <MessageCircle size={16} color={theme.text} />
-                          <Text style={[styles.engagementCount, { color: theme.text }]}>{comments.length}</Text>
-                        </View>
-                        <Pressable onPress={handleToggleSaved} accessibilityLabel={isSaved ? "Unsave" : "Save"} accessibilityRole="button" testID="reader-save" style={styles.engagementAction}>
-                          {isSaved ? <BookmarkCheck size={16} color={theme.text} /> : <Bookmark size={16} color={theme.text} />}
-                        </Pressable>
-                        <Pressable onPress={handleShare} accessibilityLabel="Share" accessibilityRole="button" style={styles.engagementAction}>
-                          <Share2 size={16} color={theme.text} />
-                        </Pressable>
-                      </View>
+                      {/*
+                        NO ENGAGEMENT ROW AT THE END OF A CHAPTER.
+
+                        Like, comment-count, save and share sat here as a strip
+                        of four counters between the last line of the story and
+                        the author -- a scoreboard directly under the last
+                        sentence, which is the worst possible moment to ask
+                        somebody to rate what they have just read. What is left
+                        is the two things that belong at the end of a chapter:
+                        who wrote it, and what people said about it.
+
+                        WORTH KNOWING: save and share also exist on the story
+                        page, but LIKE existed nowhere else in the app -- this
+                        row was the only one. Removing it removes liking, not
+                        just this copy of it. Called out because it was the
+                        instruction, not an oversight; if likes should stay
+                        reachable they need a home on the story page.
+                      */}
                       <View style={[styles.divider, { backgroundColor: theme.divider }]} />
                       <View style={styles.authorCard}>
                         <View style={styles.avatar}><Text style={styles.avatarText}>{author.displayName.charAt(0)}</Text></View>
@@ -1462,10 +1524,12 @@ export default function ReaderScreen({
                   The page number, pinned to the page rather than trailing the
                   prose.
 
-                  "Page one", not "Page 1 of 9": the total is a moving number
+                  "Page 1", not "Page 1 of 9": the total is a moving number
                   while a chapter is being written, and watching it climb from
                   4 to 9 as you read reads like the book is growing under you.
-                  The page you are on is the only part of that a reader needs.
+                  The page you are on is the only part of that a reader needs,
+                  and it is a NUMBER -- a page number is something you scan
+                  for, and a digit is read faster than a word.
                   The "· writing" suffix is gone for the same reason -- the
                   writing tail already says so, in the one place where it is
                   actually happening.
@@ -1474,7 +1538,7 @@ export default function ReaderScreen({
                   style={[styles.pageFooter, { color: theme.muted }]}
                   testID={`reader-page-label-${index}`}
                 >
-                  Page {pageWord(index + 1)}
+                  Page {index + 1}
                 </Text>
               </View>
             );
@@ -1813,12 +1877,15 @@ function ListenSheet({ visible, isPlaying, hasBothVoices, femaleVoiceName, maleV
         {isPlaying ? <Pause size={18} color={colors.surface} /> : <Play size={18} color={colors.surface} />}
         <Text style={styles.listenButtonText}>{isPlaying ? "Pause" : "Play"}</Text>
       </Pressable>
+      {/* The chosen narrator is announced, not only tinted. This toggle now
+          carries a remembered preference across stories, and a selection a
+          screen reader cannot hear is also a selection nothing can verify. */}
       {hasBothVoices ? (
         <View style={styles.segmentRow}>
-          <Pressable onPress={() => onVoiceChange("female")} accessibilityLabel={`Use ${femaleVoiceName} voice`} accessibilityRole="button" style={[styles.segmentButton, voiceGender === "female" && styles.segmentButtonActive]}>
+          <Pressable onPress={() => onVoiceChange("female")} accessibilityLabel={`Use ${femaleVoiceName} voice`} accessibilityRole="button" accessibilityState={{ selected: voiceGender === "female" }} style={[styles.segmentButton, voiceGender === "female" && styles.segmentButtonActive]}>
             <Text style={[styles.segmentText, voiceGender === "female" && styles.segmentTextActive]}>{femaleVoiceName}</Text>
           </Pressable>
-          <Pressable onPress={() => onVoiceChange("male")} accessibilityLabel={`Use ${maleVoiceName} voice`} accessibilityRole="button" style={[styles.segmentButton, voiceGender === "male" && styles.segmentButtonActive]}>
+          <Pressable onPress={() => onVoiceChange("male")} accessibilityLabel={`Use ${maleVoiceName} voice`} accessibilityRole="button" accessibilityState={{ selected: voiceGender === "male" }} style={[styles.segmentButton, voiceGender === "male" && styles.segmentButtonActive]}>
             <Text style={[styles.segmentText, voiceGender === "male" && styles.segmentTextActive]}>{maleVoiceName}</Text>
           </Pressable>
         </View>
@@ -1868,6 +1935,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface2,
   },
   coverImage: { width: "100%", height: "100%" },
+  chapterArtWrap: {
+    // Height fixed rather than derived from the image, and the same whether or
+    // not there is one -- see CHAPTER_ART_HEIGHT. A frame that sizes itself to
+    // its content is a frame that changes size when the content arrives.
+    height: CHAPTER_ART_HEIGHT,
+    aspectRatio: 2 / 3,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    alignSelf: "center",
+    backgroundColor: colors.surface2,
+  },
+  chapterArt: { width: "100%", height: "100%" },
   genre: {
     marginTop: spacing.sm,
     fontFamily: fonts.ui,

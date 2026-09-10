@@ -6,9 +6,9 @@
  * - `generateCoverImage` — chapter 1's art, which *is* the story's cover
  *   (`STORY_GENERATION_FLOW.md` §10.4, decision 38).
  * - `generateCharacterPortrait` — one portrait per cast member, prompted from
- *   `appearance` + `description` (§4, decision 54). Deliberately a separate
- *   prompt path from the cover: Appearance drives the image, Background drives
- *   the voice, and mixing them is what makes portraits generic.
+ *   `appearance` (§4, decision 54). Deliberately a separate prompt path from
+ *   the cover: Appearance drives the image, Background drives the voice, and
+ *   mixing them is what makes portraits generic.
  *
  * ## The provider chain
  *
@@ -42,7 +42,13 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildCoverPrompt } from "./cover-prompts.ts";
+import {
+  buildChapterArtPrompt,
+  buildCoverPrompt,
+  coverArtStyleClause,
+  type PromptCharacter,
+} from "./cover-prompts.ts";
+import { characterAppearance } from "./types.ts";
 
 /** Read lazily, never at module load — see the note at the top of `llm.ts`. */
 const openRouterKey = () => Deno.env.get("OPENROUTER_API_KEY")?.trim();
@@ -160,7 +166,7 @@ export async function generateCoverImage(input: {
   genre: string;
   title: string;
   themes: string[];
-  characters?: { name: string; description?: string; isHero?: boolean }[];
+  characters?: PromptCharacter[];
   /** The where-and-when chip. What stops the cover being genre stock art. */
   whereAndWhen?: string;
   /** The brief's *Avoid* field. Bounds the art the way it bounds the prose. */
@@ -182,6 +188,11 @@ export async function generateCoverImage(input: {
    * under it yet.
    */
   storageSuffix?: string;
+  /**
+   * The writer's *Image style* pick: `auto`, `anime`, `cinematic`, `comic` or
+   * `watercolor`. `auto` (and anything unrecognised) uses the genre's own look.
+   */
+  artStyle?: string;
 }): Promise<ImageResult | null> {
   const suffix = input.storageSuffix
     ? `-${input.storageSuffix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32)}`
@@ -197,10 +208,108 @@ export async function generateCoverImage(input: {
 }
 
 /**
+ * Generate the illustration for one chapter and upload it to `covers`.
+ *
+ * Chapter 1's art is the story's cover and comes from `generateCoverImage`;
+ * this is chapters 2..N, the ones the writer paid an extra credit each for
+ * (`source-of-truth/CREDITS_AND_PRICING.md` §1). Same bucket and same chain —
+ * only the subject and the storage key differ.
+ *
+ * Keyed on the chapter number rather than the chapter id so a reimagined
+ * chapter's art replaces the art of the chapter it rewrote, instead of leaving
+ * an orphan behind a URL nothing points at.
+ *
+ * Returns null on total failure, exactly as a cover does: decision 39 makes an
+ * unillustrated chapter a legitimate look, and the caller refunds the art
+ * credit rather than failing the chapter the reader already has.
+ */
+export async function generateChapterImage(input: {
+  storyId: string;
+  chapterNumber: number;
+  genre: string;
+  storyTitle: string;
+  chapterTitle?: string;
+  moment?: string;
+  themes?: string[];
+  characters?: PromptCharacter[];
+  whereAndWhen?: string;
+  avoid?: string;
+  artStyle?: string;
+}): Promise<ImageResult | null> {
+  return await runImageChain({
+    label: `chapter art ${input.storyId}#${input.chapterNumber}`,
+    bucket: "covers",
+    storagePath: `covers/${input.storyId}/chapters/${input.chapterNumber}.png`,
+    aspect: "cover",
+    promptFor: (safetyLevel) => buildChapterArtPromptForLevel(safetyLevel, input),
+  });
+}
+
+/**
+ * Prompt simplification ladder for chapter art.
+ *
+ * The same shape as the cover's, and simplified in the same order for the same
+ * reason: the cast is by far the likeliest part of an image prompt to trip a
+ * content filter, and the chapter's own moment — a sentence out of generated
+ * prose — is the second, since it is the only part of this prompt that
+ * describes an event rather than a look. Level 2 is what the chain has left
+ * when everything else has been refused, so it keeps nothing but the genre,
+ * the story's name and the chapter number.
+ *
+ * The *Avoid* exclusion and the writer's `artStyle` survive every rung, for
+ * the reasons stated on the cover's ladder: a negative constraint cannot be
+ * what a filter objected to, and a style name is a fixed string from our own
+ * table, never user text.
+ */
+function buildChapterArtPromptForLevel(
+  safetyLevel: number,
+  input: {
+    storyId: string;
+    chapterNumber: number;
+    genre: string;
+    storyTitle: string;
+    chapterTitle?: string;
+    moment?: string;
+    themes?: string[];
+    characters?: PromptCharacter[];
+    whereAndWhen?: string;
+    avoid?: string;
+    artStyle?: string;
+  },
+): string {
+  const base = {
+    genre: input.genre,
+    storyTitle: input.storyTitle,
+    chapterNumber: input.chapterNumber,
+    avoid: input.avoid,
+    artStyle: input.artStyle,
+  };
+  if (safetyLevel === 0) {
+    return buildChapterArtPrompt({
+      ...base,
+      chapterTitle: input.chapterTitle,
+      moment: input.moment,
+      themes: input.themes,
+      characters: usableCharacters(input.characters),
+      whereAndWhen: input.whereAndWhen,
+    });
+  }
+  if (safetyLevel === 1) {
+    return buildChapterArtPrompt({
+      ...base,
+      chapterTitle: input.chapterTitle,
+      themes: input.themes?.slice(0, 2),
+      whereAndWhen: input.whereAndWhen,
+    });
+  }
+  return buildChapterArtPrompt(base);
+}
+
+/**
  * Prompt simplification ladder for a cover.
  *
  * Level 0 is the full prompt. Level 1 drops the cast and trims the themes -
- * a character description is by far the likeliest part of a cover prompt to
+ * a character's appearance is by far the likeliest part of a cover prompt to
  * trip a content filter. Level 2 is genre and title only.
  *
  * The *Avoid* exclusion is carried at every level, including the last. Each
@@ -215,14 +324,23 @@ function buildCoverPromptForLevel(
     genre: string;
     title: string;
     themes: string[];
-    characters?: { name: string; description?: string; isHero?: boolean }[];
+    characters?: PromptCharacter[];
     whereAndWhen?: string;
     avoid?: string;
     variation?: string;
+    artStyle?: string;
   },
 ): string {
-  const { genre, title, themes, characters, whereAndWhen, avoid, variation } =
-    input;
+  const {
+    genre,
+    title,
+    themes,
+    characters,
+    whereAndWhen,
+    avoid,
+    variation,
+    artStyle,
+  } = input;
   if (safetyLevel === 0) {
     return buildCoverPrompt(
       genre,
@@ -232,6 +350,7 @@ function buildCoverPromptForLevel(
       whereAndWhen,
       avoid,
       variation,
+      artStyle,
     );
   }
   if (safetyLevel === 1) {
@@ -247,6 +366,7 @@ function buildCoverPromptForLevel(
       whereAndWhen,
       avoid,
       variation,
+      artStyle,
     );
   }
   // The last rung drops the steer, and it is the one place the steer must be
@@ -261,35 +381,51 @@ function buildCoverPromptForLevel(
   //
   // The exclusion still survives, per the note above: it is a *negative*
   // constraint, so it cannot be the thing a filter objected to.
-  return buildCoverPrompt(genre, title, [], undefined, undefined, avoid);
+  return buildCoverPrompt(
+    genre,
+    title,
+    [],
+    undefined,
+    undefined,
+    avoid,
+    undefined,
+    artStyle,
+  );
 }
 
 /**
  * Drop characters that cannot contribute to an image prompt.
  *
- * `buildCoverPrompt` interpolates `hero.description` directly, so a character
+ * `buildCoverPrompt` interpolates the hero's look directly, so a character
  * saved with a name and nothing else - which the Craft character sheet permits,
  * since only Name is required - produced the literal string
  * "a distant silhouetted figure suggesting undefined" in the prompt. Filtering
  * here is what makes the zero-usable-characters case degrade to the genre cover
  * rather than to a corrupted one.
+ *
+ * The look is resolved through `characterAppearance`, so a caller handing over
+ * rows from a story written before Description was retired still gets a cast.
+ * The result carries `appearance` only: nothing downstream should have to make
+ * the same decision twice.
  */
 function usableCharacters(
-  characters?: { name: string; description?: string; isHero?: boolean }[],
-): { name: string; description: string; isHero?: boolean }[] | undefined {
+  characters?: PromptCharacter[],
+): { name: string; appearance: string; isHero?: boolean }[] | undefined {
   if (!characters?.length) return undefined;
   const usable = characters
-    .filter((c) => typeof c.description === "string" && c.description.trim())
     .map((c) => ({
       name: c.name,
-      description: sanitizeForPrompt(c.description as string),
+      appearance: sanitizeForPrompt(characterAppearance(c)),
       // Carried through, not dropped. `media.ts` reads `is_hero` from the
       // database and maps it to `isHero`; rebuilding the object without it
       // meant `buildCoverPrompt` could never select the story's actual
       // protagonist and always fell back to the first described character —
       // so the cover featured whoever happened to be listed first.
       isHero: c.isHero,
-    }));
+    }))
+    // After sanitizing, not before: a value that is nothing but delimiters
+    // survives a `.trim()` check on the raw field and reaches the prompt empty.
+    .filter((c) => c.appearance);
   return usable.length > 0 ? usable : undefined;
 }
 
@@ -300,21 +436,25 @@ function usableCharacters(
 /**
  * Generate one cast member's portrait and upload it to the `covers` bucket.
  *
- * Prompted from Appearance first and Description second, per §4: Appearance
- * exists to drive the image. A character with neither returns null - there is
- * nothing to draw, and a genre-generic portrait attached to a named character
- * is worse than no portrait at all.
+ * Prompted from Appearance, per §4: Appearance exists to drive the image. A
+ * character with nothing to draw returns null - a genre-generic portrait
+ * attached to a named character is worse than no portrait at all.
  */
 export async function generateCharacterPortrait(
   storyId: string,
   characterId: string,
-  character: { name: string; description?: string; appearance?: string },
+  character: { name: string; appearance?: string; description?: string },
+  /**
+   * The story's *Image style* pick. A cast drawn in the house style beside a
+   * cover the writer asked to be anime is the failure this argument exists to
+   * stop -- one pick, one book.
+   */
+  artStyle?: string,
 ): Promise<ImageResult | null> {
-  const appearance = sanitizeForPrompt(character.appearance ?? "");
-  const description = sanitizeForPrompt(character.description ?? "");
-  if (!appearance && !description) {
+  const appearance = sanitizeForPrompt(characterAppearance(character));
+  if (!appearance) {
     console.warn(
-      `[portrait] ${characterId} has neither appearance nor description — skipping`,
+      `[portrait] ${characterId} has no appearance — skipping`,
     );
     return null;
   }
@@ -326,7 +466,7 @@ export async function generateCharacterPortrait(
     storagePath,
     aspect: "portrait",
     promptFor: (safetyLevel) =>
-      buildPortraitPrompt(appearance, description, safetyLevel),
+      buildPortraitPrompt(appearance, safetyLevel, false, artStyle),
   });
 }
 
@@ -343,8 +483,9 @@ export async function generateDraftCharacterPortrait(
   requestId: string,
   character: {
     name: string;
-    description?: string;
     appearance?: string;
+    /** Retired. Read only through `characterAppearance`. */
+    description?: string;
     /**
      * A photo the writer attached to steer the LOOK of this character, as a
      * `data:` URL. It is a style reference, never a likeness target -- see
@@ -353,12 +494,17 @@ export async function generateDraftCharacterPortrait(
      */
     referenceImage?: string;
   },
+  /**
+   * The style the Create brief is currently set to. A draft portrait is drawn
+   * before any story row exists, so this is the only place the pick can come
+   * from -- and the writer is comparing it against a cover that will use it.
+   */
+  artStyle?: string,
 ): Promise<ImageResult | null> {
-  const appearance = sanitizeForPrompt(character.appearance ?? "");
-  const description = sanitizeForPrompt(character.description ?? "");
-  if (!appearance && !description) {
+  const appearance = sanitizeForPrompt(characterAppearance(character));
+  if (!appearance) {
     console.warn(
-      `[portrait] draft ${requestId} has neither appearance nor description — skipping`,
+      `[portrait] draft ${requestId} has no appearance — skipping`,
     );
     return null;
   }
@@ -376,14 +522,27 @@ export async function generateDraftCharacterPortrait(
     promptFor: (safetyLevel) =>
       buildPortraitPrompt(
         appearance,
-        description,
         safetyLevel,
         // Same predicate the chain uses to decide whether to send the image,
         // so the prompt can never describe an attachment that is not there.
         Boolean(referenceImage) && referenceSurvivesLevel(safetyLevel),
+        artStyle,
       ),
   });
 }
+
+/**
+ * What a character is wearing when nothing said what they are wearing.
+ *
+ * The same clause, and the same reason, as `WARDROBE_CLAUSE` on the cover: the
+ * model's untouched prior dresses a character read as Indian in traditional
+ * attire and a character read as Western in a shirt, and a portrait is where
+ * that is most visible because the whole frame is the person. Appearance text
+ * that DOES specify dress still wins — it is earlier in the prompt and it is
+ * specific, and "unless the character description specifies otherwise" says so.
+ */
+const PORTRAIT_WARDROBE_CLAUSE =
+  "Wardrobe: ordinary everyday clothing appropriate to the setting and era, the same register of dress for every character regardless of ethnicity, unless the character description specifies otherwise. No ceremonial, festival, folk or traditional national dress unless asked for.";
 
 /**
  * What an attached reference image is allowed to do, said to the model directly.
@@ -410,35 +569,48 @@ const STYLE_REFERENCE_CLAUSE =
   "must be an original illustrated character, not a depiction of a real " +
   "individual.";
 
+/**
+ * The subject line at one rung of the safety ladder.
+ *
+ * There is one free-text field now, so the ladder shortens it rather than
+ * dropping one of two. Detail is what a content filter objects to and it
+ * accumulates left to right in how people write a look, so each rung keeps
+ * less of the tail: everything, then the first sentence, then the first
+ * clause.
+ *
+ * `appearance` is non-empty by the time it reaches here -- both callers return
+ * null before generating when there is nothing to draw -- and every rung falls
+ * back to "a person" anyway. A rung that produced "" would ask the provider to
+ * illustrate the empty string, which is how a name-only character used to get
+ * drawn as a stranger.
+ */
+function portraitSubjectForLevel(
+  appearance: string,
+  safetyLevel: number,
+): string {
+  if (safetyLevel === 0) return appearance || "a person";
+  if (safetyLevel === 1) {
+    return appearance.split(/(?<=\.)\s/)[0]?.trim() || appearance ||
+      "a person";
+  }
+  return appearance.split(/[,.]/)[0]?.trim() || "a person";
+}
+
 function buildPortraitPrompt(
   appearance: string,
-  description: string,
   safetyLevel: number,
   hasReference = false,
+  artStyle?: string,
 ): string {
-  // The ladder drops the free-text fields in the order they are likely to have
-  // caused a rejection: appearance carries the physical detail, description the
-  // role. Level 2 keeps only the role, which is rarely rejectable.
-  // The ladder drops fields in the order most likely to have caused a
-  // rejection - appearance carries the physical detail, description the role -
-  // but it must never drop the *only* field there is. A character with an
-  // appearance and no description would otherwise simplify straight to "a
-  // person" and be drawn as a stranger, which is worse than no portrait.
-  const primary = description || appearance;
-  const secondary = description ? appearance : "";
-
-  const parts = safetyLevel === 0
-    ? [primary, secondary]
-    : safetyLevel === 1
-    ? [primary]
-    : [primary.split(/[,.]/)[0] || "a person"];
-
-  const subject = parts.filter(Boolean).join(". ") || "a person";
+  const subject = portraitSubjectForLevel(appearance, safetyLevel);
 
   return [
     `Character portrait illustration of ${subject}.`,
     `Full body, standing, facing the viewer, on a plain neutral background.`,
-    `Painterly book-illustration style, soft even lighting, no background scenery.`,
+    `${
+      coverArtStyleClause(artStyle) ?? "Painterly book-illustration style"
+    }, soft even lighting, no background scenery.`,
+    PORTRAIT_WARDROBE_CLAUSE,
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.`,
     `Full-body portrait orientation, subject centered in frame, high quality.`,
     ...(hasReference ? [STYLE_REFERENCE_CLAUSE] : []),

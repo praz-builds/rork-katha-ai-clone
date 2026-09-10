@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowRight, PenLine, Sparkles } from "lucide-react-native";
+import { IconChevronForward, IconPencil } from "@/theme/icons";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -100,10 +100,20 @@ function useCTAMotion() {
 
 export default function WriteAnotherCTA({
   onPress,
-  variant = WRITE_CTA_VARIANT,
+  heading = TITLE,
+  support = SUPPORT,
+  tone = "loud",
 }: {
   onPress: () => void;
-  variant?: WriteAnotherVariant;
+  /** What this card says right now. See `lib/home-cta.ts` for the states. */
+  heading?: string;
+  support?: string;
+  /**
+   * `loud` is an offer and wears the gradient. `quiet` is a status, a
+   * reminder or a paywall door -- none of which should be the brightest
+   * thing on Home, and the last of which would be a dark pattern if it were.
+   */
+  tone?: "loud" | "quiet";
 }) {
   const { style, onPressIn, onPressOut } = useCTAMotion();
 
@@ -114,12 +124,14 @@ export default function WriteAnotherCTA({
         onPressIn={onPressIn}
         onPressOut={onPressOut}
         accessibilityRole="button"
-        accessibilityLabel="Write another story"
-        accessibilityHint={SUPPORT}
+        accessibilityLabel={heading}
+        accessibilityHint={support}
         testID="write-another-cta"
         style={styles.press}
       >
-        {variant === "gradient" ? <GradientFace /> : <EditorialFace />}
+        {tone === "loud"
+          ? <GradientFace heading={heading} support={support} />
+          : <EditorialFace heading={heading} support={support} />}
       </Pressable>
     </Animated.View>
   );
@@ -130,7 +142,9 @@ export default function WriteAnotherCTA({
  * translucent glyph plate, so the one thing on Home that costs a credit is
  * also the one thing on Home that is a colour.
  */
-function GradientFace() {
+function GradientFace(
+  { heading, support }: { heading: string; support: string },
+) {
   return (
     <LinearGradient
       colors={ACCENT_GRADIENT}
@@ -139,48 +153,54 @@ function GradientFace() {
       style={styles.gradientCard}
       testID="write-another-face-gradient"
     >
-      <View style={styles.gradientGlyph}>
-        <PenLine size={20} color={colors.surface} />
-      </View>
+      {/* NO PLATE BEHIND THE GLYPH. A filled square around the icon reads as a
+          second control inside the card -- a button on a button -- and on the
+          accent field it was a lightened box whose edge competed with the
+          card's own. The mark alone is the mark. */}
+      <IconPencil size={22} color={colors.surface} />
+      {/* NO EYEBROW. It read "New story", which is false in four of the five
+          states this card now has, and it carried the generation sparkle --
+          a glyph that means "the AI is working", on a button that asks you to
+          start. Dropping the row is also where the card's height comes down
+          from, which is the reduction that was actually wanted: the width is
+          load-bearing, because it aligns this card's edges with every rail
+          below it. */}
       <View style={styles.copy}>
-        <View style={styles.eyebrowRow}>
-          <Sparkles size={12} color={colors.accentSoft} />
-          <Text style={styles.gradientEyebrow}>New story</Text>
-        </View>
-        <Text style={styles.gradientTitle}>{TITLE}</Text>
-        <Text style={styles.gradientSupport}>{SUPPORT}</Text>
+        <Text style={styles.gradientTitle} numberOfLines={1}>{heading}</Text>
+        <Text style={styles.gradientSupport} numberOfLines={2}>{support}</Text>
       </View>
       <View style={styles.gradientArrow} importantForAccessibility="no">
-        <ArrowRight size={18} color={colors.accent} />
+        <IconChevronForward size={16} color={colors.accent} />
       </View>
     </LinearGradient>
   );
 }
 
 /**
- * Variant B. A white card with an accent rail on its leading edge - the same
- * invitation spoken at the volume of the rest of the page. Quieter than A, and
- * it does not compete with the cover art in the rail underneath it.
+ * Variant B. A plain white card - the same invitation spoken at the volume of
+ * the rest of the page. Quieter than A, and it does not compete with the cover
+ * art in the rail underneath it.
+ *
+ * NO ORANGE EDGE. It carried a 5pt accent rail down its leading edge, and the
+ * card already says everything that rail was saying: the accent is on the
+ * pencil and on the arrow, which are the two things a reader looks at. A third
+ * accent element on a card this small stops reading as emphasis and starts
+ * reading as a border around a chip.
  */
-function EditorialFace() {
+function EditorialFace(
+  { heading, support }: { heading: string; support: string },
+) {
   return (
     <View style={styles.editorialCard} testID="write-another-face-editorial">
-      <LinearGradient
-        colors={ACCENT_GRADIENT}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={styles.editorialRail}
-      />
-      <View style={styles.editorialGlyph}>
-        <PenLine size={20} color={colors.accent} />
-      </View>
+      {/* Same as the gradient face: the outline mark in the accent, with no
+          tinted plate around it. */}
+      <IconPencil size={22} color={colors.accent} />
       <View style={styles.copy}>
-        <Text style={styles.editorialEyebrow}>New story</Text>
-        <Text style={styles.editorialTitle}>{TITLE}</Text>
-        <Text style={styles.editorialSupport}>{SUPPORT}</Text>
+        <Text style={styles.editorialTitle} numberOfLines={1}>{heading}</Text>
+        <Text style={styles.editorialSupport} numberOfLines={2}>{support}</Text>
       </View>
       <View style={styles.editorialArrow} importantForAccessibility="no">
-        <ArrowRight size={18} color={colors.surface} />
+        <IconChevronForward size={18} color={colors.surface} />
       </View>
     </View>
   );
@@ -209,17 +229,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: radius.xl,
     boxShadow: shadows.raised,
-  },
-  gradientGlyph: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    // A lightened plate on the accent field. Deliberately an alpha of the
-    // surface token rather than a new hex: it is "white, mostly transparent",
-    // which is a treatment, not a colour the system needs to name.
-    backgroundColor: "rgba(255,255,255,0.22)",
   },
   gradientEyebrow: {
     ...type.caption,
@@ -257,28 +266,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingLeft: spacing.lg + spacing.xs,
-    paddingRight: spacing.lg,
+    // Symmetric now that the rail is gone; the extra leading pad existed only
+    // to clear it.
+    padding: spacing.lg,
     borderRadius: radius.xl,
     backgroundColor: colors.surface,
     boxShadow: shadows.card,
     overflow: "hidden",
-  },
-  editorialRail: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 5,
-  },
-  editorialGlyph: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.accentSoft,
   },
   editorialEyebrow: {
     ...type.caption,

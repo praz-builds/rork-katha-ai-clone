@@ -4215,3 +4215,652 @@ Run from `backend/` with `export PATH="/Users/mac16/.deno/bin:$PATH"`:
   production-level test ran, so no `public.error_events` rows were written
   this session.
 - Not committed, per instructions.
+
+## 2026-09-11: Per-story image style, from the request body to the row to the regeneration
+
+**What the writer sees.** The Create brief gains an *Image style* pick — Auto,
+Anime, Cinematic, Comic, Watercolour. Before this, every cover and every cast
+portrait came back in the genre's own look and there was no way to ask for
+anything else. Now the pick decides how the cover and all of that story's cast
+portraits are drawn, and it keeps deciding: regenerating the cover a week later
+returns another picture in the style the writer chose, not the genre default.
+
+**Client contract.** `generate-story` and `generate-story-stream` accept
+`image_style` in the request body, beside `where_and_when`. Accepted values:
+`auto` (default), `anime`, `cinematic`, `comic`, `watercolor`. Trimmed and
+lowercased; absent, unknown and wrong-typed all mean `auto`.
+
+**Why it is a column and not just a request field.** The two places that build
+an image prompt do not have the request body. `regenerate-cover` builds its
+prompt entirely from what `claim_cover_regeneration` returns, deliberately, so
+it does not follow the claim with a second SELECT — a style missing from the
+claim is a credit spent replacing an anime cover with a painterly one. The cast
+portraits are drawn by the background media task minutes after the response has
+gone, and a watercolour cover fronting a painterly cast reads as two different
+books. So migration `00075` adds `stories.image_style` (NOT NULL, default
+`'auto'`, CHECK over the five values), `begin_story_generation` persists it and
+`claim_cover_regeneration` hands it back.
+
+**The style REPLACES the genre's style clause, never appends to it.** Two style
+instructions in one prompt gives the model a contradiction it resolves by
+splitting the difference. Palette, composition and mood are untouched — those
+are the genre's emotional read, and a watercolour thriller is still a thriller.
+
+**Two things worth remembering.**
+
+1. `begin_story_generation` was **dropped and recreated**, not replaced: a
+   different parameter count is a different function to Postgres, so
+   `create or replace` would have left the 20-argument version standing beside
+   the new one and a 20-argument call would then have had two equally good
+   candidates. The new parameter is LAST and defaults to `'auto'`, so an older
+   deploy of the handler still resolves during a rollout — pinned by a test
+   that calls it with no style argument at all.
+2. The style is **clamped inside the function**, not trusted. Same reasoning as
+   the beat clamp already there: `stories_image_style_check` is enforced in the
+   same transaction as the credit deduction, so an unrecognised value passed
+   through would abort a *paid* generation rather than merely produce a plain
+   cover. `lower`/`btrim` are qualified, `coalesce` is not — 00071's rule.
+
+**Files.** `supabase/migrations/00075_story_image_style.sql` (+ its test);
+`_shared/cover-prompts.ts` (`normalizeCoverArtStyle`), `_shared/types.ts`,
+`_shared/validation.ts`, `_shared/media.ts`, `_shared/image.ts`,
+`_shared/cover-regeneration.ts`, `generate-story/index.ts`,
+`generate-story-stream/index.ts`.
+
+**Verification.**
+- `deno check` on every touched file: clean.
+- `deno test --allow-all supabase/functions/_shared/`: **665 passed, 0 failed**
+  (+5: one validation normalisation test, one regeneration test, three image
+  tests). Run three times, stable.
+- `deno test --allow-all supabase/migrations/`: **170 passed, 0 failed**
+  (+3, in the new `00075_story_image_style_test.ts`, against real Postgres via
+  PGlite). The migration test CALLS the functions rather than checking they
+  exist — 00071's lesson.
+- `deno fmt`: every file this session touched is formatted. The pre-existing
+  unformatted files in the tree were left alone.
+- Nothing deployed, nothing pushed, migration `00075` NOT applied to
+  `iafeuxgoiknncgyjmugd`. No production-level test ran, so no
+  `public.error_events` rows were written.
+
+**Not done, deliberately.** `generate-character-image` (the Craft sheet's draft
+portrait, before a story row exists) can now take an `artStyle` but no caller
+passes one — wiring an `image_style` key into that endpoint is a one-line
+change and belongs with the client work that adds the picker.
+`reimagine-chapter` reads no image column: it contains no image call site, so a
+read there would be dead code.
+
+---
+
+## 2026-09-11 — Create flow: six dropdowns, moments moved, and the review screen replaced by direction chips (Expo)
+
+Client-only. No migration, no function, nothing deployed.
+
+**Six dropdowns.** Four above the text fields (**Story mode**, **Chapters**,
+**Chapter length**, **Chapter cover**) and two at the foot of the brief beside
+the Create button (**Image style**, **Who can read it**). Chapters and Chapter
+length came up out of More options; Chapter cover and visibility were switches
+and are now named states — "Make it public" read as a preference, "Private /
+Public" says what the story will be. Visibility deliberately left the collapsed
+section: a writer who never opens More options never saw the one control that
+decides whether anybody else can read what they are paying for.
+
+**Wire keys.** `image_style` (`auto|anime|cinematic|comic|watercolor`) matches
+`normalizeCoverArtStyle` and migration `00075` exactly. `story_flow`
+(`interactive|auto`) **is not read by anything server-side** — no handler
+accepts it. It is sent so the auto-continue loop can be turned on without a
+client release; until then Auto-continue still gets chips at the chapter end.
+Both are always sent, defaults included, because an omitted field cannot be told
+apart from a client too old to have the control.
+
+**The review screen is gone.** It restated a brief the writer had just filled in
+and asked them to agree with themselves. In its place, the same
+`DirectionChoices` surface the reader gets between chapters — extracted out of
+`components/reader/ChapterEnd.tsx` so there is one set of cards, one composer
+and one surprise-me path, not two free to drift. There is NO endpoint that
+produces continuation chips (at a chapter end they are derived on the client
+from `story.beats` and `series_state`, which exist only after generation), so
+the openings come from `shape-story`, the same free shaping call the brief
+already made: `beats[0]` is chapter one's brief. A chosen direction travels as
+beat zero and the rest of the shaped plan travels with it. `beats` was missing
+from `CreateStudioScreen`'s `createDraft` entirely — the plan the writer was
+shown and the story they received were unrelated.
+
+**Chapter-cover pricing copy** is assembled from `CHAPTER_TEXT_CREDITS` and a
+new `CHAPTER_ART_CREDITS` in `expo/src/lib/pricing-limits.ts`. That constant was
+deliberately absent before, and its comment now says why it exists and what it
+is not: nothing in the codebase reserves against chapter art, so it is a **quote
+from `CREDITS_AND_PRICING.md`, not evidence of a charge**.
+
+**Files.** New: `expo/src/components/DirectionChoices.tsx`,
+`expo/src/components/create/DirectionStep.tsx`. Changed:
+`components/create/CreateBriefFlow.tsx`, `components/reader/ChapterEnd.tsx`,
+`screens/CreateStudioScreen.tsx`, `lib/api.ts`, `lib/pricing-limits.ts`,
+`types/domain.ts`, and six test files.
+
+**Verification.** `pnpm typecheck` clean; `pnpm lint` 0 errors (31 pre-existing
+warnings, none in a touched file); `pnpm test` **1023 passed / 0 failed, 105
+suites**. Two of those were failing before this session (a moment-composer
+placeholder both create-flow suites still asserted by its old text) and are
+fixed here. Nothing committed, nothing pushed.
+
+---
+
+## 2026-09-11 — The story is named before it is written, and the reader keeps its preferences
+
+Three product-owner items, in the reading loop.
+
+### 1. The title paints first, not last
+
+**What was wrong.** `title` and `chapter_title` were fields of the metadata
+call, and that call reads the FINISHED chapter — so the story could not be
+named until 40-50 seconds after the reader was already reading, and page one
+painted with a blank heading over prose. Nothing in the metadata call could fix
+this: a title derived from the prose is late by construction.
+
+**What changed.** `nameChapterEarly()` in `_shared/story-stream.ts` derives the
+name from the same brief the prose is derived from, in one small structured
+call fired in the SAME TICK as the prose stream. Its result goes out on a new
+`title` SSE event the moment it lands, and is preferred over the metadata title
+when the chapter is persisted, so the name on screen and the name in the
+database are the same one.
+
+It is never load-bearing. `NAMING_DEADLINE_MS` is 12s against a 40-50s chapter,
+every failure returns null, and the metadata title is then used exactly as it
+was before. The naming schema is DERIVED from `STORY_OUTPUT_JSON_SCHEMA` rather
+than restated, the same anti-drift discipline `CHAPTER_METADATA_SCHEMA`
+follows. The brief is fenced as data, and `parseChapterNames` refuses a blank
+or a sentence — a paragraph where a title belongs would end up on a book cover.
+
+**The settle rule is untouched.** The title travels on its own event, never
+through `delta`, so whole-paragraph reveal, prefix stability and page geometry
+are all exactly as they were. `CHAPTER_OPENER_HEIGHT` is a constant fed to the
+paginator, so an opener that gains a line does not reflow any page.
+
+Both streamed paths carry it: `generate-story-stream` sends story and chapter
+title; `continue-story` is passed the story's existing title to echo and sends
+only `chapter_title`.
+
+### 2. Where chapter 2's time actually goes
+
+**Measured on 2026-09-11**, `meta/muse-spark-1.3`, real prompts built from the
+real assemblers against a real 2,117-word chapter 1, streaming:
+
+| prompt | size | time to first token | total |
+|---|---|---|---|
+| chapter 1 (`buildStoryProsePrompt` + brief) | 14,695 chars | **3,984 ms** | 42.3s |
+| chapter 2 (continuation, chapter 1 verbatim) | 30,548 chars | **7,336 / 7,921 / 7,024 ms** | 44.7-52.0s |
+| chapter 2, previous chapter trimmed to its last 5,000 chars | 23,784 chars | **5,810 ms** | 51.6s |
+
+So chapter 2 is late almost entirely because its prompt is 2.08x the size and
+model prefill scales with it: ~3.4 seconds of the difference is the previous
+chapter travelling verbatim. Everything else measured small — the four
+pre-stream reads in `continue-story` are ~290 ms serial (measured against the
+production project with a ~196 ms baseline RTT subtracted), and the client's
+two serial awaits are one round trip plus an OS permission read.
+
+**Fixed here (~0.3-0.5s, no behaviour change):**
+- `continue-story` issued the replay lookup, the story row, the cast and the
+  chapter window one after another. Nothing downstream of the first decides
+  what the others ask for, so they are now one `Promise.all`. The DECISION
+  order is unchanged — replay before ownership, ownership before the chapter
+  window — and every response is byte-identical.
+- `continueStoryStreaming` and `generateStoryStreaming` awaited
+  `bootstrapUser()` and then `pushPermissionGranted()`. Overlapped; the account
+  error is still the error a `bootstrapUser` failure produces.
+
+**NOT fixed, and it needs a product decision.** The 3.4 seconds is bought by
+sending the previous chapter in full, which is what keeps voice and continuity
+from drifting. Trimming it is a `source-of-truth/STORY_PROMPT_SYSTEM.md`
+change, not an optimisation, and it was measured once (n=1). The cheaper
+version of the same idea — keep the MOST RECENT chapter verbatim and send the
+older ones as their stored `previously_summary`, which `summarizeChapterForPrompt`
+already does for the finale callback — buys nothing at chapter 2 and a lot at
+chapters 4-7, where the window carries up to four full chapters (~20 KB
+measured). Neither was done.
+
+### 3. Preferences survive the story they were chosen in
+
+Type size, line height and reading mode were already written to AsyncStorage.
+The narration voice was not: it lived in `ReaderScreen` component state, and
+the reader remounts per story, so a reader who picked the male narrator was
+handed the female one again on the next chapter. `preferredVoiceGender` /
+`setPreferredVoiceGender` in `expo/src/lib/voices.ts`, beside
+`preferredVoiceId` and device-local for the same stated reason. **No database
+column**, deliberately.
+
+Both restores now follow "a choice made by the person beats a value read from
+disk" — the rule the music restore was already written to. The stored values
+resolve a tick or two after mount, and a reader fast enough to reach the sheet
+first had their brand-new choice overwritten by the older one. The voice
+segments also gained `accessibilityState`, so the selection is announced rather
+than only tinted.
+
+**Files.** `_shared/story-stream.ts` (+ its test), `generate-story-stream/index.ts`,
+`continue-story/index.ts`; `expo/src/lib/api.ts`,
+`expo/src/lib/generation-session.ts`, `expo/src/lib/voices.ts`,
+`expo/src/screens/ReaderScreen.tsx`; tests
+`expo/src/__tests__/reader-preference-persistence.test.tsx` (new),
+`generation-stream.test.ts`, `chapter-reveal.test.ts`.
+
+**Verification.**
+- `deno check` on every touched backend file: clean.
+- `deno test --allow-all supabase/functions/_shared/`: **672 passed, 0 failed**
+  (+7 naming tests).
+- `pnpm typecheck`: clean. `pnpm lint`: **0 errors** (31 pre-existing warnings).
+- `pnpm test`: **1023 passed, 0 failed** across 105 suites (+11).
+- Nothing deployed, nothing committed, nothing pushed. The latency numbers
+  above came from read-only probes: REST reads against the production project,
+  and OpenRouter streams driven from a local script — no credit was reserved,
+  no story or chapter row was written, and no generation endpoint was called,
+  so there was no production-level test to record in `public.error_events`.
+
+---
+
+## 2026-09-11 — chapter art exists, and an illustrated chapter is charged for it
+
+**The gap.** `stories.illustrate_chapters` has been validated, passed to
+`begin_story_generation` and stored since 00027, and **nothing read it**. Only
+chapter 1 was ever illustrated, because chapter 1's art *is* the cover and comes
+from `generateStoryMedia`. A writer who ticked *Chapter cover: auto-generated
+per chapter* got one picture, and `chapters.image_url` — a column since 00027 —
+was never written by any code path.
+
+**Generation.** `generateChapterArt` in `_shared/media.ts` draws one chapter's
+plate and writes `chapters.image_url` / `image_prompt`. Scheduled by
+`continue-story` with `runInBackground` after the chapter row is persisted, on
+both transports, so it is never on the response's critical path and can never
+fail a chapter the reader has already paid for. It reads the story and chapter
+rows itself — the caller passes identifiers only — and re-checks
+`illustrate_chapters` before spending a provider call.
+
+**Prompt.** `buildChapterArtPrompt` (`_shared/cover-prompts.ts`) is the chapter's
+own subject: its title and the one moment worth drawing (hook line, then first
+line, then the opening sentence), not the story's title and themes again —
+which is what `buildCoverPrompt` would have produced, chapter after chapter.
+Everything that makes the plates and the cover one book is shared: the genre
+config, the writer's `image_style` pick (00075), `WARDROBE_CLAUSE` and
+`SUBJECT_DISCIPLINE_CLAUSE`. The moment is sanitized with `sanitizeExclusion`,
+because it is generated prose full of sentence terminators heading for a
+third-party provider. `generateChapterImage` in `_shared/image.ts` runs the same
+provider chain and a three-rung safety ladder, keyed
+`covers/{story}/chapters/{n}.png`.
+
+**Credits (migration 00077).** A chapter after the first is 1 credit, **or 2 if
+illustrated** — `source-of-truth/CREDITS_AND_PRICING.md` §1; a 3-chapter
+illustrated story is 5 = 1 + 2 + 2, and chapter 1's art stays bundled in the
+start price. Both credits are taken by the ONE
+`reserve_generation_operation` call, under one advisory lock: two reservations
+would let a balance run out between them. The price is decided from the STORY
+ROW inside the function, so the new `p_illustrate_chapter` flag can lower it and
+never raise it. `refund_generation_operation` now gives back what was actually
+debited for a continuation (it refunded a flat 1, which would have kept the art
+credit on every failed illustrated chapter), and `refund_story_media_component`
+learns a `chapter_art` component so art that never arrives refunds exactly its
+own credit, idempotently, without touching the completed text operation.
+Dropped and recreated rather than replaced, per 00075's precedent: a different
+parameter count is a different function. No `pg_catalog` on NULLIF / COALESCE /
+GREATEST / LEAST anywhere in it (00071).
+
+**Reader.** `chapters.image_url` maps to `Chapter.imageUrl` and
+`stories.illustrate_chapters` to `Story.illustrateChapters`; the plate renders
+at the top of the chapter opener. The frame is drawn **whether or not the image
+has loaded or its URL has even arrived**, because the opener's height is an
+input to pagination (`firstPageOffset`) and art lands minutes after the chapter
+does — a frame that appeared with the URL would re-wrap page one under a reader
+mid-sentence. `CHAPTER_ART_HEIGHT` is fixed and `firstPageOffset` is now a
+dependency of the pagination memo. Chapter 1's plate is suppressed when its URL
+is the cover's, so the same picture is not shown twice on one page.
+
+**Files.** `_shared/cover-prompts.ts` (+ test), `_shared/image.ts`,
+`_shared/media.ts`, `continue-story/index.ts`,
+`migrations/00077_illustrated_chapter_credit.sql` (+ test);
+`expo/src/types/domain.ts`, `expo/src/lib/api.ts`,
+`expo/src/screens/ReaderScreen.tsx`,
+`expo/src/__tests__/chapter-art-reader.test.tsx` (new).
+
+**Verification.**
+- `deno check` on every touched backend file: clean.
+- `deno test --allow-all supabase/functions/_shared/`: **686 passed, 0 failed**.
+- `deno test --allow-all supabase/migrations/`: **179 passed, 0 failed**.
+- `pnpm typecheck`: clean. `pnpm lint`: **0 errors** (31 pre-existing warnings).
+- `pnpm test`: **1051 passed, 0 failed** across 107 suites.
+- Nothing deployed, committed or pushed, and no production-level test was run,
+  so there is nothing to record in `public.error_events`.
+
+## 2026-09-11 — a character is described once, and the Craft portrait is drawn in the writer's style
+
+**The problem, in the writer's words.** The Craft character sheet asked for a
+Description ("role, age, and who they are") and, four lines below it, an
+Appearance ("face, build, clothing"). They are the same question. So the same
+person was typed twice, the two halves went to different prompts — the story
+prompt emitted a `Description:` line AND an `Appearance:` line for one
+character; the cover prompt read `description` and never looked at `appearance`
+at all — and neither field was ever the whole truth about anyone.
+
+**Description is retired from collection. It is not deleted.** The sheet asks
+once, in Appearance. Nothing on the client writes `description` any more, the
+shape endpoint's JSON schema no longer asks the model for one, and the story,
+shape, cover, chapter-art and portrait prompts all emit a single appearance.
+The `characters.description` and `user_characters.description` columns stay, and
+stay readable: a story written before today has its entire cast in that column,
+and dropping it would turn an existing story's people into bare names on the
+next continuation, cover regeneration or portrait. **No migration was needed.**
+
+**The fallback lives in exactly one place.** `characterAppearance()` in
+`_shared/types.ts` is `appearance?.trim() || description?.trim() || ""`, and it
+is the only code permitted to read `.description`. Every prompt builder goes
+through it. It returns `""` rather than `undefined` on purpose, and every caller
+tests the result before interpolating: this repo has a recorded bug where a
+name-only character put the literal string `"a distant silhouetted figure
+suggesting undefined"` into a cover prompt, and a defined-looking value that is
+never checked is how that happens.
+
+**Where a hole could still have opened, and what closes it.**
+
+- `buildCharacterNote` (`cover-prompts.ts`) now resolves the look BEFORE
+  choosing the hero, so a name-only lead cannot displace a describable
+  supporting character and then contribute nothing.
+- `usableCharacters` (`image.ts`) filters AFTER sanitizing, not before. An
+  appearance of `"<<>>"` survives `.trim()` on the raw field and sanitizes to
+  the empty string; filtering first sent it to a paid provider.
+- The portrait safety ladder had two fields to drop and now has one, so it
+  shortens instead: full text, then the first sentence, then the first clause,
+  with `"a person"` as the floor at every rung. A rung that shortened to nothing
+  would have asked the provider to illustrate the empty string.
+- `_shared/reimagine.ts` still accepts the wire's retired `role`, and lands it
+  in `appearance` rather than `description`, so a client on an older build can
+  still swap a character into a chapter and have the model see them.
+
+**The one compatibility mirror, and how to remove it.** `generate-story` and
+`generate-story-stream` write `description: c.appearance ?? c.description` as
+well as `appearance`. `_shared/media.ts` reads the cast for the cover and for
+chapter art with `select("name, description, is_hero")` — `appearance` is in
+neither select — so without the mirror every story written from today forward
+would silently lose its cast from its own cover. `media.ts` was owned by another
+workstream this session and could not be edited. **Delete the mirror line in
+both inserts the moment those two selects read `appearance`.**
+
+**The Craft portrait now uses the writer's Image style.**
+`generateDraftCharacterPortrait` has accepted an `artStyle` since 00075 and
+`generate-character-image` never passed one — on the exact screen where the
+writer compares a portrait against the cover they are about to get. The endpoint
+now takes `image_style`, normalised through `normalizeCoverArtStyle` (absent or
+unrecognised means `auto`, the genre's own look, so a stale client cannot put
+free text into a provider request), and the Craft sheet sends the draft's
+`imageStyle`.
+
+**Files.** `_shared/types.ts`, `_shared/story-prompts.ts`,
+`_shared/story-shape.ts`, `_shared/cover-prompts.ts`, `_shared/image.ts`,
+`_shared/reimagine.ts`, `_shared/saved-characters.ts`, `_shared/validation.ts`,
+`generate-character-image/index.ts`, `generate-story/index.ts`,
+`generate-story-stream/index.ts`, and the four backend test files;
+`expo/src/types/domain.ts`, `expo/src/lib/api.ts`,
+`expo/src/lib/saved-characters.ts`, `expo/src/lib/reimagine-client.ts`,
+`expo/src/components/create/CreateBriefFlow.tsx`,
+`expo/src/components/create/SavedCharactersPicker.tsx`,
+`expo/src/components/reader/ReimagineSheet.tsx`,
+`expo/src/screens/CreateStudioScreen.tsx`,
+`expo/src/screens/WriterOnboarding.tsx`, and seven Expo test files; `AGENTS.md`.
+
+**Verification.**
+- `deno check` on every touched backend file: clean.
+- `deno test --allow-all supabase/functions/_shared/`: **703 passed, 0 failed**.
+- `deno test --allow-all supabase/functions/`: **813 passed, 0 failed**.
+- `pnpm typecheck`: clean. `pnpm lint`: **0 errors** (31 pre-existing warnings).
+- `pnpm test`: **1061 passed, 0 failed** across 107 suites.
+- Nothing deployed, committed or pushed, and no production-level test was run,
+  so there is nothing to record in `public.error_events`.
+
+---
+
+## 2026-09-11 — Adversarial review pass 2: the caching win was mostly fictional
+
+Two full adversarial review passes ran over this change set. Pass 1's nine
+findings were fixed and are recorded above. Pass 2 found six more; all are fixed
+here, and the first one invalidates a claim made earlier in this log.
+
+**The prompt cache was hitting about 1 KB, not 10 KB.** `systemMessage` in
+`_shared/llm.ts` marks the system prompt as a cache prefix on exactly one claim:
+that it is byte-identical for every chapter of a story. It was not.
+`buildStoryModeRules` appended `formatSeriesStateBlock(seriesState)` to the
+Mid-Series and Finale contracts, which put a block that changes every single
+chapter *inside* the system prompt — ahead of the genre module, the audience
+rules, the spice rules, the language line, the titling rules and the output
+schema. Every one of those is invariant; every one of them sat behind a variable
+block, so nothing behind it could ever hit.
+
+Nothing about this was visible. The prompt was correct, the tests passed, and
+the only symptom was a bill and a latency that did not improve. The state
+already travelled in the user prompt (where the delivered-moments partition
+reads it), so this was a removal rather than a move: the model is told exactly
+what it was told before, once instead of twice. A test now asserts that two
+wildly different series states produce a byte-identical system prompt — the test
+that would have caught it.
+
+**The elision marker pointed at a summary that was not there.** `trimToEnds`
+drops roughly the middle 60% of a chapter and said the passage was "summarised
+above", while the only summaries above belonged to *older* chapters. The newest
+chapter's own `previously_summary` — written by the model for exactly this
+purpose — is now emitted across the cut when the prose was actually trimmed, and
+the marker no longer makes a claim about the rest of the prompt that this
+function cannot make.
+
+**The client's credit balance drifted upward by one per illustrated chapter.**
+Every chapter session settled with a flat `CHAPTER_TEXT_CREDITS`, and `App`
+derives the balance by subtracting it. Since 00077 an illustrated chapter costs
+two. On an illustrated auto story the drift compounds, so the write-ahead's
+balance gate — which documents itself as exact rather than optimistic —
+eventually passed on a balance the server did not have and fired the 402 it was
+built never to fire. One `chapterCost(story)` helper now serves both the settle
+and the gate, so they cannot disagree again.
+
+**`direction_chosen_by` recorded a human tap that never happened.** The
+chapter-end auto fallback sent the client's top-ranked chip as
+`next_instruction`; the server reads an explicit instruction as "the reader has
+been asked and answered", so it skipped `chooseDirection` entirely and recorded
+`'reader'`. Every chapter down that path was chosen by exactly the client sort
+the feature was built to replace, and logged as a choice a person made. The
+fallback now sends no direction and lets the server choose and record truthfully.
+
+**"Recorded either way" was not true.** The direction UPDATE was gated on
+`chosenBy !== "none"`, so a "Katha decides" chapter recorded nothing — leaving
+the future chip surface unable to tell "this chapter predates the feature" from
+"this chapter genuinely had no directions", with no way to recover the
+difference. It now writes in every case, with `direction_chosen_by` null for the
+no-chooser case.
+
+**A failed auto chapter could be re-bought after thirty minutes.**
+`hasGenerationForChapter` reads the session store and `pruneFinished` sweeps it,
+so a chapter that failed became eligible again once its record aged out — a
+fresh paid request with no tap. `failedAutoChapters` survives the sweep;
+`retryGeneration` clears it, because a retry is a decision.
+
+**Also corrected here, all confirmed by checking rather than by reasoning:**
+
+- `validation.ts` still accepted `Portuguese` on a new story. The client had
+  stopped offering it, but a client is not a validator. Creation is English-only
+  now; continuations read `stories.language` off the row and never pass through
+  this validator, so Portuguese and Spanish stories already paid for keep being
+  written in their own language.
+- `normalizeCoverArtStyle` used `in`, which walks the prototype chain, so
+  `image_style: "constructor"` reached the provider as
+  `Visual style: function Object() { [native code] }`. Now `hasOwnProperty.call`.
+- The chapter-art and cover cast reads in `_shared/media.ts` selected
+  `description` but not `appearance`, which after the field merge would have
+  dropped the cast out of every new cover and chapter plate. Both selects now
+  read the live field and the retired one.
+- The Home "finish your series" CTA gated on one credit; an illustrated series'
+  next chapter costs two. It now prices per story, which also finds the *right*
+  story for a reader who has one credit and two unfinished series.
+- `pricing-limits.ts` still said per-chapter art was "a quote, not a charge".
+  00077 made it a charge.
+- AGENTS.md said remote production was applied through `00056`. `supabase
+  migration list` says `00074`; `00075`-`00078` are written and unapplied. An
+  18-migration-stale claim is how the next branch picks a colliding number.
+
+**UNRESOLVED, and deliberately left for the product owner.**
+`begin_story_generation` deducts **3** to start a story;
+`source-of-truth/CREDITS_AND_PRICING.md` §1 says starting costs **1** and prices
+a 3-chapter illustrated story at 5. By the code it is 7 = 3 + 2 + 2. Every doc
+now states what the code charges, and AGENTS.md carries the disagreement as an
+open item. Nobody may quietly change the code to match the document or the
+document to match the code — it is a price, not a bug.
+
+**Known, accepted, not fixed.** `chooseDirection` resolves before the
+continuation's SSE response opens, because the chosen direction is part of the
+prompt the stream is built from. On the write-ahead path nobody is watching, so
+it is invisible; on the chapter-end fallback it is real added wait. The deadline
+came down from 6s to 4s. The proper fix moves the choice inside the stream
+behind a `stage: "choosing"` event, which means moving the prompt assembly with
+it — a restructure of both transports, deliberately not done alongside the
+pricing and caching work.
+
+**Security gate.** `/security-scan` run over the change set before pushing: no
+secrets in the diff, `.gitignore` covers `.env`/`*.pem`/`google-services.json`/
+keystore, every new client-controlled string reaching an LLM is fenced and
+bounded (`directions_offered` at 3 × 300 chars, ids at 64), the new migrations
+concatenate only allowlisted values into ledger operation keys, the chapter
+direction UPDATE targets only the chapter its own reservation created, and the
+one new AsyncStorage key holds a voice gender, not PII.
+
+### CodeAnt review, PR #90 — four findings
+
+CodeAnt auto-skipped this PR for size (102 files) and was asked for a review
+rather than allowed to pass on the skip. All four findings were real.
+
+**An unhandled rejection could have killed a paid generation.** The early-naming
+callback is deliberately detached — the prose never awaits it — but a detached
+promise with no `.catch` has nowhere to put a failure. `send` guarded on
+`closed`, and `closed` only ever tracked our OWN `close()`: a reader who
+navigates away or loses signal leaves it false, so `controller.enqueue` throws
+`Invalid state`, the rejection goes unhandled, and on this runtime that can take
+the isolate down along with a chapter the writer has already been charged for.
+Fixed on both streamed paths in two places: `send` now latches `closed` when an
+enqueue throws, turning one throw into a no-op for the rest of the run instead
+of a throw per event, and the detached promise swallows and logs. The
+generation deliberately continues either way — the chapter is paid for and still
+has to be persisted for the reader to come back to.
+
+**Three comment/doc mismatches**, all of them the same class of defect this log
+keeps recording: prose that stopped matching the thing it describes.
+`00077`'s test header still carried the 5-credit arithmetic after the code was
+corrected to 7 (it now states the code's number and names the unresolved
+disagreement rather than quietly picking a side); `STORY_GENERATION_FLOW.md` §9
+still listed Chapters, Chapter length, Chapter cover and Visibility inside More
+options after §2 promoted them out (they are struck through rather than deleted,
+because a row that disappears reads as a control that was cut rather than
+moved); and §2 described `story_flow` as "a column, not a request field" when it
+is in fact both — the request is how it gets there, the column is how it
+survives to the chapter end where it means anything.
+
+### CodeAnt inline review, PR #90 — eleven threads
+
+The four "nitpicks" were the summary; the inline review carried eleven. Seven
+were real and are fixed here, and one of them was a data-loss bug introduced by
+this very change set.
+
+**`??` where `||` was needed, and legacy characters lost for good.** Both story
+inserts wrote `appearance: c.appearance ?? c.description`. Nullish coalescing
+falls through on null and undefined but NOT on the empty string, which is
+exactly what a client sends for a field the writer left blank — so a legacy
+character whose text lived in `description` had both columns written empty and
+their details destroyed. `characterAppearance` in `types.ts` already resolved
+with `||` for this reason; the inserts did not.
+
+**"Chapter N+1 is being written" over a chapter that had finished.** `pending`
+read `nextSession !== null`, which is true of a completed session. Between the
+session settling and the app appending the chapter, the sentence was false.
+
+**Autoplay used the wrong narrator.** It fired on mount, and the stored voice
+gender resolves a tick or two later — so a reader who had saved the male
+narrator opened Listen and heard the female one. The preference persisted
+correctly and was then ignored at the one moment it existed for. Autoplay now
+waits for the read to settle, including on its failure path.
+
+**`liveStoryIds` hid the freshest series.** It mapped every session regardless
+of phase, and `home-cta.ts` excludes those ids from its "Finish your story"
+search — so a story that finished generating minutes ago was excluded until its
+session was pruned. Now only sessions actually being written.
+
+**The shelf-loaded flag defeated its own guard.** `fetchMyStories` turns every
+failure into an empty array, and `App` set `shelfLoaded` from it — which is
+precisely the failure `home-cta.ts` documents itself as preventing: a writer
+with three stories and a bad connection told to start their first one. The boot
+read now uses `fetchCreatedShelf`, which can say it failed.
+
+**A countdown ban that authorized a countdown.** Removing the one-time offer
+left an orphaned sentence fragment directly under "no exceptions", still
+describing a 2-minute clock as a legitimate carve-out.
+
+**Not fixed, and why.**
+
+- *Credit drift after an art refund.* The client charges what was reserved; if
+  the background art fails the server refunds one credit and the client never
+  hears. The drift is one too LOW, which only makes the app conservative — the
+  write-ahead stops early, the paywall shows early. Too HIGH is the dangerous
+  direction and is the bug fixed earlier in this log. The real fix is the `done`
+  payload carrying the authoritative balance the RPC already computes; that is a
+  server change and not this commit's.
+- *Direction choice before the stream opens.* Already documented; deadline cut
+  from 6s to 4s. Invisible on the write-ahead path, which is auto mode's normal
+  path.
+- *"The welcome bonus requires two declines."* No such rule exists in
+  `CREDITS_AND_PRICING.md` — searched. A grant condition is not changed on an
+  unverified reading of a pricing document.
+- *Margin basis calls a three-chapter total a story-start cost.* The same
+  unresolved 1-vs-3 disagreement recorded in AGENTS.md. It is a price.
+
+**One more, on the follow-up commit.** The "Katha is writing" card on Home
+routed through `onStory`, which sends a series to `StoryDetailScreen` -- and a
+story mid-generation IS a series by then, because the provisional row carries a
+planned chapter count from the moment the first prose reveals. So the one card
+that says a chapter is being written opened a static page and hid the live
+generation behind it. It now routes into the reader at the chapter actually
+being written, for the same reason `finish` does: the reader is the only surface
+that resolves the live session and shows prose arriving.
+
+### CodeAnt round three, PR #90 — three races and a dead seam
+
+**A credits race that could spend money with nobody tapping.** The charge effect
+and the auto write-ahead both key on `generations`, so a completing chapter runs
+both in the same pass -- the charge first. But `setCredits` is state and lands a
+render later, so the write-ahead closed over a balance one charge too high and
+could start a chapter the balance could not pay for. Too-high is the dangerous
+direction and is precisely what that gate exists to prevent, so the gate now
+reads `availableCreditsRef`, decremented synchronously the instant a charge is
+known, rather than the state that is correct one render afterwards.
+
+**A cast that could not be read was treated as a cast that does not exist.**
+`castRead.error` was ignored and `?? []` swallowed it, so a transient failure
+drew a chapter illustration with no cast context and then marked the art
+component delivered and kept the credit. It now throws, which the caller treats
+as a failed component and refunds. A story that genuinely has no cast still
+reads as an empty array with no error and is drawn as the scene it is.
+
+**An audio unload race that killed the controls.** `unloadAsync` yields, and a
+chapter change or play tap in that window assigns a new sound to
+`soundRef.current`; nulling the ref afterwards threw away the LIVE handle
+instead of the dead one, so playback continued with nothing able to reach it and
+pause, seek and the next voice change all did nothing. The handle is now taken
+before the await and cleared only if the ref still holds it.
+
+**A dead seam with a live footgun.** `PhraseCaptureReader`'s `onChapterChange`
+pass-through was added for the write-ahead's reading-position bound and lost its
+only caller when that bound was removed. Left in place it was a hazard: an
+inline callback from a parent is a new identity per render, which re-runs the
+memo, which makes `ReaderScreen` fire the change again and dismiss a phrase
+selection mid-drag. Removed rather than kept "in case".
+
+**Answered, not changed.** An author reading their own chapter one sees no
+artwork, which is `bareOpener` behaving as designed since PR #85 -- their own
+story opens on a bare title page, and chapter one's art IS the cover, so it is
+not also drawn as a chapter plate. Unchanged by this PR.
+
+**Round four: the same defect in its sibling.** The cover's cast read
+(`readCastForCover`) dropped its error exactly as the chapter-art read did --
+one call site was fixed and its twin was not. It matters more here: a cover is
+generated once, it is the story's face in every rail, and nothing revisits it,
+so a second of network trouble would have produced a cast-less cover marked
+`ready` and the writer would have to pay for a regeneration to undo it. It now
+throws into `generateAndStoreCover`'s catch, which marks the cover failed,
+refunds, and lets the concept card stand in (decision 39).

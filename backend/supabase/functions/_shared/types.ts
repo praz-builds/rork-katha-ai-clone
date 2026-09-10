@@ -4,6 +4,7 @@
  * 19 primary genres (12 in UI, 7 DB-only), audience modes,
  * identity lenses and spice levels.
  */
+import type { CoverArtStyle } from "./cover-prompts.ts";
 import type { EntityMention, GroundingCard } from "./grounding-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -434,6 +435,20 @@ export const MAX_BEAT_LENGTH = 200;
 
 export interface CharacterInput {
   name: string;
+  /**
+   * Retired. Read, never collected.
+   *
+   * The Craft character sheet used to capture both a Description ("who they
+   * are") and an Appearance ("what they look like"), and every prompt that
+   * used them had to decide which one mattered — so the same fact was typed
+   * twice and each half reached a different provider. Appearance is now the
+   * single field. This one stays on the interface, and its column stays in
+   * `characters` / `user_characters`, because stories written before the
+   * change have their cast only here: dropping it would turn an existing
+   * story's people into names with nothing attached.
+   *
+   * Never read it directly. `characterAppearance()` is the only fallback.
+   */
   description?: string;
   background?: string;
   appearance?: string;
@@ -445,6 +460,26 @@ export interface CharacterInput {
    * `resolveSavedCharacters`; an id the caller does not own is dropped.
    */
   savedCharacterId?: string;
+}
+
+/**
+ * What a character looks like, in one string, for a prompt.
+ *
+ * The ONLY place the retired `description` is allowed to be read. Every prompt
+ * builder — story, shape, cover, chapter art, portrait — goes through here, so
+ * a story whose cast predates the field merge still describes real people to
+ * the model instead of nameless shapes.
+ *
+ * Returns "" rather than undefined, and every caller is expected to test the
+ * result before interpolating it. A character with neither field used to put
+ * the literal string "a distant silhouetted figure suggesting undefined" into
+ * a cover prompt; an empty string that is checked is what stops that, not a
+ * defined-looking value that is not.
+ */
+export function characterAppearance(
+  character: { appearance?: string | null; description?: string | null },
+): string {
+  return character.appearance?.trim() || character.description?.trim() || "";
 }
 
 export interface StoryGenerationOutput {
@@ -463,6 +498,22 @@ export interface StoryGenerationOutput {
   hook_type: HookType;
   hook_text: string;
 }
+
+/**
+ * How the next chapter is chosen for a story.
+ *
+ * `interactive` is what the app has always done: the reader is offered
+ * direction chips at a chapter end and nothing is written until one is picked.
+ * `auto` is the writer saying they do not want to be asked - the same flow,
+ * with the direction chosen for them and the next chapter written straight
+ * away.
+ *
+ * Two values, not a boolean, because the interesting question at a chapter end
+ * is "which mode", and a boolean names only one of them: `autoContinue: false`
+ * describes interactive by what it is not, which is how the next reader of the
+ * code ends up guessing whether the default asks or spends.
+ */
+export type StoryFlow = "interactive" | "auto";
 
 export interface ValidatedGenerationParams {
   primaryGenre: PrimaryGenre;
@@ -496,6 +547,26 @@ export interface ValidatedGenerationParams {
   plannedChapterCount: PlannedChapterCount;
   /** Whether chapters 2..N get art. Chapter 1's is compulsory regardless. */
   illustrateChapters: boolean;
+  /**
+   * How this story's pictures are drawn: `auto` (the genre's own look) or one
+   * of the four overrides in `_shared/cover-prompts.ts`.
+   *
+   * Always present, never optional. `auto` is an answer rather than an absence,
+   * and it is persisted on the story row (migration 00075) because the cover
+   * regeneration and the cast portraits are built long after this request is
+   * gone and must not fall back to the genre default on their own.
+   */
+  imageStyle: CoverArtStyle;
+  /**
+   * How the NEXT chapter gets chosen: `interactive` (the reader picks a
+   * direction chip and nothing is written until they do) or `auto` (the
+   * direction is chosen for them and the chapter follows).
+   *
+   * Always present for the same reason `imageStyle` is, and persisted on the
+   * story row (migration 00076) for a stronger one: it is read at every chapter
+   * end, which is a different session from the one that created the story.
+   */
+  storyFlow: StoryFlow;
   /** Whether the author asked to be told when the story is finished. */
   notifyOnReady: boolean;
   /**

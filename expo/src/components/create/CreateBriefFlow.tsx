@@ -30,7 +30,6 @@ import {
   ImagePlus,
   Lightbulb,
   Plus,
-  Sparkles,
   UserPlus,
   X,
 } from "lucide-react-native";
@@ -39,8 +38,10 @@ import { Toggle } from "@/components/Toggle";
 import { IdeasSheet } from "@/components/create/IdeasSheet";
 import { Dropdown, DropdownGroup } from "@/components/create/Dropdown";
 import type { DropdownOption } from "@/components/create/Dropdown";
+import DirectionStep from "@/components/create/DirectionStep";
 import { GENRE_EMOJI } from "@/lib/genre-content";
 import * as storyApi from "@/lib/api";
+import { CHAPTER_ART_CREDITS, CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
 import {
   draftCharacterFromSaved,
   listSavedCharacters,
@@ -49,7 +50,15 @@ import {
 } from "@/lib/saved-characters";
 import type { SavedCharacterInput } from "@/lib/saved-characters";
 import { colors, fonts, genreLabels, radius, shadows, spacing } from "@/theme";
-import type { AudienceMode, CreateDraft, CreationLanguage, Genre, SavedCharacter } from "@/types/domain";
+import type {
+  AudienceMode,
+  CreateDraft,
+  CreationLanguage,
+  Genre,
+  ImageStyle,
+  SavedCharacter,
+  StoryFlow,
+} from "@/types/domain";
 import { KIDS_UI_GENRES, UI_GENRES } from "@/types/domain";
 
 type CharacterDraft = CreateDraft["characters"][number];
@@ -60,7 +69,13 @@ export type StudioCreateDraft = Omit<CreateDraft, "visibility"> & {
   visibility: "private" | "public";
 };
 
-type CreateStage = "main" | "character" | "review";
+/**
+ * `review` is gone. The screen that restated the brief and asked the writer to
+ * agree with themselves is now the direction step -- the same chips the reader
+ * gets between chapters, derived from the idea they just typed. See
+ * `components/create/DirectionStep.tsx`.
+ */
+type CreateStage = "main" | "character" | "direction";
 /** Which half of "Who's in it" is showing: the saved library, or a new sheet. */
 export type CastTab = "saved" | "new";
 
@@ -69,7 +84,15 @@ type Props = {
   isAnonymous: boolean;
   draft: StudioCreateDraft;
   setDraft: Dispatch<SetStateAction<StudioCreateDraft>>;
-  onGenerate: () => void;
+  /**
+   * Start the story with the opening the writer chose.
+   *
+   * The choice is handed over rather than written into the draft first,
+   * because `setDraft` lands on the next render and the generation would read
+   * the state as it was BEFORE the tap -- the story would be written without
+   * the direction the writer had just picked.
+   */
+  onGenerate: (choice?: { direction?: string; beats?: string[] }) => void;
   onBack: () => void;
   /** Test seams for the saved-character library; default to the real store. */
   loadSavedCharacters?: () => Promise<SavedCharacter[]>;
@@ -78,7 +101,7 @@ type Props = {
 
 /** A blank Craft character sheet. Exported for the saved-characters picker. */
 export function emptyCharacterDraft(isHero: boolean): CharacterDraft {
-  return { name: "", description: "", background: "", appearance: "", isHero };
+  return { name: "", background: "", appearance: "", isHero };
 }
 
 /**
@@ -208,6 +231,98 @@ export const CHAPTER_LENGTHS = [
 
 const CHAPTER_COUNTS = [3, 7, 15] as const;
 
+/**
+ * The six dropdowns, defined once.
+ *
+ * Four of them sit above the text fields as the band of decisions that shape
+ * what gets written -- how the story moves, how long it runs, and what its art
+ * looks like per chapter -- and two sit at the foot of the screen, next to the
+ * button that spends the credits, because they are the last two things a
+ * writer changes their mind about: how it looks, and who can read it.
+ *
+ * They are arrays rather than inline literals so the same option list backs the
+ * control, its accessible value and the tests, and cannot be respelled in one
+ * place and not another.
+ */
+const STORY_FLOW_OPTIONS: DropdownOption<StoryFlow>[] = [
+  {
+    value: "interactive",
+    label: "Interactive",
+    detail: "You pick what happens next at the end of every chapter.",
+  },
+  {
+    value: "auto",
+    label: "Auto-continue",
+    detail: "Katha picks the direction itself and keeps writing.",
+  },
+];
+
+const IMAGE_STYLE_OPTIONS: DropdownOption<ImageStyle>[] = [
+  { value: "auto", label: "Auto", detail: "Katha matches the art to the genre." },
+  { value: "anime", label: "Anime" },
+  { value: "cinematic", label: "Cinematic" },
+  { value: "comic", label: "Comic" },
+  { value: "watercolor", label: "Watercolor" },
+];
+
+/**
+ * Which art a story gets: one cover, or a fresh image per chapter.
+ *
+ * The stored field is still `illustrateChapters`, the boolean the generation
+ * contract sends as `illustrate_chapters`. This dropdown replaced a switch, and
+ * changing the wire field alongside the control would have made a UI change a
+ * backend change for no reason.
+ */
+type ChapterCover = "cover" | "perChapter";
+
+/**
+ * Priced from the constants, never from a literal.
+ *
+ * Chapter one's art is the story's cover and is already inside the start price,
+ * so it is never billed separately. That means EVERY chapter this option
+ * actually charges for -- chapter two onward -- is text plus art. An earlier
+ * revision said "1 credit for the first, 2 from the next", which mis-numbered
+ * which chapter "the first" is: `CREDITS_AND_PRICING.md` prices a 3-chapter
+ * illustrated story at 5 (1 + 2 + 2), so chapter two is 2 and there is no
+ * chapter anywhere on this option that costs 1.
+ *
+ * Composed from the constants rather than hand-typed, because this is the only
+ * place in the brief that quotes a price and a hand-typed number keeps saying
+ * it long after the pricing document has moved on.
+ */
+const CHAPTER_COVER_OPTIONS: DropdownOption<ChapterCover>[] = [
+  {
+    value: "cover",
+    label: "Cover art only",
+    detail: "One cover for the whole story.",
+  },
+  {
+    value: "perChapter",
+    label: "Auto-generated per chapter",
+    detail:
+      `Its own art for every chapter · ` +
+      `${CHAPTER_TEXT_CREDITS + CHAPTER_ART_CREDITS} credits a chapter ` +
+      `instead of ${CHAPTER_TEXT_CREDITS}. The cover is already included.`,
+  },
+];
+
+const CHAPTER_COUNT_OPTIONS: DropdownOption<string>[] = CHAPTER_COUNTS.map((count) => ({
+  value: String(count),
+  label: `${count} chapters`,
+  valueLabel: String(count),
+  accessibilityLabel: `${count} chapters`,
+}));
+
+const CHAPTER_LENGTH_OPTIONS: DropdownOption<string>[] = CHAPTER_LENGTHS.map((item) => ({
+  value: item.id,
+  label: item.label,
+  detail: `About ${item.minutes} min · ${item.words}`,
+}));
+
+const LANGUAGE_OPTIONS: DropdownOption<CreationLanguage>[] = [
+  { value: "English", label: "English" },
+];
+
 /*
  * There is no `SWITCH_COLORS` here any more, and no `Switch`.
  *
@@ -228,8 +343,7 @@ const CHAPTER_COUNTS = [3, 7, 15] as const;
  */
 const MAX_MOMENT_CHARS = 300;
 /**
- * How much of a moment's text a chip or the review row shows before an
- * ellipsis. Purely cosmetic -- it is a display cap, not a data cap. The full
+ * How much of a moment's text a chip shows before an ellipsis. Purely cosmetic -- it is a display cap, not a data cap. The full
  * text, up to `MAX_MOMENT_CHARS`, is still what gets sent.
  */
 const MOMENT_DISPLAY_CHARS = 60;
@@ -251,9 +365,8 @@ function truncateForDisplay(text: string, max: number) {
 function characterFingerprint(character: CharacterDraft) {
   return JSON.stringify({
     name: character.name.trim(),
-    description: character.description.trim(),
+    appearance: character.appearance.trim(),
     background: (character.background ?? "").trim(),
-    appearance: (character.appearance ?? "").trim(),
     isHero: character.isHero,
     portraitUrl: character.portraitUrl ?? "",
   });
@@ -276,8 +389,8 @@ function useMotionAndHaptics() {
 }
 
 /**
- * How many slots `briefStrength()` scores out of. Named so the review meter's
- * denominator and its accessible value cannot drift from the score itself.
+ * How many slots `briefStrength()` scores out of. Named so the percentage
+ * under the Create button and the score itself cannot drift apart.
  */
 const STRENGTH_SLOTS = 4;
 
@@ -320,7 +433,7 @@ export default function CreateBriefFlow({
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [momentInput, setMomentInput] = useState("");
   const [editingCharacterIndex, setEditingCharacterIndex] = useState<number | null>(null);
-  const [characterBuffer, setCharacterBuffer] = useState<CharacterDraft>({ name: "", description: "", background: "", appearance: "", isHero: false });
+  const [characterBuffer, setCharacterBuffer] = useState<CharacterDraft>({ name: "", background: "", appearance: "", isHero: false });
   /**
    * The sheet exactly as it was opened, so Back can tell an untouched visit
    * from an edited one. A ref, not state: nothing renders from it, and putting
@@ -334,7 +447,7 @@ export default function CreateBriefFlow({
   const maxMoments = 5;
   const strength = briefStrength(draft);
   const isCharacter = stage === "character";
-  const isReview = stage === "review";
+  const isDirection = stage === "direction";
 
   useEffect(() => {
     let cancelled = false;
@@ -415,7 +528,7 @@ export default function CreateBriefFlow({
       setEditingCharacterIndex(index);
     } else {
       if (draft.characters.length >= 3) return;
-      opened = { name: "", description: "", background: "", appearance: "", isHero: draft.characters.length === 0 };
+      opened = { name: "", background: "", appearance: "", isHero: draft.characters.length === 0 };
       setEditingCharacterIndex(null);
     }
     setCharacterBuffer(opened);
@@ -427,7 +540,7 @@ export default function CreateBriefFlow({
 
   const saveCharacter = useCallback(() => {
     if (!characterBuffer.name.trim()) return;
-    const next = { ...characterBuffer, name: characterBuffer.name.trim(), description: characterBuffer.description.trim() };
+    const next = { ...characterBuffer, name: characterBuffer.name.trim(), appearance: characterBuffer.appearance.trim() };
     setDraft((previous) => {
       const characters = editingCharacterIndex === null
         ? [...previous.characters, next]
@@ -499,10 +612,10 @@ export default function CreateBriefFlow({
    * re-reads the current buffer rather than the values that were present when
    * the sheet opened -- `create-flow-character-portrait.test.tsx` asserts that
    * with an edit between two taps, because a stale closure here would silently
-   * regenerate the OLD description and look like the model ignoring the user.
+   * regenerate the OLD appearance and look like the model ignoring the user.
    *
    * `background` is not sent: the `generate-character-image` edge function
-   * accepts `name`, `description` and `appearance` only and 400s on nothing
+   * accepts `name`, `appearance` and `image_style` only and 400s on nothing
    * else, so adding it here would need the function and `CharacterImageInput`
    * to move first. Background still reaches the story prompt.
    */
@@ -540,9 +653,12 @@ export default function CreateBriefFlow({
       const { url } = await storyApi.generateCharacterImage({
         requestId: storyApi.createGenerationRequestId(),
         name,
-        description: characterBuffer.description,
         appearance: characterBuffer.appearance,
         referenceImage: characterBuffer.referenceImage,
+        // The look the cover will be drawn in. Without it the portrait on this
+        // very screen comes back in the house style, next to a cover the
+        // writer asked to be something else.
+        imageStyle: draft.imageStyle,
       });
       setCharacterBuffer((previous) => ({
         ...previous,
@@ -556,7 +672,7 @@ export default function CreateBriefFlow({
         portraitStatus: "failed",
       }));
     }
-  }, [characterBuffer, confirm]);
+  }, [characterBuffer, confirm, draft.imageStyle]);
 
   /**
    * Back out of Craft character, with friction when there is something to lose.
@@ -597,15 +713,15 @@ export default function CreateBriefFlow({
   }, [select, setDraft]);
 
   /**
-   * The structured review screen, per source-of-truth/STORY_GENERATION_FLOW.md
-   * section 2's own admission that main Create is otherwise "setup, shaping,
-   * and review" on one surface: everything the user is about to spend credits
-   * on is restated here before the paid generation call fires, and Back
-   * returns to the same `main` stage with the same `draft` state untouched.
+   * Create hands off to the direction step, not to a review screen.
+   *
+   * Nothing is spent here: the step shapes the idea for free and the writer
+   * picks the opening, which is the tap that actually starts the story. Back
+   * returns to the same `main` stage with the same `draft` untouched.
    */
-  const goToReview = useCallback(() => {
+  const goToDirection = useCallback(() => {
     confirm();
-    setStage("review");
+    setStage("direction");
   }, [confirm]);
 
   const backToMain = useCallback(() => {
@@ -623,14 +739,21 @@ export default function CreateBriefFlow({
       <DropdownGroup>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <Animated.View style={[styles.flex, { opacity: fade }]}>
-          {isReview ? (
-            <ReviewScreen
-              draft={draft}
-              strength={strength}
+          {isDirection ? (
+            <DirectionStep
+              brief={{
+                seed: draft.seed,
+                primaryGenre: draft.primaryGenre,
+                characters: draft.characters,
+                moments: draft.moments,
+                writingStyle: draft.writingStyle,
+                avoid: draft.avoid,
+                chapterLength: draft.chapterLength,
+                plannedChapterCount: draft.plannedChapterCount,
+              }}
               credits={credits}
-              isAnonymous={isAnonymous}
               onBack={backToMain}
-              onCreate={onGenerate}
+              onStart={onGenerate}
             />
           ) : (
             <StorySetupScreen
@@ -654,7 +777,7 @@ export default function CreateBriefFlow({
               isAnonymous={isAnonymous}
               strength={strength}
               credits={credits}
-              onCreate={goToReview}
+              onCreate={goToDirection}
               onSelect={select}
             />
           )}
@@ -752,8 +875,11 @@ function StorySetupScreen({
       <View style={styles.parentControls}>
         <View style={styles.kidsMode}>
           <Toggle value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} accessibilityLabel="Kids Mode" accessibilityHint="Keeps the story safe for children and limits the genres offered." />
+          {/* No icon. A sparkle next to "Kids Mode" said nothing about
+              children and everything about generation -- it is the glyph this
+              app uses for "the AI is doing something", which is not what this
+              switch is. The switch and the words are the whole control. */}
           <View style={styles.kidsModeLabel}>
-            <Sparkles size={15} color={draft.audienceMode === "kids" ? colors.accent : colors.tertiary} />
             <Text style={[styles.kidsModeText, draft.audienceMode === "kids" && styles.kidsModeTextActive]}>Kids Mode</Text>
           </View>
         </View>
@@ -766,6 +892,51 @@ function StorySetupScreen({
           onChange={(primaryGenre) => update({ primaryGenre })}
           onOpen={onSelect}
           style={styles.genreControl}
+        />
+      </View>
+      {/*
+        The four shaping dropdowns, above every text field on the screen.
+
+        A two-column wrap rather than fixed widths: each item is given half the
+        row and allowed to grow, so the pair reflows to one column on a narrow
+        device and at a large `fontScale` without any control being clipped.
+      */}
+      <View style={styles.optionGrid}>
+        <Dropdown
+          id="storyFlow"
+          label="Story mode"
+          value={draft.storyFlow ?? "interactive"}
+          options={STORY_FLOW_OPTIONS}
+          onChange={(storyFlow) => { update({ storyFlow }); onSelect(); }}
+          style={styles.optionGridItem}
+        />
+        <Dropdown
+          id="chapters"
+          label="Chapters"
+          value={String(draft.plannedChapterCount ?? 3)}
+          options={CHAPTER_COUNT_OPTIONS}
+          onChange={(value) => {
+            const count = Number(value) as 3 | 7 | 15;
+            update({ plannedChapterCount: count, isSeries: true, beats: draft.beats?.slice(0, count) });
+            onSelect();
+          }}
+          style={styles.optionGridItem}
+        />
+        <Dropdown
+          id="chapterLength"
+          label="Chapter length"
+          value={storyApi.effectiveChapterLength(draft)}
+          options={CHAPTER_LENGTH_OPTIONS}
+          onChange={(value) => { update({ chapterLength: value as "short" | "standard" | "long" }); onSelect(); }}
+          style={styles.optionGridItem}
+        />
+        <Dropdown
+          id="chapterCover"
+          label="Chapter cover"
+          value={draft.illustrateChapters ? "perChapter" : "cover"}
+          options={CHAPTER_COVER_OPTIONS}
+          onChange={(value) => { update({ illustrateChapters: value === "perChapter" }); onSelect(); }}
+          style={styles.optionGridItem}
         />
       </View>
       <View style={styles.ideaHero}>
@@ -900,165 +1071,71 @@ function StorySetupScreen({
           )
         ) : null}
         <View style={styles.characterList}>
-          {draft.characters.map((character, index) => <Pressable key={`${character.name}-${index}`} onPress={() => onEditCharacter(index)} accessibilityRole="button" accessibilityLabel={`Edit ${character.name || "character"}`} style={styles.characterCard}><View style={[styles.avatar, character.isHero && styles.avatarLead, character.portraitStatus === "ready" && styles.avatarReady]}>{character.portraitStatus === "ready" && character.portraitUrl ? <Image source={{ uri: character.portraitUrl }} resizeMode="cover" style={styles.avatarImage} accessible accessibilityLabel={`Portrait of ${character.name.trim() || "this character"}`} /> : character.portraitStatus === "generating" ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={styles.avatarText}>{character.name.trim().slice(0, 1).toUpperCase() || "?"}</Text>}</View><View style={styles.characterCopy}><Text style={styles.characterName}>{character.name || "Untitled character"}{character.isHero ? " · Lead" : ""}</Text><Text numberOfLines={1} style={styles.characterDescription}>{character.portraitStatus === "ready" ? "Image ready" : character.portraitStatus === "failed" ? "Image failed" : character.description || "Details waiting"}</Text></View><ChevronRight size={18} color={colors.tertiary} /></Pressable>)}
+          {draft.characters.map((character, index) => <Pressable key={`${character.name}-${index}`} onPress={() => onEditCharacter(index)} accessibilityRole="button" accessibilityLabel={`Edit ${character.name || "character"}`} style={styles.characterCard}><View style={[styles.avatar, character.isHero && styles.avatarLead, character.portraitStatus === "ready" && styles.avatarReady]}>{character.portraitStatus === "ready" && character.portraitUrl ? <Image source={{ uri: character.portraitUrl }} resizeMode="cover" style={styles.avatarImage} accessible accessibilityLabel={`Portrait of ${character.name.trim() || "this character"}`} /> : character.portraitStatus === "generating" ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={styles.avatarText}>{character.name.trim().slice(0, 1).toUpperCase() || "?"}</Text>}</View><View style={styles.characterCopy}><Text style={styles.characterName}>{character.name || "Untitled character"}{character.isHero ? " · Lead" : ""}</Text><Text numberOfLines={1} style={styles.characterDescription}>{character.portraitStatus === "ready" ? "Image ready" : character.portraitStatus === "failed" ? "Image failed" : character.appearance || "Details waiting"}</Text></View><ChevronRight size={18} color={colors.tertiary} /></Pressable>)}
           {castTab === "new" && draft.characters.length < 3 ? <Pressable onPress={onAddCharacter} accessibilityRole="button" accessibilityLabel="Add a character" style={styles.addCharacter}><View style={styles.addCharacterIcon}><UserPlus size={20} color={colors.accent} /></View><View style={styles.addCharacterCopy}><Text style={styles.addCharacterTitle}>Add a character</Text></View><Plus size={20} color={colors.accent} /></Pressable> : null}
         </View>
       </Section>
 
       <View style={styles.optionsFamily}>
         <Pressable onPress={onToggleOptions} accessibilityRole="button" accessibilityLabel="More options" accessibilityState={{ expanded: moreOptionsOpen }} style={styles.optionsToggle}><Text style={styles.sectionTitle}>More options</Text><ChevronDown size={16} color={colors.ink} style={{ transform: [{ rotate: moreOptionsOpen ? "180deg" : "0deg" }] }} /></Pressable>
-        {moreOptionsOpen ? <MoreOptions draft={draft} isAnonymous={isAnonymous} maxMoments={maxMoments} momentInput={momentInput} onMomentInput={onMomentInput} onAddMoment={onAddMoment} update={update} onSelect={onSelect} /> : null}
+        {moreOptionsOpen ? <MoreOptions draft={draft} maxMoments={maxMoments} momentInput={momentInput} onMomentInput={onMomentInput} onAddMoment={onAddMoment} update={update} onSelect={onSelect} /> : null}
       </View>
-      <View style={styles.costCard}><View style={styles.costIcon}><Sparkles size={18} color={colors.accent} /></View><View style={styles.costCopy}><Text style={styles.costTitle}>Starting this story</Text><Text style={styles.costDetail}>Characters, chapter one, and its cover are 3 credits. Later chapters are charged as you create them.</Text></View></View>
+      {/*
+        The last two decisions, beside the button that spends the credits:
+        what the art looks like, and who can read the result. Deliberately
+        NOT inside More options -- a writer who never opens that section would
+        never see either, and publishing is not an advanced setting.
+      */}
+      <View style={styles.optionGrid}>
+        <Dropdown
+          id="imageStyle"
+          label="Image style"
+          value={draft.imageStyle ?? "auto"}
+          options={IMAGE_STYLE_OPTIONS}
+          onChange={(imageStyle) => { update({ imageStyle }); onSelect(); }}
+          style={styles.optionGridItem}
+        />
+        {/*
+          Publishing is a dropdown now, not a switch. The switch said "Make it
+          public" and read as a preference; the two named states say what the
+          story will actually be. A guest can see the choice and cannot make
+          it -- the option's own words carry the reason, so a disabled control
+          is never a dead end with no explanation.
+        */}
+        <Dropdown
+          id="visibility"
+          label="Who can read it"
+          value={isAnonymous ? "private" : draft.visibility}
+          options={[
+            { value: "private", label: "Private", detail: "Only you can see this story." },
+            {
+              value: "public",
+              label: "Public",
+              detail: isAnonymous
+                ? "Public unlocks when sign-in is available."
+                : "Anyone on Katha can read it once it's written.",
+            },
+          ]}
+          disabled={isAnonymous}
+          onChange={(visibility) => { update({ visibility }); onSelect(); }}
+          style={styles.optionGridItem}
+        />
+      </View>
+      {/* The cost card is gone. It restated a number that is on the button
+          directly above it, and the number itself moves with what the brief
+          asks for -- chapter art, cover mode, chapter count -- so stating it
+          twice meant two places to be wrong. */}
       {!hasCredits ? <Text style={styles.creditWarning}>You need 3 credits to start this story.</Text> : null}
       {!ideaReady ? <Text style={styles.creditWarning}>Add a little more before generating this story.</Text> : null}
       {hasPendingCharacterImage ? <Text style={styles.creditWarning}>Wait for character images to finish before creating the story.</Text> : null}
-      <Pressable disabled={!ideaReady || !hasCredits || hasPendingCharacterImage} onPress={onCreate} accessibilityRole="button" accessibilityState={{ disabled: !ideaReady || !hasCredits || hasPendingCharacterImage }} style={[styles.primaryCta, (!ideaReady || !hasCredits || hasPendingCharacterImage) && styles.primaryCtaDisabled]}><Text style={styles.primaryCtaText}>Create · 3 credits</Text><Sparkles size={18} color={colors.surface} /></Pressable>
-      <Text style={styles.ctaStrength}>strength {Math.min(100, strength.slots * 25)}% · {strength.label.toLowerCase()}</Text>
+      <Pressable disabled={!ideaReady || !hasCredits || hasPendingCharacterImage} onPress={onCreate} accessibilityRole="button" accessibilityState={{ disabled: !ideaReady || !hasCredits || hasPendingCharacterImage }} style={[styles.primaryCta, (!ideaReady || !hasCredits || hasPendingCharacterImage) && styles.primaryCtaDisabled]}><Text style={styles.primaryCtaText}>Create story</Text></Pressable>
+      <Text style={styles.ctaStrength}>strength {Math.min(100, Math.round((strength.slots / STRENGTH_SLOTS) * 100))}% · {strength.label.toLowerCase()}</Text>
     </ScrollView>
-  );
-}
-
-/**
- * Structured review before the paid generation call.
- *
- * Restates every choice the setup screen collected — idea, genre, cast,
- * chapters, length, style, visibility — as a plain label/value list, and
- * nothing here is editable. Back returns to the same `main` stage with the
- * same draft, so "changing something" means going back and using the control
- * that already owns that field, not a second copy of it.
- */
-function ReviewScreen({
-  draft,
-  strength,
-  credits,
-  isAnonymous,
-  onBack,
-  onCreate,
-}: {
-  draft: StudioCreateDraft;
-  strength: ReturnType<typeof briefStrength>;
-  credits: number;
-  isAnonymous: boolean;
-  onBack: () => void;
-  onCreate: () => void;
-}) {
-  const hasCredits = credits >= 3;
-  const hasPendingCharacterImage = draft.characters.some(
-    (character) => character.portraitStatus === "generating",
-  );
-  const chapterLength = storyApi.effectiveChapterLength(draft);
-  const chapterLengthLabel = chapterLength.charAt(0).toUpperCase() + chapterLength.slice(1);
-  const chapterMinutes = CHAPTER_LENGTHS.find((item) => item.id === chapterLength)?.minutes;
-  const plannedChapterCount = draft.plannedChapterCount ?? 3;
-  const visibilityLabel = isAnonymous
-    ? "Private — sign in to publish"
-    : draft.visibility === "public" ? "Public" : "Private";
-  const charactersValue = draft.characters.length
-    ? draft.characters
-        .map((character) => `${character.name.trim() || "Untitled"}${character.isHero ? " (Lead)" : ""}`)
-        .join(", ")
-    : "None added";
-  const disabled = !hasCredits || hasPendingCharacterImage;
-
-  return (
-    <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-      <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to edit" onPress={onBack} hitSlop={2} style={styles.iconButton}>
-          <ArrowLeft size={20} color={colors.ink} />
-        </Pressable>
-        <CreditPill credits={credits} />
-      </View>
-      <View style={styles.reviewHero}>
-        <Text style={styles.eyebrow}>Review and create</Text>
-        <Text style={styles.title}>Here is what Katha will write</Text>
-        <Text style={styles.subtitle}>Check every choice below. Go back to change anything before generating.</Text>
-      </View>
-      {/*
-        A meter, not a card. The same `briefStrength()` score as before -- this
-        is presentation only -- but the old block spent a full padded card and
-        three lines of type on four bits of information, above the review list
-        it was meant to introduce. The bar is the reading; the label carries
-        the meaning for anyone who cannot see the bar, which is why the
-        accessible name states the level and the count rather than leaving a
-        screen reader with a coloured rectangle.
-      */}
-      <View
-        style={styles.strengthMeter}
-        accessible
-        accessibilityRole="progressbar"
-        accessibilityLabel={`Brief strength: ${strength.label}, ${strength.slots} of 4 details added. ${strength.detail}`}
-        accessibilityValue={{ min: 0, max: STRENGTH_SLOTS, now: strength.slots }}
-      >
-        <View style={styles.strengthMeterHead}>
-          <Text style={styles.strengthMeterLabel}>Brief strength · {strength.label}</Text>
-          <Text style={styles.strengthMeterCount}>{strength.slots}/{STRENGTH_SLOTS}</Text>
-        </View>
-        <View style={styles.strengthTrack}>
-          <View style={[styles.strengthFill, { width: `${(strength.slots / STRENGTH_SLOTS) * 100}%` }]} />
-        </View>
-      </View>
-      <View style={styles.reviewCard}>
-        <ReviewRow label="Your idea" value={draft.seed.trim() || "Not written yet"} />
-        <ReviewRow
-          label="Genre"
-          value={`${GENRE_EMOJI[draft.primaryGenre]} ${genreLabels[draft.primaryGenre]}${draft.audienceMode === "kids" ? " · Kids mode" : ""}`}
-        />
-        <ReviewRow label="Premise" value={draft.whereAndWhen?.trim() || "Not set"} />
-        <ReviewRow label="Who's in it" value={charactersValue} />
-        <ReviewRow
-          label="Moments to include"
-          value={draft.moments?.length
-            ? draft.moments.map((moment) => truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)).join(" · ")
-            : "None added"}
-        />
-        <ReviewRow label="Chapters" value={String(plannedChapterCount)} />
-        <ReviewRow
-          label="Chapter length"
-          value={chapterMinutes ? `${chapterLengthLabel} · about ${chapterMinutes} min each` : chapterLengthLabel}
-        />
-        <ReviewRow
-          label="Chapter art"
-          value={draft.illustrateChapters ? "On for chapters 2 and later" : "Off"}
-        />
-        <ReviewRow label="Writing style" value={draft.writingStyle?.trim() || "Not set"} />
-        {/* Spice is inferred server-side from the idea now, never chosen here
-            -- see MoreOptions and CreateStudioScreen's initial draft. */}
-        <ReviewRow label="Language" value={draft.language} />
-        <ReviewRow label="Avoid" value={draft.avoid?.trim() || "Nothing excluded"} />
-        <ReviewRow label="Visibility" value={visibilityLabel} />
-      </View>
-      {!hasCredits ? <Text style={styles.creditWarning}>You need 3 credits to start this story.</Text> : null}
-      {hasPendingCharacterImage ? <Text style={styles.creditWarning}>Wait for character images to finish before creating the story.</Text> : null}
-      <Pressable
-        disabled={disabled}
-        onPress={onCreate}
-        accessibilityRole="button"
-        accessibilityLabel="Create your story"
-        accessibilityState={{ disabled }}
-        style={[styles.primaryCta, disabled && styles.primaryCtaDisabled]}
-      >
-        <Text style={styles.primaryCtaText}>Create · 3 credits</Text>
-        <Sparkles size={18} color={colors.surface} />
-      </Pressable>
-    </ScrollView>
-  );
-}
-
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.reviewRow}>
-      <View style={styles.reviewCopy}>
-        <Text style={styles.reviewLabel}>{label}</Text>
-        <Text style={styles.reviewValue}>{value}</Text>
-      </View>
-    </View>
   );
 }
 
 function MoreOptions({
   draft,
-  isAnonymous,
   maxMoments,
   momentInput,
   onMomentInput,
@@ -1067,7 +1144,6 @@ function MoreOptions({
   onSelect,
 }: {
   draft: StudioCreateDraft;
-  isAnonymous: boolean;
   maxMoments: number;
   momentInput: string;
   onMomentInput: (value: string) => void;
@@ -1085,29 +1161,42 @@ function MoreOptions({
   const namedCharacters = draft.characters.filter((character) => character.name.trim());
   // The chip reads "@Naina" so it is obviously a tag, but what it INSERTS is
   // still the bare name. The moment text goes to the prompt, where an "@" is
-  // noise the model has to ignore, and the review screen and the moment chips
-  // both echo that text back verbatim.
+  // noise the model has to ignore, and the moment chips echo that text back
+  // verbatim.
   const appendCharacterName = (name: string) => {
     const base = momentInput.trimEnd();
     onMomentInput(base ? `${base} ${name.trim()}` : name.trim());
     onSelect();
   };
 
-  const chapterCountOptions: DropdownOption<string>[] = CHAPTER_COUNTS.map((count) => ({
-    value: String(count),
-    label: `${count} chapters`,
-    valueLabel: String(count),
-    accessibilityLabel: `${count} chapters`,
-  }));
-  const chapterLength = storyApi.effectiveChapterLength(draft);
-  const chapterLengthOptions: DropdownOption<string>[] = CHAPTER_LENGTHS.map((item) => ({
-    value: item.id,
-    label: item.label,
-    detail: `About ${item.minutes} min · ${item.words}`,
-  }));
-  const languageOptions: DropdownOption<CreationLanguage>[] = [{ value: "English", label: "English" }];
-
   return <View style={styles.optionsPanel}>
+    {/* Writing style and Avoid are both craft constraints on the prose, so
+        they read as one group rather than two unrelated fields. */}
+    <View style={styles.groupedFieldCard}>
+      <OptionLabel label="Writing style" />
+      <TextInput accessibilityLabel="Writing style" value={draft.writingStyle ?? ""} onChangeText={(writingStyle) => update({ writingStyle })} placeholder="e.g. Warm, witty, first person" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
+      <View style={styles.groupedFieldDivider} />
+      <OptionLabel label="Avoid" />
+      <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
+    </View>
+
+    {/*
+      No "Chapter plan" here. The beats are still in the draft and still go to
+      generation, and the direction step is where the opening is chosen -- but
+      surfacing chapter summaries inside More options, before the user has
+      pressed Create at all, showed them the story's plan as a settings field
+      and read as a leak rather than a control.
+    */}
+
+    {/*
+      MOMENTS SIT AT THE FOOT OF THIS PANEL, DIRECTLY ABOVE LANGUAGE.
+
+      Both halves of the control -- the help toggle with its caption and the
+      composer with its cast tags -- moved together, because they are one
+      control: the caption explains what the box below it is asking for, and
+      splitting them would leave an unexplained text field in one place and an
+      explanation of nothing in another.
+    */}
     <View style={styles.labelRow}>
       <OptionLabel label="Moments to include" />
       <Pressable
@@ -1128,61 +1217,7 @@ function MoreOptions({
     ) : null}
     {namedCharacters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{namedCharacters.map((character) => <Pressable key={character.name} accessibilityRole="button" accessibilityLabel={`Add ${character.name.trim()} to this moment`} onPress={() => appendCharacterName(character.name)} style={styles.nameToken}><Text style={styles.nameTokenText}>@{character.name.trim()}</Text></Pressable>)}</ScrollView> : null}
     <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.momentText}>{truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
-    {moments.length < maxMoments ? <View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" maxLength={MAX_MOMENT_CHARS} placeholder="Add a moment" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View> : null}
-    {/*
-      No "Chapter plan" here. The beats are still in the draft and still go to
-      generation, and the blueprint screen is where they are shown and edited --
-      but surfacing chapter summaries inside More options, before the user has
-      pressed Create at all, showed them the story's plan as a settings field
-      and read as a leak rather than a control.
-    */}
-
-    {/* One line, two dropdowns -- checked to fit at 390pt without overflow. */}
-    <View style={styles.chapterRow}>
-      <Dropdown
-        id="chapters"
-        label="Chapters"
-        value={String(draft.plannedChapterCount ?? 3)}
-        options={chapterCountOptions}
-        onChange={(value) => {
-          const count = Number(value) as 3 | 7 | 15;
-          update({ plannedChapterCount: count, isSeries: true, beats: draft.beats?.slice(0, count) });
-          onSelect();
-        }}
-        style={styles.chapterRowItem}
-      />
-      <Dropdown
-        id="chapterLength"
-        label="Chapter length"
-        value={chapterLength}
-        options={chapterLengthOptions}
-        onChange={(value) => { update({ chapterLength: value as "short" | "standard" | "long" }); onSelect(); }}
-        style={styles.chapterRowItem}
-      />
-    </View>
-
-    <View style={styles.switchRow}>
-      <View style={styles.switchCopy}>
-        <Text style={styles.switchLabel}>Chapter art</Text>
-        {/* CREDITS_AND_PRICING.md: illustrating a chapter is +1 credit on top
-            of its base 1 (so 2 total), matching every chapter from 2 onward --
-            chapter 1's art is compulsory and already the cover. */}
-        <Text style={styles.switchHint}>Adds an illustration to every chapter after the first, for 1 more credit each.</Text>
-      </View>
-      <Toggle value={Boolean(draft.illustrateChapters)} onValueChange={(illustrateChapters) => { update({ illustrateChapters }); onSelect(); }} accessibilityLabel="Chapter art" />
-    </View>
-
-    {/* Writing style and Avoid are both craft constraints on the prose, so
-        they read as one group rather than two unrelated fields. */}
-    <View style={styles.groupedFieldCard}>
-      <OptionLabel label="Writing style" />
-      <TextInput accessibilityLabel="Writing style" value={draft.writingStyle ?? ""} onChangeText={(writingStyle) => update({ writingStyle })} placeholder="e.g. Warm, witty, first person" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
-      <View style={styles.groupedFieldDivider} />
-      <OptionLabel label="Avoid" />
-      <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
-    </View>
-
-    <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Make it public</Text><Text style={styles.switchHint}>{isAnonymous ? "Public unlocks when sign-in is available." : draft.visibility === "public" ? "Anyone on Katha can read it once it's written." : "Only you can see this story."}</Text></View><Toggle value={draft.visibility === "public"} disabled={isAnonymous} onValueChange={(visible) => { update({ visibility: visible ? "public" : "private" }); onSelect(); }} accessibilityLabel="Make it public" /></View>
+    {moments.length < maxMoments ? <View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" maxLength={MAX_MOMENT_CHARS} placeholder="Moments to include in general or between characters" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View> : null}
 
     {/*
       English only, at the bottom, for now. The spice control was removed
@@ -1196,7 +1231,7 @@ function MoreOptions({
       id="language"
       label="Language"
       value={draft.language}
-      options={languageOptions}
+      options={LANGUAGE_OPTIONS}
       onChange={(language) => { update({ language }); onSelect(); }}
     />
   </View>;
@@ -1236,7 +1271,7 @@ export function CharacterCraftScreen({
   const imageBusy = character.portraitStatus === "generating";
   const canCreateImage = Boolean(
     character.name.trim() &&
-      (character.description.trim() || character.appearance?.trim()) &&
+      character.appearance.trim() &&
       !imageBusy,
   );
   const canSave = Boolean(character.name.trim()) && !imageBusy;
@@ -1251,9 +1286,8 @@ export function CharacterCraftScreen({
           </View>
           <Text style={styles.characterIntro}>A little detail here gives the story a stronger voice and a more recognizable cast.</Text>
           <Field label="Name"><TextInput accessibilityLabel="Name" value={character.name} onChangeText={(value) => set("name", value)} placeholder="e.g. Naina Mistry" placeholderTextColor={colors.tertiary} style={styles.characterInput} /></Field>
-          <Field label="Description"><TextInput accessibilityLabel="Description" value={character.description} onChangeText={(value) => set("description", value)} placeholder="Role, age, and who they are. e.g. A 29-year-old baker with a practical streak." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
           <Field label="Background"><TextInput accessibilityLabel="Background" value={character.background ?? ""} onChangeText={(value) => set("background", value)} placeholder="Personality, relationships, backstory, traits. e.g. Keeps her late father's recipes but never uses them." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
-          <Field label="Appearance"><TextInput accessibilityLabel="Appearance" value={character.appearance ?? ""} onChangeText={(value) => set("appearance", value)} placeholder="Face, build, clothing, accessories. e.g. Curly hair, flour on her sleeves, her grandmother's signet ring." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
+          <Field label="Appearance"><TextInput accessibilityLabel="Appearance" value={character.appearance} onChangeText={(value) => set("appearance", value)} placeholder="Who they are and what they look like. e.g. A 29-year-old baker with a practical streak, curly hair, flour on her sleeves." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
           <View style={styles.portraitPanel}>
             <View style={[styles.portraitPreview, imageReady && styles.portraitPreviewReady]}>
               {/*
@@ -1494,44 +1528,26 @@ const styles = StyleSheet.create({
   optionsTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 17 },
   optionsHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, marginTop: 2 },
   optionsPanel: { gap: spacing.sm, paddingTop: spacing.xs },
-  optionGrid: { flexDirection: "row", gap: spacing.sm },
+  // Two per row, and they REFLOW. `flexBasis: "48%"` with `flexGrow` means the
+  // pair splits whatever width there is and drops to one per row when the
+  // labels grow -- a narrow device, or a large `fontScale` -- instead of a
+  // fixed two-column grid clipping the longer label.
+  optionGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  optionGridItem: { flexBasis: "48%", flexGrow: 1 },
   optionCell: { flex: 1, gap: spacing.xs },
   optionLabel: { color: colors.ink, fontFamily: fonts.ui, fontWeight: "800", fontSize: 13, marginTop: spacing.xs },
   optionHint: { color: colors.tertiary, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17 },
   compactSegments: { flexDirection: "row", gap: spacing.xs },
   optionChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingVertical: spacing.xs },
-  switchCopy: { flex: 1, gap: 2 },
   switchLabel: { color: colors.ink, fontFamily: fonts.ui, fontWeight: "800", fontSize: 14 },
   switchHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, marginTop: 2 },
   optionInput: { minHeight: 46, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, color: colors.ink, fontFamily: fonts.ui, fontSize: 14 },
   labelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   helpButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
   helpCaption: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, marginTop: -spacing.xs },
-  chapterRow: { flexDirection: "row", gap: spacing.sm },
-  chapterRowItem: { flex: 1 },
   groupedFieldCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   groupedFieldDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
-  reviewHero: { gap: spacing.sm, paddingTop: spacing.lg },
-  // spacing.related is the label-to-control gap: the caption and the bar are
-  // one unit, so they hug, and the meter as a whole is parted from the review
-  // card by the scroll container's own larger gap.
-  strengthMeter: { gap: spacing.related },
-  strengthMeterHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: spacing.sm },
-  strengthMeterLabel: { color: colors.ink, fontFamily: fonts.ui, fontWeight: "800", fontSize: 13 },
-  strengthMeterCount: { color: colors.tertiary, fontFamily: fonts.ui, fontWeight: "800", fontSize: 13 },
-  strengthTrack: { height: 6, borderRadius: 3, backgroundColor: colors.borderStrong, overflow: "hidden" },
-  strengthFill: { height: "100%", borderRadius: 3, backgroundColor: colors.accent },
-  reviewCard: { borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
-  reviewRow: { minHeight: 68, flexDirection: "row", alignItems: "center", padding: spacing.md, gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  reviewCopy: { flex: 1, gap: 3 },
-  reviewLabel: { color: colors.tertiary, fontFamily: fonts.ui, fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
-  reviewValue: { color: colors.ink, fontFamily: fonts.ui, fontSize: 14, lineHeight: 19, fontWeight: "600" },
-  costCard: { flexDirection: "row", gap: spacing.md, padding: spacing.lg, borderRadius: radius.md, backgroundColor: colors.surface2 },
-  costIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  costCopy: { flex: 1, gap: 2 },
-  costTitle: { color: colors.ink, fontFamily: fonts.ui, fontWeight: "800", fontSize: 14 },
-  costDetail: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 18 },
   creditWarning: { color: colors.heart, fontFamily: fonts.ui, fontSize: 13, fontWeight: "700", textAlign: "center" },
   characterScroll: { flexGrow: 1, paddingHorizontal: spacing.xl, gap: spacing.lg },
   characterIntro: { color: colors.muted, fontFamily: fonts.ui, fontSize: 15, lineHeight: 22 },

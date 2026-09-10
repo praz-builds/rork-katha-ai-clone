@@ -123,7 +123,25 @@ export const colors = {
   chromeMuted: "#B5ADA2",
   chromeTrack: "#3A352F",
   /** The saved-star fill on a dark ground. Amber, not the accent orange, so it reads as "starred". */
-  chromeStar: "#F5B324"
+  chromeStar: "#F5B324",
+  /**
+   * Scrims — the translucent ink laid over artwork so text on top stays legible.
+   *
+   * Three steps because three are in use, and they were in use as three
+   * separately hand-typed rgba strings that had already drifted apart in their
+   * spacing (`rgba(15,14,12,0.26)` and `rgba(15, 14, 12, 0.45)` in the same
+   * codebase) and in their base colour: the player's close button was mixed
+   * from a different ink entirely. A scrim is a colour decision — it decides
+   * whether a caption over a cover is readable — so it belongs here where it can
+   * be changed once, not at eight call sites where it cannot.
+   *
+   * `scrim` sits under a caption on a cover, `scrimStrong` under a full sheet
+   * backdrop, `scrimHeavy` behind a control that must clear ANY artwork under
+   * it because it cannot choose its own background.
+   */
+  scrim: "rgba(15, 14, 12, 0.26)",
+  scrimStrong: "rgba(15, 14, 12, 0.45)",
+  scrimHeavy: "rgba(15, 14, 12, 0.55)"
 } as const;
 
 /**
@@ -199,7 +217,18 @@ export const spacing = {
   /** Semantic: gap inside a group of related elements (label -> control, heading -> content). See the doc comment above. */
   related: 8,
   /** Semantic: gap between one such group and the next, and below a title/sub pair. The other half of `related`. */
-  betweenGroups: 24
+  betweenGroups: 24,
+  /**
+   * The gap between two lines that are ONE thing: a value and its label, a row
+   * title and its subtitle.
+   *
+   * Below `xs`, and deliberately so. It was written as a bare `marginTop: 2` in
+   * a dozen places because there was no step small enough, and a bare 2 is the
+   * exact kind of value that becomes a 3 somewhere and a 1 somewhere else. It
+   * is not a spacing step in the rhythm — it is the absence of one, which is
+   * what says "these two lines are a single unit".
+   */
+  tight: 2
 } as const;
 
 /**
