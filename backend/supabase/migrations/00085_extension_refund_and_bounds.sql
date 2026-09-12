@@ -38,6 +38,12 @@
 -- it and never send the flag. Both functions keep their signatures, so
 -- `create or replace` is correct and the existing grants are preserved.
 
+alter table public.generation_operations
+    add column if not exists plan_raised_from integer;
+
+comment on column public.generation_operations.plan_raised_from is
+    'The story''s planned_chapter_count immediately BEFORE this operation raised it, or null when this operation did not raise it. Written only by reserve_generation_operation and read only by refund_generation_operation, which restores it. It exists because "this operation extended the plan" and "this operation was the last chapter of the plan" are otherwise indistinguishable on the row: both have kind=continuation and chapter_number = planned_chapter_count.';
+
 create or replace function public.reserve_generation_operation(
     p_user_id uuid,
     p_request_id text,
@@ -58,6 +64,7 @@ declare
     v_story_mode text;
     v_planned integer;
     v_written integer;
+    v_plan_raised_from integer;
 begin
     if p_request_id is null
        or pg_catalog.btrim(p_request_id) = ''
@@ -174,8 +181,19 @@ begin
         from public.chapters c
         where c.story_id = p_story_id;
 
-        if p_extend_to_chapter
-           > greatest(coalesce(v_planned, 3), coalesce(v_written, 0)) + 1 then
+        -- The bound applies to the path that actually RAISES the plan. A flag
+        -- sent for a chapter already inside the plan changes nothing, and
+        -- 00079 deliberately made that a paid no-op; refusing it there was the
+        -- first version's mistake.
+        --
+        -- When it does raise, the target must be exactly one past the chapters
+        -- that exist -- not merely "not too far past". Bounding only the upper
+        -- side still let a service-role caller reserve chapter 3 of a story
+        -- that owns one, inside a plan of seven, and leave chapter 2 missing
+        -- for ever; every later continuation numbers from the newest chapter,
+        -- so nothing ever fills the hole.
+        if p_extend_to_chapter > coalesce(v_planned, 3)
+           and p_extend_to_chapter <> coalesce(v_written, 0) + 1 then
             raise exception using
                 errcode = 'KTH03',
                 message = 'Story cannot be extended';
@@ -188,6 +206,11 @@ begin
             update public.stories
             set planned_chapter_count = p_extend_to_chapter
             where id = p_story_id;
+            -- Recorded so a refund can put back exactly this, and so that an
+            -- operation which did NOT raise the plan is distinguishable from
+            -- one that did. `v_planned` is the value read under the lock a few
+            -- lines above, so it is the plan as it was before this statement.
+            v_plan_raised_from := v_planned;
         end if;
     end if;
 
@@ -222,13 +245,15 @@ begin
             request_id,
             story_id,
             chapter_number,
-            kind
+            kind,
+            plan_raised_from
         ) values (
             p_user_id,
             p_request_id,
             p_story_id,
             p_chapter_number,
-            p_kind
+            p_kind,
+            v_plan_raised_from
         ) returning * into v_operation;
     exception
         when unique_violation then
@@ -385,12 +410,19 @@ begin
             * an auto story writes the raised chapter by itself on the next
               pass, because it reads the same false plan.
 
-          Three conditions, and each one is load-bearing:
+          READ FROM THE ROW, NOT INFERRED. The first version restored
+          `chapter_number - 1` whenever the plan equalled the chapter -- which
+          is also true of an ordinary LAST in-plan chapter. A three-chapter
+          story whose chapter 3 failed had its plan quietly cut to 2: the story
+          became "complete" one chapter early and its ending was unreachable.
+          `plan_raised_from` is null unless this operation actually raised the
+          plan, so an in-plan failure now restores nothing.
 
-            * `planned_chapter_count = chapter_number` -- this operation is the
-              one that raised it. If the plan is higher, a later extension
-              raised it further and lowering it here would corrupt that story
-              instead.
+          The other two conditions are still load-bearing:
+
+            * `planned_chapter_count = chapter_number` -- the plan is still the
+              one this operation set. If a later extension raised it further,
+              lowering it here would corrupt that story instead.
             * no `chapters` row at that number -- the chapter was never written.
               A refund cannot reach a completed operation, but this makes the
               restore depend on the fact rather than on the status.
@@ -401,10 +433,9 @@ begin
           exactly `plan + 1`, so restoring to anything but `chapter_number - 1`
           would make the writer's next attempt fail with KTH03.
         */
-        if v_operation.kind = 'continuation'
-           and v_operation.chapter_number > 1 then
+        if v_operation.plan_raised_from is not null then
             update public.stories s
-            set planned_chapter_count = v_operation.chapter_number - 1
+            set planned_chapter_count = v_operation.plan_raised_from
             where s.id = v_operation.story_id
               and s.planned_chapter_count = v_operation.chapter_number
               and not exists (

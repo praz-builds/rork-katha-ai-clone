@@ -232,3 +232,92 @@ Deno.test("a legacy story with no plan is extendable from what it has written", 
     await db.close();
   }
 });
+
+// The bug the first version of this migration introduced. It restored
+// `chapter_number - 1` whenever the plan equalled the chapter — which is also
+// true of an ordinary LAST in-plan chapter, so a failure there quietly cut the
+// story short and made its ending unreachable.
+Deno.test("a failed last in-plan chapter does not shrink the plan", async () => {
+  const db = await createDatabase();
+  try {
+    await db.query("insert into auth.users(id) values ($1)", [USER]);
+    await db.query("insert into profiles(id) values ($1)", [USER]);
+    await db.query(
+      "select grant_credit($1, 60, 'welcome', 'inplan-fail', 'welcome:inplan-fail')",
+      [USER],
+    );
+    const story = await db.query<{ id: string }>(
+      `insert into public.stories (author_id, title, genre, primary_genre, status, story_mode, planned_chapter_count)
+       values ($1,'T',array['mystery']::text[],'mystery','complete','series',3) returning id`,
+      [USER],
+    );
+    for (const n of [1, 2]) {
+      await db.query(
+        `insert into public.chapters (story_id, chapter_number, title, content)
+         values ($1,$2,'C','text')`,
+        [story.rows[0].id, n],
+      );
+    }
+    // Chapter 3 of a 3-chapter plan: ordinary, in-plan, no extension flag.
+    const reserved = await db.query<{ reserve_generation_operation: Record<string, unknown> }>(
+      `select reserve_generation_operation($1,$2,$3,3,'continuation',false,null)`,
+      [USER, "last-chapter", story.rows[0].id],
+    );
+    await db.query("select refund_generation_operation($1,$2,'provider failed')", [
+      reserved.rows[0].reserve_generation_operation.id as string,
+      USER,
+    ]);
+    const after = await db.query<{ planned_chapter_count: number }>(
+      "select planned_chapter_count from public.stories where id = $1",
+      [story.rows[0].id],
+    );
+    // Still 3. Cut to 2, the story would read complete with its ending
+    // permanently unwritten.
+    assertEquals(after.rows[0].planned_chapter_count, 3);
+  } finally {
+    await db.close();
+  }
+});
+
+// Bounding only the upper side still allowed a hole: chapter 3 of a story that
+// owns one, inside a plan of seven, leaves chapter 2 missing for ever because
+// every later continuation numbers from the newest chapter.
+Deno.test("an extension cannot open a gap inside an existing plan", async () => {
+  const db = await createDatabase();
+  try {
+    await db.query("insert into auth.users(id) values ($1)", [USER]);
+    await db.query("insert into profiles(id) values ($1)", [USER]);
+    await db.query(
+      "select grant_credit($1, 60, 'welcome', 'gap', 'welcome:gap')",
+      [USER],
+    );
+    const story = await db.query<{ id: string }>(
+      `insert into public.stories (author_id, title, genre, primary_genre, status, story_mode, planned_chapter_count)
+       values ($1,'T',array['mystery']::text[],'mystery','complete','series',1) returning id`,
+      [USER],
+    );
+    await db.query(
+      `insert into public.chapters (story_id, chapter_number, title, content)
+       values ($1,1,'C1','text')`,
+      [story.rows[0].id],
+    );
+    let refused = false;
+    try {
+      // Raises the plan (5 > 1) but skips chapters 2, 3 and 4.
+      await db.query(
+        `select reserve_generation_operation($1,$2,$3,5,'continuation',false,5)`,
+        [USER, "gap-5", story.rows[0].id],
+      );
+    } catch {
+      refused = true;
+    }
+    assertEquals(refused, true);
+    const after = await db.query<{ planned_chapter_count: number }>(
+      "select planned_chapter_count from public.stories where id = $1",
+      [story.rows[0].id],
+    );
+    assertEquals(after.rows[0].planned_chapter_count, 1);
+  } finally {
+    await db.close();
+  }
+});
