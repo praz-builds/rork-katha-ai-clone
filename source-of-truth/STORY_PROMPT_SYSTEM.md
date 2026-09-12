@@ -95,9 +95,14 @@ writer, not by a generic assistant. The prompt system must optimize for:
   traits, not living author names or instructions that could imitate a style.
 - **Prompt-only JSON is not enough.** Use API-level structured output/schema
   enforcement where supported, with strict validation fallback.
-- **A Create story is planned, not mode-selected.** The user chooses 3, 7, or 15
-  chapters in More options. New Create stories begin as Chapter 1 and persist
-  state, hooks, and chapter roles toward the planned finale. `standalone`
+- **A Create story is planned, not mode-selected.** The user chooses **1, 3, 7
+  or 15** chapters from the Chapters dropdown. New Create stories begin as
+  Chapter 1 and persist state, hooks, and chapter roles toward the planned
+  finale. A plan of **1** is a series of one, not a standalone, and gets its own
+  `## One-Chapter Contract` — the Series Opening Contract forbids resolving the
+  central conflict, which is the opposite of what a single chapter has to do.
+  A finished story can be **extended** one chapter at a time, so the STORED plan
+  is any value from 1 to 15 even though only four are offered. `standalone`
   remains backend compatibility for legacy callers, not a creation control.
 - **Every prompt change needs evals.** Genre quality, banned patterns, safety,
   schema validity, series state, and continuation behavior must be tested before
@@ -1292,8 +1297,12 @@ Required request fields:
   them through action rather than delivering a lesson
 - `chapter_length`: `short | standard | long`, selecting 600-900, 1,200-1,600 or
   2,000-2,600 words respectively
-- `planned_chapter_count`: `3 | 7 | 15`; it drives continuation pacing and the
-  automatic finale
+- `planned_chapter_count`: **1..15**. The picker offers 1, 3, 7 and 15; every
+  other value in range is reached by a reader extending a finished story one
+  chapter at a time (`reserve_generation_operation.p_extend_to_chapter`, 00079,
+  bounded to exactly `plan + 1` by 00081). It drives continuation pacing and the
+  automatic finale — and an extension is deliberately NOT a finale, except the
+  one that reaches 15, which must be or the story never gets an ending
 - `illustrate_chapters`: optional boolean for chapter art after Chapter 1;
   Chapter 1 art remains compulsory and is the cover
 - `visibility`: `private | public`, default `private`; publication handling uses
