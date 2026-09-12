@@ -264,7 +264,49 @@ function buildStoryModeRules(
     ? "series_opening"
     : "standalone",
   seriesState?: SeriesState,
+  /**
+   * The planned length, needed HERE and not only in the length layer.
+   *
+   * A one-chapter story is a series of one, so its chapter 1 is a
+   * `series_opening` and used to be handed the Series Opening Contract below:
+   * "Do NOT resolve the central conflict", "unfinished as a larger story". The
+   * length layer then told the same model "this chapter is the whole story:
+   * land a complete, satisfying arc inside it". Two instructions, in the same
+   * prompt, that cannot both be obeyed -- and the contract is the earlier and
+   * more forceful of the two, so the writer who asked for one chapter would
+   * have got a chapter that deliberately does not finish.
+   *
+   * The layers disagreed because only one of them was taught about a plan of
+   * one. This teaches the other.
+   */
+  plannedChapterCount?: number,
 ): string {
+  /*
+    ONE CHAPTER IS ITS OWN CONTRACT, not the opening contract with a caveat.
+
+    It is neither of the two that already existed. A standalone resolves and
+    closes every door; a series opening refuses to resolve at all. A one-chapter
+    story has to do both halves of a thing: satisfy completely on its own AND
+    leave exactly one thread live, because the direction chips at its end are
+    derived from `series_state` and the closing hook. A chapter that closes
+    every door leaves the reader nothing to extend the story WITH, which is the
+    entire feature this length exists to serve.
+  */
+  if (storyMode === "series" && plannedChapterCount === 1) {
+    return `
+
+## One-Chapter Contract
+
+This story is planned for a single chapter, so this chapter IS the story — and it may be continued later if the reader asks for more.
+
+- Deliver a complete, satisfying arc: setup, escalation, climax and a landing. A reader must be able to stop here and feel the story finished.
+- Resolve the central conflict you raise. Do not defer it to a chapter that does not exist.
+- Leave exactly ONE live thread — a question, a consequence, a door left ajar — that a continuation could grow from. One, not several: this is a finished story with a possible future, not an unfinished one.
+- That thread must be a consequence of the story you told, never a cliffhanger pasted onto the last paragraph. The reader chose one chapter; do not punish them with an ending that withholds.
+- Use a soft "hook_type" that matches the thread, and record it in "open_hooks" with a "next_chapter_pressure" that says what a continuation would push toward.
+- Return a complete "series_state" object. It is what the reader's direction chips are built from, so an empty one makes the story unextendable.`;
+  }
+
   if (storyMode === "standalone" || chapterRole === "standalone") {
     return `
 
@@ -1103,6 +1145,7 @@ function buildStoryPromptBody(params: SystemPromptParams): string {
       params.storyMode,
       params.chapterRole,
       params.seriesState,
+      params.plannedChapterCount,
     ),
     buildGenreModule(safeGenre),
     buildAudienceModeRules(

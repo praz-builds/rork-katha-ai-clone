@@ -2155,3 +2155,46 @@ Deno.test("an extended plan is stated as the number it actually is", () => {
   });
   assertStringIncludes(prompt, "This is a 4-chapter story.");
 });
+
+/**
+ * A one-chapter story is a series of one, so its chapter 1 is a
+ * `series_opening` — and it used to be handed the Series Opening Contract,
+ * which forbids the very thing the length layer demands. Two instructions in
+ * one prompt that cannot both be obeyed, with the contract the louder of them.
+ */
+Deno.test("a one-chapter story gets its own contract, not the opening one", () => {
+  const prompt = buildStorySystemPrompt({
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "series_opening",
+    plannedChapterCount: 1,
+  });
+  assertStringIncludes(prompt, "## One-Chapter Contract");
+  assertStringIncludes(prompt, "Resolve the central conflict you raise");
+  assertStringIncludes(prompt, "Leave exactly ONE live thread");
+
+  // The contradiction is gone, not merely outvoted.
+  assertEquals(prompt.includes("## Series Opening Contract"), false);
+  assertEquals(prompt.includes("Do NOT resolve the central conflict"), false);
+  assertEquals(prompt.includes("unfinished as a larger story"), false);
+});
+
+Deno.test("every other planned length keeps the contract it always had", () => {
+  for (const planned of [3, 7, 15, undefined]) {
+    const prompt = buildStorySystemPrompt({
+      primaryGenre: "mystery",
+      storyMode: "series",
+      chapterRole: "series_opening",
+      plannedChapterCount: planned,
+    });
+    assertStringIncludes(prompt, "## Series Opening Contract");
+    assertEquals(prompt.includes("## One-Chapter Contract"), false);
+  }
+  // And a standalone is untouched by any of this.
+  const standalone = buildStorySystemPrompt({
+    primaryGenre: "mystery",
+    storyMode: "standalone",
+    plannedChapterCount: 1,
+  });
+  assertStringIncludes(standalone, "## Standalone Story Contract");
+});
