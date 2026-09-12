@@ -135,7 +135,45 @@ export const IconChevronForward = icon(
   16,
 );
 
+/**
+ * A person who has no portrait yet.
+ *
+ * The character onboarding draws a portrait card before the image exists, and
+ * again whenever the offline path hands back a `draft-character://` URL that no
+ * `<Image>` can load. Without a glyph the card is an empty grey rectangle, which
+ * reads as a broken image rather than as a frame waiting to be filled.
+ */
+export const IconPerson = icon("IconPerson", "person-outline", 28);
+
+/**
+ * A credit. The spark, not a coin or a gem.
+ *
+ * Credits are already drawn as a spark everywhere else in the app (the Create
+ * button, the cost card, the credits row on the profile, Home's header pill),
+ * so onboarding's welcome coins use the same mark rather than inventing a
+ * second idea of what a credit looks like on the one screen where the reader
+ * meets them first. Default 18 matches the other action-sized glyphs here;
+ * the welcome coin passes its own size because it scales with the window.
+ */
+export const IconSparkle = icon("IconSparkle", "sparkles-outline", 18);
+
+/**
+ * A shelf, a library, a cast you can come back to.
+ *
+ * The Meet screen's "Saved to your cast" row is the one promise in onboarding
+ * about the character OUTLASTING this session, and the other glyphs here are
+ * all about the moment (a person, a spark, a pencil). A book is the only mark
+ * in the set that reads as "kept somewhere".
+ */
+export const IconBook = icon("IconBook", "book-outline", 18);
+
 export const IconPencil = icon("IconPencil", "pencil-outline", 18);
 export const IconRefresh = icon("IconRefresh", "refresh-outline", 18);
 export const IconPalette = icon("IconPalette", "color-palette-outline", 18);
 export const IconTrash = icon("IconTrash", "trash-outline", 18);
+
+/** Voices: the audio entitlement row on the paywall. */
+export const IconMic = icon("IconMic", "mic-outline", 18);
+
+/** A document you can take away: the PDF export entitlement row. */
+export const IconDocument = icon("IconDocument", "document-text-outline", 18);

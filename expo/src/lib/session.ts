@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { captureError } from "@/lib/analytics";
 import { setViewerId } from "@/lib/ownership";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -92,9 +93,12 @@ function isUnusableSessionError(error: unknown): boolean {
   return status === 401 || status === 403;
 }
 
-async function callBootstrap(accessToken: string): Promise<BootstrappedUser> {
+async function callBootstrap(
+  accessToken: string,
+  body: Record<string, unknown> = {},
+): Promise<BootstrappedUser> {
   const { data, error } = await supabase.functions.invoke("bootstrap-user", {
-    body: {},
+    body,
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (error) throw error;
@@ -154,12 +158,131 @@ function authBypassed(): boolean {
   return __DEV__ && process.env.EXPO_PUBLIC_APP_ENV === "local";
 }
 
+/**
+ * How the code that was just sent has to be verified, and what identity it
+ * will land on.
+ *
+ * `email_change` is the conversion path: the anonymous user asked Supabase to
+ * put an address on ITSELF, so verifying keeps `auth.users.id` and everything
+ * hanging off `profiles(id)` -- the onboarding character and the guest credits
+ * included. `email` is the fallback: that address already belongs to somebody,
+ * so verifying signs into THAT account and the guest identity is left behind.
+ * `already_confirmed` is the project-configuration case where Supabase applied
+ * the address without asking for a code at all.
+ */
+type EmailOtpMode = "email_change" | "email" | "already_confirmed";
+
+/**
+ * What `sendEmailCode` just did, so `verifyEmailCode` verifies the same thing.
+ *
+ * Module state rather than a return value because agent A's screen calls these
+ * two by their existing signatures and must keep working. `verifyEmailCode`
+ * re-derives the mode from the live session when the entry is missing (a
+ * reload between the two screens), so losing it degrades rather than erroring.
+ *
+ * KEYED BY ADDRESS, not a single slot. A single slot is one send at a time:
+ * a user who mistypes, sends, corrects and sends again -- or a flow that hands
+ * off to a plain sign-in -- overwrote the first send's mode AND its guest
+ * token, and then the code that actually arrived for the first address got
+ * verified against the second address's decision. Worse, the guest token is
+ * the proof `claim_guest_characters` runs on, so the wrong pairing claimed a
+ * character onto an account that never made it. One entry per address, and
+ * the map is emptied whenever the identity changes underneath it.
+ */
+const pendingEmailOtp = new Map<
+  string,
+  { mode: EmailOtpMode; guestAccessToken?: string }
+>();
+
+/** The map's key: the address as typed never matches the address as stored. */
+function otpKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Forget every outstanding send.
+ *
+ * Called once the session has changed hands. A pending entry names a guest
+ * access token, and after a verify that token belongs to an identity this
+ * device is no longer on -- replaying it would claim a character onto whoever
+ * signs in next.
+ */
+function forgetPendingEmailOtp(): void {
+  pendingEmailOtp.clear();
+}
+
+/** The stored session if it belongs to a guest, otherwise null. */
+async function anonymousSession(): Promise<
+  { access_token: string; user_id?: string } | null
+> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const session = data?.session;
+    if (!session?.access_token) return null;
+    if (session.user?.is_anonymous !== true) return null;
+    return { access_token: session.access_token, user_id: session.user?.id };
+  } catch {
+    // Not knowing means "treat this as a named session": the fallback path
+    // below is correct for one and merely suboptimal for the other.
+    return null;
+  }
+}
+
+/**
+ * Is this Supabase refusing to move the address because somebody already has
+ * it, rather than any other failure?
+ *
+ * Only this one error may fall through to signing into that other account.
+ * Treating every `updateUser` failure that way would silently strand the
+ * guest's character on a network blip.
+ */
+function isEmailTakenError(error: unknown): boolean {
+  const detail = error as { code?: string; status?: number; message?: string };
+  if (detail?.code === "email_exists") return true;
+  return typeof detail?.message === "string" &&
+    /already (been )?registered|already exists|email_exists/i
+      .test(detail.message);
+}
+
 export async function sendEmailCode(email: string): Promise<void> {
   // SCAFFOLD: AUTH_NOT_WIRED. See the note above `verifyEmailCode`.
   if (authBypassed()) return;
   if (!isSupabaseConfigured) return;
+  const address = email.trim();
+
+  const guest = await anonymousSession();
+  if (guest) {
+    // Convert IN PLACE. `signInWithOtp` on a guest session creates a second
+    // account, and everything made during onboarding -- the character row in
+    // `user_characters`, the three guest credits, the profile -- is keyed to
+    // the anonymous id and does not come with it.
+    const { data, error } = await supabase.auth.updateUser({ email: address });
+    if (!error) {
+      // Supabase parks the address in `new_email` while a confirmation is
+      // outstanding. A project with email-change confirmation turned off
+      // applies it immediately and sends no code, and asking for one then
+      // would fail on a screen whose work is already done.
+      const applied = data?.user?.email?.toLowerCase() === address.toLowerCase();
+      const pendingConfirmation = Boolean(data?.user?.new_email);
+      pendingEmailOtp.set(otpKey(address), {
+        mode: !pendingConfirmation && applied ? "already_confirmed" : "email_change",
+        guestAccessToken: guest.access_token,
+      });
+      return;
+    }
+    if (!isEmailTakenError(error)) throw error;
+    // The address belongs to an existing account. Sign into it, and move the
+    // character across afterwards -- see `verifyEmailCode`.
+    pendingEmailOtp.set(otpKey(address), {
+      mode: "email",
+      guestAccessToken: guest.access_token,
+    });
+  } else {
+    pendingEmailOtp.set(otpKey(address), { mode: "email" });
+  }
+
   const { error } = await supabase.auth.signInWithOtp({
-    email: email.trim(),
+    email: address,
     options: { shouldCreateUser: true },
   });
   if (error) throw error;
@@ -186,6 +309,52 @@ export async function sendEmailCode(email: string): Promise<void> {
  * `local`, is an auth hole. `src/__tests__/session.test.ts` asserts both
  * directions to keep it that way.
  */
+/**
+ * ## Identity across sign-in (the finding, 2026-09-11)
+ *
+ * **Before this change `auth.users.id` was NOT preserved.** `sendEmailCode`
+ * called `signInWithOtp({ shouldCreateUser: true })` and this function
+ * `verifyOtp({ type: "email" })`, which is Supabase's create-or-sign-into-an
+ * -account pair, not its convert-an-anonymous-user pair. On the new character
+ * onboarding that is a silent data loss, not a cosmetic one:
+ *
+ * - The portrait is generated and `saveCharacterToLibrary` writes a
+ *   `user_characters` row whose `owner_id` is the ANONYMOUS `profiles(id)`.
+ * - Verifying the code then swapped the session for a different user id.
+ * - `user_characters` is owner-only under RLS (migration 00057), so the row is
+ *   still there and the caller can no longer see it. The library comes back
+ *   empty and nothing reports an error -- the character the whole flow exists
+ *   to produce is gone the moment the user saves it.
+ * - The three guest credits (`bootstrap_anonymous_user`, migration 00035) stay
+ *   on the anonymous id too, and the new account starts at zero.
+ *
+ * The supported in-place path is `updateUser({ email })` on the anonymous
+ * session followed by `verifyOtp({ type: "email_change" })`: same
+ * `auth.users.id`, same `profiles.id`, so the character, the credits and the
+ * cached display name all stay attached and nothing has to be migrated.
+ * `sendEmailCode` now takes that path and records it in `pendingEmailOtp`.
+ *
+ * **The anonymous profile row is not deleted and does not need to be** -- on
+ * the conversion path it IS the account now; only `auth.users.is_anonymous`
+ * flips to false. `bootstrap-user` called again by the now-named user upserts
+ * the same `profiles` row with `ignoreDuplicates`, takes the `guest` branch no
+ * longer (so `bootstrap_anonymous_user` is not called and no second grant is
+ * minted) and returns the same `user_id` and the same balance.
+ *
+ * **The fallback, and its abuse boundary.** `updateUser` fails when the address
+ * already belongs to somebody, and there is no in-place merge for that: the
+ * user is signing into an account that predates this device. So we sign in
+ * with `signInWithOtp`/`verifyOtp({ type: "email" })` and then re-point the
+ * guest's `user_characters` rows at the account they just proved they own, by
+ * handing `bootstrap-user` the still-valid anonymous access token. The server
+ * verifies that token with Supabase Auth (never the client's claim about which
+ * id it was), requires `is_anonymous`, and calls the service-role-only
+ * `claim_guest_characters` RPC (migration 00082), which moves `owner_id` on
+ * that one table and nothing else. Possession of an unexpired anonymous JWT is
+ * the proof, and only the device that created it has one. Credits deliberately
+ * do NOT move: the guest grant is rate-limited per network (00035), and
+ * carrying it onto named accounts would turn that limit into a farm.
+ */
 export async function verifyEmailCode(
   email: string,
   code: string,
@@ -193,12 +362,89 @@ export async function verifyEmailCode(
   // SCAFFOLD: AUTH_NOT_WIRED. Unconfigured means unverifiable, not verified.
   if (authBypassed()) return;
   if (!isSupabaseConfigured) return;
+  const address = email.trim();
+  const token = code.trim();
+
+  const pending = pendingEmailOtp.get(otpKey(address)) ?? null;
+  const guest = pending ? null : await anonymousSession();
+  const mode: EmailOtpMode = pending?.mode ?? (guest ? "email_change" : "email");
+  const guestAccessToken = pending?.guestAccessToken ?? guest?.access_token;
+
+  if (mode === "already_confirmed") {
+    // The address is on this identity already and no code was ever sent, so
+    // there is nothing to verify. Nothing changed hands: the id is the same
+    // one the character and the credits are attached to.
+    pendingEmailOtp.delete(otpKey(address));
+    return;
+  }
+
+  let verified = mode;
   const { error } = await supabase.auth.verifyOtp({
-    email: email.trim(),
-    token: code.trim(),
-    type: "email",
+    email: address,
+    token,
+    type: mode,
   });
-  if (error) throw error;
+  if (error) {
+    // THE RELOAD PATH, and the one case where a rejected code is OUR mistake.
+    //
+    // Without a recorded send the mode is re-derived, and a stored guest
+    // session reads as `email_change` -- right when `updateUser` parked the
+    // address, wrong when it refused because the address already belongs to
+    // somebody. In that second case `sendEmailCode` sent a plain sign-in
+    // code, the session is still anonymous because nothing has been verified
+    // yet, and verifying as `email_change` rejects a code that is perfectly
+    // valid. The user is then told their correct code did not match, with no
+    // way out but a resend that lands in the same place.
+    //
+    // So a derived `email_change` that is refused is retried once as the
+    // sign-in it may have been all along. A recorded send is never retried:
+    // there the mode is known, and a refusal is a real refusal.
+    if (pending || mode !== "email_change") throw error;
+    const retry = await supabase.auth.verifyOtp({
+      email: address,
+      token,
+      type: "email",
+    });
+    if (retry.error) throw error;
+    verified = "email";
+  }
+  // The identity has changed hands: every remaining entry names a guest token
+  // that is no longer this device's.
+  forgetPendingEmailOtp();
+
+  // Only the fallback leaves anything behind. The conversion path kept the id.
+  if (verified === "email" && guestAccessToken) {
+    await claimGuestCharacters(guestAccessToken);
+  }
+}
+
+/**
+ * Move the guest's saved characters onto the account that just signed in.
+ *
+ * Never fatal. The user has verified their email and is standing on the last
+ * screen of onboarding; failing that screen because a character could not be
+ * re-homed would cost them more than the character does. The failure is
+ * reported instead, because a silent one here is exactly the class of bug this
+ * whole change exists to remove.
+ */
+async function claimGuestCharacters(guestAccessToken: string): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data?.session?.access_token;
+    if (!accessToken || accessToken === guestAccessToken) return;
+    await callBootstrap(accessToken, { claim_guest_token: guestAccessToken });
+  } catch (error) {
+    try {
+      captureError({
+        bucket: "auth",
+        severity: "high",
+        errorCode: "guest_character_claim_failed",
+        error,
+      });
+    } catch {
+      // Reporting a failure must never become a second failure.
+    }
+  }
 }
 
 /**
@@ -218,6 +464,10 @@ export async function verifyEmailCode(
  * untrustworthy.
  */
 export async function signOutToGuest(): Promise<void> {
+  // A half-finished sign-in must not be resumable by the guest who replaces
+  // it: the token recorded there belongs to the identity that just left.
+  forgetPendingEmailOtp();
+
   try {
     await AsyncStorage.removeItem("katha.displayName.v1");
   } catch {

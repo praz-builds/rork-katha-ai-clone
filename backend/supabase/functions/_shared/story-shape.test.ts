@@ -272,26 +272,17 @@ Deno.test("no shelf is the same prompt it always was", () => {
   assert(prompt.includes("<katha:idea>"));
 });
 
-Deno.test("the onboarding opening is asked for at the length the screen shows", async () => {
-  // The band and the clamp are one decision split across two files, and they
+Deno.test("the onboarding opening is asked for at the length it is rendered at", () => {
+  // The band and the clamp were one decision split across two files, and they
   // drifted: the prompt asked for 120-180 words in up to three paragraphs
   // while the preview rendered two paragraphs clamped to three lines and two.
   // Everything past that was generated, paid for, waited on by a user watching
-  // a loader, and then dropped - `finish()` does not carry `opening` into the
-  // draft either. This is the assertion that notices the next time one side
-  // moves without the other.
+  // a loader, and then dropped. The screen that rendered it
+  // (`WriterOnboarding.tsx`) is gone - onboarding no longer shapes a story -
+  // so this now pins only the prompt side of that decision, and the variant
+  // itself is queued for removal.
   assert(ONBOARDING_SHAPE_SYSTEM_PROMPT.includes("90-120 words"));
   assert(ONBOARDING_SHAPE_SYSTEM_PROMPT.includes("exactly two paragraphs"));
-
-  const screen = await Deno.readTextFile(
-    new URL(
-      "../../../../expo/src/screens/WriterOnboarding.tsx",
-      import.meta.url,
-    ),
-  );
-  // The clamp the band is sized against. If the preview starts showing three
-  // paragraphs, the prompt has to be told to write them.
-  assert(screen.includes("blueprint.opening.split(/\\n{2,}/).slice(0, 2)"));
 });
 
 Deno.test("shape-story never answers an empty shape without saying why", async () => {

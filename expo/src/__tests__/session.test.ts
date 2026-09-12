@@ -12,6 +12,7 @@ const mockSignInWithOtp = jest.fn();
  */
 let mockConfigured = true;
 
+jest.mock("@/lib/analytics", () => ({ captureError: jest.fn() }));
 jest.mock("@/lib/supabase", () => ({
   get isSupabaseConfigured() {
     return mockConfigured;

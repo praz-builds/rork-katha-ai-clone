@@ -465,8 +465,11 @@ describe("approved Create flow", () => {
     });
   });
 
-  it.each([3, 7, 15] as const)(
-    "sends a planned chapter count of %d to the generation payload",
+  // 1 is on the list, and it is a SERIES of one -- see the note on
+  // `PLANNED_CHAPTER_COUNT_OFFER`. A one-chapter story routed to the
+  // standalone path would be the only length the reader could never extend.
+  it.each([1, 3, 7, 15] as const)(
+    "sends a planned chapter count of %d to the generation payload, as a series",
     async (count) => {
       mockGenerateStory.mockResolvedValueOnce(generatedStory);
       const view = await renderCreate();
@@ -475,7 +478,9 @@ describe("approved Create flow", () => {
       await fireEvent.press(view.getByRole("button", { name: "More options" }));
       await fireEvent.press(view.getByRole("button", { name: "Chapters" }));
       await fireEvent.press(
-        view.getByRole("button", { name: `${count} chapters` }),
+        view.getByRole("button", {
+          name: count === 1 ? "1 chapter" : `${count} chapters`,
+        }),
       );
       await fireEvent.press(view.getByRole("button", { name: /create/i }));
       await startFromDirectionStep(view);
@@ -483,6 +488,7 @@ describe("approved Create flow", () => {
 
       expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
         plannedChapterCount: count,
+        isSeries: true,
       });
     },
   );

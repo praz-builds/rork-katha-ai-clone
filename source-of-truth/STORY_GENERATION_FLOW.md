@@ -21,7 +21,7 @@
 > modal. Onboarding may use its own two-step preview, but main Create does not
 > have a separate Shape or Review screen.
 >
-> Last revised 2026-09-06. Sentences that are inference rather than shipped
+> Last revised 2026-09-11. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---
@@ -187,7 +187,7 @@ refinement of it:
 | Dropdown | Values | Default |
 |---|---|---|
 | Story mode | Interactive · Auto-continue | Interactive |
-| Chapters | 3 · 7 · 15 | 3 |
+| Chapters | 1 · 3 · 7 · 15 | 3 |
 | Chapter length | Short · Standard · Long | Standard |
 | Chapter cover | Cover art only · Auto-generated per chapter | Cover art only |
 | Image style | Auto · Anime · Cinematic · Comic · Watercolor | Auto |
@@ -204,6 +204,17 @@ lived only in the request that wrote chapter one would be forgotten by the
 moment it means anything. The request field is how it gets there; the column is
 how it survives. An unrecognised value clamps to
 `interactive`: the mode that asks before it spends.
+
+**Chapters** is `stories.planned_chapter_count`. The picker offers four
+lengths; the COLUMN holds any whole number from 1 to 15 (migration 00079),
+because a reader who extends a finished story raises it one chapter at a time.
+Nothing may treat the stored value as one of the offered four.
+
+**1 chapter is a series of one, not a standalone.** Picking it sets
+`isSeries`/`story_mode = 'series'` exactly as the other three do, and that is
+the whole reason it can be offered: a series that has reached its plan ends on
+the ordinary direction chips and can be grown, while a standalone has no
+chapter two at all and ends on Reimagine. See §10.2a.
 
 **Image style** is `stories.image_style` (migration 00075). It **replaces** the
 genre's own style clause rather than being appended to it — two style
@@ -775,7 +786,7 @@ Create ·  n ✦
    │                                                  ▼
    └────────────────────────────────▶  THE STORY  ◀───┘
                                           │
-                              read · edit by hand · redraft
+                              read · edit by hand · reimagine
                               regenerate or upload the cover
                                           │
                                        Publish
@@ -877,8 +888,8 @@ Create ·  n ✦
   > off costs, and the client quotes accordingly. See note 6 above. The price
   > stated here is the intended one and is not being changed.
 - **What generates it, as of 2026-09-05.** Every generation path — this loop,
-  continuation, the paragraph editor, and the shaping call onboarding makes —
-  leads with OpenRouter `meta/muse-spark-1.3-contributor`, falls back to
+  continuation, and reimagine — onboarding stopped making a shaping call on
+  2026-09-11 — leads with OpenRouter `meta/muse-spark-1.3-contributor`, falls back to
   `meta/muse-spark-1.3`, then Gemini 3.1 Pro Preview, then the three OpenAI
   models, then the free tier. The contributor tier is the configured default and
   is **17x cheaper**. As of 2026-09-05 it **serves**: the account's OpenRouter
@@ -907,18 +918,71 @@ Create ·  n ✦
   A failed cast or cover refunds its own credit even when chapter text succeeded;
   each component refund is durable and idempotent.
 
+### 10.2a Extending a finished story
+
+*(Added 2026-09-11.)*
+
+A series that has reached `planned_chapter_count` used to end on **"The story
+is complete"**. It now ends on the ordinary direction chips — the same surface
+every other chapter end shows — when all three of these hold:
+
+1. It is a **series** (a standalone has no chapter two; it ends on Reimagine).
+2. Its plan is **below 15**, the ceiling the column's check constraint
+   enforces. At 15 the story is complete for good.
+3. The viewer is its **author**. Someone else's finished story still says it is
+   complete; extending spends the viewer's credits.
+
+Picking a chip sends `extend: true` on the continuation request. `continue-story`
+refuses an over-plan chapter without that flag — the refusal is the protection —
+and with it raises `planned_chapter_count` to the new chapter number **inside
+`reserve_generation_operation`**, in the same transaction and behind the same
+advisory lock as the credit debit. The plan and the charge commit together or
+not at all.
+
+**It costs the ordinary chapter price**: 1 credit, or 2 if the story
+illustrates its chapters. Not discounted for being unplanned and not
+surcharged for it.
+
+**An extension is not a finale**, even though it is the last planned chapter by
+construction. A chapter written as a finale closes its threads, and the chips
+offered at the next chapter end are derived from exactly those — so a story
+extendable once would be extendable never again.
+
+**AUTO-CONTINUE NEVER EXTENDS.** `story_flow = 'auto'` writes ahead with nobody
+watching; a story that could extend itself would spend a reader's whole balance
+on chapters past the plan they actually chose. An auto story stops at its plan
+and is extended by hand, one deliberate tap at a time, like any other.
+
 ### 10.3 Editing
 
-Unchanged from what ships, and free per the existing editing table:
+> **Corrected 2026-09-11.** This section used to price *20 free paragraph edits*
+> and *3 free AI redrafts* per chapter. **Neither action exists.** There is no
+> "rewrite this paragraph" control and no "redraft this chapter" control anywhere
+> in the shipped product, and pricing a feature that was never built is worse than
+> leaving it unpriced: `CREDITS_AND_PRICING.md` §10 had scheduled counter columns
+> to enforce those caps and §11 had a p95 metric to tune one of them. Both are
+> cancelled there (§1a of that file).
+
+**There is one AI editing action, and it is Reimagine.**
+[`expo/src/components/reader/ReimagineSheet.tsx`](../expo/src/components/reader/ReimagineSheet.tsx)
+over the `reimagine-chapter` edge function: pick a chapter, optionally swap
+characters for saved or brand-new ones, type what should change, and the chapter
+is written again.
 
 | | Cost |
 |---|---|
-| Type, rewrite, restructure by hand | 0, unlimited |
-| Ask Katha to rewrite a paragraph | 0 — 20 free per chapter |
-| Ask Katha to redraft a chapter | 0 — 3 free per chapter |
+| Type, rewrite, restructure by hand | **0, unlimited, forever** |
+| **Reimagine a chapter** | Free tier: 1 free per chapter of a story you created, then the plan. Non-author: 1 credit from the first, because it forks. **Any paid plan: unlimited** |
 
-Paragraph-level editing is the existing Create Studio draft editor and it stays
-exactly as it is.
+Hand editing is the existing Create Studio draft editor and the reader's chapter
+editor, and both stay exactly as they are. They call nothing, so under principle
+2 they are free and there is nothing to cap.
+
+The prices above are read from
+[`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §3, *Reimagining a chapter*,
+which is canonical for them. **⚠ The shipped `reimagine-chapter` charges 1 credit
+from the first call for every user on every tier** — it has no subscriber check
+and no counter. The subscriber exemption and the free counter are follow-ups.
 
 ### 10.4 Chapter art, and the cover
 
@@ -1026,6 +1090,21 @@ written for its author first; going public is a later, deliberate act. So:
   is for.
 
 ### 10.6 What this requires of CREDITS_AND_PRICING.md
+
+> **Amended 2026-09-11: the editing asks are withdrawn.** Everything this section
+> and §10.3 ever asked that file to price for *editing* rested on two actions
+> that were never built — the paragraph rewrite and the chapter redraft. They are
+> retired in both documents (§10.3 here, §1a there), along with the counter
+> columns and the p95 metric that existed to enforce them. **Reimagine is the one
+> AI edit**, and it is priced in `CREDITS_AND_PRICING.md` §3, not here: unlimited
+> and never charged on any paid plan, 1 free per chapter of your own story on the
+> free tier, 1 credit from the first when it forks somebody else's. Character
+> portraits moved the same way — unlimited on a plan, 4 per account free.
+>
+> Item 3 below, the character-art unit-cost hole, is **closed**: a cast of three
+> costs $0.117 at the flat Gemini rate, it stays bundled into the story start,
+> and a standalone portrait is free four times per account and then 1 credit.
+> The remaining items are the chapter-art attach rate and the word-band overshoot.
 
 > **Resolved 2026-09-02.** `CREDITS_AND_PRICING.md` has been amended — decision
 > 10 now prices chapter art, the unit is a story rather than a chapter, and the
@@ -1197,7 +1276,7 @@ derived value.
 | Add See-an-example | Static, one per genre, with **Use this** |
 | Replace the hint with the meter | Slot-based, on the same Create screen |
 | Add `Continue a draft (n)` | Create screen, when drafts exist |
-| More options | Chapters 3/7/15, chapter length, chapter art for 2–N. **No writing mode** — §15 |
+| More options | Chapters 1/3/7/15, chapter length, chapter art for 2–N. **No writing mode** — §15 |
 
 ### `backend/supabase/functions/_shared/`
 
@@ -1211,7 +1290,7 @@ derived value.
 | `cover-regeneration.ts` | The claim / price / generate / settle transaction behind Regenerate, kept out of the handler so the paths that cost a credit can be tested. **Migration 00044 is required.** `stories.cover_regen_count` is what makes "1 free retry, then 1 ✦" expressible at all; `stories.cover_attempt_count` is what bounds provider spend when the free retry keeps failing; `stories.cover_last_request_id` is what makes the *free* path idempotent, which `reserve_generation_operation` only does for the paid one — written **only** by `finish_cover_regeneration`, so it records the request that delivered the cover on the row rather than the last one to claim it, and a retry after a failed regeneration re-attempts instead of being handed the old cover as a success; and `stories.cover_prompt` — which §10.4 assumed existed and did not — is what lets a regeneration vary from the cover it replaces instead of re-sending the request that produced it. It is written by the original cover too (`media.ts`), not only by a regeneration: the *first* regeneration is the free one and therefore the common case, and it is the one that reads a column no regeneration has yet written. All four are server-derived and deliberately outside the owner-update grant of 00015, like `cover_status`. The price, the ceiling, the replay check and the claim all happen inside `claim_cover_regeneration`, under one advisory lock and one `for update`: reading any of them in one round trip and acting in the next is what makes two fast taps two free covers. |
 | `regenerate-cover` | Client-callable cover endpoint. **POST** re-rolls the cover — reserving `kind = 'cover'` on chapter 1 when a credit is due, refunding it when the image does not arrive. **GET** reports the current cover state, which is how the client learns chapter 1's art landed: it is generated on a background task after the response is flushed, so without a read there is no second moment at which the client could find out. Same shape as `audio-status`. |
 | `cover-prompts.ts` / `image.ts` | A regeneration steer, carried beside the *Avoid* exclusion — but **dropped at the last safety rung**, which the exclusion is not. Level 2 exists to be the prompt that cannot be refused; the steer is the only per-request caller-supplied text in a cover prompt, so leaving it there lets a note written to trip a content filter trip every rung of every provider, and one request becomes nine image calls. The two free-text fields a cover prompt carries — the *Avoid* exclusion and the steer — are each collapsed to a single clause, every `.` `!` `?` `;` `:` becoming a comma, because the value is emitted inside `Do not depict: X.` and a terminator inside X ends our sentence and starts the caller's. That is a promise about those two fields and not about the whole prompt: `title` and `where_and_when` are interpolated as written, because collapsing punctuation in them would turn "Dr. Smith's Door" into "Dr, Smiths Door". The steer's two halves — the writer's note and a description of the cover being replaced — are budgeted separately rather than sharing one cap, or a maximum-length note truncates the "make it clearly different" half away and the regeneration is free to reproduce the cover it was asked to replace. Plus a per-attempt storage key. The cover URL carries no version, so overwriting the object would leave every CDN edge serving the picture the writer just paid to replace. |
-| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the three allowed values (3 · 7 · 15); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; reject any creation language but English (`validation.ts`), while a continuation reads `stories.language` off the row and never passes it through the validator -- so an existing Portuguese or Spanish story keeps being written in its own language; normalize `image_style` and `story_flow`, falling back to `auto` and `interactive` respectively |
+| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the range 1–15 (the picker offers 1 · 3 · 7 · 15; every other value in range is reached by extension); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; reject any creation language but English (`validation.ts`), while a continuation reads `stories.language` off the row and never passes it through the validator -- so an existing Portuguese or Spanish story keeps being written in its own language; normalize `image_style` and `story_flow`, falling back to `auto` and `interactive` respectively |
 
 ### `expo/src/i18n/`
 
@@ -1238,7 +1317,7 @@ Draft cards, the Draft badge, chapter progress, sort-by-last-edited.
 | Share of Continues with an empty *What happens next?* box | If it dominates, steering is friction wearing a hat and the box should shrink |
 | **Chapter-art attach rate** | The most important unresolved figure in the business model — §10.6 |
 | Cover: generate vs regenerate vs upload vs keep-concept | Tells us whether cover generation is worth its credit |
-| `planned_chapter_count` distribution across 3 / 7 / 15 | Whether 7 and 15 are real or decorative, and whether 3 is a default nobody moves off |
+| `planned_chapter_count` distribution across the offer (1 / 3 / 7 / 15), and how far extension moves it | Whether 7 and 15 are real or decorative, and whether 3 is a default nobody moves off |
 | Draft resume rate, by entry point | Library vs the create-flow link |
 | Brief strength → generation rating | **The load-bearing one.** Any field that does not move it gets cut |
 | Kids-mode share of drafts | Decides whether kids justifies its own App Store listing |
@@ -1283,7 +1362,7 @@ earlier section, that section carries a pointer back here.
    empty slots and replaces only untouched inferred ones.
 
 4. **Moot.** There is no Interactive mode to cap. §9's writing-mode control is
-   removed — see §9 — and 30 chapters is not offered. The lengths are 3 · 7 · 15.
+   removed — see §9 — and 30 chapters is not offered. The lengths are 1 · 3 · 7 · 15.
 
 5. **Character portraits in the reader: the cast strip, opened from the title.**
    Portraits do **not** appear inline in the prose, where they would interrupt
@@ -1313,7 +1392,7 @@ are listed here so a reader who lands mid-document is not misled.
 | Section | Superseded by |
 |---|---|
 | §9 **Writing mode** — Interactive vs Auto-Write | **Removed.** One flow: read the chapter, optionally steer, tap Continue. A *Write the rest* action appears from chapter 3 with an itemised confirm, a Stop that keeps what it wrote, and resume after a kill. There is no mode to choose and none to switch. |
-| §9 **Chapters: 3 · 7 · 10 · 15 · 30** | **3 · 7 · 15**, default 3. A *planned length* that drives pacing and the finale; `chapter_role: finale` is derived from position in the arc. |
+| §9 **Chapters: 3 · 7 · 10 · 15 · 30** | **1 · 3 · 7 · 15**, default 3. A *planned length* that drives pacing and the finale; `chapter_role: finale` is derived from position in the arc. The plan is no longer fixed once chosen — see §Extending a finished story. |
 | §4 **Maximum 4 characters** | **Maximum 3.** See item 1(b). |
 | §6 **Inference** and its relationship to onboarding | Onboarding's W1→W2→W3 blueprint is the same surface under other names, and unifying them is **deferred**. The debt is accepted deliberately: the shared `StoryBrief` type is defined once now, consumed only by Create, so later unification is a mapping job rather than a rewrite of a live surface in three locales. |
 
@@ -1411,9 +1490,13 @@ are listed here so a reader who lands mid-document is not misled.
 
 ### Options
 
-33. **Chapters: 3 · 7 · 15**, default 3 *(amended 2026-09-02; 10 and 30 dropped
-    until the drop-off-by-chapter metric earns them)*. This is a planned length
-    that drives pacing and the finale, not a batch size.
+33. **Chapters: 1 · 3 · 7 · 15**, default 3 *(amended 2026-09-02: 10 and 30
+    dropped until the drop-off-by-chapter metric earns them; amended
+    2026-09-11: 1 added)*. This is a planned length that drives pacing and the
+    finale, not a batch size — and since 2026-09-11 it is a **starting** length
+    rather than a fixed one. **1 is a series of one, not a standalone**: it is
+    stored with `story_mode = 'series'`, so it ends on the ordinary direction
+    chips and can be grown. See §Extending a finished story.
 34. **Chapter length shows its word count** — *Standard · ~1,400 words* — **but
     only once B11 has measured the bands.** Until then the options ship
     unlabelled, because the UI states these as fact and they are unmeasured

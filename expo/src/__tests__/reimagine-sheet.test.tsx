@@ -75,7 +75,9 @@ it("lists only the roster characters on this page, and starts with the button of
   expect(view.getByText("Aarav")).toBeTruthy();
   expect(view.getByText("Maya")).toBeTruthy();
   expect(view.queryByText("Uncle Farooq")).toBeNull();
-  expect(view.getByText("Reimagine · 1 credit")).toBeTruthy();
+  // The first reimagine of a chapter is free on a free account; the literal
+  // "1 credit" that used to sit here was wrong for it and for every subscriber.
+  expect(view.getByText("Reimagine · 1 free")).toBeTruthy();
   expect(view.getByLabelText("Reimagine chapter").props.accessibilityState.disabled).toBe(true);
 });
 

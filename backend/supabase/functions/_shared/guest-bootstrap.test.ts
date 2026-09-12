@@ -10,6 +10,7 @@ import {
   guestBootstrapOperationKey,
   hashAnonymousGrantScope,
   isAnonymousUser,
+  readGuestClaimToken,
 } from "./guest-bootstrap.ts";
 
 Deno.test("guest bootstrap constants and operation key stay canonical", () => {
@@ -112,4 +113,23 @@ Deno.test("guest bootstrap hashes scopes and recognizes verified guest users", a
   assertMatch(first, /^[a-f0-9]{64}$/);
   assertEquals(isAnonymousUser({ id: "guest", is_anonymous: true }), true);
   assertEquals(isAnonymousUser({ id: "member", is_anonymous: false }), false);
+});
+
+Deno.test("only a JWS-shaped claim token is worth verifying", () => {
+  const token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJndWVzdCJ9.c2lnbmF0dXJl";
+  assertEquals(readGuestClaimToken({ claim_guest_token: ` ${token} ` }), token);
+
+  // Every absent, wrong-typed or malformed value is simply "no claim": the
+  // caller then bootstraps normally instead of spending a round trip on the
+  // auth service for a string that cannot be a token.
+  assertEquals(readGuestClaimToken(null), null);
+  assertEquals(readGuestClaimToken({}), null);
+  assertEquals(readGuestClaimToken({ claim_guest_token: 42 }), null);
+  assertEquals(readGuestClaimToken({ claim_guest_token: "not.a" }), null);
+  assertEquals(readGuestClaimToken({ claim_guest_token: "a.b.c.d" }), null);
+  assertEquals(readGuestClaimToken({ claim_guest_token: "a b.c.d" }), null);
+  assertEquals(
+    readGuestClaimToken({ claim_guest_token: `${"a".repeat(4100)}.b.c` }),
+    null,
+  );
 });

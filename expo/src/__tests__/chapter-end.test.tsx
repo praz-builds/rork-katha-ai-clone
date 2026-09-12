@@ -439,6 +439,94 @@ describe("ChapterEnd", () => {
     expect(onContinue).not.toHaveBeenCalled();
   });
 
+  /**
+   * The end of a ONE-CHAPTER story, which is the shortest possible finished
+   * series and therefore the plainest case of an extendable one.
+   */
+  it("offers directions at the end of a finished story its author can extend", async () => {
+    const onlyChapter = makeChapter({
+      id: "chapter-1",
+      chapterNumber: 1,
+      title: "Chapter 1: Arrival",
+    });
+    const story = makeStory({
+      authorId: "me",
+      plannedChapterCount: 1,
+      beats: ["Chapter 1 beat: arrival at the fort."],
+      chapters: [onlyChapter],
+    });
+    const onContinue = jest.fn();
+    const view = await render(
+      <ChapterEnd story={story} chapter={onlyChapter} onContinue={onContinue} />,
+    );
+
+    // Not "The story is complete": a one-chapter story is a series of one,
+    // and its author can buy the next chapter from here.
+    expect(view.queryByText("The story is complete")).toBeNull();
+    await waitFor(() =>
+      expect(view.getByTestId("chapter-end-option-0")).toBeTruthy()
+    );
+    // The reader is told, in the price note, that this goes past the plan.
+    expect(
+      view.getByText(/planned for 1 chapter\. .*writes chapter 2 anyway/),
+    ).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId("chapter-end-option-0"));
+    });
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    // The third argument is the opt-in the server requires before it will
+    // write past the plan and charge for it.
+    expect(onContinue.mock.calls[0][2]).toBe(true);
+  });
+
+  it("sends no extension for an ordinary in-plan chapter", async () => {
+    const story = makeStory({ authorId: "me" });
+    const onContinue = jest.fn();
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        onContinue={onContinue}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.getByTestId("chapter-end-option-0")).toBeTruthy()
+    );
+    await act(async () => {
+      fireEvent.press(view.getByTestId("chapter-end-option-0"));
+    });
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    expect(onContinue.mock.calls[0][2]).toBe(false);
+  });
+
+  it("is complete for good at the fifteen-chapter ceiling", async () => {
+    const chapters = Array.from({ length: 15 }, (_, index) =>
+      makeChapter({
+        id: `chapter-${index + 1}`,
+        chapterNumber: index + 1,
+      }));
+    const story = makeStory({
+      authorId: "me",
+      plannedChapterCount: 15,
+      chapters,
+    });
+    const onContinue = jest.fn();
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={chapters[14]}
+        onContinue={onContinue}
+      />,
+    );
+    // The ceiling is the same 15 the SQL check enforces. Offering a sixteenth
+    // chapter would be the client promising what the server has already
+    // refused.
+    expect(view.getByText("The story is complete")).toBeTruthy();
+    expect(view.queryByTestId("chapter-end-write-own")).toBeNull();
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
   it("degrades to the write-your-own path with a visible explanation when suggestions fail to resolve", async () => {
     const story = makeStory();
     const chapter = story.chapters[1];
@@ -792,7 +880,16 @@ describe("auto-continue", () => {
     expect(onContinue).not.toHaveBeenCalled();
   });
 
-  it("does not fire once the series has reached its planned ending", async () => {
+  /**
+   * AUTO-CONTINUE MUST NOT AUTO-EXTEND, and this is the test that pins it.
+   *
+   * The story below is extendable -- an owned three-chapter series at chapter
+   * three, well under the fifteen-chapter ceiling -- so the reader is offered
+   * chips rather than "The story is complete". Auto mode must NOT take that
+   * offer on their behalf: extending spends a credit past the plan the writer
+   * actually chose, with nobody watching and no tap behind it.
+   */
+  it("stops at the plan instead of extending, and asks with chips", async () => {
     const onContinue = jest.fn();
     const story = makeStory({
       storyFlow: "auto",
@@ -804,14 +901,19 @@ describe("auto-continue", () => {
         makeChapter({ id: "chapter-3", chapterNumber: 3 }),
       ],
     });
-    const { getByText } = await render(
+    const view = await render(
       <ChapterEnd
         story={story}
         chapter={story.chapters[2]}
         onContinue={onContinue}
       />,
     );
-    expect(getByText("The story is complete")).toBeTruthy();
+    await waitFor(() =>
+      expect(view.getByTestId("chapter-end-write-own")).toBeTruthy()
+    );
+    // No "Katha is writing on" panel either: nothing was started, so saying so
+    // would be the copy lying about a chapter that does not exist.
+    expect(view.queryByTestId("chapter-end-auto")).toBeNull();
     expect(onContinue).not.toHaveBeenCalled();
   });
 

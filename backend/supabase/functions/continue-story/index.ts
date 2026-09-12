@@ -51,7 +51,10 @@ import {
   type AudienceMode,
   type ChapterLength,
   type CharacterInput,
+  DEFAULT_PLANNED_CHAPTER_COUNT,
   type IdentityLens,
+  isPlannedChapterCount,
+  MAX_PLANNED_CHAPTER_COUNT,
   type PlannedChapterCount,
   type SpiceLevel,
   wordBandFor,
@@ -245,16 +248,68 @@ serve(async (req) => {
 
     const nextChapterNum = chapters[0].chapter_number + 1;
 
-    const plannedChapterCount =
-      ([3, 7, 15].includes(story.planned_chapter_count)
+    // The stored plan is a RANGE now, not one of three values.
+    //
+    // Extension below raises `planned_chapter_count` by one, so 2, 4, 5 and
+    // every other number up to the ceiling are live rows. The old read matched
+    // against `[3, 7, 15]` and fell back to 3 for anything else, which would
+    // tell the author of a 4-chapter story that it is planned for 3 and refuse
+    // the chapter they had already paid to plan for.
+    const plannedChapterCount: PlannedChapterCount =
+      isPlannedChapterCount(story.planned_chapter_count)
         ? story.planned_chapter_count
-        : 3) as PlannedChapterCount;
+        : DEFAULT_PLANNED_CHAPTER_COUNT;
+
+    /*
+      EXTENSION: growing a finished story one chapter past its plan.
+
+      Reaching the plan is still an ending by default -- an unasked-for
+      continuation past it is a credit spent on a story the writer said was
+      finished, which is why this stays an explicit opt-in the client has to
+      send rather than something inferred from "there is a chapter after this
+      one". `extend` is set by exactly one surface: a tap on a direction chip
+      at the end of a finished series, by its own author.
+
+      AUTO MODE NEVER SENDS IT. `autoChapterToWriteAhead` stops at the plan and
+      must keep stopping there: auto-continue writes chapters with no tap
+      behind them, and an auto story that could extend itself would spend a
+      reader's whole balance on a story they planned to be three chapters long.
+
+      The raise itself is NOT done here. It is handed to
+      `reserve_generation_operation`, which performs it in the same transaction
+      as the credit debit and under the same advisory locks -- see the note on
+      the RPC call below.
+    */
+    const extendRequested = body.extend === true;
+    let extendToChapter: number | null = null;
     if (nextChapterNum > plannedChapterCount) {
-      return respond({
-        error:
-          `Series limit reached. This story is planned for ${plannedChapterCount} chapters.`,
-      }, 400);
+      if (!extendRequested) {
+        return respond({
+          error:
+            `Series limit reached. This story is planned for ${plannedChapterCount} chapters.`,
+        }, 400);
+      }
+      // A standalone has no plan to raise and no chapter two; its ending is
+      // Reimagine. Only a series can grow.
+      if (story.story_mode !== "series") {
+        return respond({
+          error: "Only a series can be extended past its planned ending.",
+        }, 409);
+      }
+      if (nextChapterNum > MAX_PLANNED_CHAPTER_COUNT) {
+        return respond({
+          error:
+            `A story tops out at ${MAX_PLANNED_CHAPTER_COUNT} chapters. This one has reached it.`,
+        }, 409);
+      }
+      extendToChapter = nextChapterNum;
     }
+    /**
+     * The plan this chapter is written against: the raised one when this is an
+     * extension, because the prompt must describe the story the reader is
+     * getting rather than the one they just outgrew.
+     */
+    const effectivePlannedCount = extendToChapter ?? plannedChapterCount;
 
     // Whether this chapter gets its own picture, and therefore what it costs.
     //
@@ -280,6 +335,24 @@ serve(async (req) => {
           p_chapter_number: nextChapterNum,
           p_kind: "continuation",
           p_illustrate_chapter: illustrateChapter,
+          /*
+            THE PLAN IS RAISED BY THE RESERVATION, NOT BESIDE IT.
+
+            An `update stories set planned_chapter_count = ...` issued from
+            here would be a second statement in its own transaction, and the
+            two orderings fail in opposite directions: raise-then-reserve
+            leaves a story permanently claiming a chapter nobody paid for when
+            the balance is short, and reserve-then-raise takes the credit and
+            then, if the update loses to a concurrent write or the function
+            dies between the two, refuses the very chapter it just charged for.
+
+            Passing the target chapter into the RPC puts the raise inside the
+            same transaction as the debit and behind the same
+            `pg_advisory_xact_lock` on the story, so the pair commits together
+            or not at all. Null means "not an extension", which is every
+            ordinary continuation.
+          */
+          p_extend_to_chapter: extendToChapter,
         },
       );
     if (reservationError || !operation) {
@@ -289,6 +362,15 @@ serve(async (req) => {
       if (reservationError?.code === "KTH01") {
         return respond({
           error: "This chapter generation is already in progress",
+        }, 409);
+      }
+      // The RPC re-checks the extension under the lock and refuses it there:
+      // a second tap that raced this one may have already taken the story to
+      // the ceiling, and the row is the authority on that, not the copy this
+      // handler read a few milliseconds ago. Nothing was charged.
+      if (reservationError?.code === "KTH03") {
+        return respond({
+          error: "This story cannot be extended any further.",
         }, 409);
       }
       throw reservationError ?? new Error("Generation reservation failed");
@@ -325,8 +407,23 @@ serve(async (req) => {
     const rawSpice = story.spice_level ?? "sweet";
     const spiceLevel =
       (rawSpice === "explicit" ? "steamy" : rawSpice) as SpiceLevel;
+    /*
+      AN EXTENSION IS NOT A FINALE, even though it is now the last planned
+      chapter.
+
+      `nextChapterNum >= plannedChapterCount` is true of every extension by
+      construction -- the plan was just raised to exactly this chapter. Written
+      as a finale it would be told to "resolve the promise of the complete arc"
+      and to close its threads, which strips the closing hook and empties
+      `series_state`. The direction chips at the next chapter end are derived
+      from precisely those, so the first extension would also be the last: a
+      story that can be grown once and then never again.
+
+      A reader who genuinely wants an ending still gets one by sending
+      `is_finale`, which is checked first and unchanged.
+    */
     const isFinale = body.is_finale === true ||
-      nextChapterNum >= plannedChapterCount;
+      (extendToChapter === null && nextChapterNum >= plannedChapterCount);
     const chapterMode = isFinale ? "finale" : "chapter";
     const chapterRole = isFinale ? "finale" : "mid_series";
     const seriesState = parseSeriesState(story.series_state);
@@ -401,7 +498,7 @@ serve(async (req) => {
       mode: chapterMode,
       seriesState,
       chapterLength: (story.chapter_length ?? "standard") as ChapterLength,
-      plannedChapterCount,
+      plannedChapterCount: effectivePlannedCount,
     });
     // The world layer travels with every chapter, not just the first. Without
     // it a chapter-7 continuation has only the prose window above to infer the
@@ -435,7 +532,7 @@ serve(async (req) => {
         chapterRole,
         chapterNumber: nextChapterNum,
         chapterLength,
-        plannedChapterCount,
+        plannedChapterCount: effectivePlannedCount,
         seed: story.topic ?? "",
         whereAndWhen: story.where_and_when ?? undefined,
         moments,
@@ -771,7 +868,7 @@ serve(async (req) => {
                 mode: chapterMode,
                 seriesState,
                 chapterLength,
-                plannedChapterCount,
+                plannedChapterCount: effectivePlannedCount,
                 output: "prose",
               }),
               userPrompt: proseUserPrompt,

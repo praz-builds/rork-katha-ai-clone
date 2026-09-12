@@ -13,37 +13,43 @@
 > control recipes built from them. Pricing wins on any conflict, and
 > `DESIGN_SYSTEM.md` is subordinate to this file on anything behavioural.
 >
-> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-07.
+> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-12.
 > *Inference* marks a decision not yet shipped.
 
 ---
 
 ## Summary
 
-**Onboarding earns its asks by making the person feel something first.** A reader
-recognizes their taste, reads a real opening, then feels the interruption a plan
-can honestly remove. A writer sees a story become specific, changes its lead and
-opening, then wants to keep reading it. Only then do we ask them to save the
-specific shelf or blueprint and show the relevant paywall.
+**Onboarding earns its asks by making one character exist.** The person is shown
+three portraits fanning open, types a name and writes a line about
+how someone looks, gives an email so the portrait has somewhere to live, and then
+watches that portrait being drawn and meets it. That is the aha, and every purpose reaches it:
+Read, Write and A bit of both take the same character screens with reader- or
+writer-voiced copy.
 
-The shared onboarding questionnaire now starts with identity and taste before it
-asks intent: name, genre interests, then Reading / Writing / A bit of both. A
-writer who selects Writing answers two writer setup questions before entering
-the dedicated story creation rehearsal. The first selected genre interest maps
-to the writer flow's initial create-genre chip.
+The shared questionnaire before it is unchanged: name, genre interests, then
+Reading / Writing / A bit of both, and for writers the two setup questions. The
+first selected genre interest still maps to the create-genre chip in the writer
+story-generation flow.
 
-Cost discipline is binding: **one structured model call per submitted idea**,
-zero best case, and no image generation. Starter chips use a precomputed concept
-library. A typed idea receives blueprint, lead, all opening variants, and preview
-prose in one response. Neither path spends user credits.
+**The email comes before the drawing, not after it.** **W5 Save** asks for it
+while the portrait is still a dashed placeholder. **Amended 2026-09-12 (third
+round): the drawing starts one screen earlier still.** Pressing **W4**'s CTA
+saves the character row and fires the image call on the anonymous session; W5's
+CTA only validates the address and sends the code. The email screen and the
+six-digit code screen both cover the wait, which is the whole reason W4 is where
+the call belongs. **W6 Meet** opens in its ready state if the portrait landed
+while the code was being typed and in its loading state if it has not. Auth never
+gates the aha; it runs beside it.
 
-The bound is per submitted brief rather than per flow, and that wording is load
-bearing. The writer's shaping call is fired only after the idea, shelf, cast,
-moments, writing style, avoid text, chapter length, and chapter count are known.
-Those values are not decorative UI; they are prompt inputs. The wait screen stays
-up until that backend operation resolves. A failed or empty response shows a
-retry screen that preserves the brief. There is no fixed-duration client loader
-and no silent preview fallback in the writer path.
+Cost discipline changed shape rather than loosening. Onboarding makes **one image
+call per portrait request, at most two per person** — the first attempt plus one
+reimagine — and **no story text call at all**. It spends no user credits and
+writes no ledger row. Behind the flow's own limit, an anonymous identity is
+capped server-side at four portrait requests for the life of that identity
+(migration 00084, §16). The 150-word preview this replaced cost one structured
+model call; this costs one or two flat-rate images, and it produces an artifact
+the person keeps rather than a truncated sample of one they cannot finish.
 
 The three-screen animated intro in
 [`expo/src/screens/KathaOnboarding.jsx`](../expo/src/screens/KathaOnboarding.jsx)
@@ -54,76 +60,169 @@ begins at **Get started**.
 
 ## 0. Governing principles
 
-1. **Experience before questionnaire.** Every choice changes what follows. R1
-   changes R2 and R4; W1 Shape visibly changes W2.
-2. **Taste is demonstrated, not claimed.** Opening lines reveal taste better than
-   a cover grid because Katha can name it back.
-3. **Infer, don't ask.** The writer supplies one idea. Katha infers Genre, Where
-   and when, and a lead, then exposes useful corrections.
-4. **Use Create vocabulary.** The writer rehearsal is Idea / Shape / Review. It
-   says **Your idea**, **Where and when**, and **Try one**. It never says
+1. **Experience before questionnaire.** Every choice changes what follows. The
+   genre interests seed the first create-genre chip; the two fields the person
+   fills in on **W4 Craft** are the whole of what W6 draws.
+2. **The artifact is whole, not a sample.** A portrait is finished at the moment
+   it appears. Nothing about it is truncated, faded, watermarked or held back for
+   a plan, which is the difference between an aha and a tease.
+3. **Infer, don't ask.** **Two answers** — a name and an appearance. Genre, art
+   style and framing are inferred from what is already known. A gender row was
+   added on 2026-09-12 and removed the same day (§9): the portrait had been
+   resolving gender from the name, but the appearance line sitting right after
+   the name is a better place to fix that than a fourth control. **W4 carries no
+   attachments and no suggestion chips**, and
+   the **KATHA WILL DRAW** card is not helper text under this rule: it names
+   what each answer becomes, rather than explaining how to fill a box in.
+4. **Use Create vocabulary.** W4 says **NAME** and **APPEARANCE**. It never says
    Premise, Plot, Setting, Arc, Seed, or Prompt.
-5. **Auth saves an artifact.** A1 comes after the aha and before all purchases
-   and grants. It is never permission to continue.
-6. **One source-blind choreography.** Library, model, slow model, and fallback
-   concepts receive the identical W2 sequence.
-7. **Preview proves ownership first.** The fade hides only extra prose. It never
-   hides an entitlement, control, or the chosen lead name.
-8. **No false scarcity.** The sole timer is the real, server-enforced 2:00 offer.
-9. **Reduced motion.** Use the completed W2 composition after availability, not
-   a spinner or flashing replacement.
+5. **Auth saves an artifact, and it runs beside the aha rather than in front of
+   it.** W5 asks for an email so the portrait has an owner before it exists. It is
+   never permission to continue, and nothing about it is a gate on seeing the
+   character.
+6. **One flow for every purpose.** Read, Write and A bit of both run the same
+   character screens. Only the copy voice differs, and it differs in exactly the
+   places §8-§10B and §12-13 name.
+7. **The wait tells the truth.** W6's loading state says what is being done in
+   four plain lines and gives **one honest range, from one constant, set from a
+   measurement**: `PORTRAIT_WAIT_CAPTION` (§10B), whose wording follows the
+   measured p50 from the W4 press to the portrait on screen. No percentage, no
+   progress bar, no elapsed time, no spinner. It must look intentional at 200 ms
+   and at 30 s, because both are real.
+8. **No false scarcity.** There are no timers anywhere. The one-time offer that
+   carried the single exception was removed 2026-09-10.
+9. **Reduced motion.** Show the completed composition at the same availability
+   gate: W3's cards render in place, W6's scan band, dots and pulse hold still
+   while the status text still rotates, cross-fades become instant, W6's inline
+   edit block opens and closes without its height animation, **W7's testimonial
+   rail becomes a plain horizontal `ScrollView` with no auto-scroll**, and
+   WELCOME shows a number instead of flying coins. Never a spinner and never a
+   flashing replacement.
 10. **No em dashes in product copy.**
 
 ---
 
 ## 1. Frame and shared system
 
-All values resolve to `expo/src/theme/`. Use `colors.bg` for page, `colors.surface`
-and `colors.surface2` for cards, `colors.border` and `colors.borderStrong` for
-borders, `colors.ink`, `colors.muted`, and `colors.tertiary` for text,
-`colors.accent`, `colors.accentPressed`, and `colors.accentSoft` for primary and
-selected states, and `colors.success` for checks. Reader uses the `colors.sepia*`
-tokens. Concept palette always derives from `genreGradients[primaryGenre]`.
+The frame is still **390 × 844 pt**, light theme only, with a **30 pt screen
+gutter** on every character screen.
 
-Use `spacing.xxxl` horizontal gutter and only existing spacing tokens. Primary
-text CTAs use `controls.primaryCtaHeight`, `controls.primaryCtaRadius`, and
-`shadows.primaryCta`. Form fields use `controls.formFieldMinHeight`,
-`controls.formFieldRadius`, and `shadows.formField`. OTP code entry is six
+All values resolve to `expo/src/theme/`. The questionnaire screens keep the
+general palette (`colors.bg`, `colors.surface`, `colors.border`, `colors.ink`,
+`colors.muted`, `colors.tertiary`, `colors.accent`, `colors.accentSoft`,
+`colors.success`). **The character screens W3-W7 use the onboarding palette
+tokens**, which exist so this path can carry the warmer paper ground of the
+signed-off design without a second design system:
+
+| Token | Used for |
+|---|---|
+| `colors.onboardingBg` | The page ground on W3-W7 |
+| `colors.onboardingBorder` | Hairlines, benefit-row dividers, upcoming progress pills |
+| `colors.onboardingBorderStrong` | Field borders at rest, the W6 row divider, completed progress pills |
+| `colors.onboardingPlate` | The back and close button plates, and the W7 benefit-row rules |
+| `colors.onboardingSuccess` | The **✓** on **Cancel anytime, no commitments** |
+| `colors.onboardingStone` | Portrait-card ground behind an image that has not decoded |
+| `colors.accentSoft` | The radial wash, the yearly card's tint, the W5 emoji disc |
+| `colors.premium` | The **SAVE 80%** badge and the **YEARLY** label |
+
+Elevation on this path uses `shadows.onboardingCta` (the primary CTA),
+`shadows.onboardingCard` (the W3 side cards), `shadows.onboardingHeroCard` (the
+W3 hero card), `shadows.onboardingPortrait` (the W6 card and the W7 hero
+portrait), `shadows.onboardingChip` (the W5 identity chip and small floating
+cards), and `shadows.onboardingFieldFocus` (a focused field). No other elevation
+values appear on W3-W7.
+
+Type: `fonts.display` (Bricolage Grotesque 700) for headings, `fonts.ui` (Hanken
+Grotesk 400-800) for everything else, and `fonts.reader` / `fonts.readerItalic`
+(Literata) for the person's own words inside fields and inside W6's glass chip.
+Headings are 30 pt at line-height 1.12, and **34 pt at 1.08 on W6**. Uppercase
+eyebrows carry `0.14em` tracking, or `0.16em` on W6; `letterSpacing: 0`
+everywhere else.
+
+**The shared chrome on every character screen, in order:**
+
+| Element | Specification |
+|---|---|
+| Status-bar spacer | Safe-area inset, then the top row |
+| Back control | **44 × 44**, `radius.lg` (14), `colors.onboardingPlate` plate, chevron in `colors.muted`. Labelled **Back**, restores all state |
+| Progress row | **Seven pills, 22 × 5 pt, radius 3, gap 5**, centred between the back control and a 44 pt spacer that balances it |
+| Primary CTA | **56 pt tall**, fully rounded pill, `colors.accent`, white 17 pt / 700, `shadows.onboardingCta`, full width inside the gutter |
+| CTA block | 8 pt above the button and **40 pt below it**, on top of the safe-area inset. Pinned to the bottom on every character screen **except W3**, where it belongs to the centred group (§8) |
+
+**Amended 2026-09-12 (third round): that CTA recipe is the whole journey's, not
+just W3-W7's.** Every primary button from the intro's **Get started**, through
+the questionnaire's **Continue** on each step, W3-W7, the email and code screens
+and W6's **Redraw**, is `controls.onboardingCtaHeight` (56) at `radius.pill` in
+`colors.accent` with a white 17 / 700 `fonts.ui` label and `shadows.onboardingCta`.
+One primitive draws it — `Primary` in
+[`expo/src/components/onboarding/primitives.tsx`](../expo/src/components/onboarding/primitives.tsx)
+— and a `.jsx` screen that cannot import it cleanly matches those six values
+exactly. **The app's own 64 / 20 primary (`controls.primaryCtaHeight`) is
+unchanged and stays everywhere outside onboarding.** The path had shipped three
+different button sizes across consecutive screens, so the same act looked like a
+different control each time it appeared. The full recipe and the argument for two
+recipes rather than one are `DESIGN_SYSTEM.md` §6.
+
+Fields are `colors.surface` with a **1.5 pt `colors.onboardingBorderStrong`**
+border at radius 14 (16 on the multiline Appearance field), and focus to **2 pt
+`colors.accent` plus `shadows.onboardingFieldFocus`**. OTP code entry is six
 individual cells using `controls.otpCellHeight` and `controls.otpCellRadius`
-over one invisible numeric `TextInput`. Option cards use `radius.lg`, panels
-`radius.xl`, chips `radius.pill`; use `shadows.card`, `shadows.raised`, or
-`shadows.overlay` only. Use `motion.fast`, `motion.base`, and `motion.slow`; the
-named W2 choreography is 900 ms. Typography uses `type` and `onboardingType`.
-`fonts.brand` is wordmark/accent only; `fonts.reader` is prose only.
-`letterSpacing: 0` except uppercase eyebrows at `0.08em`.
+over one invisible numeric `TextInput`. Do not autofocus a field.
 
-Reserve safe area plus `spacing.lg` under fixed CTAs. Scroll content ends with
-`spacing.huge + spacing.xxxl` inset. All targets have a `spacing.huge` high hit
-area. The visible Back control begins at S1, is labelled **Back**, and restores
-all state. Do not use progress percentages or numbered steps because path lengths
-differ. Do not autofocus W1 or a chip.
+**Amended 2026-09-12: there is one field component, and every field on this path
+is it.** `Field`
+([`expo/src/components/onboarding/Field.tsx`](../expo/src/components/onboarding/Field.tsx))
+carries the box above, its eyebrow label, its optional trailing counter and its
+focus ring, and it sets the value and the placeholder in `onboardingType.field`,
+**16 / 22 in `fonts.ui` at regular weight**. That face is the rule, not a
+default: **a field never uses `fonts.display` or `fonts.reader`.** The flow
+shipped with three fields instead of one — the S1 name input in Bricolage at
+headline size, W4's appearance in Literata, a third box on W5 — and the
+distinction that settles it is that text being typed is a control, while
+`fonts.display` is the screen's one heading and `fonts.reader` is prose already
+written. W6's glass chip still sets the appearance line in `fonts.readerItalic`
+(§10B), and that is consistent: there it is being read back, not typed. The full
+recipe and its measurements are `DESIGN_SYSTEM.md` §6.
 
-> **SHIPPED DEVIATION: the writer path draws a progress row.** The approved auth
-> design has one, so the email and code screens carry it, and the preview screen
-> does too because its own design does. It is drawn as short rounded bars, never
-> as a number or a percentage: nothing on screen says "3 of 6". The count is
-> **six** — idea, details, email, code, preview, paywall — and it is announced to
-> assistive technology as "Step 3 of 6" because a progressbar role without a
-> position is worse than no role at all.
+**Layout is relative, not absolute.** The frame numbers above are the reference.
+Implementations use `useWindowDimensions`, flex and `aspectRatio`, and scale the
+fixed stage sizes (W3's 300 × 290 stage, its 150 × 210 cards, W5's 220 × 230
+stage, W6's 270 × 338 card) by `min(1, (width - 60) / 330)` so a 360 pt phone
+fits without clipping.
+
+> **SHIPPED DEVIATION: the character path draws a progress row.** The approved
+> auth design has one, so the email and code screens carry it, and the rest of
+> the path does too rather than have the row appear from nowhere partway
+> through. It is drawn as short rounded bars, never as a number or a percentage:
+> nothing on screen says "4 of 7". It is announced to assistive technology as
+> **"Step n of 7"**, because a progressbar role without a position is worse than
+> no role at all. The top bar has no border and the back glyph sits on a plate.
 >
-> The rule above holds everywhere the length is genuinely variable, which is the
-> reader path. The writer path after the removal of W2 is a fixed six, so the
-> objection it was written against does not apply. If the reader path ever
-> merges into this row, the rule wins and the row goes.
+> **Amended 2026-09-11: seven steps, not six.** The count moved with the screens.
 >
-> The row now appears across the writer path with a fixed top bar, including
-> idea, details, email, code, preview, paywall, and the backend wait state. The
-> top bar has no border and the back glyph has no raised plate.
+> | Step | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+> |---|---|---|---|---|---|---|---|
+> | | `name` | `genres` | `purpose` | **W3** | **W4** | **W5** and `code` | **W6** |
+>
+> Done pills are `colors.onboardingBorderStrong`, the current pill is
+> `colors.accent`, upcoming pills are `colors.onboardingBorder`.
+>
+> **W0a and W0b are not steps.** The two writer setup questions sit inside step
+> 3's bar, because a row that lengthens for one purpose and not the other is
+> measuring which answer you gave rather than how far you have come. **The code
+> screen shares W5's pill** for the same reason: it is the second half of one ask,
+> and advancing on it would be measuring our email latency. **W7 draws no
+> progress row at all**, only the close ×, because a paywall is not a step
+> towards anything the person asked for.
+>
+> **The pixel reference disagrees here and this file wins.** `W4-Craft.dc.html`
+> draws eight pills and `W6-Meet.dc.html` fills six of seven; both are reference
+> drift. The table above is the contract.
 
 *Inference:* retain anonymous state for 24 hours only. It includes IDs,
-selections, idea, shape, concept ID, lead override, and opening choice. Never put
-idea, prose, title, name, or email in analytics. After A1, persist the shelf or
-blueprint as a free authenticated onboarding artifact.
+selections, the typed name and appearance, the portrait URL, and the reimagine
+count. Never put the name, the appearance text, the portrait, or an email in
+analytics. From W5 onward the character is a `user_characters` row.
 
 ---
 
@@ -135,30 +234,45 @@ Create → Publish / Community → Read
                          │
                     Get started
                          │
-S1 PURPOSE: Read / Write / A bit of both
-   │                          │
-   │                          └── A bit of both follows READ
-   ├── READ → R1 Taste → R2 Read → R3 Break → R4 Shelf
-   │                                                   │
-   │                  Keep exploring ──────────────────┼── A1 Save → Reader paywall
-   │                                                   │
-   │                  And start one of your own ───────┘
-   │                                                   │
-   └── WRITE ───────────────────── W1 Idea → W2 Blueprint → W3 Preview
-                                                             │
-                                                   A1 Save → Writer paywall
-                                                             │
-                                                       decline
-                                                             │
-                                            One-time offer, once ever, 2:00
-                                                             │
-                        accept → app     decline / expiry → grant 10 credits
-                                                             │
-                                                       WELCOME → app
+S1-S3  name → genre interests → purpose        steps 1, 2, 3
+                         │
+        purpose = write ──┴── W0a format → W0b blocker   (inside step 3)
+                         │
+                         ↓        (read and both come straight here)
+              W3 CHARACTER CTA   three cards fan open              step 4
+                         │
+              W4 CRAFT           NAME + APPEARANCE                 step 5
+                         │       CTA → save the row + start the draw
+                         │
+              W5 SAVE            email → send the code only        step 6
+                         │
+              CODE               6 digits, the draw runs behind it step 6
+                         │
+              W6 MEET            usually ready on entry            step 7
+                         │       🔄 Reimagine ──→ inline edit block
+                         │                          └─ Redraw ×1 → loading
+                         │
+              W7 PAYWALL         weekly · yearly, no trial         no row, × only
+                         │
+          subscribe ─────┴───── decline → grant 3 credits
+                         │
+            OS notification prompt on close or purchase
+                         │
+                  WELCOME  coins settle, then it advances itself
+                         │
+     purpose = write → Create studio, {Name} pre-filled as lead
+     purpose = read or both → Home
 ~~~
 
-A main paywall purchase enters app. Only declined or expired offer grants the
-authenticated welcome bonus. Reader and Writer paywalls merge only at OF.
+**Amended 2026-09-12 (third round), two moves in the diagram.** The draw and the
+library save leave W5's CTA and fire on **W4's** (§9, §16), so the wait is
+covered by the email screen *and* the code screen rather than the code screen
+alone; W5's CTA now does one thing, which is send the code. And **WELCOME has no
+button**: the coins settle and it advances on its own (§15).
+
+A paywall purchase skips the grant and enters the app. Only a decline grants the
+authenticated welcome bonus, now **3** credits (`CREDITS_AND_PRICING.md` §6).
+There is one paywall and there is no offer after it.
 
 ---
 
@@ -167,17 +281,89 @@ authenticated welcome bonus. Reader and Writer paywalls merge only at OF.
 | Step | Header | Control | CTA |
 |---|---|---|---|
 | `name` | **First, what should we call you?** | First-name text input | **Continue**, disabled until non-empty |
-| `genres` | **Nice to meet you, {name}. What worlds pull you in?** | Multi-select genre-interest chips with emoji | **Continue with {count}**, enabled at 2+ |
+| `genres` | **Nice to meet you, {name}. What worlds pull you in?** | Multi-select genre chips, text only | **Continue**, enabled at 3+ |
 | `purpose` | **What brings you to Katha?** | Three full-width single-select cards | **Continue**, disabled until selected |
 
-Genre interests include the active create genres plus Cozy Fantasy, Paranormal
-Romance, and Other. The first selected interest with a create mapping populates
-the first genre chip in the writer story-generation flow. Other collects a free
-label but does not populate a create genre.
+### S1, the name field
 
-Purpose remains the branch decision after name and genre interest are known.
-Read and Both continue into the reader/persona path. Write continues through W0a
-and W0b before W1.
+**Amended 2026-09-12.** The input is the shared `Field` (§1), so a name typed
+here is set in the same 16 pt UI face as the name typed on W4 two steps later. It
+was its own recipe in `fonts.display` at title size, which is precisely why those
+two screens did not look like one flow.
+
+Sub: **Katha writes with you, so every story feels personal. Let's start with
+your name.** The gap between that sentence and the field is **`spacing.lg`**, not
+`spacing.betweenGroups`. This is a deliberate reading of `DESIGN_SYSTEM.md` §8.1:
+the headline asks a question and the field answers it, so the two are one group
+with the sub as the second line of the title, and 24 pt put enough air between
+the ask and the box to read as two separate things on a screen that contains
+nothing else.
+
+**No eyebrow above the field.** The placeholder is **Your first name** and the
+headline already asks for it; a label would be the third copy of one instruction.
+Cap 40 characters, matching W4's NAME.
+
+### S2, the genre chips
+
+**Rewritten 2026-09-12.** The list is **`UI_GENRES`, the same constant the
+Create studio's picker reads** (`CreateBriefFlow.tsx`), rendered in its own
+order as real `Genre` ids labelled by `genreLabels`: adventure, comedy,
+educational, fanfiction, folktale, historical, scifi, fantasy, mystery, horror,
+sliceOfLife, romance. Twelve today; onboarding imports the constant rather than
+copying it, so the two pickers cannot drift apart again. `GENRES` carries five
+more (romantasy, darkRomance, thriller, contemporary, poetry) that exist so older
+stories keep a label; they are not offered to somebody starting out until
+`UI_GENRES` says so.
+
+**Cozy Fantasy, Paranormal Romance and Other are removed.** The first two were
+display strings that existed nowhere else in the app and quietly resolved to
+plain fantasy and plain romance, so a person who picked them met a shelf and a
+create flow that had never heard of them. **Other** collected a free label with
+nothing downstream to be: it could not key a shelf, could not seed a create chip,
+and could not be filtered on. A pick here is now the same value Explore filters
+on and Create writes with.
+
+**The chip recipe is Explore's**, from
+[`expo/src/components/explore/GenreStrip.tsx`](../expo/src/components/explore/GenreStrip.tsx):
+pill, `colors.surface`, **1 pt `colors.border`**, bold label in
+`colors.muted`, `radius.pill`; selected is a **`colors.ink` fill with
+`colors.surface` text**. Chips wrap into rows rather than scrolling
+horizontally, because every option has to be reachable before a person can pick
+three.
+
+**Amended 2026-09-12 (second round): the chips carry Explore's emoji, and they
+are bigger.** The label is **`genreChipLabel(genre)`**, exported from
+`GenreStrip.tsx` and composed there from its own `GENRE_EMOJI` map plus
+`genreLabels`, so the emoji is not copied into onboarding and the two surfaces
+cannot drift. Geometry: min-height **44**, `paddingHorizontal spacing.xl`, label
+**15 pt**, row gap `spacing.md`, chip gap `spacing.sm + spacing.xs`. Selection is
+unchanged.
+
+> **This reverses "no emoji", and the argument it reverses was about a smaller
+> chip.** The ban read twelve emoji in a wrapping grid as a second alphabet to
+> scan; what it actually described was twelve emoji crammed into a 40 pt pill
+> sized for a word. At 44 pt with `spacing.xl` gutters and a 15 pt label the
+> emoji is a mark the eye lands on before it reads, which is how a person finds
+> *horror* in a grid of twelve without reading eleven other words first — and it
+> is the same mark Explore uses for the same genre, so the two screens teach
+> each other. **The tick mark stays banned**: the fill already says which chips
+> are selected.
+
+**Pick at least three.** The CTA reads **Continue** when three are selected and
+**Pick at least 3** while it is disabled, so the button states the rule rather
+than sitting dimmed with no reason given.
+
+The first selected genre populates the first genre chip in the writer
+story-generation flow.
+
+The first-name answer is also the **reader path's character name**: W3's reader
+headline greets the person by it and W4 pre-fills NAME with it, because the
+reader character is the person themselves (§9).
+
+Purpose is no longer a branch between two flows. **Since 2026-09-11 it selects a
+copy voice, not a path**: Read and Both go straight to W3 with reader-voiced
+copy, Write answers W0a and W0b first and then goes to W3 with writer-voiced
+copy. It still decides the exit (§15).
 
 **Instrumentation:** `onboarding_name_continued { length_bucket }`;
 `onboarding_genres_completed { genre_ids, selected_count, first_create_genre }`;
@@ -191,7 +377,7 @@ and W0b before W1.
 | Step | Header | Control | CTA |
 |---|---|---|---|
 | `writer_format` | **What do you want to write?** | Four full-width single-select cards | **Continue** |
-| `writer_blocker` | **What usually stops you?** | Four full-width single-select cards | **Continue** into W1 |
+| `writer_blocker` | **What usually stops you?** | Four full-width single-select cards | **Continue** into W3 |
 
 `writer_format` options: A full novel, Short stories, Fan fiction, Poetry and
 verse.
@@ -220,8 +406,8 @@ call, generation operation, ledger row, or cover request.
 | `both` | ✨ | **A bit of both** | **Read widely. Start something of your own.** |
 
 Selected is `colors.accentSoft` with `colors.accent` border and trailing check.
-Read goes to R1; Write goes to W1; Both goes to R1 with `bridge_eligible: true`.
-Back restores selection.
+**Amended 2026-09-11:** all three go to W3. Write passes through W0a and W0b on
+the way; Read and Both do not. Back restores selection.
 
 **Instrumentation:** `onboarding_purpose_selected { purpose }`;
 `onboarding_purpose_continued { purpose }`.
@@ -229,6 +415,36 @@ Back restores selection.
 ---
 
 ## 4. R1: Taste, not tick-boxes
+
+> **RETIRED 2026-09-11: the reader path R1-R4 no longer renders.** Read and Both
+> now take the same character flow as Write (§8-§10B), in reader-voiced copy.
+> Sections 4, 5, 6 and 7 are kept as a record of what was built and why it was
+> replaced; nothing in them is implemented, and their instrumentation is deleted
+> from §18.
+>
+> **Why one flow instead of two.** Three reasons, in order of weight.
+>
+> 1. **One flow is one flow to maintain.** Two paths meant two sets of screens,
+>    two sets of events, two back-stacks and two paywall entries, for a single
+>    question the person answers in one tap on S3. Every fix landed twice or, in
+>    practice, once.
+> 2. **The artifact is whole, not a truncated preview.** R2 handed the reader
+>    about 250 words of a story they could never finish, and R3 then interrupted
+>    it on purpose to demonstrate what a plan removes. A portrait is finished
+>    when it appears and the person keeps it. Principle 2 is the general form of
+>    this, and the reader path is what it was written against.
+> 3. **A saved character is worth more to a reader than a shelf was.** Saved
+>    characters are cross-story since migration 00057, and
+>    [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) states the consequence
+>    plainly: **"Saved characters make the story start cheaper"** — an all-saved
+>    cast takes a 3-chapter story from $0.221 to $0.104. A reader who leaves
+>    onboarding with one character has made their first story cheaper for us to
+>    serve before they have written it. A reader who left with four recommended
+>    content IDs had made nothing.
+>
+> R3's house break is retired with the rest of it, and that is a separate small
+> win: the free tier now has no deliberate interruption in it at all, which is
+> the position `CREDITS_AND_PRICING.md` §12 item 7 already argued for.
 
 | Item | Specification |
 |---|---|
@@ -273,6 +489,8 @@ Never send sentence text.
 ---
 
 ## 5. R2: Start the story
+
+*Retired 2026-09-11. See the note under §4.*
 
 | Item | Specification |
 |---|---|
@@ -337,6 +555,8 @@ source: static }`; `onboarding_reader_opening_scrolled { opening_id, depth:
 
 ## 6. R3: The break
 
+*Retired 2026-09-11. See the note under §4.*
+
 | Item | Specification |
 |---|---|
 | Header | **A small pause between chapters.** |
@@ -366,6 +586,8 @@ onboarding_between_chapters, opening_id }`;
 
 ## 7. R4: The shelf, now earned
 
+*Retired 2026-09-11. See the note under §4.*
+
 | Item | Specification |
 |---|---|
 | Header | **Where to next?** |
@@ -387,9 +609,8 @@ edge. Exact content:
 >
 > **Try writing**
 
-Try writing enters W1 with `entry: reader_bridge`, no prefill, no selected chip,
-no call. Keep exploring enters A1 with `paywall_kind: reader`. Bridge establishes
-Writer only after W3. Back goes R3.
+Try writing enters the writer path with `entry: reader_bridge`, no prefill, no
+selected chip, no call. Keep exploring enters the paywall. Back goes R3.
 
 **Instrumentation:** `onboarding_shelf_shown { taste_id, content_ids }`;
 `onboarding_shelf_card_opened { content_id }`;
@@ -398,285 +619,637 @@ Writer only after W3. Back goes R3.
 
 ---
 
-## 8. W1: Idea
+## 8. W3: Character CTA
 
-| Item | Specification |
-|---|---|
-| Header | **What’s your story about?** |
-| Sub | **A sentence is enough. Katha takes it from there.** |
-| Label | **Your idea** |
-| Placeholder | **A woman inherits a boarded-up house and finds letters that arrive before they are written.** |
-| Input | Multiline `n / 1000`, no minimum-length gate |
-| Starter heading | **TRY ONE** |
-| Control | **Shape** segmented control |
-| CTA | **Find the shape** |
+> **Replaces C0 Bridge and C1 Who, and with §§9-10B the whole C0-C4 sequence,
+> 2026-09-11 — the same day C0-C4 was specified.** §19 item 6 records why.
 
-One box only. No byline, genre, Where and when, characters, goal, obstacle,
-friction, or reading-preference field. Field is `colors.surface`,
-`colors.borderStrong` on focus, `radius.lg`, `spacing.lg`, `type.body`, minimum
-height `spacing.huge + spacing.huge + spacing.xl`. It does not autofocus or
-shrink around chips. Counter starts `0 / 1000`; at limit announce **Your idea can
-be up to 1000 characters.**
+Step 4 of 7. W3 is a picture and a sentence. It exists because W4 asks for two
+fields before anything has said what they are for, and a person who does not know
+why they are being asked writes less. The picture does the saying: three
+portraits fan open, so the promise is demonstrated rather than described.
 
-Try one rail is flush-left at gutter and bleeds right only with right
-`spacing.xxxl` inset. It shows a partial next chip. It remains peer to the field.
-
-| `starter_id` | Exact chip |
-|---|---|
-| `house_letters` | **A house with letters from tomorrow** |
-| `rival_bakery` | **Two rivals save a failing bakery** |
-| `moon_city` | **A city beneath a broken moon** |
-| `missing_violin` | **A missing violin in a small town** |
-| `last_train` | **The last train knows your name** |
-| `ocean_poem` | **A poem from the sea to someone who left** |
-
-A chip fills field and sets `idea_source: starter`. Any edit becomes `typed`; it
-is starter-backed only when normalized field text exactly matches canonical chip.
-Never preselect a chip.
-
-| ID | Label | Visible W2 consequence |
+| Item | Writer copy (`purpose = write`) | Reader copy (`purpose = read` or `both`) |
 |---|---|---|
-| `chapter` | **Chapter** | Four beats under **Chapters** |
-| `short_story` | **Short story** | One beat under **Chapters** |
-| `poem` | **Poem** | No **Chapters** section |
+| Header | **Every story needs a lead.** | **{name}, what if you were in the story?** |
+| Sub | **Describe them in a line. Katha draws them and builds the story around them.** | **Katha can write you into anything on your shelf. Describe yourself once, and every story gets a lead you recognize.** |
+| CTA | **Create my character** | **Put me in the story** |
 
-Chapter is default. Shape is selected `colors.accentSoft` and `colors.accent`;
-inactive is `colors.surface2` and `colors.border`. CTA enters W2 intentional
-waiting. Back restores R4 for bridge entry or S1 direct Write.
+`{name}` in the reader headline is the first name from S1, not a character name.
 
-**Instrumentation:** `onboarding_idea_started { entry }`;
-`onboarding_idea_changed { length_bucket }`;
-`onboarding_starter_selected { starter_id }`;
-`onboarding_shape_selected { shape }`;
-`onboarding_idea_submitted { idea_source, length_bucket, shape }`.
+**Composition.** `colors.onboardingBg` ground with a radial `colors.accentSoft`
+wash, 80% × 50% at 50% / 30%, fading to transparent at 70%. Below the progress
+row, **36 pt**, then a centred **300 × 290** stage holding three cards, each
+**150 × 210** at radius 20 on `colors.onboardingStone`:
 
----
-
-## 9. W2: Blueprint and two acts of authorship
-
-> **SHIPPED DEVIATION, 2026-09-06: W2 no longer exists as a screen.** Its
-> content was merged into W3 and the standalone blueprint screen was deleted.
->
-> W2 was a toll gate. It showed a summary of a story the reader had not been
-> allowed to read yet, asked them to approve it, and put the payoff they had
-> just waited through the crafting loader for one press further away — behind a
-> button reading "See the preview". The one question it really asked, *is this
-> right?*, cannot be answered before you have read a sentence of the thing.
->
-> What survived the merge, and where it went: the title, the shelf, the world
-> and the lead are the concept block at the top of W3; the chapter plan is a
-> numbered read-only list under them; the **CONCEPT** eyebrow is on the cover
-> placeholder. What did not survive: **beat editing**, and the **Try another**
-> control described below. Both are a deliberate loss, not an oversight. Beats
-> are rewritten in the studio, which is what W3's first entitlement line
-> promises; Try another had no home once the screen it lived on was gone, and
-> §16's one-call budget means its supply was always finite anyway.
->
-> This section is left standing because its vocabulary rules (Chapters, never
-> Arc or Premise), its instrumentation and its variant semantics are still
-> canonical wherever those facts are rendered. Read it as the specification of
-> the *blueprint content*, not of a screen. §10 is where that content is shown.
-
-W2 is **Shape**. Use only **Title**, unlabeled shaped description, **Who’s in it**,
-**Where and when**, and **Chapters**. Never use Premise, Plot, Setting, Arc,
-Seed, or Prompt.
-
-| Item | Specification |
-|---|---|
-| Waiting heading | **A story can begin anywhere.** |
-| Waiting sub | **Hold on to the part that feels like yours.** |
-| Revealed heading | **Your idea just became a story.** |
-| Revealed sub | **Change the parts that make it yours.** |
-| Primary CTA | **See the preview** |
-| Secondary | **Try another** |
-
-> **Amended 2026-09-06, then overtaken the same day.** The revealed heading was
-> **Here's the shape of it.** It was corrected here to **Your idea just became
-> a story.** to match what had shipped, on the reasoning that this was the
-> payoff moment of the writer path and "the shape of it" described a diagram
-> rather than the thing the reader had just made.
->
-> That reasoning was right and it is what removed the screen. If this is the
-> payoff moment, it should not be a summary with a button to go and see the
-> payoff. The heading, the sub and the **See the preview** CTA in the table
-> above no longer render anywhere; the waiting copy still does, on the crafting
-> loader. §10 carries the reveal now, and the story's own title is its heading.
-> The table is kept because the copy is worth knowing was tried.
-
-### 9.1 Waiting and choreography
-
-Show intentional editorial holding: waiting copy, `colors.surface` concept-card
-silhouette with three static rules, `colors.surface2` chip stack. No spinner,
-percentage, progress bar, elapsed time, generation claim, or source-specific copy.
-It must look intentional at 200 ms and 3 seconds.
-
-Submit typed call or library lookup on W1 CTA. Do not reveal until valid concept.
-Timeout, failure, and invalid response silently select fallback. No error,
-apology, retry, or explanation.
-
-After concept availability and at least `motion.base` on W2, always run this exact
-900 ms sequence, including a 0 ms library result:
-
-| Time | Reveal |
-|---|---|
-| 0–150 ms | Chips settle with opacity and 4 pt rise |
-| 150–300 ms | Title |
-| 300–450 ms | Unlabeled description |
-| 450–600 ms | Who’s in it, lead row, Where and when |
-| 600–750 ms | Four, one, or zero Chapters beats from W1 Shape |
-| 750–900 ms | Opening choices, Try another, and CTA enabled |
-
-Staged choreography claims nothing and is allowed. Spinners, progress, percentages,
-and fake generation language are forbidden because they would lie on precomputed
-path. In reduced motion, show final composition at same availability gate.
-
-### 9.2 Recast the lead
-
-Concept card has uppercase **CONCEPT**, title, description, and palette from
-`genreGradients[primaryGenre]`, never constant orange. Who’s in it has a tappable
-lead name initial `lead.default_name`, role, edit affordance, name input, and
-**Save name**. Accept one to 40 visible trimmed characters; collapse repeated
-whitespace. Empty save keeps default.
-
-Save substitutes `{{lead_name}}` locally in description, Where and when, role,
-beats, every opening variant, and W3 prose. `{{lead_name_possessive}}` renders
-`Name’s`, including a name ending in s. It is string substitution only: no model,
-credit, or two-second generation; completes in `motion.base`. Unchanged uses
-default exactly.
-
-Where and when is inferred and read-only here. Do not add a third authorship task.
-
-Shape is exact: Chapter four numbered beats; Short story one; Poem no Chapters
-heading, empty state, or placeholder.
-
-### 9.3 Choose opening and Try another
-
-Under **OPENING**, show radio rows in exact order:
-
-1. **The moment they arrive**
-2. **The night before**
-3. **Twenty years earlier**
-
-First is default. Tapping substitutes precomputed `opening_variants[id]` into W3
-with `motion.base` cross-fade, no model, no cost. Announce **Opening changed to
-{label}.**
-
-Try another is quiet `colors.muted` text with `spacing.huge` hit area. It advances
-through ordered variants, never shuffles, never returns rejected concept during
-session, has **no counter and no cost**, and replays full choreography. Back from
-W3, or back to W1 without idea or Shape change, returns the exact concept, name,
-and opening. Quiet reshuffle is forbidden.
-
-**Exhaustion.** The variants are finite — a bundled starter has at least two, and
-the typed path returns one concept per call — so the control *does* run out, and
-the three prohibitions above decide what happens when it does. It may not repeat
-a rejected concept, it may not shuffle, and §16 forbids a second model call. The
-only remaining behaviour is therefore forced rather than chosen: **when the last
-variant is shown, Try another disappears.** No disabled state, no counter, no
-"that's all" toast — the control is simply not rendered, exactly as it is not
-rendered when a starter has one variant.
-
-The way back to new concepts is the idea box, which is where the user has the
-most control anyway: editing the idea or changing Shape re-enters W2 with a new
-ordered set and restores the control. *(This resolves the contract's "no limit"
-wording, which was true of counters and cost but never of the supply.)*
-
-**Instrumentation:** `onboarding_blueprint_wait_shown { idea_source, shape }`;
-`onboarding_blueprint_ready { concept_source: library|model|fallback,
-ready_latency_bucket, shape, primary_genre }`;
-`onboarding_lead_name_saved { changed, length_bucket }`;
-`onboarding_opening_selected { opening_id }`;
-`onboarding_blueprint_try_another { from_variant, to_variant }`;
-`onboarding_blueprint_preview_started { concept_id, lead_name_changed }`.
-
----
-
-## 10. W3: Preview
-
-W3 is now the **only** screen between the crafting wait and the paywall, and it
-carries what §9's screen used to carry. Order down the page: the story title,
-then a row of the concept cover beside the shelf/world/lead byline and the
-chapter plan, then the opening prose in a card tagged **PREVIEW**, then the
-entitlements under **YOU CAN ALWAYS**, then the CTA.
-
-**Why the title is above the cover rather than beside it.** The design draws
-them side by side, which is the book-listing convention, and it was built that
-way first. It does not survive measurement: a 94pt cover and a `spacing.lg` gap
-leave 216pt of the 326pt column, and `onboardingType.title` at 28 sets about
-fifteen characters to the line there, so a four-word title breaks into four
-ragged lines. The alternative was a smaller title, which is a fifth size and the
-exact move [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) §3.0 was just corrected for.
-Arrangement moved so type could stay.
-
-| Item | Specification |
-|---|---|
-| Header | *None.* The story's own title is the screen's one heading, on `onboardingType.title`. |
-| Byline | Shelf · Where and when · Lead, middot-joined, `onboardingType.helper`, empty parts dropped |
-| Plan | Chapters as `01`, `02`, … in `colors.accent` beside each beat. Read-only. |
-| Prose | Active `preview_body` in real reader surface, `type.reader` |
-| Entitlement head | **YOU CAN ALWAYS** |
-| CTA | **Save my story** |
-| Concept eyebrow | **CONCEPT**, on the cover placeholder |
-
-**Why there is no header.** "This is the beginning." sat above a screen whose
-subject already names itself. Setting both would make this the only screen in
-the flow with two sentence-case headings, against the one-title rule in
-[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) §3. The story's title is the heading.
-
-**The cover is a placeholder, and must read as one.** A real cover is a paid,
-generated image that does not exist at this point in the flow. The placeholder
-is a dark portrait card at the library's own 1:1.48 proportion, carrying the
-word CONCEPT and an echo of the title. It is hidden from assistive technology,
-because everything on it is stated in full beside it.
-
-W3 is **Review**. It is not a locked screen: no lock, curtain, price, paywall
-button, or interruption in prose.
-
-Render 120 to 180 words full contrast before `fade_after_paragraph`. Active lead
-name must occur in first two paragraphs before boundary. At boundary use
-`motion.slow` vertical transparent-to-`colors.bg` gradient at least
-`spacing.huge + spacing.huge + spacing.xxl` high. Next paragraph starts inside
-gradient on a live scene hook. Never fade after four sentences, mid-unremarkable
-paragraph, or a summary. Gradient ends in concept card with own palette, title,
-unlabeled description, Where and when, active lead, selected opening, and
-**CONCEPT**. It updates locally after W2 changes.
-
-Below fade, always show full-contrast `colors.surface` entitlement card using
-`type.subhead`, `colors.ink`, `colors.success` checks:
-
-- **Edit every word by hand, as much as you like**
-- **3 free AI redrafts for every chapter**
-- **20 free paragraph edits for every chapter**
-- **1 free cover retry after a paid cover**
-- **Your stories are yours to save, publish, unpublish, or delete**
-
-Rows never fade, dim, hide, or move behind paywall. They are the answer to *am I
-stuck with this*, and holding them behind the ask is what turns a preview into a
-trap. Save my story enters A1 with `artifact_kind: blueprint`,
-`paywall_kind: writer`. **Back now returns to W1b (the details screen), not to
-W2**, which no longer exists; the brief, the plan and the verified session all
-survive the round trip, and going forward again re-uses the warm request rather
-than buying a second model call.
-
-**Instrumentation:** `onboarding_preview_shown { shape, opening_id,
-lead_name_changed, visible_word_bucket }`;
-`onboarding_preview_fade_reached { concept_id }`;
-`onboarding_preview_entitlements_seen { concept_id }`;
-`onboarding_preview_save_tapped { concept_id }`.
-
----
-
-## 11. A1: Save your progress
-
-A1 follows aha and precedes all purchase/grant. It saves the artifact, not an
-administrative profile.
-
-| Artifact | Header | Sub | Background art |
+| Card | Position | Final transform | Elevation |
 |---|---|---|---|
-| Shelf | **Save your shelf** | **Keep these next reads waiting for you on every device.** | Four actual shelf-card silhouettes softened behind `colors.bg`; no generic stars, quill, or books. |
-| Blueprint | **Save “{title}”** | **Keep the shape you made, including {lead name}.** | Current concept card enlarged behind panel with own palette and active name; no portrait or cover. |
+| Hero | left 75, top 10 | none, `z-index` above both | 3 pt `colors.onboardingBg` border, `shadows.onboardingHeroCard` |
+| Left | left 0, top 34 | rotate **-8°** | `shadows.onboardingCard` |
+| Right | right 0, top 34 | rotate **+8°** | `shadows.onboardingCard` |
 
-`colors.surface`, `radius.xl`, `shadows.overlay` auth panel order:
+The right card is the exact mirror of the left. Assets are
+`expo/assets/onboarding/portrait-aarav.png` (hero, focal centre 18%) and
+`portrait-priya.png` (both sides).
+
+**Amended 2026-09-12 (third round): W3 does not pin its CTA, and it is the only
+screen on the path that does not.** The progress row stays at the top, and
+everything under it — the stage, the copy, and the button — is **one vertically
+centred group** with **equal free space above and below it**, held by a flex
+spacer at each end. Inside the group: `spacing.xxl` between the stage and the
+copy block, and `spacing.xl` between the copy and the CTA. The stage's own
+composition, its two-phase entrance and its scaling rule are unchanged.
+
+Header on `fonts.display` 30 / 1.12, sub 12 pt under it at 15 / 1.5 in
+`colors.muted`.
+
+**W3 holds less than any other screen on the path, and pinning punished it for
+that.** Every other character screen carries fields or a card that fills the
+frame down to the button, so a CTA on the bottom edge is the end of a column of
+content. W3 has a picture and a sentence, so pinning left a band of empty paper
+between the sub and the button that grew with the phone: on a tall device the
+three things a person is meant to read as one thought — look at this, here is
+what it is, press this — were spread across the screen with nothing between them.
+Centring the group makes the empty space symmetrical, which reads as composition
+rather than as a gap where something failed to load. The CTA keeps the §1 recipe
+exactly; only its position changes.
+
+**Motion: a two-phase entrance, on mount, once. It does not loop and it does not
+settle back.**
+
+| Phase | Timing | Values | Easing |
+|---|---|---|---|
+| 1. Hero | 0 → **2000 ms** | opacity 0 → 1, scale **0.72 → 1.08** | `Easing.bezier(0.3, 0.7, 0.2, 1)` |
+| 2. Sides, both at once | delay **2100 ms**, duration **800 ms** | see below | `Easing.bezier(0.22, 0.9, 0.3, 1)` |
+
+Left card: translateX 75 → 0, translateY -24 → 0, rotate 0 → -8deg, scale 0.86 →
+1, opacity 0 → 1. Right card: translateX -75 → 0, and otherwise identical with
+rotate 0 → +8deg.
+
+**The hero holds at 1.08. There is no settle-back to 1.0**, no spring, no
+overshoot correction. The slow two-second swell is the screen's whole idea: it
+reads as a portrait being looked at rather than a card being animated in, and a
+bounce back to rest would turn it into a UI flourish.
+
+**Reduced motion:** all three cards render in their final position, rotation,
+scale and opacity, with no entrance.
+
+**Back** returns to S3, or to W0b for writers, with every selection restored.
+
+**Instrumentation:** `onboarding_character_cta_shown { purpose }`;
+`onboarding_character_cta_tapped { purpose }`.
+
+---
+
+## 9. W4: Craft
+
+Step 5 of 7. **Amended 2026-09-12 (second round): two answers, and nothing
+else.** A name and an appearance, in that order, then the KATHA WILL DRAW card.
+
+| Item | Writer copy | Reader copy |
+|---|---|---|
+| Header | **Craft your lead** | **Craft your character** |
+| Sub | **Two details. Katha fills in the rest.** | **This is you in the story. One line is enough.** |
+| Field 1 label | **NAME** | **NAME** |
+| Field 2 label | **APPEARANCE** | **APPEARANCE** |
+| Counter | **{n} / 300** | **{n} / 300** |
+| CTA | **Bring {name} to life** | **Show me** |
+| CTA, name empty | **Bring them to life**, disabled | **Show me**, disabled |
+
+On the reader path **NAME is pre-filled with the first name from S1**, because
+the character is the person. It stays editable.
+
+**Layout.** Heading block 26 pt below the progress row; header 30 / 1.12, sub 10
+pt under it at 14.5 / 1.5 in `colors.muted`. The NAME block is 26 pt below the
+sub: an 11 pt / 800 uppercase label in `colors.tertiary` at `0.14em`, 8 pt above
+a single-line field at radius 14 with 15 × 18 pt padding, the value set in
+`fonts.reader` at 17 pt. The APPEARANCE block is 18 pt below it, its label row
+carrying the live **{n} / 300** counter at 11.5 pt in `colors.tertiary` on the
+right, above a multiline field at radius 16, 16 × 18 pt padding, **min-height
+150 pt**, value in `fonts.reader` at 16 / 1.5.
+
+### The gender row is removed
+
+**Added and removed on 2026-09-12.** It lived for one round between NAME and
+APPEARANCE as a required four-option single-select — Woman, Man, Non-binary,
+Prefer not to say — and it is now gone from **W4, from W6's edit block (§10B),
+from the request (§16), and from the endpoint and its tests**. There is no
+dead contract left behind: `gender` is not a parameter the client can send, not
+a field `generate-character-image` reads, and not a clause
+`backend/supabase/functions/_shared/image.ts` composes.
+
+**Two reasons, and the first one is about the screen.** With the KATHA WILL DRAW
+card below it, W4's bottom already fills a 390 × 844 frame; a segmented row of
+four between the two fields pushed the card under the fold on a 360 pt phone and
+made a two-question screen read as a form. The card is the thing that earns W4 —
+it says what each answer becomes — and a row that costs it its place on screen
+is paying too much.
+
+**The second is that the prompt did not need it.** The clause it added was one of
+"a woman", "a man", "a non-binary person", placed in front of an appearance line
+the person had already written in their own words. Where that line says who
+somebody is, the clause is redundant; where it deliberately does not, the clause
+overrides a description with a checkbox. The round-one argument was that the
+model was otherwise resolving gender from the **name**, which is true and is a
+worse guess than a tap — but it is also a worse guess than the sentence directly
+after it, and the fix for a prompt reading the wrong field is the prompt, not a
+fourth control.
+
+**Nothing downstream referred to it**, which is why removing it costs nothing: it
+was never written to `user_characters`, never reached the Create flow's character
+sheet, and was already banned from telemetry (§17, §18).
+
+### The KATHA WILL DRAW card
+
+Below the appearance field, the informational card recipe: `colors.surface`, 1 pt
+`colors.onboardingBorder`, `radius.onboardingCard`, rows divided by 1 pt
+`colors.onboardingPlate`, a title in `onboardingType.body` at 700 and a line
+under it in `onboardingType.helper` in `colors.muted`. The eyebrow above it reads
+**KATHA WILL DRAW**.
+
+**Amended 2026-09-12 (second round): the rows carry duotone glyph tiles, not
+Ionicons.** Each row's mark is a **`GlyphTile`** — a 40 × 40 tile from
+[`expo/src/components/onboarding/glyphs.tsx`](../expo/src/components/onboarding/glyphs.tsx)
+— drawing a purpose-made two-tone mark rather than an outline icon borrowed from
+the app's icon set. W4's three are `GlyphFaceAndBuild`, `GlyphClothingAndCarry`
+and `GlyphTheName`. **These rows never import Ionicons**, and
+`src/theme/icons.tsx` stays the only source for every other icon in the flow.
+
+| Glyph | Title | Line |
+|---|---|---|
+| `GlyphFaceAndBuild` | **Face and build** | **The portrait, from your first line** |
+| `GlyphClothingAndCarry` | **Clothes and props** | **What they carry into every chapter** |
+| `GlyphTheName` | **The name** | **How every story speaks to them** |
+
+**The copy is balanced on purpose: about three words of title and about six of
+line, in every row on both cards.** The round-one set ran **The portrait** under
+one row and **What follows them into every chapter** under the next, which made a
+three-row card look like three unrelated notes stacked in a box. Rows of one
+shape read as one list, and a card that reads as one list is read; a ragged one
+is skimmed for the longest row and abandoned.
+
+**Six marks across the two cards, and none of them repeats.** W4's three and
+W6's three (§10B) are six distinct drawings. The round-one set reused
+`IconPerson` and `IconPencil` on both screens, so a person meeting the second
+card recognised the first card's marks against different words, which teaches
+that the tiles mean nothing.
+
+**This is the helper text W4 was refusing to carry, and it earns its place by
+being about the output rather than the input.** The rule it looks like it breaks
+is principle 3's "no helper text": that ban was on a paragraph explaining how to
+fill a box in, which is a screen apologising for its own field. Three rows naming
+what each thing becomes is the answer to the question the fields actually raise,
+which is not *what do I type* but *what is this for*.
+
+### The CTA saves the character and starts the drawing
+
+**Amended 2026-09-12 (third round).** Pressing **Bring {name} to life** /
+**Show me** runs two things on the anonymous session, in this order, and then
+advances to W5 without waiting on either:
+
+1. **The character is saved** to `user_characters` via
+   `expo/src/lib/saved-characters.ts`, with `portraitUrl` null.
+2. **`storyApi.generateCharacterImage`** with a fresh `requestId` (§16).
+
+Both are fire-and-forget with respect to navigation, and **a failure in either
+does not block W5**. A save failure is logged and retried once when the portrait
+lands; a draw failure surfaces on W6 (§10B), not here, because W4 has nothing to
+say about it and stopping a person on a filled-in form to report a background
+call is worse than letting W6 own the one place a portrait can be looked at.
+
+**This moved off W5's CTA, where it sat from 2026-09-11 until now.** The reason
+is arithmetic: the portrait takes about ten seconds, and starting it at W5 bought
+only the code screen to hide it behind. Starting it at W4 buys the email screen
+as well — typing an address, waiting for a mail to arrive, and typing six digits
+— which is comfortably more than ten seconds for almost everybody, so **W6
+usually opens ready** and the loading state becomes the exception rather than the
+rule. Nothing about the ask changes; the same two screens happen in the same
+order, and the only difference is that the work starts at the first moment it
+*can* start, which is the moment the two answers that feed it exist.
+
+**Back from W5 to W4 does not redraw by itself.** Returning with an unchanged
+name and appearance re-uses the request already in flight or already landed.
+Changing either and pressing the CTA again fires a fresh `requestId` and replaces
+the pending result, and **resets nothing else**: the reimagine budget (§10B) is
+untouched by a W4 edit, because the budget is about W6's redraw control and a
+person who has not reached W6 has not spent anything. Each W4 press is still one
+image call and still counts against the anonymous lifetime cap (§16).
+
+**No attachments, no suggestion chips, no placeholder essay.**
+The genre-seeded **TRY ONE** rail that C1 carried is gone. It was solving for a
+person who does not know what to type, and the field's own height plus a 300
+character counter solves the same problem without a second thing to read, a
+`chip_backed` flag to carry, or a canonical chip list to keep in sync.
+
+**States.**
+
+| State | Behaviour |
+|---|---|
+| Name or appearance empty or whitespace-only | **CTA disabled**, announced as dimmed. This is the rule; there is no soft-gate and no "continue anyway" |
+| Name empty, appearance filled | CTA reads **Bring them to life** and stays disabled |
+| Both answered | CTA enabled, reads **Bring {name} to life** with the trimmed name |
+| Appearance at 300 | Input stops accepting; the counter is the announcement. No error styling |
+| Name at 40 | Announce **A name can be up to 40 characters.** |
+| Returning from W5 or the code screen | Both answers restored exactly. **W6 no longer sends anyone back here**: its **Edit details** control was replaced on 2026-09-12 by an inline edit block on W6 itself (§10B) |
+| Returning from W5 with both answers unchanged | The CTA advances without a second save or a second image call |
+| Returning from W5 with either answer edited | The CTA saves the edit and fires a fresh `requestId`, replacing the pending portrait. The reimagine budget is unaffected |
+
+**Motion.** The CTA's enable is a `motion.fast` colour transition, never a scale
+or a bounce. Focus moves a field to its 2 pt accent border and
+`shadows.onboardingFieldFocus` over `motion.fast`. Reduced motion drops both
+transitions and renders the end states.
+
+**Instrumentation:** `onboarding_character_craft_started { purpose,
+initial_genre }`; `onboarding_character_craft_submitted { name_length_bucket,
+appearance_length_bucket, prefilled_name }`. `prefilled_name` is true when the
+reader path's S1 name was submitted unedited. **Never send the name or the
+appearance text.**
+
+**Amended 2026-09-12 (third round): `onboarding_character_craft_submitted` is now
+the start of the portrait clock.** It is the event the `latency_bucket` on
+`onboarding_character_w6_ready` is measured from, because it is the press that
+makes the image call. It carries no new property; what changed is what it means
+downstream, and that is written here so nobody measures from W5 again.
+
+---
+
+## 10. W5: Save
+
+Step 6 of 7. **W5 comes before the drawing, not after it**, and that is the
+structural change this whole section exists to record.
+
+| Item | Writer copy | Reader copy |
+|---|---|---|
+| Header | **Where should we send {name}?** | **Where should we send you?** |
+| Sub | **Your portrait is being drawn now. Save it to your account so {name} follows you into every story, on every device.** | same string, with `{name}` resolved to the reader's own character name |
+| Field label | **EMAIL** | **EMAIL** |
+| CTA | **Email me a code** | **Email me a code** |
+| Terms | **By continuing you agree to our Terms and Privacy Policy.** | same |
+
+**Why the email moved in front of the portrait.** C4 asked for it after the
+reveal, which meant the first thing the person saw after their character existed
+was a form. Asking here trades a worse moment for a better one: the ask lands
+while the portrait is still a promise, and the wait it creates is the wait we
+already had. The code screen is not dead time any more, it is the drawing.
+
+**Amended 2026-09-12 (third round): W5's CTA sends the code and nothing else.**
+The save and the image call moved back one screen to W4's CTA (§9, §16), so by
+the time this screen is on, the portrait is already being drawn behind it and the
+character row already exists. **The CTA copy moved with the behaviour**: it read
+**Save and draw {name}** until 2026-09-12, which named two actions this button
+had stopped performing — the row was already written and the portrait already in
+flight. A label is a promise about the press, so it now says what the press does,
+and the sub says the drawing is under way rather than about to be. W5 validates the address, calls `sendEmailCode`,
+and advances. The stage's dashed placeholder and **Ready to draw** chip are
+unchanged and still honest: the person is looking at a promise, and the fact that
+the promise is already in flight is not something this screen reports.
+
+**Composition.** A centred **220 × 230** stage, 28 pt below the progress row,
+holding two pieces of an unfinished character:
+
+- **The placeholder card**, left 35 / top 16, **150 × 196** at radius 18,
+  `colors.surface` with a **1.5 pt dashed `colors.onboardingBorderStrong`**
+  border, rotated **-5°**. Inside, centred with a 10 pt gap: a 54 pt disc in
+  `colors.accentSoft` carrying the **🎨** emoji at 24 pt, then **PORTRAIT** at 11
+  pt / 800 / `0.14em` in `colors.tertiary`.
+- **The identity chip**, right 6 / top 120, `colors.surface`, 1 pt
+  `colors.onboardingBorder`, radius 14, 12 × 14 pt padding,
+  `shadows.onboardingChip`, rotated **+3°**, min-width 150. Three lines:
+  **CHARACTER** at 10 pt / 800 / `0.14em` in `colors.accent`; the name in
+  `fonts.display` 16 / 700; then a 6 pt `colors.accent` dot and **Ready to draw**
+  at 10.5 pt in `colors.muted`.
+
+The emoji is content, not an icon glyph: keep **🎨** rather than substituting an
+Ionicon. Heading block 22 pt below the stage; the EMAIL block 24 pt below that,
+field at radius 14 with 16 × 18 pt padding, value in `fonts.reader` 16 pt. The
+terms line sits 12 pt under the CTA, centred, 12 pt in `colors.tertiary`.
+
+**States, and what the CTA actually does.**
+
+| State | Behaviour |
+|---|---|
+| Empty or malformed email | CTA disabled. Validation is the existing client rule; no error is shown before a submit |
+| CTA pressed | **`sendEmailCode`** only (`expo/src/lib/session.ts`), which is `updateUser({ email })` on the guest session — an in-place conversion, §16 |
+| `sendEmailCode` rejects | Stay on W5, existing error copy inside the field block, email retained. **The portrait already in flight is not cancelled and the saved row is not touched** |
+| `sendEmailCode` resolves | Advance to the code screen immediately |
+
+**The save and the draw are no longer on this CTA.** They fire on W4's (§9), so
+the list of three that stood here from 2026-09-11 is now a list of one. What was
+true of them there is still true of them at W4: the row is real from the moment
+it is written, there is no `draft-character://` placeholder, the portrait URL is
+written onto the existing row when it lands, a save failure is logged and retried
+once at that moment, and a draw failure surfaces on W6 (§10B) rather than on the
+screen that started it.
+
+A `sendEmailCode` rejection leaves the person on W5 with a character row saved
+and an image call running, and **that is correct, not a leak**: both belong to the
+anonymous identity, which is the same identity whether or not this address is
+ever verified, and a retry or a different address lands on the same one.
+
+**Motion.** The stage rises 8 pt and fades in over `motion.base`; the heading and
+field follow, staggered by `motion.fast`. Reduced motion renders the final
+composition.
+
+**Back** returns to W4 with both fields intact.
+
+**Instrumentation:** `onboarding_character_save_shown { purpose }`;
+`onboarding_character_email_submitted { purpose }`. See §11 for the auth events
+that fire alongside. **Never send the email.**
+
+**Renamed 2026-09-12 (third round): `onboarding_character_save_submitted` is
+retired and must not be sent.** It was named for a press that saved the character
+and started the drawing, and this press does neither any more; a funnel step
+called "save" that sends an email is a metric that lies to whoever reads it next.
+The save and the draw are counted at `onboarding_character_craft_submitted`
+(§9).
+
+---
+
+## 10A. The code screen
+
+Step 6 of 7, sharing W5's pill. Existing `EmailCodeAuth`, unchanged in behaviour
+and restyled onto the onboarding palette.
+
+| Item | Copy |
+|---|---|
+| Header | **Check your inbox** |
+| Sub | **Enter the 6-digit code we sent to {email}.** |
+| CTA | **Verify and continue** |
+| Secondary | **Resend code**, **Use a different email** |
+
+Six individual OTP cells over one invisible numeric `TextInput` (§1). Provider
+errors are safe, actionable, rendered in place, and retain every digit already
+typed.
+
+**The portrait request is running the whole time this screen is up.** That is its
+second job and it is deliberate: the wait a person tolerates for a code is the
+wait we need for an image, so the two are spent once instead of twice. Nothing on
+this screen mentions the drawing, shows its progress, or waits on it. The screen
+never blocks on the image and the image never blocks on the screen.
+
+**Exit.** On a verified code, go to **W6**: loading state if no portrait URL has
+arrived, ready state if one has. **Resend code** re-sends only; it does not
+re-request the portrait. **Use a different email** returns to W5 with the field
+cleared, and **does not** re-fire the save or the draw — the character row and
+the in-flight image belong to the same anonymous identity either way.
+
+**Back** returns to W5. Never advance unauthenticated.
+
+**Instrumentation:** §11.
+
+---
+
+## 10B. W6: Meet
+
+Step 7 of 7. One screen with two states and one cross-fade between them.
+
+### Loading
+
+| Item | Copy |
+|---|---|
+| Eyebrow | **DRAWING** |
+| Header | **{name} is taking shape.** |
+| Caption | **Usually about 10 seconds** — the constant `PORTRAIT_WAIT_CAPTION` |
+| CTA | **Drawing {name}…**, disabled at 40% opacity |
+
+> **The caption is a constant, and its number is measured rather than chosen.**
+> **Amended 2026-09-12 (third round).** The string lives once, as
+> `PORTRAIT_WAIT_CAPTION` in
+> [`expo/src/screens/CharacterOnboarding.tsx`](../expo/src/screens/CharacterOnboarding.tsx),
+> and every place the loading state renders a wait reads it from there. **The
+> wording follows the measured p50** from the W4 press (§9) to the portrait on
+> screen. Measured 2026-09-12 (`backend/scripts/measure-portrait-latency.ts`,
+> 13 runs): provider inference 7 to 9 s on `gemini-2.5-flash-image`, edge boot
+> 0.15 s warm / 1.4 s cold, two RPCs ~0.1 s, upload ~0.4 s, download of the
+> ~950 KB PNG ~1.5 s: **p50 about 11 s, p90 about 15 s from the W4 press.**
+> "About 10" is the honest rounding of that p50, and because the draw now
+> starts on W4 while the reader types an address and a code, the wait the
+> caption actually describes is the remainder after verification, usually a
+> few seconds. Inference is the part outside our control; the request shape,
+> aspect ratio, model order and output format were all measured and none moved
+> the p50 beyond run-to-run noise.
+>
+> It was **Usually 20 to 30 seconds**, which principle 7 called the one honest
+> range. It is a constant now for two reasons. The first is that the number is
+> about to change — starting the draw at W4 and the latency work behind it move
+> the real figure — and a wait time typed into a JSX caption is a number nobody
+> updates when the system gets faster, so the screen keeps promising the old
+> speed for the rest of its life. The second is that it is claimed in one place
+> and must stay claimed in one place; a second copy is a second promise.
+>
+> **Principle 7 is unchanged and this is how it is kept**, not an exception to
+> it: one honest range, no percentage, no progress bar, no elapsed time, no
+> spinner. A measured p50 is the most honest version of that sentence there is,
+> and a number that is measured can be re-measured.
+
+**Composition.** `colors.onboardingBg` with a radial `colors.accentSoft` wash, 90%
+× 46% at 50% / 36%. Centred head block 18 pt below the progress row: eyebrow at
+11 pt / 800 / `0.16em` in `colors.accent`, then the header in `fonts.display` at
+**34 / 1.08**, 6 pt under it. The card sits 20 pt below: **270 × 338**, radius
+26, a **4 pt `colors.surface`** border, `shadows.onboardingPortrait`, on a
+vertical `colors.onboardingPlate` → `colors.onboardingStone` gradient. Inside it,
+the eventual portrait is pre-rendered at **12% opacity, blurred 6 pt and
+desaturated**, so the reveal is a resolution rather than a swap. The caption sits
+20 pt below the card, centred, 13 pt in `colors.muted`.
+
+**The status chip** is inset 14 pt from the card's left, right and bottom edges:
+a dark glass panel at 72% ink with an 8 pt backdrop blur, radius 14, 12 × 14 pt
+padding, holding three dots and one line of text at 13 pt / 600.
+
+**Animation, all looping while loading.**
+
+| Element | Specification |
+|---|---|
+| Scan band | A **120 pt** tall gradient, transparent → `colors.accent` at 28% at the 70% stop → `colors.accent` at 90%, plus a **2 pt** `colors.accent` line with an 18 pt / 4 pt spread glow at 60%. Both translate from **top -4 to top 100%** of the 338 pt card over **2200 ms, linear, repeating forever with no reverse** |
+| Dots | Three **6 pt** `colors.accent` dots, 4 pt apart. Scale **0.6 → 1 → 0.6** and opacity **0.4 → 1 → 0.4** over **1200 ms**, staggered **0 / 200 / 400 ms** |
+| Status pulse | The line fades **0.55 → 1 → 0.55** over **1600 ms** |
+| Status text | Swaps every **2200 ms**, in order, wrapping: **Reading your description** → **Sketching the face** → **Choosing the light** → **Adding the last details** |
+
+The scan and the status rotation share the 2200 ms period on purpose: one sweep
+is one line, so the screen has a beat instead of two unrelated clocks.
+
+### Ready
+
+| Item | Writer copy | Reader copy |
+|---|---|---|
+| Eyebrow | **YOUR LEAD** | **THIS IS YOU** |
+| Header | **Meet {name}.** | **Hello, {name}.** |
+| Row | **🔄 Reimagine**, one pill, alone | same |
+| CTA | **Keep {name}** | **Keep this me** |
+
+The portrait fills the same 270 × 338 card at full opacity, and the person's own
+appearance line sits in the glass chip at the bottom, set in `fonts.readerItalic`
+at 12.5 / 1.45.
+
+**Rewritten 2026-09-12: one control under the portrait, not three.** `spacing.xl`
+below the card, centred, a single outlined pill (12 × 20 pt padding,
+`radius.pill`, 2 pt `colors.accent` border, `colors.surface` fill, label in
+`colors.accent` 15 / 700) carrying **🔄 Reimagine**. **The counter and
+Edit details are gone**, and §10B's old argument for showing the counter is
+reversed below.
+
+### The inline edit block
+
+**Tapping Reimagine does not draw.** It expands an edit block in place, between
+the pill and the CTA: a Reanimated `withTiming` on height and opacity over
+`motion.base`, holding
+
+1. the appearance text in a multiline `Field` (§1), pre-filled with what was
+   typed on W4, and
+2. a **Redraw** button in the primary CTA's style, inside the block.
+
+**Amended 2026-09-12 (second round): the gender row is gone from here too**, with
+the row itself (§9). The block holds one field, which is the one thing that made
+the portrait.
+
+**Redraw** collapses the block and re-enters W6's loading state in place — scan,
+dots, rotating status — then the same 300 ms cross-fade to ready. Tapping
+**Reimagine** again while the block is open collapses it without drawing.
+
+**A reimagine that cannot change anything is a retry.** The old control sent the
+same strings to the same endpoint and hoped for different pixels, which meant
+the only way to actually fix a wrong portrait was **Edit details**, a second
+control that left the screen, unwound to W4, and brought the person forward
+through it again. One pill that opens the two fields it would have sent them back
+to collapses two controls into one and keeps the portrait on screen while they
+edit the words that made it, which is the comparison that was missing.
+
+### The budget
+
+**One redraw per onboarding.** Spending it is pressing **Redraw**, not opening
+the block: the block is free to open, read, edit and close, because none of that
+is an image call.
+
+Once it is spent, **tapping Reimagine opens W7** (the paywall) instead of
+expanding the block. **No counter, no "free left" line, no "Edit details", and no
+disabled state** — the pill looks and behaves identically before and after, and
+what differs is what it opens.
+
+> **This reverses decision 45, and the reason decision 45 gave is what changed.**
+> The counter was there because "a control that acts must say what it has left",
+> and that was right about a control whose only act was drawing. It is wrong
+> about this one: the pill's first act is opening an editor, the person can open
+> it, change their mind and close it without spending anything, and a **1 free
+> left** label beside it would be counting something the tap does not do.
+> Printing a budget on a control also invites spending it — a number that starts
+> at one is a thing to use up — while a pill that quietly opens a paywall the
+> second time is the same honest wall with no scoreboard in front of it. The cap
+> itself is unchanged at one, and §16's bounds are unchanged.
+
+A failed attempt and its **Try again** still do not consume it, and the budget is
+still **per onboarding**, not per edit: opening the block, rewriting the
+appearance, redrawing, then opening the block again and redrawing a second time
+is two image calls and the second one hits the paywall.
+
+**The loading → ready transition is a 300 ms cross-fade**, card and text
+together. Nothing slides, nothing scales, and the card does not resize, because
+its geometry is identical in both states.
+
+### States
+
+| State | Behaviour |
+|---|---|
+| Entered with a portrait URL | **Ready, and since 2026-09-12 this is the expected case**: the draw started at W4 and the email and code screens have run since. No cross-fade, no loading frame |
+| Entered with no portrait URL | Loading. Still fully specified and still reachable on a slow draw or a fast typist, and it must look intentional rather than like a fallback |
+| Portrait arrives while loading | 300 ms cross-fade to ready |
+| **🔄 Reimagine** with budget left | Expands the inline edit block. Nothing is drawn and nothing is spent |
+| **Redraw**, inside the block | Fresh `requestId` carrying the edited appearance. The block collapses and the card returns to **loading in place** — scan, dots, rotating status — then the same 300 ms cross-fade. The budget is spent here |
+| **🔄 Reimagine** with the budget spent | **Opens W7.** It does not draw, does not expand, does not disable, and does not toast |
+| Failure | The status chip stays, and carries the failure copy plus its own control (below) |
+| Offline (`!isSupabaseConfigured`) | `draft-character://<id>`. Render a placeholder silhouette in the card at the same proportion. **Never a broken image**, and never an error: offline is a build configuration, not a failure the person caused |
+
+### The benefit card
+
+`spacing.xl` below the control, the informational card recipe (§9): `surface`,
+1 pt `colors.onboardingBorder`, `radius.onboardingCard`, three rows divided by
+1 pt `colors.onboardingPlate`, a title in `onboardingType.body` at 700 and a line
+under it in `onboardingType.helper` in `colors.muted`.
+
+**Amended 2026-09-12 (second round): duotone `GlyphTile`s and balanced copy**, on
+the same contract as W4's card (§9). W6's three marks are `GlyphLeadsStories`,
+`GlyphSameFace` and `GlyphSavedCast` — **three of the six, and none of them is
+one of W4's three**. No Ionicons in these rows.
+
+| Glyph | Writer title | Writer line |
+|---|---|---|
+| `GlyphLeadsStories` | **Leads your stories** | **At the centre of what you write** |
+| `GlyphSameFace` | **Same face, every time** | **Consistent across every chapter and story** |
+| `GlyphSavedCast` | **Saved to your cast** | **Reuse them in any story, any time** |
+
+Reader variant: the first row becomes **You, in every story** ·
+**Step into anything on your shelf**. Rows two and three are the same strings in
+both voices.
+
+**The lines lost `{name}` and gained a shape.** Three words of title and about
+six of line is the rule both cards now keep, and the interpolated name was what
+made these rows ragged: **Put {name} at the centre of anything you write** is
+nine words that grow with the name, so a long name wrapped one row to three lines
+and the card stopped looking like a list. The portrait is directly above these
+rows with the name on it; the rows do not have to say it again.
+
+**It is here rather than on the paywall because it is about the character, not
+the plan.** W6 is the one screen where a person is looking at something they
+made and deciding whether to keep it, and the honest case for keeping it is what
+it does next. None of the three rows is an entitlement and none of them is
+gated, which is why they can sit in front of W7 without being a pitch for it.
+
+**Failure, in the status chip, never as a full-screen error.**
+
+| Case | Chip copy | Control |
+|---|---|---|
+| Any generation failure | **We couldn't draw {name}. Try again.** | **Try again** inside the chip |
+| **429**, `CharacterPortraitRateLimitError` | The endpoint's own message, verbatim | **None.** There is a window to wait out and a retry button would lie about that |
+| **403**, `code: "guest_portrait_cap"` | **Sign in to keep making characters.** | **None.** It is an ask, not a failure, and a retry cannot succeed |
+
+**A failed attempt and its Try again do not consume the reimagine.** A person who
+has spent nothing and received nothing has not made a choice.
+
+**There is no fallback portrait.** A substituted portrait is a different
+character wearing the person's name, which is worse than saying it did not work.
+
+**Reduced motion.** The scan band, the dots and the status pulse are **static**:
+the band rests at the top of the card, the dots hold at full scale and opacity,
+the line holds at full opacity. **The status text still rotates on its 2200 ms
+cadence**, because it is the only thing on the screen that reports progress and a
+frozen sentence during a 30 second wait reads as a hang. The cross-fade becomes
+an instant swap.
+
+**Exit.** **Keep {name}** / **Keep this me** writes the portrait URL onto the
+saved character row and continues to W7. **Exit routing is decided here and
+executed after WELCOME:** `purpose = write` enters the Create studio with {Name}
+pre-filled as the lead; `read` and `both` enter Home.
+
+**Instrumentation:** `onboarding_character_w6_loading_shown { purpose,
+attempt_index }`; `onboarding_character_w6_ready { latency_bucket,
+reimagines_used }`; `onboarding_character_portrait_failed { reason }`;
+`onboarding_character_reimagine_tapped { index }`;
+`onboarding_character_reimagine_blocked_paywall { reimagines_used }`;
+`onboarding_character_kept { reimagines_used }`. `index` is always 1. Never send
+the portrait URL, the storage path, or the prompt.
+
+**Amended 2026-09-12.** `onboarding_character_reimagine_tapped` now fires on
+**Redraw**, the moment an image call is actually made, not on the pill that opens
+the editor: an event named for a reimagine that counts an expand is a funnel that
+cannot be read. `onboarding_character_edit_details_tapped` is **retired with the
+control it named** and must not be sent; there is no event for opening the block,
+because the block is free and opening it is not a decision anyone is measuring.
+**Amended 2026-09-12 (second round):** the round-one clause banning a `gender`
+property on these events is moot and removed with the row it protected (§9).
+
+---
+
+## 11. A1: Save {Name}
+
+**A1 is now W5 Save plus the code screen** (§10, §10A). It has no separate
+screens of its own and it no longer sits after the aha: since 2026-09-11 the
+email is asked for **before** the drawing, and verification happens while the
+image is being made.
+
+`artifact_kind` is **`character`**. The `shelf` and `blueprint` kinds are retired
+with §§4-7 and must not be sent.
+
+The auth panel recipe is unchanged where it is used: `colors.surface`,
+`radius.xl`, `shadows.overlay`, in order —
 
 1. **Continue with Apple**
 2. **Continue with Google**
@@ -685,124 +1258,295 @@ administrative profile.
 5. **Continue with email**
 6. **Already have an account? Sign in**
 
-Email code screen: **Check your inbox**, **Enter the 6-digit code we sent to
-{email}.**, **Verify and continue**, **Resend code**, **Use a different email**.
-Provider errors are safe/actionable inside panel and retain state. Existing-account
-sign-in keeps artifact. Never advance unauthenticated.
+On the character path W5 renders the email field and CTA in the screen's own
+layout (§10) rather than inside a floating panel; the provider buttons, the
+divider and the sign-in line keep this order wherever they appear. Provider
+errors are safe, actionable, rendered in place, and retain every field.
+Existing-account sign-in keeps the artifact.
 
-Success saves artifact then routes Reader/Writer only by route state. Back restores
-R4 or W3.
+**The identity contract is unchanged.** Verification upgrades the anonymous user
+in place, so the character saved at W5 and the 3 guest credits survive, and the
+one fallback for an address that already belongs to somebody re-points the
+character instead. Both are specified in **§16**, which is the only place they are
+written down.
 
-**Instrumentation:** `onboarding_auth_shown { artifact_kind, paywall_kind }`;
+**Instrumentation:** `onboarding_auth_shown { artifact_kind: character }`;
 `onboarding_auth_provider_tapped { provider }`;
-`onboarding_auth_completed { provider, artifact_kind }`;
+`onboarding_auth_completed { provider, artifact_kind: character }`;
 `onboarding_auth_failed { provider, error_code }`. Never send email or content.
 
 ---
 
-## 12. Reader paywall
+## 12-13. W7: the paywall
 
-Reader is an experience bundle, not an audio plan. It does not volunteer that
-reading is free and never implies payment is required to read.
+**The Reader and Writer paywalls merged 2026-09-11**, one section per the pricing
+rebuild that left one product. The two-audience split was always a volume ladder
+wearing an identity label, and the character flow erased the line it assumed: a
+reader who reimagines a chapter is creating.
 
-| Item | Exact copy |
+**W7 draws no progress row.** The close **×** is the only chrome: 44 × 44, radius
+14, `colors.onboardingPlate` plate, top right, **from frame one**.
+
+| Item | Writer copy | Reader copy |
+|---|---|---|
+| Header | **{name} is ready. Give them a story.** | **{name} is ready. Step into the story.** |
+| Sub | **Unlock Katha and start writing tonight.** | **Unlock Katha and start writing tonight.** |
+| CTA | **Unlock Katha** | **Unlock Katha** |
+| Dismiss | The **×**, from frame one | same |
+
+### Layout: a scrolling body over a pinned sheet
+
+**Rewritten 2026-09-12.** W7 is two pieces.
+
+**The body scrolls**, and **since 2026-09-12 (second round) its order is the
+close ×, the hero, the benefits card, then the testimonial rail last**. **The
+sheet is pinned to the bottom and always visible**: `colors.surface`,
+a 1 pt `colors.onboardingBorder` top edge, `shadows.overlay`, safe-area padded,
+holding the two plan cards, the **Cancel anytime, no commitments** line and
+**Unlock Katha**. The body's scroll content ends clear of the sheet's height.
+
+**The price and the button must not be scrollable away.** The screen grew a
+testimonial rail and the benefits card was already tall, which put the thing
+being sold and the thing that buys it below the fold on a 360 pt phone. A person
+scrolling a paywall is reading the case for it; the decision has to stay under
+their thumb while they do.
+
+**The benefits card comes before the rail, because it is the offer and the rail
+is the corroboration.** Round one put eight auto-scrolling testimonial cards
+between the hero and the four rows that say what the money buys, so the first
+thing under the headline was a moving row of strangers and the entitlements were
+below it. What the plan includes is the answer to the question the header asks;
+other people's use cases are the answer to a question asked only after that one
+lands. Last is also where a marquee belongs — it is the one element with no end,
+and nothing has to be scrolled past it.
+
+**The hero.** A **104 × 134** portrait card at radius 18 with a 3 pt
+`colors.surface` border and `shadows.onboardingPortrait`, 16 pt to the left of
+the heading it is the subject of. Heading at `fonts.display` 25 / 1.1; sub 8 pt
+under it at 13.5 / 1.45 in `colors.muted`. When the portrait is null, a
+placeholder silhouette at the same proportion.
+
+### The testimonial rail
+
+**Added 2026-09-12**, **last in the scrolling body since the same day's second
+round**, and it is the one deliberate reversal of this section's own prohibition
+list. See the note at the end of this section for why.
+
+| Property | Specification |
 |---|---|
-| Eyebrow | **KATHA READER** |
-| Header | **Stay with the story.** |
-| Sub | **Read without interruptions, take stories offline, unlock audio, and keep credits ready for what you make next.** |
-| Annual badge | **3-DAY FREE TRIAL** |
-| Annual | **Reader yearly** / **$29.99 per year** / **20 credits every month** |
-| Weekly | **Reader weekly** / **$4.99 per week** / **5 credits** |
-| Monthly | **Prefer monthly? Reader monthly is $8.99 per month with 20 credits every month.** |
-| Annual CTA | **Start my 3-day free trial** |
-| Weekly CTA | **Choose Reader weekly** |
-| Dismiss | **Not now** and large close, both from frame one |
+| Cards | **Eight**, 260 wide × about 150 tall, in one horizontal row |
+| Card content | A **44 pt** round photo, the person's name, and a **two to three sentence** quote in `onboardingType.helper`. **No tag** |
+| Motion | One Reanimated shared `translateX` over a **duplicated** row, about **40 pt per second**, linear, repeating forever, wrapping at the width of one copy so the seam never shows |
+| Touch | The animation **pauses while the rail is touched** and resumes on release |
+| Reduced motion | **A plain horizontal `ScrollView`.** No auto-scroll, no translation, every card reachable by hand |
+| Photos | `expo/assets/testimonials/<slug>.png`. The files in the tree are provisional and are replaced by the product lane under the same names |
 
-Annual is selected/default. Weekly is visible immediately and has no trial.
-Monthly is disclosed below, not led. RevenueCat supplies actual display price,
-renewal, and eligibility. Feature rows exactly:
+The eight personas, by slug, in order: `mateo-rpg`, `ana-bedtime`,
+`dev-commute`, `chloe-fanfic`, `marcus-dad`, `priya-bilingual`, `ruth-memoir`,
+`leo-worldbuilder`. Each persona's use case is what their **quote** is about; the
+slug is the asset name and the ordering key and is never rendered.
 
-- **Read without interruptions**
-- **Take stories offline**
-- **Unlock chapter audio and keep it**
-- **Credits for creating and listening**
+**The use-case tag is deleted, from the card and from the data.** Round one gave
+each card an accent eyebrow — "Bedtime stories for two", "Listens on the commute"
+— above a quote that then said the same thing in the person's own words. That is
+a label summarising the sentence directly beneath it, on a 260 pt card that has
+room for one idea; it made every card a heading plus a paragraph and cost the
+quote two lines. The tag is also the half of the card that reads as marketing
+copy rather than as somebody talking, which is precisely the line this rail has
+to stay on the right side of. The `tag` field leaves the persona data so it
+cannot come back as an unused string somebody later renders.
 
-Never say unlimited creation, included audio, premium voices, priority generation,
-ad-free, or catalogue count. Close target is `spacing.huge`; no confirm-close
-sheet. Purchase enters app; decline enters OF. Paywall presentation never grants.
+The rail auto-scrolls rather than sitting still because eight cards at 260 pt are
+six screens wide and a static row shows one and a half of them: the motion is how
+the person learns there is a row at all. It is slow and linear rather than eased
+so it reads as a marquee and not as a thing that has just been tapped, and it
+stops under a finger because a row that keeps moving while it is being read is a
+row nobody finishes a sentence in.
 
-**Instrumentation:** `onboarding_paywall_shown { kind: reader, entry, product_id,
-trial_eligible }`; `onboarding_paywall_product_selected`;
-`onboarding_paywall_purchase_tapped`; `onboarding_paywall_purchase_result`;
-`onboarding_paywall_declined`.
+**The benefits card**, 16 pt below the hero and 16 pt above the testimonial rail:
+`colors.surface`, 1 pt
+`colors.onboardingBorder`, radius 20, four rows divided by 1 pt
+`colors.onboardingPlate` rules, each row 10 pt of vertical padding with a 20 pt
+emoji, a 14 / 1.35 bold title and a 12.5 pt `colors.muted` line under it. Emoji
+are content here, not icon glyphs.
 
----
+| | Row | Second line |
+|---|---|---|
+| ✨ | **50 credits a month** | **About 16 full chapters, every month** |
+| 🎨 | **Unlimited portraits and reimagines** | **{name} looks the same in every chapter** |
+| 🎙️ | **Premium voices** | Writer: **Hear {name}'s story read aloud** · Reader: **Hear your story read aloud** |
+| 📄 | **Download as PDF** | **Your stories, off the app and in your hands** |
 
-## 13. Writer paywall
+**Four rows, in exactly this order.** The five-row list C4's paywall carried is
+gone: portraits and reimagines are one row because they are one entitlement, and
+the free-tier parentheticals moved out of the rows entirely. They were arguing
+with the product on the screen that sells it.
 
-Writer is strict Reader superset, using saved concept as proof.
+**The credits row does not follow the selected plan, and that is deliberate.**
+It names the monthly grant — 50 — while the weekly card beside it carries its
+own **20 credits a week** on its own note line (§ the plan cards above). Weekly
+is the larger grant of the two at about 86 a month, so the fixed row is a floor
+for every plan on the screen and never an over-promise for the one selected; a
+row that re-wrote itself on each tap would also make the benefits card flicker
+under the thing the person is choosing between. If a plan is ever added whose
+grant is BELOW 50 a month, this row has to become plan-aware in the same change.
 
-| Item | Exact copy |
-|---|---|
-| Eyebrow | **KATHA WRITER** |
-| Header | **“{title}” is ready to become yours.** |
-| Sub | **Keep shaping {lead name}’s story, with every Reader benefit included.** |
-| Annual badge | **3-DAY FREE TRIAL** |
-| Annual | **Writer yearly** / **$49.99 per year** / **50 credits every month** |
-| Weekly | **Writer weekly** / **$6.99 per week** / **10 credits** |
-| Monthly | **Prefer monthly? Writer monthly is $12.99 per month with 50 credits every month.** |
-| Annual CTA | **Start my 3-day free trial** |
-| Weekly CTA | **Choose Writer weekly** |
-| Dismiss | **Not now** and large close, both from frame one |
 
-Concept card below hero retains its palette and **CONCEPT**. Feature rows:
+**The plan grid**, inside the pinned sheet, two equal columns with a 12 pt gap.
+**Rewritten 2026-09-12 (second round): the cards are compact, about 92 pt tall.**
+Each is one row of layout rather than a stack: the eyebrow and the price sit on
+**one line**, and the note sits under that line. Nothing else is inside a card.
 
-- **Everything in Reader**
-- **Read without interruptions**
-- **Take stories offline**
-- **Unlock chapter audio and keep it**
-- **50 credits every month on yearly or monthly**
+| | Weekly | Yearly |
+|---|---|---|
+| Card | `colors.surface`, 1.5 pt `colors.onboardingBorder`, radius 20, height about **92** | `colors.accentSoft` fill, **2 pt `colors.accent`** border, radius 20, height about **92**, **selected by default** |
+| Badge | none | **SAVE 80%**, `colors.premium` pill, white, **9 pt** / 800 / `0.12em` |
+| Eyebrow + price | **WEEKLY** then **$5.99** on one line, with **/wk** at 12 pt in `colors.muted` | **YEARLY** then **$59** on one line, with **/yr** |
+| Note | **20 credits a week** | **$0.16 a day** |
 
-Annual default/trial; weekly visible/no trial; monthly below. Never call Writer
-unlimited generation and do not create text, cover, character, audio, or credit
-reservation on arrival. Purchase enters app, decline OF, blueprint remains saved.
+The sheet holds the two cards, the cancel line and the CTA above the safe-area
+inset on a 360 pt phone, and the tall two-row card it replaced is what made that
+tight. A plan card is a price and a unit; stacking the eyebrow, the price and the
+note down a 130 pt column spent a third of the sheet on air between three short
+strings.
 
-**Instrumentation:** Reader event family with `kind: writer`, `concept_id`,
-`shape`, `opening_id`, `lead_name_changed`; never title/name.
+**The yearly note is a daily price, derived, not a monthly one.** **$0.16 a day**
+is **59 / 365 rounded to cents**, and it is **computed in code from the plan's
+own price** — never written as a literal string, so a RevenueCat price that moves
+moves the line with it. It replaces **$4.92 a month, billed yearly**, which
+compared the yearly plan against a monthly plan that **is not on this screen**
+(§12-13, and `CREDITS_AND_PRICING.md` §3): a person reading it had to be told
+what a month costs before the comparison meant anything, and the one price we
+deliberately withhold here is the monthly one. A day is a unit that needs no
+second price to be understood, and it is the smallest honest way to say what a
+year costs. It is a restatement of the same $59, not a separate charge, and the
+card still shows **$59 /yr** as the price above it.
+
+**SAVE 80% is annualised weekly against yearly, and it is rounded down.** Weekly
+at $5.99 is $311.48 a year; $59 against that is a **81%** saving. The badge says
+80% because a claim on a paywall should be the conservative reading of its own
+arithmetic, and because the figure has to stay true if RevenueCat returns a
+localised price that moves the ratio a point. **It is not a discount off a former
+price** and must never be drawn as a struck-through one.
+
+**Both derived numbers on the yearly card are recomputed from its price, never
+typed.** The badge is the annualised weekly-against-yearly saving, rounded down;
+the note is `59 / 365` rounded to cents. `CREDITS_AND_PRICING.md` §3 carries both
+derivations and is canonical for them.
+
+Then, 14 pt below the grid, centred: a `colors.onboardingSuccess` **✓** and
+**Cancel anytime, no commitments** at 12.5 pt in `colors.muted`. All of it is
+inside the pinned sheet.
+
+**Unlock Katha** closes the sheet, 8 pt below that line, and **there is nothing
+under it.**
+
+### "Not now" is removed, and the × is the free path
+
+**Amended 2026-09-12.** W7 had two dismissals: a text link under the button and
+the close × in the corner. One of them goes.
+
+**The × survives, not the link.** The × is present from frame one, is 44 × 44 on
+a `spacing.huge` target, and is where every full-screen sheet in the app is
+dismissed, so a person already knows it. **Not now** was a second control doing
+the identical thing, placed where a secondary CTA goes and styled like one, which
+makes the last thing on the screen a choice between two buttons rather than one
+offer with an exit. The ban in §17 is on a **hidden, delayed or
+confirmation-gated** dismiss, and the × is none of those: nothing about removing
+the link makes leaving harder, slower, or less obvious, and if it ever did, the
+link comes back rather than the × moving.
+
+**No free trial, anywhere on this screen. No monthly plan, and no More options
+disclosure.** Both are deliberate removals from the C4-era paywall. A trial on a
+credits product hands out the thing being sold and then asks for the card back,
+and a third plan under a disclosure was a row nobody opened that still had to be
+priced, localised and tested. Two cards, one selected, no fine print to expand.
+
+**Never on this screen:** "unlimited generation", "ad-free", "no interruptions",
+"priority generation", "yours forever", "keep your stories", star ratings, fake
+reviews, a countdown, a catalogue count, a free trial, a monthly plan, or any
+implication that reading requires payment. The ad-free and permanence bans are
+load-bearing: there are no ads to remove (`CREDITS_AND_PRICING.md` §12 item 7)
+and PDF export ends with the plan.
+
+> **Testimonials left that list on 2026-09-12, and star ratings and fake reviews
+> did not.** The ban was written against social proof as a substitute for the
+> product: a five-star row, an invented review, a number of happy users. The rail
+> above is a different object. Each card is one person's **use case** — bedtime
+> stories, the commute, a bilingual reader, a grandmother writing for her
+> grandchildren — and it is doing the job the benefits card cannot, which is
+> showing that the thing has more than one shape. A person who came to write fan
+> fiction has no idea from four entitlement rows that somebody else uses this at
+> a bedside. **No stars, no ratings, no counts, and no claim about anyone's
+> results.** If a card ever carries a number or a superlative it is a review
+> again and it comes out.
+
+RevenueCat supplies the actual display price and renewal terms, purchased by
+package type. The values above are configuration, not hardcoded strings; on web
+or with no offering the purchase simulates.
+
+The close target is `spacing.huge` and there is no confirm-close sheet. A decline
+fires the idempotent **3**-credit welcome grant keyed `welcome:{user_id}`.
+Paywall presentation never grants.
+
+### Leaving W7 asks for notifications
+
+**Rewritten 2026-09-12: the notification soft-prompt screen is deleted.** On
+either exit — the × or a completed purchase — W7 calls `enableNotifications()`
+from [`expo/src/lib/notifications.ts`](../expo/src/lib/notifications.ts)
+directly, which raises the **OS** permission dialog, and then continues to
+WELCOME. `notificationsEnabled` in the onboarding result carries the OS answer.
+
+**A soft-prompt screen that only ever said yes is a screen.** Katha asked for the
+same thing twice: a full Katha-styled page explaining why notifications are
+useful, and then the system dialog. The explanation was true and nobody needed
+it — the request lands one tap after a paywall, in the same breath as an image
+the person just waited for, which is the most legible possible moment for "tell
+me when it is ready".
+
+> **The accepted trade: on iOS this is the only chance.** A soft prompt exists so
+> a person who is not ready can decline the app instead of declining the OS,
+> which iOS never asks again. Firing the real dialog here spends that one shot,
+> and a person who taps Don't Allow can only be recovered through Settings.
+>
+> **It is accepted rather than overlooked.** The soft prompt was not buying much:
+> it sat at the end of onboarding where a Not now was a screen to get past, and
+> the people it protected are largely the people who would have declined the OS
+> dialog anyway. What it cost was an extra full screen at the exact moment the
+> flow should be handing over. If the decline rate says otherwise, the soft
+> prompt returns in front of `enableNotifications()` and nothing else about this
+> section changes.
+
+**Instrumentation:** `onboarding_paywall_shown { entry, product_id }`;
+`onboarding_paywall_product_selected { product_id }`;
+`onboarding_paywall_purchase_tapped { product_id }`;
+`onboarding_paywall_purchase_result { product_id, result_code }`;
+`onboarding_paywall_declined { method }`. `entry` is `onboarding` or
+`reimagine_blocked`. The `kind`, `paywall_kind` and `trial_eligible` properties
+are retired — the first two with the two-audience split, `trial_eligible` with
+the trial itself — and must not be sent.
 
 ---
 
 ## 14. OF: One-time offer
 
-A single Reader yearly offer follows decline of either main paywall. It is never
-Home, push, recovery, or a later marketing surface.
-
-| Item | Exact copy |
-|---|---|
-| Eyebrow | **ONE-TIME OFFER** |
-| Header | **One more way to stay with the story.** |
-| Plan | **Reader yearly** |
-| Price | **$19.99 for your first year** |
-| Renewal | **Then $29.99 per year.** |
-| Deadline | **You’ll never see this again.** |
-| Timer | **2:00**, `m:ss` |
-| CTA | **Choose this offer** |
-| Dismiss | **No thanks** and large close, from frame one |
-
-Card uses `colors.surface`, `radius.xl`, `shadows.raised`, quiet book-stack
-geometry in theme colors. No pulsing CTA, “save today,” percentage, stock, or
-scarcity except true deadline.
-
-Server owns `offer_seen`, `offer_claimed`, `offer_expires_at`, eligibility, and
-SKU disable. Client timer is presentation. If unavailable/ineligible/expired,
-skip directly to decline. At zero: disable CTA, **Offer expired**, server-disable,
-then advance after `motion.base`. Dismiss permanently disables identically.
-Purchase uses `ai.katha.sub.reader.yearly.offer` then app. Decline/expiry runs
-the idempotent 10-credit welcome grant, then WELCOME. No reshow.
-
-**Instrumentation:** `onboarding_offer_shown { eligibility, expiry_bucket }`;
-`onboarding_offer_purchase_tapped`; `onboarding_offer_purchase_result`;
-`onboarding_offer_declined { method }`; `onboarding_offer_expired`.
+> **REMOVED 2026-09-10, recorded here 2026-09-11.**
+> [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §3 removed the offer: at $29
+> for 600 credits it netted $24.65 against $44.28 of cost at the worst story
+> shape, a $19.63 loss, and the single plan ladder left nothing to discount but
+> the thinnest row in the model. The weekly plan at $5.99 is the low-commitment
+> entry instead.
+>
+> **Nothing in this section renders.** Its copy, its 2:00 timer, its
+> `ai.katha.sub.reader.yearly.offer` SKU and its entire `onboarding_offer_*`
+> event family are deleted, not deprecated — the events are gone from §18 and
+> must not be sent. The welcome grant now fires on declining the paywall.
+>
+> **The consequence worth keeping is the one in §0.** The countdown ban was the
+> only prohibition in this document carrying an exception that had to be
+> defended and audited. Removing the offer removes the exception. There is no
+> surface in Katha where a clock pressures a purchase, and that is a simpler
+> promise than the one it replaced.
 
 ---
 
@@ -812,85 +1556,385 @@ the idempotent 10-credit welcome grant, then WELCOME. No reshow.
 |---|---|
 | Header | **Welcome to Katha.** |
 | Sub | **Your next chapter starts here.** |
-| CTA | **Open Katha** |
+| CTA | **None.** Amended 2026-09-12 (third round): the screen advances itself |
 
-Shared quiet greeting after offer decline/expiry. Uses wordmark, `colors.bg`, small
-`colors.accentSoft` celebration mark. No number, balance, price, plan comparison,
-grant explanation, disclaimer, or “reading is free.” In-app messaging announces
-balance after landing.
+A quiet shared greeting after the OS notification prompt (§12-13), on every path.
+**Amended 2026-09-12: there is no soft-prompt screen between W7 and this one any
+more**, so WELCOME is now the screen immediately after the paywall. Uses
+the wordmark and `colors.bg`. **No plan comparison, no price, no disclaimer, no
+grant explanation, and no "reading is free" line** — that claim belongs where a
+person might doubt it, not on a congratulation.
+
+### There is no button, and the screen advances on its own
+
+**Amended 2026-09-12 (third round): "Open Katha" is removed.** The coins drop
+and settle on the existing spring choreography, the composition holds for
+**700 ms**, and then `onOpen()` fires by itself.
+
+| Condition | Behaviour |
+|---|---|
+| Normal motion | Coins drop and settle, hold **700 ms** after the last one settles, then `onOpen()` |
+| Reduced motion | Coins render already settled, and `onOpen()` fires after **900 ms** |
+| Tap anywhere | **Nothing.** The screen is not tappable and there is no skip |
+
+**A button here was asking permission to finish something already finished.**
+Every other CTA on the path buys the person something — a character, a portrait,
+an account, a plan. This one buys nothing: the grant has landed, the flow is
+over, and the only thing left is to be in the app. A press that changes nothing
+except the moment it happens is a toll, and it was the last thing onboarding did.
+
+**The 700 ms is the coins' beat, not a guess.** It is long enough that the
+settle reads as complete and the number is legible before the screen moves, and
+short enough that nobody starts looking for the control. Reduced motion gets
+**900 ms** because there is no drop to watch: the composition arrives whole, and
+the same 700 ms after nothing has moved reads as a flash rather than as a
+moment. It is not tappable to skip because a skip target that is invisible and
+lasts under a second is a control nobody finds and everybody triggers by
+accident.
+
+**This is the only auto-advance in Katha**, and it is allowed exactly because
+nothing is lost by missing it. Nothing on this screen is a decision, nothing on
+it is dismissible, and nothing on it can be read wrong in 700 ms.
+
+### The credits animation
+
+**Added 2026-09-11.** Three coins settle onto the WELCOME composition while it is
+on screen. **Amended 2026-09-12 (third round): the auto-advance is what launches
+the flight**, since there is no **Open Katha** to press. They fly to Home's
+credits pill, which bumps as each one lands and ticks **0 → 3**.
+
+| Property | Value |
+|---|---|
+| Count | **3**, matching the welcome grant in [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §6 |
+| Mark | **`CreditCoin`**, the credit currency's face as an object. Not a flat disc, and not the `Sparkles` glyph. See below |
+| Trigger | The 700 ms hold after the coins settle, then `onOpen()` (above) |
+| Target | Home's credits pill, measured in window coordinates at flight time |
+| Per landing | The pill scale-bumps and the number increments by one |
+| Frequency | **Once per account.** Persisted, not session state |
+| Reduced motion | **No flight.** The pill renders **3** directly, and WELCOME shows the coins settled and static for the 900 ms |
+| On a subscriber | Not played. A person who bought a plan received no welcome grant, so there is nothing to fly |
+
+**The coins are `CreditCoin`, a drawn mark, not a yellow circle.** **Added
+2026-09-12 (third round).** It is the credit currency's face **everywhere a
+credit appears as an object**: WELCOME's settled stack and the three that fly to
+Home. It is a duotone coin with a gold face, a darker rim, an inner highlight and
+the Katha spark on it, and it must read at **20 pt and at 52 pt**, because it is
+both a thing in a stack and a thing in flight. Its drawing and its rules are
+`DESIGN_SYSTEM.md` §7.2, which is where the mark is specified.
+
+**Home's header pill keeps its `Sparkles` glyph.** The coin carries the same
+spark on its face, which is what makes the flight legible: three objects land on
+the pill and the mark they were carrying is the mark already sitting there, so it
+reads as arriving at the place credits live rather than as two different symbols
+for one thing. A pill wearing the coin instead would be a coin containing a coin.
+
+**The flat disc was the reason the animation read as decoration.** Three yellow
+circles crossing a screen are three yellow circles; a coin with a rim, a
+highlight and a face has mass, and mass is what makes an object look like it went
+somewhere rather than like an effect that played. This is the one moment in the
+product where a credit is a thing rather than a number, and it was being drawn
+with the least specific shape available.
+
+**This is the exception to "WELCOME carries no number", and it is deliberate.**
+The rule existed because a balance printed as text on a congratulation screen is
+an administrative detail interrupting a moment. Three coins arriving in the place
+the balance lives is not a statement of a number; it is where the number came
+from, shown once. The in-app messaging system still announces the balance after
+landing, and the two do not duplicate each other because one is a fact and the
+other is an arrival.
+
+**It is once per account because a repeat is a lie.** The grant happens once, so
+an animation that replays is showing money arriving that did not arrive. The flag
+is persisted (`hasPlayedWelcomeFlight` / `markWelcomeFlightPlayed`), not held in
+memory, precisely so a reinstall-and-replay cannot happen by accident.
 
 Backend grants before this screen with `welcome:{user_id}`. WELCOME does not wait
-on or claim balance. Reader enters Home with shelf saved; Writer enters Create
-with blueprint saved.
+on or claim the balance; if the grant has not landed by the time the flight runs,
+the pill ticks to 3 anyway and reconciles on the next balance read. An animation
+that stalls on a network call is worse than one that is briefly optimistic about
+an idempotent grant we control.
+
+Exit: `purpose = write` enters Create with {Name} pre-filled as the lead;
+`read` and `both` enter Home.
 
 **Instrumentation:** `onboarding_welcome_shown { grant_path:
-offer_declined|offer_expired }`; `onboarding_completed { purpose, terminal_route,
-paywall_kind, subscription_outcome }`.
+paywall_declined|subscribed }`; `onboarding_welcome_flight_played { credits }`;
+`onboarding_completed { purpose, terminal_route, subscription_outcome,
+reimagines_used }`.
 
 ---
 
-## 16. Pre-paywall concept contract
+## 16. Pre-paywall portrait contract
 
-This interface contract, not prompt prescription, makes W2/W3 deterministic.
+> **Replaces the pre-paywall *concept* contract, 2026-09-11.** Onboarding no
+> longer requests a concept, a blueprint, opening variants or preview prose, and
+> the `OnboardingConcept` payload that section specified is retired. What
+> onboarding requests now is one image.
 
-Starter lookup accepts `starter_id`, `shape`, `variant_index`, returns full
-`OnboardingConcept`, and is bundled/cached. Each starter has ordered at least two
-concepts. Try another increments; never randomizes.
+### The call order
 
-Typed request accepts `idea`, `shape`, `locale`, primary genre, and the final
-writer brief: cast, moments, writing style, avoid text, chapter length, and
-planned chapter count. It makes one structured call. Server owns provider,
-timeout, validation, and fallback. No separate title, lead, opening, preview,
-image, or rewrite call. Client gets:
+**Amended 2026-09-12 (third round): the save and the draw fire on W4's CTA, and
+W5's CTA sends the code.** They were moved onto W5's CTA on 2026-09-11 and onto
+W4's today. On the anonymous session, in this order across the two screens:
 
-~~~json
+| # | Call | Fired by | Blocking? |
+|---|---|---|---|
+| 1 | `saveCharacter` → one `user_characters` row, `portraitUrl` null | **W4**'s CTA | No. Fire-and-forget; a failure is logged and retried once when the portrait lands |
+| 2 | `storyApi.generateCharacterImage` → fresh `requestId` | **W4**'s CTA, immediately after 1 | No. A failure surfaces on W6's status chip (§10B) |
+| 3 | `sendEmailCode` | **W5**'s CTA | **Yes.** The code screen is entered only if this resolves |
+
+W4 advances to W5 without awaiting 1 or 2. The portrait URL is written onto the
+existing row when it lands, and again on a reimagine. **There is no
+`draft-character://` row**: offline builds render the placeholder silhouette
+against a real row rather than persisting a fake URL.
+
+**Two screens of cover instead of one.** The call takes about ten seconds and the
+code screen alone did not reliably cover it, so W6 opened loading more often than
+not. Starting at W4 puts the email screen in front of the code screen as cover as
+well, and **W6 opening ready is now the expected outcome** (§10B). The ordering
+constraint that forced 3 first has gone with it: the code send was in front only
+because it was the gate on advancing, and it is not a prerequisite of either
+other call — every one of the three runs on the same anonymous identity, which
+exists from `bootstrapUser` and is unchanged by any of them.
+
+**A repeated W4 press with an edited sheet makes a second call**, with a fresh
+`requestId` replacing the pending result (§9). It counts against the lifetime cap
+below, and it does not touch the reimagine budget.
+
+### The request
+
+`generate-character-image`, through `storyApi.generateCharacterImage` in
+[`expo/src/lib/api.ts`](../expo/src/lib/api.ts):
+
+~~~ts
 {
-  "concept_id": "opaque-id",
-  "primary_genre": "mystery",
-  "title": "string",
-  "description_template": "string with {{lead_name}}",
-  "where_and_when_template": "string with {{lead_name}}",
-  "lead": { "default_name": "string", "role_template": "string with {{lead_name}}" },
-  "beats_by_shape": {
-    "chapter": ["string", "string", "string", "string"],
-    "short_story": ["string"],
-    "poem": []
-  },
-  "opening_variants": [
-    { "id": "arrival", "label": "The moment they arrive", "preview_body_template": "paragraph-delimited {{lead_name}} text", "fade_after_paragraph": 2 },
-    { "id": "night_before", "label": "The night before", "preview_body_template": "paragraph-delimited {{lead_name}} text", "fade_after_paragraph": 2 },
-    { "id": "twenty_years_earlier", "label": "Twenty years earlier", "preview_body_template": "paragraph-delimited {{lead_name}} text", "fade_after_paragraph": 2 }
-  ]
+  requestId: string,
+  name: string,
+  appearance: string,
+  imageStyle: "auto",
 }
 ~~~
 
-Every preview has 120 to 180 words before boundary, lead token before boundary,
-and a following live-hook paragraph. Chapter beats match the chosen planned
-chapter count, but the preview screen may show only a teaser subset so long
-series stay visually stable. Invalid/unavailable starter output silently returns
-same-shape fallback with internal `concept_source: fallback`, never visible.
-Invalid/unavailable typed writer shaping returns an error state with **Try
-again**, because the preview depends on the creator's actual brief.
+**There is no `gender` field.** It was added to this shape on 2026-09-12 and
+removed the same day (§9): the client does not send it, `generate-character-image`
+does not read it, and
+[`backend/supabase/functions/_shared/image.ts`](../backend/supabase/functions/_shared/image.ts)
+composes no clause from it. The endpoint's own support and its tests came out
+with the field, so the contract carries no unreachable branch. A reimagine sends
+this same shape with whatever appearance the W6 edit block currently holds.
 
-The rehearsal creates no `stories`, `chapters`, `characters`, `covers`, audio,
-generation operation, or ledger row. Auth saves editable blueprint. Turning the saved blueprint into a real story follows the standard flow and
-is priced there: **3 credits to start** — the cast, chapter 1's words and
-chapter 1's art, which becomes the cover — then **1 credit per further
-chapter**, or 2 when chapters are illustrated. See
-[`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §1.
+**No reference image in onboarding.** The endpoint accepts one and the Craft
+character sheet sends one; onboarding does not, because attaching a photo is a
+permissions prompt and a likeness question in the first ninety seconds of the
+app.
+
+### The response
+
+~~~json
+{ "url": "https://…", "image_url": "https://…", "storage_path": "…", "provider": "…", "model": "…" }
+~~~
+
+`provider` is the only field of the five that reaches analytics, and only as an
+enum on `onboarding_character_w6_ready`.
+
+### Bounds
+
+| Bound | Value | Enforced by | What the client renders |
+|---|---|---|---|
+| Characters per person | **1** | The flow. There is no add-another control | — |
+| Reimagines | **1**, **per onboarding**, **no counter** | The flow (§10B) | **🔄 Reimagine** opens the inline edit block; **Redraw** spends it; once spent the pill opens **W7** |
+| Image calls per person | **2** on the happy path: the W4 press plus 1 reimagine. A W4 edit-and-resubmit adds one each (§9) | The above, plus a fresh `requestId` per attempt | — |
+| Requests per anonymous identity, lifetime | **4**, reimagines included | `claim_guest_portrait_request`, server-side (migration 00084). **403**, `code: "guest_portrait_cap"` | The endpoint's own copy in W6's status chip: **Sign in to keep making characters.** No retry control |
+| Requests per user per hour | **12** | `claim_character_portrait_request`, server-side (migration 00055). **429** | `CharacterPortraitRateLimitError`'s own message in W6's status chip. No retry control |
+| Any other failure | — | — | **We couldn't draw {name}. Try again.** with **Try again** inside the chip |
+| Field lengths | name ≤ 100, appearance ≤ 500 | The endpoint, 400 on overflow | W4 caps NAME at 40 and APPEARANCE at 300, so neither is reachable from onboarding |
+
+`CharacterPortraitGuestCapError` is a subclass of `GenerationRequestError` in
+[`expo/src/lib/api.ts`](../expo/src/lib/api.ts) carrying the body's message, so
+the 403 is distinguishable from the 429 and from a generic failure at the call
+site rather than by string matching.
+
+A failed attempt and its **Try again** do not consume a reimagine, so a person on
+a bad network can exceed two calls. The two server-side limiters bound that, and
+both refuse rather than degrade — a broken limiter is never a free pass.
+
+**The lifetime cap is the one that matters here, and it is new on 2026-09-11.**
+The hourly window bounds a burst inside one session; it does not bound anything
+at all when a fresh anonymous session is one `signInAnonymously` call away, which
+is the gap migration 00055 recorded against itself. 00084 closes it by giving an
+**anonymous identity** four portrait requests for the life of that identity,
+reimagines and retries included, keyed on `auth.users.id`. **Never on a device
+identifier** — Katha collects none, and starting to would be a privacy and
+store-disclosure decision rather than a rate-limit detail (§17). A **named** user
+is not capped by this counter at all; it simply stops being consulted once
+`is_anonymous` is false, and it is not carried onto the account they sign into.
+
+A generation that fails calls `release_guest_portrait_request`, so **Try again**
+costs the person nothing: the slot comes back and the endpoint has no credit
+reservation to refund in its place.
+
+**At least one of the four is spent before the code is verified**, and from
+2026-09-12 it is spent before the email is even typed, because the draw now
+starts on W4's CTA. That is the one consequence of putting the draw in front of
+verification and it is acceptable for the same reason it always was: the cap is
+keyed on the identity, verification upgrades that identity in place, and the same
+person spends the same requests either way. **A W4 edit-and-resubmit spends a
+second**, which is the new way to reach the cap without failing anything, and
+four is comfortably above what two edits and a reimagine cost.
+
+### The session
+
+**The portrait is generated on the anonymous session**, and so is the save and
+the code send. `bootstrapUser` → `signInAnonymously` already exists and runs
+before all three; `generateCharacterImage` awaits it. Anonymous is the whole
+point — the aha must not be behind an account.
+
+### Failure semantics
+
+| Case | Behaviour |
+|---|---|
+| 502, no image | W6's status chip, **Try again**, no reimagine consumed |
+| **429, rate limited** | The chip carries `CharacterPortraitRateLimitError`'s own message and **no retry control**. There is a window to wait out |
+| **403, `code: "guest_portrait_cap"`** | The chip carries the endpoint's own copy — **Sign in to keep making characters.** — and no retry control, because it is an ask, not a failure, and the flow's own failure state would invite a retry that cannot succeed. Unreachable on the happy path: it takes four requests to hit and onboarding makes two |
+| 500 / network | The generic chip and **Try again** |
+| `!isSupabaseConfigured` | `draft-character://<id>` after ~700 ms. Render a placeholder silhouette; never a broken image and never an error |
+
+**There is no silent fallback portrait.** A portrait is of a named person the
+user just described, so a substitute is a different character wearing their name,
+which is worse than saying it did not work.
+
+### What is not created
+
+**No ledger row, no reservation, no refund path, and no credit of any kind.**
+`generate-character-image` has no credit reservation today and onboarding must
+not add one. The onboarding portrait **is** counted, though: the anonymous
+lifetime cap of four (above, migration 00084) counts every request an anonymous
+identity makes, onboarding's included. It has to — onboarding is the only place
+an anonymous identity can reach this endpoint, so exempting it would exempt the
+whole cap.
+
+The **named** four-free-per-account ledger in
+[`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §3 is still a **follow-up in
+that endpoint**, and it is a different counter. When it lands, the two must not
+be summed: a person who signs in has not spent any of their named four, for the
+same reason `claim_guest_characters` moves characters and not credits.
+
+Onboarding also creates no `stories`, `chapters`, `characters`, `covers`, audio,
+or generation operation.
+
+### What W4 saves
+
+**Renamed 2026-09-12 (third round) with the CTA that fires it.** It was "What W5
+saves" for one day.
+
+**One `user_characters` row** (migration 00057): owner, name, appearance, and the
+portrait URL once it exists. That is the artifact, it is cross-story, and reusing
+it later costs nothing.
+
+> **Verified 2026-09-11 in code: email verification upgrades the anonymous user
+> in place, and the character and the 3 guest credits survive.**
+>
+> [`expo/src/lib/session.ts`](../expo/src/lib/session.ts) takes Supabase's
+> convert-an-anonymous-user pair, not its create-or-sign-into-an-account pair.
+> `sendEmailCode` calls `supabase.auth.updateUser({ email })` on the guest
+> session and `verifyEmailCode` calls
+> `supabase.auth.verifyOtp({ type: "email_change" })`. **Same `auth.users.id`,
+> same `profiles.id`**, so the `user_characters` row, the guest credits and the
+> cached display name all stay attached and nothing has to be migrated. Only
+> `auth.users.is_anonymous` flips to false; `bootstrap-user` called again by the
+> now-named user upserts the same profile row, no longer takes the guest branch,
+> and mints no second grant.
+>
+> **This was not always true, and the note it replaces is worth keeping.** Until
+> 2026-09-11 the call was `signInWithOtp({ shouldCreateUser: true })` followed by
+> `verifyOtp({ type: "email" })`, which issues a session for a **different**
+> `user_id`. `user_characters` is owner-scoped under RLS (migration 00057), so
+> the row stayed where it was and the caller could no longer see it: the library
+> came back empty, the credits read zero, and nothing reported an error. **The
+> screen is titled Save {Name}, and it was the one thing the screen lost.** A
+> silent data loss on the exact artifact the flow exists to produce is why this
+> contract names the identity behaviour rather than assuming it. **It matters
+> more now than it did**, because the row is written at W5 and the conversion
+> happens one screen later with the image still in flight.
+>
+> **There is one fallback, and it behaves differently on purpose.** `updateUser`
+> fails when the address already belongs to somebody, and there is no in-place
+> merge for that — the person is signing into an account that predates this
+> device. That path signs in with `signInWithOtp` / `verifyOtp({ type: "email" })`
+> and then re-points the guest's `user_characters` rows onto the account they
+> just proved they own, by handing `bootstrap-user` the still-valid anonymous
+> access token. The server verifies that token with Supabase Auth rather than
+> trusting any client claim about which id it was, requires `is_anonymous`, and
+> calls the service-role-only `claim_guest_characters` RPC (migration 00082),
+> which moves `owner_id` on that one table and nothing else — not credits, and not the guest's portrait count.
+>
+> | | In-place conversion (normal) | Existing-account fallback |
+> |---|---|---|
+> | `user_id` | **Preserved** | New |
+> | The saved character | Stays attached | **Re-pointed** by `claim_guest_characters` |
+> | The 3 guest credits | Stay attached | **Do not move** |
+>
+> **Credits deliberately do not move on the fallback.** The guest grant is
+> rate-limited per network prefix (`CREDITS_AND_PRICING.md` §9), and carrying it
+> onto named accounts would convert that limit into a farm: sign in repeatedly
+> from fresh guest sessions and each one donates its 3. The character moves
+> because it is the person's own artifact and there is exactly one of it; the
+> credits are money and are bounded by the limit that created them.
+>
+> Re-homing is **never fatal**. The person has verified their email and is
+> standing in the middle of onboarding with an image in flight; failing that
+> screen because a character could not be moved costs them more than the
+> character does. The failure is logged rather than swallowed, because a silent
+> one here is the exact class of bug this contract was written against.
 
 ---
 
 ## 17. Prohibitions
 
-Never ship: author byline; model call on reader path, starter, name recast,
-opening choice, shelf ranking, or visual; image generation;
-W2 spinner/progress/fake work/source tell; random returned concept/counter/cost;
-W3 lock/curtain/early or generic-name fade/faded entitlements; generic A1 art;
-audio-only Reader; Writer without Reader-superset claim; unlimited generation;
-reading-paywall implication; hidden/delayed/confirmation-gated dismiss; any timer
-but OF; anonymous purchase; any anonymous grant outside the rate-limited guest
-bootstrap defined in `CREDITS_AND_PRICING.md` §9; raw text in telemetry; or a
+Never ship: an author byline; **any model or image call on the shared
+questionnaire, on W3, or while W4 is being filled in** — W4's CTA is where the
+save and the draw now fire (§9, amended 2026-09-12), so the prohibition is about
+the screen, not about its press: nothing may call a model while the person is
+still typing a name and an appearance; more than one character in onboarding; more
+than one reimagine per onboarding; a disabled **🔄 Reimagine** control at 0 free
+left, or a toast in place of the paywall it opens; a spinner, percentage,
+progress bar, elapsed time or generation claim on W6; a frozen status line under
+reduced motion; a settle-back, spring or overshoot on W3's hero card; a
+substituted or fallback portrait presented as the person's character; a broken
+image on the offline path; a portrait that is truncated, faded, watermarked or
+otherwise held back behind the paywall; a reference-image or photo attachment in
+onboarding; a `draft-character://` row persisted as a real portrait URL; **a free
+trial or a monthly plan on the onboarding paywall**, or a struck-through former
+price beside **SAVE 80%**; "unlimited generation", "ad-free", "no interruptions",
+"priority generation" or "yours forever" on the paywall; **a star rating, a
+review, a user count or any claim about anyone's results** on the paywall's
+testimonial rail, which carries use cases and nothing else (§12-13); any
+implication that reading requires payment; a hidden, delayed or
+confirmation-gated dismiss; **any timer anywhere**; an anonymous purchase; any
+anonymous grant outside the rate-limited guest bootstrap defined in
+`CREDITS_AND_PRICING.md` §9; **device identifiers for abuse control** — an
+IDFV, an install UUID, an advertising id or any fingerprint, on this flow or
+behind it; every bound in §16 is keyed on the account or the network instead, and
+adding one would be a privacy and store-disclosure decision rather than a
+rate-limit detail; a credit charge or ledger row anywhere in onboarding; a name,
+appearance string, email, portrait URL or storage path in telemetry; **a gender
+control anywhere in onboarding, or a `gender` field in the portrait request** —
+the row lived for one round on 2026-09-12 and came out the same day, and W4 is
+two answers (§9, §16); an Ionicon in a KATHA WILL DRAW or W6 benefit row, or one
+glyph tile reused across those two cards; a reimagine counter or a "free left"
+label on W6; a use-case tag on a testimonial card; a monthly price on W7's yearly
+card, including as the note under it; **a second dismissal beside W7's ×**; a replayed welcome credits animation; **a Katha-styled screen asking for
+notification permission in front of the OS dialog**, unless the decline rate
+brings it back deliberately (§12-13); a tick mark, an emoji that is not
+`genreChipLabel`'s, or an "Other" option
+on the S2 genre chips; a genre on S2 that is not a real `Genre` id; a field
+anywhere in onboarding set in `fonts.display` or `fonts.reader` (§1); **a primary
+button anywhere between Get started and WELCOME drawn at any size but 56 /
+`radius.pill`, including the app's own 64 / 20 primary** (§1,
+`DESIGN_SYSTEM.md` §6); **a pinned CTA on W3** (§8); **a wait time typed into
+W6's JSX rather than read from `PORTRAIT_WAIT_CAPTION`** (§10B); **a button, a
+tap target or a skip on WELCOME** (§15); **a flat disc standing in for
+`CreditCoin`** anywhere a credit is drawn as an object (§15); or a
 parallel design system.
 
 ---
@@ -900,35 +1944,122 @@ parallel design system.
 | Event group | Required safe properties |
 |---|---|
 | Purpose | `purpose` |
-| Taste | `taste_id`, `selected`, `selected_count`, `taste_ids`, `strongest_taste_id` |
-| Reader | `opening_id`, `taste_id`, `depth`, `method`, `elapsed_bucket` |
-| Shelf | `taste_id`, `content_ids`, `content_id`, `purpose` |
-| Idea | `entry`, `length_bucket`, `starter_id`, `shape`, `idea_source` |
-| Blueprint | `concept_source`, `ready_latency_bucket`, `concept_id`, `opening_id`, `changed`, variant IDs |
-| Preview | `shape`, `opening_id`, `lead_name_changed`, `visible_word_bucket`, `concept_id` |
-| Auth | `artifact_kind`, `paywall_kind`, `provider`, `error_code` |
-| Paywall | `kind`, `entry`, `product_id`, `trial_eligible`, `result_code` |
-| Offer | `eligibility`, `expiry_bucket`, `method`, `product_id`, `result_code` |
-| Completion | `grant_path`, `purpose`, `terminal_route`, `paywall_kind`, `subscription_outcome` |
+| Character CTA (W3) | `purpose` |
+| Character craft (W4) | `purpose`, `initial_genre`, `name_length_bucket`, `appearance_length_bucket`, `prefilled_name` |
+| Character save (W5) | `purpose` |
+| Character portrait (W6) | `attempt_index`, `latency_bucket`, `provider`, `reason`, `index`, `reimagines_used` |
+| Auth | `artifact_kind` (`character` only), `provider`, `error_code` |
+| Paywall (W7) | `entry`, `product_id`, `result_code`, `method` |
+| Completion | `grant_path`, `purpose`, `terminal_route`, `subscription_outcome`, `reimagines_used`, `credits` |
+
+**Renamed 2026-09-11 with the C0-C4 screens they were written for.** The old name
+on the left must not be sent:
+
+| Retired name | Sent instead |
+|---|---|
+| `onboarding_character_bridge_shown` | `onboarding_character_cta_shown` |
+| `onboarding_character_who_started` | `onboarding_character_craft_started` |
+| `onboarding_character_who_submitted` | `onboarding_character_craft_submitted` |
+| `onboarding_character_portrait_wait_shown` | `onboarding_character_w6_loading_shown` |
+| `onboarding_character_portrait_ready` | `onboarding_character_w6_ready` |
+| `onboarding_character_reveal_accepted` | `onboarding_character_kept` |
+| `onboarding_character_plan_bridge_shown` | nothing. C4 has no successor screen |
+| `onboarding_character_chip_selected` | nothing. W4 has no chips |
+
+**Renamed 2026-09-12 (third round), because the draw moved off W5's CTA** (§9,
+§10, §16). A name that describes a screen's position survives a change of
+behaviour and goes on being read as the old behaviour, which is the failure this
+row exists to stop:
+
+| Retired name | Sent instead | Why |
+|---|---|---|
+| `onboarding_character_save_submitted` | `onboarding_character_email_submitted` | W5's CTA sends a code. It no longer saves the character or starts the portrait, so "save" names the wrong act |
+
+**`onboarding_character_craft_submitted` keeps its name and gains a meaning**: it
+is the press that writes the `user_characters` row and makes the image call, so
+it is the start of the portrait clock and the denominator for
+`onboarding_character_w6_ready`'s `latency_bucket`. **Never measure that bucket
+from a W5 event again.** No new event is added for the save or the draw: they
+fire together on one press that already has an event, and a second event on the
+same press measures the same thing twice.
+
+**There is no WELCOME dismissal event**, because WELCOME has no button (§15).
+`onboarding_welcome_shown` and `onboarding_welcome_flight_played` are unchanged
+and are the whole of that screen's instrumentation; the auto-advance emits
+nothing, since a timer firing is not a decision anybody made.
+
+**Retired 2026-09-12 with the controls and screens they named**, and not to be
+sent: `onboarding_character_edit_details_tapped`, with W6's **Edit details**
+(§10B); and any event belonging to the deleted notification soft-prompt screen
+(§12-13). The OS answer is carried in the onboarding result as
+`notificationsEnabled` and there is no shown/accepted/declined trio to send,
+because there is no screen to send it for.
+`onboarding_character_reimagine_tapped` is unchanged in name and
+**moves to the Redraw press**, so it counts image calls rather than editor
+opens. Opening W6's edit block emits nothing.
+
+**No gender property exists on any event, and now there is nothing it could have
+come from.** The round-one ban is superseded by the row's removal on the second
+round of 2026-09-12 (§9): W4 asks two things, so there is no third answer to
+bucket, enum or forget to strip. The ban stands in §17 as a floor rather than as
+a rule about a live control.
+
+`onboarding_genres_completed`'s `genre_ids` are now real `Genre` ids rather than
+display strings (§3), so a pick here joins to the same value Explore and Create
+send. Never send a free-text genre label: there is no longer a chip that
+produces one.
+
+**Retired 2026-09-11 and not to be sent:** the whole `Taste`, `Reader`, `Shelf`,
+`Idea`, `Blueprint` and `Preview` groups with §§4-10's predecessors; the entire
+`onboarding_offer_*` family with §14; the `chip_backed` property with W4's chips;
+the `trial_eligible` property with the trial; and the `kind` and `paywall_kind`
+properties with the two-audience split.
 
 Events use the exact `onboarding_*` names stated in each screen section. Use only
 enums, IDs, and coarse duration/length buckets. Production failures follow the
-error logging contract and contain identifiers/enums only.
+error logging contract and contain identifiers and enums only.
 
 ---
 
 ## 19. Conflicts with canonical
 
-1. **Story Generation Flow §10.6 proposes different multi-chapter pricing.**
-   Pricing wins: a full chapter is 3 credits. Onboarding shows no competing
-   price, creates no paid asset, and does not create a full chapter.
-2. **KathaOnboardingFlowV2 has been brought back into the product path for the
-   shared questionnaire.** Its pricing and product IDs still do not govern; the
-   sequence, typography, genre-interest chips, writer setup questions, and auth
-   geometry must follow this file and `DESIGN_SYSTEM.md`.
-3. **Pricing §6's old prose diagram predates decisions 29–29f.** Those decisions
-   govern the break, Both reader-first path, A1 placement, paywalls, offer, and
-   entitlement visibility described here.
+1. **Story Generation Flow §10.6's multi-chapter pricing analysis is
+   historical.** Pricing wins.
+2. **KathaOnboardingFlowV2 is in the product path for the shared questionnaire.**
+   Its pricing and product IDs do not govern; the sequence, typography,
+   genre-interest chips, writer setup questions, and auth geometry follow this
+   file and `DESIGN_SYSTEM.md`.
+3. **Pricing §6's prose diagram still draws a Reader and a Writer paywall and a
+   reader-first Both path.** Superseded by §2 and §12-13 here: one paywall, one
+   flow, one voice difference. The *money* in that section governs — the welcome
+   bonus is 3, the guest bootstrap is 3, and the grant fires on declining the
+   paywall.
+4. **`CREDITS_AND_PRICING.md` §1 and AGENTS.md record an unresolved 1-versus-3
+   disagreement on the story-start price.** Onboarding no longer prints that
+   number anywhere: C4's **Their first chapter is 3 credits** line went with C4,
+   and W7 names only plan prices. When the disagreement resolves, this file needs
+   no amendment, which is an accidental benefit of the screen's removal rather
+   than a reason it was removed.
+5. **`CREDITS_AND_PRICING.md` §3 still describes a 3-day free trial on the yearly
+   plan, and a monthly plan at $12.99.** W7 shows neither (§12-13). Pricing wins
+   on whether those products exist and what they cost; **this file wins on what
+   the onboarding paywall renders**, and it renders two cards with no trial. If
+   pricing decides the trial must appear in onboarding, W7 changes in the same
+   commit that says so.
+6. **The C0-C4 specification is superseded, on the same day it was written.**
+   C0 Bridge, C1 Who, C2 Wait, C3 Reveal and C4 Plan bridge were specified and
+   built on the morning of **2026-09-11**; W3-W7 replaced them the same
+   afternoon, and nothing in this file describes C0-C4 as current any more.
+   **The reason is that a signed-off pixel reference arrived**: five `.dc.html`
+   artboards with exact geometry, durations, easings and both copy variants,
+   against which the C0-C4 sections were an independent description of the same
+   intention. Two descriptions of one flow is the failure mode
+   `source-of-truth/README.md` exists to prevent, so the reference won and this
+   file was rewritten to specify it rather than to sit beside it. The decisions
+   C0-C4 carried that survived — one character, one reimagine, no fallback
+   portrait, no credits, the anonymous cap — are re-stated in their new sections
+   and in the Decisions block below; the ones that did not are listed there with
+   the reason.
 
 ---
 
@@ -955,10 +2086,330 @@ error logging contract and contain identifiers/enums only.
 19. **A1 saves artifact before paywall and authenticates with Apple/Google/email.**
 20. **Reader sells no interruptions, offline, audio, credits, not audio alone.**
 21. **Writer explicitly includes every Reader benefit.**
-22. **Yearly default/trial; weekly visible/no trial; monthly below; dismiss obvious.**
-23. **OF is Reader yearly $19.99 first year, then $29.99, one real 2:00 showing.**
-24. **10 credits follow only authenticated offer decline/expiry.** The separate
-    guest bootstrap grant stays at 3 under its own operation key; see
-    `CREDITS_AND_PRICING.md` §6.
+22. ~~**Yearly default/trial; weekly visible/no trial; monthly below; dismiss obvious.**~~
+    Superseded 2026-09-11 by decision 47: yearly default, weekly visible, **no
+    trial and no monthly**, dismiss obvious.
+23. ~~**OF is Reader yearly $19.99 first year, then $29.99, one real 2:00 showing.**~~
+    Superseded 2026-09-10: the one-time offer is removed. See §14.
+24. ~~**10 credits follow only authenticated offer decline/expiry.**~~ Superseded
+    2026-09-11: the welcome grant is 3, and it is the guest bootstrap grant the
+    account already holds; see `CREDITS_AND_PRICING.md` §6 and decision 36.
 25. **WELCOME has no number or disclaimer.**
-26. **Onboarding costs at most one model call and no image calls.**
+26. ~~**Onboarding costs at most one model call and no image calls.**~~ Superseded
+    2026-09-11: onboarding makes no model call and at most two portrait calls
+    (one draw, one reimagine). See §16 and decisions 32 and 41.
+
+> **Decisions 4-18, 20-24 and 26 are superseded by the 2026-09-11 entries below.**
+> They are left in place because the sections they belong to are left in place,
+> and because a decision list that quietly loses its rows stops being a record.
+
+### 2026-09-11, morning: the character onboarding rebuild
+
+27. **The aha is one character and their portrait**, not a typed idea and a
+    150-word preview.
+28. **Read, Write and A bit of both take the same flow.** Purpose selects a copy
+    voice and the exit route; it no longer selects a path. The reader path R1-R4
+    is retired: one flow to maintain, an artifact that is whole rather than a
+    truncated preview, and a saved character that is cross-story and makes the
+    person's next story start cheaper.
+29. **Exactly one character, and exactly one reimagine.** *(Amended the same day
+    by decision 45, and again 2026-09-12 by decision 55: the cap is still one,
+    the control opens the paywall once it is spent, and the counter that
+    decision 45 added is gone.)* The reimagine
+    mints a fresh `requestId`. A failed attempt and its retry do not consume it.
+    The budget is **per onboarding**, not per edited sheet.
+30. ~~**C2 never claims work.**~~ Superseded by decision 46: there is no C2. W6's
+    loading state does claim work, in four plain lines and one honest range, and
+    the ban on percentages, progress bars and elapsed time survives intact.
+31. **There is no fallback portrait.** A substituted portrait is a different
+    character wearing the person's name. Failure says so and offers a retry; the
+    offline build renders a placeholder silhouette, never a broken image.
+32. **Onboarding makes at most two image calls on the happy path and no text
+    call**, spends no credits, and writes no ledger row.
+33. **A1 saves a character.** `artifact_kind` is `character`; `shelf` and
+    `blueprint` are retired.
+34. ~~**One paywall, with monthly under More options and a 3-day trial.**~~ The
+    merge into one paywall stands; the trial, the monthly row and the five-row
+    entitlement list are superseded by decision 47.
+35. **The one-time offer is deleted, not deprecated.** The countdown ban is now
+    absolute.
+36. **The welcome bonus is 3 and it fires on declining the paywall.**
+37. **WELCOME gains a credits animation and keeps its copy.** Once per account,
+    persisted. Reduced motion shows the number instead.
+38. **The pre-paywall contract is a portrait contract.** `generate-character-image`
+    on the anonymous session, `{ requestId, name, appearance, imageStyle: "auto" }`,
+    no reference image, bounded by the flow at two calls, by
+    `claim_guest_portrait_request` at four per anonymous identity for life, and
+    by `claim_character_portrait_request` at 12 per hour.
+39. **Email verification upgrades the anonymous user in place, so the saved
+    character and the 3 guest credits survive sign-in.** The one fallback, when
+    the address already belongs to an account, signs into that account and
+    re-points the character with `claim_guest_characters`; the credits do not
+    move. See §16.
+40. ~~**Suggestion chips are genre-seeded, never preselected.**~~ Superseded by
+    decision 44: W4 has no chips.
+41. **An anonymous identity gets four character portraits, for the life of that
+    identity, reimagines and retries included.** Migration 00084,
+    `claim_guest_portrait_request`, enforced in `generate-character-image`.
+    **Keyed on `auth.users.id`, never a device identifier.** Refusal is **403**
+    with `code: "guest_portrait_cap"` and the copy **Sign in to keep making
+    characters.**, not 429, because there is nothing to wait for. A failed
+    generation releases the slot. A named user is unchanged.
+
+### 2026-09-11, afternoon: the W3-W7 hand-off
+
+42. **C0-C4 is superseded by W3-W7 on the day it was written, because a
+    signed-off pixel reference arrived.** Five artboards with exact geometry,
+    durations, easings and both copy variants are a stronger specification than
+    an independent prose description of the same intention, and keeping both
+    would be two descriptions of one flow. §19 item 6 records it once. No
+    section of this file describes C0-C4 as current.
+43. **The email is asked for before the portrait is drawn.** W5's CTA fires
+    `sendEmailCode`, the character save and the image call together on the
+    anonymous session, and the six-digit code screen covers the wait. The aha is
+    not gated by auth; the two now run at once, and the wait is spent once
+    instead of twice. W6 opens loading or ready depending on what has landed.
+44. **W4 has two fields and nothing else.** *(Superseded 2026-09-12 by decisions
+    53 and 54: three answers, and a KATHA WILL DRAW card.)* No suggestion chips,
+    no attachments. The 300-character counter does the work the **TRY ONE** rail
+    was doing, without a canonical chip list to keep in sync or a `chip_backed`
+    flag to carry. The CTA is disabled until both fields are non-empty, and reads
+    **Bring them to life** while the name is blank.
+45. ~~**The reimagine counter is visible, and at zero the control opens the
+    paywall.**~~ *(Superseded 2026-09-12 by decision 55: the paywall half
+    stands, the counter is gone.)* One free reimagine per onboarding, **1 free
+    left** → **0 free
+    left**. This reverses C3's invisible cap, and the reason is that the control
+    at zero still does something: a control that acts must say what it has left.
+    Failures still do not consume it, and **Edit details** returns to W4 without
+    restoring a spent one.
+46. **W6's loading state is a scan, three dots and four rotating lines**, on a
+    shared 2200 ms beat, with the caption **Usually 20 to 30 seconds** and a
+    300 ms cross-fade to ready. Under reduced motion the scan, dots and pulse
+    hold still **and the status text keeps rotating**, because a frozen sentence
+    during a thirty second wait reads as a hang. W3's hero card swells to 1.08
+    over two seconds and **holds there**: no settle-back, no spring, no overshoot.
+47. **W7 has no free trial and no monthly plan.** Two cards, weekly $5.99 and
+    yearly $59 selected by default with a **SAVE 80%** badge, four benefit rows,
+    **Cancel anytime, no commitments**, **Unlock Katha**, ~~**Not now**~~ and a
+    close × from frame one. *(Amended 2026-09-12 by decision 57: **Not now** is
+    removed, the plan cards and the CTA sit in a pinned sheet, and a testimonial
+    rail is added. Everything else here stands.)* A trial on a credits product
+    hands out the thing
+    being sold; a third plan under a disclosure was a row nobody opened that
+    still had to be priced and localised. The badge is the annualised weekly
+    against yearly saving of 81%, **rounded down**, and it is never drawn as a
+    discount off a former price.
+48. **Seven progress pills, and the paywall has none.** W3 = 4, W4 = 5, W5 and
+    the code screen = 6, W6 = 7, announced as **Step n of 7**. The writer setup
+    questions share step 3 and the code screen shares W5's pill, because a row
+    that lengthens for one answer, or advances on our own email latency, is
+    measuring the wrong thing. Where `W4-Craft.dc.html` and `W6-Meet.dc.html`
+    disagree, this file wins.
+49. **W3-W7 use the onboarding palette and shadow tokens**, not a parallel set of
+    literals: `colors.onboardingBg/Border/BorderStrong/Plate/Success/Stone` with
+    `accentSoft`, `accent`, `premium`, and `shadows.onboarding*`. A hand-off
+    colour with no token maps to the nearest existing one and the mapping is
+    noted rather than a new token minted — W6's glass-chip text takes
+    `colors.accentSoft` and its loading card takes a
+    `onboardingPlate → onboardingStone` gradient. The frame is still 390 × 844
+    with a 30 pt gutter, and every fixed stage scales by
+    `min(1, (width - 60) / 330)` so a 360 pt phone does not clip.
+
+### 2026-09-12: the feedback round
+
+> Decisions 44, 45 and the **Not now** and four-row clauses of 47 are superseded
+> by 50-58. The rows stay where they are, annotated, for the reason given above.
+
+50. **Onboarding has one field recipe and one component that draws it.**
+    `onboardingType.field` at 16 / 22 in `fonts.ui`, the shared `Field`
+    primitive, a 1.5 pt `onboardingBorderStrong` border that becomes 2 pt accent
+    with `shadows.onboardingFieldFocus` on focus, about 50 pt on one line and
+    150 pt multiline. **A field never uses `fonts.display` or `fonts.reader`**:
+    text being typed is a control. The flow had three field recipes across five
+    screens. `DESIGN_SYSTEM.md` §6 carries the measurements, and the Create
+    brief's fields are a deferred alignment named there rather than a silent
+    inconsistency.
+51. **S1's name field is the shared `Field`, and the gap under the sub is
+    `spacing.lg`.** The headline asks a question and the field answers it, so
+    they are one group; `spacing.betweenGroups` read as two separate things on a
+    screen holding nothing else. No eyebrow, because the placeholder and the
+    headline already say it twice.
+52. **S2 offers `UI_GENRES`, the Create picker's own constant, as real `Genre` ids**, chipped
+    in Explore's recipe, wrapping, pick at least three, CTA **Continue** with
+    **Pick at least 3** as the disabled label. **Cozy Fantasy, Paranormal
+    Romance and Other are removed**: the first two named nothing downstream and
+    quietly resolved to plain fantasy and plain romance, and a free-text genre
+    could not key a shelf, seed a create chip or be filtered on. ~~**No emoji and
+    no tick**: twelve emoji in a wrapping grid is a second alphabet, and a
+    tick inside a filled chip says the fill twice.~~ *(The emoji half is
+    superseded 2026-09-12 by decision 59; the tick half stands.)*
+53. ~~Supersedes 44. Superseded 2026-09-12 by decision 60.~~ **W4 asks three things: name, gender, appearance.** The
+    gender row is four options — Woman, Man, Non-binary, Prefer not to say —
+    required, with the decline sending nothing. It exists because the portrait
+    was resolving gender from the **name**, which is a worse guess than a tap.
+    **It is never persisted**, never reaches the Create flow, and never reaches
+    telemetry. The CTA is disabled until all three are answered.
+54. *(Amended 2026-09-12 by decision 61: the rows are duotone glyph tiles with
+    balanced copy.)* **W4 gains a KATHA WILL DRAW card** of three glyph rows, and it is not the
+    helper text principle 3 bans. That ban is on a paragraph explaining how to
+    fill a box in; these rows say what each answer becomes, which answers the
+    question the fields actually raise.
+55. ~~Supersedes 45.~~ *(The gender row leaves the block 2026-09-12, decision
+    60.)* **W6 has one control under the portrait, and it has no
+    counter.** **🔄 Reimagine** expands an inline edit block holding the
+    appearance in a `Field` and a **Redraw** button; Redraw
+    spends the one budgeted call and re-enters loading in place. **Edit details
+    is gone** with the trip back to W4 it caused. The counter goes with it:
+    decision 45's rule was right about a control whose only act was drawing, and
+    this pill's first act is opening a free editor, so a **1 free left** label
+    would be counting something the tap does not do. Once spent, the pill opens
+    W7 — no counter, no disabled state, no toast.
+56. *(Amended 2026-09-12 by decision 61.)* **W6 carries a three-row benefit card under the control**, writer and reader
+    voiced. It is about the character rather than the plan, and none of its rows
+    is an entitlement, which is why it can sit in front of the paywall without
+    being a pitch for it.
+57. ~~Amends 47.~~ *(Amended 2026-09-12 by decision 62: the rail moves last, the
+    plan cards go compact, the yearly note becomes a daily price, and the
+    testimonial tag is deleted.)* **W7 is a scrolling body over a pinned plan sheet, it carries
+    a testimonial rail, and Not now is removed.** The sheet holds both plan
+    cards, the cancel line and **Unlock Katha**, always visible and safe-area
+    padded, because a rail and a benefits card had pushed the price and the
+    button below the fold. The rail is eight use-case cards auto-scrolling at
+    about 40 pt per second over a duplicated row, pausing under a finger and
+    degrading to a plain `ScrollView` under reduced motion. **Testimonials leave
+    §17's ban and star ratings, reviews and counts do not**: the ban was on
+    social proof standing in for the product, and a row of use cases is showing
+    the thing has more than one shape. **Not now** goes because the × is the
+    same act in the place every sheet in the app is dismissed, and two
+    dismissals made the last thing on the screen a choice between buttons.
+58. **The notification soft-prompt screen is deleted.** W7 calls
+    `enableNotifications()` on close or purchase and goes to WELCOME; the result
+    carries the OS answer. **The accepted trade is that on iOS this spends the
+    one prompt**, and a decline is only recoverable through Settings. It is
+    accepted because the soft prompt sat at the end of onboarding as a screen to
+    get past, and it comes back in front of the OS call if the decline rate says
+    so.
+
+### 2026-09-12, second round: the feedback on the feedback
+
+> Decisions 52's emoji clause, 53, and the gender clause of 55 are superseded by
+> 59-62; 54, 56 and 57 are amended by them. The rows stay where they are,
+> annotated.
+
+59. ~~Amends 52.~~ **S2's chips carry Explore's emoji and are bigger.** The label
+    is `genreChipLabel(genre)`, exported from `GenreStrip.tsx` and built there
+    from its own `GENRE_EMOJI`, so onboarding never copies an emoji map; the chip
+    is 44 pt with `spacing.xl` gutters and a 15 pt label. The "no emoji" rule was
+    an argument about a 40 pt pill sized for a word, where twelve marks crowd;
+    at 44 pt the emoji is what the eye lands on before it reads, and it is the
+    same mark Explore shows for the same genre, so the two screens teach each
+    other. **The tick mark stays banned**, because the fill already says it.
+60. ~~Supersedes 53.~~ **The gender row is removed entirely, one round after it
+    was added.** Not from W4 only: it leaves W6's edit block, the request shape
+    (§16), `generate-character-image`, `_shared/image.ts` and their tests, so no
+    dead contract survives it. Two reasons. **The screen**: with the KATHA WILL
+    DRAW card below, W4's bottom already fills the frame, and a four-option row
+    between the fields pushed the card that earns the screen under the fold.
+    **The prompt**: the clause it added sat in front of an appearance line the
+    person wrote themselves, where it is either redundant or overrides a
+    description with a checkbox. Decision 53 was right that the model had been
+    resolving gender from the **name** — and the sentence after the name is a
+    better fix than a fourth control. W4 is NAME → APPEARANCE → the card, and the
+    CTA waits on both fields.
+61. ~~Amends 54 and 56.~~ **Both cards use six duotone glyph tiles and balanced
+    copy.** `GlyphFaceAndBuild`, `GlyphClothingAndCarry`, `GlyphTheName` on W4;
+    `GlyphLeadsStories`, `GlyphSameFace`, `GlyphSavedCast` on W6, from
+    `src/components/onboarding/glyphs.tsx` as 40 × 40 tiles, and **no mark
+    repeats across the two screens** — round one reused `IconPerson` and
+    `IconPencil` on both, which teaches that the tiles mean nothing. Every row is
+    about three words of title and six of line, and W6's lines drop `{name}`:
+    ragged rows read as notes stacked in a box rather than as a list, and an
+    interpolated name grows a row to three lines on a long name while the
+    portrait directly above already says it.
+62. ~~Amends 57.~~ **W7's body is header → benefits → testimonials, its plan
+    cards are compact, and the yearly note is a daily price.** The benefits card
+    comes first because it is the offer and the rail is the corroboration; last
+    is also where a marquee belongs, since nothing has to be scrolled past it.
+    The cards are about 92 pt with the eyebrow and price on one line and the note
+    under it, and the badge drops to 9 pt, so the sheet clears the safe area on a
+    360 pt phone. The yearly note is **"$0.16 a day"**, derived in code as
+    `59 / 365` rounded to cents, replacing **"$4.92 a month, billed yearly"** — a
+    comparison against the one plan this screen deliberately withholds. **The
+    testimonial cards lose their use-case tag**, from the card and from the data:
+    it was a label summarising the quote directly beneath it, and it was the half
+    of the card that read as marketing rather than as somebody talking.
+
+### 2026-09-12, third round: one button, one clock
+
+> Decision 63 governs every CTA on the path; 64-68 amend §8, §9, §10, §10B, §15
+> and §16. Nothing here is superseded, so no earlier row is struck through: the
+> decisions below change where work happens and what a button looks like, not
+> what the flow asks for.
+
+63. **The whole onboarding journey has one primary button recipe, and it is the
+    56 pt pill.** `controls.onboardingCtaHeight` at `radius.pill` in
+    `colors.accent`, white 17 / 700 `fonts.ui`, `shadows.onboardingCta`, drawn by
+    `Primary` in `src/components/onboarding/primitives.tsx`, from the intro's
+    **Get started** through the questionnaire, W3-W7, the email and code screens
+    and W6's **Redraw**, to WELCOME. **The app's 64 / 20
+    `controls.primaryCtaHeight` primary is unchanged everywhere else.** Two
+    recipes is deliberate: onboarding is a sequence of full-bleed compositions
+    where a 64 pt slab competes with the picture above it, and the rest of the
+    app sits under dense content that wants the heavier target. The failure was
+    not two recipes, it was six buttons — three sizes across consecutive screens,
+    two of them rounding differently — so the same act looked like a different
+    control every time it appeared. `DESIGN_SYSTEM.md` §6 carries it.
+64. **W3 centres its group and does not pin its CTA**, alone on the path. The
+    stage, the copy and the button are one vertically centred group —
+    `spacing.xxl` stage to copy, `spacing.xl` copy to CTA — with equal free space
+    above and below it; the progress row stays at the top and the animation is
+    untouched. W3 holds a picture and a sentence where every other character
+    screen holds fields or a card, so pinning left a band of empty paper that
+    grew with the phone and spread three things meant to read as one thought
+    across the frame. Symmetrical space reads as composition; a gap at the bottom
+    reads as something that failed to load.
+65. **The draw and the library save move to W4's CTA; W5's CTA only sends the
+    code.** Pressing **Bring {name} to life** writes the `user_characters` row
+    and fires `generateCharacterImage` on the anonymous session, fire-and-forget,
+    and W4 advances without awaiting either. The portrait takes about ten seconds
+    and starting it at W5 bought only the code screen to hide it behind; starting
+    it at W4 buys the email screen as well, so **W6 opening ready is now the
+    expected case** and loading is the exception. The ordering that put
+    `sendEmailCode` first existed only because it gated advancing, and it gates
+    nothing else: all three calls run on the identity `bootstrapUser` already
+    made. Back from W5 with an unchanged sheet does not redraw; a changed sheet
+    redraws on a fresh `requestId` and **resets nothing else** — the reimagine
+    budget belongs to W6's Redraw and is untouched by a W4 edit.
+66. **W6's wait caption is a constant whose number is measured.**
+    `PORTRAIT_WAIT_CAPTION` in `CharacterOnboarding.tsx` is the only place the
+    wait is claimed, and its wording follows the **measured p50** from the W4
+    press to the portrait on screen: measured p50 about 11 s, p90 about 15 s
+    on 2026-09-12 (§10B has the breakdown), so the constant reads **Usually
+    about 10 seconds**. **Usually 20 to 30 seconds** was typed into
+    JSX, which is a number nobody updates when the system gets faster, so the
+    screen goes on promising the old speed for the rest of its life. Principle 7
+    is unchanged and this is how it is kept: one honest range, and a measured one
+    can be re-measured.
+67. **WELCOME has no button and advances itself.** The coins settle on the
+    existing spring, hold **700 ms**, and `onOpen()` fires; under reduced motion
+    they render settled and it fires after **900 ms**. **Not tappable, no skip.**
+    Every other CTA on the path buys something — a character, a portrait, an
+    account, a plan — and this one bought nothing: the grant has landed and the
+    only thing left is to be in the app, so a press that changes nothing but its
+    own timing is a toll on the last screen of onboarding. 900 ms under reduced
+    motion because a composition that arrives whole and leaves after 700 ms reads
+    as a flash rather than a moment; no skip because an invisible sub-second tap
+    target is one nobody finds and everybody triggers. It is the only
+    auto-advance in Katha, and it is allowed because nothing is lost by missing
+    it.
+68. **The credit is an object with a face: `CreditCoin`.** A drawn duotone coin —
+    gold face, darker rim, inner highlight, the Katha spark on it — replaces the
+    flat yellow circle everywhere a credit appears as an object, which is
+    WELCOME's settled stack and the three that fly to Home's pill. It must read
+    at 20 pt and at 52 pt. **Home's header pill keeps its `Sparkles` glyph**: the
+    coin carries the same spark, so the flight reads as landing on the place
+    credits live rather than as two symbols for one thing, and a pill wearing the
+    coin would be a coin containing a coin. Three yellow circles crossing a
+    screen are three yellow circles; mass is what makes an object look like it
+    went somewhere. `DESIGN_SYSTEM.md` §7.2 specifies the mark.

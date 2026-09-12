@@ -60,6 +60,18 @@ export function parseReferenceImage(
 }
 
 /**
+ * THERE IS NO `gender` PARAMETER, and there was one.
+ *
+ * Onboarding's W4 sheet used to ask gender as a required segmented row and
+ * send three of its four answers here as a prompt clause. The row is gone: an
+ * appearance line already says it whenever it matters, in the person's own
+ * words. The parameter went with the row rather than staying behind accepting
+ * a value nothing sends, because a contract nothing exercises is one the next
+ * person has to prove is dead before they can delete it. A client that sends
+ * `gender` now is simply ignored, like any other unknown key.
+ */
+
+/**
  * Exported and separated from `serve` so a test can drive the handler without
  * binding a port. Importing this module used to start a listener on :8000 --
  * `publish-story` had the same bug and the same fix.
@@ -75,6 +87,12 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   let observedUserId: string | null = null;
   let observedRequestId: string | null = null;
+  // Set only once a guest slot has actually been claimed, so the failure paths
+  // below can hand it back without having to re-derive whether the caller was
+  // anonymous. A release that runs when nothing was claimed is harmless (the
+  // RPC floors at zero) but a release that never runs costs a real person one
+  // of four lifetime portraits.
+  let releaseGuestSlot: (() => Promise<void>) | null = null;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -125,6 +143,58 @@ export async function handleRequest(req: Request): Promise<Response> {
       );
     }
 
+    // The second bound, and the only one that survives a new session.
+    //
+    // Character onboarding makes its aha before the email is asked for, so the
+    // first thing an unverified identity can do on this endpoint is spend money
+    // at the image provider -- and a fresh identity is one `signInAnonymously`
+    // away, which is exactly the gap 00055 documented and could not close with
+    // an hourly window. 00084 gives an anonymous identity four portraits for
+    // its whole life, reimagines included. Named users never reach this branch:
+    // their bound is the window above, and the 4-free-then-1-credit ledger when
+    // it lands. Keyed on `auth.users.id`, never a device identifier -- see
+    // 00084 for why that residual hole is accepted rather than closed.
+    if (user.is_anonymous === true) {
+      const { data: guestAllowed, error: guestError } = await serviceClient.rpc(
+        "claim_guest_portrait_request",
+        { p_user_id: user.id },
+      );
+      // Fails closed like the hourly claim: a database blip must not turn the
+      // only bound on an unverified caller off.
+      if (guestError || guestAllowed !== true) {
+        return respond(
+          {
+            error: "Sign in to keep making characters.",
+            code: "guest_portrait_cap",
+          },
+          403,
+        );
+      }
+      releaseGuestSlot = async () => {
+        const { error } = await serviceClient.rpc(
+          "release_guest_portrait_request",
+          { p_user_id: user.id },
+        );
+        // Best effort. Losing the release costs the guest one of four; failing
+        // the response because we could not give it back costs them the error
+        // message that tells them to try again.
+        if (error) {
+          console.error(
+            "release_guest_portrait_request failed:",
+            safeErrorMessage(error),
+          );
+        }
+      };
+    }
+
+    // A refusal from here down happens AFTER a guest slot was claimed, so it
+    // has to give the slot back before it answers. Four is a small number to
+    // spend on a request that never reached a provider.
+    const refuse = async (body: unknown, status: number) => {
+      await releaseGuestSlot?.();
+      return respond(body, status);
+    };
+
     const name = stringField(body.name);
     const appearance = stringField(body.appearance);
     // Still read, never asked for. The Craft sheet stopped collecting
@@ -133,16 +203,19 @@ export async function handleRequest(req: Request): Promise<Response> {
     // has not updated. `_shared/types.ts` explains why the field survives.
     const legacyDescription = stringField(body.description);
 
-    if (!name) return respond({ error: "name is required" }, 400);
+    if (!name) return await refuse({ error: "name is required" }, 400);
     if (
       name.length > 100 ||
       appearance.length > MAX_CHARACTER_FIELD_LENGTH ||
       legacyDescription.length > MAX_CHARACTER_FIELD_LENGTH
     ) {
-      return respond({ error: "Character image fields are too long" }, 400);
+      return await refuse(
+        { error: "Character image fields are too long" },
+        400,
+      );
     }
     if (!appearance && !legacyDescription) {
-      return respond(
+      return await refuse(
         { error: "appearance is required" },
         400,
       );
@@ -155,7 +228,9 @@ export async function handleRequest(req: Request): Promise<Response> {
     // and locks the story private (00050). Three layers, because the prompt
     // alone is the weakest of them.
     const reference = parseReferenceImage(body.reference_image);
-    if ("error" in reference) return respond({ error: reference.error }, 400);
+    if ("error" in reference) {
+      return await refuse({ error: reference.error }, 400);
+    }
 
     // The look every image in this story is drawn in, sent from the brief.
     //
@@ -173,7 +248,14 @@ export async function handleRequest(req: Request): Promise<Response> {
       referenceImage: reference.value,
     }, artStyle);
     if (!image) {
-      return respond({ error: "Character image could not be generated" }, 502);
+      // The chain exhausted both models across all three safety rungs. The
+      // reveal screen offers a free "Try again" on exactly this response, so
+      // the slot must come back or the third failure in a row would end the
+      // onboarding flow with nothing made.
+      return await refuse(
+        { error: "Character image could not be generated" },
+        502,
+      );
     }
 
     return respond({
@@ -184,6 +266,10 @@ export async function handleRequest(req: Request): Promise<Response> {
       model: image.model,
     });
   } catch (error) {
+    // Same reasoning as the 502: a throw means no portrait was delivered, so
+    // an anonymous caller must not be one of four poorer for it. `releaseGuestSlot`
+    // is null unless a slot was actually claimed, and swallows its own errors.
+    await releaseGuestSlot?.();
     console.error("generate-character-image error:", safeErrorMessage(error));
     await logError({
       bucket: "generation.cover",

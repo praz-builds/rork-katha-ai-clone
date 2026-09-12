@@ -370,18 +370,47 @@ export const GENRE_MIGRATION_BY_NORMALIZED_KEY: Record<string, PrimaryGenre> =
 // ---------------------------------------------------------------------------
 
 /**
- * The lengths a story may be planned to.
+ * The lengths the picker OFFERS.
  *
  * This is a planned length, not a batch size: the user still advances one
  * chapter at a time. It drives pacing and finale derivation.
+ *
+ * One chapter is a series of one, deliberately, and not the standalone path:
+ * a series that has reached its plan can be extended a chapter at a time from
+ * the reader, and a standalone cannot. That is the whole point of offering 1.
  */
-export const PLANNED_CHAPTER_COUNTS = [3, 7, 15] as const;
+export const PLANNED_CHAPTER_COUNT_OFFER = [1, 3, 7, 15] as const;
 
-export type PlannedChapterCount = typeof PLANNED_CHAPTER_COUNTS[number];
+export type PlannedChapterCountOffer =
+  typeof PLANNED_CHAPTER_COUNT_OFFER[number];
 
-export const PLANNED_CHAPTER_COUNT_SET: ReadonlySet<number> = new Set<number>(
-  PLANNED_CHAPTER_COUNTS,
-);
+/**
+ * A STORED plan is any whole number in `[1, 15]`, not one of the four offered.
+ *
+ * `continue-story` raises `planned_chapter_count` by one every time a reader
+ * extends a finished story, so 2, 4, 5 and every other value up to the ceiling
+ * are reachable rows. Typing the stored value as the offer union would make
+ * every one of those rows unrepresentable, and the code that reads them would
+ * quietly fall back to the default -- which is how a 4-chapter story would end
+ * up being told it is planned for 3 and refused its own last chapter.
+ */
+export type PlannedChapterCount = number;
+
+export const MIN_PLANNED_CHAPTER_COUNT = 1;
+
+/**
+ * The ceiling, and it is the same number the SQL check constraint enforces
+ * (migration 00079). Extension stops here; a story that wants more is a new
+ * story.
+ */
+export const MAX_PLANNED_CHAPTER_COUNT = 15;
+
+export function isPlannedChapterCount(
+  value: unknown,
+): value is PlannedChapterCount {
+  return typeof value === "number" && Number.isInteger(value) &&
+    value >= MIN_PLANNED_CHAPTER_COUNT && value <= MAX_PLANNED_CHAPTER_COUNT;
+}
 
 export const DEFAULT_PLANNED_CHAPTER_COUNT: PlannedChapterCount = 3;
 

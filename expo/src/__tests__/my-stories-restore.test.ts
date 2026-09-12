@@ -185,6 +185,34 @@ it("keeps beats and series state on a story hydrated from a row", async () => {
   expect(story.plannedChapterCount).toBe(7);
 });
 
+/**
+ * A plan that is not one of the four lengths the picker offers.
+ *
+ * Every extension raises `planned_chapter_count` by exactly one, so 1, 2, 4
+ * and 9 are ordinary stored values. The parser used to accept only 3, 7 and 15
+ * and drop everything else to `undefined` -- which reads downstream as "no
+ * plan", resolves to the default of 3, and tells the author of a four-chapter
+ * story that it was complete at chapter three.
+ */
+it.each([1, 2, 4, 9, 15])("keeps a stored plan of %d chapters", async (planned) => {
+  stubTables([{ ...SERIES_ROW, planned_chapter_count: planned }], [CHAPTER_ROW]);
+
+  const [story] = await fetchMyStories();
+
+  expect(story.plannedChapterCount).toBe(planned);
+});
+
+it.each([0, 16, 2.5, "7", null])(
+  "drops a planned count of %p, which no writer of this column can produce",
+  async (planned) => {
+    stubTables([{ ...SERIES_ROW, planned_chapter_count: planned }], [CHAPTER_ROW]);
+
+    const [story] = await fetchMyStories();
+
+    expect(story.plannedChapterCount).toBeUndefined();
+  },
+);
+
 it("trusts the row's story_mode over the number of chapters it happens to have", async () => {
   // A series whose second chapter has not been written yet has exactly one
   // chapter. Counting chapters called it a standalone and hid the continuation

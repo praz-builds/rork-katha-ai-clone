@@ -26,6 +26,10 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import BrandWordmark from '../components/BrandWordmark';
+// The shared onboarding pill. A `.jsx` file importing a `.tsx` component is
+// already how `BrandWordmark` arrives above, so the intro draws the SAME
+// button as every screen after it rather than a look-alike copy that drifts.
+import { Primary } from '../components/onboarding/primitives';
 
 // ── Color tokens (SPEC §2) ──────────────────────────────────────────────────
 const C = {
@@ -204,9 +208,7 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn }) {
       <View style={styles.actionSlot}>
         {phase === 2 && (
           <>
-            <Pressable onPress={onFinish} style={styles.cta}>
-              <Text style={styles.ctaText}>Get started</Text>
-            </Pressable>
+            <Primary label="Get started" onPress={onFinish} />
             <Pressable onPress={onSignIn} style={{ marginTop: 14, alignItems: 'center' }}>
               <Text style={{ fontSize: 14, color: '#6B625A' }}>Already have an account? <Text style={{ color: '#FF6B1A', fontWeight: '700' }}>Sign in</Text></Text>
             </Pressable>
@@ -472,9 +474,6 @@ const styles = StyleSheet.create({
   headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink, height: 64 },
   sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 8 },
   actionSlot: { flex: 1, justifyContent: 'flex-end' },
-  cta: { height: 56, borderRadius: 16, backgroundColor: C.orange, alignItems: 'center', justifyContent: 'center',
-    ...Platform.select({ ios: { shadowColor: C.orange, shadowOpacity: 0.5, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } }, android: { elevation: 8 } }) },
-  ctaText: { fontFamily: F.hankenBold, fontSize: 17, color: '#fff' },
 
   // create card
   createCard: { width: 306, height: 346, backgroundColor: C.card, borderRadius: 22, padding: 16, paddingBottom: 14 },

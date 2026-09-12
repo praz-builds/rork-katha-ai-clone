@@ -11,6 +11,11 @@ import {
 // The safe-area-context one works on both. `SafeAreaProvider` is already
 // mounted in App.tsx, so this is a swap, not new plumbing.
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from "react-native-reanimated";
 import { Bell, ChevronRight, Flame, Sparkles } from "lucide-react-native";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
@@ -280,6 +285,8 @@ export default function HomeScreen({
   onContinueStory,
   writingChapterIndex,
   onPaywall,
+  creditsPillRef,
+  creditsBump,
 }: {
   credits: number;
   generatedStories: Story[];
@@ -344,7 +351,41 @@ export default function HomeScreen({
   /** Zero-based index of the chapter being written, for the `writing` card. */
   writingChapterIndex?: number;
   onPaywall?: () => void;
+  /**
+   * The credits pill's outer view, for the welcome credits flight.
+   *
+   * Onboarding's last screen throws three coins at this pill
+   * (`src/components/onboarding/WelcomeCreditsFlight.tsx`), and to aim it has
+   * to measure where the pill actually is on THIS window — the corner moves
+   * with the safe-area inset, the streak pill's presence and the width of the
+   * credit number. A ref is the only way to ask; a guessed rectangle is wrong
+   * on the first Android device with a display cutout.
+   *
+   * Optional and inert when absent: Home is a shared screen and every other
+   * caller mounts it without knowing this exists.
+   */
+  creditsPillRef?: React.RefObject<View | null>;
+  /**
+   * Scale of the credits pill, 1 at rest, driven by the flight.
+   *
+   * A SHARED VALUE rather than a boolean prop or an imperative handle, because
+   * the bump has to run on the UI runtime: the coins land while Home is doing
+   * its first render and its first feed fetch, and a state-driven bump would
+   * queue behind that and fire late, after the coin it was acknowledging had
+   * already faded. Write to it with `bumpCredits` from the flight module.
+   */
+  creditsBump?: SharedValue<number>;
 }) {
+  // A local shared value stands in when no caller supplies one: hooks cannot be
+  // called conditionally, and the alternative — two JSX branches for the same
+  // pill — is how the credits pill ends up with two slightly different layouts.
+  // At rest both are 1, so the pill is pixel-identical either way.
+  const ownCreditsBump = useSharedValue(1);
+  const creditsBumpValue = creditsBump ?? ownCreditsBump;
+  const creditsBumpStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: creditsBumpValue.get() }],
+  }));
+
   const hour = new Date().getHours();
   const timeOfDay = hour < 12
     ? "Good morning"
@@ -455,15 +496,26 @@ export default function HomeScreen({
                 (the Create button, the cost card, the credits row on the
                 profile). One idea, one glyph, and it is the warm gold the
                 palette already keeps for a mark of value. */}
-            <HeaderAction
-              icon={Sparkles}
-              tint={colors.chromeStar}
-              fill={colors.chromeStar}
-              iconSize={16}
-              value={String(credits)}
-              label={`${credits} credits`}
-              onPress={onCredits ?? onProfile}
-            />
+            {/* The wrapper exists for onboarding's credits flight: it is what
+                the coins are measured against and what bumps when one lands.
+                `collapsable={false}` is load-bearing — Android collapses a
+                layout-only View out of the native tree, and `measureInWindow`
+                on a collapsed view hands back zeros, which the flight reads as
+                "no target" and falls back to a fade in the middle of the
+                screen. */}
+            <View ref={creditsPillRef} collapsable={false}>
+              <Animated.View style={creditsBumpStyle}>
+                <HeaderAction
+                  icon={Sparkles}
+                  tint={colors.chromeStar}
+                  fill={colors.chromeStar}
+                  iconSize={16}
+                  value={String(credits)}
+                  label={`${credits} credits`}
+                  onPress={onCredits ?? onProfile}
+                />
+              </Animated.View>
+            </View>
             <HeaderAction
               icon={Bell}
               label={unreadNotifications > 0

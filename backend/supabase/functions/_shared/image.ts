@@ -74,7 +74,33 @@ const MAX_SAFETY_LEVELS = 3;
 function referenceSurvivesLevel(safetyLevel: number): boolean {
   return safetyLevel < MAX_SAFETY_LEVELS - 1;
 }
-const REQUEST_TIMEOUT_MS = 60_000;
+/**
+ * How long one provider request may take, and how long the whole ladder may.
+ *
+ * Two budgets, because the two call sites are watched by different people.
+ *
+ * A **cover** is background work. Nobody is staring at a spinner while it is
+ * drawn -- the story is already readable behind a concept card -- so a slow
+ * attempt is worth waiting out, and 60s per request inside a 150s chain is the
+ * shape that has always been here.
+ *
+ * A **portrait** is the opposite: onboarding's W6 holds the user on a loading
+ * card with a caption promising a number of seconds. Measured 2026-09-12
+ * (`backend/scripts/measure-portrait-latency.ts`, 3+ runs per shape), a
+ * successful `gemini-2.5-flash-image` portrait lands at a p50 of about 7.8s
+ * and a worst observed 10.3s; `gemini-3.1-flash-image` is a full four seconds
+ * behind it at 12.2s, which is why the ladder is ordered the way it is. A
+ * request still running at 25s is therefore not slow, it is stuck -- and
+ * waiting the other 35s of a 60s timeout buys nothing except a caption that
+ * lied by six times. Cutting the attempt short and falling through to the
+ * second model costs about 12s more and usually produces a face; waiting does
+ * not. The chain budget is sized to fit that: two models at 25s, with room for
+ * one simplification rung, and still inside the platform's own limit.
+ */
+const REQUEST_TIMEOUT_MS: Record<ImageAspect, number> = {
+  cover: 60_000,
+  portrait: 25_000,
+};
 /**
  * The whole chain is bounded, not just each request.
  *
@@ -83,7 +109,10 @@ const REQUEST_TIMEOUT_MS = 60_000;
  * limit and the caller gets a dropped connection rather than a null and a
  * concept cover.
  */
-const CHAIN_DEADLINE_MS = 150_000;
+const CHAIN_DEADLINE_MS: Record<ImageAspect, number> = {
+  cover: 150_000,
+  portrait: 80_000,
+};
 
 interface ImageProvider {
   name: string;
@@ -121,13 +150,42 @@ const PROVIDERS: readonly ImageProvider[] = [
 
 export type ImageAspect = "cover" | "portrait";
 
-/** Both are portrait-orientation; the cover is taller. */
-const ASPECT: Record<ImageAspect, { words: string }> = {
-  // Gemini takes no size parameter, so the aspect ratio is carried in the
-  // prompt text. `openaiSize` lived here for the images endpoint OpenAI
-  // exposed and had no equivalent on this chain; it is gone with it.
-  cover: { words: "portrait orientation, 2:3 aspect ratio" },
-  portrait: { words: "full-body portrait orientation, 2:3 aspect ratio" },
+/**
+ * Both are portrait-orientation; the cover is taller.
+ *
+ * `ratio` is the real parameter and `words` is the prompt saying the same
+ * thing. Gemini through OpenRouter *does* take a size parameter --
+ * `image_config.aspect_ratio`, verified live 2026-09-12 -- and the note that
+ * used to sit here saying it does not was the reason every image on this chain
+ * came back 1024x1024 square. A square source displayed in the 270x338 Meet
+ * card under `resizeMode="cover"` loses about a fifth of its width, which on a
+ * full-body portrait is the arms. Asking for 4:5 (896x1152) returns the frame
+ * the card actually draws, at a measured cost of nothing: across three runs
+ * each, square, 2:3 and 4:5 were all inside the same 7-9s band.
+ *
+ * The two must agree. A prompt that asks for one ratio while the parameter
+ * asks for another is a request that argues with itself, and the model has no
+ * way to tell which half was meant.
+ *
+ * | aspect ratio | pixels Gemini returns |
+ * |--------------|-----------------------|
+ * | 1:1 (default)| 1024 x 1024           |
+ * | 4:5          | 896 x 1152            |
+ * | 3:4          | 864 x 1184            |
+ * | 2:3          | 832 x 1248            |
+ *
+ * `image_size` is NOT set. Its only values are 0.5K / 1K / 2K / 4K, 0.5K is
+ * rejected by every model in this chain, and 1K is what these ratios already
+ * are -- so it would be a parameter that either fails or does nothing. The
+ * portrait needs 810x1014 to be sharp at 3x on the Meet card, and 896x1152 is
+ * the smallest supported output that clears it.
+ */
+const ASPECT: Record<ImageAspect, { words: string; ratio: string }> = {
+  cover: { words: "portrait orientation, 2:3 aspect ratio", ratio: "2:3" },
+  portrait: {
+    words: "full-body portrait orientation, 4:5 aspect ratio",
+    ratio: "4:5",
+  },
 };
 
 export interface ImageResult {
@@ -241,7 +299,8 @@ export async function generateChapterImage(input: {
     bucket: "covers",
     storagePath: `covers/${input.storyId}/chapters/${input.chapterNumber}.png`,
     aspect: "cover",
-    promptFor: (safetyLevel) => buildChapterArtPromptForLevel(safetyLevel, input),
+    promptFor: (safetyLevel) =>
+      buildChapterArtPromptForLevel(safetyLevel, input),
   });
 }
 
@@ -602,6 +661,9 @@ function buildPortraitPrompt(
   hasReference = false,
   artStyle?: string,
 ): string {
+  // THE APPEARANCE IS THE WHOLE SUBJECT. A `gender` clause used to lead it,
+  // fed by a required row on onboarding's W4 sheet; both are gone, because an
+  // appearance line says it in the person's own words whenever it matters.
   const subject = portraitSubjectForLevel(appearance, safetyLevel);
 
   return [
@@ -652,7 +714,7 @@ async function runImageChain(input: {
   /** Optional style reference, as a `data:` URL. See `STYLE_REFERENCE_CLAUSE`. */
   referenceImage?: string;
 }): Promise<ImageResult | null> {
-  const deadline = Date.now() + CHAIN_DEADLINE_MS;
+  const deadline = Date.now() + CHAIN_DEADLINE_MS[input.aspect];
 
   /**
    * Carried across providers, never reset — but never allowed to exhaust one.
@@ -777,9 +839,12 @@ async function generateWithOpenRouter(
     {
       model,
       modalities: ["image", "text"],
+      // The framing, as a parameter rather than a hope. See `ASPECT`.
+      image_config: { aspect_ratio: ASPECT[aspect].ratio },
       messages: [{ role: "user", content }],
     },
     deadline,
+    REQUEST_TIMEOUT_MS[aspect],
     `OpenRouter image (${model})`,
     { "HTTP-Referer": "https://katha.ai", "X-Title": "Katha AI" },
   );
@@ -805,7 +870,7 @@ async function generateWithOpenRouter(
   if (url.startsWith("data:") && comma > -1) {
     return decodeBase64(url.slice(comma + 1));
   }
-  return await downloadImage(url, deadline);
+  return await downloadImage(url, deadline, REQUEST_TIMEOUT_MS[aspect]);
 }
 
 // ---------------------------------------------------------------------------
@@ -817,10 +882,12 @@ async function postJson(
   apiKey: string,
   body: unknown,
   deadline: number,
+  /** This attempt's own ceiling, from `REQUEST_TIMEOUT_MS`. */
+  attemptTimeoutMs: number,
   providerLabel: string,
   extraHeaders: Record<string, string> = {},
 ): Promise<unknown> {
-  const budget = Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now());
+  const budget = Math.min(attemptTimeoutMs, deadline - Date.now());
   if (budget <= 0) throw new Error(`${providerLabel}: deadline exceeded`);
 
   const controller = new AbortController();
@@ -854,8 +921,9 @@ async function postJson(
 async function downloadImage(
   url: string,
   deadline: number,
+  attemptTimeoutMs: number,
 ): Promise<Uint8Array> {
-  const budget = Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now());
+  const budget = Math.min(attemptTimeoutMs, deadline - Date.now());
   if (budget <= 0) throw new Error("image download: deadline exceeded");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), budget);

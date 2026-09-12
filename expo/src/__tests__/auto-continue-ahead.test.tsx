@@ -172,6 +172,48 @@ describe("autoChapterToWriteAhead", () => {
     expect(autoChapterToWriteAhead(story, PLENTY)).toBeNull();
   });
 
+  /**
+   * AUTO-CONTINUE MUST NOT AUTO-EXTEND. The safety line of the whole feature.
+   *
+   * A reader can now grow a finished story by tapping a direction chip at its
+   * end, which raises `planned_chapter_count` and charges for the chapter.
+   * This path must never do that on its own: it fires with nobody watching, so
+   * an auto story that could extend itself would walk the reader's balance to
+   * zero writing chapters past the plan they actually chose.
+   *
+   * A one-chapter story is the sharpest case -- extendable from the moment it
+   * finishes, and one tap from becoming a fifteen-chapter bill.
+   */
+  it("never extends a story past its plan, however many credits are in hand", () => {
+    const oneChapter = makeStory({
+      plannedChapterCount: 1,
+      chapters: [makeChapter(1)],
+    });
+    expect(autoChapterToWriteAhead(oneChapter, PLENTY)).toBeNull();
+
+    // And nothing about the ceiling makes it fire either: a story mid-range is
+    // just as finished at its own plan as a fifteen-chapter one is at 15.
+    const extended = makeStory({
+      plannedChapterCount: 4,
+      chapters: [makeChapter(1), makeChapter(2), makeChapter(3), makeChapter(4)],
+    });
+    expect(autoChapterToWriteAhead(extended, PLENTY)).toBeNull();
+  });
+
+  /**
+   * The stored plan is a RANGE. A story extended by hand to four chapters
+   * stores 4, and the write-ahead has to keep writing to it -- the old
+   * `3 | 7 | 15` membership test resolved 4 to the default 3 and stopped the
+   * chain one chapter short of a chapter the reader had already paid to plan.
+   */
+  it("writes to a plan that is not one of the offered lengths", () => {
+    const story = makeStory({
+      plannedChapterCount: 4,
+      chapters: [makeChapter(1), makeChapter(2), makeChapter(3)],
+    });
+    expect(autoChapterToWriteAhead(story, PLENTY)).toBe(4);
+  });
+
   it("treats an unknown planned count as the server's default of three", () => {
     const story = makeStory({
       plannedChapterCount: undefined,

@@ -8,7 +8,7 @@ import {
   SUPABASE_URL,
   supabase,
 } from "@/lib/supabase";
-import { GENRES } from "@/types/domain";
+import { GENRES, MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
 import type {
   Chapter,
   ChapterRole,
@@ -432,6 +432,79 @@ export type CharacterImageInput = {
  * returns a stable draft URL so the UI flow can be exercised without starting
  * story generation early.
  */
+/**
+ * A refused portrait claim, told apart from a portrait that failed to draw.
+ *
+ * Extends `GenerationRequestError` rather than replacing it, so every existing
+ * `catch` that reads `.message` and `.resetRequestId` keeps working; a screen
+ * that wants to say "later" rather than "again" checks `instanceof`.
+ */
+export class CharacterPortraitRateLimitError extends GenerationRequestError {
+  constructor(message: string) {
+    super(message, false);
+    this.name = "CharacterPortraitRateLimitError";
+  }
+}
+
+/**
+ * The guest cap, told apart from both a draw that failed and a refused claim.
+ *
+ * 403 `{ code: "guest_portrait_cap" }` is not a wait and not a fault: it is the
+ * server saying this anonymous session has had its free portraits and the way
+ * past it is an account, not another press. Like the rate-limit error it
+ * extends `GenerationRequestError` so existing `catch` blocks keep reading
+ * `.message`, and it carries the SERVER's sentence rather than one of ours,
+ * because only the server knows what the cap currently is.
+ */
+export class CharacterPortraitGuestCapError extends GenerationRequestError {
+  constructor(message: string) {
+    super(message, false);
+    this.name = "CharacterPortraitGuestCapError";
+  }
+}
+
+/**
+ * The JSON body of a failed edge invoke, or null when there is not one.
+ *
+ * The Supabase JS SDK reports a non-2xx function response as an error with no
+ * parsed body; `error.context.json()` is the only way to the payload, and it
+ * can only be read once, so callers that need two fields read the object.
+ */
+async function edgeFunctionBody(
+  error: unknown,
+): Promise<Record<string, unknown> | null> {
+  const context = error && typeof error === "object"
+    ? (error as { context?: { json?: () => Promise<unknown> } }).context
+    : undefined;
+  if (typeof context?.json !== "function") return null;
+  try {
+    const body = await context.json();
+    return body && typeof body === "object"
+      ? body as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Onboarding shares the one portrait allowance, and that is the decision.
+ *
+ * `claim_character_portrait_request` (migration 00055) is 12 requests per 60
+ * minutes per user, and it is the only bound on a path with no credit and no
+ * idempotency key. Character onboarding spends at most three of those -- one
+ * "Find them" and two reimagines -- so a first-run user is nowhere near it,
+ * and a second window for onboarding would be a second counter an anonymous
+ * caller could reset by minting a fresh session (00055 records that gap
+ * honestly). Sharing keeps one number to reason about.
+ *
+ * What that costs: a user who spent the allowance in the Craft sheet and then
+ * restarted onboarding hits the cap on the aha screen. That is why the refusal
+ * comes back as its own error with its own sentence instead of the generic
+ * "Could not create the character image" -- a cap is a wait, not a failure,
+ * and a Try again that cannot succeed inside the window is worse than saying
+ * so.
+ */
 export async function generateCharacterImage(
   input: CharacterImageInput,
 ): Promise<{ url: string }> {
@@ -456,6 +529,10 @@ export async function generateCharacterImage(
         request_id: input.requestId,
         name: input.name,
         appearance: input.appearance,
+        // "auto" when the caller names no style, which is what onboarding
+        // does. `normalizeCoverArtStyle` maps anything unrecognised to the
+        // same value, so this is the explicit spelling of the server default
+        // rather than a second one.
         image_style: input.imageStyle ?? "auto",
         // Omitted rather than sent as null when absent: the endpoint treats a
         // present-but-unusable field as an error, which is right, and an
@@ -468,6 +545,25 @@ export async function generateCharacterImage(
   );
 
   if (error) {
+    // 429 is the rate-limit claim being refused, and it is the one failure
+    // here that retrying cannot fix inside the window.
+    if (edgeFunctionStatus(error) === 429) {
+      throw new CharacterPortraitRateLimitError(
+        "You've made a lot of characters just now. Give it a few minutes.",
+      );
+    }
+    // 403 is the guest cap. Only the typed body says so: a 403 with any other
+    // shape is an ordinary refusal and must keep the generic sentence, or a
+    // permissions bug would tell people to sign in when they already are.
+    if (edgeFunctionStatus(error) === 403) {
+      const body = await edgeFunctionBody(error);
+      if (body?.code === "guest_portrait_cap") {
+        const message = typeof body.error === "string" && body.error.trim()
+          ? body.error
+          : "Sign in to keep making characters.";
+        throw new CharacterPortraitGuestCapError(message);
+      }
+    }
     throw new GenerationRequestError(
       "Could not create the character image. Please try again.",
       false,
@@ -1021,6 +1117,19 @@ function buildGenerationRequestBody(
   };
 }
 
+/**
+ * The HTTP status behind a failed `functions.invoke`, or null.
+ *
+ * The Supabase JS SDK reports a non-2xx function response as an error whose
+ * `context` is the `Response`, so the status is the only thing that survives
+ * without reading the body. Same reach-through as `edgeFunctionFailure` below.
+ */
+function edgeFunctionStatus(error: unknown): number | null {
+  const status = (error as { context?: { status?: number } } | null)?.context
+    ?.status;
+  return typeof status === "number" ? status : null;
+}
+
 async function edgeFunctionFailure(error: unknown, data: unknown) {
   const dataFailure = objectFailure(data);
   if (dataFailure) return dataFailure;
@@ -1238,8 +1347,22 @@ function isStoryMode(value: unknown): value is StoryMode {
   return value === "standalone" || value === "series";
 }
 
-function isPlannedChapterCount(value: unknown): value is 3 | 7 | 15 {
-  return value === 3 || value === 7 || value === 15;
+/**
+ * A stored plan is any whole number in `[1, 15]`, not one of the four the
+ * picker offers.
+ *
+ * This used to test `value === 3 || value === 7 || value === 15`, which was
+ * true while the picker was the only writer of the column. A reader extending
+ * a finished story raises it one chapter at a time, so a 4-chapter story's row
+ * would have failed this test, been dropped to `undefined`, and read back as a
+ * story with no plan -- which `plannedChapterCountOf` then resolves to 3, and
+ * the reader is told a story it has four chapters of is complete at three.
+ *
+ * The bound is the same one migration 00079 puts on the column.
+ */
+function isPlannedChapterCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) &&
+    value >= 1 && value <= MAX_PLANNED_CHAPTER_COUNT;
 }
 
 function isChapterLength(
@@ -1584,6 +1707,16 @@ export async function continueStoryStreaming(
    * has moved on by the time anyone could ask for them again.
    */
   directionsOffered?: readonly { id: string; prompt: string }[],
+  /**
+   * Grow the story one chapter past its planned ending.
+   *
+   * An explicit opt-in, sent by exactly one surface: a direction chip tapped
+   * at the end of a finished series by its own author. The server refuses a
+   * chapter past the plan without it, and that refusal is the point -- an
+   * extension spends a credit on a story the writer said was finished, so it
+   * takes a deliberate tap every time. Auto-continue never sends it.
+   */
+  extend?: boolean,
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
     return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
@@ -1617,6 +1750,7 @@ export async function continueStoryStreaming(
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
       directions_offered: directionsOffered ?? [],
+      extend: extend === true,
       notify_on_ready: notifyOnReady,
       stream: true,
     },
@@ -1988,6 +2122,16 @@ export async function continueStory(
    * has moved on by the time anyone could ask for them again.
    */
   directionsOffered?: readonly { id: string; prompt: string }[],
+  /**
+   * Grow the story one chapter past its planned ending.
+   *
+   * An explicit opt-in, sent by exactly one surface: a direction chip tapped
+   * at the end of a finished series by its own author. The server refuses a
+   * chapter past the plan without it, and that refusal is the point -- an
+   * extension spends a credit on a story the writer said was finished, so it
+   * takes a deliberate tap every time. Auto-continue never sends it.
+   */
+  extend?: boolean,
 ): Promise<{ chapter: Chapter; model: string }> {
   if (!isSupabaseConfigured) {
     return await localContinueStory(storyId, isFinale, expectedChapterNum ?? 2);
@@ -2009,6 +2153,7 @@ export async function continueStory(
       is_finale: isFinale ?? false,
       next_instruction: nextInstruction,
       directions_offered: directionsOffered ?? [],
+      extend: extend === true,
       notify_on_ready: await pushPermissionGranted(),
     },
   });
