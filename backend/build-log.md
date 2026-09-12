@@ -7,6 +7,66 @@
 
 ---
 
+## 2026-09-12 UTC — Review close on #92: seventeen findings, and a CI test that read a deleted screen
+
+**Session:** `codex/character-onboarding`, review closing only. No schema
+change, nothing deployed.
+
+### The CI failure
+
+`story-shape.test.ts` asserted that the onboarding prompt's word band matched a
+clamp inside `expo/src/screens/WriterOnboarding.tsx`, by reading that file off
+disk. #92 deletes that screen — onboarding no longer shapes a story — so the
+Edge Functions job failed on a missing file rather than on a broken contract.
+The test now pins the prompt side only. `ONBOARDING_SHAPE_*` stays in
+`story-shape.ts` for `shape-story`'s `variant: "onboarding"` branch; removing
+the variant is a follow-up, not this change.
+
+### What was fixed, from the CodeAnt review
+
+- **`OnboardingPaywall`** completed the purchase off-store whenever RevenueCat
+  returned no package. On web and in development that is the reviewable path;
+  in a shipped native build it handed premium to anyone whose offerings lookup
+  failed. Gated to `__DEV__ || web`, inline error otherwise, with a test that
+  flips `__DEV__` to pin it.
+- **`EmailCodeAuth`** left `Resend code` tappable during a send, so a second
+  code invalidated the one being read. Disabled while busy, and both submits
+  return early if one is already in flight.
+- **`saved-characters`** wrote `null` over `background` and `appearance` on
+  every update, because `toRow` fills the whole row. A save from a surface
+  carrying only a name erased the description. The update path now patches
+  only supplied fields.
+- **`session.ts`** kept one slot of pending-OTP state, so a second send
+  overwrote the first send's mode AND its guest access token — the token the
+  character claim runs on. It is keyed by address now and cleared whenever the
+  identity changes. Separately, a reload between the email and code screens
+  re-derived `email_change` for a still-anonymous session on the
+  existing-account path, which rejected a valid sign-in code; a derived
+  `email_change` that is refused is retried once as `email`.
+- **`generate-testimonial-portraits.ts`** rejected an http image link, which
+  the shared provider path accepts, burning all three attempts on a good
+  response; and it exited 0 after drawing nothing. Both fixed.
+- **`00080` test** voted `7` on a nonexistent comment, so it passed on the
+  existence branch without reaching the range check. It now votes on a real
+  comment and asserts the message.
+- **Docs.** `CREDITS_AND_PRICING.md` priced a story start at 1 credit in §2 and
+  3 credits in §6 (amendment 46 says 3); the free-tier exposure line did
+  seventeen-times-one-start arithmetic; amendment 18f still described the
+  retired five-row paywall. `ONBOARDING_FLOW.md` prohibited image calls on W4
+  while §9 requires W4's CTA to start the portrait, and its W5 table still
+  carried **Save and draw {name}** for a button that only sends a code. The
+  app's label went with it: the press stopped saving and drawing on
+  2026-09-12.
+
+### What was explained rather than changed
+
+The `00079` finding — a plan raised for a chapter whose generation later
+refunds — is real and belongs to #91, where that migration comes from. The
+glyph test's packed-colour assertions do pass (`react-native-svg` packs them
+and the test translates), but the helpers now accept the plain string too.
+
+---
+
 ## 2026-09-11 UTC — One-chapter stories, and a plan a reader can grow
 
 **Session:** `codex/one-chapter-stories`, backend plus reader and create

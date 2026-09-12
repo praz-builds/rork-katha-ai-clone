@@ -216,6 +216,27 @@ describe("OnboardingPaywall", () => {
     );
   });
 
+  it("never grants premium off-store in a shipped build", async () => {
+    // The off-store completion below exists for review and for web. In a
+    // production native build the same path would hand premium to anyone
+    // whose offerings lookup failed -- no purchase, no receipt -- so there it
+    // has to fail loudly instead.
+    const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+    try {
+      const { view, onSubscribed } = await renderPaywall();
+      await fireEvent.press(view.getByLabelText("Unlock Katha"));
+      await waitFor(() =>
+        expect(view.getByText("Purchase didn't go through. Try again."))
+          .toBeTruthy()
+      );
+      expect(onSubscribed).not.toHaveBeenCalled();
+      expect(mockPurchasePackage).not.toHaveBeenCalled();
+    } finally {
+      (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
+    }
+  });
+
   it("completes off-store so the flow can be walked without RevenueCat", async () => {
     const { view, onSubscribed } = await renderPaywall();
     await fireEvent.press(view.getByLabelText("Unlock Katha"));

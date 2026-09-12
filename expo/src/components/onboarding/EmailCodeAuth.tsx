@@ -98,6 +98,10 @@ export function EmailCodeAuth({
   }, [codeOnly, onBack]);
 
   const submitEmail = useCallback(async () => {
+    // `Resend code` calls this too, and that button sits on a screen where the
+    // primary action is already in flight. A second send while the first is
+    // open issues a second code and invalidates the one the user is reading.
+    if (authBusy) return;
     if (!EMAIL_PATTERN.test(email.trim())) return;
     setAuthBusy(true);
     setAuthError(null);
@@ -110,9 +114,10 @@ export function EmailCodeAuth({
     } finally {
       setAuthBusy(false);
     }
-  }, [email]);
+  }, [authBusy, email]);
 
   const submitCode = useCallback(async () => {
+    if (authBusy) return;
     if (code.trim().length < 6) return;
     setAuthBusy(true);
     setAuthError(null);
@@ -124,7 +129,7 @@ export function EmailCodeAuth({
     } finally {
       setAuthBusy(false);
     }
-  }, [code, email, onVerified]);
+  }, [authBusy, code, email, onVerified]);
 
   if (authStep === "code") {
     return (
@@ -151,7 +156,9 @@ export function EmailCodeAuth({
         <Pressable
           onPress={submitEmail}
           accessibilityRole="button"
-          style={styles.resendButton}
+          accessibilityState={{ disabled: authBusy }}
+          disabled={authBusy}
+          style={[styles.resendButton, authBusy && styles.resendButtonBusy]}
         >
           <Text style={styles.quietText}>Resend code</Text>
         </Pressable>
@@ -286,6 +293,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.xl,
   },
+  resendButtonBusy: { opacity: 0.4 },
   quietText: { ...type.subhead, color: colors.muted },
   error: { ...type.subhead, color: colors.accentPressed },
   legal: {

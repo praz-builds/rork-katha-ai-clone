@@ -59,14 +59,42 @@ const REQUEST_TIMEOUT_MS = 120_000;
  * stock photography and stops being a face.
  */
 const PEOPLE: { slug: string; subject: string }[] = [
-  { slug: "mateo-rpg", subject: "a 29 year old Hispanic man with short dark hair and light stubble" },
-  { slug: "ana-bedtime", subject: "a 36 year old Latina woman with long dark wavy hair" },
-  { slug: "dev-commute", subject: "a 41 year old South Asian man with short black hair and a trimmed beard" },
-  { slug: "chloe-fanfic", subject: "a 24 year old white woman with shoulder length light brown hair" },
-  { slug: "marcus-dad", subject: "a 38 year old Black man with short cropped hair and a short beard" },
-  { slug: "priya-bilingual", subject: "a 20 year old Latina woman, a college student, with dark hair tied back" },
-  { slug: "ruth-memoir", subject: "a 67 year old white woman with short grey hair and glasses" },
-  { slug: "leo-worldbuilder", subject: "a 17 year old East Asian teenage boy with straight black hair" },
+  {
+    slug: "mateo-rpg",
+    subject:
+      "a 29 year old Hispanic man with short dark hair and light stubble",
+  },
+  {
+    slug: "ana-bedtime",
+    subject: "a 36 year old Latina woman with long dark wavy hair",
+  },
+  {
+    slug: "dev-commute",
+    subject:
+      "a 41 year old South Asian man with short black hair and a trimmed beard",
+  },
+  {
+    slug: "chloe-fanfic",
+    subject: "a 24 year old white woman with shoulder length light brown hair",
+  },
+  {
+    slug: "marcus-dad",
+    subject:
+      "a 38 year old Black man with short cropped hair and a short beard",
+  },
+  {
+    slug: "priya-bilingual",
+    subject:
+      "a 20 year old Latina woman, a college student, with dark hair tied back",
+  },
+  {
+    slug: "ruth-memoir",
+    subject: "a 67 year old white woman with short grey hair and glasses",
+  },
+  {
+    slug: "leo-worldbuilder",
+    subject: "a 17 year old East Asian teenage boy with straight black hair",
+  },
 ];
 
 function promptFor(subject: string): string {
@@ -87,10 +115,14 @@ async function readKey(): Promise<string> {
   if (fromEnv) return fromEnv;
   const text = await Deno.readTextFile(ENV_FILE);
   for (const line of text.split("\n")) {
-    const match = /^\s*(?:export\s+)?OPENROUTER_API_KEY\s*=\s*(.+)\s*$/.exec(line);
+    const match = /^\s*(?:export\s+)?OPENROUTER_API_KEY\s*=\s*(.+)\s*$/.exec(
+      line,
+    );
     if (match) return match[1].trim().replace(/^["']|["']$/g, "");
   }
-  throw new Error("OPENROUTER_API_KEY not found in the environment or backend/.env");
+  throw new Error(
+    "OPENROUTER_API_KEY not found in the environment or backend/.env",
+  );
 }
 
 function decodeBase64(b64: string): Uint8Array {
@@ -127,12 +159,25 @@ async function draw(prompt: string, apiKey: string): Promise<Uint8Array> {
     };
     const url = payload.choices?.[0]?.message?.images?.[0]?.image_url?.url;
     // No image on a 200 is this provider's refusal shape, not a transport bug.
-    if (!url) throw new Error("no image in the response (content policy or unsupported modality)");
-    const comma = url.indexOf(",");
-    if (!url.startsWith("data:") || comma < 0) {
-      throw new Error("image came back as a link rather than a data URL");
+    if (!url) {
+      throw new Error(
+        "no image in the response (content policy or unsupported modality)",
+      );
     }
-    return decodeBase64(url.slice(comma + 1));
+    if (url.startsWith("data:")) {
+      const comma = url.indexOf(",");
+      if (comma < 0) throw new Error("malformed data URL in the response");
+      return decodeBase64(url.slice(comma + 1));
+    }
+    // A LINK IS ALSO A VALID ANSWER. `_shared/image.ts` accepts both shapes
+    // and so must this: rejecting a link here burned all three attempts and
+    // wrote no portrait, on a response that was perfectly good.
+    if (!/^https?:\/\//.test(url)) {
+      throw new Error("image came back as neither a data URL nor an http link");
+    }
+    const image = await fetch(url, { signal: controller.signal });
+    if (!image.ok) throw new Error(`image link ${image.status}`);
+    return new Uint8Array(await image.arrayBuffer());
   } finally {
     clearTimeout(timer);
   }
@@ -166,7 +211,9 @@ async function toSquarePng(
 async function main() {
   const only = new Set(Deno.args);
   const targets = only.size ? PEOPLE.filter((p) => only.has(p.slug)) : PEOPLE;
-  if (!targets.length) throw new Error(`no persona matched ${[...only].join(", ")}`);
+  if (!targets.length) {
+    throw new Error(`no persona matched ${[...only].join(", ")}`);
+  }
 
   const apiKey = await readKey();
   await Deno.mkdir(OUT_DIR, { recursive: true });
@@ -187,12 +234,30 @@ async function main() {
         break;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[attempt ${attempt}/${MAX_ATTEMPTS}] ${person.slug}: ${message}`);
-        if (attempt === MAX_ATTEMPTS) console.error(`[fail] ${person.slug} not drawn`);
+        console.error(
+          `[attempt ${attempt}/${MAX_ATTEMPTS}] ${person.slug}: ${message}`,
+        );
+        if (attempt === MAX_ATTEMPTS) {
+          console.error(`[fail] ${person.slug} not drawn`);
+        }
       }
     }
   }
-  console.log(`\n${drawn}/${targets.length} portraits written to expo/assets/testimonials/`);
+  console.log(
+    `\n${drawn}/${targets.length} portraits written to expo/assets/testimonials/`,
+  );
+  // A run that drew nothing used to exit 0, so a CI step or a wrapper script
+  // could not tell a full set from an empty one.
+  if (drawn < targets.length) {
+    throw new Error(`${targets.length - drawn} portrait(s) not drawn`);
+  }
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    Deno.exit(1);
+  }
+}

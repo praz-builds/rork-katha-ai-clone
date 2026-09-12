@@ -177,13 +177,39 @@ type EmailOtpMode = "email_change" | "email" | "already_confirmed";
  *
  * Module state rather than a return value because agent A's screen calls these
  * two by their existing signatures and must keep working. `verifyEmailCode`
- * re-derives the mode from the live session when this is missing (a reload
- * between the two screens), so losing it degrades to the old behaviour rather
- * than to an error.
+ * re-derives the mode from the live session when the entry is missing (a
+ * reload between the two screens), so losing it degrades rather than erroring.
+ *
+ * KEYED BY ADDRESS, not a single slot. A single slot is one send at a time:
+ * a user who mistypes, sends, corrects and sends again -- or a flow that hands
+ * off to a plain sign-in -- overwrote the first send's mode AND its guest
+ * token, and then the code that actually arrived for the first address got
+ * verified against the second address's decision. Worse, the guest token is
+ * the proof `claim_guest_characters` runs on, so the wrong pairing claimed a
+ * character onto an account that never made it. One entry per address, and
+ * the map is emptied whenever the identity changes underneath it.
  */
-let pendingEmailOtp:
-  | { email: string; mode: EmailOtpMode; guestAccessToken?: string }
-  | null = null;
+const pendingEmailOtp = new Map<
+  string,
+  { mode: EmailOtpMode; guestAccessToken?: string }
+>();
+
+/** The map's key: the address as typed never matches the address as stored. */
+function otpKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Forget every outstanding send.
+ *
+ * Called once the session has changed hands. A pending entry names a guest
+ * access token, and after a verify that token belongs to an identity this
+ * device is no longer on -- replaying it would claim a character onto whoever
+ * signs in next.
+ */
+function forgetPendingEmailOtp(): void {
+  pendingEmailOtp.clear();
+}
 
 /** The stored session if it belongs to a guest, otherwise null. */
 async function anonymousSession(): Promise<
@@ -238,23 +264,21 @@ export async function sendEmailCode(email: string): Promise<void> {
       // would fail on a screen whose work is already done.
       const applied = data?.user?.email?.toLowerCase() === address.toLowerCase();
       const pendingConfirmation = Boolean(data?.user?.new_email);
-      pendingEmailOtp = {
-        email: address,
+      pendingEmailOtp.set(otpKey(address), {
         mode: !pendingConfirmation && applied ? "already_confirmed" : "email_change",
         guestAccessToken: guest.access_token,
-      };
+      });
       return;
     }
     if (!isEmailTakenError(error)) throw error;
     // The address belongs to an existing account. Sign into it, and move the
     // character across afterwards -- see `verifyEmailCode`.
-    pendingEmailOtp = {
-      email: address,
+    pendingEmailOtp.set(otpKey(address), {
       mode: "email",
       guestAccessToken: guest.access_token,
-    };
+    });
   } else {
-    pendingEmailOtp = { email: address, mode: "email" };
+    pendingEmailOtp.set(otpKey(address), { mode: "email" });
   }
 
   const { error } = await supabase.auth.signInWithOtp({
@@ -341,7 +365,7 @@ export async function verifyEmailCode(
   const address = email.trim();
   const token = code.trim();
 
-  const pending = pendingEmailOtp?.email === address ? pendingEmailOtp : null;
+  const pending = pendingEmailOtp.get(otpKey(address)) ?? null;
   const guest = pending ? null : await anonymousSession();
   const mode: EmailOtpMode = pending?.mode ?? (guest ? "email_change" : "email");
   const guestAccessToken = pending?.guestAccessToken ?? guest?.access_token;
@@ -350,20 +374,46 @@ export async function verifyEmailCode(
     // The address is on this identity already and no code was ever sent, so
     // there is nothing to verify. Nothing changed hands: the id is the same
     // one the character and the credits are attached to.
-    pendingEmailOtp = null;
+    pendingEmailOtp.delete(otpKey(address));
     return;
   }
 
+  let verified = mode;
   const { error } = await supabase.auth.verifyOtp({
     email: address,
     token,
     type: mode,
   });
-  if (error) throw error;
-  pendingEmailOtp = null;
+  if (error) {
+    // THE RELOAD PATH, and the one case where a rejected code is OUR mistake.
+    //
+    // Without a recorded send the mode is re-derived, and a stored guest
+    // session reads as `email_change` -- right when `updateUser` parked the
+    // address, wrong when it refused because the address already belongs to
+    // somebody. In that second case `sendEmailCode` sent a plain sign-in
+    // code, the session is still anonymous because nothing has been verified
+    // yet, and verifying as `email_change` rejects a code that is perfectly
+    // valid. The user is then told their correct code did not match, with no
+    // way out but a resend that lands in the same place.
+    //
+    // So a derived `email_change` that is refused is retried once as the
+    // sign-in it may have been all along. A recorded send is never retried:
+    // there the mode is known, and a refusal is a real refusal.
+    if (pending || mode !== "email_change") throw error;
+    const retry = await supabase.auth.verifyOtp({
+      email: address,
+      token,
+      type: "email",
+    });
+    if (retry.error) throw error;
+    verified = "email";
+  }
+  // The identity has changed hands: every remaining entry names a guest token
+  // that is no longer this device's.
+  forgetPendingEmailOtp();
 
   // Only the fallback leaves anything behind. The conversion path kept the id.
-  if (mode === "email" && guestAccessToken) {
+  if (verified === "email" && guestAccessToken) {
     await claimGuestCharacters(guestAccessToken);
   }
 }
@@ -416,7 +466,7 @@ async function claimGuestCharacters(guestAccessToken: string): Promise<void> {
 export async function signOutToGuest(): Promise<void> {
   // A half-finished sign-in must not be resumable by the guest who replaces
   // it: the token recorded there belongs to the identity that just left.
-  pendingEmailOtp = null;
+  forgetPendingEmailOtp();
 
   try {
     await AsyncStorage.removeItem("katha.displayName.v1");

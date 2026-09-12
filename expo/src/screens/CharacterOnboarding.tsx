@@ -855,9 +855,12 @@ export default function CharacterOnboarding(
             cta={
               <>
                 <Cta
-                  label={reader
-                    ? "Save and draw me"
-                    : `Save and draw ${displayName}`}
+                  // The label is what the press DOES. Save and draw moved to
+                  // W4's CTA on 2026-09-12, so by the time this screen is up
+                  // the row exists and the portrait is already in flight;
+                  // promising both again here named two actions this button
+                  // has not performed since that change.
+                  label="Email me a code"
                   busy={sending}
                   onPress={() => {
                     void submitSave();

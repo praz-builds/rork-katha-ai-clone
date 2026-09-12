@@ -234,7 +234,7 @@ function portraitCalls(): Record<string, unknown>[] {
 async function submitSave(view: View) {
   await fireEvent.press(view.getByLabelText(`Bring ${NAME} to life`));
   await fireEvent.changeText(view.getByLabelText("Email address"), EMAIL);
-  await fireEvent.press(view.getByLabelText(`Save and draw ${NAME}`));
+  await fireEvent.press(view.getByLabelText("Email me a code"));
   await view.findByLabelText("Verification code");
 }
 
@@ -333,7 +333,7 @@ describe("character onboarding", () => {
     mockSaveCharacterToLibrary.mockClear();
 
     await fireEvent.changeText(view.getByLabelText("Email address"), EMAIL);
-    await fireEvent.press(view.getByLabelText(`Save and draw ${NAME}`));
+    await fireEvent.press(view.getByLabelText("Email me a code"));
     await view.findByLabelText("Verification code");
 
     expect(mockSendEmailCode).toHaveBeenCalledWith(EMAIL);
@@ -349,7 +349,7 @@ describe("character onboarding", () => {
     await fillSheet(view);
     await fireEvent.press(view.getByLabelText(`Bring ${NAME} to life`));
     await fireEvent.changeText(view.getByLabelText("Email address"), EMAIL);
-    await fireEvent.press(view.getByLabelText(`Save and draw ${NAME}`));
+    await fireEvent.press(view.getByLabelText("Email me a code"));
 
     await view.findByText(
       "We could not send that code. Check the address and retry.",
@@ -405,7 +405,7 @@ describe("character onboarding", () => {
     // The reimagine budget belongs to the Meet screen's pill and was not
     // spent here: the editor still opens once the face lands.
     await fireEvent.changeText(view.getByLabelText("Email address"), EMAIL);
-    await fireEvent.press(view.getByLabelText(`Save and draw ${NAME}`));
+    await fireEvent.press(view.getByLabelText("Email me a code"));
     await view.findByLabelText("Verification code");
     await verify(view);
     await view.findByText(`Meet ${NAME}.`);
@@ -610,7 +610,7 @@ describe("character onboarding", () => {
       reader.getByLabelText("Email address"),
       EMAIL,
     );
-    await fireEvent.press(reader.getByLabelText("Save and draw me"));
+    await fireEvent.press(reader.getByLabelText("Email me a code"));
     await reader.findByLabelText("Verification code");
     await verify(reader);
 

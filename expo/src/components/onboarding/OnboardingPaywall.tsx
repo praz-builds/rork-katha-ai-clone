@@ -78,6 +78,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -348,12 +349,23 @@ export function OnboardingPaywall({
         (candidate) => String(candidate.packageType) === plan.packageType,
       );
       if (!pkg) {
-        // Web, or no RevenueCat configuration yet. The flow still has to be
-        // walkable end to end for review, so the purchase succeeds off-store
-        // after one beat rather than dead-ending on a button that does nothing.
-        await new Promise((resolve) => setTimeout(resolve, motion.slow));
-        if (!mounted.current) return;
-        onSubscribed();
+        // No package came back: web, or a build with no RevenueCat
+        // configuration yet. In development and on web the flow still has to
+        // be walkable end to end for review, so it completes off-store after
+        // one beat rather than dead-ending on a button that does nothing.
+        //
+        // In a shipped native build it does NOT. A missing package there means
+        // the store lookup failed, and granting the entitlement on that path
+        // would hand premium to every user whose offerings request errored --
+        // no purchase, no receipt, nothing for the backend to verify. That is
+        // a retryable failure, so it says so.
+        if (__DEV__ || Platform.OS === "web") {
+          await new Promise((resolve) => setTimeout(resolve, motion.slow));
+          if (!mounted.current) return;
+          onSubscribed();
+          return;
+        }
+        if (mounted.current) setError(PURCHASE_ERROR);
         return;
       }
       await revenueCatService.purchasePackage(pkg);

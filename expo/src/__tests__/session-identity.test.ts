@@ -254,6 +254,80 @@ describe("a session that was never a guest", () => {
   });
 });
 
+describe("two sends in one sitting", () => {
+  it("verifies each address against its own send", async () => {
+    // One slot of module state meant the second send overwrote the first
+    // send's mode AND its guest token. A user who mistypes, sends, corrects
+    // and then goes back to the first code had it verified against the second
+    // address's decision -- and the guest token is the proof the character
+    // claim runs on, so the wrong pairing claimed a character onto an account
+    // that never made it.
+    mockGetSession.mockResolvedValue(guestSession());
+    mockUpdateUser
+      .mockResolvedValueOnce({
+        data: { user: { id: GUEST_ID, new_email: "first@example.com" } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: "email_exists", message: "email_exists" },
+      });
+    const { sendEmailCode, verifyEmailCode } = loadSession();
+
+    await sendEmailCode("first@example.com");
+    await sendEmailCode("second@example.com");
+
+    await verifyEmailCode("first@example.com", "123456");
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      email: "first@example.com",
+      token: "123456",
+      type: "email_change",
+    });
+  });
+});
+
+describe("a reload between the email screen and the code screen", () => {
+  it("retries a derived email change as the sign-in it actually was", async () => {
+    // The fallback send leaves the session ANONYMOUS -- nothing is verified
+    // yet -- so a re-derived mode reads "email_change" and Supabase refuses a
+    // code that is perfectly valid. The user was told their correct code did
+    // not match, with no way out but a resend landing in the same place.
+    mockGetSession
+      .mockResolvedValueOnce(guestSession())
+      .mockResolvedValue(namedSession());
+    mockVerifyOtp
+      .mockReset()
+      .mockResolvedValueOnce({
+        data: {},
+        error: { message: "Token has expired or is invalid" },
+      })
+      .mockResolvedValue({ data: {}, error: null });
+    const { verifyEmailCode } = loadSession();
+
+    await expect(verifyEmailCode("writer@example.com", "123456"))
+      .resolves.toBeUndefined();
+    expect(mockVerifyOtp).toHaveBeenNthCalledWith(2, {
+      email: "writer@example.com",
+      token: "123456",
+      type: "email",
+    });
+  });
+
+  it("still reports a code that is genuinely wrong", async () => {
+    mockGetSession.mockResolvedValue(guestSession());
+    mockVerifyOtp
+      .mockReset()
+      .mockResolvedValue({
+        data: {},
+        error: { message: "Token has expired or is invalid" },
+      });
+    const { verifyEmailCode } = loadSession();
+
+    await expect(verifyEmailCode("writer@example.com", "000000"))
+      .rejects.toBeDefined();
+  });
+});
+
 describe("signing out to a guest", () => {
   it("drops a half-finished sign-in", async () => {
     mockGetSession.mockResolvedValue(guestSession());

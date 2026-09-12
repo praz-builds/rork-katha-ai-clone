@@ -881,9 +881,9 @@ structural change this whole section exists to record.
 | Item | Writer copy | Reader copy |
 |---|---|---|
 | Header | **Where should we send {name}?** | **Where should we send you?** |
-| Sub | **Your portrait is about to be drawn. Save it to your account so {name} follows you into every story, on every device.** | same string, with `{name}` resolved to the reader's own character name |
+| Sub | **Your portrait is being drawn now. Save it to your account so {name} follows you into every story, on every device.** | same string, with `{name}` resolved to the reader's own character name |
 | Field label | **EMAIL** | **EMAIL** |
-| CTA | **Save and draw {name}** | **Save and draw me** |
+| CTA | **Email me a code** | **Email me a code** |
 | Terms | **By continuing you agree to our Terms and Privacy Policy.** | same |
 
 **Why the email moved in front of the portrait.** C4 asked for it after the
@@ -895,7 +895,11 @@ already had. The code screen is not dead time any more, it is the drawing.
 **Amended 2026-09-12 (third round): W5's CTA sends the code and nothing else.**
 The save and the image call moved back one screen to W4's CTA (§9, §16), so by
 the time this screen is on, the portrait is already being drawn behind it and the
-character row already exists. W5 validates the address, calls `sendEmailCode`,
+character row already exists. **The CTA copy moved with the behaviour**: it read
+**Save and draw {name}** until 2026-09-12, which named two actions this button
+had stopped performing — the row was already written and the portrait already in
+flight. A label is a promise about the press, so it now says what the press does,
+and the sub says the drawing is under way rather than about to be. W5 validates the address, calls `sendEmailCode`,
 and advances. The stage's dashed placeholder and **Ready to draw** chip are
 unchanged and still honest: the person is looking at a promise, and the fact that
 the promise is already in flight is not something this screen reports.
@@ -1377,6 +1381,16 @@ are content here, not icon glyphs.
 gone: portraits and reimagines are one row because they are one entitlement, and
 the free-tier parentheticals moved out of the rows entirely. They were arguing
 with the product on the screen that sells it.
+
+**The credits row does not follow the selected plan, and that is deliberate.**
+It names the monthly grant — 50 — while the weekly card beside it carries its
+own **20 credits a week** on its own note line (§ the plan cards above). Weekly
+is the larger grant of the two at about 86 a month, so the fixed row is a floor
+for every plan on the screen and never an over-promise for the one selected; a
+row that re-wrote itself on each tap would also make the benefits card flicker
+under the thing the person is choosing between. If a plan is ever added whose
+grant is BELOW 50 a month, this row has to become plan-aware in the same change.
+
 
 **The plan grid**, inside the pinned sheet, two equal columns with a 12 pt gap.
 **Rewritten 2026-09-12 (second round): the cards are compact, about 92 pt tall.**
@@ -1878,7 +1892,10 @@ it later costs nothing.
 ## 17. Prohibitions
 
 Never ship: an author byline; **any model or image call on the shared
-questionnaire, on W3, or on W4**; more than one character in onboarding; more
+questionnaire, on W3, or while W4 is being filled in** — W4's CTA is where the
+save and the draw now fire (§9, amended 2026-09-12), so the prohibition is about
+the screen, not about its press: nothing may call a model while the person is
+still typing a name and an appearance; more than one character in onboarding; more
 than one reimagine per onboarding; a disabled **🔄 Reimagine** control at 0 free
 left, or a toast in place of the paywall it opens; a spinner, percentage,
 progress bar, elapsed time or generation claim on W6; a frozen status line under

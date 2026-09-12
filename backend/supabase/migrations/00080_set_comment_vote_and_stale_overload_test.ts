@@ -24,7 +24,9 @@ async function createDatabase() {
   `);
   const migrations: string[] = [];
   for await (const entry of Deno.readDir(new URL(".", import.meta.url))) {
-    if (entry.isFile && /^\d+.*\.sql$/.test(entry.name)) migrations.push(entry.name);
+    if (entry.isFile && /^\d+.*\.sql$/.test(entry.name)) {
+      migrations.push(entry.name);
+    }
   }
   migrations.sort();
   for (const m of migrations) {
@@ -69,7 +71,10 @@ Deno.test("a reader can cast, change and clear a vote", async () => {
     assertEquals(await votes(), [1]);
 
     // Changing a vote updates in place rather than stacking a second row.
-    await db.query("select set_comment_vote($1, $2::smallint)", [commentId, -1]);
+    await db.query("select set_comment_vote($1, $2::smallint)", [
+      commentId,
+      -1,
+    ]);
     assertEquals(await votes(), [-1]);
 
     // Zero is "un-vote", not "a vote of zero".
@@ -86,16 +91,36 @@ Deno.test("an out-of-range vote is refused", async () => {
     await db.query("insert into auth.users(id) values ($1)", [USER]);
     await db.query("insert into profiles(id) values ($1)", [USER]);
     await db.exec(`set request.jwt.claim.sub = '${USER}'`);
-    let refused = false;
+    // The comment has to be REAL, and the reason has to be checked. A
+    // nonexistent id refuses too, on the existence branch, so the original
+    // spelling of this test passed without ever reaching the range check it
+    // exists to pin.
+    const story = await db.query<{ id: string }>(
+      `insert into public.stories (author_id, title, genre, primary_genre, status, is_public)
+       values ($1,'T',array['mystery']::text[],'mystery','complete',true) returning id`,
+      [USER],
+    );
+    const comment = await db.query<{ id: string }>(
+      `insert into public.comments (story_id, user_id, content)
+       values ($1,$2,'nice') returning id`,
+      [story.rows[0].id, USER],
+    );
+    let refusal = "";
     try {
       await db.query(
         "select set_comment_vote($1, $2::smallint)",
-        ["00000000-0000-4000-8000-0000000008ff", 7],
+        [comment.rows[0].id, 7],
       );
-    } catch {
-      refused = true;
+    } catch (error) {
+      refusal = error instanceof Error ? error.message : String(error);
     }
-    assertEquals(refused, true);
+    assertEquals(refusal, "invalid vote value");
+    // And nothing was written on the way to the refusal.
+    const rows = await db.query(
+      "select 1 from public.comment_votes where comment_id = $1",
+      [comment.rows[0].id],
+    );
+    assertEquals(rows.rows.length, 0);
   } finally {
     await db.close();
   }

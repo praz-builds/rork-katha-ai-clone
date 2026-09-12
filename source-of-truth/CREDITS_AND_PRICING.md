@@ -434,7 +434,7 @@ number here is an estimate from published rates or infrastructure arithmetic.
 
 | Action | Cost | Credits |
 |---|---|---|
-| **Start a story** — cast of 3 + chapter 1 + cover | **$0.178** | **1** |
+| **Start a story** — cast of 3 + chapter 1 + cover | **$0.178** | **3** |
 | Chapter text, streamed — live `meta/muse-spark-1.3` | $0.0218 | 1 |
 | Chapter text — if the contributor tier is enabled | $0.0013 | 1 |
 | Any single image — cover, chapter art, one portrait | **$0.039** | — |
@@ -446,10 +446,18 @@ number here is an estimate from published rates or infrastructure arithmetic.
 | Audio unlock — cached chapter | **~$0** | 1 |
 | Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
 
-**The spread across a single credit is 8×**, from $0.0218 for a chapter to $0.178
-for a story start. That is the widest this document has ever priced at one credit.
-It is a deliberate product choice — a one-credit start is the simplest thing to
-put on a Create screen — paid for in margin on short stories.
+**A story start is three credits, not one** (§6, amendment 46). It was one until
+2026-09-11, and that is the single most load-bearing correction in this table:
+at one credit the start cost **$0.178 per credit** against $0.0218 for a chapter,
+an 8× spread and the widest this document has ever priced at one credit. At three
+it is **$0.0593 per credit**, a 2.7× spread — still the most expensive thing a
+credit buys, and still the action every free grant flows to, but no longer the
+outlier that made a flat daily credit cost more than the subscription it sells.
+
+**The per-credit tables below still divide by the retired one-credit start**, so
+every blended $/credit figure in them is an UPPER bound rather than a current
+one; re-deriving them at three is an open item. The per-action costs ($0.178 for
+a start, $0.0218 for a chapter, $0.039 for an image) are measured and unaffected.
 
 **A story, not a chapter, is the unit that matters.** The cast and the cover are
 paid once and amortise across every credit after them, so the blended cost per
@@ -1071,8 +1079,12 @@ fallback for the long tail.
 
 A maximally engaged free user earns **17 credits in month one** (3 welcome, once
 + 14 from streak milestones at days 2, 5 and 10) and **nothing thereafter** — a
-one-time $0.50 blended, $1.80 if every credit starts a story. *(Was 24 while the
-welcome bonus was 10; reduced to 3 on 2026-09-11, §6.)*
+one-time **$0.73** at the blended $0.043, and **$0.89** if they are spent the
+most expensive way there is. Seventeen credits is **five story starts** with two
+credits over, not seventeen: a start is three credits (§6, amendment 46), so the
+worst case is 5 × $0.178 rather than 17 × it. *(Was 24 while the welcome bonus
+was 10; reduced to 3 on 2026-09-11, §6. The $0.50 / $1.80 pair this replaces was
+arithmetic on the retired one-credit start.)*
 
 **Zero in steady state is trivially inside the principle-7 ceiling of 50%.** The
 milestone ladder needs no monthly cap because it does not recur at all: it pays
@@ -2073,10 +2085,15 @@ economy is tuned on evidence rather than argued about.
 18c. **Download PDF is a paid-plan entitlement** *(2026-09-10)*, the first
     entitlement in the product. Export ends with the plan and the paywall must
     never imply otherwise.
-18f. **The paywall sells five rows, in this order** *(2026-09-11)*: 50 credits
-    every month (20 a week on weekly), unlimited character portraits, unlimited
-    reimagines, premium voices, download stories as PDF. Each paid row carries its
-    free-tier figure as quiet secondary text. Never "unlimited generation",
+18f. **The paywall sells four rows, in this order** *(2026-09-11, amended
+    2026-09-12)*: 50 credits a month, unlimited portraits and reimagines, premium
+    voices, download as PDF. It was five until 2026-09-12: portraits and
+    reimagines are ONE row because they are one entitlement (18g), and the
+    free-tier figures that used to sit in each row as secondary text are gone —
+    they argued with the product on the screen that sells it. The credits row
+    names the monthly grant and does not follow the selected plan; the weekly
+    card carries its own 20-a-week note, which is the larger grant of the two.
+    `ONBOARDING_FLOW.md` §12-13 is the rendered spec. Never "unlimited generation",
     "ad-free", "no interruptions", "priority generation", "yours forever",
     testimonials or star ratings.
 18g. **Unlimited portraits and unlimited reimagines are a recorded exception to

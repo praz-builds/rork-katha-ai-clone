@@ -315,9 +315,21 @@ export async function saveCharacterToLibrary(
 
   const row = toRow(bounded);
   if (existing) {
+    // An update writes only what the caller actually supplied. `toRow` fills
+    // every omitted field with `null` -- correct for an insert, destructive
+    // here: saving a character from a surface that carries only a name (the
+    // onboarding claim, a portrait re-save) would null out the background and
+    // appearance already stored for that name, silently erasing the
+    // description the writer typed.
+    const patch: Record<string, unknown> = { name: row.name };
+    if (bounded.background !== undefined) patch.background = row.background;
+    if (bounded.appearance !== undefined) patch.appearance = row.appearance;
+    if (bounded.sourceStoryId !== undefined) {
+      patch.source_story_id = row.source_story_id;
+    }
     const { data, error } = await supabase
       .from(TABLE)
-      .update({ ...row, portrait_url: row.portrait_url ?? existing.portrait_url })
+      .update({ ...patch, portrait_url: row.portrait_url ?? existing.portrait_url })
       .eq("id", existing.id)
       .select(SELECT_COLUMNS)
       .single();
