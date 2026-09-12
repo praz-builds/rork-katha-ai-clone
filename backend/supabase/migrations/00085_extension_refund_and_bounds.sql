@@ -186,14 +186,24 @@ begin
         -- 00079 deliberately made that a paid no-op; refusing it there was the
         -- first version's mistake.
         --
-        -- When it does raise, the target must be exactly one past the chapters
-        -- that exist -- not merely "not too far past". Bounding only the upper
-        -- side still let a service-role caller reserve chapter 3 of a story
-        -- that owns one, inside a plan of seven, and leave chapter 2 missing
-        -- for ever; every later continuation numbers from the newest chapter,
-        -- so nothing ever fills the hole.
+        -- When it does raise, the target must be exactly one past what the
+        -- story ALREADY IS -- the larger of its plan and the chapters it owns,
+        -- not merely "not too far past". Bounding only the upper side let a
+        -- service-role caller jump the plan from 1 to 10 on a story with one
+        -- chapter, charging for a single chapter and leaving a hole nothing
+        -- fills, because every later continuation numbers from the newest
+        -- chapter.
+        --
+        -- The floor takes BOTH, and each half is load-bearing. Written alone
+        -- refuses the ordinary case: `begin_story_generation` records no
+        -- chapter row, so a plan-3 story with nothing written yet would be
+        -- unable to extend to 4. Plan alone refuses the legacy case: a null
+        -- plan reads as 3 while the story owns five chapters, so extending to
+        -- six would be refused for ever.
         if p_extend_to_chapter > coalesce(v_planned, 3)
-           and p_extend_to_chapter <> coalesce(v_written, 0) + 1 then
+           and p_extend_to_chapter
+               <> greatest(coalesce(v_planned, 3), coalesce(v_written, 0)) + 1
+        then
             raise exception using
                 errcode = 'KTH03',
                 message = 'Story cannot be extended';
