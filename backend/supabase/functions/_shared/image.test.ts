@@ -25,6 +25,8 @@ interface Attempt {
   prompt: string;
   /** The style reference, when one was attached to this attempt. */
   referenceImage?: string;
+  /** The framing parameter: `image_config.aspect_ratio`. */
+  aspectRatio?: string;
 }
 
 /** Replace fetch, record every provider call, and answer with `respond`. */
@@ -54,6 +56,7 @@ async function withStubbedProviders(
       model?: string;
       prompt?: string;
       messages?: { content?: unknown }[];
+      image_config?: { aspect_ratio?: string };
     };
     // Every provider is OpenRouter now, which wraps the prompt in a chat
     // message. `prompt` is still read so a provider added later with an
@@ -76,6 +79,7 @@ async function withStubbedProviders(
         (parts.find((p) => (p as { type?: string }).type === "image_url") as
           | { image_url?: { url?: string } }
           | undefined)?.image_url?.url,
+      aspectRatio: body.image_config?.aspect_ratio,
     };
     attempts.push(attempt);
     return Promise.resolve(respond(attempt, attempts.length - 1));
@@ -630,5 +634,107 @@ Deno.test("a draft portrait is drawn in the style the brief is set to", async ()
       !attempt.prompt.includes("Painterly book-illustration style"),
       `attempt ${index} kept the house style beside the override`,
     );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// There is no gender clause
+// ---------------------------------------------------------------------------
+
+// A `gender` clause used to lead the subject, fed by a required row on
+// onboarding's W4 sheet. Both are gone: an appearance line says it in the
+// person's own words whenever it matters, and the prompt is better for reading
+// what they wrote rather than a field name translated into English. This test
+// is the guard against the clause growing back invisibly -- the appearance is
+// the whole subject, on every rung of the ladder.
+Deno.test("the appearance leads the subject, with nothing in front of it", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-no-gender", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+      }),
+  );
+
+  assert(attempts.length > 1, "the ladder did not run");
+  for (const attempt of attempts) {
+    assert(
+      attempt.prompt.startsWith(
+        "Character portrait illustration of Curly hair",
+      ),
+      attempt.prompt,
+    );
+    for (const clause of ["a woman", "a man", "a non-binary person"]) {
+      assert(!attempt.prompt.includes(clause), attempt.prompt);
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The framing is a parameter, not a hope
+// ---------------------------------------------------------------------------
+
+// Every image on this chain came back 1024x1024 square for months, because the
+// aspect ratio was stated only in the prompt and the code carried a note saying
+// Gemini took no size parameter. It does: `image_config.aspect_ratio`. A square
+// source in the 270x338 Meet card loses a fifth of its width, so the portrait
+// arrived cropped at the arms and nothing in the request had asked otherwise.
+Deno.test("a portrait asks for the card's own 4:5 frame, in the parameter and in the prompt", async () => {
+  const attempts = await withStubbedProviders(
+    // Storage is not reachable from a unit test, so the run is allowed to end
+    // in a refusal; what is under test is the shape of the request that went
+    // out, which is decided before any of that.
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-aspect", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+      }),
+  );
+
+  assertEquals(attempts[0].aspectRatio, "4:5");
+  assert(
+    attempts[0].prompt.includes(
+      "full-body portrait orientation, 4:5 aspect ratio",
+    ),
+    attempts[0].prompt,
+  );
+});
+
+// The two halves must never drift apart. A request whose parameter says 4:5
+// while its prompt says 2:3 argues with itself, and the model has no way to
+// tell which half was meant -- so the test reads the ratio back out of the
+// prompt rather than hard-coding the cover's.
+Deno.test("a cover keeps its taller 2:3 frame, and the prompt agrees with the parameter", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () => generateCoverImage(cover),
+  );
+
+  assertEquals(attempts[0].aspectRatio, "2:3");
+  assert(
+    attempts[0].prompt.includes(`${attempts[0].aspectRatio} aspect ratio`),
+    attempts[0].prompt,
+  );
+});
+
+// The ladder rebuilds the prompt on a moderation rejection. The framing is not
+// part of what a filter objected to, so it must survive every rung -- a level-2
+// portrait that silently reverted to square would be the original bug back
+// again, only harder to see.
+Deno.test("the framing survives every rung of the safety ladder", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-aspect-ladder", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+      }),
+  );
+
+  assert(attempts.length > 1, "the ladder did not run");
+  for (const attempt of attempts) {
+    assertEquals(attempt.aspectRatio, "4:5", attempt.prompt);
   }
 });

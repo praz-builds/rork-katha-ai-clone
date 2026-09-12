@@ -544,22 +544,42 @@ export type CreateDraft = {
   storyFlow?: StoryFlow;
 };
 
-export type WriterEntryContext = {
-  name?: string;
-  genreInterests?: string[];
+/**
+ * Why somebody says they are here, asked on the third onboarding screen.
+ *
+ * All three go through the same character flow now; only the copy branches.
+ * Declared here rather than imported from `CharacterOnboarding.tsx` because
+ * `Screen` below carries it, and a domain type that imports a screen is how a
+ * types file ends up pulling React Native into everything that reads it.
+ */
+export type OnboardingPurpose = "read" | "write" | "both";
+
+/**
+ * What the shared questionnaire collected, handed to the character flow so it
+ * can greet the person by name and seed its suggestion chips.
+ */
+export type CharacterEntryContext = {
+  name: string;
+  genreInterests: string[];
   otherGenre?: string;
-  format?: string;
-  blocker?: string;
+  refine?: string;
+  moment?: string;
 };
 
 export type Screen =
   | { name: "tabs" }
   | { name: "intro" }
   | { name: "onboarding" }
+  /**
+   * The character flow: bridge, who, wait, reveal, plan, email, code, paywall,
+   * notify, welcome. It replaced `writer-onboarding` on 2026-09-11, and it is
+   * where every purpose goes, not just writers.
+   */
   | {
-    name: "writer-onboarding";
+    name: "character-onboarding";
+    purpose: OnboardingPurpose;
     initialGenre?: Genre;
-    entryContext?: WriterEntryContext;
+    entryContext?: CharacterEntryContext;
   }
   /**
    * The story landing page. Series only - see `openStory` in App.tsx for why a

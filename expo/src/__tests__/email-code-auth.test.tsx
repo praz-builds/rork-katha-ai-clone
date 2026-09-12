@@ -1,0 +1,203 @@
+import React from "react";
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
+
+const mockSendEmailCode = jest.fn();
+const mockVerifyEmailCode = jest.fn();
+
+jest.mock("@/lib/session", () => ({
+  sendEmailCode: (...args: unknown[]) => mockSendEmailCode(...args),
+  verifyEmailCode: (...args: unknown[]) => mockVerifyEmailCode(...args),
+}));
+
+// The same passthrough mock `character-onboarding.test.tsx` uses: `StepScroll`
+// (from `@/components/onboarding/primitives`) animates its headline through
+// `Enter`, and this file is a test of the auth flow, not of that entrance.
+jest.mock("react-native-reanimated", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { View } = require("react-native");
+  const passthrough = (value: unknown) => value;
+  return {
+    __esModule: true,
+    default: { View, createAnimatedComponent: (c: unknown) => c },
+    Easing: {
+      out: () => passthrough,
+      cubic: passthrough,
+    },
+    useAnimatedStyle: (factory: () => unknown) => factory(),
+    useSharedValue: (initial: unknown) => ({ value: initial }),
+    withDelay: (_delay: number, value: unknown) => value,
+    withTiming: jest.fn(passthrough),
+  };
+});
+
+// The top bar's Back control is an Ionicon by way of `@/theme`'s icon set.
+// Irrelevant to every assertion here, and rendering it pulls a native font
+// module into the test environment.
+jest.mock("@expo/vector-icons", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  return new Proxy({}, { get: () => () => React.createElement(React.Fragment) });
+});
+
+/* eslint-disable import/first */
+import { EmailCodeAuth } from "@/components/onboarding/EmailCodeAuth";
+/* eslint-enable import/first */
+
+const HEADLINE = "Welcome back.";
+const SUB = "Enter your email and we'll send a code.";
+const EMAIL = "a@b.com";
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockSendEmailCode.mockResolvedValue(undefined);
+  mockVerifyEmailCode.mockResolvedValue(undefined);
+});
+
+/** RNTL 14: `render` and `fireEvent` are async, or the assertion runs a frame early. */
+type View = Awaited<ReturnType<typeof render>>;
+
+async function mount(onBack = jest.fn(), onVerified = jest.fn()): Promise<
+  { view: View; onBack: jest.Mock; onVerified: jest.Mock }
+> {
+  const view = await render(
+    <EmailCodeAuth
+      headline={HEADLINE}
+      sub={SUB}
+      onBack={onBack}
+      onVerified={onVerified}
+    />,
+  );
+  return { view, onBack, onVerified };
+}
+
+async function reachCodeStep(view: View) {
+  await fireEvent.changeText(view.getByLabelText("Email address"), EMAIL);
+  await fireEvent.press(view.getByLabelText("Continue with email"));
+  await view.findByLabelText("Verification code");
+}
+
+describe("EmailCodeAuth", () => {
+  it("renders the headline and sub on the email step, with no progress row by default", async () => {
+    const { view } = await mount();
+    view.getByText(HEADLINE);
+    view.getByText(SUB);
+    view.getByLabelText("Email address");
+    expect(view.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("keeps a send failure on the email step", async () => {
+    mockSendEmailCode.mockRejectedValueOnce(new Error("offline"));
+    const { view } = await mount();
+    await fireEvent.changeText(view.getByLabelText("Email address"), EMAIL);
+    await fireEvent.press(view.getByLabelText("Continue with email"));
+
+    await view.findByText(
+      "We could not send that code. Check the address and retry.",
+    );
+    // Still the email step: the code box never appeared.
+    view.getByLabelText("Email address");
+    expect(view.queryByLabelText("Verification code")).toBeNull();
+  });
+
+  it("keeps a verify failure on the code step, with the code still editable", async () => {
+    mockVerifyEmailCode.mockRejectedValueOnce(new Error("no match"));
+    const { view, onVerified } = await mount();
+    await reachCodeStep(view);
+
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "111111",
+    );
+    await fireEvent.press(view.getByLabelText("Verify and continue"));
+
+    await view.findByText("That code did not match. Try again or resend it.");
+    // The box is still there and still takes input, not replaced by an error
+    // screen.
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "222222",
+    );
+    expect(view.getByLabelText("Verification code").props.value).toBe(
+      "222222",
+    );
+    expect(onVerified).not.toHaveBeenCalled();
+  });
+
+  it("resends by calling sendEmailCode a second time", async () => {
+    const { view } = await mount();
+    await reachCodeStep(view);
+    expect(mockSendEmailCode).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(view.getByText("Resend code"));
+    expect(mockSendEmailCode).toHaveBeenCalledTimes(2);
+    expect(mockSendEmailCode).toHaveBeenLastCalledWith(EMAIL);
+  });
+
+  it("verifies and calls onVerified once, with the verified email", async () => {
+    const { view, onVerified } = await mount();
+    await reachCodeStep(view);
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(view.getByLabelText("Verify and continue"));
+
+    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+    expect(onVerified).toHaveBeenCalledWith(EMAIL);
+    expect(mockVerifyEmailCode).toHaveBeenCalledWith(EMAIL, "123456");
+  });
+
+  it("returns to the email step from the code step's Back, and calls onBack only from the email step", async () => {
+    const { view, onBack } = await mount();
+    await reachCodeStep(view);
+
+    await fireEvent.press(view.getByLabelText("Back"));
+    view.getByLabelText("Email address");
+    expect(onBack).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByLabelText("Back"));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts on the code step with a pre-sent email, and hands Back to the caller", async () => {
+    // Code-only mode: the caller (character onboarding's W5) collected the
+    // address and called `sendEmailCode` itself, so there is no email step to
+    // send from and none to walk back to.
+    const onBack = jest.fn();
+    const view = await render(
+      <EmailCodeAuth
+        initialStep="code"
+        email={EMAIL}
+        headline="Check your inbox"
+        sub={`Enter the 6-digit code we sent to ${EMAIL}.`}
+        onBack={onBack}
+        onVerified={jest.fn()}
+      />,
+    );
+
+    view.getByLabelText("Verification code");
+    expect(view.queryByLabelText("Email address")).toBeNull();
+    // The component did not re-send: the caller already did.
+    expect(mockSendEmailCode).not.toHaveBeenCalled();
+    // And it verifies against the address it was handed, not an empty one.
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(view.getByLabelText("Verify and continue"));
+    await waitFor(() =>
+      expect(mockVerifyEmailCode).toHaveBeenCalledWith(EMAIL, "123456")
+    );
+
+    await fireEvent.press(view.getByLabelText("Back"));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns to the email step from Use a different email", async () => {
+    const { view } = await mount();
+    await reachCodeStep(view);
+
+    await fireEvent.press(view.getByText("Use a different email"));
+    view.getByLabelText("Email address");
+  });
+});

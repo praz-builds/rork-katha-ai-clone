@@ -260,12 +260,15 @@ describe('theme tokens', () => {
     it('names every size level in the ramp, and leaves the eyebrow out of it', () => {
       // `sectionHeader` is a treatment, not a level: it shares `caption`'s size
       // and is told apart by case, weight, tracking and colour. Ordering it
-      // against the others would assert a rank it does not hold.
+      // against the others would assert a rank it does not hold. `field` is
+      // the same kind of thing at `body`'s size: text inside an input box,
+      // with a taller line for the caret and no place in the ramp.
       expect([...onboardingRamp]).toEqual(['title', 'body', 'helper', 'caption']);
       const unlisted = Object.keys(onboardingType).filter(
         (level) => !onboardingRamp.includes(level as (typeof onboardingRamp)[number]),
       );
-      expect(unlisted).toEqual(['sectionHeader']);
+      expect(unlisted).toEqual(['sectionHeader', 'field']);
+      expect(onboardingType.field.fontSize).toBe(onboardingType.body.fontSize);
     });
 
     it('steps down strictly through the size ramp', () => {

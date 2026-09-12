@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { captureError } from "@/lib/analytics";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { CreateDraft, SavedCharacter } from "@/types/domain";
@@ -143,6 +144,85 @@ function toRow(input: SavedCharacterInput) {
 }
 
 // ---------------------------------------------------------------------------
+// Field limits
+// ---------------------------------------------------------------------------
+
+/**
+ * The same bounds migration 00057 puts on the table, checked here first.
+ *
+ * `user_characters` CHECKs `char_length(btrim(name)) between 1 and 100` and
+ * `char_length(...) <= 500` on `background` and `appearance`. Without this the
+ * 501st character of an appearance comes back as a PostgREST constraint
+ * violation -- `new row for relation "user_characters" violates check
+ * constraint` -- which is what the onboarding screen would then have to show
+ * the user. Trimming first matters as much as the ceiling: the table measures
+ * the trimmed name, so " " is a zero-length name to Postgres and a one
+ * character name to a naive client check.
+ */
+const MAX_NAME_LENGTH = 100;
+const MAX_DETAIL_LENGTH = 500;
+
+function boundedDetail(
+  value: string | undefined,
+  field: "background" | "appearance",
+): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > MAX_DETAIL_LENGTH) {
+    throw new Error(
+      `A character's ${field} is at most ${MAX_DETAIL_LENGTH} characters.`,
+    );
+  }
+  return trimmed;
+}
+
+/** The input as the table will accept it, or a readable refusal. */
+export function boundSavedCharacterInput(
+  input: SavedCharacterInput,
+): SavedCharacterInput {
+  const name = input.name.trim();
+  if (!name) throw new Error("A saved character needs a name.");
+  if (name.length > MAX_NAME_LENGTH) {
+    throw new Error(
+      `A character's name is at most ${MAX_NAME_LENGTH} characters.`,
+    );
+  }
+  return {
+    ...input,
+    name,
+    background: boundedDetail(input.background, "background"),
+    appearance: boundedDetail(input.appearance, "appearance"),
+  };
+}
+
+/**
+ * Refuse the offline store in a build that is supposed to have a backend.
+ *
+ * The AsyncStorage fallback exists so the flow can be walked with no
+ * credentials -- the offline walkthrough and Jest. In a release build
+ * `isSupabaseConfigured` being false means the bundle shipped without
+ * `EXPO_PUBLIC_SUPABASE_URL`/`ANON_KEY`, and silently writing to the device
+ * instead is the worst available answer: the onboarding character appears to
+ * save, survives the session, and never exists anywhere the account can reach
+ * it. Loud beats lost.
+ */
+function assertLocalFallbackAllowed(): void {
+  if (__DEV__ || isSupabaseConfigured) return;
+  try {
+    captureError({
+      bucket: "auth",
+      severity: "critical",
+      errorCode: "supabase_unconfigured_in_release",
+      error: new Error("supabase_unconfigured_in_release"),
+      context: { feature: "saved_characters" },
+    });
+  } catch {
+    // Reporting the misconfiguration must not replace throwing on it.
+  }
+  throw new Error("Saving is unavailable right now. Please try again later.");
+}
+
+// ---------------------------------------------------------------------------
 // Local store (no backend)
 // ---------------------------------------------------------------------------
 
@@ -196,20 +276,24 @@ export async function listSavedCharacters(): Promise<SavedCharacter[]> {
 export async function saveCharacterToLibrary(
   input: SavedCharacterInput,
 ): Promise<SavedCharacter> {
-  const name = input.name.trim();
-  if (!name) throw new Error("A saved character needs a name.");
+  // Bounded before anything is sent, so a 501-character appearance fails here
+  // with a sentence a screen can show rather than as a PostgREST constraint
+  // violation.
+  const bounded = boundSavedCharacterInput(input);
+  const name = bounded.name;
 
   if (!isSupabaseConfigured) {
+    assertLocalFallbackAllowed();
     const local = await readLocal();
     const key = nameKey(name);
     const existing = local.find((character) => nameKey(character.name) === key);
     const next: SavedCharacter = {
       id: existing?.id ?? localId(),
       name,
-      background: input.background,
-      appearance: input.appearance,
-      portraitUrl: input.portraitUrl ?? existing?.portraitUrl,
-      sourceStoryId: input.sourceStoryId ?? existing?.sourceStoryId,
+      background: bounded.background,
+      appearance: bounded.appearance,
+      portraitUrl: bounded.portraitUrl ?? existing?.portraitUrl,
+      sourceStoryId: bounded.sourceStoryId ?? existing?.sourceStoryId,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     };
     await writeLocal([
@@ -229,7 +313,7 @@ export async function saveCharacterToLibrary(
   if (lookupError) throw new Error(lookupError.message);
   const existing = (existingRows ?? [])[0] as { id: string; portrait_url: string | null } | undefined;
 
-  const row = toRow({ ...input, name });
+  const row = toRow(bounded);
   if (existing) {
     const { data, error } = await supabase
       .from(TABLE)

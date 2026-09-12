@@ -7,7 +7,9 @@ import {
   anonymousGrantScope,
   hashAnonymousGrantScope,
   isAnonymousUser,
+  readGuestClaimToken,
 } from "../_shared/guest-bootstrap.ts";
+import { readJsonObject } from "../_shared/operations.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -66,12 +68,31 @@ serve(async (req) => {
       }
     }
 
+    // A character made before sign-in, on the one path where the identity
+    // could not be kept. See migration 00082 for why this is verified here
+    // rather than trusted from a user id in the body.
+    let claimedCharacters = 0;
+    if (!guest) {
+      const claimToken = readGuestClaimToken(await readJsonObject(req));
+      if (claimToken) {
+        claimedCharacters = await claimGuestCharacters(
+          url,
+          anonKey,
+          serviceRoleKey,
+          claimToken,
+          user.id,
+        );
+      }
+    }
+
     return respond({
       user_id: user.id,
       balance,
       is_anonymous: guest,
       welcome_granted: welcomeGranted,
       rate_limited: rateLimited,
+      // Additive: an older client that never sends a token always reads 0.
+      claimed_characters: claimedCharacters,
     });
   } catch (error) {
     console.error("bootstrap-user error:", safeErrorMessage(error));
@@ -86,6 +107,60 @@ serve(async (req) => {
     return respond({ error: "Unable to bootstrap user" }, 500);
   }
 });
+
+/**
+ * Move an anonymous session's saved characters onto the caller's account.
+ *
+ * The token is the proof, and it is checked against Supabase Auth rather than
+ * decoded here: whoever holds an unexpired anonymous JWT is the device that
+ * created it. Two further conditions, both required -- the token must resolve
+ * to an ANONYMOUS user (a named account's token would let one real user drain
+ * another's library), and it must not be the caller's own token (that is the
+ * in-place conversion, where nothing has to move).
+ *
+ * Never fatal. The user has verified their email and is on the last screen of
+ * onboarding; failing their sign-in because a character could not be re-homed
+ * costs them more than the character does. The failure is logged instead --
+ * a silent one here is the exact class of bug 00082 exists to close.
+ */
+async function claimGuestCharacters(
+  url: string,
+  anonKey: string,
+  serviceRoleKey: string,
+  claimToken: string,
+  ownerId: string,
+): Promise<number> {
+  try {
+    const guestClient = createClient(url, anonKey, {
+      global: { headers: { Authorization: `Bearer ${claimToken}` } },
+    });
+    const { data: { user: guestUser } } = await guestClient.auth.getUser();
+    if (!guestUser || !isAnonymousUser(guestUser)) return 0;
+    if (guestUser.id === ownerId) return 0;
+
+    const { data, error } = await createClient(url, serviceRoleKey)
+      .rpc("claim_guest_characters", {
+        p_guest_user_id: guestUser.id,
+        p_owner_id: ownerId,
+      });
+    if (error) throw error;
+    return typeof data === "number" ? data : 0;
+  } catch (error) {
+    console.error(
+      "bootstrap-user guest claim failed:",
+      safeErrorMessage(error),
+    );
+    await logError({
+      bucket: "credits",
+      severity: "high",
+      source: "runtime",
+      errorCode: "guest_character_claim_failed",
+      error,
+      context: { feature: "guest_character_claim" },
+    });
+    return 0;
+  }
+}
 
 function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

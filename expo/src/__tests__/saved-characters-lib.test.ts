@@ -79,6 +79,7 @@ jest.mock("@/lib/supabase", () => ({
   isSupabaseConfigured: true,
   supabase: { from: (table: string) => mockBuilder(table) },
 }));
+jest.mock("@/lib/analytics", () => ({ captureError: jest.fn() }));
 jest.mock("@/lib/session", () => ({
   bootstrapUser: async () => ({ userId: "user-1", isAnonymous: false, balance: 0 }),
 }));
@@ -168,4 +169,107 @@ it("updates the entry already carrying the name rather than adding a second", as
   // A save that carries no new portrait keeps the one already paid for.
   expect(update?.portrait_url).toBe("https://example.test/naina.png");
   expect(mockCalls.some((call) => call.insert)).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// Onboarding hardening, 2026-09-11
+// ---------------------------------------------------------------------------
+
+/**
+ * The insert carries exactly the columns the table has, and no sixth field.
+ *
+ * `owner_id` is added beside them because RLS checks it, not because it is
+ * part of the input. Anything else appearing here is a column that does not
+ * exist or one that was retired, and PostgREST answers both with a 400 on the
+ * one screen the whole onboarding flow exists to reach.
+ */
+it("writes only the columns user_characters actually has", async () => {
+  await saveCharacterToLibrary({
+    name: "Naina",
+    background: "A baker",
+    appearance: "Flour on her sleeves",
+    portraitUrl: "https://example.test/naina.png",
+    sourceStoryId: "11111111-1111-4111-8111-111111111111",
+  });
+
+  const insert = mockCalls.find((call) => call.insert)?.insert;
+  expect(Object.keys(insert ?? {}).sort()).toEqual([
+    "appearance",
+    "background",
+    "name",
+    "owner_id",
+    "portrait_url",
+    "source_story_id",
+  ]);
+});
+
+describe("the table's own limits, checked before the request", () => {
+  // Migration 00057 CHECKs name 1..100 and background/appearance <= 500 on the
+  // trimmed value. Without these the 501st character comes back as a Postgres
+  // constraint violation, which is what the screen would have to show.
+  it("refuses an appearance past 500 characters without calling PostgREST", async () => {
+    await expect(
+      saveCharacterToLibrary({ name: "Naina", appearance: "a".repeat(501) }),
+    ).rejects.toThrow(/at most 500 characters/);
+    expect(mockCalls).toHaveLength(0);
+  });
+
+  it("refuses a background past 500 characters", async () => {
+    await expect(
+      saveCharacterToLibrary({ name: "Naina", background: "b".repeat(501) }),
+    ).rejects.toThrow(/at most 500 characters/);
+  });
+
+  it("refuses a name past 100 characters", async () => {
+    await expect(
+      saveCharacterToLibrary({ name: "N".repeat(101) }),
+    ).rejects.toThrow(/at most 100 characters/);
+  });
+
+  it("measures the trimmed value, as the table does", async () => {
+    // Postgres CHECKs char_length(btrim(name)), so " " is a zero-length name
+    // there and a one-character name to a naive client check.
+    await expect(saveCharacterToLibrary({ name: "   " }))
+      .rejects.toThrow(/needs a name/);
+    // 500 characters plus surrounding whitespace is inside the limit once
+    // trimmed, and must not be refused.
+    await expect(
+      saveCharacterToLibrary({ name: "Naina", appearance: `  ${"a".repeat(500)}  ` }),
+    ).resolves.toBeDefined();
+    const insert = mockCalls.find((call) => call.insert)?.insert;
+    expect(insert?.appearance).toBe("a".repeat(500));
+  });
+});
+
+describe("saving the same character twice, which is what a reimagine does", () => {
+  it("updates the row in place and hands back the same id", async () => {
+    const first = await saveCharacterToLibrary({
+      name: "Naina",
+      appearance: "Flour on her sleeves",
+    });
+    expect(mockCalls.some((call) => call.insert)).toBe(true);
+
+    mockCalls.length = 0;
+    // Case and spacing are the same person to a writer, and the unique index
+    // on (owner_id, lower(btrim(name))) agrees.
+    mockLookupRows = [{ id: "saved-1", portrait_url: null }];
+    const second = await saveCharacterToLibrary({
+      name: "  naina  ",
+      appearance: "Flour on her sleeves",
+      portraitUrl: "https://example.test/naina-2.png",
+    });
+
+    expect(mockCalls.some((call) => call.insert)).toBe(false);
+    const update = mockCalls.find((call) => call.update)?.update;
+    expect(update?.portrait_url).toBe("https://example.test/naina-2.png");
+    expect(second.id).toBe(first.id);
+  });
+
+  it("inserts when the name is a different person", async () => {
+    mockLookupRows = [];
+    await saveCharacterToLibrary({ name: "Ravi", appearance: "A tired detective" });
+
+    expect(mockCalls.some((call) => call.insert)).toBe(true);
+    expect(mockCalls.some((call) => call.update)).toBe(false);
+  });
 });

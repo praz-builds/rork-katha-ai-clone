@@ -41,6 +41,7 @@ import type { DropdownOption } from "@/components/create/Dropdown";
 import DirectionStep from "@/components/create/DirectionStep";
 import { GENRE_EMOJI } from "@/lib/genre-content";
 import * as storyApi from "@/lib/api";
+import { portraitQuote, useIsSubscribed } from "@/lib/entitlements";
 import { CHAPTER_ART_CREDITS, CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
 import {
   draftCharacterFromSaved,
@@ -99,6 +100,16 @@ type Props = {
    */
   onGenerate: (choice?: { direction?: string; beats?: string[] }) => void;
   onBack: () => void;
+  /**
+   * How many character portraits this account has already generated, for the
+   * quoted price on the Craft sheet.
+   *
+   * Defaults to 0, which quotes the first-use price. The studio does not count
+   * them yet: the per-account total belongs in the credit ledger beside the
+   * charge, so the server can refuse a fifth free portrait that two devices
+   * asked for at once. FOLLOW-UP: ledger enforcement.
+   */
+  portraitsUsedOnAccount?: number;
   /** Test seams for the saved-character library; default to the real store. */
   loadSavedCharacters?: () => Promise<SavedCharacter[]>;
   saveSavedCharacter?: (input: SavedCharacterInput) => Promise<SavedCharacter>;
@@ -432,6 +443,7 @@ export default function CreateBriefFlow({
   setDraft,
   onGenerate,
   onBack,
+  portraitsUsedOnAccount = 0,
   loadSavedCharacters = listSavedCharacters,
   saveSavedCharacter = saveCharacterToLibrary,
 }: Props) {
@@ -814,6 +826,7 @@ export default function CreateBriefFlow({
           onSave={saveCharacter}
           onDelete={editingCharacterIndex === null ? undefined : () => deleteCharacter(editingCharacterIndex)}
           onCreateImage={createCharacterImage}
+          portraitsUsedOnAccount={portraitsUsedOnAccount}
           onPickReference={pickCharacterReference}
           onClearReference={clearCharacterReference}
           unsavedPromptOpen={unsavedPromptOpen}
@@ -1267,6 +1280,7 @@ export function CharacterCraftScreen({
   onSave,
   onDelete,
   onCreateImage,
+  portraitsUsedOnAccount = 0,
   onPickReference,
   onClearReference,
   unsavedPromptOpen,
@@ -1281,6 +1295,8 @@ export function CharacterCraftScreen({
   onSave: () => void;
   onDelete?: () => void;
   onCreateImage: () => void;
+  /** Portraits already generated on this account, for the quoted price. Defaults to 0. */
+  portraitsUsedOnAccount?: number;
   onPickReference: () => void;
   onClearReference: () => void;
   unsavedPromptOpen: boolean;
@@ -1290,6 +1306,11 @@ export function CharacterCraftScreen({
   bottomInset: number;
 }) {
   const set = (key: keyof CharacterDraft, value: string | boolean) => onChange((previous) => ({ ...previous, [key]: value }));
+  // What the next portrait costs, from the same module the paywall promised it
+  // with. The button used to carry no price at all, so the fifth portrait on a
+  // free account spent a credit the writer was never quoted.
+  const subscribed = useIsSubscribed();
+  const portraitPrice = portraitQuote({ subscribed, usedOnAccount: portraitsUsedOnAccount });
   const imageReady = character.portraitStatus === "ready" && Boolean(character.portraitUrl);
   const imageBusy = character.portraitStatus === "generating";
   const canCreateImage = Boolean(
@@ -1362,6 +1383,15 @@ export function CharacterCraftScreen({
               <Pressable disabled={!canCreateImage} onPress={onCreateImage} accessibilityRole="button" accessibilityState={{ disabled: !canCreateImage, busy: imageBusy }} style={[styles.outlineButton, !canCreateImage && styles.outlineButtonDisabled]}>
                 <Text style={styles.outlineButtonText}>{imageBusy ? "Creating..." : imageReady ? "Reimagine" : "Create image"}</Text>
               </Pressable>
+              {/*
+                What the next portrait costs, beside the button that spends it.
+                A price line rather than a suffix on the label, so the control
+                keeps one name for the whole of its life: the label is what
+                assistive technology announces and what every test presses by,
+                and a name that changes with the writer's balance is a
+                different control every time they open the sheet.
+              */}
+              {imageBusy ? null : <Text style={styles.portraitPrice}>{portraitPrice.label}</Text>}
               {/*
                 A photo steers the LOOK. It is not a likeness target, and the
                 copy says so where the writer is deciding whether to attach one
@@ -1588,6 +1618,7 @@ const styles = StyleSheet.create({
   portraitBusyText: { color: colors.accent, fontFamily: fonts.ui, fontSize: 12, fontWeight: "800" },
   portraitHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, textAlign: "center", paddingHorizontal: spacing.md },
   portraitActions: { flex: 1, gap: spacing.md, alignItems: "flex-start" },
+  portraitPrice: { fontFamily: fonts.ui, fontSize: 12, lineHeight: 16, color: colors.tertiary, letterSpacing: 0, marginTop: -spacing.sm },
   referenceButton: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
   referenceButtonText: { fontFamily: fonts.ui, fontSize: 13, fontWeight: "700", color: colors.accent, letterSpacing: 0 },
   referenceHint: { fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.tertiary, letterSpacing: 0 },

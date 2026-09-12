@@ -23,7 +23,7 @@
 > [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) is canonical for prices,
 > credits, trials, grants, and store products, and pricing wins on any conflict.
 >
-> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-06.
+> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-12.
 > *Inference* marks a decision not yet shipped.
 
 ---
@@ -434,6 +434,88 @@ Recipes:
 - Small accent icon CTA: accent-soft surface, `shadows.iconCta`, named icon
   component. Use the heavier `IconAdd` glyph for plus-only add controls.
 
+### The onboarding CTA
+
+**Added 2026-09-12 (third round).** The onboarding journey has **one primary
+button**, and it is not the app's primary button.
+
+| Part | Specification |
+|---|---|
+| Height | `controls.onboardingCtaHeight` (**56**) |
+| Radius | `radius.pill`. Fully rounded, never `controls.primaryCtaRadius` |
+| Fill | `colors.accent` |
+| Label | White, **17 / 700**, `fonts.ui` |
+| Elevation | `shadows.onboardingCta` |
+| Width | Full width inside the screen gutter |
+| Primitive | `Primary` in [`expo/src/components/onboarding/primitives.tsx`](../expo/src/components/onboarding/primitives.tsx). A screen composes it; a `.jsx` file that cannot import it cleanly matches these six values exactly |
+
+**The scope is the whole journey, from the intro's Get started to WELCOME.** That
+is the three-screen animated intro's CTA, the questionnaire's **Continue** on
+every step, W3 through W7, the email and code screens, and every button inside
+them — W6's **Redraw** included, which is drawn in this recipe rather than in a
+recipe of its own. There is no second primary anywhere between those two points.
+
+**The app-wide primary is unchanged and stays everywhere else.**
+`controls.primaryCtaHeight` (64) at `controls.primaryCtaRadius` (20) with
+`shadows.primaryCta` is still the rule for Create, the reader, the library and
+the rest of the product. This is a deliberate two-recipe system, not a drift to
+be reconciled: onboarding is a sequence of full-bleed compositions where a 64 pt
+rounded-rectangle slab competes with the picture above it, and a 56 pt pill reads
+as the one thing to press. Outside onboarding the button sits under dense
+content and wants the heavier target.
+
+**The failure this fixes was six buttons, not two recipes.** The path shipped
+with the intro on one size, the questionnaire on another, and W3-W7 on a third,
+with two of them rounding differently and one carrying the wrong shadow, so the
+same act looked like a different control on every consecutive screen. One
+recipe in one primitive is what makes a sequence feel like one flow; the choice
+of 56 over 64 matters less than that nothing on the path chooses for itself.
+
+### The onboarding field
+
+**Added 2026-09-12.** Every text input on the onboarding path is one recipe in
+one place, and it is drawn by one component.
+
+| Part | Specification |
+|---|---|
+| Face | `onboardingType.field`: **16 / 22, `fonts.ui`, regular**. The value and the placeholder both |
+| Primitive | [`expo/src/components/onboarding/Field.tsx`](../expo/src/components/onboarding/Field.tsx). A screen composes `Field`, never a bare `TextInput` |
+| Box | `colors.surface`, **1.5 pt `colors.onboardingBorderStrong`**, radius 14 (`controls.onboardingPlateRadius`) |
+| Padding | `spacing.lg` across and `spacing.md` down, which lands a single line at **about 50 pt** |
+| Multiline | **min-height 150 pt**, `spacing.lg` down, radius 16, top-aligned text |
+| Focus | **2 pt `colors.accent`** plus `shadows.onboardingFieldFocus`, over `motion.fast` |
+| Eyebrow | The uppercase `sectionHeader` label and an optional right-aligned counter share one row above the box, `spacing.sm` clear of it. Both belong to the primitive so neither can drift |
+
+**An input never uses the display face or the reader face.** This is the rule the
+component exists to hold. The flow shipped with three fields instead of one: the
+name screen set its input in Bricolage at headline size, the Craft sheet set
+appearance in Literata, and the email screen carried a third box of its own.
+Three fields that looked like three products, in a sequence of five screens. The
+distinction that resolves it is what the words are doing: a field holds text that
+is **being typed**, which makes it a control, and controls are `fonts.ui`.
+`fonts.display` is the one heading on the screen and `fonts.reader` is prose
+already written, including the person's own appearance line once it is quoted
+back to them inside W6's glass chip.
+
+**The Create brief's fields already use the UI face at 16**, and that is where
+`onboardingType.field`'s 16 / 22 came from rather than from a new measurement.
+Their border and radius are **not** this recipe yet, and aligning them is
+**deferred, not forgotten**. Exactly what would change in
+[`expo/src/components/create/CreateBriefFlow.tsx`](../expo/src/components/create/CreateBriefFlow.tsx):
+
+- `textArea`, `characterInput` and `optionInput`: `borderWidth` **1 → 1.5** and
+  `borderColor` `colors.border` → **`colors.onboardingBorderStrong`**.
+- The same three: `borderRadius` **`radius.md` → 14**.
+- A focus ring added to all three: 2 pt `colors.accent` plus
+  `shadows.onboardingFieldFocus`, which those fields have no equivalent of today.
+- The `counter` style moves from under the box onto the label's eyebrow row,
+  which is where `Field` puts it.
+
+It is deferred because Create is out of scope under the section 2 migration
+boundary, and because a border weight and a radius on the app's busiest form is a
+change that deserves its own pull request rather than arriving as a side effect
+of onboarding work.
+
 | Token | Value | Use for |
 |---|---|---|
 | `controls.iconButtonSm` | 38 | The control in a dense row beside other content. |
@@ -539,6 +621,111 @@ Rules:
    is a per-surface pull request, exactly like the type migration in section 2.
 4. **A new role gets a new named export here**, not an inline `<Ionicons>` at
    the call site.
+
+### 7.1 Onboarding glyph tiles
+
+**The one sanctioned exception to "icons are Ionicons".** The six rows of the
+W4 "Katha will draw" card and the W6 benefit card are drawn by hand in
+`react-native-svg`, in `expo/src/components/onboarding/glyphs.tsx`. Nothing
+else in the app may do this; a new pictogram anywhere else is still a named
+export in `icons.tsx`.
+
+**Why.** Those twelve rows sat as an `accentSoft` square with an Ionicons
+outline glyph in `accent`, six times, on two consecutive screens. An icon font
+gives one stroke weight, one tone and one silhouette vocabulary, so the rows
+differed only in which pictogram sat in the same orange box, and the cards read
+as a list of identical tiles rather than as six promises. That is a structural
+limit of an icon set, not a choice of the wrong glyph names, so it cannot be
+fixed by picking different ones.
+
+The language, which any future glyph in this file follows:
+
+| Rule | Value |
+|---|---|
+| Grid | 24 x 24 viewBox, rendered at 22 inside a 40 tile |
+| Optical margin | 3 to 4 units, so nothing touches the tile's rounded corners |
+| Tones | Exactly two: a soft fill and a `colors.ink` stroke |
+| Fill | A theme colour at low `fillOpacity` (`accent` 0.22, `sepiaAccent` 0.20, `chromeStar` 0.35), picked to sit on its own tile ground |
+| Stroke | `colors.ink`, width 1.75, round caps and joins |
+| Forbidden | Gradients, shadows, a third tone, a second stroke weight |
+| Tile | `GlyphTile`: `radius.md`, ground = `tint`, `size` default 40, glyph scaled at 22/40 |
+
+**Stroke is `colors.ink`, not `colors.strong`.** Section 7 rule 2 governs
+Ionicons glyphs on `bg` or `surface`, where `strong` stops a mark out-shouting
+the title beside it. These marks sit on a saturated tint, where `strong` loses
+about a third of its contrast and the line goes soft; `ink` on a tint lands at
+roughly the apparent weight `strong` has on white. Icon-set glyphs are
+unaffected and still default to `strong`.
+
+**The tint rotates, and the two cards rotate it differently.**
+`colors.accentSoft` (warm), `colors.sepia` (parchment) and
+`colors.sepiaPlaceholder` (deeper parchment) take turns down each card, W6 in a
+different order from W4, so neither card is a column of orange and the two
+screens do not rhyme. Each glyph carries its intended ground as a `tint`
+property and `GlyphTile` defaults to it, so a call site that passes only
+`glyph` still gets the rotation; an explicit `tint` overrides it.
+
+**Six marks, none reused across the two screens.** W4 is a framed portrait, a
+hanger with a tag, a name plate with a written line. W6 is an open book with a
+figure on the spine, two overlapping portrait frames, a shelf of three
+character tokens. The two frame-based marks are the pair most at risk of
+collapsing into each other, so one is strictly singular and centred and the
+other is duplicated and offset. The reader variant of the W6 first row reuses
+`GlyphLeadsStories`: the copy changes, the claim does not.
+
+### 7.2 The credit coin
+
+**The second sanctioned hand-drawn mark**, and the last one: `CreditCoin` in
+`expo/src/components/onboarding/CreditCoin.tsx`. It is the credit currency's
+face wherever a credit appears as an **object** rather than as a label. Today
+that is two places: the welcome screen's stack, and the coins that fly from it
+to Home's credits pill. The pill itself keeps its Ionicons `Sparkles` glyph,
+because a pill is a label.
+
+**Why it is not a circle with an icon in it.** It was exactly that: a
+`chromeStar` `View` with `borderRadius` and an outlined sparkle inside. A flat
+disc is read as a status dot or a colour swatch, not as a thing that was given
+to you, and the screen it sits on has one job, which is to make a grant feel
+like a grant. What was looked at before drawing it: Duolingo's gems, Headspace's
+flat brand marks, the Notion and Canva credit marks, and the gold of Clash
+Royale and Coin Master. They differ in hue and in emblem and agree on four
+moves, all four of which this mark uses.
+
+| Rule | Value |
+|---|---|
+| Grid | 24 x 24 viewBox, `size` in points, square |
+| Rim | A full circle, `r` 11, in the rim tone. 1 unit of margin so a call site's round contact shadow does not cut the drawing |
+| Face | A circle, `r` 8.6, `colors.chromeStar`, centre `cy` **11.6** |
+| Highlight | One crescent between two arcs, upper left, `colors.surface` at `fillOpacity` 0.5 |
+| Emblem | The four-point Katha spark, solid `colors.ink`, centred on the face |
+| Tones | Three flats plus ink. No gradient, ever |
+| Forbidden | A gradient library, a milled edge, an inner ring, numerals, a second emblem |
+
+**The face sits high in the rim, and that is the whole trick.** `cy` 11.6
+against the rim's 12 makes the visible edge 2 units at the top and 2.8 at the
+bottom, so the bottom edge reads as the coin's thickness catching its own
+shadow. It is the cheapest possible top-lit cue and it is the one that survives
+being scaled to 20pt. Centre the face and the mark goes back to being two
+concentric circles.
+
+**No gradient, at any size.** At 20pt a two-stop gradient resolves to one muddy
+tone; at 52pt it reads as a smear rather than as metal. Every consumer app
+shipping a small currency mark flattens it for the same reason. The highlight
+does the lighting instead, and it is a filled band rather than a stroked arc
+because a stroke's round caps become two visible dots once the coin is scaled to
+the flight's landing size.
+
+**The rim tone is a constant, not a token.** `#C48F1D` is `colors.chromeStar`
+`#F5B324` with all three channels at 80%, which keeps the hue and the saturation
+exactly: the same gold with the light taken off it, not a new colour. It stays a
+documented constant inside `CreditCoin.tsx` because it exists only to be the
+shaded side of one object; as a token it would end up on text and borders, where
+an 80%-value amber fails contrast.
+
+**The emblem is the four-point spark Home's pill carries.** That is not a
+rhyme for its own sake. The flight exists to answer "where did my credits go",
+and the coins can only read as landing **on** the pill if the thing on the coin
+and the thing on the pill are the same shape.
 
 ---
 
@@ -724,3 +911,14 @@ Work down the list. Every item is answerable without asking anyone.
     than carried as a fixed pixel value.
 29. **`spacing.betweenGroups` is 24, at least three times `spacing.related`**,
     because grouping is the contrast between the two gaps and not either value.
+30. **Onboarding has one field recipe and one component that draws it.**
+    `onboardingType.field` at 16 / 22 in `fonts.ui`, the `Field` primitive, a
+    1.5 pt `onboardingBorderStrong` border that becomes 2 pt accent with
+    `shadows.onboardingFieldFocus` on focus, about 50 pt on one line and 150 pt
+    multiline. **An input never uses `fonts.display` or `fonts.reader`**, because
+    a field holds text being typed and that makes it a control. Section 6.
+31. **The Create brief's fields keep their border and radius for now.** They
+    already use the UI face at 16, which is where the token's size came from;
+    the 1.5 pt border, the 14 radius, the focus ring and the eyebrow-row counter
+    are a deferred Create-surface pull request under the section 2 boundary, not
+    an onboarding side effect. Section 6 lists the four changes.

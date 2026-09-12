@@ -10,7 +10,7 @@
 > `AGENTS.md`, `backend/ROADMAP.md`, `backend/references/story-generator-app.md`,
 > `backend/references/strategic-decisions.md` and `expo/DESIGN.md`.
 >
-> Last revised 2026-09-02. Cost figures are computed from the shipped code;
+> Last revised 2026-09-12. Cost figures are computed from the shipped code;
 > external rates are cited inline. Sentences that are inference rather than a
 > cited fact say so.
 
@@ -39,8 +39,14 @@ chapter at a time. It always takes a deliberate tap: auto-continue stops at the
 plan and never extends by itself.
 
 Reading is **free and unlimited on every tier, forever**. Audio is **1 credit per
-chapter, unlocked permanently**. Drafting is unlimited by hand and generously
-capped on AI. **Reimagining a chapter is free twice, then 1 credit.**
+chapter, unlocked permanently**. **Editing by hand is free and unlimited**, and
+it is not capped, because it calls nothing.
+
+Two actions are **unlimited on any paid plan**: **reimagining a chapter** and
+**character portraits**. On the free tier a reimagine is free once per chapter on
+a story you created, and a portrait is free four times per account. Beyond that
+the free tier is offered the plan, not a price, for reimagine; a fifth portrait
+is 1 credit.
 
 One product, three durations. There is no separate reader tier.
 
@@ -180,22 +186,46 @@ plan; we don't lock voices behind a tier.
 
 **Editing — free**
 
-| | Credits |
-|---|---|
-| Type, rewrite, restructure your draft by hand | **0**, unlimited |
-| Ask AI to redraft a chapter | **0** — 3 free per chapter |
-| Ask AI to rewrite a paragraph | **0** — 20 free per chapter |
-| **Reimagine a chapter** — re-prompt it, recast it | **0** — **2 free per chapter**, then **1** each |
-| **Create or edit a character image** | **0** — **4 free per account**, then **1** each |
-| Use a saved character in a new story | **0**, always |
-| Regenerate a cover you paid for | **1** — there is no free retry |
+| | Free | Any paid plan |
+|---|---|---|
+| Type, rewrite, restructure your draft by hand | **0**, unlimited | **0**, unlimited |
+| **Reimagine a chapter** — re-prompt it, recast it | **1 free** per chapter, on stories you created | **Unlimited** |
+| Reimagine a chapter in somebody else's story | **1** — it makes you your own copy | **Unlimited** |
+| **Create or edit a character image** | **4 free** per account, then **1** each | **Unlimited** |
+| Use a saved character in a new story | **0**, always | **0**, always |
+| Regenerate a cover you paid for | **1** — there is no free retry | **1** |
 
-Past those limits, each further AI action is 1 credit.
+**Reimagine is the only AI editing action, and hand editing is free forever.**
+*(2026-09-11: the 3 free AI redrafts and 20 free paragraph edits this table used
+to list are retired — see §1a.)*
 
 **If a paid action fails, its credit comes back automatically.** Text failure
 refunds the complete start reservation. After text succeeds, cast and cover are
 tracked independently: either missing component receives its own idempotent
 one-credit refund without discarding the completed chapter. Every time.
+
+### 1a. AI redrafts and paragraph edits — retired
+
+**Retired 2026-09-11.** This document priced *3 free AI redrafts per chapter* and
+*20 free paragraph AI edits per chapter* from the first version of the editing
+table. **Neither action exists in the shipped product.**
+
+What actually ships is `ReimagineSheet`
+([`expo/src/components/reader/ReimagineSheet.tsx`](../expo/src/components/reader/ReimagineSheet.tsx)),
+backed by the `reimagine-chapter` edge function: the person picks a chapter,
+optionally swaps characters, types what should change, and the chapter is written
+again. There is no "redraft this chapter" button and no "rewrite this paragraph"
+button anywhere in the reader or the studio. Hand editing is a plain text editor,
+free and uncapped, calling nothing.
+
+So the caps were pricing a feature that was never built, and worse, they were
+being cited: §3's reimagine scoping argument leaned on them as precedent, §10
+scheduled per-chapter counter columns to enforce them, and §11 listed a p95
+redraft metric to tune a cap that binds on nothing. All three are corrected.
+
+**If a redraft or a paragraph rewrite is ever built, it returns to this document
+before it ships** — it is a text call, so it is a priced action under principle 2
+and not a free allowance by default.
 
 ### Where credits come from
 
@@ -205,7 +235,7 @@ one-credit refund without discarding the completed chapter. Every time.
 |---|---|
 | Keep a reading streak | **2** at day 2, **7** at day 5, **5** at day 10 |
 | Invite a friend who creates something | **10** to you, **5** to them |
-| Welcome bonus | **10**, once |
+| Welcome bonus | **3**, once |
 
 A streak is consecutive days with reading activity. Miss a day and it resets to
 zero — the rewards start again from day 2. **Missed one?** Read for 30 minutes
@@ -221,7 +251,9 @@ Yearly plans start with a **3-day free trial**. Reading stays free whether you
 subscribe or not — plans are for creating and listening. **A plan is always the
 best price per credit**, at every size, against every pack below.
 
-Paid plans also unlock **Download PDF**, which the free tier does not have.
+Paid plans also unlock **unlimited character portraits**, **unlimited
+reimagines**, **premium voices** and **Download PDF**, none of which the free tier
+has in full.
 
 **Credit packs** — no subscription needed
 
@@ -408,8 +440,8 @@ number here is an estimate from published rates or infrastructure arithmetic.
 | Any single image — cover, chapter art, one portrait | **$0.039** | — |
 | Chapter art | $0.039 | 1 |
 | Cover regeneration | $0.039 | 1 |
-| Reimagine a chapter | $0.0218 | 0 ×2 per chapter, then 1 |
-| Character image — create or edit | $0.039 | 0 ×4 per account, then 1 |
+| Reimagine a chapter | $0.0218 | free: 1 per chapter on your own story, then the plan. Paid: unlimited |
+| Character image — create or edit | $0.039 | free: 0 ×4 per account, then 1. Paid: unlimited |
 | Reusing a saved character's portrait | **$0** | 0 |
 | Audio unlock — cached chapter | **~$0** | 1 |
 | Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
@@ -490,7 +522,40 @@ first price list in this document's history for which that is true.
 **Presentation order: weekly and yearly upfront; monthly disclosed below them.**
 Weekly is the impulse entry, yearly is the value anchor, monthly exists for the
 user who wants it but is not the plan we lead with. Yearly is selected by
-default and carries the free trial; weekly has no trial.
+default; weekly has no trial.
+
+> **The onboarding paywall shows two cards and nothing else** *(decided
+> 2026-09-11, the W7 hand-off)*. Weekly and yearly, yearly selected by default,
+> **no trial offered and no monthly disclosure** — not even behind a "More
+> options" control. **Monthly stays a live SKU** (`ai.katha.sub.monthly`, below)
+> and sells in-app from Home and Credits; it is removed from the one screen a
+> new user cannot skip past, because a disclosure triangle there is a third
+> decision at the worst moment. The trial likewise stays a store configuration
+> on the yearly SKU for the surfaces that use it; onboarding no longer leads
+> with it, because a card whose headline is "Start my 3-day free trial" sells
+> the cancel button rather than the product.
+>
+> **The "SAVE 80%" badge on the yearly card is the weekly-vs-yearly annualised
+> comparison**: $311.48 a year at the weekly price against $59, which is 81%,
+> rounded down to 80. It is not the 62% yearly-vs-monthly discount above, and it
+> must not be restated against monthly — monthly is not on that screen. If
+> either price moves, this claim is recomputed from the annualised row in the
+> table above or it comes off the card.
+>
+> **The yearly card's note is a daily comparison, added 2026-09-12**:
+> **"$0.16 a day"**, which is **$59 / 365 = $0.1616, rounded to cents**. Like the
+> badge it is **computed from the plan's price in code and never written as a
+> literal**, so a localised or revised price moves the line with it. It replaces
+> **"$4.92 a month, billed yearly"** — $59 / 12 — and it replaces it for the same
+> reason the badge may not be restated against monthly: a monthly equivalent on
+> the onboarding paywall is a comparison against the one plan that screen
+> deliberately withholds, and it only means something to a person who already
+> knows what a month costs. **Both are restatements of the same $59 and neither
+> is a second charge**: the card shows $59 /yr as its price, the day figure sits
+> under it as a note, and neither number may be drawn as a price in its own
+> right, as a struck-through former price, or beside a "from" or a "just".
+> Nothing in the model changes: the constraint of record is still
+> $0.0836/credit at the yearly rung (§4).
 
 The yearly discount is **62%** against the monthly price — steep, and inside the
 normal band for consumer subscription apps, but note that it is the discount, not
@@ -566,6 +631,37 @@ keep and a simpler one to state.
 **Decided 2026-09-10: 4 free character images per account, then 1 credit each.
 Generating and editing both count against the same four.**
 
+> **Amended 2026-09-11: subscribers get unlimited character portraits, and the
+> four are the free tier's allowance.** The cap was written before there was a
+> plan to attach it to, and "4 per account, lifetime" is not a rung on a ladder —
+> it is a wall that a paying user hits in their second week and then pays twice
+> for. A portrait is $0.039, the same as any other image, so a subscriber drawing
+> them is spending the grant they already bought; making it unlimited moves a
+> $0.039 action off the credit meter and onto the plan.
+>
+> This is an **exception to the entitlement rule**, and §5's *Plan entitlements*
+> section records it as one rather than pretending the rule was never written.
+> The bound is the existing rate limit of 12 requests per hour
+> (`claim_character_portrait_request`), which caps a subscriber at ~$3.51/hour of
+> images against $4.18/month of net revenue. **That is not a real bound and the
+> section below says so.** Server-side enforcement of both the subscriber
+> exemption and the free tier's four is a stated follow-up; neither exists in
+> `generate-character-image` today, which charges nothing and counts nothing.
+
+> **Anonymous and named are two different bounds, and only one of them is
+> built. Decided 2026-09-11.** An **anonymous** identity gets **4 portraits for
+> the life of that identity, reimagines included** — enforced server-side today
+> by migration 00084 (`claim_guest_portrait_request`), because onboarding draws
+> its portrait before the email is asked for and nothing else stands between a
+> brand-new session and a paid provider call. At the cap the endpoint answers
+> **403 `guest_portrait_cap`** with "Sign in to keep making characters.", which
+> is the honest ask: the wall is there to be converted, not waited out. A
+> **named** user is unchanged for now — still only 00055's 12-per-hour window,
+> with the 4-free-then-1-credit ledger and the subscriber exemption above still
+> the stated follow-up. The two counters are separate and the guest one is never
+> carried across on sign-in (§9 control 6); a named user is not charged for work
+> done before they had an account. **Neither counter is keyed on a device.**
+
 **Why the counter is on the account and not the character or the story.** Saved
 characters are cross-story now (migration 00057) — the same character is used in
 as many stories as the user likes. A per-story allowance would reset every time
@@ -579,11 +675,11 @@ image and a fresh paid API call. Counting the generation and not the edit would
 make "edit the appearance" a free regeneration button, which is the same loophole
 under a different label.
 
-| | Credits |
-|---|---|
-| Create or edit a character image — first 4, per account | **0** |
-| Every one after that | **1** |
-| Reusing a saved character in a new story | **0** — the portrait already exists |
+| | Free | Any paid plan |
+|---|---|---|
+| Create or edit a character image — first 4, per account | **0** | **0**, unlimited |
+| Every one after that | **1** | **0**, unlimited |
+| Reusing a saved character in a new story | **0** — the portrait already exists | **0** |
 
 **This is the pricing decision migration 00055 deferred**, and it closes a live
 hole. `generate-character-image` charges nothing today; it is bounded only by a
@@ -644,55 +740,74 @@ the story, its chapters and its cast into a private story owned by the caller, a
 the rewrite happens there — keyed on (source story, caller), so a reader who
 reimagines three chapters ends up with one copy rather than three.
 
-**Price, decided 2026-09-10: 2 free per chapter, then 1 credit each.**
+**Price, revised 2026-09-11. The 2026-09-10 rule was 2 free per chapter, then 1
+credit each, and it carried two ⚠ open holes. Both are resolved here.**
 
-| | Credits |
-|---|---|
-| Reimagine a chapter, 1st and 2nd time | **0** |
-| Every reimagine after that, per chapter | **1** |
-| A brand-new character who needs a portrait | **1** (the portrait) |
-| Renaming a character across other chapters | **0** — substitution, no model call |
+| | Free | Any paid plan |
+|---|---|---|
+| Reimagine a chapter of a story **you created** | **1 free** per chapter, then the plan is offered | **Unlimited**, never charged |
+| Reimagine a chapter of **somebody else's** story | **1 credit**, from the first | **Unlimited**, never charged |
+| A brand-new character who needs a portrait | **1** (the portrait) | **0** — portraits are unlimited on a plan |
+| Renaming a character across other chapters | **0** — substitution, no model call | **0** |
 
-**Cost.** One chapter text call, **$0.0218** streamed. Two free per chapter is
-**$0.0436** given away — against a yearly credit netting $0.0836, roughly half a
-credit per chapter. `apply_to_all_chapters` renames rather than regenerates
+**Subscribers are never charged and never counted**, which is the single largest
+simplification available here: there is no counter to scope, no fork to copy it
+across, and no per-chapter state to reconcile for anyone on a plan. The counter
+exists only on the free tier, where the allowance is one.
+
+**Hole 1, resolved: free reimagines apply only to chapters in stories the caller
+created.** The 2026-09-10 recommendation is adopted. A reader may reimagine any
+chapter of any published story, so a *global* per-chapter allowance gave every
+free user 2N reimagines against a catalogue of N chapters — $43.60 a user at a
+thousand chapters, an order of magnitude larger than every other free surface in
+the product combined. Reimagining a stranger's chapter **forks** it, and a fork
+is a new story, which is generation rather than editing. **Non-author reimagine
+costs 1 credit from the first**, on the free tier, and is unlimited on a plan.
+
+*(The 2026-09-10 version of this argument cited §1's 3 free redrafts and 20 free
+paragraph rewrites as the precedent for "your own draft and nobody else's". Those
+allowances were retired 2026-09-11 because the actions do not exist — §1a. The
+line they drew is still the right line; it simply has to stand on its own
+reasoning, which it does: a fork produces a story, and stories are priced.)*
+
+**Hole 2, resolved: the free allowance is 1, and it is per chapter of your own
+story, so the fork counter problem disappears.** The unbounded case was *two free
+reimagines produce a forked chapter carrying two more*. There is now nothing to
+copy across a fork: a fork is somebody else's story becoming yours, and the free
+allowance on **your own** chapters is one. `fork_story` still must not
+reinitialise the counter on the forked rows — a forked chapter you then reimagine
+again is a chapter of a story you created, and it gets exactly one free pass like
+any other.
+
+**Cost.** One chapter text call, **$0.0218** streamed. One free per chapter on
+your own stories is **$0.0218** given away per chapter authored — about a quarter
+of a yearly credit's net revenue, against the $0.0436 unbounded-across-the-
+catalogue figure the old rule implied per chapter *read*. `apply_to_all_chapters`
+renames rather than regenerates
 (`_shared/character-substitution.ts`: whole-word, case-preserving, never a
 pronoun), so it is genuinely free.
 
-**Why free at all, when it was 1 credit from the first?** Because the first
-reimagine is usually the user discovering what the feature *is*. Charging for the
-discovery of a feature suppresses the feature. Two is enough to learn it and not
-enough to write a novel with.
+**Why free at all on the free tier, when it was 1 credit from the first?**
+Because the first reimagine is usually the user discovering what the feature
+*is*, and charging for the discovery of a feature suppresses the feature. One is
+enough to learn it. The second one is where the plan is offered — **as the plan,
+not as a price**. "Reimagine again with Katha" converts; "that will be 1 credit"
+teaches the person to stop.
 
-> ⚠ **The free allowance has no scope, and it needs one before this ships.**
-> The rule as written is *per chapter*, and a reader may reimagine **any chapter
-> of any published story**. There is no per-user cap. With a catalogue of N
-> chapters, each user's free surface is 2N reimagines: 100 chapters is $4.36 a
-> user, 1,000 chapters is $43.60. Against a free user's entire lifetime earn of 24
-> credits, **this is the largest free surface in the product by an order of
-> magnitude** — larger than the streak ladder, the welcome bonus and the referral
-> combined.
->
-> **Recommendation: free reimagines apply only to chapters in stories the caller
-> created.** Reimagining someone else's chapter *forks* it — that produces a new
-> story, which is generation, not editing — and §1 already draws exactly this line
-> for drafting, where the 3 free redrafts and 20 free paragraph rewrites apply to
-> your own draft and nobody else's. It also matches the shape of the two
-> audiences: a writer reimagining their own chapter is editing; a reader
-> reimagining a stranger's is creating. **Non-author reimagine would cost 1 credit
-> from the first.**
->
-> The alternative is to keep it global and cap total free reimagines per user per
-> month. **Not decided.**
+**Shipped state, which contradicts all of the above:** `reimagine-chapter`
+reserves a credit through `reserve_generation_operation` on every call, for
+everyone, with no subscriber check and no counter of any kind. The server-side
+subscriber exemption and the free tier's one-per-chapter counter are both
+follow-ups, and until they land the code charges from the first reimagine for
+every user on every tier.
 
-> ⚠ **Second hole: the counter must survive the fork, or the allowance is
-> infinite.** `fork_story` copies chapters into new rows. If the free-reimagine
-> counter lives on the chapter row and is reset by the copy, then two free
-> reimagines produce a forked chapter with two more free reimagines, and so on
-> without bound. **The counter must be copied by `fork_story`, not reinitialised**
-> — and the same applies to any future per-chapter allowance. Untested; there is
-> no counter in the shipped function at all today, because reimagine currently
-> charges from the first.
+> **Both ⚠ open holes that stood here are resolved above, 2026-09-11.** They were
+> *the free allowance has no scope* and *the counter must survive the fork, or the
+> allowance is infinite*. The first is answered by scoping free reimagines to
+> stories the caller created and pricing a non-author reimagine at 1 credit from
+> the first; the second dissolves once subscribers are exempt and the free
+> allowance is one per chapter of your own story. The analysis that produced both
+> answers is in the section above rather than duplicated here.
 
 ### Credit packs
 
@@ -787,6 +902,13 @@ top pack is what pays for that difference. **Do not close the gap further.**
 A 3-day trial that grants the full 50 credits is a **$3.69 giveaway with a cancel
 button attached** at the worst story shape, and trial abuse is the most mechanical
 form of fraud available on a subscription app.
+
+> **Onboarding no longer offers the trial** *(2026-09-11, the W7 hand-off)*. The
+> onboarding paywall sells weekly and yearly at their prices; the trial remains
+> a store configuration on the yearly SKU for the in-app surfaces that use it,
+> so the grant rule below still governs wherever a trial is actually started.
+> The first cohort through the new onboarding will start no trials at all, which
+> is the intended reading of any drop in trial starts.
 
 **The trial grant is reduced to 10 credits. The full 50 lands on the first
 successful charge.** Ten credits is ten chapters, or three short illustrated
@@ -947,9 +1069,10 @@ fallback for the long tail.
 
 ### Free tier exposure
 
-A maximally engaged free user earns **24 credits in month one** (10 welcome,
-once + 14 from streak milestones at days 2, 5 and 10) and **nothing thereafter** —
-a one-time $0.60 blended, $2.49 if every credit starts a story.
+A maximally engaged free user earns **17 credits in month one** (3 welcome, once
++ 14 from streak milestones at days 2, 5 and 10) and **nothing thereafter** — a
+one-time $0.50 blended, $1.80 if every credit starts a story. *(Was 24 while the
+welcome bonus was 10; reduced to 3 on 2026-09-11, §6.)*
 
 **Zero in steady state is trivially inside the principle-7 ceiling of 50%.** The
 milestone ladder needs no monthly cap because it does not recur at all: it pays
@@ -973,7 +1096,7 @@ users — reading is free and unlimited, so it carries no consumption burden.
 | Source | Credits | Cadence | Cap | `reason` | Ship |
 |---|---|---|---|---|---|
 | **Reading streak** | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime — nothing repeats | `streak` | Launch |
-| **Welcome bonus** | **10** | once, on declining the paywall (§6) | once per authenticated account | `welcome` | Launch |
+| **Welcome bonus** | **3** | once, on declining the paywall (§6) | once per authenticated account | `welcome` | Launch |
 | **Guest bootstrap** | **3** | once, on first guest bootstrap (§9) | once per anonymous account, 3 per network prefix / 24h | `guest_bootstrap` | Launch |
 | **Referral — referrer** | **10** | on invited user's 1st generation | 3/month, 10 lifetime | `referral` | v1.1 |
 | **Referral — invited** | **5** | on own 1st generation | once | `referral` | v1.1 |
@@ -981,7 +1104,7 @@ users — reading is free and unlimited, so it carries no consumption burden.
 
 **Steady state for a free user: zero.** The streak ladder pays **14 credits
 once**, all of it inside the first ten days, and then stops. With the welcome
-bonus a free user's lifetime earn is **24 credits** — against **50/month, every
+bonus a free user's lifetime earn is **17 credits** — against **50/month, every
 month**, on every paid plan. The earn side is an activation mechanism, not an
 income.
 
@@ -1007,7 +1130,7 @@ income.
 | Day 10 | **5** | 14 |
 
 **The ladder pays 14 credits, once, and then stops.** With the welcome bonus a
-free user's lifetime earn is **24 credits**. There is no recurring rung.
+free user's lifetime earn is **17 credits**. There is no recurring rung.
 
 **The mass sits at day 5, deliberately.** Seven credits is the largest single
 grant in the earn table and it lands inside the D1-to-D7 cliff (below) rather
@@ -1208,7 +1331,56 @@ every future entitlement gets tested with the same question first:
 | | Free | Any paid plan |
 |---|---|---|
 | Read, unlimited, forever | ✓ | ✓ |
-| **Download PDF** | **—** | **✓** |
+| Credits every period | — | **50/month**, or 20/week on weekly |
+| **Unlimited character portraits** | 4 per account, then 1 credit | **✓** |
+| **Unlimited reimagines** | 1 per chapter on your own stories | **✓** |
+| **Premium voices** | — | **✓** |
+| **Download stories as PDF** | **—** | **✓** |
+
+### Two of those rows fail the "does it call a paid API?" test, and they ship anyway
+
+**Added 2026-09-11, and it is a deliberate exception rather than an oversight.**
+
+Answer the test honestly, row by row:
+
+| Row | Does it call a paid API? | Verdict under the rule |
+|---|---|---|
+| Download PDF | **No.** Our own compute, ~$0 per export | Legitimate entitlement |
+| Premium voices | **No, in the intended design.** The tiering line is `edge_tts` versus `runpod_minimax`, and paid MiniMax voices are unlimited only on the **pre-narrated catalogue**, where one narration serves every listener at ~$0 marginal. Narrating a brand-new chapter is still 1 credit on every tier | Legitimate entitlement, conditional on the edge-tts worker existing (§12 item 8) |
+| **Unlimited character portraits** | **Yes.** $0.039 per image, every time | **Fails the rule** |
+| **Unlimited reimagines** | **Yes.** $0.0218 of chapter text, every time | **Fails the rule** |
+
+**So two metered actions are being made unlimited for subscribers, and the rule
+says that hides a real cost behind a flat fee.** It does. What makes it
+defensible here is not that the rule is wrong but that it was written about
+*gating*, and this is the opposite move: nothing is being taken from the free
+tier, and no free user pays more than they did. A subscriber who would have spent
+grant credits on portraits now spends them on chapters instead, so the exposure
+is bounded by how fast a human can use the feature rather than by how many
+credits they hold.
+
+**What actually bounds it, and it is thin.** Portraits are capped at 12 requests
+per hour by `claim_character_portrait_request` (migration 00055) — ~$3.51/hour
+against a yearly subscriber's $4.18/month of net revenue. Reimagine is bounded
+only by the six-per-user-per-minute generation limit. **Neither is a bound that
+survives a determined user**, and the honest statement of the position is that
+these two rows are underwritten by the observation that people do not sit and
+regenerate portraits for an hour, not by arithmetic.
+
+**Follow-ups, in priority order, and both are server work:**
+
+1. **A server-side ledger enforcement path for both actions.** Today
+   `generate-character-image` counts nothing and charges nothing, and
+   `reimagine-chapter` charges everyone from the first call. Neither knows what a
+   subscriber is. The subscriber exemption and the free tier's counters both have
+   to live in the ledger, not the client.
+2. **A usage metric on each, with a trigger.** If a p99 subscriber draws more
+   than ~30 portraits or ~40 reimagines a month, this exception is repriced —
+   most likely to a high monthly ceiling described as unlimited in the ordinary
+   way, which is what every comparable product actually ships.
+
+**Do not extend this exception to a third action without re-running the same
+honesty pass.** Two rows is an exception; four is a different pricing model.
 
 **It does not break principle 1, but it is close enough that the copy matters.**
 Principle 1 says reading is free, always, with no cap. A PDF is a *file*, not a
@@ -1257,75 +1429,108 @@ replenishment is **earned and capped**, never granted.
 
 ## 6. Onboarding and the paywall flow
 
-Onboarding branches on a purpose question and both paths reach the same paywall.
-*(The one-time offer that used to follow it was removed 2026-09-10 — §3.)*
-Screen-level design is specified in
-[`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md), the canonical onboarding specification;
-only the money is defined here.
+**Rebuilt 2026-09-11.** Onboarding no longer branches into a reader path and a
+writer path: every purpose makes one character, sees their portrait, and reaches
+the same paywall. Screen-level design is specified in
+[`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md), the canonical onboarding
+specification; only the money is defined here.
 
 ```
 Anonymous session at app open, upgraded to a real account
 before any purchase and before any grant
 │
-├─→  PURPOSE  ── read, or both ──→ genres → taste → shelf reveal
-│         │                              │
-│         └─ write ─→ goal → friction → idea → blueprint → preview
-│                                              │
-│                    ┌─────────────────────────┴──────────┐
-│                    ↓                                    ↓
-│              READER PAYWALL                      WRITER PAYWALL
-│                        $5.99/wk · $12.99/mo · $59/yr                  
-│              5 cr      · 20 cr/mo                10 cr    · 50 cr/mo
-│              Sells audio and creation.           Outcome-framed, shows
-│              States plainly that reading         the user's own blueprint.
-│              is and stays free.                  "Your story is ready
-│                                                   to be created."
-│              Yearly selected by default, carries the 3-day trial badge.
-│              Monthly disclosed below, not led with. Weekly has no trial.
-│              Dismiss is large, obvious, always present.
+├─→  PURPOSE  ── read, write, or both ──→ the same character flow
+│                                          (reader- or writer-voiced copy)
+│                                                │
+│              bridge → who → wait → reveal → plan bridge
+│              "Their first chapter is 3 credits. A plan keeps them going."
+│                                                │
+│                                          SAVE {NAME}
+│                                       email → 6-digit code
+│                                                │
+│                                          THE PAYWALL
+│                    $5.99/wk · 20 cr          $59/yr · 50 cr/mo
+│
+│              Two cards, nothing else. Yearly selected by default, badged
+│              SAVE 80% (weekly annualised, §3) and noted "$0.16 a day"
+│              (59 / 365, derived in code). No trial offered here, no
+│              monthly, no More options: monthly stays an in-app SKU, and
+│              no monthly-equivalent price appears on the yearly card.
+│              Four benefit rows: 50 credits a month, unlimited portraits
+│              and reimagines, premium voices, PDF export.
+│              Dismiss is large, obvious, present from frame one.
 │                    │                                    │
-│                    ├─ Subscribes → trial grant, or full grant on charge → app
+│                    ├─ Subscribes → full grant on charge → app
 │                    │                                    │
 │                    └─ Declines ──────────┬──────────────┘
 │                                          │
 │                                          ↓
-│                                  10 credits granted
+│                                   3 credits granted
 │                                          │
 │                                          ↓
-│                                    WELCOME  "Reading is always free."
-│                                    No numbers on this screen; the
-│                                    balance is announced by the in-app
-│                                    message system on landing.
+│                                    WELCOME  "Welcome to Katha."
+│                                    Three gold coins fly to the credits
+│                                    pill on Open Katha, which ticks 0 → 3.
+│                                    Once per account.
 │                                                │
 └───────────────────────────────────────────────┴─→  Into the app
 ```
 
+*(There is no one-time offer step. It was removed 2026-09-10 — §3.)*
+
 **For named onboarding, the welcome bonus is the consolation, not the greeting.**
-It is granted only after the user has declined twice — subscribers do not need it
-and should not be given it.
+It is granted only after the user has declined the paywall; subscribers do not
+need it and should not be given it.
 
-**Ten credits is one complete story start, plus room to keep going.** A start is
-3 — the cast, chapter 1's words, and chapter 1's art, which becomes the cover —
-leaving 7 for further chapters at 1 each, or three further illustrated chapters.
-Combined with free unlimited reading and the streak ladder, a free user's first
-day is a finished, illustrated first chapter and as much reading as they want.
-*(Raised from 3 on 2026-09-05. The Writer-yearly 40%-margin row in §2 has **not**
-yet been re-run against this figure at a range of chapter-art attach rates; that
-is the open item this change carries.)*
+**Three credits is exactly one story start: the cast, chapter 1's words and its
+art, which becomes the cover.** *(Reduced from 10 on 2026-09-11; it had been
+raised from 3 on 2026-09-05.)* That is the whole reasoning for the number. A
+welcome bonus that buys one complete thing is legible — the person starts a
+story, sees a cast and an illustrated first chapter, and knows precisely what a
+credit does. Ten bought a story start plus seven further chapters, which is not a
+more generous version of the same lesson; it is a week of product given to
+somebody who has not yet decided they want it, and it is the single most
+expensive free surface in the document because free credits flow to the most
+expensive action a credit can buy (§5, *The daily credit, re-examined*).
 
-**The guest bootstrap stays at 3, and is now a separate grant.** The sign-in-free
-client grants a one-time **3**-credit balance to a server-verified anonymous
-session under §9's rate limit, keyed `guest_bootstrap:{user_id}`. It does not
-follow the welcome bonus up to 10: the named grant is protected by Apple / Google
-/ email, while the guest grant is protected only by a salted network-prefix limit
-of three per 24 hours. At 10 that limit permits 30 credits per network per day
-against an unauthenticated surface, which is a farm, and at 3 it permits 9, which
-is not. A guest who later signs in receives the named welcome bonus as well; the
-two keys are distinct, and that is intended, because they converted.
+At the code's 3-credit story start, 10 welcome credits cost up to **$0.59** per
+declining user against **$0.178** at three. Combined with free unlimited reading
+and the streak ladder, a free user's first day is still a finished, illustrated
+first chapter and as much reading as they want — which was the whole of what the
+10 was defended on.
 
-**The bonus is 10 for everyone.** There is no reader/writer split on it; the 15/5
-split belongs to the *trial* grant (§3), which is a different thing and lands on
-a different path.
+**The guest bootstrap is also 3, and it is still a separate grant.** The
+sign-in-free client grants a one-time **3**-credit balance to a server-verified
+anonymous session under §9's rate limit, keyed `guest_bootstrap:{user_id}`; the
+named welcome bonus is keyed `welcome:{user_id}`.
+
+**The two numbers are now equal, and the keys stay separate anyway.** Equality is
+a coincidence of this revision, not a merge. They are protected by different
+things: the named grant sits behind Apple / Google / email, while the guest grant
+is protected only by a salted network-prefix limit of three per 24 hours, so at
+3 it permits 9 credits per network per day against an unauthenticated surface and
+at 10 it would permit 30, which is a farm. **The guest number is bounded by that
+limit and the named number is bounded by conversion economics**, so they answer
+to different constraints and will diverge again the moment either is tuned. One
+key per grant is also what makes a guest who later signs in receive both, which
+is intended, because they converted.
+
+**A guest who signs in keeps their 3 and then receives the named 3, because the
+conversion is in place.** `ONBOARDING_FLOW.md` §16 records the verified code
+fact: `updateUser({ email })` plus `verifyOtp({ type: "email_change" })` keeps
+`auth.users.id`, so the guest balance is the named account's balance and
+`bootstrap-user` no longer takes the guest branch, which is what stops a second
+guest grant being minted. Six credits, two keys, one identity.
+
+**The one exception is signing into an account that already exists**, where there
+is no in-place merge and the guest identity is left behind. The saved character
+is re-pointed onto the account (`claim_guest_characters`, migration 00081); **the
+3 guest credits are not**. That is deliberate and it is a §9 anti-abuse decision
+rather than an oversight: the guest grant is bounded by a salted network-prefix
+limit, and letting it ride onto any account the device signs into would turn that
+limit into a farm — fresh guest session, sign in, repeat, three credits a time.
+A character is the person's own artifact and there is one of it; credits are
+money.
 
 **Non-negotiable:** the paywall is skippable at every step, and declining it costs
 the user nothing except the plan they declined. Freemium median D35 trial-to-paid
@@ -1498,8 +1703,8 @@ no-ops until RevenueCat emits `EXPIRATION`.
 
 ## 9. Anti-abuse
 
-Proportionate to a pre-launch app. Six controls to build, and an explicit list of
-what **not** to build.
+Proportionate to a pre-launch app. Seven controls to build, and an explicit list
+of what **not** to build.
 
 1. **Require a server-verified Supabase JWT before any grant.** Named-account
    grants require Apple / Google / email. The temporary guest bootstrap is the
@@ -1508,7 +1713,8 @@ what **not** to build.
    three guest grants per 24 hours and a shared ceiling of 300 guest grants per
    UTC day. Only an edge-owned client-address header can establish the network
    scope; missing or malformed scope fails closed. It stays at 3 while the named
-   welcome bonus is 10, for the reason given in §6. It is not a device-local grant,
+   welcome bonus is also 3 — equal since 2026-09-11 and still a separate key, for
+   the reason given in §6. It is not a device-local grant,
    and guest accounts cannot publish publicly. Anonymous story shaping is also
    limited to 30 calls per network per 24 hours and 500 calls globally per UTC day,
    in addition to the six-per-user-per-minute limit.
@@ -1523,12 +1729,42 @@ what **not** to build.
    a structural no-op against the existing unique index — that one convention
    defeats most streak farming with no detection logic at all. The ladder is
    self-capping, so no monthly ceiling needs enforcing.
-4. **Reduced trial grants.** 15 credits (Writer) / 5 (Reader) during the 3-day
-   trial; full grant only on first successful charge.
+4. **Reduced trial grants.** 10 credits during the 3-day trial; full grant only
+   on first successful charge. *(The 15 (Writer) / 5 (Reader) split died with
+   the two-audience grid on 2026-09-10; §3 carries the current number.)* **The
+   onboarding paywall no longer offers the trial at all** *(2026-09-11)*, so
+   this rule now applies only to trials started from the in-app surfaces — which
+   also removes the cheapest path to a trial-abuse loop, since a trial can no
+   longer be started by a session that has never left onboarding.
 5. **Referral gating** (v1.1): payout only after the invited user's first
    generation; invited account ≥24h old at payout; caps of 3/month and 10
    lifetime for the referrer.
-6. **One monitoring query instead of a prevention system.** Daily: accounts where
+6. **Four character portraits per anonymous identity, for the life of that
+   identity** (decided 2026-09-11; migration 00084,
+   `claim_guest_portrait_request`, enforced in `generate-character-image`).
+   Onboarding's aha is now the portrait, and it is drawn **before** the email is
+   asked for — so the first thing an unverified identity can do is spend real
+   money at the image provider, with no credit reservation and no idempotency
+   key in front of it. 00055's 12-per-hour window does not bound that: it bounds
+   one session, and a fresh session is one `signInAnonymously` call away, which
+   00055 recorded as its own open gap. Four is the number because onboarding
+   makes one character and offers one reimagine (two requests), and four leaves
+   room for a retry and a second character while staying far under the hourly
+   window. It is also the free-tier portrait allowance the paywall already
+   promises, so a guest who signs in has spent the allowance they were told
+   about and not a hidden second one. **The key is `auth.users.id`, never a
+   device identifier** — see the "deliberately not building" list below;
+   collecting an IDFV or install UUID is a privacy and store-disclosure
+   decision, not a rate-limit detail. The residual hole (mint a new anonymous
+   session, get four more) is accepted and stated rather than closed, and is
+   bounded on the other side by control 1's three guest bootstraps per network
+   per day. A refusal is **403** with `code: "guest_portrait_cap"` and the copy
+   "Sign in to keep making characters." — not 429, because there is nothing to
+   wait for. A failed generation calls `release_guest_portrait_request` and does
+   not burn a slot. The counter stops being consulted the moment `is_anonymous`
+   is false; it is **not** carried to a named account by `claim_guest_characters`
+   (00082), which moves characters and nothing else.
+7. **One monitoring query instead of a prevention system.** Daily: accounts where
    `subsidized_grants / total_grants > 0.9` **and** `lifetime_grants > 15`. Costs
    nothing, catches the farm, and produces the data needed to decide what to build
    next.
@@ -1552,7 +1788,7 @@ the abuse.
 |---|---|---|
 | **Schema** | **None to `credit_ledger.amount`** — stays `integer` | 1 credit = 1 action needs no new representation |
 | Schema | Balance zeroing on subscription lapse, plus the 3-day pre-expiry warning job | §8 |
-| Schema | Per-chapter counters: AI redrafts used, paragraph edits used, cover regens used | Enforce §1's free caps |
+| Schema | Per-chapter free-reimagine counter (author-owned stories only) and cover regens used. **The AI-redraft and paragraph-edit counters are cancelled** — those actions do not exist (§1a) | Enforce §1's free caps |
 | Schema | `audio_unlocks (user_id, chapter_id)` — the permanent listen entitlement | §1 |
 | **RPC `deduct_credit`** | Extend the reason allowlist beyond `'generation'`; add `'chargeback'` clamped to available balance | **Blocks every spend path in this document today** |
 | **RPC `reserve_generation_operation`** | Replace the hardcoded amount `1` with a per-action price lookup | Prices must be data, not literals |
@@ -1576,7 +1812,7 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 
 | Phase | Contents |
 |---|---|
-| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; free caps on drafting and reimagine; streak ladder + repair; welcome bonus; lapse warnings; paywall (no offer); 6 packs; 9 SKUs |
+| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; the free tier's 1 reimagine per authored chapter and 4 portraits per account, both unlimited on a plan; streak ladder + repair; 3-credit welcome bonus; lapse warnings; paywall (no offer); 6 packs; 9 SKUs |
 | **2 — Audio** | Only after edge-tts cost/reliability is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
 | **3 — v1.1** | Referral with deep-link attribution |
 
@@ -1604,7 +1840,7 @@ economy is tuned on evidence rather than argued about.
 | **Reader → Writer upgrade rate** | Validates that the price list makes upgrading obvious rather than buying packs | Pack purchases by Readers > upgrades → re-run the §4 inversion check |
 | **Partial-balance actions** ("text now, cover later") | Validates the core benefit of unbundling | < 10% of blocked users → the sheet's option 1 is not readable |
 | **Cover regeneration rate** | A proxy for cover-prompt quality | > 40% of covers regenerated → fix the prompt, not the price |
-| **AI redrafts per chapter, p95** | Validates the 3-redraft cap | p95 ≥ 3 → raise it; the cap should never bind on normal use |
+| **Reimagines per subscriber per month, p99** | The unlimited-reimagine and unlimited-portrait rows are a deliberate exception to the entitlement rule (§5) and are bounded only by rate limits | p99 > ~40 reimagines or ~30 portraits → reprice the exception to a stated monthly ceiling |
 | **Actual $/action: LLM + image + TTS** | Every margin number here is an estimate | Any line > 1.5× the §2 estimate → re-run §4 |
 
 ---
@@ -1703,7 +1939,12 @@ economy is tuned on evidence rather than argued about.
 4. **Audio is 1 credit per chapter, unlocked permanently.** Re-listens,
    pause/resume and library re-opens are free forever, including for the user's
    own stories.
-5. **No voice tiers.** Every voice is available on every tier, including free.
+5. ~~**No voice tiers.** Every voice is available on every tier, including
+   free.~~ **Reversed 2026-09-10, and **Premium voices** is a paywall entitlement
+   row since 2026-09-11.** The tiering line is `edge_tts` (free) versus
+   `runpod_minimax` (paid), which is two engines rather than packaging — but
+   `edge_tts` does not work yet, so the row ships only once the worker at
+   `EDGE_TTS_SERVICE_URL` exists (§5, *Deliberately removed*; §12 item 8).
 6. **Never charge twice for the same thing**, and **never charge for our own
    failure** — failed generations auto-refund the full reservation.
 
@@ -1712,9 +1953,15 @@ economy is tuned on evidence rather than argued about.
 7. **Free forever, uncapped:** read, re-read, browse, search, library, manual text
    editing, save, publish, unpublish, delete, upload your own cover, follow, like,
    comment, share, retry after a failed generation.
-8. **Free but capped:** **3 AI redrafts per chapter**, **20 paragraph AI edits per
-   chapter**, **2 reimagines per chapter**, **4 character images per account
-   (create or edit)**. Beyond each cap, 1 credit. ~~1 cover
+8. **Free but capped** *(rewritten 2026-09-11)*: on the **free tier**, **1
+   reimagine per chapter of a story you created** and **4 character images per
+   account (create or edit)**. Beyond each, 1 credit — except a non-author
+   reimagine, which is 1 credit from the first because it forks. On **any paid
+   plan**, reimagines and character portraits are **unlimited and never charged**,
+   which is a recorded exception to the entitlement rule (§5). ~~**3 AI redrafts
+   per chapter**, **20 paragraph AI edits per chapter**~~ — **retired
+   2026-09-11**: neither action exists in the shipped product; Reimagine is the
+   only AI editing action and hand editing is free and uncapped (§1a). ~~1 cover
    regeneration per paid cover~~ — **removed 2026-09-10**: cover regeneration costs
    1 credit from the first.
 9. ~~**Render settings are constraints, not defaults.**~~ **Retired 2026-09-10.**
@@ -1756,8 +2003,22 @@ economy is tuned on evidence rather than argued about.
     chapter 1, and chapter 1's art. Every chapter after is 1; chapter art is 1
     each; a cover regeneration is 1. *(Revised 2026-09-10 from a 3-credit
     unbundled start.)*
-12. **Presentation:** weekly and yearly upfront, yearly selected by default with
-    the 3-day trial, monthly disclosed below, weekly without a trial.
+12. **Presentation:** weekly and yearly upfront, yearly selected by default,
+    weekly without a trial.
+12a. **The onboarding paywall shows weekly and yearly only** *(2026-09-11, the
+    W7 hand-off)*: **no trial offered, no monthly, no More options disclosure.**
+    Monthly stays a live SKU sold in-app; the trial stays a store configuration
+    on the yearly SKU. The yearly card's **SAVE 80%** badge is the weekly
+    annualised comparison ($311.48 vs $59 = 81%, rounded down), never the 62%
+    yearly-vs-monthly discount.
+12b. **The yearly card's note is a daily price, not a monthly equivalent**
+    *(2026-09-12)*: **"$0.16 a day"**, derived in code as $59 / 365 rounded to
+    cents, replacing "$4.92 a month, billed yearly". A monthly equivalent is a
+    comparison against the plan this screen withholds, and it is unreadable
+    without the price it compares to. Both derived numbers on the card — the
+    badge and the note — are recomputed from the plan's price and never typed as
+    literals, so a localised price moves them. Neither may be rendered as a price
+    in its own right or as a struck-through former price.
 13. **The grant is 50 credits, not 100.** At $59/yr, 100 credits loses money at
     every story shape and 50 clears 12% at the worst and 49% blended. The smaller
     grant also routes overflow demand into 60–78% margin packs. A competitor's
@@ -1784,9 +2045,18 @@ economy is tuned on evidence rather than argued about.
     shape**, and against the §4 inversion check.
 18a. **There are no free image retries** *(2026-09-10)*. A failed generation still
     auto-refunds; a delivered image you dislike costs a credit to replace.
-18b. **Reimagining a chapter is free twice, then 1 credit** *(2026-09-10)*. ⚠ The
-    free allowance is unscoped and the fork counter is unbuilt — see §3.
-18d. **Character images: 4 free per account, then 1 credit each** *(2026-09-10)*.
+18b. **Reimagining a chapter is unlimited on any paid plan and never charged;
+    on the free tier it is 1 free per chapter of a story you created, then the
+    plan is offered rather than a price; a non-author reimagine forks and costs 1
+    credit from the first** *(revised 2026-09-11 from "free twice, then 1 credit
+    each")*. **Both ⚠ holes the old rule carried are resolved**: the free
+    allowance is scoped to authored stories, and the fork-counter problem
+    dissolves once subscribers are exempt and the free allowance is one. The
+    server-side subscriber exemption and the free counter are **not implemented** —
+    `reimagine-chapter` charges everyone from the first call today.
+18d. **Character images: unlimited on any paid plan; 4 free per account then 1
+    credit each on the free tier** *(2026-09-10, amended 2026-09-11 to add the
+    subscriber exemption)*.
     **Generating and editing draw on the same four**, because a portrait is made
     from the Name/Description/Appearance fields and an edit to any of them is a
     fresh paid image. The counter is on the **account** because saved characters
@@ -1803,6 +2073,29 @@ economy is tuned on evidence rather than argued about.
 18c. **Download PDF is a paid-plan entitlement** *(2026-09-10)*, the first
     entitlement in the product. Export ends with the plan and the paywall must
     never imply otherwise.
+18f. **The paywall sells five rows, in this order** *(2026-09-11)*: 50 credits
+    every month (20 a week on weekly), unlimited character portraits, unlimited
+    reimagines, premium voices, download stories as PDF. Each paid row carries its
+    free-tier figure as quiet secondary text. Never "unlimited generation",
+    "ad-free", "no interruptions", "priority generation", "yours forever",
+    testimonials or star ratings.
+18g. **Unlimited portraits and unlimited reimagines are a recorded exception to
+    the entitlement rule** *(2026-09-11)*. Both call a paid API, so both fail the
+    "does it call a paid API?" test that governs every other entitlement. They
+    ship as entitlements anyway because nothing is taken from the free tier and
+    the move is un-gating rather than gating. They are bounded only by the
+    existing rate limits — 12 portrait requests/hour, 6 generations/minute — which
+    is thin, and **server-side ledger enforcement of both the exemption and the
+    free tier's counters is a follow-up that does not exist**. Do not extend the
+    exception to a third action without re-running the same honesty pass.
+18h. **The 3 free AI redrafts and 20 free paragraph edits are retired**
+    *(2026-09-11)*. Neither action exists in the shipped product: the only AI
+    editing action is **Reimagine** (`ReimagineSheet` → `reimagine-chapter`), and
+    hand editing is a plain text editor, free and uncapped. The caps were pricing
+    a feature that was never built, and they were being cited — by §3's scoping
+    argument, §10's counter columns and §11's p95 metric. All three are corrected.
+    If a redraft or paragraph rewrite is ever built it is a text call and returns
+    here to be priced (§1a).
 
 ### Audio
 
@@ -1821,7 +2114,7 @@ economy is tuned on evidence rather than argued about.
     |---|---|---|---|---|
     | Reading streak | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime, nothing repeats | Launch |
     | Streak repair | **0** — restores the streak | day after a missed day, on 30 min reading | 2/month | Launch |
-    | Welcome bonus | **10** | on declining the paywall | once per authenticated account | Launch |
+    | Welcome bonus | **3** | on declining the paywall | once per authenticated account | Launch |
     | Guest bootstrap | **3** | on first guest bootstrap (§9) | once per anonymous account | Launch |
     | Referral — referrer | **10** | on invited user's 1st generation | 3/mo, 10 lifetime | v1.1 |
     | Referral — invited | **5** | on own 1st generation | once | v1.1 |
@@ -1838,7 +2131,7 @@ economy is tuned on evidence rather than argued about.
     streak; it does not pay the missed rung. It costs nothing, because reading is
     free, and it buys a 30-minute reading session.
 23. **Ceiling: steady-state earnable free credits are zero.** The ladder pays 14
-    once, all inside the first ten days; lifetime free earn is 24 with the welcome
+    once, all inside the first ten days; lifetime free earn is 17 with the welcome
     bonus, against 50/month on every paid plan. Trivially inside the 50%
     principle-7 limit. **The ladder terminates rather than capping, so no monthly
     ceiling is needed** — at the cost of a retained free user having no ongoing
@@ -1861,20 +2154,32 @@ economy is tuned on evidence rather than argued about.
 
 ### Onboarding
 
-29. **Sequence: purpose branch → path-specific paywall → decline → 10 welcome
-    credits → welcome → app.** *(Revised 2026-09-10: the one-time offer step is
-    removed.)* Readers
-    reach their paywall after the shelf reveal; writers reach theirs after the
-    blueprint and preview. The welcome bonus is a consolation on the decline
-    path, not a greeting; subscribers do not receive it, and it is **10 for
-    everyone** with no reader/writer split. The guest bootstrap is a separate
-    3-credit grant under a separate key — §6 and §9.
+29. **Sequence: one character flow → one paywall → decline → 3 welcome credits →
+    welcome → app.** *(Revised 2026-09-10, the one-time offer step removed;
+    revised again 2026-09-11, the reader and writer paths merged and the bonus
+    reduced from 10 to 3.)* Every purpose reaches the same paywall after saving a
+    character. The welcome bonus is a consolation on the decline path, not a
+    greeting; subscribers do not receive it, and it is **3 for everyone**. The
+    guest bootstrap is a separate 3-credit grant under a separate key — §6 and
+    §9.
 29a. **The welcome screen carries no numbers.** It is one shared beat on every
     path, saying only "Welcome to Katha" and "Reading is always free." The
     balance is announced separately by the in-app message system on landing, so
     the screen needs no per-path copy and does not duplicate that message.
 30. **The paywall is skippable at every step**, with a large and obvious dismiss,
     and there is no one-time offer.
+30a. **The onboarding paywall sells two durations and four benefits**
+    *(2026-09-11, the W7 hand-off)*. Weekly and yearly, yearly selected by
+    default and badged SAVE 80%; **no trial, no monthly, no More options**. The
+    benefit rows are 50 credits a month, unlimited portraits and reimagines,
+    premium voices, download as PDF — the character's name is in the portrait
+    and voice rows, and the copy drops to a no-character voice ("Katha is ready
+    when you are") on the in-app entry, which has no character to promise
+    anything about. The only top control is the close. *(Amended 2026-09-12: the
+    yearly card carries **"$0.16 a day"** rather than a monthly equivalent —
+    decision 12b — and the plan cards are compact, about 92 pt, inside a pinned
+    sheet so the price and the button are never scrolled away.
+    `ONBOARDING_FLOW.md` §12-13 is canonical for that layout.)*
 31. **All grants require a server-verified Supabase JWT.** Named-account grants
     require a named account; the narrowly rate-limited guest bootstrap exception
     is defined in §9 and cannot publish publicly.
@@ -1951,10 +2256,16 @@ economy is tuned on evidence rather than argued about.
 45. **Three-phase rollout:** (1) unbundled creation, free reading, streak ladder,
     paywall sequence, packs, all SKUs; (2) audio, after cost measurement, catalog
     job first; (3) referral.
-45a. **The welcome bonus is 10, the guest bootstrap is 3, and they are separate
-    grants under separate operation keys** — §6. *(2026-09-05.)* The §2
-    Writer-yearly 40%-margin row has not been re-run against 10 and that is the
-    open item this decision carries; nothing else in this file assumes the old 3.
+45a. **The welcome bonus is 3, the guest bootstrap is 3, and they are still
+    separate grants under separate operation keys** — §6. *(Raised to 10 on
+    2026-09-05; returned to 3 on 2026-09-11.)* Three credits is exactly one story
+    start, which is the legible unit; ten was a week of product given to someone
+    who had not yet decided they wanted it, and free credits flow to the most
+    expensive action a credit can buy. The keys stay separate because the two
+    numbers are bounded by different things — conversion economics for the named
+    grant, a network-prefix rate limit for the guest one — so their equality is a
+    coincidence of this revision, not a merge. The open item the 10 carried is
+    closed with it.
 45b. **Referral redemption is deep-link attribution, with a code field in Profile
     as the fallback. No code field on the paywall, ever** — §5 Referral.
     *(2026-09-05.)*

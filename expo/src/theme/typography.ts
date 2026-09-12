@@ -190,6 +190,20 @@ export const onboardingType = {
     fontWeight: '400' as const,
     letterSpacing: 0,
   },
+  /**
+   * Text inside a form field, and its placeholder. 16/22 in the UI family at
+   * regular weight: the same face the Create brief's fields use, so a name
+   * typed in onboarding and a name typed in the studio look like the same
+   * thing. Never the display face (a 28pt headline in a box read as a
+   * heading, not an input) and never the reader serif (that is prose).
+   */
+  field: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontFamily: fonts.ui,
+    fontWeight: '400' as const,
+    letterSpacing: 0,
+  },
   /** Secondary copy: the line under a title or an eyebrow. 14.5/18, regular family. Always smaller than `body`. */
   helper: {
     fontSize: 14.5,

@@ -22,12 +22,19 @@ const REVENUECAT_PUBLIC_KEY = IS_DEVELOPMENT_BUILD
     default: undefined,
   });
 
-/** Add a tier by adding exactly one entitlement-to-tier entry here. */
+/**
+ * Add a tier by adding exactly one entitlement-to-tier entry here.
+ *
+ * ONE TIER, THREE DURATIONS. There is no reader tier and no writer tier: the
+ * split shipped in the old onboarding paywall and was removed by pricing on
+ * 2026-09-10, so the product is one plan (`katha`) sold weekly, monthly or
+ * yearly. Keeping two tiers here meant a "reader" could be premium for reading
+ * and not for writing, which nothing in the app charges for any more.
+ */
 export const ENTITLEMENT_TIER_MAP = {
-  katha_reader: "reader",
-  katha_writer: "writer",
+  katha: "katha",
   // Kept while the existing RevenueCat Test Store configuration is migrated.
-  katha_ai_pro: "writer",
+  katha_ai_pro: "katha",
 } as const;
 
 export type KathaTier = (typeof ENTITLEMENT_TIER_MAP)[keyof typeof ENTITLEMENT_TIER_MAP];
@@ -190,7 +197,11 @@ class RevenueCatService {
     }
   }
 
-  async presentPaywallIfNeeded(entitlement = "katha_writer"): Promise<unknown> {
+  // `katha`, not `katha_writer`: the writer/reader entitlement split is gone
+  // (see ENTITLEMENT_TIER_MAP). A stale default here would present the paywall
+  // to a paying subscriber, because the entitlement it asked about no longer
+  // exists on anyone's profile.
+  async presentPaywallIfNeeded(entitlement = "katha"): Promise<unknown> {
     if (Platform.OS === "web" || !this._ready) return null;
     try {
       return await RevenueCatUI.presentPaywallIfNeeded({

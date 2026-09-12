@@ -24,6 +24,21 @@ export const shadows = {
   raised: '0 1px 2px rgba(15, 14, 12, 0.08), 0 6px 16px rgba(15, 14, 12, 0.08)',
   /** Floats over content: sheets, popovers, toasts, modals. */
   overlay: '0 2px 4px rgba(15, 14, 12, 0.10), 0 12px 32px rgba(15, 14, 12, 0.16)',
+  /**
+   * Character onboarding (W3 to W7) hand-off values. Scoped to those screens.
+   *
+   * The hand-off draws each of these as one layer. The system rule that every
+   * shadow carries a contact layer as well as an ambient one still applies,
+   * so each gets the faintest possible contact line in front of the signed
+   * value: 1px at 4%, invisible next to the reference and enough to keep the
+   * depth model honest.
+   */
+  onboardingCta: '0 1px 1px rgba(15, 14, 12, 0.04), 0 16px 30px -12px rgba(255, 107, 26, 0.55)',
+  onboardingCard: '0 1px 1px rgba(30, 26, 22, 0.04), 0 24px 40px -22px rgba(30, 26, 22, 0.5)',
+  onboardingHeroCard: '0 1px 1px rgba(30, 26, 22, 0.04), 0 32px 50px -20px rgba(30, 26, 22, 0.6)',
+  onboardingPortrait: '0 1px 1px rgba(30, 26, 22, 0.04), 0 40px 60px -28px rgba(30, 26, 22, 0.6)',
+  onboardingChip: '0 1px 1px rgba(30, 26, 22, 0.04), 0 20px 34px -18px rgba(30, 26, 22, 0.35)',
+  onboardingFieldFocus: '0 1px 1px rgba(15, 14, 12, 0.04), 0 8px 22px -14px rgba(255, 107, 26, 0.5)',
 
   /**
    * The 38-46px circular ICON button (back control, close, and friends). Not

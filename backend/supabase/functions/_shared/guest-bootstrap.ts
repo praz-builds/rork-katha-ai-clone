@@ -3,6 +3,22 @@
  * The named grant is protected by Apple / Google / email; this one is protected
  * only by the network-prefix limit below, and three grants of 10 per network per
  * day is a farm. See CREDITS_AND_PRICING.md section 6.
+ *
+ * That limit is not the only thing bounding an unverified identity. The full
+ * list, so the next person weighing a change can see them together:
+ *
+ *   - 3 guest bootstrap grants per network per day, 300 per day globally
+ *     (migration 00035, `claim_anonymous_bootstrap_grant`, below).
+ *   - 4 character portraits per anonymous identity, for the life of that
+ *     identity, reimagines included (migration 00084,
+ *     `claim_guest_portrait_request`, enforced in `generate-character-image`).
+ *     Onboarding draws its portrait before the email is asked for, so this is
+ *     the only bound in front of provider spend on a brand-new session.
+ *   - `story-shape` rate limits, per user and per network (00034-00036).
+ *
+ * Every one of them is keyed on the network or on `auth.users.id`. None is
+ * keyed on a device: Katha collects no device identifiers, and adding one is a
+ * privacy and store-disclosure decision, not a rate-limit detail.
  */
 export const GUEST_BOOTSTRAP_CREDITS = 3;
 export const GUEST_BOOTSTRAP_WINDOW_LIMIT = 3;
@@ -15,6 +31,36 @@ type BootstrapUser = {
 /** Supabase marks guest identities explicitly in the verified user payload. */
 export function isAnonymousUser(user: BootstrapUser): boolean {
   return user.is_anonymous === true;
+}
+
+/**
+ * The largest `claim_guest_token` worth trying to verify.
+ *
+ * A Supabase access token is a compact JWS of a few hundred bytes; 4 KB is
+ * generous for one and cheap to reject. The bound exists so a garbage body
+ * cannot make the function spend a round trip to the auth service.
+ */
+const MAX_CLAIM_TOKEN_CHARS = 4096;
+
+/**
+ * Read the optional anonymous access token a converting client sends.
+ *
+ * Shaped, not decoded: three dot-separated base64url segments is what a JWS
+ * looks like, and anything else is not worth handing to the auth service.
+ * Verification is Supabase's job and happens in `bootstrap-user` -- this only
+ * decides whether there is a candidate at all. Returns null for every absent,
+ * oversized or malformed value, which is the same as "no claim".
+ */
+export function readGuestClaimToken(
+  body: Record<string, unknown> | null,
+): string | null {
+  const value = body?.claim_guest_token;
+  if (typeof value !== "string") return null;
+  const token = value.trim();
+  if (!token || token.length > MAX_CLAIM_TOKEN_CHARS) return null;
+  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)
+    ? token
+    : null;
 }
 
 /**

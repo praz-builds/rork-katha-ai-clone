@@ -123,6 +123,26 @@ and a new **§10.2a Extending a finished story**.
 `source-of-truth/CREDITS_AND_PRICING.md` §1 — a story's total is what it was
 planned for, not what it is fixed at.
 
+### The onboarding paywall, rebuilt to the W7 hand-off (client only)
+
+`expo/src/components/onboarding/OnboardingPaywall.tsx` is redrawn to
+`W7-Paywall.dc.html`: a portrait-and-heading header, four benefit rows in one
+bordered card, two plan cards, and the close as the only top control (the
+progress row is gone — W7 is the end of the flow, not a step in it). **Three
+things came off the screen and none of them are accidents:** the 3-day free
+trial, the monthly card, and the "More options" disclosure that revealed it.
+Monthly stays a live SKU sold in-app and the trial stays a store configuration
+on the yearly SKU; neither is offered on the one screen a new user cannot skip
+past. The yearly card's **SAVE 80%** badge is the weekly-vs-yearly annualised
+comparison ($311.48 against $59 = 81%), not the 62% yearly-vs-monthly discount.
+The RevenueCat purchase path, the off-store simulation for web and review, the
+user-cancel handling and the inline error line are unchanged. Copy is now
+derived from `purpose` and the character's name inside the component rather than
+passed in as a `headline` string, so the in-app entry from Home and Credits
+(which has no character) says "Katha is ready when you are" instead of a
+character-voiced line with an empty name in it. Docs:
+`source-of-truth/CREDITS_AND_PRICING.md` §3, §6, §9 and the decisions list.
+
 ---
 
 ## 2026-09-10 UTC — Profile identity, avatars, and the two functions that decide what a profile may show
@@ -4982,3 +5002,474 @@ so a second of network trouble would have produced a cast-less cover marked
 `ready` and the writer would have to pay for a regeneration to undo it. It now
 throws into `generateAndStoreCover`'s catch, which marks the cover failed,
 refunds, and lets the concept card stand in (decision 39).
+
+---
+
+## 2026-09-11 — Onboarding stops describing a story and starts making a person
+
+**Session:** `codex/character-onboarding`, documentation lane. Changes confined
+to `source-of-truth/ONBOARDING_FLOW.md`, `source-of-truth/CREDITS_AND_PRICING.md`,
+`source-of-truth/STORY_GENERATION_FLOW.md` and this file. No code, no schema, no
+deployment. The client work lands on the same branch from the other lanes.
+
+### The onboarding rebuild
+
+The aha is no longer "type a story idea and read a 150-word preview". It is
+**make one character, see their portrait**. Five screens replace three:
+
+| | Was | Is |
+|---|---|---|
+| §8 | W1 Idea | **C0 Bridge** — Before the story, the person. |
+| §9 | W2 Blueprint | **C1 Who** — Name, Appearance, genre-seeded TRY ONE chips |
+| §10 | W3 Preview | **C2 Wait** — portrait frame, redrawing mark, no spinner |
+| — | — | **C3 Reveal** — the portrait, Not quite ×2, then the control is gone |
+| — | — | **C4 Plan bridge** — the 3-credit price named before the ask |
+
+**The reader path R1-R4 is retired**, and Read, Write and Both now take the same
+flow in reader- or writer-voiced copy. Three reasons, recorded in a dated note
+under §4 rather than by deleting the sections: one flow is one flow to maintain;
+the artifact is whole rather than a truncated preview the person can never
+finish; and a saved character is cross-story and makes the person's next story
+start cheaper, which is `CREDITS_AND_PRICING.md`'s own finding ("Saved characters
+make the story start cheaper" — $0.221 to $0.104 on the worst story shape).
+
+R3's deliberate house break goes with it, which is the position §12 item 7 of the
+pricing file had already argued for on its own.
+
+**A1 becomes "Save {Name}"** with `artifact_kind: character`; the `shelf` and
+`blueprint` kinds are retired. **§12 and §13 merge into one paywall** — one
+product at three durations, weekly and yearly as cards, monthly under More
+options, five entitlement rows in a fixed order. **§14's one-time offer is marked
+removed** (pricing removed it 2026-09-10) and its entire `onboarding_offer_*`
+event family is deleted rather than deprecated, which makes the countdown ban
+absolute with no carve-out left to audit.
+
+**§16 is now a portrait contract**, not a concept contract: the
+`generate-character-image` request and response, the anonymous session, one
+character, two reimagines, failure semantics that never substitute a fallback
+portrait, no ledger row, and a `user_characters` row as what A1 saves.
+
+**WELCOME keeps its copy and gains a credits animation:** three gold spark coins
+settle on the screen and fly to Home's credits pill on Open Katha, which bumps
+and ticks 0 → 3. Once per account, persisted. Reduced motion shows the number.
+
+### The identity finding, and the fix that landed beside it
+
+The question this lane was asked to answer in code rather than guess at: does
+email verification upgrade the anonymous user in place, or create a new identity?
+It decides whether the saved character and the 3 guest credits survive sign-in.
+
+**When the lane started, it created a new identity.** `sendEmailCode` called
+`supabase.auth.signInWithOtp({ shouldCreateUser: true })` and `verifyEmailCode`
+called `supabase.auth.verifyOtp({ type: "email" })` — Supabase's
+create-or-sign-into-an-account pair, not its convert-an-anonymous-user pair.
+`user_characters` is owner-scoped under RLS (migration 00057), so the character
+row written on the guest session stayed where it was and the new account could
+not see it. The library came back empty, the balance read zero, and nothing
+reported an error. On a screen titled **Save {Name}**, the one thing lost was
+{Name}.
+
+**It now converts in place**, fixed on this branch while this lane was writing:
+`auth.updateUser({ email })` on the guest session, then
+`verifyOtp({ type: "email_change" })`. Same `auth.users.id`, same `profiles.id`,
+so the character, the credits and the cached display name stay attached and
+nothing is migrated. Only `is_anonymous` flips; `bootstrap-user` called again by
+the now-named user upserts the same profile row, no longer takes the guest branch
+and mints no second grant.
+
+**One fallback, and it behaves differently on purpose.** `updateUser` fails when
+the address already belongs to somebody, and there is no in-place merge for an
+account that predates the device. That path signs in normally and then re-points
+the guest's `user_characters` rows with the service-role-only
+`claim_guest_characters` RPC (migration 00081), proven by handing `bootstrap-user`
+the still-valid anonymous access token, which the server verifies with Supabase
+Auth rather than trusting a client claim. **The 3 guest credits do not move**,
+and that asymmetry is an anti-abuse decision: the guest grant is rate-limited per
+network prefix, and letting it ride onto any account a device signs into turns
+that limit into a farm. A character is the person's own artifact; credits are
+money.
+
+Recorded in `ONBOARDING_FLOW.md` §16 with both paths tabulated, and as decision
+39 there.
+
+### The pricing changes
+
+- **The welcome bonus is 3, not 10**, everywhere including §6's diagram, the
+  earn table, the free-tier exposure arithmetic (lifetime free earn 24 → 17) and
+  the decisions list. Three credits is exactly one story start: the cast, chapter
+  1's words and its art. Ten was a week of product given to somebody who had not
+  yet decided they wanted it, and free credits flow to the most expensive action
+  a credit can buy.
+- **Guest 3 and named 3 are now equal, and the keys stay separate.** They are
+  bounded by different things — conversion economics for the named grant, a
+  salted network-prefix limit for the guest one — so equality is a coincidence of
+  this revision, not a merge.
+- **Reimagine, both ⚠ holes closed.** Subscribers unlimited and never charged;
+  free tier 1 free per chapter on stories they created, then the plan is offered
+  rather than a price; a non-author reimagine forks and costs 1 credit from the
+  first. The fork-counter problem dissolves once subscribers are exempt and the
+  free allowance is one.
+- **Character portraits:** unlimited on any paid plan, 4 per account lifetime
+  then 1 credit on the free tier.
+- **Plan entitlements** gains rows for unlimited portraits, unlimited reimagines,
+  premium voices and PDF export, with the "does it call a paid API?" test
+  answered honestly: two of the four rows **fail it**. They ship anyway as a
+  recorded exception — the move is un-gating rather than gating, nothing is taken
+  from the free tier — bounded only by the existing rate limits, which is thin
+  and is written down as thin.
+- **The 3 free AI redrafts and 20 free paragraph edits are retired.** Neither
+  action exists in the shipped build: `ReimagineSheet` over `reimagine-chapter`
+  is the only AI editing action, and hand edits are a plain text editor, free and
+  uncapped. The caps were pricing a feature that was never built *and were being
+  cited* — by §3's reimagine-scoping argument, by §10's planned counter columns
+  and by §11's p95 redraft metric. All three corrected, in both that file and
+  `STORY_GENERATION_FLOW.md` §10.3 and §10.6.
+
+### Follow-ups this entry deliberately leaves open
+
+1. **Server-side subscriber exemption in `reimagine-chapter`.** It reserves a
+   credit through `reserve_generation_operation` on every call, for everyone,
+   with no subscriber check and no counter of any kind. Until it lands, the code
+   charges from the first reimagine on every tier and the document describes an
+   intent rather than behaviour.
+2. **The 4-portrait cap in `generate-character-image`.** It charges nothing and
+   counts nothing today; the only bound is `claim_character_portrait_request` at
+   12 requests/hour, which bounds a loop and not a user. When the cap lands, the
+   onboarding portrait must be scoped **outside** it, exactly as a story start's
+   cast of three is — nobody should arrive in the product having spent a quarter
+   of their free allowance on the screen that introduced it.
+3. **The welcome grant deployment is deliberately deferred.** The amount moved
+   from 10 to 3 in the document; no migration was written and nothing was
+   deployed. The grant is idempotent under `welcome:{user_id}` and the number
+   belongs in the server-side price map that decision 42 has been asking for
+   since 2026-09-02, not in a fresh literal inside an edge function. Changing it
+   in the wrong place is how the 1-versus-3 story-start disagreement recorded in
+   AGENTS.md happened, and this is not the commit to repeat it in.
+The anonymous-identity question is **closed, not deferred** — see above. Migration
+00082 (`claim_guest_characters`) is written; check whether it has been run against
+`iafeuxgoiknncgyjmugd` before relying on the fallback path in production.
+
+---
+
+## 2026-09-11 — The onboarding character survived the portrait and not the sign-in
+
+**Agent F, `codex/character-onboarding`.** Character onboarding makes its aha on
+the anonymous session: the portrait is generated, `saveCharacterToLibrary`
+writes a `user_characters` row owned by the ANONYMOUS `profiles(id)`, and only
+then is an email asked for. Verifying that email threw the character away.
+
+`sendEmailCode` called `signInWithOtp({ shouldCreateUser: true })` and
+`verifyEmailCode` `verifyOtp({ type: "email" })` — Supabase's create-or-sign-into
+-an-account pair, not its convert-an-anonymous-user pair. So `auth.users.id`
+changed, `user_characters` is owner-only under RLS (00057), and the library came
+back **empty with no error**. The three guest credits from
+`bootstrap_anonymous_user` (00035) stayed behind too.
+
+**What changed.** `expo/src/lib/session.ts` now converts in place —
+`updateUser({ email })` on the guest session, then
+`verifyOtp({ type: "email_change" })`. Same id, same profile, nothing to
+migrate. `bootstrap-user` called again by the now-named user takes the `!guest`
+branch, so no second guest grant is minted and the same `user_id` and balance
+come back. The anonymous `profiles` row is not deleted: it **is** the account
+now, only `is_anonymous` flipped.
+
+**The one path that cannot keep the id** is an address that already belongs to
+an account. There we sign into that account and then re-point the characters,
+proving the claim with the still-valid anonymous access token:
+`bootstrap-user` accepts an optional `claim_guest_token`, verifies it against
+Supabase Auth (never a user id asserted by the client), requires
+`is_anonymous`, and calls the new service-role-only
+`claim_guest_characters(p_guest_user_id, p_owner_id)` — migration **00082**,
+renumbered from 00081 after a collision with
+`00081_extension_is_one_chapter_at_a_time`. It moves `owner_id` on that one
+table and nothing else. **Credits deliberately do not move**: the guest grant is
+capped per network per day and carrying it onto named accounts would turn that
+cap into a farm. A name the account already uses is skipped rather than merged,
+because `user_characters_owner_name_key` would otherwise abort the whole claim.
+
+**Three smaller holes closed on the same path.**
+
+- `saveCharacterToLibrary` now enforces 00057's own CHECKs client-side (name
+  1-100, background/appearance ≤ 500, measured trimmed as Postgres measures
+  them), so a long appearance fails with a sentence instead of a PostgREST
+  constraint violation on the aha screen.
+- The AsyncStorage fallback is refused when `!__DEV__ && !isSupabaseConfigured`
+  — a release build in that state shipped without credentials, and silently
+  writing the character to the device is the worst available answer. It reports
+  to Sentry (`supabase_unconfigured_in_release`) and throws.
+- `generateCharacterImage` turns a 429 from `claim_character_portrait_request`
+  into a distinct `CharacterPortraitRateLimitError` ("You've made a lot of
+  characters just now. Give it a few minutes.") instead of the generic failure,
+  because a cap is a wait and not a Try again. Onboarding shares the 12/hour
+  window and spends at most 3 of it; that decision is documented at the
+  function. It is orthogonal to follow-up 2 above, which is about the future
+  4-portrait *quota*, not this rate limit.
+
+**Verification.** `deno test supabase/migrations/00082_claim_guest_characters_test.ts`
+5 passed (moves, credits stay, name collision skipped, self-claim no-op,
+`authenticated` refused); `deno test supabase/functions/_shared/guest-bootstrap.test.ts`
+6 passed (1 new, the claim-token shape check); `deno check` and `deno fmt --check`
+clean on the changed function files. From `expo/`: `pnpm typecheck` clean,
+`pnpm lint` 0 errors (33 pre-existing warnings, none in the changed files),
+`pnpm test -- "session|saved-characters"` **7 suites, 51 tests, all passing**.
+
+---
+
+## 2026-09-11 — Four portraits for an identity nobody signed up for
+
+**Agent D, `codex/character-onboarding`.** Character onboarding moved the aha in
+front of the email: `bootstrapUser` mints an anonymous session, the portrait is
+generated on it, and only then does the flow ask who you are. That makes
+`generate-character-image` the first thing an unverified identity can do, and it
+spends real money — one call walks two Gemini models across three safety rungs,
+with no credit reservation and no idempotency key in front of it.
+
+**The existing bound did not bound this.** Migration 00055 caps the endpoint at
+12 requests/hour/user and named its own gap in the same breath: *"an anonymous
+caller minting sessions can still exceed the per-user cap."* An hourly window
+bounds a loop inside one session; it does nothing about a thousand sessions each
+using their first twelve. Onboarding turned that documented gap into the front
+door.
+
+**Migration 00084** adds `guest_portrait_quotas` and two service-role-only
+functions: `claim_guest_portrait_request(uuid)` returns false once **4** have
+been claimed for the life of an anonymous identity, and
+`release_guest_portrait_request(uuid)` decrements with a floor of zero so a
+failed generation does not burn a slot. Four, because onboarding makes one
+character and offers one reimagine — two requests — and four leaves a retry and
+a second character while staying far under the hourly window. It is also the
+free-tier portrait allowance the paywall already promises
+(`FREE_PORTRAITS_PER_ACCOUNT`), so a guest who signs in has spent the allowance
+they were told about rather than a hidden second one.
+
+**Keyed on `auth.users.id`, never a device.** The obvious counter-key is an
+install identifier, which would survive re-minting a session, and it is the
+thing this deliberately does not use: Katha collects no device identifiers, and
+starting to is a privacy and store-disclosure decision rather than a rate-limit
+implementation detail. The residual hole — mint a new anonymous session, get
+four more — is accepted and stated in the migration header rather than closed,
+and is bounded on the other side by 00035's three guest bootstraps per network
+per day.
+
+**Its own table, not a column on `profiles` and not a column on
+`character_portrait_rate_limits`.** `profiles` is selectable by its owner and
+carries column-level UPDATE grants for `authenticated` (00038), so an abuse
+counter there is readable by the account it bounds and one forgotten column in a
+future grant list away from being writable by it. And 00055's table exists to
+have its counter RESET when the window rolls — a lifetime total sitting one line
+from a `request_count = 1` is a trap for the next person. Both tables have RLS
+on and no policy, so the security-definer functions are the only door.
+
+**`generate-character-image`** now calls the lifetime claim after the hourly one,
+and only when the verified user payload says `is_anonymous`. **The error shape
+the client codes against is 403 with
+`{ error: "Sign in to keep making characters.", code: "guest_portrait_cap" }`** —
+403 and not 429, because 429 means *wait* and there is nothing to wait for. The
+429 hourly path is unchanged. A broken limiter fails closed, exactly as the
+hourly claim does: a database blip must not turn the only bound on an unverified
+caller off. Every refusal taken after the claim — the three 400s, the 502 and the
+catch — releases the slot first, because the endpoint has no credit reservation
+to refund and onboarding's **Try again** promises the retry is free.
+
+**Named users are unchanged and nothing carries across.** The counter simply
+stops being consulted once `is_anonymous` is false. `claim_guest_characters`
+(00082) still moves `user_characters` rows and nothing else — adding the guest's
+portrait count to a named account would charge a signed-in person against a cap
+that is not theirs — and 00084 does not touch it.
+
+**Docs.** `CREDITS_AND_PRICING.md` §9 gains control 6 (the list is seven now)
+and the Character portraits section gains the anonymous-vs-named split.
+`ONBOARDING_FLOW.md`: C3 now offers **one** reimagine (was two — the reimagine
+is a portrait budget and that budget is four for life), the budget is per
+onboarding and not per edited sheet, §16's Bounds and Failure tables carry the
+lifetime cap and the 403 row, §16 corrects its own claim that the onboarding
+portrait is scoped outside every cap (it is outside the *named* ledger, not the
+anonymous one), §17 prohibits device identifiers for abuse control, and decisions
+29, 32, 38 and the new 41 record it. A stale `claim_guest_characters` reference
+to migration 00081 was corrected to 00082 in two places.
+
+**Numbered 00084, not 00083.** 00083 was already taken locally by
+`extension_refund_and_bounds`.
+
+**Gates.** `deno test supabase/migrations/00084_guest_portrait_cap_test.ts`
+**8 passed** (four then refused, release returns exactly one slot, release floors
+at zero, release with no row is a no-op, identities do not share a budget, a null
+id is refused, the count is not carried by `claim_guest_characters`, and neither
+function nor the table is reachable by `authenticated`).
+`deno test supabase/functions/generate-character-image/` **13 passed** (6
+pre-existing reference-image tests, 7 new handler tests driven against a stubbed
+`fetch`: anonymous under cap gets the portrait and consults both limiters,
+anonymous at cap gets 403 + `guest_portrait_cap`, a broken limiter fails closed,
+the 429 path is untouched and never consults the lifetime cap, a named user is
+never asked, a 502 releases, a 400 releases and a named 502 releases nothing).
+`deno check` and `deno fmt --check` clean on every changed Deno file.
+
+## 2026-09-11 — The onboarding spec written this morning was superseded this afternoon
+
+**Agent K, docs only, `codex/character-onboarding`.**
+`source-of-truth/ONBOARDING_FLOW.md` specified a five-screen character sequence,
+C0 Bridge through C4 Plan bridge, and it was built. A signed-off pixel reference
+then arrived: five `.dc.html` artboards, W3 through W7, carrying exact geometry,
+durations, easings, states and both copy variants. Two descriptions of one flow
+is the failure mode `source-of-truth/README.md` exists to prevent, so the
+reference won and the file was rewritten to specify it rather than to sit beside
+it. **Nothing in the document describes C0-C4 as current**; §19 item 6 says once,
+with the date, that it was superseded the same day and why.
+
+**Three product changes are worth naming, because they are not restyles.**
+**The email moved in front of the portrait.** W5's CTA fires `sendEmailCode`, the
+`user_characters` save and `generateCharacterImage` together on the anonymous
+session, and the six-digit code screen covers the draw. The wait a person
+tolerates for a code is the wait the image needs, so it is spent once instead of
+twice, and W6 opens loading or ready depending on what landed. Two of an
+anonymous identity's four portrait slots (00084) are now spent before the code is
+verified, which is fine: the cap is keyed on the identity and verification
+upgrades that identity in place. **The reimagine counter became visible.** C3
+hid the cap by unmounting the control; W6 shows **1 free left** → **0 free left**
+because at zero the control still does something, it opens the paywall, and a
+control that acts has to say what it has left. **The paywall lost its trial and
+its monthly row** — two cards, yearly default, **SAVE 80%** (81% annualised,
+rounded down, never drawn as a discount off a former price).
+
+**Sections touched:** Summary, §0, §1, §2, §3, §7, §8-§10B (rewritten as W3
+Character CTA, W4 Craft, W5 Save, the code screen, W6 Meet), §11, §12-13 (W7),
+§16, §17, §18, §19, Decisions 22, 29, 30, 34, 40 marked superseded and 42-49
+appended. §3A, §3B, §4-§6, §14 and §15 are unchanged.
+
+**One reference conflict resolved against the artboards.** `W4-Craft.dc.html`
+draws eight progress pills and `W6-Meet.dc.html` fills six of seven. The
+hand-off's own decision list says seven pills with W3=4, W4=5, W5 and code=6,
+W6=7, and the file records that mapping as the contract with the drift named, so
+the next person does not re-derive it from the HTML.
+
+**Docs only. No code, no gates, no commit.**
+
+## 2026-09-12 — The onboarding feedback round
+
+**Agent F, docs only, `codex/character-onboarding`.** `ONBOARDING_FLOW.md` and
+`DESIGN_SYSTEM.md` now record the 2026-09-12 feedback round. `DESIGN_SYSTEM.md`
+§6 gains the onboarding field recipe — `onboardingType.field` at 16/22 in the UI
+face, the shared `Field` primitive, a 1.5 pt `onboardingBorderStrong` border that
+becomes 2 pt accent with `shadows.onboardingFieldFocus` on focus, about 50 pt on
+one line and 150 pt multiline — plus the rule it exists to hold, that **an input
+never uses the display or the reader face**, because the flow shipped with three
+field recipes across five screens and text being typed is a control. The Create
+brief's fields already use that face at 16, which is where the token's size came
+from; aligning their border and radius is deferred to its own pull request under
+the §2 migration boundary, with the four changes named exactly
+(`CreateBriefFlow.tsx`'s `textArea`, `characterInput` and `optionInput`: border
+1 → 1.5 `onboardingBorderStrong`, radius `radius.md` → 14, a focus ring added,
+and the counter moved onto the eyebrow row). In `ONBOARDING_FLOW.md`, **W4 now
+asks three things** — a required four-option gender row whose "Prefer not to say"
+omits the field entirely, sent to `generate-character-image` as one clause before
+the appearance and **never persisted or logged** — because the portrait had been
+resolving gender from the name; **W6 lost its counter and its Edit details**,
+replaced by one Reimagine pill that expands an inline appearance-and-gender
+editor with a Redraw inside it, which reverses decision 45 on its own terms (a
+control that acts must say what it has left, and this one's first act is opening
+a free editor); **W7 became a scrolling body over a pinned plan sheet**, gained
+an eight-card use-case testimonial rail that takes testimonials out of §17's ban
+while leaving star ratings, reviews and counts in it, and lost **Not now**
+because the × is the same act in the place every sheet in the app is dismissed;
+**the notification soft-prompt screen is deleted**, with the OS prompt fired on
+paywall close or purchase and the one-shot iOS consequence written down as an
+accepted trade rather than an oversight; and S1's name field and S2's thirteen
+real-`Genre` chips are specified against the shared primitives. §16's request
+shape gains optional `gender`, §17 and §18 gain the new prohibitions and the two
+retired events, and decisions 50-58 are appended with 44, 45 and 47 annotated
+where they are superseded. A stray `</content></invoke>` pair left at the end of
+`ONBOARDING_FLOW.md` by an earlier write was removed.
+
+**Docs only. No code, no gates, no commit.**
+
+**Agent S, docs only, second feedback round the same day.**
+`ONBOARDING_FLOW.md` and `CREDITS_AND_PRICING.md` now record the round that
+answered the round above, and two of this morning's entries are reversed in it.
+**The gender row is gone** — not only from W4, but from W6's edit block, from
+§16's request shape, and from `generate-character-image` and
+`_shared/image.ts` with their tests, so nothing dead is left behind pretending to
+be a contract. Two reasons are written down: with the KATHA WILL DRAW card below
+it, W4's bottom already fills the frame and a four-option row pushed the card
+that earns the screen under the fold on a 360 pt phone; and the clause it sent sat
+in front of an appearance line the person wrote themselves, where it is either
+redundant or overrides a description with a checkbox. This morning's argument
+that the model was resolving gender from the **name** survives as true — and the
+sentence directly after the name is a better fix for it than a fourth control.
+**S2's chips get Explore's emoji back** through `genreChipLabel`, exported from
+`GenreStrip.tsx` so no emoji map is copied, at 44 pt with `spacing.xl` gutters and
+a 15 pt label; the "no emoji" ban was an argument about a 40 pt pill sized for a
+word, and the tick-mark half of it stands. **Both informational cards take six
+duotone glyph tiles** — `GlyphFaceAndBuild`, `GlyphClothingAndCarry`,
+`GlyphTheName` on W4, `GlyphLeadsStories`, `GlyphSameFace`, `GlyphSavedCast` on
+W6 — with **no mark reused across the two screens**, because round one reused
+`IconPerson` and `IconPencil` on both and taught that the tiles mean nothing, and
+with copy balanced at about three words of title and six of line so a three-row
+card reads as a list; W6's lines drop `{name}`, which was wrapping a row to three
+lines on a long name while the portrait above already carried it. **W7's body
+reorders to header → benefits → testimonials**, because the entitlements answer
+the question the header asks and the rail is corroboration, and a marquee with no
+end belongs where nothing has to be scrolled past it. Its plan cards go **compact
+at about 92 pt** with the eyebrow and price on one line and a 9 pt badge, and the
+testimonial cards **lose the use-case tag from the card and from the data** — a
+label summarising the quote beneath it, and the half of the card that read as
+marketing rather than as somebody talking. **The yearly note becomes "$0.16 a
+day"**, derived in code as `59 / 365` rounded to cents rather than typed, in place
+of "$4.92 a month, billed yearly": a monthly equivalent is a comparison against
+the one plan the onboarding paywall deliberately withholds. That derivation is
+recorded in `CREDITS_AND_PRICING.md` §3 beside the SAVE 80% derivation it now
+sits next to, in §6's flow diagram, and as decision 12b with 30a amended; §4's
+constraint of record is untouched, because both figures are restatements of the
+same $59. In `ONBOARDING_FLOW.md`, principle 3, §3, §9, §10B, §12-13, §16, §17
+and §18 are amended, and decisions 59-62 are appended with 52-57 annotated where
+they are superseded or amended.
+
+**Docs only. No code, no gates, no commit.** `DESIGN_SYSTEM.md` is agent P's.
+
+**Agent X, docs only, third feedback round the same day.**
+`ONBOARDING_FLOW.md` and `DESIGN_SYSTEM.md` §6 now record the round that answered
+the second round, and it changes where work happens rather than what the flow
+asks for. **The journey has one primary button**: `DESIGN_SYSTEM.md` §6 gains the
+onboarding CTA recipe — `controls.onboardingCtaHeight` (56) at `radius.pill` in
+`colors.accent`, a white 17 / 700 UI label and `shadows.onboardingCta`, drawn by
+`Primary` in `src/components/onboarding/primitives.tsx` — scoped to every primary
+from the intro's **Get started** through the questionnaire, W3-W7, the email and
+code screens and W6's **Redraw**, to WELCOME, with the app's 64 / 20
+`controls.primaryCtaHeight` primary explicitly unchanged everywhere else. Two
+recipes is deliberate and written down as such: onboarding is full-bleed
+compositions where a 64 pt slab competes with the picture above it, and the
+failure being fixed was six buttons across consecutive screens rather than two
+recipes. **W3 stops pinning its CTA** and becomes one vertically centred group —
+stage, copy, button, `spacing.xxl` and `spacing.xl` between them, equal free space
+above and below — because W3 holds a picture and a sentence where every other
+character screen holds fields, so pinning left a band of paper that grew with the
+phone. **The draw and the library save move from W5's CTA to W4's**, one day
+after they moved onto W5's: the call takes about ten seconds and the code screen
+alone did not cover it, so starting at W4 buys the email screen as cover too and
+**W6 opening ready becomes the expected case**. W5's CTA now sends the code and
+nothing else, its three-call list becomes one, §16's call order becomes a table
+across two screens, §16's "What W5 saves" is renamed, and the back-to-W4 rule is
+specified: an unchanged sheet does not redraw, a changed one redraws on a fresh
+`requestId` and resets nothing else, the reimagine budget included. **W6's wait
+caption becomes the constant `PORTRAIT_WAIT_CAPTION`** whose wording follows the
+measured p50 from the W4 press; the number is left as `{measured}` in §10B with a
+note that the orchestrator fills it from the latency measurement before the PR,
+and principle 7 is rewritten to say the range comes from a measurement rather
+than naming 20 to 30 seconds inline — a wait time typed into JSX is a number
+nobody updates when the system gets faster. **WELCOME loses its button**: the
+coins settle, hold 700 ms, and `onOpen()` fires by itself (900 ms under reduced
+motion, because a composition that arrives whole and leaves after 700 ms reads as
+a flash), not tappable and with no skip, since every other CTA on the path buys
+something and this one bought only its own timing. **The coins become
+`CreditCoin`**, a drawn duotone mark with a gold face, a rim, a highlight and the
+Katha spark, used everywhere a credit is an object; Home's header pill keeps its
+`Sparkles` glyph so the flight reads as landing on it, and the mark itself is
+`DESIGN_SYSTEM.md` §7.2, which is another agent's. In `ONBOARDING_FLOW.md` the
+summary, principle 7, §1, §2, §8, §9, §10, §10B, §15, §16, §17 and §18 are
+amended, `onboarding_character_save_submitted` is retired in favour of
+`onboarding_character_email_submitted` with
+`onboarding_character_craft_submitted` named as the start of the portrait clock,
+and decisions 63-68 are appended. Nothing earlier is superseded, so no row is
+struck through.
+
+**Docs only. No code, no gates, no commit.** `DESIGN_SYSTEM.md` §7.x is another
+agent's; only §6 was touched here.

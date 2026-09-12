@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckSquare, Repeat, Sparkles, Square, X } from "lucide-react-native";
 
 import { Portrait, SavedCharactersPicker } from "@/components/create/SavedCharactersPicker";
-import { CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
+import { reimagineQuote, useIsSubscribed } from "@/lib/entitlements";
 import {
   detectChapterCharacters,
   replacementFromSaved,
@@ -37,6 +37,16 @@ export type ReimagineSheetProps = {
   initialPrompt?: string;
   /** A failure from the previous run to show above the composer. */
   errorMessage?: string | null;
+  /**
+   * How many reimagines this chapter has already had, for the quoted price.
+   *
+   * Defaults to 0, which quotes the first-use price. The reader does not track
+   * this yet: the per-chapter count belongs in the credit ledger beside the
+   * charge, so the server can refuse a second free run that two devices asked
+   * for at once. Until that lands the sheet quotes optimistically and the
+   * server is still the thing that charges. FOLLOW-UP: ledger enforcement.
+   */
+  reimaginesUsedOnChapter?: number;
   onClose: () => void;
   /** Fired with the assembled request; the caller starts the run and closes the sheet. */
   onSubmit: (request: ReimagineRequest) => void;
@@ -66,11 +76,17 @@ export function ReimagineSheet({
   isAuthor,
   initialPrompt = "",
   errorMessage = null,
+  reimaginesUsedOnChapter = 0,
   onClose,
   onSubmit,
   loadSavedCharacters,
 }: ReimagineSheetProps) {
   const insets = useSafeAreaInsets();
+  const subscribed = useIsSubscribed();
+  // The price the paywall promised, computed from the same module rather than
+  // written here: "1 credit" was a literal, and it was wrong for every
+  // subscriber and for the first reimagine of every chapter.
+  const quote = reimagineQuote({ subscribed, usedOnChapter: reimaginesUsedOnChapter });
   const isStandalone = story.storyMode === "standalone" ||
     (!story.storyMode && !story.plannedChapterCount && story.chapters.length <= 1);
   const detected = useMemo(() => detectChapterCharacters(story, chapter), [story, chapter]);
@@ -259,7 +275,7 @@ export function ReimagineSheet({
             </ScrollView>
 
             <View style={styles.footer}>
-              <Text style={styles.price}>Reimagine · {CHAPTER_TEXT_CREDITS} credit</Text>
+              <Text style={styles.price}>Reimagine · {quote.label}</Text>
               <Pressable
                 onPress={submit}
                 disabled={!canSubmit}

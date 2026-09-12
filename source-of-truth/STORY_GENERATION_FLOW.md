@@ -21,7 +21,7 @@
 > modal. Onboarding may use its own two-step preview, but main Create does not
 > have a separate Shape or Review screen.
 >
-> Last revised 2026-09-06. Sentences that are inference rather than shipped
+> Last revised 2026-09-11. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---
@@ -786,7 +786,7 @@ Create ·  n ✦
    │                                                  ▼
    └────────────────────────────────▶  THE STORY  ◀───┘
                                           │
-                              read · edit by hand · redraft
+                              read · edit by hand · reimagine
                               regenerate or upload the cover
                                           │
                                        Publish
@@ -888,8 +888,8 @@ Create ·  n ✦
   > off costs, and the client quotes accordingly. See note 6 above. The price
   > stated here is the intended one and is not being changed.
 - **What generates it, as of 2026-09-05.** Every generation path — this loop,
-  continuation, the paragraph editor, and the shaping call onboarding makes —
-  leads with OpenRouter `meta/muse-spark-1.3-contributor`, falls back to
+  continuation, and reimagine — onboarding stopped making a shaping call on
+  2026-09-11 — leads with OpenRouter `meta/muse-spark-1.3-contributor`, falls back to
   `meta/muse-spark-1.3`, then Gemini 3.1 Pro Preview, then the three OpenAI
   models, then the free tier. The contributor tier is the configured default and
   is **17x cheaper**. As of 2026-09-05 it **serves**: the account's OpenRouter
@@ -955,16 +955,34 @@ and is extended by hand, one deliberate tap at a time, like any other.
 
 ### 10.3 Editing
 
-Unchanged from what ships, and free per the existing editing table:
+> **Corrected 2026-09-11.** This section used to price *20 free paragraph edits*
+> and *3 free AI redrafts* per chapter. **Neither action exists.** There is no
+> "rewrite this paragraph" control and no "redraft this chapter" control anywhere
+> in the shipped product, and pricing a feature that was never built is worse than
+> leaving it unpriced: `CREDITS_AND_PRICING.md` §10 had scheduled counter columns
+> to enforce those caps and §11 had a p95 metric to tune one of them. Both are
+> cancelled there (§1a of that file).
+
+**There is one AI editing action, and it is Reimagine.**
+[`expo/src/components/reader/ReimagineSheet.tsx`](../expo/src/components/reader/ReimagineSheet.tsx)
+over the `reimagine-chapter` edge function: pick a chapter, optionally swap
+characters for saved or brand-new ones, type what should change, and the chapter
+is written again.
 
 | | Cost |
 |---|---|
-| Type, rewrite, restructure by hand | 0, unlimited |
-| Ask Katha to rewrite a paragraph | 0 — 20 free per chapter |
-| Ask Katha to redraft a chapter | 0 — 3 free per chapter |
+| Type, rewrite, restructure by hand | **0, unlimited, forever** |
+| **Reimagine a chapter** | Free tier: 1 free per chapter of a story you created, then the plan. Non-author: 1 credit from the first, because it forks. **Any paid plan: unlimited** |
 
-Paragraph-level editing is the existing Create Studio draft editor and it stays
-exactly as it is.
+Hand editing is the existing Create Studio draft editor and the reader's chapter
+editor, and both stay exactly as they are. They call nothing, so under principle
+2 they are free and there is nothing to cap.
+
+The prices above are read from
+[`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §3, *Reimagining a chapter*,
+which is canonical for them. **⚠ The shipped `reimagine-chapter` charges 1 credit
+from the first call for every user on every tier** — it has no subscriber check
+and no counter. The subscriber exemption and the free counter are follow-ups.
 
 ### 10.4 Chapter art, and the cover
 
@@ -1072,6 +1090,21 @@ written for its author first; going public is a later, deliberate act. So:
   is for.
 
 ### 10.6 What this requires of CREDITS_AND_PRICING.md
+
+> **Amended 2026-09-11: the editing asks are withdrawn.** Everything this section
+> and §10.3 ever asked that file to price for *editing* rested on two actions
+> that were never built — the paragraph rewrite and the chapter redraft. They are
+> retired in both documents (§10.3 here, §1a there), along with the counter
+> columns and the p95 metric that existed to enforce them. **Reimagine is the one
+> AI edit**, and it is priced in `CREDITS_AND_PRICING.md` §3, not here: unlimited
+> and never charged on any paid plan, 1 free per chapter of your own story on the
+> free tier, 1 credit from the first when it forks somebody else's. Character
+> portraits moved the same way — unlimited on a plan, 4 per account free.
+>
+> Item 3 below, the character-art unit-cost hole, is **closed**: a cast of three
+> costs $0.117 at the flat Gemini rate, it stays bundled into the story start,
+> and a standalone portrait is free four times per account and then 1 credit.
+> The remaining items are the chapter-art attach rate and the word-band overshoot.
 
 > **Resolved 2026-09-02.** `CREDITS_AND_PRICING.md` has been amended — decision
 > 10 now prices chapter art, the unit is a story rather than a chapter, and the

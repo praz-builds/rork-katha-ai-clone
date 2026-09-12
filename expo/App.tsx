@@ -1,9 +1,11 @@
 import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSharedValue } from "react-native-reanimated";
 import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf } from "@/lib/api";
+import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
@@ -12,7 +14,7 @@ import {
   SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { setupAndroidChannel, syncPushToken } from "@/lib/notifications";
-import { Alert, Platform } from "react-native";
+import { Alert, Platform, View } from "react-native";
 import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
 import { LaunchScreen } from "@/components/brand/LaunchScreen";
@@ -40,6 +42,7 @@ import {
   startAutoChapterAhead,
   startChapterGeneration,
   useGenerations,
+  plannedChapterCountOf,
 } from "@/lib/generation-session";
 import { loadStoryChapters } from "@/lib/search";
 import {
@@ -56,16 +59,30 @@ import ExploreScreen from "@/screens/ExploreScreen";
 import StoryDetailScreen from "@/screens/StoryDetailScreen";
 import HomeScreen from "@/screens/HomeScreen";
 import KathaOnboardingComplete from "@/screens/KathaOnboardingComplete";
-import KathaOnboardingFlowV2 from "@/screens/KathaOnboardingFlowV2";
-import WriterOnboarding from "@/screens/WriterOnboarding";
-import type { WriterOnboardingResult } from "@/screens/WriterOnboarding";
+import CharacterOnboarding from "@/screens/CharacterOnboarding";
+import type { CharacterOnboardingResult } from "@/screens/CharacterOnboarding";
+import SignInScreen from "@/screens/SignInScreen";
+import { OnboardingPaywall } from "@/components/onboarding/OnboardingPaywall";
+import {
+  bumpCredits,
+  WelcomeCreditsFlight,
+  type FlightTarget,
+} from "@/components/onboarding/WelcomeCreditsFlight";
+import {
+  hasPlayedWelcomeFlight,
+  markWelcomeFlightPlayed,
+} from "@/lib/welcome-flight";
 import { genreLabels } from "@/theme";
 import { loadDraft } from "@/lib/draft-storage";
-import type { Genre, Screen, Story, TabKey } from "@/types/domain";
 import type {
-  KathaOnboardingResult,
-  KathaWriterPathPayload,
-} from "@/screens/KathaOnboardingFlowV2";
+  CharacterEntryContext,
+  CreateDraft,
+  Genre,
+  Screen,
+  Story,
+  TabKey,
+} from "@/types/domain";
+import type { KathaCharacterPathPayload } from "@/screens/KathaOnboardingFlowV2";
 
 /**
  * Dev-only deep link into a tab, e.g. `localhost:8081/?tab=explore`.
@@ -121,6 +138,30 @@ const GENRE_BY_LABEL = Object.fromEntries(
     [key, label],
   ) => [label.toLowerCase(), key as Genre]),
 ) as Record<string, Genre>;
+
+/**
+ * The pre-filled Create brief onboarding hands over: a shelf and one lead.
+ *
+ * Deliberately three fields and no seed. The story idea is the one thing the
+ * flow no longer asks for, because the aha moved from "read a preview of a
+ * story you described" to "meet a person you made", and arriving in Create with
+ * somebody else's sentence in the idea box is worse than arriving with an empty
+ * one and a character already cast.
+ */
+type OnboardingDraft = Pick<
+  CreateDraft,
+  "primaryGenre" | "genres" | "characters"
+>;
+
+/** The welcome grant, per `source-of-truth/CREDITS_AND_PRICING.md`. */
+const WELCOME_CREDITS = 3;
+
+/**
+ * The offline stand-in `generate-character-image` returns when Supabase is not
+ * configured. It is not a URL any `<Image>` can load, so it must not be carried
+ * into the Create studio's character card as a portrait.
+ */
+const DRAFT_PORTRAIT_SCHEME = "draft-character://";
 
 /** Onboarding stores display labels; the app keys everything by Genre. */
 const toGenreKeys = (labels: string[] | undefined): Genre[] =>
@@ -192,20 +233,49 @@ export default function App() {
    * showing zeros while it re-fetches the same thing.
    */
   const [journeyProfile, setJourneyProfile] = useState<OwnProfile | null>(null);
-  const [onboarding, setOnboarding] = useState<KathaOnboardingResult | null>(
-    null,
-  );
   /**
-   * The blueprint a writer built in onboarding, waiting to be created.
+   * What the five onboarding questions collected, kept for the session.
+   *
+   * Home reads the genre interests to order its shelves, and the character
+   * flow's own copy is voiced from the name. It is deliberately not persisted:
+   * the durable parts of it (the display name, the saved character) are written
+   * to the profile and to the character library as they are collected.
+   */
+  const [onboardingEntry, setOnboardingEntry] = useState<
+    CharacterEntryContext | null
+  >(null);
+  /**
+   * The character somebody made in onboarding, waiting to be written about.
    *
    * It is handed to the Create studio as a pre-filled draft, not generated on
    * arrival. The user presses Create themselves, which keeps the price on the
    * button and stops a bounce from spending their whole welcome grant on a
    * story nobody opens.
    */
-  const [writerBlueprint, setWriterBlueprint] = useState<
-    WriterOnboardingResult["draft"] | null
-  >(null);
+  const [onboardingDraft, setOnboardingDraft] = useState<OnboardingDraft | null>(
+    null,
+  );
+  /**
+   * Did this session just come through onboarding?
+   *
+   * Read by exactly one thing: the welcome credits flight, which plays once
+   * after the hand-off to Home and never on a resumed session. It is cleared
+   * the moment that decision has been made.
+   */
+  const [justOnboarded, setJustOnboarded] = useState(false);
+  /** The flight overlay is mounted. Null `shownCredits` means it is not flying. */
+  const [flightActive, setFlightActive] = useState(false);
+  /**
+   * The balance Home DISPLAYS while the coins are in the air, ticking 0 to 3.
+   *
+   * Separate from `credits`, which is the real balance and is never wrong: a
+   * pill that already reads 3 while three coins fly towards it is a pill that
+   * has nothing to say, and the flight exists to make the grant land somewhere
+   * visible. Null hands the real number straight back.
+   */
+  const [shownCredits, setShownCredits] = useState<number | null>(null);
+  const creditsPillRef = useRef<View | null>(null);
+  const creditsBump = useSharedValue(1);
   const generations = useGenerations();
   /**
    * What is being written right now, for Home's invitation card.
@@ -406,9 +476,39 @@ export default function App() {
         ) {
           continue;
         }
+        /*
+          THE PLAN IS RAISED FROM THE CHAPTER, NOT FROM A FLAG.
+
+          An extension raises `planned_chapter_count` server-side, and the
+          client holds its own copy of the story — so without this the local
+          plan stayed at 1 after extending a one-chapter story, and every
+          surface reading it (the chapter-end chips, `canExtend`, the finish
+          card) was working from a number the database had already moved past.
+          Offline it never moved at all, so the same extension was offered for
+          ever.
+
+          Derived rather than signalled, because a story that HAS chapter N is
+          planned for at least N whatever anybody remembered to send. That is
+          true of an extension, of a plain continuation, and of a story read
+          back from a shelf, which is three fewer things to keep in step.
+        */
+        // `plannedChapterCountOf`, not `?? 0`: a story with no stored plan
+        // falls back to the server's default of 3, and a bare zero would have
+        // turned "no plan recorded" into "planned for exactly the chapters it
+        // has" -- telling the reader a legacy story was planned for 2 chapters
+        // and stopping an auto story one chapter short of what the server
+        // would happily have written.
+        const planned = Math.max(
+          plannedChapterCountOf(target),
+          chapter.chapterNumber,
+        );
         // A seed story being continued is not in `generatedStories` yet, so
         // `upsert` adds it rather than mapping over it.
-        upsert({ ...target, chapters: [...target.chapters, chapter] });
+        upsert({
+          ...target,
+          plannedChapterCount: planned,
+          chapters: [...target.chapters, chapter],
+        });
       }
       return next;
     });
@@ -601,6 +701,57 @@ export default function App() {
     };
   }, [screen.name, tab]);
 
+  /**
+   * Home's credits pill, in window coordinates, for the coins to fly to.
+   *
+   * `measureInWindow` rather than a guessed rectangle: the pill's position
+   * moves with the safe-area inset, with the streak pill beside it and with the
+   * width of the credit number. Zeros come back when the view is not laid out
+   * or has been collapsed by Android, and zeros are reported as "no target" so
+   * the flight fades in place instead of throwing coins into the corner.
+   */
+  const measureCreditsPill = useCallback(
+    () =>
+      new Promise<FlightTarget | null>((resolve) => {
+        const node = creditsPillRef.current;
+        if (!node) {
+          resolve(null);
+          return;
+        }
+        node.measureInWindow((x, y, width, height) => {
+          resolve(width > 0 && height > 0 ? { x, y, width, height } : null);
+        });
+      }),
+    [],
+  );
+
+  /**
+   * The welcome credits flight, armed by onboarding and played once ever.
+   *
+   * Two gates, and both are needed. `justOnboarded` is the session gate: a
+   * resumed app has not just been granted anything, and three coins flying at
+   * the header on a cold start is an animation with nothing to say.
+   * `hasPlayedWelcomeFlight` is the install gate, because onboarding can be
+   * walked again after a sign-out. The flag is cleared as soon as the question
+   * has been answered, so a tab change cannot ask it a second time.
+   */
+  useEffect(() => {
+    if (!justOnboarded) return;
+    if (screen.name !== "tabs" || tab !== "home") return;
+    let active = true;
+    void hasPlayedWelcomeFlight().then((played) => {
+      if (!active) return;
+      setJustOnboarded(false);
+      if (played) return;
+      // Zero, not the real balance: the coins are what deliver the three.
+      setShownCredits(0);
+      setFlightActive(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [justOnboarded, screen.name, tab]);
+
   if (!fontsReady) return <LaunchScreen />;
 
   if (preview === "loader") return <LoaderPreview />;
@@ -667,41 +818,80 @@ export default function App() {
     );
   };
 
-  const finishOnboarding = (result: KathaOnboardingResult) => {
-    setOnboarding(result);
+  /**
+   * The questionnaire is done; the character flow begins.
+   *
+   * One entry for all three purposes. It used to fork here - writers into a
+   * separate flow, everybody else into a progress ring and a paywall - and the
+   * fork is gone, because making a character is the aha whichever box was
+   * ticked. The purpose rides along so the copy downstream can be voiced.
+   */
+  const startCharacterOnboarding = (payload?: KathaCharacterPathPayload) => {
+    if (!payload) return;
+    const entryContext: CharacterEntryContext = {
+      name: payload.onboarding.name,
+      genreInterests: payload.onboarding.genres,
+      otherGenre: payload.onboarding.otherGenre,
+      refine: payload.onboarding.refine,
+      moment: payload.onboarding.moment,
+    };
+    setOnboardingEntry(entryContext);
+    setScreen({
+      name: "character-onboarding",
+      purpose: payload.purpose,
+      initialGenre: payload.initialGenre,
+      entryContext,
+    });
+  };
+
+  const finishCharacterOnboarding = (result: CharacterOnboardingResult) => {
     // The name is asked for on the first screen of onboarding and belongs to
     // the account, not to this session. Written locally straight away so the
     // greeting is right the moment they land on Home, and to the server in
     // the background so it survives the app being reinstalled.
-    const given = result.name?.trim() ?? "";
+    const given = onboardingEntry?.name?.trim() ?? "";
     if (given.length > 0) {
       setDisplayName(given);
       void cacheDisplayName(given);
       void saveDisplayName(given);
     }
-    goTabs("home");
-  };
-  const finishWriterOnboarding = (result: WriterOnboardingResult) => {
-    setWriterBlueprint(result.draft);
-    // Straight into Create, not Home. The blueprint is the whole reason they
-    // finished the flow, and making them find it again is how it gets lost.
-    goTabs("create");
-  };
-  const startWriterOnboarding = (payload?: KathaWriterPathPayload) => {
-    setScreen({
-      name: "writer-onboarding",
-      initialGenre: payload?.initialGenre,
-      entryContext: payload?.onboarding
-        ? {
-          name: payload.onboarding.name,
-          genreInterests: payload.onboarding.genres,
-          otherGenre: payload.onboarding.otherGenre,
-          format: payload.onboarding.refine,
-          blocker: payload.onboarding.moment,
-        }
-        : undefined,
+
+    const { character } = result;
+    // A `draft-character://` stand-in is what the offline path returns. It is
+    // an id, not an image, so the studio is handed no portrait at all rather
+    // than a card with a broken frame in it.
+    const portraitUrl = character.portraitUrl
+        && !character.portraitUrl.startsWith(DRAFT_PORTRAIT_SCHEME)
+      ? character.portraitUrl
+      : undefined;
+    setOnboardingDraft({
+      primaryGenre: result.primaryGenre,
+      genres: [result.primaryGenre],
+      characters: [
+        {
+          name: character.name,
+          appearance: character.appearance,
+          // The sheet asks for voice and motivation separately and onboarding
+          // deliberately does not: a blank background is an empty field the
+          // writer can fill in Create, where there is room for it.
+          background: "",
+          isHero: true,
+          portraitUrl,
+          portraitStatus: portraitUrl ? "ready" : "idle",
+          savedCharacterId: character.savedCharacterId,
+        },
+      ],
     });
+
+    // The flight is armed here and decided on arrival: only a session that came
+    // through onboarding may play it, and only once per install.
+    setJustOnboarded(true);
+    // Straight into Create for a writer, because the character is the whole
+    // reason they finished the flow and making them find it again is how it
+    // gets lost. A reader lands on Home, where their shelf is.
+    goTabs(result.purpose === "write" ? "create" : "home");
   };
+
   const goTabs = (nextTab: TabKey = tab) => {
     setTab(nextTab);
     setScreen({ name: "tabs" });
@@ -712,7 +902,11 @@ export default function App() {
       case "home":
         return (
           <HomeScreen
-            credits={credits}
+            // The ticking number while the coins are in the air, the real
+            // balance every other moment of the app's life.
+            credits={shownCredits ?? credits}
+            creditsPillRef={creditsPillRef}
+            creditsBump={creditsBump}
             displayName={displayName}
             shelfLoaded={shelfLoaded}
             savedDraftGenre={savedDraftGenre}
@@ -726,7 +920,7 @@ export default function App() {
             onContinueStory={(storyId, chapterIndex) =>
               setScreen({ name: "reader", storyId, chapterIndex })}
             onPaywall={() => setScreen({ name: "paywall" })}
-            preferredGenres={toGenreKeys(onboarding?.genres)}
+            preferredGenres={toGenreKeys(onboardingEntry?.genreInterests)}
             generatedStories={generatedStories}
             stories={allStories}
             onStory={openStory}
@@ -752,7 +946,7 @@ export default function App() {
           <CreateStudioScreen
             credits={credits}
             isAnonymous={isAnonymous}
-            initialDraft={writerBlueprint ?? undefined}
+            initialDraft={onboardingDraft ?? undefined}
             onGenerationStarted={(session) => {
               // Straight to the reader, before a word of the story exists. It
               // shows the crafting screen until there are finished pages and
@@ -865,26 +1059,36 @@ export default function App() {
       {screen.name === "intro"
         ? (
           <KathaOnboardingComplete
-            onDone={finishOnboarding}
-            onWriterPath={startWriterOnboarding}
+            onCharacterPath={startCharacterOnboarding}
             onSignIn={() => setScreen({ name: "onboarding" })}
           />
         )
-        : screen.name === "writer-onboarding"
+        : screen.name === "character-onboarding"
         ? (
-          <WriterOnboarding
-            onDone={finishWriterOnboarding}
-            onExit={() => goTabs("home")}
+          <CharacterOnboarding
+            purpose={screen.purpose}
             initialGenre={screen.initialGenre}
             entryContext={screen.entryContext}
+            onDone={finishCharacterOnboarding}
+            // Back out of the character flow returns to the questions that
+            // fed it, not to Home: leaving is how somebody changes an answer.
+            onExit={() => setScreen({ name: "intro" })}
           />
         )
         : screen.name === "onboarding"
         ? (
-          <KathaOnboardingFlowV2
-            initialScreen="email"
-            onDone={finishOnboarding}
-          />
+          /*
+            Sign-in, reached from the profile and from every gated control.
+
+            This USED to be the full character flow (bridge, a character
+            sheet, a portrait wait, THEN email and code) with `purpose="read"`
+            standing in for a bare sign-in. A person who tapped "Sign in" was
+            walked through making a character before they were ever asked for
+            an address, which is backwards for a returning reader. It is now
+            just the email and the code, and either way out lands back on the
+            tab they left.
+          */
+          <SignInScreen onDone={() => goTabs()} onExit={() => goTabs()} />
         )
         : screen.name === "story"
         ? (
@@ -1017,8 +1221,17 @@ export default function App() {
                           // what the next set of chips is derived from. A
                           // story extendable once would then be extendable
                           // never again.
+                          // ...EXCEPT THE ONE THAT REACHES THE CEILING, which
+                          // has to be an ending or the story never gets one.
+                          // At 15 the chips stop being offered, so a chapter
+                          // written as a non-finale there leaves the story
+                          // closed for good on an open hook and a
+                          // next_chapter_pressure pointing at a chapter that
+                          // can never exist. The last chapter a reader is
+                          // allowed to buy is the last chapter, and it should
+                          // read like one.
                           isFinale: extend
-                            ? false
+                            ? next >= MAX_PLANNED_CHAPTER_COUNT
                             : typeof story.plannedChapterCount === "number"
                             ? next >= story.plannedChapterCount
                             : false,
@@ -1064,9 +1277,24 @@ export default function App() {
         ? <CreditsScreen credits={credits} onBack={() => goTabs(tab)} />
         : screen.name === "paywall"
         ? (
-          <KathaOnboardingFlowV2
-            initialScreen="paywall"
-            onDone={finishOnboarding}
+          /*
+            The paywall outside onboarding, opened from Home or from Credits.
+
+            The same component onboarding shows, with no character to put in
+            its hero: there is one paywall in the app now, so the plan somebody
+            is offered from the credits screen is the plan they were offered on
+            their first day, at the same price with the same four promises. An
+            empty `characterName` is what switches the copy to its no-character
+            voice ("Katha is ready when you are"), so this entry never claims a
+            character the user has not made. Both exits come back to the tab
+            they left.
+          */
+          <OnboardingPaywall
+            characterName=""
+            portraitUrl={null}
+            purpose="read"
+            onSubscribed={() => goTabs(tab)}
+            onDismiss={() => goTabs(tab)}
           />
         )
         : (
@@ -1075,6 +1303,25 @@ export default function App() {
             {tab === "create" ? null : (
               <BottomTabs selected={tab} onSelect={(next) => setTab(next)} />
             )}
+            {flightActive
+              ? (
+                <WelcomeCreditsFlight
+                  credits={WELCOME_CREDITS}
+                  measureTarget={measureCreditsPill}
+                  onLanded={(shown) => {
+                    setShownCredits(shown);
+                    bumpCredits(creditsBump);
+                  }}
+                  onDone={() => {
+                    setFlightActive(false);
+                    // Back to the real balance, which may already be more than
+                    // three if the account had credits before onboarding.
+                    setShownCredits(null);
+                    void markWelcomeFlightPlayed();
+                  }}
+                />
+              )
+              : null}
           </>
         )}
         {gatedSession?.gatedReason ? (

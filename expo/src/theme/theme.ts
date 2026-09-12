@@ -125,6 +125,22 @@ export const colors = {
   /** The saved-star fill on a dark ground. Amber, not the accent orange, so it reads as "starred". */
   chromeStar: "#F5B324",
   /**
+   * The character-onboarding palette (W3 to W7), from the 2026-09-11 hand-off.
+   *
+   * Warmer than the app ground on purpose: these screens sit on a cream with
+   * a radial `accentSoft` glow, and their borders and success mark are mixed
+   * from the same warmth. Scoped to onboarding; nothing else should reach for
+   * them, and the app-wide `bg` / `border` / `success` stay as they are.
+   */
+  onboardingBg: "#FAF7F2",
+  onboardingBorder: "#EEE7DE",
+  onboardingBorderStrong: "#DED5C7",
+  /** The plate behind the back and close buttons, and the divider inside cards. */
+  onboardingPlate: "#F5F0E9",
+  onboardingSuccess: "#3FA96A",
+  /** The stone ground a portrait card shows before or behind its image. */
+  onboardingStone: "#E4DCD0",
+  /**
    * Scrims — the translucent ink laid over artwork so text on top stays legible.
    *
    * Three steps because three are in use, and they were in use as three
@@ -228,7 +244,9 @@ export const spacing = {
    * is not a spacing step in the rhythm — it is the absence of one, which is
    * what says "these two lines are a single unit".
    */
-  tight: 2
+  tight: 2,
+  /** The character-onboarding screen gutter (W3 to W7 hand-off, 2026-09-11). Those screens only. */
+  onboardingGutter: 30
 } as const;
 
 /**
@@ -261,6 +279,8 @@ export const radius = {
   md: 14,
   lg: 18,
   xl: 24,
+  /** Character-onboarding cards and plan cards (hand-off value). Those screens only. */
+  onboardingCard: 20,
   pill: 999
 } as const;
 
@@ -333,7 +353,18 @@ export const controls = {
   toggleInset: 3,
   toggleHitTarget: 44,
   /** Inset highlight offset used by shadows.iconButton, kept here so a custom size can reuse it. */
-  iconButtonHighlightInset: 6
+  iconButtonHighlightInset: 6,
+  /**
+   * Character onboarding (W3 to W7) controls, from the 2026-09-11 hand-off.
+   * Exact values on purpose: the reference is pixel-signed, and a 2px snap to
+   * the nearest app token is the drift the design review would catch first.
+   */
+  onboardingCtaHeight: 56,
+  onboardingPlate: 44,
+  onboardingPlateRadius: 14,
+  onboardingPillWidth: 22,
+  onboardingPillHeight: 5,
+  onboardingPillGap: 5
 } as const;
 
 export const genreLabels: Record<Genre, string> = {
