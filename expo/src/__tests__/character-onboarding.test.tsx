@@ -139,7 +139,7 @@ jest.mock("@/components/onboarding/OnboardingPaywall", () => {
         purpose: string;
         characterName: string;
         onDismiss: () => void;
-        onSubscribed: () => void;
+        onSubscribed: (grant: { credits: number; plan: string }) => void;
       },
     ) =>
       React.createElement(
@@ -154,7 +154,9 @@ jest.mock("@/components/onboarding/OnboardingPaywall", () => {
         React.createElement(Pressable, {
           accessibilityRole: "button",
           accessibilityLabel: "Subscribe",
-          onPress: onSubscribed,
+          // The real paywall reports what was bought; the result carries the
+          // grant out of the flow so the welcome screen can count up to it.
+          onPress: () => onSubscribed({ credits: 50, plan: "yearly" }),
         }),
       ),
   };
@@ -164,7 +166,23 @@ jest.mock("@/components/onboarding/WelcomeScreen", () => {
   const React = require("react");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Text } = require("react-native");
-  return { WelcomeScreen: () => React.createElement(Text, null, "Welcome") };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pressable } = require("react-native");
+  return {
+    // The real screen auto-advances after the coins settle; the stand-in makes
+    // that hand-off pressable so the result it produces can be asserted.
+    WelcomeScreen: ({ onOpen }: { onOpen: () => void }) =>
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(Text, null, "Welcome"),
+        React.createElement(Pressable, {
+          accessibilityRole: "button",
+          accessibilityLabel: "Open Katha",
+          onPress: onOpen,
+        }),
+      ),
+  };
 });
 
 /* eslint-disable import/first */
@@ -684,6 +702,40 @@ describe("character onboarding", () => {
       expect(mockEnableNotifications).toHaveBeenCalledTimes(1);
       expect(view.queryByText("Want to know when it's ready?")).toBeNull();
       expect(view.queryByLabelText("Notify me")).toBeNull();
+    }
+  });
+
+  it("carries the plan's credits out of the flow, and nothing when nothing was bought", async () => {
+    // The welcome animation counts up to this number. Undefined on the free
+    // path rather than 3, because the free grant is the caller's constant and
+    // this screen does not get to own a pricing figure.
+    for (const exit of ["Subscribe", "Dismiss paywall"] as const) {
+      jest.clearAllMocks();
+      mockGenerateCharacterImage.mockResolvedValue({ url: PORTRAIT });
+      mockSendEmailCode.mockResolvedValue(undefined);
+      mockVerifyEmailCode.mockResolvedValue(undefined);
+      mockSaveCharacterToLibrary.mockResolvedValue({ id: "saved-1" });
+      mockEnableNotifications.mockResolvedValue(true);
+
+      const onDone = jest.fn();
+      const view = await mount("write", onDone);
+      await fillSheet(view);
+      await submitSave(view);
+      await verify(view);
+      await view.findByText(`Meet ${NAME}.`);
+      await fireEvent.press(view.getByLabelText(`Keep ${NAME}`));
+      await view.findByText(`Paywall write ${NAME}`);
+      await fireEvent.press(view.getByLabelText(exit));
+      await view.findByText("Welcome");
+      await fireEvent.press(view.getByLabelText("Open Katha"));
+
+      expect(onDone).toHaveBeenCalledTimes(1);
+      expect(onDone.mock.calls[0][0]).toMatchObject({
+        subscribed: exit === "Subscribe",
+      });
+      expect(onDone.mock.calls[0][0].purchasedCredits).toBe(
+        exit === "Subscribe" ? 50 : undefined,
+      );
     }
   });
 

@@ -1482,7 +1482,8 @@ before any purchase and before any grant
 │                                          ↓
 │                                    WELCOME  "Welcome to Katha."
 │                                    Three gold coins fly to the credits
-│                                    pill on Open Katha, which ticks 0 → 3.
+│                                    pill, which ticks 0 → 3 (or 0 → 17 → 34
+│                                    → 50 for a yearly subscriber).
 │                                    Once per account.
 │                                                │
 └───────────────────────────────────────────────┴─→  Into the app
@@ -1493,6 +1494,20 @@ before any purchase and before any grant
 **For named onboarding, the welcome bonus is the consolation, not the greeting.**
 It is granted only after the user has declined the paywall; subscribers do not
 need it and should not be given it.
+
+**The welcome animation counts to whatever was granted, and it is always three
+coins. Amended 2026-09-13.** A free user's pill ticks to **3**, the guest grant;
+somebody who subscribed on the paywall a moment earlier sees it tick to **their
+plan's credits** — **20** weekly, **50** yearly — because they did receive a
+grant and it is the plan's, not the welcome bonus. The coin count does not
+change with the amount: three coins is the picture of being given something, and
+a stack of fifty is a swarm. Both figures come out of the paywall's own plan
+table (`PLANS` in `OnboardingPaywall.tsx`, reported through `onSubscribed`) so
+neither is written down a second time in the client, and the last landing shows
+the exact amount rather than a rounded one, since that figure sits on screen
+until the real balance replaces it. Previously the animation was skipped for
+subscribers entirely, which left the only person who had paid as the only one
+never shown where their credits live.
 
 **Three credits is exactly one story start: the cast, chapter 1's words and its
 art, which becomes the cover.** *(Reduced from 10 on 2026-09-11; it had been
@@ -1776,6 +1791,18 @@ of what **not** to build.
    not burn a slot. The counter stops being consulted the moment `is_anonymous`
    is false; it is **not** carried to a named account by `claim_guest_characters`
    (00082), which moves characters and nothing else.
+
+   *Reading the counters (2026-09-13; migration 00086).* Both this counter and
+   00055's hourly window were created with RLS on, no policy, and no table grant
+   to anyone — which locks out `anon` and `authenticated` as intended, but also
+   locked out the service key, so support, an abuse review, or a test against
+   the live project got `permission denied for table guest_portrait_quotas`
+   instead of a number. 00086 grants `select, update, delete` on both tables to
+   `service_role` only, explicitly not to `anon` or `authenticated`, and leaves
+   RLS on. No cap changes: the app never reads either table, the
+   security-definer RPCs stay the only path the product uses, and `insert` is
+   still withheld so a quota row can only be opened by the claim RPC that owns
+   its shape.
 7. **One monitoring query instead of a prevention system.** Daily: accounts where
    `subsidized_grants / total_grants > 0.9` **and** `lifetime_grants > 15`. Costs
    nothing, catches the farm, and produces the data needed to decide what to build

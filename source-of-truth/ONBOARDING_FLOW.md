@@ -1605,14 +1605,28 @@ credits pill, which bumps as each one lands and ticks **0 → 3**.
 
 | Property | Value |
 |---|---|
-| Count | **3**, matching the welcome grant in [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) §6 |
+| Coins | **Always 3.** The handful is the picture of a gift at any grant size |
+| Amount counted to | **3** for a free user (the guest grant), or **the plan's credits** for someone who just subscribed: 20 weekly, 50 yearly. Read from `PLANS` in `OnboardingPaywall.tsx`, never typed a second time |
 | Mark | **`CreditCoin`**, the credit currency's face as an object. Not a flat disc, and not the `Sparkles` glyph. See below |
 | Trigger | The 700 ms hold after the coins settle, then `onOpen()` (above) |
 | Target | Home's credits pill, measured in window coordinates at flight time |
 | Per landing | The pill scale-bumps and the number increments by one |
 | Frequency | **Once per account.** Persisted, not session state |
 | Reduced motion | **No flight.** The pill renders **3** directly, and WELCOME shows the coins settled and static for the 900 ms |
-| On a subscriber | Not played. A person who bought a plan received no welcome grant, so there is nothing to fly |
+| On a subscriber | **Played, amended 2026-09-13.** Three coins still, counting to the plan's grant |
+
+**Three coins, and the number is what changes. Amended 2026-09-13.** The coin
+count is a picture, not a count: a subscriber is granted 20 or 50 credits and a
+stack of 50 coins is a swarm rather than a gift, so the flight is always three
+coins and the pill's number is what carries the grant. A free user's pill ticks
+**0 → 1 → 2 → 3**; someone who just bought yearly on W7 sees **0 → 17 → 34 → 50**,
+and the last landing always shows the exact amount rather than a rounded figure,
+because that figure stays on screen until the real balance replaces it. The
+amount comes out of the paywall with the purchase (`onSubscribed` reports
+`{ credits, plan }` from the plan the person chose) and defaults to the free
+grant of 3 when they declined, so no number is written down twice. It was
+previously specified as "not played for a subscriber", which left the one person
+who had just paid as the only one who never saw where their credits live.
 
 **The coins are `CreditCoin`, a drawn mark, not a yellow circle.** **Added
 2026-09-12 (third round).** It is the credit currency's face **everywhere a
@@ -1650,7 +1664,7 @@ memory, precisely so a reinstall-and-replay cannot happen by accident.
 
 Backend grants before this screen with `welcome:{user_id}`. WELCOME does not wait
 on or claim the balance; if the grant has not landed by the time the flight runs,
-the pill ticks to 3 anyway and reconciles on the next balance read. An animation
+the pill ticks to the grant anyway and reconciles on the next balance read. An animation
 that stalls on a network call is worse than one that is briefly optimistic about
 an idempotent grant we control.
 

@@ -216,6 +216,15 @@ describe("OnboardingPaywall", () => {
     );
   });
 
+  it("reports the weekly grant when weekly is the card that was chosen", async () => {
+    const { view, onSubscribed } = await renderPaywall();
+    await fireEvent.press(view.getByLabelText(/^weekly,/));
+    await fireEvent.press(view.getByLabelText("Unlock Katha"));
+    await waitFor(() =>
+      expect(onSubscribed).toHaveBeenCalledWith({ credits: 20, plan: "weekly" })
+    );
+  });
+
   it("never grants premium off-store in a shipped build", async () => {
     // The off-store completion below exists for review and for web. In a
     // production native build the same path would hand premium to anyone
@@ -241,6 +250,10 @@ describe("OnboardingPaywall", () => {
     const { view, onSubscribed } = await renderPaywall();
     await fireEvent.press(view.getByLabelText("Unlock Katha"));
     await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(1));
+    // What was bought, not just that something was: the welcome animation
+    // counts up to this number, and a boolean here sent a subscriber to a
+    // screen celebrating the free grant of three.
+    expect(onSubscribed).toHaveBeenCalledWith({ credits: 50, plan: "yearly" });
     expect(mockPurchasePackage).not.toHaveBeenCalled();
     // The button releases itself afterwards. Asserted rather than ignored so
     // the simulated path cannot leave a permanently busy CTA behind it.

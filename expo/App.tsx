@@ -153,8 +153,14 @@ type OnboardingDraft = Pick<
   "primaryGenre" | "genres" | "characters"
 >;
 
-/** The welcome grant, per `source-of-truth/CREDITS_AND_PRICING.md`. */
+/** The free welcome grant, per `source-of-truth/CREDITS_AND_PRICING.md`. */
 const WELCOME_CREDITS = 3;
+
+/**
+ * How many coins fly, always. A subscriber's grant is twenty or fifty credits
+ * and neither is a number of coins anybody wants thrown at them.
+ */
+const WELCOME_COINS = 3;
 
 /**
  * The offline stand-in `generate-character-image` returns when Supabase is not
@@ -274,6 +280,13 @@ export default function App() {
    * visible. Null hands the real number straight back.
    */
   const [shownCredits, setShownCredits] = useState<number | null>(null);
+  /**
+   * How far the flight counts up: the free grant, or the plan's credits when
+   * the paywall was answered with a purchase. Held in state because the result
+   * arrives at the hand-off and is needed a screen later, when the flight is
+   * mounted over Home.
+   */
+  const [welcomeGrant, setWelcomeGrant] = useState(WELCOME_CREDITS);
   const creditsPillRef = useRef<View | null>(null);
   const creditsBump = useSharedValue(1);
   const generations = useGenerations();
@@ -883,6 +896,10 @@ export default function App() {
       ],
     });
 
+    // What the coins deliver. A subscriber bought fifty credits a minute ago
+    // and watching three land instead reads as the purchase not having gone
+    // through, so the animation counts up to what they actually got.
+    setWelcomeGrant(result.purchasedCredits ?? WELCOME_CREDITS);
     // The flight is armed here and decided on arrival: only a session that came
     // through onboarding may play it, and only once per install.
     setJustOnboarded(true);
@@ -1306,7 +1323,10 @@ export default function App() {
             {flightActive
               ? (
                 <WelcomeCreditsFlight
-                  credits={WELCOME_CREDITS}
+                  // Three coins whatever the grant is: the stack is the
+                  // picture of a gift, the number is what the pill ticks to.
+                  coins={WELCOME_COINS}
+                  amount={welcomeGrant}
                   measureTarget={measureCreditsPill}
                   onLanded={(shown) => {
                     setShownCredits(shown);

@@ -131,6 +131,15 @@ export type CharacterOnboardingResult = {
   primaryGenre: Genre;
   email: string;
   subscribed: boolean;
+  /**
+   * The credits the plan they just bought grants, or undefined when they did
+   * not buy one. It is carried out of the flow because the welcome animation
+   * counts up to it: a free user is counted up to the guest grant of three, a
+   * subscriber to their plan's twenty or fifty. Undefined rather than 0 or 3,
+   * so the caller supplies the free grant from its own constant instead of
+   * this screen owning a number that belongs to pricing.
+   */
+  purchasedCredits?: number;
   notificationsEnabled: boolean;
 };
 
@@ -362,6 +371,7 @@ export default function CharacterOnboarding(
 
   const [savedCharacterId, setSavedCharacterId] = useState<string | undefined>();
   const [subscribed, setSubscribed] = useState(false);
+  const [purchasedCredits, setPurchasedCredits] = useState<number | undefined>();
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const reduceMotion = useReduceMotion();
@@ -695,6 +705,7 @@ export default function CharacterOnboarding(
       primaryGenre: initialGenre ?? DEFAULT_GENRE,
       email: email.trim(),
       subscribed,
+      purchasedCredits,
       notificationsEnabled,
     });
   }, [
@@ -705,6 +716,7 @@ export default function CharacterOnboarding(
     notificationsEnabled,
     onDone,
     portraitUrl,
+    purchasedCredits,
     purpose,
     savedCharacterId,
     subscribed,
@@ -721,8 +733,12 @@ export default function CharacterOnboarding(
         purpose={purpose}
         characterName={displayName}
         portraitUrl={isRenderablePortrait(portraitUrl) ? portraitUrl : null}
-        onSubscribed={() => {
+        onSubscribed={(grant) => {
           setSubscribed(true);
+          // The plan's grant, not a number typed here: `OnboardingPaywall`
+          // owns what each plan gives and the welcome screen needs to count
+          // up to it.
+          setPurchasedCredits(grant.credits);
           void leavePaywall();
         }}
         onDismiss={() => {
