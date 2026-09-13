@@ -49,6 +49,7 @@ import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
 import {
   applyRequestedVisibility,
@@ -302,8 +303,8 @@ serve(async (req) => {
       // A reservation that nothing ever finished. The buffered handler has
       // reconciled this since it was written; this one did not, and the
       // client only ever calls this one -- `generateStory` in the Expo client
-      // has no callers at all. So the three credits a first chapter costs
-      // were stranded permanently: the isolate dies mid-stream (wall-clock
+      // has no callers at all. So the credit a first chapter costs
+      // was stranded permanently: the isolate dies mid-stream (wall-clock
       // kill, deploy eviction, the worker torn down after a disconnect), the
       // refund never runs, and every retry of the same request id lands here
       // and is told "Generation is already in progress." forever, because the
@@ -756,6 +757,34 @@ serve(async (req) => {
           // the chapter is persisted and paid for.
           await rememberStoryCharacters(characterClient, user.id, story.id);
 
+          /*
+            AN AUTO STORY BUYS THE REST OF ITS PLAN HERE, IN ONE TRANSACTION.
+
+            After the chapter is written and persisted, never before: a run
+            reserved ahead of the prose would have to be unwound by hand every
+            time the provider failed, and a story whose first chapter never
+            arrived must not have bought its fifth.
+
+            `reserve_auto_chapter_run` decides everything -- whether this is an
+            auto series at all, how many of the remaining planned chapters the
+            balance affords, and what each one costs. It refuses to stack a
+            second run over a live one, so a retried invocation of this handler
+            reports the run that exists instead of buying it twice.
+
+            The BALANCE IN THE PAYLOAD MOVES WITH IT. `operation.balance` is
+            the balance after the start credit and before the run, and sending
+            that to a client that has just been charged for five more chapters
+            would show a number the writer's own ledger disagrees with.
+          */
+          const autoRun = story.story_flow === "auto"
+            ? await reserveAutoChapterRun(serviceClient, {
+              userId: user.id,
+              storyId: story.id,
+              runId: crypto.randomUUID(),
+              fromChapter: 2,
+            })
+            : null;
+
           send("stage", { stage: "art" });
 
           let coverStatus: "generating" | "failed" = "generating";
@@ -799,7 +828,8 @@ serve(async (req) => {
               coverStatus,
               words: verdict.words,
               beats,
-              balance: operation.balance,
+              balance: autoRun?.balance ?? operation.balance,
+              autoRunThroughChapter: autoRun?.through_chapter ?? null,
               model: prose.model,
               timings: {
                 first_token: firstTokenAt,

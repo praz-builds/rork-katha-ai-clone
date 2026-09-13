@@ -42,7 +42,12 @@ import DirectionStep from "@/components/create/DirectionStep";
 import { GENRE_EMOJI } from "@/lib/genre-content";
 import * as storyApi from "@/lib/api";
 import { portraitQuote, useIsSubscribed } from "@/lib/entitlements";
-import { CHAPTER_ART_CREDITS, CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
+import {
+  CHAPTER_ART_CREDITS,
+  CHAPTER_TEXT_CREDITS,
+  STORY_START_CREDITS,
+} from "@/lib/pricing-limits";
+import { formatCredits } from "@/lib/pricing";
 import {
   draftCharacterFromSaved,
   listSavedCharacters,
@@ -277,8 +282,27 @@ const STORY_FLOW_OPTIONS: DropdownOption<StoryFlow>[] = [
   },
   {
     value: "auto",
+    /*
+      THE PRICE IS ON THIS OPTION BECAUSE THIS OPTION IS WHAT SPENDS IT.
+
+      Auto buys its whole run the moment chapter one lands: the server works
+      out how many of the planned chapters the balance affords and reserves
+      them all at once. The Create button says "1 credit", which is true of the
+      start and silent about the eleven that follow a moment later -- and a
+      writer who watches their balance empty without having been told has been
+      misled by us, not by the feature.
+
+      The number is not quoted here because it is not knowable from the brief:
+      it depends on the balance at the moment the run starts, which the brief
+      cannot see. So the copy states the SHAPE of the charge -- all of it, up
+      front, for as many chapters as the credits reach -- which is the part a
+      writer needs before they pick, and the part that is true whatever their
+      balance turns out to be.
+    */
     label: "Auto-continue",
-    detail: "Katha picks the direction itself and keeps writing.",
+    detail:
+      "Katha picks the direction itself and keeps writing. Charged up front " +
+      "for as many chapters as your credits cover, then it stops.",
   },
 ];
 
@@ -340,7 +364,14 @@ const CHAPTER_COUNT_OPTIONS: DropdownOption<string>[] = CHAPTER_COUNTS.map((coun
       // Not a warning, and not a standalone. The reader is told what the end
       // of a one-chapter story actually offers, because "1" otherwise reads
       // as the option that gets them the least.
-      ? "One chapter, and the option to keep going at the end of it."
+      //
+      // The price is stated here and only here, because a one-chapter story is
+      // the ONE plan whose whole cost is knowable from the brief: the start
+      // credit buys the cast, the chapter and the cover, and nothing follows
+      // it. Every longer plan's total depends on how far the writer actually
+      // goes, and quoting one would be quoting a number they may never spend.
+      ? `One chapter, and the option to keep going at the end of it · ` +
+        `${formatCredits(STORY_START_CREDITS)} in total.`
       : undefined,
     valueLabel: String(count),
     accessibilityLabel: label,
@@ -893,7 +924,12 @@ function StorySetupScreen({
   // hardware back. Never a value the brief persists: it is a detour off the
   // idea box, not a step of the brief.
   const [ideasOpen, setIdeasOpen] = useState(false);
-  const hasCredits = credits >= 3;
+  // The constant, not a literal. This read `credits >= 3` while the studio's
+  // own guard read `STORY_START_CREDITS`, so when the start price moved to 1
+  // the brief would have gone on refusing to write a story the writer could
+  // afford -- a disabled Create button and copy demanding credits they already
+  // had.
+  const hasCredits = credits >= STORY_START_CREDITS;
   const hasPendingCharacterImage = draft.characters.some((character) => character.portraitStatus === "generating");
   const ideaReady = draft.seed.trim().length >= MIN_IDEA_LENGTH;
   const genreOptions: DropdownOption<Genre>[] = allowedGenres.map((genre) => ({
@@ -1161,7 +1197,7 @@ function StorySetupScreen({
           directly above it, and the number itself moves with what the brief
           asks for -- chapter art, cover mode, chapter count -- so stating it
           twice meant two places to be wrong. */}
-      {!hasCredits ? <Text style={styles.creditWarning}>You need 3 credits to start this story.</Text> : null}
+      {!hasCredits ? <Text style={styles.creditWarning}>You need {formatCredits(STORY_START_CREDITS)} to start this story.</Text> : null}
       {!ideaReady ? <Text style={styles.creditWarning}>Add a little more before generating this story.</Text> : null}
       {hasPendingCharacterImage ? <Text style={styles.creditWarning}>Wait for character images to finish before creating the story.</Text> : null}
       <Pressable disabled={!ideaReady || !hasCredits || hasPendingCharacterImage} onPress={onCreate} accessibilityRole="button" accessibilityState={{ disabled: !ideaReady || !hasCredits || hasPendingCharacterImage }} style={[styles.primaryCta, (!ideaReady || !hasCredits || hasPendingCharacterImage) && styles.primaryCtaDisabled]}><Text style={styles.primaryCtaText}>Create story</Text></Pressable>

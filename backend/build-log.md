@@ -5533,3 +5533,32 @@ struck through.
 
 **Docs only. No code, no gates, no commit.** `DESIGN_SYSTEM.md` §7.x is another
 agent's; only §6 was touched here.
+
+### 2026-09-14 — Two known limits of the pre-bought auto run
+
+Auto mode now buys its whole run up front (00087). Two consequences are real,
+were found in review, and are NOT fixed here because each is a product decision
+rather than a defect. Recorded so the next person does not discover them in a
+support ticket.
+
+**An abandoned run is paid for and unwritten.** The remainder is refunded when a
+chapter FAILS, not when a writer simply stops. Close the app mid-run and the
+unwritten chapters stay reserved and paid — nothing sweeps
+`generation_operations`, and `isStaleReservation` only fires on a retry of the
+caller's own request id. The credits are not lost in the sense that the story
+still owns them: `stories.auto_run_through_chapter` is durable, so reopening the
+story resumes writing the chapters already bought. But a writer who never
+returns has paid for prose that does not exist. Fixing it needs either a
+scheduled sweep or an explicit "stop this story", and both change what "the run
+is over" means.
+
+**A `p_extend_to_chapter` retry can strand a run.** If a claimed chapter's
+reservation goes stale and `continue-story` reconciles it, that one chapter is
+refunded and the rest of the run is not. Narrow, but real.
+
+**And one thing the new price takes away.** `refund_story_media_component` no
+longer refunds a component on a NEW start, because at 1 credit the component
+refund would return the entire start price for a story whose chapter the writer
+read and kept. Legacy 3-credit starts still refund components. If the product
+owner wants the whole credit back for a missing cover, that is a one-line change
+and a different decision.

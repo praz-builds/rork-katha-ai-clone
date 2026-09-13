@@ -691,7 +691,7 @@ export async function fetchCreatedShelf(): Promise<ShelfResult> {
 
 /** The column list every shelf read selects. Kept in one place so they stay identical. */
 const SHELF_STORY_COLUMNS =
-  "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, story_flow, beats, series_state, planned_chapter_count, illustrate_chapters, entity_gate_reason, like_count, bookmark_count, read_count, created_at";
+  "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, story_flow, beats, series_state, planned_chapter_count, illustrate_chapters, entity_gate_reason, like_count, bookmark_count, read_count, created_at, auto_run_through_chapter";
 
 /**
  * The stories this reader starred, newest star first.
@@ -828,6 +828,15 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
     // created the story. Anything but the literal 'auto' is interactive -- the
     // mode that asks before it spends a credit.
     storyFlow: record.story_flow === "auto" ? "auto" : "interactive",
+    // Read from the row for the same reason `storyFlow` is, and it is why the
+    // column is on `stories` rather than held in the generation response: the
+    // chapters an auto story has already paid for have to survive an app
+    // restart, a cold library read and a second device. Without it a reload
+    // would either stall a run the writer paid for or, worse, buy its chapters
+    // a second time.
+    autoRunThroughChapter: autoRunThroughChapter(
+      record.auto_run_through_chapter,
+    ),
     chapterLength: isChapterLength(record.length_type)
       ? record.length_type
       : undefined,
@@ -1203,6 +1212,21 @@ async function storyGatedPrivateReason(
   }
 }
 
+/**
+ * The last chapter an auto run has paid for, or undefined.
+ *
+ * Undefined and a number are different facts and the write-ahead branches on
+ * which one it got: undefined is "this story never pre-bought anything" and
+ * keeps it on the per-chapter path, while a number -- including the chapter
+ * before the run began, meaning the balance bought nothing -- is a run and
+ * bounds the chain exactly.
+ */
+function autoRunThroughChapter(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
 function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
   if (!data || typeof data !== "object") {
     throw new Error("Story generation returned an invalid response");
@@ -1247,6 +1271,13 @@ function mapGeneratedStory(data: unknown, draft: CreateDraft): Story {
       : story.story_flow === "interactive"
       ? "interactive"
       : draft.storyFlow ?? "interactive",
+    // Carried in the `done` payload rather than re-read off the row, because
+    // the write-ahead starts the moment this lands: a client that had to fetch
+    // the story first would either wait a round trip before chapter two or
+    // decide it had no run and buy the chapter again.
+    autoRunThroughChapter: autoRunThroughChapter(
+      story.auto_run_through_chapter,
+    ),
     chapterLength: isChapterLength(story.chapter_length)
       ? story.chapter_length
       : draft.chapterLength,

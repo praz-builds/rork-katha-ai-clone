@@ -9,6 +9,7 @@ import {
   type OfferedDirection,
 } from "../_shared/direction-choice.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { refundAutoChapterRun } from "../_shared/auto-run.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { notifyInBackground } from "../_shared/notify.ts";
 import { generateChapterArt, runInBackground } from "../_shared/media.ts";
@@ -744,6 +745,33 @@ serve(async (req) => {
           p_error: errorMessage(error),
         },
       );
+
+      /*
+        A FAILED CHAPTER OF A PRE-BOUGHT RUN ENDS THE WHOLE RUN, SO THE REST
+        OF IT IS GIVEN BACK HERE.
+
+        An auto story buys every chapter its balance affords the moment chapter
+        one lands. The client stops the chain at a failure -- `failedAutoChapters`
+        bars re-buying it and nothing re-fires without a tap -- so the chapters
+        after this one are paid for and will never be written. Left reserved,
+        they are credits taken for prose nobody will ever read: the writer's
+        balance is short and there is no story to show for it.
+
+        A provider failure at chapter 4 of a 6-chapter run therefore refunds 3:
+        this one and the two never attempted. `refund_auto_chapter_run` reaches
+        this operation too, but it refunds through the same
+        `refund_generation_operation` that just ran, which is idempotent per
+        operation -- so the chapter that failed is given back once, not twice.
+
+        It runs for every failure, not only an auto one: on a story with no run
+        there is nothing reserved to find and the call is a no-op.
+      */
+      await refundAutoChapterRun(serviceClient, {
+        userId: user.id,
+        storyId: story_id,
+        fromChapter: nextChapterNum,
+        error: errorMessage(error),
+      });
       const telemetry = [
         ...(error instanceof AllProvidersFailedError
           ? [logError({

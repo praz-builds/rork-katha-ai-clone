@@ -31,7 +31,16 @@ async function createDatabase() {
   return db;
 }
 
-Deno.test("story starts debit and refund three credits while continuations stay at one", async () => {
+/*
+ * Renamed from "story starts debit and refund three credits...". The shape
+ * this test guards -- debit, replay, refund, then the same for a continuation,
+ * with the ledger read back at the end -- is unchanged; only the start price
+ * moved. Migration 00087 settled the long-standing disagreement between
+ * `source-of-truth/CREDITS_AND_PRICING.md` §Summary, which always said ONE
+ * credit bundling the cast, chapter one's words and chapter one's art, and
+ * `begin_story_generation`, which deducted three. The document won.
+ */
+Deno.test("story starts debit and refund one credit, and continuations stay at one", async () => {
   const db = await createDatabase();
   const userId = "00000000-0000-4000-8000-000000000341";
 
@@ -58,7 +67,7 @@ Deno.test("story starts debit and refund three credits while continuations stay 
     const start = started.rows[0].begin_story_generation;
     const operationId = start.operation_id as string;
     const storyId = start.story_id as string;
-    assertEquals(start.balance, 2);
+    assertEquals(start.balance, 4);
 
     const replay = await db.query<{
       begin_story_generation: Record<string, unknown>;
@@ -73,7 +82,7 @@ Deno.test("story starts debit and refund three credits while continuations stay 
       [userId],
     );
     assertEquals(replay.rows[0].begin_story_generation.replayed, true);
-    assertEquals(replay.rows[0].begin_story_generation.balance, 2);
+    assertEquals(replay.rows[0].begin_story_generation.balance, 4);
 
     const storyRefund = await db.query<{
       refund_generation_operation: Record<string, unknown>;
@@ -126,8 +135,8 @@ Deno.test("story starts debit and refund three credits while continuations stay 
     );
     assertEquals(ledger.rows, [
       { amount: 5, reason: "welcome" },
-      { amount: -3, reason: "generation" },
-      { amount: 3, reason: "refund" },
+      { amount: -1, reason: "generation" },
+      { amount: 1, reason: "refund" },
       { amount: -1, reason: "generation" },
       { amount: 1, reason: "refund" },
     ]);
@@ -148,6 +157,23 @@ Deno.test("story starts debit and refund three credits while continuations stay 
  * up, including the per-user window, is still covered above and in 00039.
  */
 
+/*
+ * WHAT MOVED HERE, AND WHY THE COMPONENT UNDER TEST CHANGED.
+ *
+ * This asserted the two things `refund_story_media_component` has to get right
+ * -- one payout per component however many times it is called, and buckets
+ * restored in grant, then purchased, then earned order -- using a story's
+ * `cast` and `cover`. It cannot use those any more, and the reason is the
+ * point of migration 00087 rather than an accident of it: a story start is now
+ * ONE credit bundling the cast, chapter one's words and chapter one's art, so
+ * there is no separate component credit to give back and paying one out would
+ * refund the whole story over a missing picture.
+ *
+ * `chapter_art` is the component that still has a credit of its own -- an
+ * illustrated continuation is debited 2, one of which is the picture -- so the
+ * idempotency and the bucket order are asserted against that, and the bundled
+ * start's refusal is asserted directly underneath.
+ */
 Deno.test("missing paid media refunds are component-idempotent and preserve bucket order", async () => {
   const db = await createDatabase();
   const userId = "00000000-0000-4000-8000-000000000343";
@@ -155,7 +181,7 @@ Deno.test("missing paid media refunds are component-idempotent and preserve buck
     await db.query("insert into auth.users(id) values ($1)", [userId]);
     await db.query("insert into profiles(id) values ($1)", [userId]);
     await db.query(
-      "select grant_credit($1, 1, 'subscription', 'sub-test', 'sub:test')",
+      "select grant_credit($1, 2, 'subscription', 'sub-test', 'sub:test')",
       [userId],
     );
     await db.query(
@@ -170,24 +196,52 @@ Deno.test("missing paid media refunds are component-idempotent and preserve buck
         array['romance']::text[], 'adult', array[]::text[], 'sweet',
         'series', 'Two strangers meet in a market.', 'English',
         'Mumbai at monsoon dusk', 'standard', 3, array[]::text[],
-        array[]::text[], null, null, false, array[]::text[]
+        array[]::text[], null, null, true, array[]::text[]
       )`,
       [userId],
     );
-    const operationId = started.rows[0].begin_story_generation.operation_id;
+    const storyOperationId = started.rows[0].begin_story_generation
+      .operation_id;
+    const storyId = started.rows[0].begin_story_generation.story_id;
 
-    const cast = await db.query<{ refund_story_media_component: number }>(
-      "select refund_story_media_component($1, $2, 'cast')",
-      [operationId, userId],
+    // The bundled start: 1 credit, taken from the grant bucket first.
+    const afterStart = await db.query<{ balance: number }>(
+      `select subscription_grant_balance + purchased_balance + earned_balance
+         as balance
+       from credit_balance_buckets where user_id = $1`,
+      [userId],
     );
-    assertEquals(cast.rows[0].refund_story_media_component, 1);
-    const cover = await db.query<{ refund_story_media_component: number }>(
+    assertEquals(Number(afterStart.rows[0].balance), 3);
+
+    // A cast or a cover that never arrived refunds NOTHING against a 1-credit
+    // start, because the single credit also bought the chapter the writer read
+    // and kept. It returns the balance untouched rather than raising.
+    const noCover = await db.query<{ refund_story_media_component: number }>(
       "select refund_story_media_component($1, $2, 'cover')",
+      [storyOperationId, userId],
+    );
+    assertEquals(noCover.rows[0].refund_story_media_component, 3);
+
+    // An illustrated chapter still has a picture credit of its own: 2 debited,
+    // spanning the last grant credit and the first purchased one.
+    const continuation = await db.query<{
+      reserve_generation_operation: Record<string, unknown>;
+    }>(
+      `select reserve_generation_operation(
+        $1, 'chapter-two-art', $2, 2, 'continuation', true)`,
+      [userId, storyId],
+    );
+    const operationId = continuation.rows[0].reserve_generation_operation.id;
+
+    const art = await db.query<{ refund_story_media_component: number }>(
+      "select refund_story_media_component($1, $2, 'chapter_art')",
       [operationId, userId],
     );
-    assertEquals(cover.rows[0].refund_story_media_component, 2);
+    assertEquals(art.rows[0].refund_story_media_component, 2);
+    // Called again -- one payout per component, however many times the media
+    // task decides the picture is missing.
     const replay = await db.query<{ refund_story_media_component: number }>(
-      "select refund_story_media_component($1, $2, 'cast')",
+      "select refund_story_media_component($1, $2, 'chapter_art')",
       [operationId, userId],
     );
     assertEquals(replay.rows[0].refund_story_media_component, 2);
@@ -201,6 +255,9 @@ Deno.test("missing paid media refunds are component-idempotent and preserve buck
        from credit_balance_buckets where user_id = $1`,
       [userId],
     );
+    // Grant first: the refunded credit goes back where the debit took it from,
+    // so a subscription credit does not quietly become a purchased one that
+    // survives the next lapse.
     assertEquals(buckets.rows[0], {
       subscription_grant_balance: 1,
       purchased_balance: 1,

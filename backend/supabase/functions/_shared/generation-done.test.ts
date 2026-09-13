@@ -57,6 +57,10 @@ function build(storyMode: "series" | "standalone" = "series") {
     words: 12,
     beats: ["Aarav returns", "Maya explains"],
     balance: 4,
+    // An interactive story buys no run, so the payload carries null. A run
+    // would carry the last chapter it paid for; the builder only passes the
+    // value through, and what it must never do is drop the field.
+    autoRunThroughChapter: null,
     model: "meta/muse-spark-1.3",
     timings: { total: 100 },
     visibility: { requested: "public", applied: "public", reason: null },

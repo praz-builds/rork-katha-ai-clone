@@ -63,6 +63,21 @@ export interface StoryDoneInput {
   model: string;
   timings: Record<string, number>;
   visibility: VisibilityOutcome;
+  /**
+   * The last chapter an auto story has already paid for, or null.
+   *
+   * It travels in the payload rather than being left for the client to read
+   * back off the row, because the write-ahead starts the moment this lands:
+   * a client that had to re-fetch the story first would either wait for a
+   * round trip before chapter two or, worse, decide it had no run and fall
+   * through to the per-chapter path that buys the chapter a second time.
+   *
+   * Null means no run was reserved -- an interactive story, or a story
+   * written before runs existed. It is NOT the same as a run of zero
+   * chapters, which is `from_chapter - 1` and says the balance bought
+   * nothing.
+   */
+  autoRunThroughChapter: number | null;
 }
 
 export function buildStoryDonePayload(input: StoryDoneInput) {
@@ -85,6 +100,7 @@ export function buildStoryDonePayload(input: StoryDoneInput) {
       beats: [...input.beats],
       content_rating: input.contentRating,
       is_public: input.visibility.applied === "public",
+      auto_run_through_chapter: input.autoRunThroughChapter,
     },
     chapter: input.chapter,
     balance: input.balance,

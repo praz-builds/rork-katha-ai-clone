@@ -114,8 +114,21 @@ export const CHAPTER_ART_CREDITS = 1;
  * brief's cost card and its warning). It is the one price a first-time writer
  * is shown before they have spent anything, so it is named once here and the
  * generation session charges exactly this on completion.
+ *
+ * ONE CREDIT, BUYING THREE THINGS. It was 3 -- one per action -- and
+ * `source-of-truth/CREDITS_AND_PRICING.md` §Summary said 1, and AGENTS.md
+ * carried the disagreement as an open decision rather than letting either side
+ * be edited to match the other. The product owner settled it on 2026-09-14 in
+ * the document's favour, and `begin_story_generation` deducts 1 as of
+ * migration 00087.
+ *
+ * The consequence every surface has to agree with: a ONE-CHAPTER story costs
+ * exactly 1 credit in total, because chapter one's words and art are inside
+ * this number and nothing else is charged. Quote it with
+ * {@link formatCredits}, never as `${STORY_START_CREDITS} credits` -- at 3
+ * that read correctly and at 1 it renders "1 credits".
  */
-export const STORY_START_CREDITS = 3;
+export const STORY_START_CREDITS = 1;
 
 /**
  * The chapter from which "Write the rest" is offered.

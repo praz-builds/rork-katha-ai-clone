@@ -446,13 +446,22 @@ number here is an estimate from published rates or infrastructure arithmetic.
 | Audio unlock — cached chapter | **~$0** | 1 |
 | Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
 
-**A story start is three credits, not one** (§6, amendment 46). It was one until
-2026-09-11, and that is the single most load-bearing correction in this table:
-at one credit the start cost **$0.178 per credit** against $0.0218 for a chapter,
-an 8× spread and the widest this document has ever priced at one credit. At three
-it is **$0.0593 per credit**, a 2.7× spread — still the most expensive thing a
-credit buys, and still the action every free grant flows to, but no longer the
-outlier that made a flat daily credit cost more than the subscription it sells.
+**A story start is ONE credit** (product owner, 2026-09-14). It was raised to
+three on 2026-09-11 on the unit-economics argument below, and that argument has
+now been overruled deliberately. The analysis is kept rather than deleted,
+because the cost it describes is real and did not go away with the decision:
+
+> At one credit a start costs **$0.178 per credit** against $0.0218 for a
+> chapter — an **8× spread**, the widest this document has ever priced, and the
+> reason a flat daily credit can cost more than the subscription it sells. At
+> three it was $0.0593 per credit, a 2.7× spread.
+
+So the start is again the outlier, and it is again the action every free grant
+flows to. **Whoever next touches grant sizes, the daily credit, or the
+subscription price must price against $0.178, not against $0.0593.** The margin
+table further down this file has NOT been recomputed for one credit; treat its
+per-credit figures as describing the three-credit world until someone redoes
+them.
 
 **The per-credit tables below still divide by the retired one-credit start**, so
 every blended $/credit figure in them is an UPPER bound rather than a current
@@ -1081,8 +1090,11 @@ A maximally engaged free user earns **17 credits in month one** (3 welcome, once
 + 14 from streak milestones at days 2, 5 and 10) and **nothing thereafter** — a
 one-time **$0.73** at the blended $0.043, and **$0.89** if they are spent the
 most expensive way there is. Seventeen credits is **five story starts** with two
-credits over, not seventeen: a start is three credits (§6, amendment 46), so the
-worst case is 5 × $0.178 rather than 17 × it. *(Was 24 while the welcome bonus
+credits over, not seventeen — **that arithmetic assumed a three-credit start and
+is now wrong**. At one credit (2026-09-14) seventeen credits is seventeen starts
+and the worst case is 17 × $0.178, which is the figure this paragraph was
+written to rule out. It is left visible rather than quietly corrected because
+the conclusion it supports needs re-deriving, not patching. *(Was 24 while the welcome bonus
 was 10; reduced to 3 on 2026-09-11, §6. The $0.50 / $1.80 pair this replaces was
 arithmetic on the retired one-credit start.)*
 
@@ -1455,7 +1467,7 @@ before any purchase and before any grant
 │                                          (reader- or writer-voiced copy)
 │                                                │
 │              bridge → who → wait → reveal → plan bridge
-│              "Their first chapter is 3 credits. A plan keeps them going."
+│              "Their first chapter is 1 credit. A plan keeps them going."
 │                                                │
 │                                          SAVE {NAME}
 │                                       email → 6-digit code
@@ -1570,8 +1582,10 @@ free and the funnel is the library, not the paywall.
 
 ## 7. The blocked moment
 
-Because starting a story costs 3, a further chapter 1 or 2, and audio 1,
-partial balances are real and common. The sheet has to handle them well, and it
+Because starting a story costs 1, a further chapter 1 or 2, and audio 1,
+partial balances are real and common — and note that a partial balance now
+blocks *fewer* things than it used to, since the cheapest paid action and the
+most valuable one are the same price. The sheet has to handle them well, and it
 has to name the action it is blocking rather than assume a single price.
 
 ```
@@ -1636,9 +1650,10 @@ resentment-generating placement available.
 - **After a successful top-up, the pending action fires automatically.** No second
   tap. The user was mid-intent; finish the intent.
 - **Every paid button shows its price**, and the price is the price of *that*
-  action in *that* state: `Create · 3 credits` to start a story, or `Create · 2
-  credits` when the user has already uploaded their own cover and chapter 1's
-  art will not be generated; `Continue · 1 credit` for the next chapter, or
+  action in *that* state: `Create · 1 credit` to start a story — the bundle of
+  cast, chapter 1's text and chapter 1's art is one price and does not go down
+  when the user uploads their own cover, because the credit is still buying the
+  cast and the chapter; `Continue · 1 credit` for the next chapter, or
   `Continue · 2 credits` when chapters are illustrated; `Listen · 1 credit`. The
   blocked moment is anticipated, never sprung.
 - **Insufficient balance on entering Create shows an inline banner, never a
@@ -1968,11 +1983,25 @@ economy is tuned on evidence rather than argued about.
 1. **One credit = one AI action.** Not one story. `credit_ledger.amount` stays
    `integer`. No decimals, no fractions, no second currency, no separate
    consumption meter.
-2. **Starting a story costs 3 credits** — 1 cast + 1 chapter-1 text + 1 chapter-1
-   art, which is the cover. Each further chapter is 1, or 2 illustrated. The
-   actions are **separately purchasable** and charged as they happen, so a user
-   with 1 credit can still make progress and an abandoned story costs only what
-   it wrote.
+2. **Starting a story costs 1 credit**, and that credit bundles three actions —
+   the cast, chapter 1's text, and chapter 1's art, which is the cover. Each
+   further chapter is 1, or 2 illustrated. A **one-chapter story therefore
+   costs 1 in total**, and a 3-chapter illustrated story is 5 = 1 + 2 + 2.
+   Chapters are charged **as they happen**, so a user with 1 credit can still
+   make progress and an abandoned story costs only what it wrote.
+
+   *Settled 2026-09-14.* This decision read "3 credits — 1 cast + 1 chapter-1
+   text + 1 chapter-1 art" and contradicted §Summary of this same file, which
+   has always priced the bundled start at 1. `begin_story_generation` deducted
+   3 and the client showed 3, so the code matched the wrong half of the
+   document. AGENTS.md recorded the disagreement rather than letting either
+   side be edited to match the other, because it is a price and only the
+   product owner can pick one. They picked 1; migration **00087** moved the
+   code and every surface that quoted it. The one thing the old three-credit
+   split bought that the bundle does not: a cast or a cover that never arrives
+   no longer refunds a separate credit, because there is no separate credit —
+   what the writer gets instead is the concept card and a free cover
+   regeneration.
 3. **Reading is free, unlimited, on every tier, forever.** No caps, no metering,
    no daily pass. A permanent commitment, not a launch promo.
 4. **Audio is 1 credit per chapter, unlocked permanently.** Re-listens,

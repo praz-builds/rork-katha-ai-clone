@@ -10,6 +10,7 @@ import { Sparkles } from "lucide-react-native";
 import DirectionChoices from "@/components/DirectionChoices";
 import {
   canExtend,
+  autoChapterToWriteAhead,
   hasGenerationForChapter,
   plannedChapterCountOf,
   retryGeneration,
@@ -192,6 +193,13 @@ export type ChapterEndProps = {
    * and so ends on this instead. Omitted and the pill is not rendered.
    */
   onReimagine?: () => void;
+  /**
+   * The viewer's balance, for the auto fallback's own gate.
+   *
+   * Required rather than optional: a default would silently re-create the
+   * missing gate this prop exists to close.
+   */
+  credits: number;
 };
 
 export default function ChapterEnd({
@@ -200,6 +208,7 @@ export default function ChapterEnd({
   resolveOptions = defaultResolveOptions,
   onContinue,
   onReimagine,
+  credits,
 }: ChapterEndProps) {
   const reduceMotion = useReducedMotion();
   const isSeries = story.storyMode === "series";
@@ -414,6 +423,24 @@ export default function ChapterEnd({
     if (status === "loading") return;
     if (hasGenerationForChapter(story.id, nextChapterNumber)) return;
     /*
+      THE FALLBACK ASKS THE SAME QUESTION THE WRITE-AHEAD ASKS, and it did not.
+
+      This effect had no balance gate at all. That was survivable when auto
+      bought one chapter at a time and simply stopped when the money ran out;
+      pre-buying makes "the balance is short of one chapter at the end of the
+      run" the DESIGNED ending of every balance-capped run, not an edge. So the
+      reader finished the last chapter they paid for, this fired the next one,
+      and the server answered 402 -- a failure card at the end of a story that
+      ended exactly as intended, with nobody having tapped anything.
+
+      `autoChapterToWriteAhead` already holds every rule: ownership, the plan,
+      the run ceiling, the balance, one-in-flight, and the durable failed-chapter
+      bar. Calling it here rather than restating a subset is what keeps the two
+      paths from drifting apart again -- they disagreed precisely because they
+      were written twice.
+    */
+    if (autoChapterToWriteAhead(story, credits) === null) return;
+    /*
       NO DIRECTION IS SENT, and that is the whole point of the fallback being
       auto mode's fallback rather than a tap without a finger.
 
@@ -439,6 +466,8 @@ export default function ChapterEnd({
     status,
     options,
     continueOnce,
+    story,
+    credits,
     story.id,
     nextChapterNumber,
   ]);

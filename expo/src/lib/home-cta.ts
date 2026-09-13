@@ -8,6 +8,7 @@ import {
   CHAPTER_TEXT_CREDITS as CHAPTER_CREDITS,
   STORY_START_CREDITS,
 } from "@/lib/pricing-limits";
+import { formatCredits } from "@/lib/pricing";
 
 /**
  * What the Home invitation should say, given what the reader is in the middle of.
@@ -186,7 +187,7 @@ export function homeCtaCopy(state: HomeCtaState): HomeCtaCopy {
     case "paywall":
       return {
         heading: "Not enough credits",
-        support: `A new story costs ${STORY_START_CREDITS}. You have ${state.credits}.`,
+        support: `A new story costs ${formatCredits(STORY_START_CREDITS)}. You have ${state.credits}.`,
         tone: "quiet",
       };
     case "new":

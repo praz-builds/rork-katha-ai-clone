@@ -21,6 +21,8 @@ import ChapterEnd from "@/components/reader/ChapterEnd";
 import {
   __resetGenerationSessions,
   autoChapterToWriteAhead,
+  loweredAutoRunFor,
+  lowerAutoRunOnFailure,
   clearAutoChapterFailure,
   hasGenerationForChapter,
   markAutoChapterFailed,
@@ -308,6 +310,7 @@ describe("the chapter-end fallback", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -325,6 +328,7 @@ describe("the chapter-end fallback", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={jest.fn()}
       />,
     );
@@ -349,6 +353,7 @@ describe("the chapter-end fallback", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={jest.fn()}
       />,
     );
@@ -449,5 +454,145 @@ describe("a failed auto chapter", () => {
     // lifts the bar, or the chapter would stay barred for the whole session.
     clearAutoChapterFailure(story.id, 3);
     expect(autoChapterToWriteAhead(story, PLENTY)).toBe(3);
+  });
+});
+
+/**
+ * The pre-bought run.
+ *
+ * Since migration 00087 an auto story does not buy its chapters one at a time.
+ * When chapter one lands, `reserve_auto_chapter_run` reserves every remaining
+ * planned chapter the balance can afford -- all of them, in one transaction --
+ * and records the last one on `stories.auto_run_through_chapter`. The chain
+ * reads that number instead of the live balance, and the two facts these tests
+ * exist to pin are that it never writes past what was bought and never stops
+ * short of it because some unrelated spend moved the balance.
+ *
+ * Everything above still applies to the chapters inside the run: ownership,
+ * one request per chapter, never past the plan, never two at once, and the
+ * durable failure bar. A pre-bought chapter is cheaper, not less guarded.
+ */
+describe("autoChapterToWriteAhead with a pre-bought run", () => {
+  it("writes the chapters the run paid for, whatever the balance now says", () => {
+    // Zero credits in hand and the run already bought through chapter three.
+    // The old code refused here and left an auto story stalled on prose the
+    // writer had already been charged for.
+    const story = makeStory({
+      plannedChapterCount: 3,
+      autoRunThroughChapter: 3,
+    });
+    expect(autoChapterToWriteAhead(story, 0)).toBe(3);
+  });
+
+  it("stops at the end of the run rather than buying one more", () => {
+    // The balance covers another chapter and the plan has room for it. Neither
+    // is permission: auto mode buys once, at the start, and a chapter past the
+    // run is a credit spent with nobody watching and no tap behind it.
+    const story = makeStory({
+      plannedChapterCount: 6,
+      autoRunThroughChapter: 2,
+    });
+    expect(autoChapterToWriteAhead(story, PLENTY)).toBeNull();
+  });
+
+  it("stops immediately when the run bought nothing", () => {
+    // A balance too short for even one chapter records the chapter BEFORE the
+    // run began, which is one. That is a run of zero, and it is deliberately
+    // distinguishable from the undefined below.
+    const story = makeStory({
+      plannedChapterCount: 3,
+      autoRunThroughChapter: 1,
+    });
+    expect(autoChapterToWriteAhead(story, PLENTY)).toBeNull();
+  });
+
+  it("falls back to the balance for a story written before runs existed", () => {
+    // `autoRunThroughChapter` is undefined on every story created before
+    // migration 00087, and on any row read from a column list that predates
+    // it. Those stories must keep continuing on the per-chapter path, or the
+    // change would silently retire auto mode for everything already written.
+    const legacy = makeStory({ plannedChapterCount: 3 });
+    expect(legacy.autoRunThroughChapter).toBeUndefined();
+    expect(autoChapterToWriteAhead(legacy, PLENTY)).toBe(3);
+    expect(autoChapterToWriteAhead(legacy, 0)).toBeNull();
+  });
+
+  it("still refuses to write past the plan, run or no run", () => {
+    // A run can never exceed the plan -- `reserve_auto_chapter_run` bounds it
+    // there -- but the plan check must not become reachable only through the
+    // balance. Extension is a deliberate tap, every time.
+    const story = makeStory({
+      plannedChapterCount: 2,
+      autoRunThroughChapter: 9,
+    });
+    expect(autoChapterToWriteAhead(story, PLENTY)).toBeNull();
+  });
+
+  it("still refuses on somebody else's story", () => {
+    setViewerId("someone-else");
+    const story = makeStory({
+      authorId: "the-author",
+      plannedChapterCount: 3,
+      autoRunThroughChapter: 3,
+    });
+    expect(autoChapterToWriteAhead(story, PLENTY)).toBeNull();
+  });
+
+  it("still refuses a chapter that already failed", () => {
+    const story = makeStory({
+      plannedChapterCount: 3,
+      autoRunThroughChapter: 3,
+    });
+    markAutoChapterFailed(story.id, 3);
+    // Paid for is not the same as owed. A failed chapter of a run is refunded
+    // by `refund_auto_chapter_run` along with the rest of it; re-firing it here
+    // would be the client buying back what the server just gave away.
+    expect(autoChapterToWriteAhead(story, PLENTY)).toBeNull();
+  });
+
+  it("still fires only one request per chapter", () => {
+    const story = makeStory({
+      plannedChapterCount: 3,
+      autoRunThroughChapter: 3,
+    });
+    expect(startAutoChapterAhead({ story, credits: 0 })).not.toBeNull();
+    expect(startAutoChapterAhead({ story, credits: 0 })).toBeNull();
+    expect(continueStreamMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A run the server has unwound must stop being spent locally.
+ *
+ * `refundAutoChapterRun` refunds every still-reserved chapter from the failed
+ * one onward and lowers `auto_run_through_chapter`. The continuation response
+ * carries neither the new value nor the refund, so a client that kept believing
+ * the old run wrote chapters against a run that no longer existed — with no
+ * balance check, because it thought they were already paid for.
+ */
+describe("a run the server unwound", () => {
+  it("stops the write-ahead at the chapter that failed", () => {
+    const story = makeStory({
+      plannedChapterCount: 7,
+      chapters: [1, 2, 3].map((n) => makeChapter(n)),
+      autoRunThroughChapter: 7,
+    });
+    // The story row still says the run reaches 7.
+    expect(autoChapterToWriteAhead(story, 0)).toBe(4);
+
+    // Chapter 4 fails; the server refunds 4..7 and lowers the run to 3.
+    lowerAutoRunOnFailure(story.id, 4);
+
+    // Chapter 4 is barred by the failure record, and 5 onward by the run.
+    expect(autoChapterToWriteAhead(story, 0)).toBeNull();
+    expect(loweredAutoRunFor(story.id)).toBe(3);
+  });
+
+  it("only ever moves the ceiling down", () => {
+    const story = makeStory({ plannedChapterCount: 7 });
+    lowerAutoRunOnFailure(story.id, 3);
+    // A later failure further along must not hand chapters back.
+    lowerAutoRunOnFailure(story.id, 6);
+    expect(loweredAutoRunFor(story.id)).toBe(2);
   });
 });
