@@ -1,14 +1,13 @@
--- 00086: the two abuse counters are unreadable by the key that is supposed to
--- read them.
+-- 00086: the lifetime portrait quota is unreadable by the key that is supposed
+-- to read it.
 --
--- 00084 and 00055 both close with the same three lines -- `revoke all on table`
+-- 00084 closes with the same three lines 00055 does -- `revoke all on table`
 -- from `public, anon, authenticated`, then `grant execute` on the function to
--- `service_role`. The function grant is right and the revoke is right. What
--- neither migration ever wrote is a table grant to anybody at all, and a table
--- created by the migration role has no grants of its own to fall back on. So
--- `guest_portrait_quotas` and `character_portrait_rate_limits` are readable by
--- exactly nothing that goes through PostgREST -- including a request holding
--- the service key, which comes back
+-- `service_role`. The function grant is right and the revoke is right. What it
+-- never wrote is a table grant to anybody at all, and a table created by the
+-- migration role has no grants of its own to fall back on. So
+-- `guest_portrait_quotas` is readable by exactly nothing that goes through
+-- PostgREST -- including a request holding the service key, which comes back
 --
 --     permission denied for table guest_portrait_quotas
 --
@@ -19,7 +18,7 @@
 --
 -- ## Why this does not weaken either cap
 --
--- Nothing about the enforcement path changes. The app never reads either table:
+-- Nothing about the enforcement path changes. The app never reads the table:
 -- `generate-character-image` calls `claim_character_portrait_request` and
 -- `claim_guest_portrait_request`, and the failure path calls
 -- `release_guest_portrait_request`. Those three security-definer functions
@@ -37,6 +36,18 @@
 -- could already reach the table with a direct Postgres connection. Making them
 -- go around PostgREST bought no safety; it only meant the correction happened
 -- with a psql session and no audit of which key did it.
+--
+-- ## Why the hourly rate-limit tables are NOT covered
+--
+-- 00063 decided, and its test pins, that `character_portrait_rate_limits`,
+-- `story_shape_rate_limits` and `anonymous_bootstrap_rate_limits` stay
+-- unreadable by every role including `service_role`: they are rolling windows
+-- reached only through SECURITY DEFINER functions, nobody corrects a window by
+-- hand, and widening them fixes a problem they do not have. This migration
+-- does not reopen that. The lifetime quota is a different kind of row -- a
+-- durable per-account fact that support may genuinely need to read and, after
+-- a provider mangled four generations, correct -- and that difference is the
+-- whole reason it gets a grant and the windows do not.
 --
 -- ## Why INSERT is not granted
 --
@@ -57,14 +68,9 @@
 
 grant select, update, delete on table public.guest_portrait_quotas
     to service_role;
-grant select, update, delete on table public.character_portrait_rate_limits
-    to service_role;
 
--- Restated rather than assumed. 00084 and 00055 each revoked once, at creation;
--- this repeats it immediately after the grant above so that the pair reads as
--- one statement of intent -- the service key may read these, and nothing a
--- browser holds may.
+-- Restated rather than assumed. 00084 revoked once, at creation; this repeats
+-- it immediately after the grant above so that the pair reads as one statement
+-- of intent -- the service key may read this, and nothing a browser holds may.
 revoke all on table public.guest_portrait_quotas
-    from public, anon, authenticated;
-revoke all on table public.character_portrait_rate_limits
     from public, anon, authenticated;

@@ -102,12 +102,14 @@ Deno.test("the service role can read the row the claim RPC created", async () =>
     assertEquals(quotas.rows.length, 1);
     assertEquals(quotas.rows[0].claimed_count, 2);
 
-    // 00055's table had the identical gap and is covered by the same migration.
-    const limits = await db.query<{ request_count: number }>(
-      "select request_count from character_portrait_rate_limits where user_id = $1",
-      [GUEST],
+    // 00055's hourly window is NOT covered: 00063 pins it unreadable by
+    // every role including service_role, and this migration does not reopen
+    // that decision. A read of it under the service key must still fail.
+    await denied(
+      db,
+      "select request_count from character_portrait_rate_limits",
+      "service_role could read the hourly window",
     );
-    assertEquals(limits.rows.length, 0);
     await db.exec("reset role");
   } finally {
     await db.close();
