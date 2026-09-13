@@ -152,14 +152,21 @@ class RevenueCatService {
     return offerings?.current?.availablePackages ?? null;
   }
 
+  /**
+   * Resolves with the profile after a completed purchase, `null` when the user
+   * cancelled the store sheet. It used to resolve with the OLD profile on a
+   * cancel, which made a cancel by an already-premium user indistinguishable
+   * from a purchase: the paywall read `isPremium`, saw true, and granted a
+   * plan nobody bought. Null is the only honest answer for "nothing happened".
+   */
   async purchasePackage(pkg: PurchasesPackage): Promise<RevenueCatProfile | null> {
-    if (Platform.OS === "web" || !this._ready) return this._profile;
+    if (Platform.OS === "web" || !this._ready) return null;
     try {
       const { customerInfo } = await Purchases.purchasePackage(pkg);
       this.setProfile(customerInfo);
       return customerInfo;
     } catch (error) {
-      if (isUserCancelled(error)) return this._profile;
+      if (isUserCancelled(error)) return null;
       console.warn("RevenueCat purchase failed:", error);
       throw error;
     }

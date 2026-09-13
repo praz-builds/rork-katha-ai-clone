@@ -24,7 +24,8 @@ import { motion } from "@/theme";
 /**
  * The welcome credits flight.
  *
- * The reader has just been granted three credits and is about to be handed to
+ * The reader has just been granted credits -- three on the free path, or their
+ * plan's twenty or fifty if they subscribed -- and is about to be handed to
  * Home, where the balance lives as a small gold pill in the top-right corner.
  * Nothing on the welcome screen points at that corner, so without this the
  * grant and the place it landed are two unrelated facts. The coins fly there:
@@ -100,6 +101,26 @@ export function bumpCredits(sv: SharedValue<number>): void {
       withSpring(1, { damping: 14, stiffness: 200 }),
     ),
   );
+}
+
+/**
+ * The handful. Three, whatever the grant is: see `coins` below.
+ */
+const DEFAULT_COINS = 3;
+
+/**
+ * The balance to show once `landed` of `coins` have arrived.
+ *
+ * The last landing returns `amount` exactly rather than the rounded figure,
+ * because rounding is allowed to be a point out in the middle of an animation
+ * and is never allowed to be out at the end: Home keeps whatever the final
+ * landing said until the real balance replaces it, so "49" there is a wrong
+ * balance sitting on screen rather than a rough count.
+ */
+function shownFor(landed: number, coins: number, amount: number): number {
+  if (coins <= 0) return amount;
+  if (landed >= coins) return amount;
+  return Math.round((amount * landed) / coins);
 }
 
 type CoinProps = {
@@ -197,16 +218,35 @@ function Coin({ from, to, delayMs, onArrive }: CoinProps) {
 }
 
 export function WelcomeCreditsFlight({
-  credits,
+  coins = DEFAULT_COINS,
+  amount,
   measureTarget,
   onLanded,
   onDone,
 }: {
-  /** How many coins fly. Three, per `source-of-truth/CREDITS_AND_PRICING.md`. */
-  credits: number;
+  /**
+   * How many coins fly. Always three unless a caller says otherwise.
+   *
+   * DELIBERATELY NOT THE CREDIT COUNT. A subscriber is granted fifty credits
+   * and fifty coins is not a gift, it is a swarm; the handful of three is the
+   * picture of "you were given something" at any grant size. The number is
+   * carried by `amount` instead.
+   */
+  coins?: number;
+  /**
+   * The balance the coins deliver: the free grant of three, or the plan's
+   * credits for somebody who just subscribed on the paywall.
+   */
+  amount: number;
   /** Home's credits pill in WINDOW coordinates. Null when it cannot be found. */
   measureTarget: () => Promise<FlightTarget | null>;
-  /** Fires on every landing, counting 1..credits, so the caller can tick. */
+  /**
+   * Fires on every landing with the balance to SHOW at that moment, so the
+   * caller only ever displays the number it is given. Three coins delivering
+   * fifty credits report 17, 33, 50; the last landing always reports `amount`
+   * exactly, because a count-up that stops one short of the real balance is
+   * the bug this rounding would otherwise introduce.
+   */
   onLanded: (creditsShown: number) => void;
   /** The overlay has nothing left to draw and can be unmounted. */
   onDone: () => void;
@@ -243,7 +283,7 @@ export function WelcomeCreditsFlight({
   /**
    * Landings are counted here, not derived from the coin's index.
    *
-   * The count the caller shows must be monotonic — 1, 2, 3 — and coin index
+   * The count the caller shows must be monotonic -- 17, 33, 50 -- and coin index
    * order is not a guarantee: a spring that settles early or a dropped frame
    * can reorder two arrivals, and a balance that reads 1, 3, 2 is worse than
    * no animation at all.
@@ -251,11 +291,11 @@ export function WelcomeCreditsFlight({
   const handleArrive = useCallback(
     (arrivals: number) => {
       if (doneRef.current) return;
-      landedRef.current = Math.min(landedRef.current + arrivals, credits);
-      onLandedRef.current(landedRef.current);
-      if (landedRef.current >= credits) finish();
+      landedRef.current = Math.min(landedRef.current + arrivals, coins);
+      onLandedRef.current(shownFor(landedRef.current, coins, amount));
+      if (landedRef.current >= coins) finish();
     },
-    [credits, finish],
+    [amount, coins, finish],
   );
 
   useEffect(() => {
@@ -284,12 +324,12 @@ export function WelcomeCreditsFlight({
     // frame rather than synchronously, so the caller's `onDone` cannot unmount
     // this component during its own first render.
     const frame = requestAnimationFrame(() => {
-      landedRef.current = credits;
-      onLandedRef.current(credits);
+      landedRef.current = coins;
+      onLandedRef.current(amount);
       finish();
     });
     return () => cancelAnimationFrame(frame);
-  }, [reducedMotion, credits, finish]);
+  }, [reducedMotion, amount, coins, finish]);
 
   if (reducedMotion || target === undefined) return null;
 
@@ -305,7 +345,7 @@ export function WelcomeCreditsFlight({
 
   // Without a target one coin fades and reports every credit at once, rather
   // than three coins fading on top of each other in the middle of the screen.
-  const coinCount = to ? credits : 1;
+  const coinCount = to ? coins : 1;
 
   return (
     <View
@@ -321,7 +361,7 @@ export function WelcomeCreditsFlight({
           from={from}
           to={to}
           delayMs={i * STAGGER_MS}
-          onArrive={() => handleArrive(to ? 1 : credits)}
+          onArrive={() => handleArrive(to ? 1 : coins)}
         />
       ))}
     </View>

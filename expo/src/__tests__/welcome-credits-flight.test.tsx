@@ -103,7 +103,8 @@ describe("WelcomeCreditsFlight", () => {
 
     await render(
       <WelcomeCreditsFlight
-        credits={3}
+        coins={3}
+        amount={3}
         measureTarget={measureTarget}
         onLanded={onLanded}
         onDone={onDone}
@@ -119,7 +120,8 @@ describe("WelcomeCreditsFlight", () => {
   it("does not draw anything the reader can tap through to", async () => {
     const { getByTestId } = await render(
       <WelcomeCreditsFlight
-        credits={3}
+        coins={3}
+        amount={3}
         measureTarget={async () => PILL}
         onLanded={jest.fn()}
         onDone={jest.fn()}
@@ -143,7 +145,8 @@ describe("WelcomeCreditsFlight", () => {
 
     await render(
       <WelcomeCreditsFlight
-        credits={3}
+        coins={3}
+        amount={3}
         measureTarget={async () => null}
         onLanded={onLanded}
         onDone={onDone}
@@ -162,7 +165,8 @@ describe("WelcomeCreditsFlight", () => {
 
     await render(
       <WelcomeCreditsFlight
-        credits={3}
+        coins={3}
+        amount={3}
         measureTarget={async () => ({ x: 0, y: 0, width: 0, height: 0 })}
         onLanded={onLanded}
         onDone={onDone}
@@ -179,7 +183,8 @@ describe("WelcomeCreditsFlight", () => {
 
     await render(
       <WelcomeCreditsFlight
-        credits={3}
+        coins={3}
+        amount={3}
         measureTarget={async () => {
           throw new Error("no view");
         }}
@@ -200,7 +205,8 @@ describe("WelcomeCreditsFlight", () => {
 
     const { queryByTestId } = await render(
       <WelcomeCreditsFlight
-        credits={3}
+        coins={3}
+        amount={3}
         measureTarget={measureTarget}
         onLanded={onLanded}
         onDone={onDone}
@@ -215,6 +221,45 @@ describe("WelcomeCreditsFlight", () => {
     // The grant is still reported, or Home opens showing a zero balance.
     expect(onLanded).toHaveBeenCalledWith(3);
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts three coins up to a subscriber's grant, landing exactly on it", async () => {
+    // The visual is always three coins; the NUMBER is the plan's. Rounding is
+    // allowed to be a point out in the middle and never at the end, because
+    // the last figure is what Home keeps until the real balance replaces it.
+    const onLanded = jest.fn();
+    const onDone = jest.fn();
+
+    await render(
+      <WelcomeCreditsFlight
+        coins={3}
+        amount={50}
+        measureTarget={async () => PILL}
+        onLanded={onLanded}
+        onDone={onDone}
+      />,
+    );
+    await settle();
+
+    expect(onLanded.mock.calls.map((call) => call[0])).toEqual([17, 33, 50]);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the whole grant at once when there is nothing to fly to", async () => {
+    const onLanded = jest.fn();
+
+    await render(
+      <WelcomeCreditsFlight
+        coins={3}
+        amount={20}
+        measureTarget={async () => null}
+        onLanded={onLanded}
+        onDone={jest.fn()}
+      />,
+    );
+    await settle();
+
+    expect(onLanded.mock.calls.map((call) => call[0])).toEqual([20]);
   });
 
   it("bumps a shared value through an overshoot and back to rest", async () => {

@@ -113,17 +113,43 @@ export type OnboardingPaywallProps = {
   portraitUrl?: string | null;
   /** Which voice the copy takes. `read` and `both` are both the reader's. */
   purpose: OnboardingPaywallPurpose;
-  /** A real purchase completed, or a simulated one off-store. */
-  onSubscribed: () => void;
+  /**
+   * A real purchase completed, or a simulated one off-store.
+   *
+   * It hands back WHAT WAS BOUGHT, not just the fact of it, because the next
+   * screen but one is the welcome animation and the number of credits it
+   * counts up to is the plan's grant. Passing only a boolean meant the welcome
+   * screen showed the free grant of three to somebody who had just paid for
+   * fifty, which reads as the purchase not having registered.
+   */
+  onSubscribed: (grant: OnboardingSubscriptionGrant) => void;
   /** The close in the top bar, which is the only way out and is there from frame one. */
   onDismiss: () => void;
 };
 
-type PlanId = "weekly" | "yearly";
+export type OnboardingPlanId = "weekly" | "yearly";
+
+/** What a completed purchase grants, handed to the caller by `onSubscribed`. */
+export type OnboardingSubscriptionGrant = {
+  credits: number;
+  plan: OnboardingPlanId;
+};
+
+type PlanId = OnboardingPlanId;
 
 type Plan = {
   id: PlanId;
   eyebrow: string;
+  /**
+   * The plan's credit grant, and the ONE place either number is written down.
+   *
+   * Both the note on the weekly card and the first benefit row are rendered
+   * from here, and so is the welcome animation's count-up, which reaches this
+   * through `onSubscribed`. The figure used to be typed out as prose in each
+   * of those places, which is three copies of a pricing decision and two of
+   * them silently wrong the first time it changes.
+   */
+  credits: number;
   /** Canonical price, used until the store hands over a localized one. */
   fallbackPrice: string;
   /**
@@ -137,11 +163,13 @@ type Plan = {
   /** The unit, set beside the price at body size. */
   period: string;
   /**
-   * The line under the price, when it is a fixed claim about the plan. The
-   * yearly card has none: its note is derived from the price (`dailyNote`),
-   * because a typed-out second figure is a figure nothing keeps in step.
+   * The line under the price, when it is a claim about the grant rather than
+   * about the price. Written as a function of `credits` so the card cannot
+   * disagree with the number the rest of the flow uses. The yearly card has
+   * none: its note is derived from the price (`dailyNote`), because a typed-out
+   * second figure is a figure nothing keeps in step.
    */
-  note?: string;
+  note?: (credits: number) => string;
   /**
    * RevenueCat's `PackageType`, as a plain string.
    *
@@ -161,13 +189,15 @@ const PLANS: Record<PlanId, Plan> = {
     eyebrow: "WEEKLY",
     fallbackPrice: "$5.99",
     period: "/wk",
-    note: "20 credits a week",
+    credits: 20,
+    note: (credits) => `${credits} credits a week`,
     packageType: "WEEKLY",
   },
   yearly: {
     id: "yearly",
     eyebrow: "YEARLY",
     fallbackPrice: "$59",
+    credits: 50,
     fallbackAmount: 59,
     period: "/yr",
     packageType: "ANNUAL",
@@ -237,7 +267,7 @@ function copyFor(name: string, purpose: OnboardingPaywallPurpose) {
   const rows: BenefitRow[] = [
     {
       emoji: "✨",
-      lead: "50 credits a month",
+      lead: `${PLANS.yearly.credits} credits a month`,
       body: "About 16 full chapters, every month",
     },
     {
@@ -318,7 +348,7 @@ export function OnboardingPaywall({
    */
   const noteFor = useCallback(
     (plan: Plan) => {
-      if (plan.note) return plan.note;
+      if (plan.note) return plan.note(plan.credits);
       const match = packages?.find(
         (candidate) => String(candidate.packageType) === plan.packageType,
       );
@@ -362,18 +392,22 @@ export function OnboardingPaywall({
         if (__DEV__ || Platform.OS === "web") {
           await new Promise((resolve) => setTimeout(resolve, motion.slow));
           if (!mounted.current) return;
-          onSubscribed();
+          onSubscribed({ credits: plan.credits, plan: plan.id });
           return;
         }
         if (mounted.current) setError(PURCHASE_ERROR);
         return;
       }
-      await revenueCatService.purchasePackage(pkg);
+      const profile = await revenueCatService.purchasePackage(pkg);
       if (!mounted.current) return;
-      // A user cancel resolves with the profile unchanged rather than throwing,
-      // so the entitlement is the only honest signal of what happened. No error
+      // A cancel resolves with null rather than throwing, and it is a cancel
+      // even for someone who was already premium: reading `isPremium` here
+      // would grant that person a plan they just declined to buy. No error
       // line for a cancel: the user knows what they just did.
-      if (revenueCatService.isPremium) onSubscribed();
+      if (profile === null) return;
+      if (revenueCatService.isPremium) {
+        onSubscribed({ credits: plan.credits, plan: plan.id });
+      }
     } catch {
       if (mounted.current) setError(PURCHASE_ERROR);
     } finally {

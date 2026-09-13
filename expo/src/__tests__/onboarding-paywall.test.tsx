@@ -17,6 +17,8 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockGetOfferings = jest.fn();
 const mockPurchasePackage = jest.fn();
+/** What the service reports after a purchase attempt. Mutable per test. */
+const mockRevenueCatState = { premium: false };
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -27,7 +29,9 @@ jest.mock("@/lib/revenuecat", () => ({
     // No offering: the off-store path, which is what review and web walk.
     getOfferings: (...args: unknown[]) => mockGetOfferings(...args),
     purchasePackage: (...args: unknown[]) => mockPurchasePackage(...args),
-    isPremium: false,
+    get isPremium() {
+      return mockRevenueCatState.premium;
+    },
     subscribe: () => () => undefined,
   },
 }));
@@ -216,6 +220,15 @@ describe("OnboardingPaywall", () => {
     );
   });
 
+  it("reports the weekly grant when weekly is the card that was chosen", async () => {
+    const { view, onSubscribed } = await renderPaywall();
+    await fireEvent.press(view.getByLabelText(/^weekly,/));
+    await fireEvent.press(view.getByLabelText("Unlock Katha"));
+    await waitFor(() =>
+      expect(onSubscribed).toHaveBeenCalledWith({ credits: 20, plan: "weekly" })
+    );
+  });
+
   it("never grants premium off-store in a shipped build", async () => {
     // The off-store completion below exists for review and for web. In a
     // production native build the same path would hand premium to anyone
@@ -237,10 +250,45 @@ describe("OnboardingPaywall", () => {
     }
   });
 
+  it("treats a cancelled store sheet as a cancel, even for someone already premium", async () => {
+    // `purchasePackage` resolves null on a user cancel. Before it did, it
+    // resolved with the OLD profile, and a premium user who cancelled read as
+    // a purchase: `isPremium` was true, so they were granted a plan they had
+    // just declined. The entitlement is not the signal; the resolution is.
+    mockGetOfferings.mockResolvedValue({
+      current: {
+        availablePackages: [
+          { packageType: "ANNUAL", product: { price: 59, priceString: "$59" } },
+        ],
+      },
+    });
+    mockPurchasePackage.mockResolvedValue(null);
+    mockRevenueCatState.premium = true;
+    try {
+      const { view, onSubscribed } = await renderPaywall();
+      await waitFor(() => expect(view.getByText(/\$59/)).toBeTruthy());
+      await fireEvent.press(view.getByLabelText("Unlock Katha"));
+      await waitFor(() => expect(mockPurchasePackage).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(
+          view.getByLabelText("Unlock Katha").props.accessibilityState.busy,
+        ).toBeFalsy()
+      );
+      expect(onSubscribed).not.toHaveBeenCalled();
+      expect(view.queryByText("Purchase didn't go through. Try again.")).toBeNull();
+    } finally {
+      mockRevenueCatState.premium = false;
+    }
+  });
+
   it("completes off-store so the flow can be walked without RevenueCat", async () => {
     const { view, onSubscribed } = await renderPaywall();
     await fireEvent.press(view.getByLabelText("Unlock Katha"));
     await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(1));
+    // What was bought, not just that something was: the welcome animation
+    // counts up to this number, and a boolean here sent a subscriber to a
+    // screen celebrating the free grant of three.
+    expect(onSubscribed).toHaveBeenCalledWith({ credits: 50, plan: "yearly" });
     expect(mockPurchasePackage).not.toHaveBeenCalled();
     // The button releases itself afterwards. Asserted rather than ignored so
     // the simulated path cannot leave a permanently busy CTA behind it.

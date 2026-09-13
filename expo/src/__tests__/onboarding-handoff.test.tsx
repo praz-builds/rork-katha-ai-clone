@@ -154,27 +154,39 @@ jest.mock("@/screens/CharacterOnboarding", () => {
             entryContext?.name ?? "anonymous"
           }`,
         ),
-        React.createElement(
-          Pressable,
-          {
-            accessibilityRole: "button",
-            accessibilityLabel: "finish character",
-            onPress: () =>
-              onDone({
-                purpose,
-                character: {
-                  name: "Ilya",
-                  appearance: "A tired detective in a wet coat",
-                  portraitUrl: "https://example.test/ilya.png",
-                  savedCharacterId: "saved-1",
-                },
-                primaryGenre: initialGenre ?? "mystery",
-                email: "nikita@example.test",
-                subscribed: true,
-                notificationsEnabled: false,
-              }),
-          },
-          React.createElement(Text, null, "finish character"),
+        ...[false, true].map((bought) =>
+          React.createElement(
+            Pressable,
+            {
+              key: String(bought),
+              accessibilityRole: "button",
+              accessibilityLabel: bought
+                ? "finish character subscribed"
+                : "finish character",
+              onPress: () =>
+                onDone({
+                  purpose,
+                  character: {
+                    name: "Ilya",
+                    appearance: "A tired detective in a wet coat",
+                    portraitUrl: "https://example.test/ilya.png",
+                    savedCharacterId: "saved-1",
+                  },
+                  primaryGenre: initialGenre ?? "mystery",
+                  email: "nikita@example.test",
+                  subscribed: bought,
+                  // Undefined when they did not buy: App supplies the free
+                  // grant itself, which is the behaviour under test below.
+                  purchasedCredits: bought ? 50 : undefined,
+                  notificationsEnabled: false,
+                }),
+            },
+            React.createElement(
+              Text,
+              null,
+              bought ? "finish character subscribed" : "finish character",
+            ),
+          )
         ),
       ),
   };
@@ -233,8 +245,9 @@ jest.mock("@/components/onboarding/WelcomeCreditsFlight", () => {
   return {
     bumpCredits: jest.fn(),
     WelcomeCreditsFlight: (
-      { credits, onLanded, onDone }: {
-        credits: number;
+      { coins, amount, onLanded, onDone }: {
+        coins?: number;
+        amount: number;
         onLanded: (shown: number) => void;
         onDone: () => void;
       },
@@ -242,15 +255,30 @@ jest.mock("@/components/onboarding/WelcomeCreditsFlight", () => {
       React.createElement(
         React.Fragment,
         null,
-        React.createElement(Text, null, `flight of ${credits}`),
+        React.createElement(
+          Text,
+          null,
+          `flight of ${amount} in ${coins ?? 3} coins`,
+        ),
         React.createElement(
           Pressable,
           {
             accessibilityRole: "button",
             accessibilityLabel: "land a coin",
-            onPress: () => onLanded(1),
+            // The real component does this arithmetic; the stand-in only has
+            // to hand App the kind of number it will be handed.
+            onPress: () => onLanded(Math.round(amount / (coins ?? 3))),
           },
           React.createElement(Text, null, "land"),
+        ),
+        React.createElement(
+          Pressable,
+          {
+            accessibilityRole: "button",
+            accessibilityLabel: "land the last coin",
+            onPress: () => onLanded(amount),
+          },
+          React.createElement(Text, null, "land last"),
         ),
         React.createElement(
           Pressable,
@@ -320,7 +348,7 @@ describe("onboarding hand-off", () => {
     );
     await fireEvent.press(await view.findByLabelText("finish character"));
 
-    expect(await view.findByText("flight of 3")).toBeTruthy();
+    expect(await view.findByText("flight of 3 in 3 coins")).toBeTruthy();
     // Zero until a coin lands: the flight is what delivers the three, and a
     // pill that already reads 3 has nothing for the coins to arrive at.
     expect(view.getByText("home credits 0")).toBeTruthy();
@@ -330,10 +358,29 @@ describe("onboarding hand-off", () => {
 
     await fireEvent.press(view.getByLabelText("end flight"));
     await waitFor(() => expect(mockMarkPlayed).toHaveBeenCalledTimes(1));
-    expect(view.queryByText("flight of 3")).toBeNull();
+    expect(view.queryByText("flight of 3 in 3 coins")).toBeNull();
     // And back to the real balance, whatever it is, rather than stuck on the
     // number the animation happened to stop at.
     expect(view.queryByText("home credits 1")).toBeNull();
+  });
+
+  it("counts up to the plan's credits when they subscribed on the way through", async () => {
+    const view = await render(<App />);
+    await fireEvent.press(
+      await view.findByLabelText("finish questions as read"),
+    );
+    await fireEvent.press(
+      await view.findByLabelText("finish character subscribed"),
+    );
+
+    // Still three coins, fifty credits. Celebrating the free grant of three at
+    // somebody who paid for fifty a minute earlier reads as the purchase not
+    // having registered.
+    expect(await view.findByText("flight of 50 in 3 coins")).toBeTruthy();
+    await fireEvent.press(view.getByLabelText("land a coin"));
+    expect(view.getByText("home credits 17")).toBeTruthy();
+    await fireEvent.press(view.getByLabelText("land the last coin"));
+    expect(view.getByText("home credits 50")).toBeTruthy();
   });
 
   it("never replays the flight on an install that has already seen it", async () => {
@@ -346,7 +393,7 @@ describe("onboarding hand-off", () => {
     await fireEvent.press(await view.findByLabelText("finish character"));
 
     await view.findByText(/^home credits/);
-    expect(view.queryByText("flight of 3")).toBeNull();
+    expect(view.queryByText("flight of 3 in 3 coins")).toBeNull();
     expect(mockMarkPlayed).not.toHaveBeenCalled();
   });
 });
