@@ -112,6 +112,9 @@ function makeStory(overrides: Partial<Story> = {}): Story {
   };
 }
 
+/** A balance that is never the thing under test. */
+const PLENTY = 99;
+
 afterEach(() => {
   cleanup();
   // The session store is module state and outlives a render. Auto-continue's
@@ -268,7 +271,7 @@ describe("ChapterEnd", () => {
     const story = makeStory();
     const chapter = story.chapters[1];
     const view = await render(
-      <ChapterEnd story={story} chapter={chapter} onContinue={jest.fn()} />,
+      <ChapterEnd story={story} chapter={chapter} credits={PLENTY} onContinue={jest.fn()} />,
     );
 
     await waitFor(() => {
@@ -311,6 +314,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -351,6 +355,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={jest.fn()}
       />,
     );
@@ -399,6 +404,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -430,7 +436,7 @@ describe("ChapterEnd", () => {
     });
     const onContinue = jest.fn();
     const view = await render(
-      <ChapterEnd story={story} chapter={finalChapter} onContinue={onContinue} />,
+      <ChapterEnd story={story} chapter={finalChapter} credits={PLENTY} onContinue={onContinue} />,
     );
 
     expect(view.getByText("The story is complete")).toBeTruthy();
@@ -457,7 +463,7 @@ describe("ChapterEnd", () => {
     });
     const onContinue = jest.fn();
     const view = await render(
-      <ChapterEnd story={story} chapter={onlyChapter} onContinue={onContinue} />,
+      <ChapterEnd story={story} chapter={onlyChapter} credits={PLENTY} onContinue={onContinue} />,
     );
 
     // Not "The story is complete": a one-chapter story is a series of one,
@@ -487,6 +493,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -516,6 +523,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={chapters[14]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -535,6 +543,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={chapter}
+        credits={PLENTY}
         resolveOptions={resolveOptions}
         onContinue={jest.fn()}
       />,
@@ -563,7 +572,7 @@ describe("ChapterEnd", () => {
     // decision.
     const onContinue = jest.fn();
     const view = await render(
-      <ChapterEnd story={story} chapter={chapter} onContinue={onContinue} />,
+      <ChapterEnd story={story} chapter={chapter} credits={PLENTY} onContinue={onContinue} />,
     );
     await waitFor(() => expect(view.getByTestId("chapter-end-option-0")).toBeTruthy());
 
@@ -600,6 +609,7 @@ describe("ChapterEnd", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -749,7 +759,7 @@ describe("agreeing with the server about where a series ends", () => {
     story.chapters = [...story.chapters, third];
 
     const view = await render(
-      <ChapterEnd story={story} chapter={third} onContinue={jest.fn()} />,
+      <ChapterEnd story={story} chapter={third} credits={PLENTY} onContinue={jest.fn()} />,
     );
 
     await waitFor(() =>
@@ -763,6 +773,7 @@ describe("agreeing with the server about where a series ends", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={jest.fn()}
       />,
     );
@@ -802,6 +813,7 @@ describe("auto-continue", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -828,6 +840,7 @@ describe("auto-continue", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={jest.fn()}
       />,
     );
@@ -857,6 +870,7 @@ describe("auto-continue", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -871,6 +885,7 @@ describe("auto-continue", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[0]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -905,6 +920,7 @@ describe("auto-continue", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[2]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -924,6 +940,7 @@ describe("auto-continue", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -950,6 +967,7 @@ describe("auto-continue does not re-fire across remounts", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -969,6 +987,7 @@ describe("auto-continue does not re-fire across remounts", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );

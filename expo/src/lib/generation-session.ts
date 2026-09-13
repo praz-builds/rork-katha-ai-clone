@@ -311,6 +311,32 @@ function autoChapterKey(storyId: string, chapterNumber: number): string {
   return `${storyId}:${chapterNumber}`;
 }
 
+/**
+ * Chapters whose pre-bought run the server has unwound, by story id.
+ *
+ * Holds the last chapter still paid for, so the write-ahead stops where the
+ * server now says the run stops rather than where the client last heard it
+ * did. Module state, like `failedAutoChapters`, and swept by the same reset:
+ * a new app session re-reads the row from the shelf and does not need it.
+ */
+const loweredAutoRuns = new Map<string, number>();
+
+/** The run ceiling the client should now believe, if the server lowered it. */
+export function loweredAutoRunFor(storyId: string): number | undefined {
+  return loweredAutoRuns.get(storyId);
+}
+
+/** Record that a failure unwound the run from `chapterNumber` onward. */
+export function lowerAutoRunOnFailure(
+  storyId: string,
+  chapterNumber: number,
+): void {
+  const next = chapterNumber - 1;
+  const held = loweredAutoRuns.get(storyId);
+  // Monotonic downward: two failures in one story must not raise it back.
+  if (held === undefined || next < held) loweredAutoRuns.set(storyId, next);
+}
+
 /** Remember a failed chapter for longer than its session survives. */
 export function markAutoChapterFailed(
   storyId: string,
@@ -552,6 +578,22 @@ function fail(record: SessionRecord, error: unknown): void {
   const { kind, storyId, chapterNumber } = record.session;
   if (kind === "chapter" && storyId) {
     markAutoChapterFailed(storyId, chapterNumber);
+    /*
+      THE SERVER JUST UNWOUND THE REST OF THE RUN; SAY SO LOCALLY.
+
+      `refundAutoChapterRun` refunds every still-reserved chapter from the
+      failed one onward and lowers `stories.auto_run_through_chapter` to
+      `chapter - 1`. The continuation's response carries neither the new value
+      nor what it refunded, and nothing else re-reads the row until a shelf
+      fetch -- so a client that kept believing in the old run would go on
+      treating those chapters as prepaid and write them with no balance check
+      at all, against a run that no longer exists.
+
+      Mirrored here rather than waited for, because the wait is unbounded: the
+      reader may never leave the story, and the next thing they do is reach the
+      end of a chapter.
+    */
+    lowerAutoRunOnFailure(storyId, chapterNumber);
   }
   settle(record, { phase: "error", error: failureMessage(error) });
 }
@@ -1230,7 +1272,27 @@ export function autoChapterToWriteAhead(
     402 that gets through still renders as a failure and a retry, never as
     progress.
   */
-  const paidThrough = story.autoRunThroughChapter;
+  /*
+    THE RUN IS A HARD STOP, NOT A CEILING WITH A FALLBACK.
+
+    "Generate that many, then stop" is the product decision, so a chapter past
+    the run is not written even when the balance would cover it. An auto story
+    that has spent its run is finished until the reader asks for more.
+
+    An earlier revision of this made the run a ceiling and fell back to the
+    balance past it. That was wrong twice: it contradicted the decision, and it
+    did not fix the problem it was written for -- a client holding a STALE run
+    still believes the stale chapters are prepaid, so a balance check behind
+    them never runs. The stale value is fixed where it is set (see
+    `lowerAutoRunOnFailure`), not by second-guessing it here.
+  */
+  const lowered = loweredAutoRunFor(story.id);
+  const stored = story.autoRunThroughChapter;
+  // The lower of the two: a run the server has unwound is smaller than the one
+  // the story row still carries on this client.
+  const paidThrough = typeof stored === "number"
+    ? (lowered === undefined ? stored : Math.min(stored, lowered))
+    : lowered;
   if (typeof paidThrough === "number") {
     if (next > paidThrough) return null;
   } else if (credits < chapterCost(story)) {
@@ -1366,6 +1428,7 @@ export function useStoryGeneration(storyId: string): GenerationSession | null {
 /** Test seam: forget every session. */
 export function __resetGenerationSessions(): void {
   failedAutoChapters.clear();
+  loweredAutoRuns.clear();
   for (const record of records.values()) stopCoverPoll(record);
   records.clear();
   publish();

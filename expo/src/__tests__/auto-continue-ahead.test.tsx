@@ -21,6 +21,8 @@ import ChapterEnd from "@/components/reader/ChapterEnd";
 import {
   __resetGenerationSessions,
   autoChapterToWriteAhead,
+  loweredAutoRunFor,
+  lowerAutoRunOnFailure,
   clearAutoChapterFailure,
   hasGenerationForChapter,
   markAutoChapterFailed,
@@ -308,6 +310,7 @@ describe("the chapter-end fallback", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={onContinue}
       />,
     );
@@ -325,6 +328,7 @@ describe("the chapter-end fallback", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={jest.fn()}
       />,
     );
@@ -349,6 +353,7 @@ describe("the chapter-end fallback", () => {
       <ChapterEnd
         story={story}
         chapter={story.chapters[1]}
+        credits={PLENTY}
         onContinue={jest.fn()}
       />,
     );
@@ -553,5 +558,41 @@ describe("autoChapterToWriteAhead with a pre-bought run", () => {
     expect(startAutoChapterAhead({ story, credits: 0 })).not.toBeNull();
     expect(startAutoChapterAhead({ story, credits: 0 })).toBeNull();
     expect(continueStreamMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A run the server has unwound must stop being spent locally.
+ *
+ * `refundAutoChapterRun` refunds every still-reserved chapter from the failed
+ * one onward and lowers `auto_run_through_chapter`. The continuation response
+ * carries neither the new value nor the refund, so a client that kept believing
+ * the old run wrote chapters against a run that no longer existed — with no
+ * balance check, because it thought they were already paid for.
+ */
+describe("a run the server unwound", () => {
+  it("stops the write-ahead at the chapter that failed", () => {
+    const story = makeStory({
+      plannedChapterCount: 7,
+      chapters: [1, 2, 3].map((n) => makeChapter(n)),
+      autoRunThroughChapter: 7,
+    });
+    // The story row still says the run reaches 7.
+    expect(autoChapterToWriteAhead(story, 0)).toBe(4);
+
+    // Chapter 4 fails; the server refunds 4..7 and lowers the run to 3.
+    lowerAutoRunOnFailure(story.id, 4);
+
+    // Chapter 4 is barred by the failure record, and 5 onward by the run.
+    expect(autoChapterToWriteAhead(story, 0)).toBeNull();
+    expect(loweredAutoRunFor(story.id)).toBe(3);
+  });
+
+  it("only ever moves the ceiling down", () => {
+    const story = makeStory({ plannedChapterCount: 7 });
+    lowerAutoRunOnFailure(story.id, 3);
+    // A later failure further along must not hand chapters back.
+    lowerAutoRunOnFailure(story.id, 6);
+    expect(loweredAutoRunFor(story.id)).toBe(2);
   });
 });

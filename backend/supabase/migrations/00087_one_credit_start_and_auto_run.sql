@@ -586,12 +586,23 @@ begin
       Nothing is debited here. The credit was taken when the run was reserved,
       and `credits: 0` says so rather than leaving the caller to re-derive it.
     */
-    if p_extend_to_chapter is null then
+    -- BOTH SIDES OF THE CLAIM ARE KIND-SCOPED, and the omission was reachable
+    -- on paper. A pre-bought row is always a `continuation`; the lookup did not
+    -- say so, so `reserve_generation_operation(..., 2, 'reimagine')` matched a
+    -- run's chapter-2 continuation, returned `prepaid: true, credits: 0`, and
+    -- then made the real chapter-2 continuation fail KTH01 -- a free reimagine
+    -- and a lost chapter. Nothing reaches it today (reimagine 404s earlier,
+    -- cover regeneration is chapter 1), which is exactly why it would have sat
+    -- there until something did. The active-chapter index is keyed
+    -- `(story_id, chapter_number, kind)` (00027), so matching on kind here is
+    -- also what makes this lookup agree with the constraint behind it.
+    if p_extend_to_chapter is null and p_kind = 'continuation' then
         select *
         into v_prepaid
         from public.generation_operations
         where story_id = p_story_id
           and chapter_number = p_chapter_number
+          and kind = 'continuation'
           and status = 'reserved'
           and auto_run_id is not null
         for update;

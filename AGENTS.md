@@ -268,7 +268,7 @@ Rules:
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00078` applied (pushed and verified with `supabase migration list` on 2026-09-11) except the deliberately absent `00016` and `00024`. All 34 edge functions were redeployed from `e123fa4` in the same session, so schema and code are in step. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00086` applied (verified with `supabase migration list` on 2026-09-14) except the deliberately absent `00016` and `00024`. All 34 edge functions were redeployed from `e123fa4` in the same session, so schema and code are in step. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 `_test.ts` files live alongside the `.sql` in this directory. The CLI skips them by filename pattern, which is why they are safe there, but they are not migrations and must never be numbered as if they were.
 

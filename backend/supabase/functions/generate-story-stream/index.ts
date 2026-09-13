@@ -303,8 +303,8 @@ serve(async (req) => {
       // A reservation that nothing ever finished. The buffered handler has
       // reconciled this since it was written; this one did not, and the
       // client only ever calls this one -- `generateStory` in the Expo client
-      // has no callers at all. So the three credits a first chapter costs
-      // were stranded permanently: the isolate dies mid-stream (wall-clock
+      // has no callers at all. So the credit a first chapter costs
+      // was stranded permanently: the isolate dies mid-stream (wall-clock
       // kill, deploy eviction, the worker torn down after a disconnect), the
       // refund never runs, and every retry of the same request id lands here
       // and is told "Generation is already in progress." forever, because the

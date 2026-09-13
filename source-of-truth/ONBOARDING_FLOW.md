@@ -2051,11 +2051,12 @@ error logging contract and contain identifiers and enums only.
    flow, one voice difference. The *money* in that section governs — the welcome
    bonus is 3, the guest bootstrap is 3, and the grant fires on declining the
    paywall.
-4. **`CREDITS_AND_PRICING.md` §1 and AGENTS.md record an unresolved 1-versus-3
-   disagreement on the story-start price.** Onboarding no longer prints that
-   number anywhere: C4's **Their first chapter is 3 credits** line went with C4,
-   and W7 names only plan prices. When the disagreement resolves, this file needs
-   no amendment, which is an accidental benefit of the screen's removal rather
+4. **RESOLVED 2026-09-14: a story start is ONE credit**, settled by the product
+   owner in `CREDITS_AND_PRICING.md`'s favour; AGENTS.md no longer carries the
+   1-versus-3 disagreement. Onboarding prints no start price anywhere — C4's
+   **Their first chapter is 3 credits** line went with C4, and W7 names only
+   plan prices — so this file needed no amendment when it resolved, which is an
+   accidental benefit of the screen's removal rather
    than a reason it was removed.
 5. **`CREDITS_AND_PRICING.md` §3 still describes a 3-day free trial on the yearly
    plan, and a monthly plan at $12.99.** W7 shows neither (§12-13). Pricing wins

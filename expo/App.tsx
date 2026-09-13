@@ -1221,6 +1221,11 @@ export default function App() {
                     <ChapterEnd
                       story={story}
                       chapter={chapter}
+                      // The fallback's own balance gate, read from the ref
+                      // rather than the state for the same reason the
+                      // write-ahead reads it: on the tick a chapter completes
+                      // the state is still one charge behind.
+                      credits={availableCreditsRef.current}
                       // A standalone, and a series that has reached its
                       // planned ending, have no next chapter to offer. Rewriting
                       // is the one thing left, so the pill has to be reachable

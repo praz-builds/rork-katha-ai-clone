@@ -446,13 +446,22 @@ number here is an estimate from published rates or infrastructure arithmetic.
 | Audio unlock — cached chapter | **~$0** | 1 |
 | Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
 
-**A story start is three credits, not one** (§6, amendment 46). It was one until
-2026-09-11, and that is the single most load-bearing correction in this table:
-at one credit the start cost **$0.178 per credit** against $0.0218 for a chapter,
-an 8× spread and the widest this document has ever priced at one credit. At three
-it is **$0.0593 per credit**, a 2.7× spread — still the most expensive thing a
-credit buys, and still the action every free grant flows to, but no longer the
-outlier that made a flat daily credit cost more than the subscription it sells.
+**A story start is ONE credit** (product owner, 2026-09-14). It was raised to
+three on 2026-09-11 on the unit-economics argument below, and that argument has
+now been overruled deliberately. The analysis is kept rather than deleted,
+because the cost it describes is real and did not go away with the decision:
+
+> At one credit a start costs **$0.178 per credit** against $0.0218 for a
+> chapter — an **8× spread**, the widest this document has ever priced, and the
+> reason a flat daily credit can cost more than the subscription it sells. At
+> three it was $0.0593 per credit, a 2.7× spread.
+
+So the start is again the outlier, and it is again the action every free grant
+flows to. **Whoever next touches grant sizes, the daily credit, or the
+subscription price must price against $0.178, not against $0.0593.** The margin
+table further down this file has NOT been recomputed for one credit; treat its
+per-credit figures as describing the three-credit world until someone redoes
+them.
 
 **The per-credit tables below still divide by the retired one-credit start**, so
 every blended $/credit figure in them is an UPPER bound rather than a current
@@ -1081,8 +1090,11 @@ A maximally engaged free user earns **17 credits in month one** (3 welcome, once
 + 14 from streak milestones at days 2, 5 and 10) and **nothing thereafter** — a
 one-time **$0.73** at the blended $0.043, and **$0.89** if they are spent the
 most expensive way there is. Seventeen credits is **five story starts** with two
-credits over, not seventeen: a start is three credits (§6, amendment 46), so the
-worst case is 5 × $0.178 rather than 17 × it. *(Was 24 while the welcome bonus
+credits over, not seventeen — **that arithmetic assumed a three-credit start and
+is now wrong**. At one credit (2026-09-14) seventeen credits is seventeen starts
+and the worst case is 17 × $0.178, which is the figure this paragraph was
+written to rule out. It is left visible rather than quietly corrected because
+the conclusion it supports needs re-deriving, not patching. *(Was 24 while the welcome bonus
 was 10; reduced to 3 on 2026-09-11, §6. The $0.50 / $1.80 pair this replaces was
 arithmetic on the retired one-credit start.)*
 
