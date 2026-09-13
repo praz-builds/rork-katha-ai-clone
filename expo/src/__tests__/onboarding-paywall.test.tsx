@@ -17,6 +17,8 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockGetOfferings = jest.fn();
 const mockPurchasePackage = jest.fn();
+/** What the service reports after a purchase attempt. Mutable per test. */
+const mockRevenueCatState = { premium: false };
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -27,7 +29,9 @@ jest.mock("@/lib/revenuecat", () => ({
     // No offering: the off-store path, which is what review and web walk.
     getOfferings: (...args: unknown[]) => mockGetOfferings(...args),
     purchasePackage: (...args: unknown[]) => mockPurchasePackage(...args),
-    isPremium: false,
+    get isPremium() {
+      return mockRevenueCatState.premium;
+    },
     subscribe: () => () => undefined,
   },
 }));
@@ -243,6 +247,37 @@ describe("OnboardingPaywall", () => {
       expect(mockPurchasePackage).not.toHaveBeenCalled();
     } finally {
       (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
+    }
+  });
+
+  it("treats a cancelled store sheet as a cancel, even for someone already premium", async () => {
+    // `purchasePackage` resolves null on a user cancel. Before it did, it
+    // resolved with the OLD profile, and a premium user who cancelled read as
+    // a purchase: `isPremium` was true, so they were granted a plan they had
+    // just declined. The entitlement is not the signal; the resolution is.
+    mockGetOfferings.mockResolvedValue({
+      current: {
+        availablePackages: [
+          { packageType: "ANNUAL", product: { price: 59, priceString: "$59" } },
+        ],
+      },
+    });
+    mockPurchasePackage.mockResolvedValue(null);
+    mockRevenueCatState.premium = true;
+    try {
+      const { view, onSubscribed } = await renderPaywall();
+      await waitFor(() => expect(view.getByText(/\$59/)).toBeTruthy());
+      await fireEvent.press(view.getByLabelText("Unlock Katha"));
+      await waitFor(() => expect(mockPurchasePackage).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(
+          view.getByLabelText("Unlock Katha").props.accessibilityState.busy,
+        ).toBeFalsy()
+      );
+      expect(onSubscribed).not.toHaveBeenCalled();
+      expect(view.queryByText("Purchase didn't go through. Try again.")).toBeNull();
+    } finally {
+      mockRevenueCatState.premium = false;
     }
   });
 

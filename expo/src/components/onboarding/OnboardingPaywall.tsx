@@ -398,11 +398,13 @@ export function OnboardingPaywall({
         if (mounted.current) setError(PURCHASE_ERROR);
         return;
       }
-      await revenueCatService.purchasePackage(pkg);
+      const profile = await revenueCatService.purchasePackage(pkg);
       if (!mounted.current) return;
-      // A user cancel resolves with the profile unchanged rather than throwing,
-      // so the entitlement is the only honest signal of what happened. No error
+      // A cancel resolves with null rather than throwing, and it is a cancel
+      // even for someone who was already premium: reading `isPremium` here
+      // would grant that person a plan they just declined to buy. No error
       // line for a cancel: the user knows what they just did.
+      if (profile === null) return;
       if (revenueCatService.isPremium) {
         onSubscribed({ credits: plan.credits, plan: plan.id });
       }

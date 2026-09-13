@@ -1663,10 +1663,13 @@ is persisted (`hasPlayedWelcomeFlight` / `markWelcomeFlightPlayed`), not held in
 memory, precisely so a reinstall-and-replay cannot happen by accident.
 
 Backend grants before this screen with `welcome:{user_id}`. WELCOME does not wait
-on or claim the balance; if the grant has not landed by the time the flight runs,
-the pill ticks to the grant anyway and reconciles on the next balance read. An animation
-that stalls on a network call is worse than one that is briefly optimistic about
-an idempotent grant we control.
+on or claim the balance. The flight makes no balance request: it ticks the pill
+to the grant it was told about, and when it finishes the pill shows the balance
+the app already holds, which is whatever the last bootstrap returned. If that is
+stale, it stays stale until the next bootstrap (the next launch) reconciles it;
+the grant is idempotent, so the number the flight showed is the number that
+arrives. An animation that stalls on a network call is worse than one that is
+briefly optimistic about a grant we control.
 
 Exit: `purpose = write` enters Create with {Name} pre-filled as the lead;
 `read` and `both` enter Home.
