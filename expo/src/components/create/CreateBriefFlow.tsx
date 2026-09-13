@@ -282,8 +282,27 @@ const STORY_FLOW_OPTIONS: DropdownOption<StoryFlow>[] = [
   },
   {
     value: "auto",
+    /*
+      THE PRICE IS ON THIS OPTION BECAUSE THIS OPTION IS WHAT SPENDS IT.
+
+      Auto buys its whole run the moment chapter one lands: the server works
+      out how many of the planned chapters the balance affords and reserves
+      them all at once. The Create button says "1 credit", which is true of the
+      start and silent about the eleven that follow a moment later -- and a
+      writer who watches their balance empty without having been told has been
+      misled by us, not by the feature.
+
+      The number is not quoted here because it is not knowable from the brief:
+      it depends on the balance at the moment the run starts, which the brief
+      cannot see. So the copy states the SHAPE of the charge -- all of it, up
+      front, for as many chapters as the credits reach -- which is the part a
+      writer needs before they pick, and the part that is true whatever their
+      balance turns out to be.
+    */
     label: "Auto-continue",
-    detail: "Katha picks the direction itself and keeps writing.",
+    detail:
+      "Katha picks the direction itself and keeps writing. Charged up front " +
+      "for as many chapters as your credits cover, then it stops.",
   },
 ];
 
