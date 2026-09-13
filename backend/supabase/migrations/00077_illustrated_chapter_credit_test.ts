@@ -7,17 +7,17 @@
 // calls the function and reads the ledger afterwards, because the thing under
 // test is money.
 //
-// What the CODE charges: starting a story is 3 (`begin_story_generation`),
-// every chapter after the first is 1, or 2 when illustrated. So a 3-chapter
-// illustrated story is 7 = 3 + 2 + 2, which is what the assertions below
-// actually reserve.
+// What is charged: starting a story is 1 (`begin_story_generation`), bundling
+// the cast, chapter one's words and chapter one's art, which becomes the
+// cover. Every chapter after the first is 1, or 2 when illustrated. So a
+// 3-chapter illustrated story is 5 = 1 + 2 + 2.
 //
-// `source-of-truth/CREDITS_AND_PRICING.md` §1 disagrees: it prices the start at
-// 1 and the same story at 5. That disagreement is real, unresolved, and
-// recorded in AGENTS.md as a decision for the product owner -- it is a price,
-// not a bug, and it must not be settled by editing one side to match the
-// other. This file states the code's arithmetic because this file tests the
-// code.
+// The start used to be 3, and `source-of-truth/CREDITS_AND_PRICING.md` §Summary
+// always said 1. AGENTS.md carried the disagreement as an open decision rather
+// than letting either side be quietly edited to match the other, because it is
+// a price and only the product owner can pick one. They picked the document on
+// 2026-09-14, and migration 00087 moved the code. The per-chapter arithmetic
+// this file is actually about is untouched by that.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
@@ -259,12 +259,16 @@ Deno.test("the story components still refund against a story operation only", as
     );
     const operationId = operation.rows[0].id;
 
+    // A cover that never arrived refunds NOTHING against a start debited 1:
+    // that single credit also bought the cast and the chapter the writer read,
+    // so paying a component out would refund the whole story. The guard is the
+    // price boundary, and 00034 asserts the same thing from the other side.
     const before = await balance(db);
     await db.query(
       "select refund_story_media_component($1, $2, 'cover')",
       [operationId, USER],
     );
-    assertEquals((await balance(db)) - before, 1);
+    assertEquals((await balance(db)) - before, 0);
 
     // A continuation operation is not where a cover was ever bought, so the
     // lookup finds nothing rather than refunding against the wrong purchase.

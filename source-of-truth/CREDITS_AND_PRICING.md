@@ -1455,7 +1455,7 @@ before any purchase and before any grant
 │                                          (reader- or writer-voiced copy)
 │                                                │
 │              bridge → who → wait → reveal → plan bridge
-│              "Their first chapter is 3 credits. A plan keeps them going."
+│              "Their first chapter is 1 credit. A plan keeps them going."
 │                                                │
 │                                          SAVE {NAME}
 │                                       email → 6-digit code
@@ -1570,8 +1570,10 @@ free and the funnel is the library, not the paywall.
 
 ## 7. The blocked moment
 
-Because starting a story costs 3, a further chapter 1 or 2, and audio 1,
-partial balances are real and common. The sheet has to handle them well, and it
+Because starting a story costs 1, a further chapter 1 or 2, and audio 1,
+partial balances are real and common — and note that a partial balance now
+blocks *fewer* things than it used to, since the cheapest paid action and the
+most valuable one are the same price. The sheet has to handle them well, and it
 has to name the action it is blocking rather than assume a single price.
 
 ```
@@ -1636,9 +1638,10 @@ resentment-generating placement available.
 - **After a successful top-up, the pending action fires automatically.** No second
   tap. The user was mid-intent; finish the intent.
 - **Every paid button shows its price**, and the price is the price of *that*
-  action in *that* state: `Create · 3 credits` to start a story, or `Create · 2
-  credits` when the user has already uploaded their own cover and chapter 1's
-  art will not be generated; `Continue · 1 credit` for the next chapter, or
+  action in *that* state: `Create · 1 credit` to start a story — the bundle of
+  cast, chapter 1's text and chapter 1's art is one price and does not go down
+  when the user uploads their own cover, because the credit is still buying the
+  cast and the chapter; `Continue · 1 credit` for the next chapter, or
   `Continue · 2 credits` when chapters are illustrated; `Listen · 1 credit`. The
   blocked moment is anticipated, never sprung.
 - **Insufficient balance on entering Create shows an inline banner, never a
@@ -1968,11 +1971,25 @@ economy is tuned on evidence rather than argued about.
 1. **One credit = one AI action.** Not one story. `credit_ledger.amount` stays
    `integer`. No decimals, no fractions, no second currency, no separate
    consumption meter.
-2. **Starting a story costs 3 credits** — 1 cast + 1 chapter-1 text + 1 chapter-1
-   art, which is the cover. Each further chapter is 1, or 2 illustrated. The
-   actions are **separately purchasable** and charged as they happen, so a user
-   with 1 credit can still make progress and an abandoned story costs only what
-   it wrote.
+2. **Starting a story costs 1 credit**, and that credit bundles three actions —
+   the cast, chapter 1's text, and chapter 1's art, which is the cover. Each
+   further chapter is 1, or 2 illustrated. A **one-chapter story therefore
+   costs 1 in total**, and a 3-chapter illustrated story is 5 = 1 + 2 + 2.
+   Chapters are charged **as they happen**, so a user with 1 credit can still
+   make progress and an abandoned story costs only what it wrote.
+
+   *Settled 2026-09-14.* This decision read "3 credits — 1 cast + 1 chapter-1
+   text + 1 chapter-1 art" and contradicted §Summary of this same file, which
+   has always priced the bundled start at 1. `begin_story_generation` deducted
+   3 and the client showed 3, so the code matched the wrong half of the
+   document. AGENTS.md recorded the disagreement rather than letting either
+   side be edited to match the other, because it is a price and only the
+   product owner can pick one. They picked 1; migration **00087** moved the
+   code and every surface that quoted it. The one thing the old three-credit
+   split bought that the bundle does not: a cast or a cover that never arrives
+   no longer refunds a separate credit, because there is no separate credit —
+   what the writer gets instead is the concept card and a free cover
+   regeneration.
 3. **Reading is free, unlimited, on every tier, forever.** No caps, no metering,
    no daily pass. A permanent commitment, not a launch promo.
 4. **Audio is 1 credit per chapter, unlocked permanently.** Re-listens,

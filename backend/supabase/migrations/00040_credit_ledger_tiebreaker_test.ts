@@ -56,7 +56,9 @@ Deno.test("a replayed balance read is decided by ledger_sequence, not by a rando
       [userId, "request-401"],
     );
     assertEquals(first.rows[0].result.replayed, false);
-    assertEquals(first.rows[0].result.balance, 7);
+    // 10 - 1. The start price moved from 3 to 1 in migration 00087; the
+    // tie-breaker this test is about is unchanged by it.
+    assertEquals(first.rows[0].result.balance, 9);
 
     // Collapse every ledger row onto one timestamp, which is what
     // refresh_subscription_grant produces naturally by writing the lapse and
@@ -72,7 +74,7 @@ Deno.test("a replayed balance read is decided by ledger_sequence, not by a rando
       [userId, "request-401"],
     );
     assertEquals(replay.rows[0].result.replayed, true);
-    assertEquals(replay.rows[0].result.balance, 7);
+    assertEquals(replay.rows[0].result.balance, 9);
   } finally {
     await db.close();
   }

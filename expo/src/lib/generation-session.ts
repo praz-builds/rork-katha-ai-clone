@@ -620,7 +620,7 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
         chapterTitle: chapter?.title ?? null,
         story,
         chapter,
-        creditsCharged: STORY_START_CREDITS,
+        creditsCharged: storyStartCost(story),
       });
       applyVisibility(record, story.id);
       // The chapter is persisted; the art is not. Start asking.
@@ -662,6 +662,47 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
 function chapterCost(story: Pick<Story, "illustrateChapters">): number {
   return CHAPTER_TEXT_CREDITS +
     (story.illustrateChapters ? CHAPTER_ART_CREDITS : 0);
+}
+
+/**
+ * What a finished story start actually took: the start credit, plus the whole
+ * auto run bought with it.
+ *
+ * `App` derives the running balance by subtracting `creditsCharged`, so a
+ * start that reported only `STORY_START_CREDITS` would leave the app believing
+ * the writer still holds every credit the run just spent -- up to fourteen
+ * chapters' worth, on the one screen where they are deciding whether to write
+ * another story. Too high is the dangerous direction: it is what sends a
+ * request the server refuses.
+ *
+ * Derived rather than sent, because it is derivable exactly: the run bought
+ * chapters two through `autoRunThroughChapter` at the same per-chapter price
+ * `chapterCost` already knows, which is the arithmetic
+ * `reserve_auto_chapter_run` performed. A story with no run contributes
+ * nothing, which is every interactive story.
+ */
+function storyStartCost(story: Story): number {
+  const paidThrough = story.autoRunThroughChapter;
+  const runChapters = typeof paidThrough === "number"
+    ? Math.max(0, paidThrough - 1)
+    : 0;
+  return STORY_START_CREDITS + runChapters * chapterCost(story);
+}
+
+/**
+ * What THIS chapter takes off the balance now, which for a pre-bought chapter
+ * is nothing.
+ *
+ * An auto run's chapters were paid for when the story started, and
+ * `reserve_generation_operation` claims the reservation rather than making a
+ * second one. Reporting the price again here would subtract it twice from the
+ * app's running balance and walk the displayed number down to zero over a run
+ * the writer paid for once.
+ */
+function chapterChargeNow(story: Story, chapterNumber: number): number {
+  const paidThrough = story.autoRunThroughChapter;
+  if (typeof paidThrough === "number" && chapterNumber <= paidThrough) return 0;
+  return chapterCost(story);
 }
 
 /** Start writing the next chapter of a story that already exists. */
@@ -733,7 +774,7 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
         stage: "done",
         chapterTitle: chapter.title,
         chapter,
-        creditsCharged: chapterCost(story),
+        creditsCharged: chapterChargeNow(story, nextChapterNumber),
       });
     }).catch((error) => fail(record, error));
   };
@@ -1093,23 +1134,31 @@ export function autoChapterToWriteAhead(
   const next = latest + 1;
 
   /*
-    THE CHAIN RUNS TO THE PLAN OR TO THE BALANCE, WHICHEVER STOPS IT FIRST.
+    THE CHAIN RUNS TO THE PLAN OR TO THE RUN, WHICHEVER STOPS IT FIRST.
 
-    This is a product decision, taken deliberately (2026-09-11) over a
-    one-chapter-of-runway bound. Auto mode means the reader asked not to be
-    interrupted, and a lookahead that stops one chapter ahead still leaves them
-    waiting at every chapter after the first. So chapter N+1 landing starts
-    N+2, and the story writes itself forward until the plan ends or the credits
-    do.
+    Auto mode means the reader asked not to be interrupted, and a lookahead
+    that stops one chapter ahead still leaves them waiting at every chapter
+    after the first. So chapter N+1 landing starts N+2, and the story writes
+    itself forward until the plan ends or the paid-for chapters do.
+
+    WHAT CHANGED, AND WHY IT IS NOT THE BALANCE ANY MORE. This used to check
+    the live balance before each chapter, which made the mode's promise
+    conditional on nothing else spending a credit in the meantime -- audio, a
+    portrait, a second device -- and let an auto story stop halfway through
+    with no tap behind the stopping either. Since migration 00087 the whole run
+    is bought at once when chapter one lands: `reserve_auto_chapter_run` works
+    out how many of the remaining planned chapters the balance affords,
+    reserves all of them in one transaction, and writes the last of them onto
+    the story row. The chain now runs to that number.
 
     The consequence, stated plainly because it is the reason the alternative
     was considered: a fifteen-chapter auto story can consume the whole
-    remaining balance while the reader is still inside chapter one. That is
-    what was asked for. The two things that make it defensible are that it only
-    ever happens for `auto`, which is opt-in and never the default, and that
-    the balance check below is exact rather than optimistic -- the chain stops
-    at the last chapter the reader can actually afford, and never fires a
-    request it knows will be refused.
+    remaining balance while the reader is still inside chapter one, and now it
+    does so at the START rather than a chapter at a time. That is what was
+    asked for. What makes it defensible is that it only ever happens for
+    `auto`, which is opt-in and never the default, that the reader is told the
+    balance the run left them in the same response, and that a run which stops
+    early hands the unused remainder back (`refund_auto_chapter_run`).
   */
 
   /*
@@ -1157,23 +1206,36 @@ export function autoChapterToWriteAhead(
     their next chapter is on its way. The server answers 402 and refunds
     nothing because nothing was charged, but the client would already have said
     "Chapter N+1 is being written" -- and there is no tap here for them to
-    regret, so the lie is entirely ours. The balance the app holds can be
-    stale, which is why `ChapterEnd` also reads the session's phase rather than
-    its existence: a 402 that gets through still renders as a failure and a
-    retry, never as progress.
-  */
-  /*
-    THE PRICE OF THE CHAPTER THIS ACTUALLY IS, not of a chapter in general.
+    regret, so the lie is entirely ours.
 
-    Since migration 00077 a continuation costs one credit for its text and a
-    second if the story illustrates its chapters. Checking against the text
+    THE PRE-BOUGHT RUN IS WHAT ANSWERS THAT NOW, and it answers it exactly:
+    `autoRunThroughChapter` is the last chapter the server has already taken
+    the credits for, so a chapter at or below it cannot be refused for money.
+    A chapter past it has not been bought, and the chain stops rather than
+    firing a request that would charge for a chapter nobody asked for -- auto
+    mode buys once, at the start, and never again behind the reader's back.
+
+    THE FALLBACK IS FOR STORIES OLDER THAN RUNS. `autoRunThroughChapter` is
+    undefined on every story written before migration 00087, and on any row
+    read from a surface whose column list predates it. Those stories keep the
+    behaviour they were written under: the live balance, checked against the
+    price of the chapter THIS ACTUALLY IS -- one credit for its text and a
+    second when the story illustrates its chapters (00077). Checking the text
     credit alone would let the chain fire its last chapter with exactly one
     credit in hand, take a 402 for a two-credit reservation, and hang a failure
-    off the end of a story the reader was enjoying -- which is precisely the
-    outcome the balance check exists to prevent, arrived at by being one
-    constant out of date.
+    off the end of a story the reader was enjoying.
+
+    The balance the app holds can be stale either way, which is why
+    `ChapterEnd` also reads the session's phase rather than its existence: a
+    402 that gets through still renders as a failure and a retry, never as
+    progress.
   */
-  if (credits < chapterCost(story)) return null;
+  const paidThrough = story.autoRunThroughChapter;
+  if (typeof paidThrough === "number") {
+    if (next > paidThrough) return null;
+  } else if (credits < chapterCost(story)) {
+    return null;
+  }
 
   return next;
 }

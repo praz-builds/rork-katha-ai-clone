@@ -10,6 +10,7 @@ import {
 } from "@/lib/generation-session";
 import { loadDraft, saveDraft } from "@/lib/draft-storage";
 import { MAX_CAST_SIZE, STORY_START_CREDITS } from "@/lib/pricing-limits";
+import { formatCredits } from "@/lib/pricing";
 import type {
   AudienceMode,
   CreateDraft,
@@ -335,7 +336,7 @@ export default function CreateStudioScreen({
         credits >= STORY_START_CREDITS ? "Add a story seed" : "Credits needed",
         credits >= STORY_START_CREDITS
           ? "Give Katha one clear idea to shape."
-          : `You need ${STORY_START_CREDITS} credits to start a story.`,
+          : `You need ${formatCredits(STORY_START_CREDITS)} to start a story.`,
       );
       return;
     }

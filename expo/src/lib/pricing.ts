@@ -44,7 +44,11 @@ export const CREDITS_PER_AUDIO_UNLOCK = 1;
  * mechanical change that would bury the fact underneath it — but the fact is
  * the important part, so it is stated here rather than in a commit message:
  *
- *   * Starting a story is 3, reserved by `begin_story_generation`.
+ *   * Starting a story is 1, reserved by `begin_story_generation` -- a bundle
+ *     of the cast, chapter one's words and chapter one's art, which becomes
+ *     the cover. It was 3, one per action; the product owner settled the
+ *     long-standing disagreement with `source-of-truth/CREDITS_AND_PRICING.md`
+ *     §Summary in the document's favour on 2026-09-14 (migration 00087).
  *   * Each further chapter is 1, or **2 when the story illustrates its
  *     chapters** — reserved by `reserve_generation_operation` since migration
  *     00077, which takes the illustrated flag from `stories.illustrate_chapters`
@@ -54,7 +58,7 @@ export const CREDITS_PER_AUDIO_UNLOCK = 1;
  * rendered to a user. The separation this module exists to keep is still real
  * for anything else on the roadmap; it stopped being real for these.
  */
-export const CONTRACTED_CREDITS_TO_START_STORY = 3;
+export const CONTRACTED_CREDITS_TO_START_STORY = 1;
 
 /** Each chapter after the first. Live. */
 export const CONTRACTED_CREDITS_PER_CHAPTER = 1;
@@ -95,7 +99,7 @@ export function contractedCreditsForWholeStory(
 
 // ---------------------------------------------------------------------------
 
-/** "1 credit" / "3 credits", for button labels and sheet headers. */
+/** "1 credit" / "2 credits", for button labels and sheet headers. */
 export function formatCredits(n: number): string {
   return `${n} ${n === 1 ? "credit" : "credits"}`;
 }

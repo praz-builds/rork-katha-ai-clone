@@ -197,6 +197,33 @@ refinement of it:
 existing behaviour: direction chips at every chapter end, nothing written until
 one is picked. `auto` picks the direction itself and continues.
 
+**`auto` BUYS ITS WHOLE RUN UP FRONT** (2026-09-14). When chapter one of an auto
+series lands, the server works out how many of the remaining planned chapters
+the balance can afford, reserves all of them in one transaction, writes that
+many, and stops. The writer made one decision — "write this without asking me" —
+so they are charged once for what that decision buys, rather than watching a
+balance tick down over eleven minutes.
+
+Two consequences are deliberate and must not be softened without a product
+decision:
+
+- **The balance drops in one step, and it can drop to nearly nothing.** A
+  fifteen-chapter auto story takes fifteen credits at the moment it starts. The
+  copy on that control has to say so plainly; a writer who did not expect it has
+  been misled by us, not by the feature.
+- **A run that stops early refunds the remainder.** Failing at chapter four of
+  six returns three — the chapter that failed and the two never attempted. The
+  refund is idempotent on an operation key, because a double refund is a free
+  story and a missed one charges for chapters that do not exist.
+
+The run is necessarily **sequential**, not simultaneous: each chapter's prompt
+carries the previous chapter, which is what holds voice and continuity, so
+chapter four cannot begin before chapter three exists. "At once" describes the
+decision and the charge, never the generation.
+
+Extension is still a deliberate tap. Auto never extends past the plan — see
+`reserve_generation_operation.p_extend_to_chapter`.
+
 It is **sent on the create request AND persisted as a column**, and the column
 is the part that matters: the pick is honoured at every chapter end, which is a
 different session from the brief and often a different day, so a value that

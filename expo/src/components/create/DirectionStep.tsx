@@ -7,6 +7,7 @@ import type { ContinuationOption, DirectionStatus } from "@/components/Direction
 import { toDirection } from "@/lib/directions";
 import * as storyApi from "@/lib/api";
 import { MAX_BEAT_LENGTH, STORY_START_CREDITS } from "@/lib/pricing-limits";
+import { formatCredits } from "@/lib/pricing";
 import { colors, fonts, spacing } from "@/theme";
 import type { CreateDraft } from "@/types/domain";
 
@@ -201,14 +202,14 @@ export default function DirectionStep({
       <Text style={styles.eyebrow}>Your story starts here</Text>
       <DirectionChoices
         heading="Where does it begin?"
-        priceNote={`Any of these writes chapter 1 · ${STORY_START_CREDITS} credits`}
+        priceNote={`Any of these writes chapter 1 · ${formatCredits(STORY_START_CREDITS)}`}
         status={status}
         options={options}
         unavailableReason={unavailableReason}
         loadingLabel="Loading suggested openings"
         loadingMessage="Reading your idea for openings..."
         chooseHint="Writes chapter 1 in this direction"
-        submitLabel={`Create story · ${STORY_START_CREDITS} credits`}
+        submitLabel={`Create story · ${formatCredits(STORY_START_CREDITS)}`}
         writeOwnLabel="Write your own — or get a surprise"
         composerPlaceholder="Tell Katha how it opens."
         testIDPrefix="create-direction"

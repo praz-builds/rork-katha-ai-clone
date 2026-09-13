@@ -218,6 +218,23 @@ export type Story = {
    */
   storyFlow?: StoryFlow;
   /**
+   * The last chapter an auto story has ALREADY PAID FOR, or absent.
+   *
+   * Auto mode pre-buys: when chapter one lands, `reserve_auto_chapter_run`
+   * reserves every remaining planned chapter the balance can afford, in one
+   * transaction, and records the last of them on the row. The write-ahead then
+   * runs to this number and stops -- it consults this rather than the live
+   * balance, because the balance says what the writer can spend NEXT and this
+   * says what they have already spent.
+   *
+   * ABSENT IS NOT ZERO, and the difference decides what happens to every story
+   * written before runs existed. Absent means no run was ever reserved, and
+   * the write-ahead falls back to the old per-chapter balance check so those
+   * stories keep continuing. A run that bought nothing is present and equal to
+   * the chapter before it began, which correctly stops the chain.
+   */
+  autoRunThroughChapter?: number;
+  /**
    * How many chapters this story is planned to run: 1..15, or absent.
    *
    * NOT the four values the picker offers. A reader who extends a finished

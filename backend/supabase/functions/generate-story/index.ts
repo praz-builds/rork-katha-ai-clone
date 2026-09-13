@@ -4,6 +4,7 @@ import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
 import {
   applyRequestedVisibility,
@@ -576,6 +577,26 @@ serve(async (req) => {
       await rememberStoryCharacters(characterClient, user.id, story.id);
       mark("visibility");
 
+      /*
+        AN AUTO STORY BUYS THE REST OF ITS PLAN HERE, IN ONE TRANSACTION.
+
+        Identical to the streamed path, and it has to be: a run reserved by one
+        transport and not the other is an auto story that stalls depending on
+        which client wrote it. The long note is in
+        `generate-story-stream/index.ts`; the two facts that matter here are
+        that it runs AFTER the chapter is persisted and paid for, so a failed
+        first chapter never pre-buys a fifth, and that the balance in the
+        response has to move with it -- `operation.balance` predates the run.
+      */
+      const autoRun = story.story_flow === "auto"
+        ? await reserveAutoChapterRun(serviceClient, {
+          userId: user.id,
+          storyId: story.id,
+          runId: crypto.randomUUID(),
+          fromChapter: 2,
+        })
+        : null;
+
       // Chapter 1's art is the story's cover (section 10.4, decisions 38 and
       // 40), and the cast's portraits are generated once, now, because
       // Interactive mode has no later moment when the whole cast is known
@@ -674,7 +695,8 @@ serve(async (req) => {
         coverStatus,
         words: wordCount,
         beats,
-        balance: operation.balance,
+        balance: autoRun?.balance ?? operation.balance,
+        autoRunThroughChapter: autoRun?.through_chapter ?? null,
         model: result.model,
         // Cumulative milliseconds from the start of the handler. `llm` minus
         // `prompt_built` is the provider chain; everything else is ours.
