@@ -1,33 +1,43 @@
 /**
- * The shared onboarding questionnaire: name, genres, purpose, refine, moment.
+ * The shared onboarding questionnaire: name, genres, purpose, then the
+ * purpose's own questions.
  *
  * ## What this file used to be
  *
- * It used to be the WHOLE of onboarding - the five questions below, then a
- * fake progress ring ("Building your Katha profile"), a notification alert with
- * an auto-scrolling rail of invented five-star reviews, a "Katha Plus" paywall
+ * It used to be the WHOLE of onboarding - the questions below, then a fake
+ * progress ring ("Building your Katha profile"), a notification alert with an
+ * auto-scrolling rail of invented five-star reviews, a "Katha Plus" paywall
  * with a seven-row Free-vs-Plus table promising unlimited and priority
  * generation, a countdown one-time offer, an email/OTP pair and a success
  * screen. All of that is gone (2026-09-11): the aha is now "make one character,
  * see their portrait", which `CharacterOnboarding.tsx` owns end to end,
  * including auth, the single paywall and the welcome hand-off.
  *
- * What is left is the part that was always worth asking: five questions whose
+ * What is left is the part that was always worth asking: the questions whose
  * answers shape the first character and the first shelf. EVERY purpose leaves
  * through `onCharacterPath` - read, write and both. There is no longer a
  * branch here, because there is no longer a second flow to branch into.
  *
- * ## Why the copy is untouched
+ * ## The reader's questions (2026-09-14)
  *
- * These five screens are the only ones a person sees before they have any
- * reason to trust the app, and the wording has been through product review.
- * The migration below is tokens and types only: every string, option, order and
- * gate is exactly what it was.
+ * A reader answers three after "Reading": how they like their stories, what
+ * they are in the mood for tonight, and when they usually read. The third is
+ * the one optional question in the whole flow, because it is about routine
+ * rather than taste, and it carries an UP NEXT card so the character screen
+ * that follows is expected rather than a detour. Writers and "both" keep their
+ * two.
+ *
+ * ## The progress row
+ *
+ * The same short pills the character screens draw, from the first question,
+ * one per step, with the count read from `lib/onboarding-progress.ts`. This
+ * file used to draw a filled track labelled `n/5`, and the row that replaced
+ * it on the next screen started four pills in.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  AccessibilityInfo,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -37,23 +47,21 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
 
 import BrandWordmark from "@/components/BrandWordmark";
 import { genreChipLabel } from "@/components/explore/GenreStrip";
 import { Field } from "@/components/onboarding/Field";
-import { Primary } from "@/components/onboarding/primitives";
+import {
+  OnboardingTopBar,
+  Primary,
+} from "@/components/onboarding/primitives";
+import { questionStep } from "@/lib/onboarding-progress";
+import type { QuestionStep } from "@/lib/onboarding-progress";
 import {
   colors,
-  controls,
   fonts,
   genreLabels,
-  IconBack,
-  motion,
+  IconCheck,
   onboardingType,
   radius,
   shadows,
@@ -62,6 +70,7 @@ import {
 } from "@/theme";
 import { UI_GENRES } from "@/types/domain";
 import type { Genre, OnboardingPurpose } from "@/types/domain";
+import portraitPriya from "../../assets/onboarding/portrait-priya.png";
 
 /**
  * How many genre interests a reader must pick before Continue activates on
@@ -71,43 +80,21 @@ import type { Genre, OnboardingPurpose } from "@/types/domain";
  */
 export const MIN_GENRE_SELECTIONS = 3;
 
-/** The five questions, in order. There is no sixth screen in this file. */
-type QuestionScreen = "name" | "genres" | "purpose" | "refine" | "moment";
-
-const QUESTION_COUNT = 5;
+/** The screens, in walking order. `mood` renders for readers only. */
+type QuestionScreen = QuestionStep;
 
 /** Clearance under a pinned CTA, before the safe-area inset. `CharacterOnboarding`'s. */
 const CTA_BOTTOM = 40;
 
-const STEP_OF: Record<QuestionScreen, number> = {
-  name: 1,
-  genres: 2,
-  purpose: 3,
-  refine: 4,
-  moment: 5,
-};
-
-const NEXT_SCREEN: Record<Exclude<QuestionScreen, "moment">, QuestionScreen> = {
-  name: "genres",
-  genres: "purpose",
-  purpose: "refine",
-  refine: "moment",
-};
-
-const PREVIOUS_SCREEN: Record<Exclude<QuestionScreen, "name">, QuestionScreen> =
-  {
-    genres: "name",
-    purpose: "genres",
-    refine: "purpose",
-    moment: "refine",
-  };
-
-/** What the five questions collected, handed on to the character flow. */
+/** What the questions collected, handed on to the character flow. */
 export type KathaOnboardingAnswers = {
   name: string;
   genres: string[];
   otherGenre: string;
   refine: string;
+  /** The reader's "what are you in the mood for". Empty on the other paths. */
+  mood: string;
+  /** Empty when a reader skipped "when do you usually read". */
   moment: string;
 };
 
@@ -123,49 +110,107 @@ export type KathaOnboardingFlowV2Props = {
   onCharacterPath: (payload: KathaCharacterPathPayload) => void;
 };
 
-type Option = { k: string; icon: string; label: string; sub: string };
+type Option = { k: string; icon: string; label: string; sub?: string };
 
 // ── Static data ─────────────────────────────────────────────────────────────
 const PURPOSES: readonly Option[] = [
-  { k: "read", icon: "\uD83D\uDCD6", label: "Reading", sub: "Get lost in stories from around the world" },
-  { k: "write", icon: "\u270D\uFE0F", label: "Writing", sub: "Create stories of my own with Katha" },
-  { k: "both", icon: "\u2728", label: "A bit of both", sub: "I love to read and to write" },
+  { k: "read", icon: "📖", label: "Reading", sub: "Get lost in stories from around the world" },
+  { k: "write", icon: "✍️", label: "Writing", sub: "Create stories of my own with Katha" },
+  { k: "both", icon: "✨", label: "A bit of both", sub: "I love to read and to write" },
 ];
 const REFINE_READ: readonly Option[] = [
-  { k: "read", icon: "\uD83D\uDCD6", label: "Reading them myself", sub: "Words on the page, at my own pace" },
-  { k: "listen", icon: "\uD83C\uDFA7", label: "Listening to audio", sub: "Narrated stories for commutes and nights" },
-  { k: "mix", icon: "\uD83D\uDD00", label: "A mix of both", sub: "Read sometimes, listen sometimes" },
+  { k: "read", icon: "📖", label: "Reading them myself", sub: "Words on the page, at my own pace" },
+  { k: "listen", icon: "🎧", label: "Listening to audio", sub: "Narrated stories for commutes and nights" },
+  { k: "mix", icon: "🔀", label: "A mix of both", sub: "Read sometimes, listen sometimes" },
 ];
 const REFINE_WRITE: readonly Option[] = [
-  { k: "novel", icon: "\uD83D\uDCD5", label: "A full novel", sub: "A story big enough to get lost in" },
-  { k: "short", icon: "\u2712\uFE0F", label: "Short stories", sub: "Quick, complete, satisfying" },
-  { k: "fan", icon: "\uD83D\uDCAB", label: "Fan fiction", sub: "Worlds and characters I already love" },
-  { k: "poetry", icon: "\uD83D\uDD6F\uFE0F", label: "Poetry and verse", sub: "A whole feeling in a few lines" },
+  { k: "novel", icon: "📕", label: "A full novel", sub: "A story big enough to get lost in" },
+  { k: "short", icon: "✒️", label: "Short stories", sub: "Quick, complete, satisfying" },
+  { k: "fan", icon: "💫", label: "Fan fiction", sub: "Worlds and characters I already love" },
+  { k: "poetry", icon: "🕯️", label: "Poetry and verse", sub: "A whole feeling in a few lines" },
 ];
 const REFINE_BOTH: readonly Option[] = [
-  { k: "find", icon: "\uD83D\uDCDA", label: "Find my next read", sub: "Start with a shelf built around my taste" },
-  { k: "create", icon: "\u270D\uFE0F", label: "Start a story", sub: "Open a blank page with Katha beside me" },
-  { k: "balance", icon: "\u2696\uFE0F", label: "Balance both", sub: "Keep reading and writing close together" },
-  { k: "surprise", icon: "\u2728", label: "Surprise me", sub: "Show me the best place to begin" },
+  { k: "find", icon: "📚", label: "Find my next read", sub: "Start with a shelf built around my taste" },
+  { k: "create", icon: "✍️", label: "Start a story", sub: "Open a blank page with Katha beside me" },
+  { k: "balance", icon: "⚖️", label: "Balance both", sub: "Keep reading and writing close together" },
+  { k: "surprise", icon: "✨", label: "Surprise me", sub: "Show me the best place to begin" },
 ];
+
+/**
+ * The reader's "what are you in the mood for". The keys are what Home's
+ * Tonight rail reads (`lib/home-tonight.ts`), so they are ids, not labels.
+ */
+export const MOODS: readonly Option[] = [
+  { k: "escape", icon: "🌊", label: "Something to escape into", sub: "Immersive worlds, long journeys." },
+  { k: "guessing", icon: "🔍", label: "Something that keeps me guessing", sub: "Mystery, tension, twists." },
+  { k: "emotional", icon: "💔", label: "Something emotional", sub: "Ache, catharsis, connection." },
+  { k: "quick", icon: "⚡", label: "Something quick", sub: "Under 20 minutes." },
+  { k: "comforting", icon: "🕯️", label: "Something comforting", sub: "Warm, low-stakes, safe." },
+  { k: "surprise", icon: "🎲", label: "Surprise me", sub: "Katha picks based on your genres." },
+];
+
+/** The reader's "when do you usually read". One line each: a routine, not a pitch. */
 const MOMENTS_READ: readonly Option[] = [
-  { k: "sleep", icon: "\uD83C\uDF19", label: "Before sleep", sub: "A calm chapter to end the day" },
-  { k: "breaks", icon: "\u2615", label: "Commutes and breaks", sub: "Stories that fit into small pockets of time" },
-  { k: "weekend", icon: "\uD83D\uDCDA", label: "Weekend binges", sub: "Long sessions when I can settle in" },
-  { k: "escape", icon: "\u2728", label: "Whenever I need an escape", sub: "A new world on demand" },
+  { k: "sleep", icon: "🌙", label: "Before bed" },
+  { k: "commute", icon: "🚇", label: "During commutes" },
+  { k: "breaks", icon: "☕", label: "Short breaks" },
+  { k: "weekend", icon: "🌞", label: "Weekends" },
+  { k: "whenever", icon: "🕒", label: "Whenever I get time" },
 ];
 const MOMENTS_WRITE: readonly Option[] = [
-  { k: "draft", icon: "\uD83D\uDCA1", label: "Turn an idea into a draft", sub: "Help me get from blank page to first version" },
-  { k: "voice", icon: "\u270E", label: "Rewrite in my voice", sub: "Make every line sound unmistakably mine" },
-  { k: "chapters", icon: "\uD83D\uDDC2\uFE0F", label: "Plan chapters", sub: "Shape the arc before I lose momentum" },
-  { k: "publish", icon: "\uD83D\uDE80", label: "Publish and find readers", sub: "Share the work and grow an audience" },
+  { k: "draft", icon: "💡", label: "Turn an idea into a draft", sub: "Help me get from blank page to first version" },
+  { k: "voice", icon: "✎", label: "Rewrite in my voice", sub: "Make every line sound unmistakably mine" },
+  { k: "chapters", icon: "🗂️", label: "Plan chapters", sub: "Shape the arc before I lose momentum" },
+  { k: "publish", icon: "🚀", label: "Publish and find readers", sub: "Share the work and grow an audience" },
 ];
 const MOMENTS_BOTH: readonly Option[] = [
-  { k: "remix", icon: "\uD83D\uDD01", label: "Read, then remix", sub: "Let great stories spark my own ideas" },
-  { k: "publish", icon: "\uD83D\uDE80", label: "Write, then publish", sub: "Create something and put it in front of readers" },
-  { k: "unwind", icon: "\uD83C\uDFA7", label: "Listen, then unwind", sub: "Keep stories close without looking at a screen" },
-  { k: "save", icon: "\uD83D\uDD16", label: "Explore, then save", sub: "Collect ideas, worlds, and favorites" },
+  { k: "remix", icon: "🔁", label: "Read, then remix", sub: "Let great stories spark my own ideas" },
+  { k: "publish", icon: "🚀", label: "Write, then publish", sub: "Create something and put it in front of readers" },
+  { k: "unwind", icon: "🎧", label: "Listen, then unwind", sub: "Keep stories close without looking at a screen" },
+  { k: "save", icon: "🔖", label: "Explore, then save", sub: "Collect ideas, worlds, and favorites" },
 ];
+
+/** The screen after this one, for the purpose that was picked. */
+function nextScreen(
+  screen: QuestionScreen,
+  purpose: OnboardingPurpose | "",
+): QuestionScreen | null {
+  switch (screen) {
+    case "name":
+      return "genres";
+    case "genres":
+      return "purpose";
+    case "purpose":
+      return "refine";
+    case "refine":
+      // The mood question is the reader's; the other two go straight on.
+      return purpose === "read" ? "mood" : "moment";
+    case "mood":
+      return "moment";
+    case "moment":
+      return null;
+  }
+}
+
+function previousScreen(
+  screen: QuestionScreen,
+  purpose: OnboardingPurpose | "",
+): QuestionScreen | null {
+  switch (screen) {
+    case "name":
+      return null;
+    case "genres":
+      return "name";
+    case "purpose":
+      return "genres";
+    case "refine":
+      return "purpose";
+    case "mood":
+      return "refine";
+    case "moment":
+      return purpose === "read" ? "mood" : "refine";
+  }
+}
 
 // ── Root ────────────────────────────────────────────────────────────────────
 export default function KathaOnboardingFlowV2(
@@ -178,8 +223,25 @@ export default function KathaOnboardingFlowV2(
   const [genreOrder, setGenreOrder] = useState<Genre[]>([]);
   const [purpose, setPurpose] = useState<OnboardingPurpose | "">("");
   const [refine, setRefine] = useState("");
+  const [mood, setMood] = useState("");
   const [moment, setMoment] = useState("");
-  const reduceMotion = useReducedMotionPreference();
+
+  /**
+   * Changing the purpose clears the answers that belong to the old one.
+   *
+   * Every question after this one is the purpose's own: a reader's "mood" has
+   * no meaning on a writer's path, and a "refine" key from the reader's list
+   * would light the writer's Continue with nothing selected. Without this,
+   * Reading → mood → Back → Writing leaves a mood in the payload and the
+   * writer opens Home to a Tonight rail they never asked for.
+   */
+  const choosePurpose = (next: OnboardingPurpose) => {
+    if (next === purpose) return;
+    setPurpose(next);
+    setRefine("");
+    setMood("");
+    setMoment("");
+  };
 
   const fname = name.trim() || "there";
   /** Selected genre ids, in the order they were tapped. */
@@ -207,51 +269,65 @@ export default function KathaOnboardingFlowV2(
     );
   };
 
-  const next = () => {
-    if (screen === "moment") {
-      /*
-        ONE EXIT, FOR ALL THREE PURPOSES.
+  /**
+   * Leave, once the last question is answered (or skipped).
+   *
+   * ONE EXIT, FOR ALL THREE PURPOSES. Readers used to go to a fake "building
+   * your profile" ring and writers to a separate flow. Both are gone: the
+   * character is the aha whichever box was ticked, and only the copy
+   * downstream differs. `purpose` rides along so the character flow can voice
+   * itself without re-asking.
+   */
+  const finish = (finalMoment: string) => {
+    if (purpose === "") return;
+    onCharacterPath({
+      purpose,
+      initialGenre: firstCreateGenre,
+      onboarding: {
+        name: name.trim(),
+        /*
+          LABELS, not ids, on the way out. `App.tsx` maps this back through
+          `genreLabels` (`toGenreKeys`) to key the first shelf, and the
+          questionnaire's answers are also read as prose downstream. Sending
+          labels keeps both true with one source: `genreLabels` itself.
+        */
+        genres: selectedGenres.map((genre) => genreLabels[genre]),
+        otherGenre: "",
+        refine,
+        mood,
+        moment: finalMoment,
+      },
+    });
+  };
 
-        Readers used to go to a fake "building your profile" ring and writers to
-        a separate flow. Both are gone: the character is the aha whichever box
-        was ticked, and only the copy downstream differs. `purpose` rides along
-        so the character flow can voice itself without re-asking.
-      */
-      if (purpose === "") return;
-      onCharacterPath({
-        purpose,
-        initialGenre: firstCreateGenre,
-        onboarding: {
-          name: name.trim(),
-          /*
-            LABELS, not ids, on the way out. `App.tsx` maps this back through
-            `genreLabels` (`toGenreKeys`) to key the first shelf, and the
-            questionnaire's answers are also read as prose downstream. Sending
-            labels keeps both true with one source: `genreLabels` itself.
-          */
-          genres: selectedGenres.map((genre) => genreLabels[genre]),
-          otherGenre: "",
-          refine,
-          moment,
-        },
-      });
+  const next = () => {
+    const target = nextScreen(screen, purpose);
+    if (target === null) {
+      finish(moment);
       return;
     }
-    setScreen(NEXT_SCREEN[screen]);
+    setScreen(target);
   };
 
   const back = () => {
-    if (screen === "name") return;
-    setScreen(PREVIOUS_SCREEN[screen]);
+    const target = previousScreen(screen, purpose);
+    if (target !== null) setScreen(target);
   };
+
+  const { steps, currentStep } = questionStep(screen, purpose);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <TopBar
-        step={STEP_OF[screen]}
-        onBack={back}
-        canBack={screen !== "name"}
-        reduceMotion={reduceMotion}
+      {/*
+        The character screens' top bar, not one of this file's own: the plate,
+        the pills and their three colours are the same object on every screen
+        from here to the Meet screen. The first screen has nowhere to go back
+        to, and the bar keeps its slot rather than shifting the pills sideways.
+      */}
+      <OnboardingTopBar
+        onBack={screen === "name" ? undefined : back}
+        steps={steps}
+        currentStep={currentStep}
       />
 
       {screen === "name" && (
@@ -267,7 +343,7 @@ export default function KathaOnboardingFlowV2(
         />
       )}
       {screen === "purpose" && (
-        <PurposeScreen purpose={purpose} setPurpose={setPurpose} onNext={next} />
+        <PurposeScreen purpose={purpose} setPurpose={choosePurpose} onNext={next} />
       )}
       {screen === "refine" && (
         <RefineScreen
@@ -278,6 +354,9 @@ export default function KathaOnboardingFlowV2(
           onNext={next}
         />
       )}
+      {screen === "mood" && (
+        <MoodScreen fname={fname} mood={mood} setMood={setMood} onNext={next} />
+      )}
       {screen === "moment" && (
         <MomentScreen
           fname={fname}
@@ -285,102 +364,16 @@ export default function KathaOnboardingFlowV2(
           moment={moment}
           setMoment={setMoment}
           onNext={next}
+          // Skip is the reader's, and it leaves with no answer rather than
+          // with whatever was tapped and then reconsidered.
+          onSkip={purpose === "read" ? () => finish("") : undefined}
         />
       )}
     </View>
   );
 }
 
-/**
- * Whether this person has asked the OS for less movement.
- *
- * Kept from the original file, and still load-bearing: the progress fill is
- * the one thing on these five screens that moves, and somebody who has turned
- * motion off should see it jump rather than slide.
- */
-export function useReducedMotionPreference(): boolean {
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    const preference = AccessibilityInfo.isReduceMotionEnabled?.();
-    preference?.then((enabled) => {
-      if (mounted) setReduceMotion(Boolean(enabled));
-    });
-    const subscription = AccessibilityInfo.addEventListener?.(
-      "reduceMotionChanged",
-      setReduceMotion,
-    );
-    return () => {
-      mounted = false;
-      subscription?.remove?.();
-    };
-  }, []);
-
-  return reduceMotion;
-}
-
 // ── Shared ───────────────────────────────────────────────────────────────────
-function TopBar({
-  step,
-  onBack,
-  canBack,
-  reduceMotion,
-}: {
-  step: number;
-  onBack: () => void;
-  canBack: boolean;
-  reduceMotion: boolean;
-}) {
-  const [pressed, setPressed] = useState(false);
-  const progress = useSharedValue(step / QUESTION_COUNT);
-
-  useEffect(() => {
-    const target = step / QUESTION_COUNT;
-    progress.set(
-      reduceMotion ? target : withTiming(target, { duration: motion.base }),
-    );
-  }, [progress, reduceMotion, step]);
-
-  const fillStyle = useAnimatedStyle(() => ({
-    width: `${progress.get() * 100}%`,
-  }));
-
-  return (
-    <View style={styles.topBar}>
-      <Pressable
-        onPress={onBack}
-        disabled={!canBack}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        accessibilityState={{ disabled: !canBack }}
-        hitSlop={12}
-        style={[
-          styles.backBtn,
-          // The pressed plate, not a colour change: the icon button recipe in
-          // DESIGN_SYSTEM section 6 swaps the shadow and leaves the fill alone.
-          pressed && styles.backBtnPressed,
-          !canBack && styles.backBtnDisabled,
-        ]}
-      >
-        <IconBack size={20} color={colors.strong} />
-      </Pressable>
-      <View
-        style={styles.progressTrack}
-        accessibilityRole="progressbar"
-        accessibilityLabel={`Step ${step} of ${QUESTION_COUNT}`}
-        accessibilityValue={{ min: 1, max: QUESTION_COUNT, now: step }}
-      >
-        <Animated.View style={[styles.progressFill, fillStyle]} />
-      </View>
-      <Text style={styles.stepLabel} accessibilityElementsHidden>
-        {step}/{QUESTION_COUNT}
-      </Text>
-    </View>
-  );
-}
 
 /**
  * The questionnaire's Continue.
@@ -404,6 +397,17 @@ function PrimaryButton({
   return <Primary label={label} onPress={onPress} disabled={!enabled} />;
 }
 
+/**
+ * One option: an emoji, a label, an optional second line, and the check.
+ *
+ * ONE SELECTED LOOK. The peach fill, the accent border and the filled check
+ * disc, from the spec's purpose card, on every option row on every path. The
+ * design frames showed two treatments (a fill on one screen, a bare border on
+ * the next); a person walking three of these screens in a row would read the
+ * difference as a state they had not chosen. Unselected rows draw no ring at
+ * all: an empty circle on every row is a column of controls that say nothing,
+ * and the check appearing IS the state change.
+ */
 function OptionRow({
   icon,
   label,
@@ -417,20 +421,86 @@ function OptionRow({
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={sub}
-      accessibilityState={{ selected }}
+      // A radio announces "checked"; `selected` stays so the state reads the
+      // same way as the genre chips' in the tree.
+      accessibilityState={{ selected, checked: selected }}
       style={[styles.optRow, selected && styles.optRowSelected]}
     >
       {/* The emoji is content, not iconography: it is part of the option's
-          copy and is what makes a list of four abstractions scannable. */}
+          copy and is what makes a list of abstractions scannable. */}
       <Text style={styles.optIcon}>{icon}</Text>
       <View style={styles.optText}>
         <Text style={styles.optLabel}>{label}</Text>
-        <Text style={styles.optSub}>{sub}</Text>
+        {sub ? <Text style={styles.optSub}>{sub}</Text> : null}
       </View>
-      <View style={[styles.radio, selected && styles.radioSelected]}>
-        {selected && <Text style={styles.radioMark}>{"\u2713"}</Text>}
-      </View>
+      {selected
+        ? (
+          <View style={styles.check}>
+            <IconCheck size={13} color={colors.surface} />
+          </View>
+        )
+        : null}
     </Pressable>
+  );
+}
+
+/** A screen of single-select rows under a heading, with a pinned CTA. */
+function OptionScreen({
+  title,
+  sub,
+  options,
+  value,
+  onChange,
+  cta,
+  enabled,
+  onNext,
+  wordmark,
+  footer,
+  after,
+}: {
+  title: string;
+  sub?: string;
+  options: readonly Option[];
+  value: string;
+  onChange: (value: string) => void;
+  cta: string;
+  enabled: boolean;
+  onNext: () => void;
+  wordmark?: boolean;
+  /** Under the CTA: the reader's Skip. */
+  footer?: React.ReactNode;
+  /** After the options, inside the scroll: the reader's UP NEXT card. */
+  after?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.grow}>
+      <View style={styles.headPad}>
+        {wordmark
+          ? (
+            <View style={styles.wordmarkSlot}>
+              <BrandWordmark size={28} />
+            </View>
+          )
+          : null}
+        <Text style={styles.h1} accessibilityRole="header">{title}</Text>
+        {sub ? <Text style={styles.sub}>{sub}</Text> : null}
+      </View>
+      <ScrollView style={styles.grow} contentContainerStyle={styles.optionBody}>
+        {options.map((o) => (
+          <OptionRow
+            key={o.k}
+            {...o}
+            selected={value === o.k}
+            onPress={() => onChange(o.k)}
+          />
+        ))}
+        {after}
+      </ScrollView>
+      <View style={styles.footPad}>
+        <PrimaryButton label={cta} enabled={enabled} onPress={onNext} />
+        {footer}
+      </View>
+    </View>
   );
 }
 
@@ -573,32 +643,17 @@ function PurposeScreen({
   onNext: () => void;
 }) {
   return (
-    <View style={styles.grow}>
-      <View style={styles.headPad}>
-        <View style={styles.wordmarkSlot}>
-          <BrandWordmark size={28} />
-        </View>
-        <Text style={styles.h1} accessibilityRole="header">
-          What brings you to Katha?
-        </Text>
-        <Text style={styles.sub}>
-          We will shape your first experience around what matters most.
-        </Text>
-      </View>
-      <ScrollView style={styles.grow} contentContainerStyle={styles.optionBody}>
-        {PURPOSES.map((o) => (
-          <OptionRow
-            key={o.k}
-            {...o}
-            selected={purpose === o.k}
-            onPress={() => setPurpose(o.k as OnboardingPurpose)}
-          />
-        ))}
-      </ScrollView>
-      <View style={styles.footPad}>
-        <PrimaryButton label="Continue" enabled={Boolean(purpose)} onPress={onNext} />
-      </View>
-    </View>
+    <OptionScreen
+      wordmark
+      title="What brings you to Katha?"
+      sub="We will shape your first experience around what matters most."
+      options={PURPOSES}
+      value={purpose}
+      onChange={(value) => setPurpose(value as OnboardingPurpose)}
+      cta="Continue"
+      enabled={Boolean(purpose)}
+      onNext={onNext}
+    />
   );
 }
 
@@ -621,51 +676,76 @@ function RefineScreen({
     : purpose === "write"
     ? REFINE_WRITE
     : REFINE_BOTH;
+  // The reader's heading is the design's, and it has no sub: the three
+  // options say what the question is about better than a line under it did.
   const title = purpose === "read"
-    ? `How do you want to enjoy stories, ${fname}?`
+    ? "How do you like your stories?"
     : purpose === "write"
     ? "What do you want to write?"
     : `Where should Katha start today, ${fname}?`;
   const sub = purpose === "read"
-    ? "We will tune reading and narration around you."
+    ? undefined
     : purpose === "write"
     ? "We will prepare the right creative tools."
     : "Your shelf and writing room can work together.";
   return (
-    <View style={styles.grow}>
-      <View style={styles.headPad}>
-        <Text style={styles.h1} accessibilityRole="header">{title}</Text>
-        <Text style={styles.sub}>{sub}</Text>
-      </View>
-      <ScrollView style={styles.grow} contentContainerStyle={styles.optionBody}>
-        {opts.map((o) => (
-          <OptionRow
-            key={o.k}
-            {...o}
-            selected={refine === o.k}
-            onPress={() => setRefine(o.k)}
-          />
-        ))}
-      </ScrollView>
-      <View style={styles.footPad}>
-        <PrimaryButton label="Continue" enabled={Boolean(refine)} onPress={onNext} />
-      </View>
-    </View>
+    <OptionScreen
+      title={title}
+      sub={sub}
+      options={opts}
+      value={refine}
+      onChange={setRefine}
+      cta="Continue"
+      enabled={Boolean(refine)}
+      onNext={onNext}
+    />
   );
 }
 
+// ── MOOD (readers) ──────────────────────────────────────────────────────────
+function MoodScreen({
+  fname,
+  mood,
+  setMood,
+  onNext,
+}: {
+  fname: string;
+  mood: string;
+  setMood: (value: string) => void;
+  onNext: () => void;
+}) {
+  return (
+    <OptionScreen
+      title={`${fname}, what are you in the mood for?`}
+      // "Tonight only" is a promise Home keeps: the answer is the Tonight
+      // rail at the top of the first shelf, and it is not stored past the
+      // session.
+      sub="Tonight only. It sets the story, and who you'll be in it."
+      options={MOODS}
+      value={mood}
+      onChange={setMood}
+      cta="Continue"
+      enabled={Boolean(mood)}
+      onNext={onNext}
+    />
+  );
+}
+
+// ── MOMENT (adaptive) ───────────────────────────────────────────────────────
 function MomentScreen({
   fname,
   purpose,
   moment,
   setMoment,
   onNext,
+  onSkip,
 }: {
   fname: string;
   purpose: OnboardingPurpose | "";
   moment: string;
   setMoment: (value: string) => void;
   onNext: () => void;
+  onSkip?: () => void;
 }) {
   const opts = purpose === "read"
     ? MOMENTS_READ
@@ -673,39 +753,72 @@ function MomentScreen({
     ? MOMENTS_WRITE
     : MOMENTS_BOTH;
   const title = purpose === "read"
-    ? `When will Katha fit your day, ${fname}?`
+    ? "When do you usually read?"
     : purpose === "write"
     ? "What usually stops you?"
     : `Which loop sounds most like you, ${fname}?`;
   const sub = purpose === "read"
-    ? "We will pace recommendations around your real routine."
+    ? "So the right length arrives at the right time."
     : purpose === "write"
     ? "Your answer decides what we put within reach first."
     : "We will connect discovery and creation around this rhythm.";
   return (
-    <View style={styles.grow}>
-      <View style={styles.headPad}>
-        <Text style={styles.h1} accessibilityRole="header">{title}</Text>
-        <Text style={styles.sub}>{sub}</Text>
-      </View>
-      <ScrollView style={styles.grow} contentContainerStyle={styles.optionBody}>
-        {opts.map((o) => (
-          <OptionRow
-            key={o.k}
-            {...o}
-            selected={moment === o.k}
-            onPress={() => setMoment(o.k)}
-          />
-        ))}
-      </ScrollView>
-      <View style={styles.footPad}>
-        <PrimaryButton
-          // The reader's "Build my profile" pointed at a progress ring that no
-          // longer exists, and every purpose now goes to the same next screen.
-          label={purpose === "write" ? "Continue" : "Build my profile"}
-          enabled={Boolean(moment)}
-          onPress={onNext}
-        />
+    <OptionScreen
+      title={title}
+      sub={sub}
+      options={opts}
+      value={moment}
+      onChange={setMoment}
+      // "Build my profile" pointed at a progress ring that no longer exists;
+      // every purpose goes to the same next screen, and the button says so.
+      cta="Continue"
+      enabled={Boolean(moment)}
+      onNext={onNext}
+      after={purpose === "read" ? <UpNextCard /> : null}
+      footer={onSkip
+        ? (
+          <Pressable
+            onPress={onSkip}
+            accessibilityRole="button"
+            accessibilityLabel="Skip"
+            hitSlop={8}
+            style={styles.skip}
+          >
+            <Text style={styles.skipText}>Skip</Text>
+          </Pressable>
+        )
+        : null}
+    />
+  );
+}
+
+/**
+ * What the reader is about to be asked, shown before the ask.
+ *
+ * The next screen puts three portraits in front of somebody who has only
+ * answered questions so far, and a person who does not know why a character
+ * is suddenly being offered reads it as a detour. This card says it a screen
+ * early, in the design's words, with the side-card portrait the next screen
+ * fans open. Not a control: it has no press and is one accessible element.
+ */
+function UpNextCard() {
+  return (
+    <View
+      style={styles.upNext}
+      accessible
+      accessibilityLabel="Up next: be the lead in these stories. Describe yourself once. Katha writes you in."
+    >
+      <Image
+        source={portraitPriya}
+        resizeMode="cover"
+        style={styles.upNextPortrait}
+      />
+      <View style={styles.upNextCopy}>
+        <Text style={styles.upNextEyebrow}>UP NEXT</Text>
+        <Text style={styles.upNextTitle}>Be the lead in these stories</Text>
+        <Text style={styles.upNextBody}>
+          Describe yourself once. Katha writes you in.
+        </Text>
       </View>
     </View>
   );
@@ -713,17 +826,19 @@ function MomentScreen({
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1, backgroundColor: colors.onboardingBg },
   grow: { flex: 1 },
+  // The same 40pt the pinned dock gives every other screen's CTA, so the
+  // button does not jump 8pt between the first screen and the second.
   pad: {
     flex: 1,
     paddingHorizontal: spacing.xxxl,
-    paddingTop: spacing.xxxl,
-    paddingBottom: spacing.xxxl,
+    paddingTop: spacing.md,
+    paddingBottom: CTA_BOTTOM,
   },
   headPad: {
     paddingHorizontal: spacing.xxxl,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.md,
     paddingBottom: spacing.lg,
   },
   /*
@@ -746,41 +861,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   wordmarkSlot: { marginBottom: spacing.xxxl, marginTop: spacing.xs },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    paddingHorizontal: spacing.xxl,
-    paddingTop: spacing.sm,
-  },
-  backBtn: {
-    width: controls.iconButton,
-    height: controls.iconButton,
-    borderRadius: controls.iconButton / 2,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: shadows.iconButton,
-  },
-  backBtnPressed: { boxShadow: shadows.iconButtonPressed },
-  /**
-   * The first screen has nowhere to go back to. Dimmed rather than removed, so
-   * the progress row does not shift sideways between screen one and two.
-   */
-  backBtnDisabled: { opacity: 0.35 },
-  progressTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.borderStrong,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  stepLabel: { ...type.caption, color: colors.tertiary },
   h1: { ...onboardingType.title, color: colors.ink },
   sub: { ...onboardingType.helper, color: colors.muted, marginTop: spacing.related },
   /*
@@ -822,35 +902,81 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipPressed: { opacity: 0.86 },
   chipLabel: {
+    ...type.bodySmall,
     fontFamily: fonts.ui,
-    fontSize: 15,
     color: colors.muted,
     fontWeight: "700",
   },
   chipLabelSelected: { color: colors.surface },
+  /*
+    The border is always drawn, in the card's own colour when the row is not
+    selected, so selecting a row changes its colour and never its size: a
+    border that appears on selection moves every row under it by three
+    points, and a list that reflows when you tap it reads as a layout bug.
+  */
   optRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.lg,
     padding: spacing.lg,
-    borderRadius: radius.lg,
+    borderRadius: radius.onboardingCard,
+    borderWidth: 1.5,
+    borderColor: colors.surface,
     backgroundColor: colors.surface,
     boxShadow: shadows.card,
   },
-  optRowSelected: { backgroundColor: colors.accentSoft },
-  optIcon: { fontSize: 24 },
+  optRowSelected: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  optIcon: { fontSize: 26, lineHeight: 32 },
   optText: { flex: 1 },
   optLabel: { ...type.headline, color: colors.ink },
   optSub: { ...type.meta, color: colors.muted, marginTop: spacing.tight },
-  radio: {
-    width: 22,
-    height: 22,
+  check: {
+    width: 24,
+    height: 24,
     borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
+    backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
   },
-  radioSelected: { borderColor: colors.accent, backgroundColor: colors.accent },
-  radioMark: { ...type.caption, color: colors.surface },
+  skip: {
+    alignSelf: "center",
+    marginTop: spacing.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  skipText: {
+    ...onboardingType.helper,
+    color: colors.muted,
+    textDecorationLine: "underline",
+  },
+  upNext: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radius.onboardingCard,
+    backgroundColor: colors.accentSoft,
+  },
+  /** The W3 side card at a fifth of its size, same 5:7 as the stage's cards. */
+  upNextPortrait: {
+    width: 80,
+    height: 112,
+    borderRadius: radius.md,
+    backgroundColor: colors.onboardingStone,
+  },
+  upNextCopy: { flex: 1, gap: spacing.tight },
+  upNextEyebrow: {
+    ...onboardingType.sectionHeader,
+    color: colors.accent,
+    letterSpacing: 1.5,
+  },
+  upNextTitle: {
+    ...onboardingType.body,
+    fontWeight: "700",
+    color: colors.ink,
+  },
+  upNextBody: { ...onboardingType.helper, color: colors.muted },
 });

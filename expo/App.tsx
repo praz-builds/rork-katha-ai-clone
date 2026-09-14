@@ -846,6 +846,7 @@ export default function App() {
       genreInterests: payload.onboarding.genres,
       otherGenre: payload.onboarding.otherGenre,
       refine: payload.onboarding.refine,
+      mood: payload.onboarding.mood,
       moment: payload.onboarding.moment,
     };
     setOnboardingEntry(entryContext);
@@ -938,6 +939,8 @@ export default function App() {
               setScreen({ name: "reader", storyId, chapterIndex })}
             onPaywall={() => setScreen({ name: "paywall" })}
             preferredGenres={toGenreKeys(onboardingEntry?.genreInterests)}
+            // "Tonight only", so it lives for this session and no longer.
+            mood={onboardingEntry?.mood ?? null}
             generatedStories={generatedStories}
             stories={allStories}
             onStory={openStory}
@@ -1008,6 +1011,10 @@ export default function App() {
               // the new one; this is the app catching up with it.
               setIsAnonymous(true);
               setDisplayName(null);
+              // The questionnaire's answers belong to the person who just
+              // left. The next guest is not in their mood, and Home would
+              // otherwise keep drawing that person's Tonight rail.
+              setOnboardingEntry(null);
               setGeneratedStories([]);
               setCredits(0);
               setStreakDays(null);
@@ -1016,6 +1023,7 @@ export default function App() {
             onDeleted={(storiesKept) => {
               setIsAnonymous(true);
               setDisplayName(null);
+              setOnboardingEntry(null);
               // The DEVICE copy too, not just the state. Otherwise the next
               // guest on this phone is greeted by the name of the person who
               // just deleted their account, the moment a profile fetch fails.
@@ -1089,7 +1097,12 @@ export default function App() {
             onDone={finishCharacterOnboarding}
             // Back out of the character flow returns to the questions that
             // fed it, not to Home: leaving is how somebody changes an answer.
-            onExit={() => setScreen({ name: "intro" })}
+            // The answers that fed this attempt go with it, so an abandoned
+            // run never leaves a mood behind for Home to act on.
+            onExit={() => {
+              setOnboardingEntry(null);
+              setScreen({ name: "intro" });
+            }}
           />
         )
         : screen.name === "onboarding"

@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronDown, SlidersHorizontal } from "lucide-react-native";
+import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import { Chip } from "@/components/KathaPrimitives";
 import { StoryFeedCard } from "@/components/feed/StoryFeedCard";
 import { GenreStrip, genreChipLabel } from "@/components/explore/GenreStrip";
@@ -546,11 +547,11 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   pressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
 
-  // `paddingBottom: 116` last, and deliberately its own line: the floating
+  // `paddingBottom: TAB_BAR_CLEARANCE` last, and deliberately its own line: the floating
   // tab bar sits over the last ~100pt of the screen, and this is the only
   // thing standing between it and covering the final row.
   listContent: {
-    paddingBottom: 116,
+    paddingBottom: TAB_BAR_CLEARANCE,
   },
 
   itemPad: { paddingHorizontal: spacing.xl },

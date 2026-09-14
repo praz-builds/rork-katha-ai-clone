@@ -31,6 +31,8 @@ jest.mock("react-native-reanimated", () => {
       set: () => undefined,
     }),
     withTiming: passthrough,
+    withDelay: (_delay: number, value: unknown) => value,
+    Easing: { out: () => passthrough, cubic: passthrough },
   };
 });
 
@@ -45,7 +47,7 @@ import KathaOnboardingFlowV2, {
   MIN_GENRE_SELECTIONS,
 } from "@/screens/KathaOnboardingFlowV2";
 import { genreChipLabel } from "@/components/explore/GenreStrip";
-import { controls, genreLabels, radius } from "@/theme";
+import { colors, controls, genreLabels, radius } from "@/theme";
 import { UI_GENRES } from "@/types/domain";
 import type { Genre } from "@/types/domain";
 /* eslint-enable import/first */
@@ -106,6 +108,7 @@ describe("KathaOnboardingFlowV2", () => {
         genres: ["Mystery", "Fantasy", "Adventure"],
         otherGenre: "",
         refine: "novel",
+        mood: "",
         moment: "chapters",
       },
     });
@@ -120,10 +123,30 @@ describe("KathaOnboardingFlowV2", () => {
     await answerNameAndGenres(view, "Mira");
     await fireEvent.press(view.getByText("Reading"));
     await fireEvent.press(view.getByText("Continue"));
+
+    // The design's heading, and no line under it: the three options say
+    // what the question is about.
+    expect(view.getByText("How do you like your stories?")).toBeTruthy();
+    expect(view.queryByText(/tune reading and narration/)).toBeNull();
     await fireEvent.press(view.getByText("Listening to audio"));
     await fireEvent.press(view.getByText("Continue"));
-    await fireEvent.press(view.getByText("Before sleep"));
-    await fireEvent.press(view.getByText("Build my profile"));
+
+    // The reader's own question, greeting them by name.
+    expect(view.getByText("Mira, what are you in the mood for?")).toBeTruthy();
+    expect(
+      view.getByText("Tonight only. It sets the story, and who you'll be in it."),
+    ).toBeTruthy();
+    await fireEvent.press(view.getByText("Something emotional"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    expect(view.getByText("When do you usually read?")).toBeTruthy();
+    // Single-line routines, not pitches.
+    expect(view.getByText("Before bed")).toBeTruthy();
+    expect(view.queryByText("A calm chapter to end the day")).toBeNull();
+    // The screen after this one is announced before it arrives.
+    expect(view.getByText("Be the lead in these stories")).toBeTruthy();
+    await fireEvent.press(view.getByText("Before bed"));
+    await fireEvent.press(view.getByText("Continue"));
 
     expect(onCharacterPath).toHaveBeenCalledWith({
       purpose: "read",
@@ -133,9 +156,169 @@ describe("KathaOnboardingFlowV2", () => {
         genres: ["Mystery", "Fantasy", "Adventure"],
         otherGenre: "",
         refine: "listen",
+        mood: "emotional",
         moment: "sleep",
       },
     });
+  });
+
+  it("lets a reader skip the reading-time question, and only that one", async () => {
+    const onCharacterPath = jest.fn();
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={onCharacterPath} />,
+    );
+
+    await answerNameAndGenres(view, "Mira");
+    await fireEvent.press(view.getByText("Reading"));
+    await fireEvent.press(view.getByText("Continue"));
+    expect(view.queryByLabelText("Skip")).toBeNull();
+    await fireEvent.press(view.getByText("Reading them myself"));
+    await fireEvent.press(view.getByText("Continue"));
+    expect(view.queryByLabelText("Skip")).toBeNull();
+    await fireEvent.press(view.getByText("Surprise me"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    // A tapped-then-reconsidered answer does not leave with the skip.
+    await fireEvent.press(view.getByText("Weekends"));
+    await fireEvent.press(view.getByLabelText("Skip"));
+
+    expect(onCharacterPath).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "read",
+        onboarding: expect.objectContaining({
+          refine: "read",
+          mood: "surprise",
+          moment: "",
+        }),
+      }),
+    );
+  });
+
+  it("asks a writer no mood question and offers no skip", async () => {
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={jest.fn()} />,
+    );
+
+    await answerNameAndGenres(view, "Nikita");
+    await fireEvent.press(view.getByText("Writing"));
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("A full novel"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    expect(view.getByText("What usually stops you?")).toBeTruthy();
+    expect(view.queryByText(/in the mood for/)).toBeNull();
+    expect(view.queryByLabelText("Skip")).toBeNull();
+    expect(view.queryByText("Be the lead in these stories")).toBeNull();
+  });
+
+  /*
+    One pill per step, the count from `lib/onboarding-progress.ts`, and the
+    same row on every screen. The bar used to be a filled track labelled
+    `n/5` that vanished at the character screens, where a different row of
+    seven pills started four in.
+  */
+  it("draws one progress row, counted per purpose, from the first screen", async () => {
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={jest.fn()} />,
+    );
+    const step = () =>
+      view.getByLabelText(/^Step \d+ of \d+$/).props.accessibilityLabel;
+
+    // The longest row until the purpose is known.
+    expect(step()).toBe("Step 1 of 8");
+    expect(view.queryByText("1/5")).toBeNull();
+    await answerNameAndGenres(view, "Nikita");
+    expect(step()).toBe("Step 3 of 8");
+
+    await fireEvent.press(view.getByText("Writing"));
+    await fireEvent.press(view.getByText("Continue"));
+    // A writer has two questions left, then W3, then the character: seven.
+    expect(step()).toBe("Step 4 of 7");
+    await fireEvent.press(view.getByText("Short stories"));
+    await fireEvent.press(view.getByText("Continue"));
+    expect(step()).toBe("Step 5 of 7");
+
+    // Back to purpose, switch to reading: three questions left, so eight.
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.press(view.getByText("Reading"));
+    await fireEvent.press(view.getByText("Continue"));
+    expect(step()).toBe("Step 4 of 8");
+    await fireEvent.press(view.getByText("A mix of both"));
+    await fireEvent.press(view.getByText("Continue"));
+    expect(step()).toBe("Step 5 of 8");
+    await fireEvent.press(view.getByText("Something quick"));
+    await fireEvent.press(view.getByText("Continue"));
+    expect(step()).toBe("Step 6 of 8");
+  });
+
+  it("forgets the old purpose's answers when the purpose changes", async () => {
+    const onCharacterPath = jest.fn();
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={onCharacterPath} />,
+    );
+    await answerNameAndGenres(view, "Nikita");
+    await fireEvent.press(view.getByText("Reading"));
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("Reading them myself"));
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("Something emotional"));
+
+    // Back to the purpose and change the answer.
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.press(view.getByText("Writing"));
+    await fireEvent.press(view.getByText("Continue"));
+    // The reader's "read" key must not light the writer's Continue.
+    expect(
+      view.getByLabelText("Continue").props.accessibilityState.disabled,
+    ).toBe(true);
+    await fireEvent.press(view.getByText("A full novel"));
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("Plan chapters"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    // No mood rides out with a writer, and Home draws no Tonight rail for them.
+    expect(onCharacterPath).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "write",
+        onboarding: expect.objectContaining({
+          refine: "novel",
+          mood: "",
+          moment: "chapters",
+        }),
+      }),
+    );
+  });
+
+  it("marks the chosen option with a check and leaves the others bare", async () => {
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={jest.fn()} />,
+    );
+    await answerNameAndGenres(view, "Nikita");
+
+    const reading = view.getByLabelText("Reading");
+    expect(reading.props.accessibilityState.selected).toBe(false);
+    await fireEvent.press(reading);
+    expect(view.getByLabelText("Reading").props.accessibilityState.selected).toBe(true);
+    expect(view.getByLabelText("Writing").props.accessibilityState.selected).toBe(false);
+    // Selected: the peach fill and the accent border, on a card whose border
+    // was already there in the surface colour so nothing moves.
+    const selected = StyleSheet.flatten(view.getByLabelText("Reading").props.style) as {
+      backgroundColor?: string;
+      borderColor?: string;
+      borderWidth?: number;
+    };
+    const bare = StyleSheet.flatten(view.getByLabelText("Writing").props.style) as {
+      backgroundColor?: string;
+      borderColor?: string;
+      borderWidth?: number;
+    };
+    expect(selected.backgroundColor).toBe(colors.accentSoft);
+    expect(selected.borderColor).toBe(colors.accent);
+    expect(bare.backgroundColor).toBe(colors.surface);
+    expect(bare.borderColor).toBe(colors.surface);
+    expect(selected.borderWidth).toBe(bare.borderWidth);
   });
 
   it("hands a both-purpose reader through the same exit", async () => {
@@ -150,7 +333,10 @@ describe("KathaOnboardingFlowV2", () => {
     await fireEvent.press(view.getByText("Balance both"));
     await fireEvent.press(view.getByText("Continue"));
     await fireEvent.press(view.getByText("Read, then remix"));
-    await fireEvent.press(view.getByText("Build my profile"));
+    // One label on the last question for every purpose. "Build my profile"
+    // pointed at a screen that no longer exists.
+    expect(view.queryByText("Build my profile")).toBeNull();
+    await fireEvent.press(view.getByText("Continue"));
 
     expect(onCharacterPath).toHaveBeenCalledWith(
       expect.objectContaining({

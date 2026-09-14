@@ -13,7 +13,7 @@
 > control recipes built from them. Pricing wins on any conflict, and
 > `DESIGN_SYSTEM.md` is subordinate to this file on anything behavioural.
 >
-> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-12.
+> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-14.
 > *Inference* marks a decision not yet shipped.
 
 ---
@@ -27,10 +27,12 @@ watches that portrait being drawn and meets it. That is the aha, and every purpo
 Read, Write and A bit of both take the same character screens with reader- or
 writer-voiced copy.
 
-The shared questionnaire before it is unchanged: name, genre interests, then
-Reading / Writing / A bit of both, and for writers the two setup questions. The
-first selected genre interest still maps to the create-genre chip in the writer
-story-generation flow.
+The shared questionnaire before it: name, genre interests, then Reading /
+Writing / A bit of both. **Amended 2026-09-14: a reader then answers three
+questions of their own** (how they like their stories, what they are in the mood
+for tonight, when they usually read — §3C); writers keep the two setup questions
+(§3A) and "both" keeps its two. The first selected genre interest still maps to
+the create-genre chip in the writer story-generation flow.
 
 **The email comes before the drawing, not after it.** **W5 Save** asks for it
 while the portrait is still a dashed placeholder. **Amended 2026-09-12 (third
@@ -198,22 +200,36 @@ fits without clipping.
 > **"Step n of 7"**, because a progressbar role without a position is worse than
 > no role at all. The top bar has no border and the back glyph sits on a plate.
 >
-> **Amended 2026-09-11: seven steps, not six.** The count moved with the screens.
+> **Amended 2026-09-14: one row from the first question, one pill per step,
+> counted per purpose.** The questionnaire used to draw its own filled track
+> labelled `n/5`, and the pills started on W3 already four in. Both screens now
+> draw the same `OnboardingTopBar` (plate, pills, three colours) and read the
+> count from `expo/src/lib/onboarding-progress.ts`:
 >
-> | Step | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
-> |---|---|---|---|---|---|---|---|
-> | | `name` | `genres` | `purpose` | **W3** | **W4** | **W5** and `code` | **W6** |
+> | Purpose | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+> |---|---|---|---|---|---|---|---|---|
+> | read | `name` | `genres` | `purpose` | how | mood | when | **W3** | **W4, W5, code, W6** |
+> | write | `name` | `genres` | `purpose` | format | blocker | **W3** | **W4, W5, code, W6** | |
+> | both | `name` | `genres` | `purpose` | refine | moment | **W3** | **W4, W5, code, W6** | |
 >
 > Done pills are `colors.onboardingBorderStrong`, the current pill is
-> `colors.accent`, upcoming pills are `colors.onboardingBorder`.
+> `colors.accent`, upcoming pills are `colors.onboardingBorder`. The 22 × 5
+> hand-off pill holds at 390 pt; eight of them are 211 pt against the 200 pt a
+> 360 pt phone leaves between the icon slots, so the bars are shrinkable and
+> scale down together there rather than spilling right of centre.
 >
-> **W0a and W0b are not steps.** The two writer setup questions sit inside step
-> 3's bar, because a row that lengthens for one purpose and not the other is
-> measuring which answer you gave rather than how far you have come. **The code
-> screen shares W5's pill** for the same reason: it is the second half of one ask,
-> and advancing on it would be measuring our email latency. **W7 draws no
-> progress row at all**, only the close ×, because a paywall is not a step
-> towards anything the person asked for.
+> **Every question is a step, and the making of the character is one step.**
+> W4, W5, the code screen and W6 share one pill: they are one ask answered
+> across four screens, and a row that ticked through them would be measuring
+> our email latency and our image provider. W3 is its own pill because it has
+> its own back and its own CTA. **Before purpose is answered the row draws the
+> longest count (eight)**, so it can only ever shorten, and only once, at the
+> moment the person has just said something that changed the length. **W7
+> draws no progress row at all**, only the close ×, because a paywall is not a
+> step towards anything the person asked for.
+>
+> This supersedes the 2026-09-11 table (seven for everyone, W0a and W0b inside
+> step 3, W4/W5/W6 on three pills).
 >
 > **The pixel reference disagrees here and this file wins.** `W4-Craft.dc.html`
 > draws eight pills and `W6-Meet.dc.html` fills six of seven; both are reference
@@ -236,19 +252,20 @@ Create → Publish / Community → Read
                          │
 S1-S3  name → genre interests → purpose        steps 1, 2, 3
                          │
-        purpose = write ──┴── W0a format → W0b blocker   (inside step 3)
+        purpose = write ──┼── W0a format → W0b blocker             steps 4, 5 of 7
+        purpose = both  ──┼── refine → moment                      steps 4, 5 of 7
+        purpose = read  ──┴── R-how → R-mood → R-when (skippable)  steps 4, 5, 6 of 8
                          │
-                         ↓        (read and both come straight here)
-              W3 CHARACTER CTA   three cards fan open              step 4
+              W3 CHARACTER CTA   three cards fan open              last pill but one
                          │
-              W4 CRAFT           NAME + APPEARANCE                 step 5
+              W4 CRAFT           NAME + APPEARANCE                 last pill
                          │       CTA → save the row + start the draw
                          │
-              W5 SAVE            email → send the code only        step 6
+              W5 SAVE            email → send the code only        last pill
                          │
-              CODE               6 digits, the draw runs behind it step 6
+              CODE               6 digits, the draw runs behind it last pill
                          │
-              W6 MEET            usually ready on entry            step 7
+              W6 MEET            usually ready on entry            last pill
                          │       🔄 Reimagine ──→ inline edit block
                          │                          └─ Redraw ×1 → loading
                          │
@@ -387,6 +404,45 @@ chapters, Publish and find readers.
 
 These two answers are setup and routing inputs; they must not trigger a model
 call, generation operation, ledger row, or cover request.
+
+---
+
+## 3C. R-how, R-mood, R-when: the reader's questions
+
+**Added 2026-09-14**, from the owner's design frames. Three single-select
+screens after **Reading**, drawn with the same option row as S3 (§3B's selected
+look: `colors.accentSoft` fill, `colors.accent` border, filled accent check
+disc; unselected rows draw no ring). The row's border is always present, in
+`colors.surface` when unselected, so selecting never moves the list.
+
+| Step | Header | Sub | Options | CTA |
+|---|---|---|---|---|
+| R-how (`refine`) | **How do you like your stories?** | none | 📖 **Reading them myself** · Words on the page, at my own pace / 🎧 **Listening to audio** · Narrated stories for commutes and nights / 🔀 **A mix of both** · Read sometimes, listen sometimes | **Continue** |
+| R-mood (`mood`) | **{name}, what are you in the mood for?** | **Tonight only. It sets the story, and who you'll be in it.** | 🌊 **Something to escape into** · Immersive worlds, long journeys. / 🔍 **Something that keeps me guessing** · Mystery, tension, twists. / 💔 **Something emotional** · Ache, catharsis, connection. / ⚡ **Something quick** · Under 20 minutes. / 🕯️ **Something comforting** · Warm, low-stakes, safe. / 🎲 **Surprise me** · Katha picks based on your genres. | **Continue** |
+| R-when (`moment`) | **When do you usually read?** | **So the right length arrives at the right time.** | 🌙 **Before bed** / 🚇 **During commutes** / ☕ **Short breaks** / 🌞 **Weekends** / 🕒 **Whenever I get time** (one line each) | **Continue**, and a **Skip** text link under it |
+
+**R-when carries the UP NEXT card** under its options: the W3 side-card
+portrait at 80 × 112, eyebrow **UP NEXT**, **Be the lead in these stories**,
+**Describe yourself once. Katha writes you in.** On `colors.accentSoft`, not
+tappable. It exists so W3's three portraits are expected rather than a detour.
+
+**Skip is the only optional answer in the flow**, because R-when is about
+routine, not taste, and a person who does not know yet should not invent one.
+Skip leaves with `moment` empty; a tapped-then-skipped row is not sent.
+
+**What the answers feed.** `mood` is the key of Home's **Tonight** rail
+(`expo/src/lib/home-tonight.ts`): the first shelf under the reader's own
+stories, titled **Tonight · {mood label}**, built from the mood's genres
+(escape → fantasy, adventure, sci-fi, romantasy; guessing → mystery, thriller,
+horror; emotional → romance, contemporary, dark romance; comforting → slice of
+life, folktale, comedy), from standalones for **quick**, and from the reader's
+own genre picks for **surprise**. It is session state and is not persisted:
+"tonight" means tonight. `refine` and `moment` are stored with the session like
+the writer's answers and feed nothing yet.
+
+**The last question's CTA is Continue on every path.** It read **Build my
+profile** for readers and "both", a label for a progress ring that no longer
+exists.
 
 ---
 
@@ -712,7 +768,9 @@ else.** A name and an appearance, in that order, then the KATHA WILL DRAW card.
 | Sub | **Two details. Katha fills in the rest.** | **This is you in the story. One line is enough.** |
 | Field 1 label | **NAME** | **NAME** |
 | Field 2 label | **APPEARANCE** | **APPEARANCE** |
+| Field 2 placeholder | **A tall, broad-shouldered man in his thirties. Denim shirt, sleeves rolled, tired eyes that miss nothing.** | **Curly hair, round glasses, a green jacket I never take off.** |
 | Counter | **{n} / 300** | **{n} / 300** |
+| KATHA WILL DRAW rows 2 and 3 | **What they carry into every chapter** · **How every story speaks to them** | **What you carry into every chapter** · **How every story speaks to you** (amended 2026-09-14) |
 | CTA | **Bring {name} to life** | **Show me** |
 | CTA, name empty | **Bring them to life**, disabled | **Show me**, disabled |
 
@@ -881,7 +939,7 @@ structural change this whole section exists to record.
 | Item | Writer copy | Reader copy |
 |---|---|---|
 | Header | **Where should we send {name}?** | **Where should we send you?** |
-| Sub | **Your portrait is being drawn now. Save it to your account so {name} follows you into every story, on every device.** | same string, with `{name}` resolved to the reader's own character name |
+| Sub | **Your portrait is being drawn now. Save it to your account so {name} follows you into every story, on every device.** | **Your portrait is being drawn now. Save it to your account so you're in every story, on every device.** (amended 2026-09-14: the reader is the character, and "so Priya follows you", said to Priya, was the writer's sentence with her name in it) |
 | Field label | **EMAIL** | **EMAIL** |
 | CTA | **Email me a code** | **Email me a code** |
 | Terms | **By continuing you agree to our Terms and Privacy Policy.** | same |
@@ -1004,6 +1062,10 @@ the in-flight image belong to the same anonymous identity either way.
 Step 7 of 7. One screen with two states and one cross-fade between them.
 
 ### Loading
+
+**Reader voice (amended 2026-09-14):** eyebrow **DRAWING YOU**, heading
+**{name}, you're taking shape.**, disabled CTA **Drawing you…**. The writer's
+**DRAWING** / **{name} is taking shape.** / **Drawing {name}…** is unchanged.
 
 | Item | Copy |
 |---|---|
@@ -1177,8 +1239,9 @@ one of W4's three**. No Ionicons in these rows.
 | `GlyphSavedCast` | **Saved to your cast** | **Reuse them in any story, any time** |
 
 Reader variant: the first row becomes **You, in every story** ·
-**Step into anything on your shelf**. Rows two and three are the same strings in
-both voices.
+**Step into anything on your shelf**, and the third becomes **Saved to you** ·
+**Step into any story, any time** (amended 2026-09-14: a reader is not building
+a cast, they are in it). Row two is the same string in both voices.
 
 **The lines lost `{name}` and gained a shape.** Three words of title and about
 six of line is the rule both cards now keep, and the interpolated name was what
@@ -1290,7 +1353,7 @@ reader who reimagines a chapter is creating.
 | Item | Writer copy | Reader copy |
 |---|---|---|
 | Header | **{name} is ready. Give them a story.** | **{name} is ready. Step into the story.** |
-| Sub | **Unlock Katha and start writing tonight.** | **Unlock Katha and start writing tonight.** |
+| Sub | **Unlock Katha and start writing tonight.** | **Unlock Katha and start reading tonight.** (amended 2026-09-14) |
 | CTA | **Unlock Katha** | **Unlock Katha** |
 | Dismiss | The **×**, from frame one | same |
 
@@ -1372,8 +1435,8 @@ are content here, not icon glyphs.
 
 | | Row | Second line |
 |---|---|---|
-| ✨ | **50 credits a month** | **About 16 full chapters, every month** |
-| 🎨 | **Unlimited portraits and reimagines** | **{name} looks the same in every chapter** |
+| ✨ | **50 credits a month** | Writer: **About 16 full chapters, every month** · Reader: **About 16 chapters with you as the lead, every month** |
+| 🎨 | **Unlimited portraits and reimagines** | Writer: **{name} looks the same in every chapter** · Reader: **You look the same in every chapter** |
 | 🎙️ | **Premium voices** | Writer: **Hear {name}'s story read aloud** · Reader: **Hear your story read aloud** |
 | 📄 | **Download as PDF** | **Your stories, off the app and in your hands** |
 
@@ -2441,3 +2504,36 @@ error logging contract and contain identifiers and enums only.
     coin would be a coin containing a coin. Three yellow circles crossing a
     screen are three yellow circles; mass is what makes an object look like it
     went somewhere. `DESIGN_SYSTEM.md` §7.2 specifies the mark.
+
+### 2026-09-14: the reader's own questions, and one progress row
+
+> Decisions 69-72 amend §1, §2, §3, §3C, §9, §10, §10B and §12-13. The 2026-09-11
+> progress table in §1 is superseded by 69; nothing else is struck through.
+
+69. **One progress row, one pill per step, counted per purpose.** The
+    questionnaire draws the character screens' `OnboardingTopBar` from the
+    first question; the `n/5` track is gone. Every question is a step, W3 is a
+    step, and W4 to W6 are one step. Eight for a reader, seven for a writer or
+    "both"; the first three screens draw eight and a writer's row settles to
+    seven at "Writing". The count lives in one table
+    (`expo/src/lib/onboarding-progress.ts`) that both screens read, so the row
+    cannot restart or skip between them.
+70. **A reader answers three questions of their own.** How they like their
+    stories (the existing question, re-headed with no sub), what they are in
+    the mood for tonight (new, six options), and when they usually read (new,
+    five one-line options, the UP NEXT card, and the flow's only Skip). Copy
+    and options are the owner's design frames verbatim (§3C). Writers and
+    "both" keep their two questions.
+71. **The mood goes somewhere.** "Tonight only. It sets the story" is kept by
+    Home's **Tonight** rail, the first shelf under the reader's own stories,
+    for this session only. An answer that feeds nothing is a question that
+    should not have been asked.
+72. **Every helper line on the reader's character screens says "you".** The
+    headlines and CTAs were reader-voiced from 2026-09-11; the KATHA WILL DRAW
+    rows, W5's sub, W6's loading state and third benefit row, and the
+    paywall's sub and first two benefit lines still said "they", "them" or
+    the reader's own name in the third person. Each now has a reader string
+    (§9, §10, §10B, §12-13). **One selected-card look** on every option row in
+    the questionnaire (§3B's), because the design frames showed two and a
+    person walking three screens reads a second treatment as a state they did
+    not choose.

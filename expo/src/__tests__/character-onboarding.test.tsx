@@ -617,6 +617,12 @@ describe("character onboarding", () => {
     reader.getByText("Craft your character");
     // Their own name, carried from the questionnaire rather than asked twice.
     expect(reader.getByLabelText("Name").props.value).toBe("Priya");
+    // The card under the fields is about the person typing, not a third
+    // person: "you", never "they".
+    reader.getByText("What you carry into every chapter");
+    reader.getByText("How every story speaks to you");
+    expect(reader.queryByText(/carry into every chapter$/)?.props.children)
+      .not.toMatch(/they/);
 
     await fireEvent.changeText(
       reader.getByLabelText("Appearance"),
@@ -624,6 +630,12 @@ describe("character onboarding", () => {
     );
     await fireEvent.press(reader.getByLabelText("Show me"));
     reader.getByText("Where should we send you?");
+    // The writer's line with the reader's name dropped in read "so Priya
+    // follows you into every story", said to Priya.
+    reader.getByText(
+      "Your portrait is being drawn now. Save it to your account so you're in every story, on every device.",
+    );
+    expect(reader.queryByText(/so Priya follows you/)).toBeNull();
     await fireEvent.changeText(
       reader.getByLabelText("Email address"),
       EMAIL,
@@ -639,6 +651,91 @@ describe("character onboarding", () => {
     // directing somebody else through it.
     reader.getByText("You, in every story");
     expect(reader.queryByText("Leads your stories")).toBeNull();
+    // And the third row: a reader is not building a cast, they are in it.
+    reader.getByText("Saved to you");
+    expect(reader.queryByText("Saved to your cast")).toBeNull();
+  });
+
+  it("draws the reader while saying 'you', not their name in the third person", async () => {
+    let release: (value: { url: string }) => void = () => {};
+    mockGenerateCharacterImage.mockReturnValue(
+      new Promise<{ url: string }>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const reader = await mount("read", jest.fn(), {
+      name: "Priya",
+      genreInterests: ["mystery"],
+    });
+    await fireEvent.press(reader.getByLabelText("Put me in the story"));
+    await fireEvent.changeText(
+      reader.getByLabelText("Appearance"),
+      "Paint on her hands, her grandmother's coat",
+    );
+    await fireEvent.press(reader.getByLabelText("Show me"));
+    await fireEvent.changeText(reader.getByLabelText("Email address"), EMAIL);
+    await fireEvent.press(reader.getByLabelText("Email me a code"));
+    await reader.findByLabelText("Verification code");
+    await verify(reader);
+
+    await reader.findByText("Priya, you're taking shape.");
+    reader.getByText("DRAWING YOU");
+    expect(
+      reader.getByLabelText("Drawing you…").props.accessibilityState.disabled,
+    ).toBe(true);
+    expect(reader.queryByLabelText("Drawing Priya…")).toBeNull();
+
+    release({ url: PORTRAIT });
+    await reader.findByText("Hello, Priya.");
+  });
+
+  it("tells a reader we couldn't draw *you*, not their name in the third person", async () => {
+    mockGenerateCharacterImage.mockRejectedValue(new Error("provider down"));
+    const reader = await mount("read", jest.fn(), {
+      name: "Priya",
+      genreInterests: ["mystery"],
+    });
+    await fireEvent.press(reader.getByLabelText("Put me in the story"));
+    await fireEvent.changeText(reader.getByLabelText("Appearance"), "Green coat");
+    await fireEvent.press(reader.getByLabelText("Show me"));
+    await fireEvent.changeText(reader.getByLabelText("Email address"), EMAIL);
+    await fireEvent.press(reader.getByLabelText("Email me a code"));
+    await reader.findByLabelText("Verification code");
+    await verify(reader);
+
+    await reader.findByText("We couldn't draw you. Try again.");
+    expect(reader.queryByText(/couldn't draw Priya/)).toBeNull();
+    reader.getByLabelText("Try again");
+  });
+
+  /*
+    The pills continue the questionnaire's row rather than starting their own.
+    A reader walked six questions on an eight-pill row, so W3 is the seventh
+    and the whole making of the character is the eighth; a writer's row is
+    seven. Every character screen from W4 to W6 shares one pill, because they
+    are one ask answered across four screens.
+  */
+  it("continues the questionnaire's progress row: W3 one pill, the making one pill", async () => {
+    const step = (v: View) =>
+      v.getByLabelText(/^Step \d+ of \d+$/).props.accessibilityLabel;
+
+    const writer = await mount("write");
+    expect(step(writer)).toBe("Step 6 of 7");
+    await fillSheet(writer);
+    expect(step(writer)).toBe("Step 7 of 7");
+    await submitSave(writer);
+    expect(step(writer)).toBe("Step 7 of 7");
+    await verify(writer);
+    await writer.findByText(`Meet ${NAME}.`);
+    expect(step(writer)).toBe("Step 7 of 7");
+
+    const reader = await mount("read", jest.fn(), {
+      name: "Priya",
+      genreInterests: ["mystery"],
+    });
+    expect(step(reader)).toBe("Step 7 of 8");
+    await fireEvent.press(reader.getByLabelText("Put me in the story"));
+    expect(step(reader)).toBe("Step 8 of 8");
   });
 
   it("never writes the offline placeholder scheme as a portrait URL", async () => {

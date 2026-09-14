@@ -580,6 +580,12 @@ export type CharacterEntryContext = {
   genreInterests: string[];
   otherGenre?: string;
   refine?: string;
+  /**
+   * The reader's "what are you in the mood for", as a `MOODS` key. Session
+   * state only: the question says "tonight", so Home reads it for the
+   * Tonight rail and it is not persisted. Absent on the other paths.
+   */
+  mood?: string;
   moment?: string;
 };
 

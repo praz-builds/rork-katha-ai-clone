@@ -53,6 +53,7 @@ import type { GlyphComponent } from "@/components/onboarding/glyphs";
 import { WelcomeScreen } from "@/components/onboarding/WelcomeScreen";
 import * as storyApi from "@/lib/api";
 import { enableNotifications } from "@/lib/notifications";
+import { onboardingProgress } from "@/lib/onboarding-progress";
 import { saveCharacterToLibrary } from "@/lib/saved-characters";
 import { sendEmailCode } from "@/lib/session";
 import {
@@ -181,13 +182,15 @@ type Step = "w3" | "w4" | "w5" | "code" | "w6" | "paywall" | "welcome";
  */
 const REIMAGINE_BUDGET = 1;
 
-/** Seven pills. W7 has none: it is a modal with a close, not a step. */
-const ONBOARDING_STEPS = 7;
-const W3_STEP = 4;
-const W4_STEP = 5;
-const W5_STEP = 6;
-const CODE_STEP = 6;
-const W6_STEP = 7;
+/*
+  THE PILLS ARE NOT NUMBERED HERE. `lib/onboarding-progress.ts` owns the
+  count for each purpose (eight for a reader, seven otherwise), and the
+  questionnaire before this screen reads the same table, so the row a person
+  has been watching since the first question keeps counting on the same row
+  here. W3 is one pill; W4, W5, the code screen and W6 share the next, because
+  they are one ask answered across four screens. W7 has none: it is a modal
+  with a close, not a step.
+*/
 
 /**
  * What W6 tells somebody the wait is, under the loading card.
@@ -340,6 +343,7 @@ export default function CharacterOnboarding(
 ) {
   const [step, setStep] = useState<Step>("w3");
   const reader = purpose !== "write";
+  const progress = onboardingProgress(purpose);
 
   /**
    * A reader is making THEMSELVES, so their questionnaire name is the answer
@@ -762,7 +766,13 @@ export default function CharacterOnboarding(
     <ReduceMotionContext.Provider value={reduceMotion}>
       {step === "w3"
         ? (
-          <Frame onBack={onExit} currentStep={W3_STEP} glow centred>
+          <Frame
+            onBack={onExit}
+            steps={progress.total}
+            currentStep={progress.w3}
+            glow
+            centred
+          >
             {/* Two spacers of equal weight, and the stage, the copy and the
                 button between them as ONE object. The copy stays left aligned
                 in the gutter as designed; only the stage is centred. */}
@@ -797,7 +807,8 @@ export default function CharacterOnboarding(
         ? (
           <Frame
             onBack={() => go("w3")}
-            currentStep={W4_STEP}
+            steps={progress.total}
+            currentStep={progress.character}
             cta={
               <Cta
                 label={reader
@@ -837,7 +848,12 @@ export default function CharacterOnboarding(
               trailing={`${appearance.length} / ${APPEARANCE_MAX}`}
               value={appearance}
               onChangeText={setAppearance}
-              placeholder="A tall, broad-shouldered man in his thirties. Denim shirt, sleeves rolled, tired eyes that miss nothing."
+              // A reader describes themselves, so the example is written the
+              // way a person writes about their own look; a writer's is a
+              // stranger seen from outside.
+              placeholder={reader
+                ? "Curly hair, round glasses, a green jacket I never take off."
+                : "A tall, broad-shouldered man in his thirties. Denim shirt, sleeves rolled, tired eyes that miss nothing."}
               maxLength={APPEARANCE_MAX}
               multiline
               accessibilityLabel="Appearance"
@@ -846,7 +862,8 @@ export default function CharacterOnboarding(
             {/* What the two boxes above are actually FOR. The sheet asks for a
                 look and gives back a face, and without this the connection
                 between "denim shirt" and the thing that follows them into every
-                chapter is left for the person to guess at. */}
+                chapter is left for the person to guess at. The reader's rows
+                say "you": they are the person being drawn. */}
             <InfoCard
               title="KATHA WILL DRAW"
               rows={[
@@ -858,12 +875,16 @@ export default function CharacterOnboarding(
                 {
                   glyph: GlyphClothingAndCarry,
                   title: "Clothes and props",
-                  body: "What they carry into every chapter",
+                  body: reader
+                    ? "What you carry into every chapter"
+                    : "What they carry into every chapter",
                 },
                 {
                   glyph: GlyphTheName,
                   title: "The name",
-                  body: "How every story speaks to them",
+                  body: reader
+                    ? "How every story speaks to you"
+                    : "How every story speaks to them",
                 },
               ]}
             />
@@ -873,7 +894,8 @@ export default function CharacterOnboarding(
         ? (
           <Frame
             onBack={() => go("w4")}
-            currentStep={W5_STEP}
+            steps={progress.total}
+            currentStep={progress.character}
             cta={
               <>
                 <Cta
@@ -902,9 +924,14 @@ export default function CharacterOnboarding(
                   : `Where should we send ${displayName}?`}
               </Text>
               <Text style={styles.sub}>
-                {`Your portrait is being drawn now. Save it to your account so ${
-                  displayName || "they"
-                } follows you into every story, on every device.`}
+                {reader
+                  // The reader IS the character. "so Priya follows you into
+                  // every story", said to Priya, is the writer's sentence with
+                  // her name dropped into it.
+                  ? "Your portrait is being drawn now. Save it to your account so you're in every story, on every device."
+                  : `Your portrait is being drawn now. Save it to your account so ${
+                    displayName || "they"
+                  } follows you into every story, on every device.`}
               </Text>
             </View>
 
@@ -944,9 +971,9 @@ export default function CharacterOnboarding(
               setEmailVerified(true);
               go("w6");
             }}
-            steps={ONBOARDING_STEPS}
-            currentStep={CODE_STEP}
-            codeStep={CODE_STEP}
+            steps={progress.total}
+            currentStep={progress.character}
+            codeStep={progress.character}
           />
         )
         : (
@@ -958,6 +985,8 @@ export default function CharacterOnboarding(
             drawing={drawing}
             failure={portraitFailure}
             canReimagine={reimaginesUsed < REIMAGINE_BUDGET}
+            steps={progress.total}
+            currentStep={progress.character}
             onBack={() => go("w4")}
             onRedraw={redrawEdited}
             onPaywall={() => go("paywall")}
@@ -991,6 +1020,7 @@ function Frame({
   children,
   cta,
   onBack,
+  steps,
   currentStep,
   glow,
   centred,
@@ -998,6 +1028,7 @@ function Frame({
   children: React.ReactNode;
   cta?: React.ReactNode;
   onBack?: () => void;
+  steps: number;
   currentStep: number;
   glow?: boolean;
   centred?: boolean;
@@ -1008,7 +1039,7 @@ function Frame({
       {glow ? <AccentGlow /> : null}
       <OnboardingTopBar
         onBack={onBack}
-        steps={ONBOARDING_STEPS}
+        steps={steps}
         currentStep={currentStep}
       />
       <KeyboardAvoidingView
@@ -1400,6 +1431,8 @@ function MeetScreen({
   drawing,
   failure,
   canReimagine,
+  steps,
+  currentStep,
   onBack,
   onRedraw,
   onPaywall,
@@ -1414,6 +1447,8 @@ function MeetScreen({
   failure: PortraitFailure | null;
   /** False once the one free reimagine is spent. See `REIMAGINE_BUDGET`. */
   canReimagine: boolean;
+  steps: number;
+  currentStep: number;
   onBack: () => void;
   onRedraw: (appearance: string) => void;
   onPaywall: () => void;
@@ -1457,7 +1492,8 @@ function MeetScreen({
   return (
     <Frame
       onBack={onBack}
-      currentStep={W6_STEP}
+      steps={steps}
+      currentStep={currentStep}
       glow
       cta={ready
         ? (
@@ -1468,7 +1504,10 @@ function MeetScreen({
         )
         : (
           <Cta
-            label={`Drawing ${name}…`}
+            // A reader is being drawn themselves, and "Drawing Priya…" under a
+            // heading that just said "you" is the flow forgetting who it is
+            // talking to.
+            label={reader ? "Drawing you…" : `Drawing ${name}…`}
             disabled
             onPress={() => undefined}
           />
@@ -1553,11 +1592,17 @@ function MeetScreen({
                     title: "Same face, every time",
                     body: "Consistent across every chapter and story",
                   },
-                  {
-                    glyph: GlyphSavedCast,
-                    title: "Saved to your cast",
-                    body: "Reuse them in any story, any time",
-                  },
+                  reader
+                    ? {
+                      glyph: GlyphSavedCast,
+                      title: "Saved to you",
+                      body: "Step into any story, any time",
+                    }
+                    : {
+                      glyph: GlyphSavedCast,
+                      title: "Saved to your cast",
+                      body: "Reuse them in any story, any time",
+                    },
                 ]}
               />
             </View>
@@ -1566,9 +1611,13 @@ function MeetScreen({
         : (
           <>
             <View style={styles.meetHead}>
-              <Text style={styles.eyebrowAccent}>DRAWING</Text>
+              <Text style={styles.eyebrowAccent}>
+                {reader ? "DRAWING YOU" : "DRAWING"}
+              </Text>
               <Text style={styles.meetHeading} accessibilityRole="header">
-                {`${name} is taking shape.`}
+                {reader
+                  ? `${name}, you're taking shape.`
+                  : `${name} is taking shape.`}
               </Text>
             </View>
             <MeetCard>
@@ -1598,6 +1647,7 @@ function MeetScreen({
                   ? (
                     <FailureChip
                       name={name}
+                      reader={reader}
                       failure={failure}
                       onRetry={onRetry}
                     />
@@ -1796,18 +1846,23 @@ function StatusDot({ delay }: { delay: number }) {
  */
 function FailureChip({
   name,
+  reader,
   failure,
   onRetry,
 }: {
   name: string;
+  reader: boolean;
   failure: PortraitFailure;
   onRetry: () => void;
 }) {
   const retryable = failure.retryable || !failure.message;
+  // The reader is the one being drawn: "We couldn't draw Priya", said to
+  // Priya, is the writer's sentence.
+  const subject = reader ? "you" : name;
   return (
     <View style={styles.failureChip}>
       <Text style={styles.statusText}>
-        {retryable ? `We couldn't draw ${name}. Try again.` : failure.message}
+        {retryable ? `We couldn't draw ${subject}. Try again.` : failure.message}
       </Text>
       {retryable
         ? (

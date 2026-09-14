@@ -26,6 +26,7 @@ import {
   UserRound,
   Volume2,
 } from "lucide-react-native";
+import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import IdentityEditor from "@/components/profile/IdentityEditor";
 import {
@@ -465,7 +466,7 @@ const styles = {
     withTabs: {
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.xl,
-      paddingBottom: 116,
+      paddingBottom: TAB_BAR_CLEARANCE,
     },
     identity: {
       flexDirection: "row",

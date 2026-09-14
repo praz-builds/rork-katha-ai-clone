@@ -364,6 +364,13 @@ const styles = StyleSheet.create({
   progressBar: {
     width: controls.onboardingPillWidth,
     height: controls.onboardingPillHeight,
+    // The row can hold eight now (the reader's count), and eight at 22pt
+    // with their gaps is 211pt against the 200pt a 360pt phone leaves
+    // between the two 48pt icon slots. Shrinkable, so the bars scale down
+    // together rather than spilling right of centre; on a 390 they never
+    // shrink at all.
+    flexShrink: 1,
+    minWidth: 0,
     // 3, the hand-off value: a 5pt bar fully rounded reads as a dash, and
     // squared off it reads as a tick. No token sits at 3.
     borderRadius: 3,
