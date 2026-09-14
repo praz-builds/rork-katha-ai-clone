@@ -51,7 +51,11 @@ const MOOD_GENRES: Record<
 };
 
 export function isMood(value: string | null | undefined): value is Mood {
-  return typeof value === "string" && value in MOOD_LABELS;
+  // An own-property check, not `in`: `in` answers yes to "constructor" and
+  // "toString", and a title reading "Tonight · function Object()" is a bug
+  // waiting for the first caller that feeds this from somewhere typed.
+  return typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(MOOD_LABELS, value);
 }
 
 /** The rail's eyebrow: the mood in the reader's own words. */
@@ -63,6 +67,12 @@ export function tonightTitle(mood: Mood): string {
  * A standalone, or a story with nothing after chapter one, is "quick": it
  * ends when it ends. A series is a commitment, whatever its first chapter's
  * length.
+ *
+ * A story that names no mode and no plan is judged by the chapters it has,
+ * which is the seed catalogue's shape. A live series with one chapter written
+ * and a plan it has not stated would count as quick here; nothing on the
+ * client produces that row today, and the mode is set on every story the
+ * server returns.
  */
 function isQuick(story: Story): boolean {
   if (story.storyMode === "standalone") return true;

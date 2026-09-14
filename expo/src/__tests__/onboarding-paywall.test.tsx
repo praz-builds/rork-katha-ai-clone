@@ -148,9 +148,10 @@ describe("OnboardingPaywall", () => {
     expect(view.getByText("Katha is ready when you are.")).toBeTruthy();
     expect(view.getByText("Hear your stories read aloud")).toBeTruthy();
     expect(view.getByText("Your characters look the same in every chapter")).toBeTruthy();
-    // The sub follows the purpose even with no character: a reader from Home
-    // is still here to read.
-    expect(view.getByText("Unlock Katha and start reading tonight.")).toBeTruthy();
+    // No character means no onboarding purpose to speak in: the in-app entry
+    // is opened by writers and readers alike, so the sub names neither.
+    expect(view.getByText("Unlock Katha and start tonight.")).toBeTruthy();
+    expect(view.queryByText(/start (reading|writing) tonight/)).toBeNull();
   });
 
   it("speaks to the reader as the character, not about a third person", async () => {

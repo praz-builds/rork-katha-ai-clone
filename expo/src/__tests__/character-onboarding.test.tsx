@@ -689,6 +689,25 @@ describe("character onboarding", () => {
     await reader.findByText("Hello, Priya.");
   });
 
+  it("tells a reader we couldn't draw *you*, not their name in the third person", async () => {
+    mockGenerateCharacterImage.mockRejectedValue(new Error("provider down"));
+    const reader = await mount("read", jest.fn(), {
+      name: "Priya",
+      genreInterests: ["mystery"],
+    });
+    await fireEvent.press(reader.getByLabelText("Put me in the story"));
+    await fireEvent.changeText(reader.getByLabelText("Appearance"), "Green coat");
+    await fireEvent.press(reader.getByLabelText("Show me"));
+    await fireEvent.changeText(reader.getByLabelText("Email address"), EMAIL);
+    await fireEvent.press(reader.getByLabelText("Email me a code"));
+    await reader.findByLabelText("Verification code");
+    await verify(reader);
+
+    await reader.findByText("We couldn't draw you. Try again.");
+    expect(reader.queryByText(/couldn't draw Priya/)).toBeNull();
+    reader.getByLabelText("Try again");
+  });
+
   /*
     The pills continue the questionnaire's row rather than starting their own.
     A reader walked six questions on an eight-pill row, so W3 is the seventh

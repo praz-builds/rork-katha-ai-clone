@@ -213,7 +213,10 @@ fits without clipping.
 > | both | `name` | `genres` | `purpose` | refine | moment | **W3** | **W4, W5, code, W6** | |
 >
 > Done pills are `colors.onboardingBorderStrong`, the current pill is
-> `colors.accent`, upcoming pills are `colors.onboardingBorder`.
+> `colors.accent`, upcoming pills are `colors.onboardingBorder`. The 22 × 5
+> hand-off pill holds at 390 pt; eight of them are 211 pt against the 200 pt a
+> 360 pt phone leaves between the icon slots, so the bars are shrinkable and
+> scale down together there rather than spilling right of centre.
 >
 > **Every question is a step, and the making of the character is one step.**
 > W4, W5, the code screen and W6 share one pill: they are one ask answered

@@ -252,6 +252,45 @@ describe("KathaOnboardingFlowV2", () => {
     expect(step()).toBe("Step 6 of 8");
   });
 
+  it("forgets the old purpose's answers when the purpose changes", async () => {
+    const onCharacterPath = jest.fn();
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={onCharacterPath} />,
+    );
+    await answerNameAndGenres(view, "Nikita");
+    await fireEvent.press(view.getByText("Reading"));
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("Reading them myself"));
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("Something emotional"));
+
+    // Back to the purpose and change the answer.
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.press(view.getByText("Writing"));
+    await fireEvent.press(view.getByText("Continue"));
+    // The reader's "read" key must not light the writer's Continue.
+    expect(
+      view.getByLabelText("Continue").props.accessibilityState.disabled,
+    ).toBe(true);
+    await fireEvent.press(view.getByText("A full novel"));
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("Plan chapters"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    // No mood rides out with a writer, and Home draws no Tonight rail for them.
+    expect(onCharacterPath).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "write",
+        onboarding: expect.objectContaining({
+          refine: "novel",
+          mood: "",
+          moment: "chapters",
+        }),
+      }),
+    );
+  });
+
   it("marks the chosen option with a check and leaves the others bare", async () => {
     const view = await render(
       <KathaOnboardingFlowV2 onCharacterPath={jest.fn()} />,

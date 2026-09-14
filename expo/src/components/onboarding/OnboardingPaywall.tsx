@@ -258,8 +258,12 @@ function copyFor(name: string, purpose: OnboardingPaywallPurpose) {
       : `${named} is ready. Give them a story.`
     : "Katha is ready when you are.";
   // A reader came to read. "Start writing tonight" under a heading that just
-  // invited them into a story is the writer's line, not theirs.
-  const sub = reader
+  // invited them into a story is the writer's line, not theirs. With no
+  // character there is no onboarding purpose to speak in either: the in-app
+  // entry from Home or Credits is opened by readers and writers alike.
+  const sub = !named
+    ? "Unlock Katha and start tonight."
+    : reader
     ? "Unlock Katha and start reading tonight."
     : "Unlock Katha and start writing tonight.";
   const voiceLine = named

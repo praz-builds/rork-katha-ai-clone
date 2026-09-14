@@ -35,9 +35,8 @@
  * it on the next screen started four pills in.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  AccessibilityInfo,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -227,6 +226,23 @@ export default function KathaOnboardingFlowV2(
   const [mood, setMood] = useState("");
   const [moment, setMoment] = useState("");
 
+  /**
+   * Changing the purpose clears the answers that belong to the old one.
+   *
+   * Every question after this one is the purpose's own: a reader's "mood" has
+   * no meaning on a writer's path, and a "refine" key from the reader's list
+   * would light the writer's Continue with nothing selected. Without this,
+   * Reading → mood → Back → Writing leaves a mood in the payload and the
+   * writer opens Home to a Tonight rail they never asked for.
+   */
+  const choosePurpose = (next: OnboardingPurpose) => {
+    if (next === purpose) return;
+    setPurpose(next);
+    setRefine("");
+    setMood("");
+    setMoment("");
+  };
+
   const fname = name.trim() || "there";
   /** Selected genre ids, in the order they were tapped. */
   const selectedGenres = genreOrder.filter((key) => genres[key]);
@@ -327,7 +343,7 @@ export default function KathaOnboardingFlowV2(
         />
       )}
       {screen === "purpose" && (
-        <PurposeScreen purpose={purpose} setPurpose={setPurpose} onNext={next} />
+        <PurposeScreen purpose={purpose} setPurpose={choosePurpose} onNext={next} />
       )}
       {screen === "refine" && (
         <RefineScreen
@@ -355,35 +371,6 @@ export default function KathaOnboardingFlowV2(
       )}
     </View>
   );
-}
-
-/**
- * Whether this person has asked the OS for less movement.
- *
- * Nothing on these screens moves any more (the progress fill was the one
- * thing, and the pill row replaced it), but the hook is exported and the
- * intro still reads it.
- */
-export function useReducedMotionPreference(): boolean {
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    const preference = AccessibilityInfo.isReduceMotionEnabled?.();
-    preference?.then((enabled) => {
-      if (mounted) setReduceMotion(Boolean(enabled));
-    });
-    const subscription = AccessibilityInfo.addEventListener?.(
-      "reduceMotionChanged",
-      setReduceMotion,
-    );
-    return () => {
-      mounted = false;
-      subscription?.remove?.();
-    };
-  }, []);
-
-  return reduceMotion;
 }
 
 // ── Shared ───────────────────────────────────────────────────────────────────
@@ -434,7 +421,9 @@ function OptionRow({
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={sub}
-      accessibilityState={{ selected }}
+      // A radio announces "checked"; `selected` stays so the state reads the
+      // same way as the genre chips' in the tree.
+      accessibilityState={{ selected, checked: selected }}
       style={[styles.optRow, selected && styles.optRowSelected]}
     >
       {/* The emoji is content, not iconography: it is part of the option's
@@ -839,11 +828,13 @@ function UpNextCard() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.onboardingBg },
   grow: { flex: 1 },
+  // The same 40pt the pinned dock gives every other screen's CTA, so the
+  // button does not jump 8pt between the first screen and the second.
   pad: {
     flex: 1,
     paddingHorizontal: spacing.xxxl,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xxxl,
+    paddingBottom: CTA_BOTTOM,
   },
   headPad: {
     paddingHorizontal: spacing.xxxl,
@@ -911,8 +902,8 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.ink, borderColor: colors.ink },
   chipPressed: { opacity: 0.86 },
   chipLabel: {
+    ...type.bodySmall,
     fontFamily: fonts.ui,
-    fontSize: 15,
     color: colors.muted,
     fontWeight: "700",
   },

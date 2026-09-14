@@ -364,7 +364,16 @@ export const controls = {
   onboardingPlateRadius: 14,
   onboardingPillWidth: 22,
   onboardingPillHeight: 5,
-  onboardingPillGap: 5
+  onboardingPillGap: 5,
+  /**
+   * The floating tab bar (2026-09-14): the pill's height, the selected tab's
+   * disc, the Create button beside it, and the widest the whole dock may grow
+   * on a tablet or a web window before its four tabs drift apart.
+   */
+  tabBarHeight: 64,
+  tabBarActiveDisc: 44,
+  tabBarCreate: 60,
+  tabBarMaxWidth: 480
 } as const;
 
 export const genreLabels: Record<Genre, string> = {

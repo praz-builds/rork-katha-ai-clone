@@ -1641,6 +1641,7 @@ function MeetScreen({
                   ? (
                     <FailureChip
                       name={name}
+                      reader={reader}
                       failure={failure}
                       onRetry={onRetry}
                     />
@@ -1839,18 +1840,23 @@ function StatusDot({ delay }: { delay: number }) {
  */
 function FailureChip({
   name,
+  reader,
   failure,
   onRetry,
 }: {
   name: string;
+  reader: boolean;
   failure: PortraitFailure;
   onRetry: () => void;
 }) {
   const retryable = failure.retryable || !failure.message;
+  // The reader is the one being drawn: "We couldn't draw Priya", said to
+  // Priya, is the writer's sentence.
+  const subject = reader ? "you" : name;
   return (
     <View style={styles.failureChip}>
       <Text style={styles.statusText}>
-        {retryable ? `We couldn't draw ${name}. Try again.` : failure.message}
+        {retryable ? `We couldn't draw ${subject}. Try again.` : failure.message}
       </Text>
       {retryable
         ? (

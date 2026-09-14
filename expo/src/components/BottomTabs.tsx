@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bookmark, Compass, Home, Plus, User } from "lucide-react-native";
-import { colors, radius, shadows, spacing } from "@/theme";
+import { colors, controls, radius, shadows, spacing } from "@/theme";
 import type { TabKey } from "@/types/domain";
 
 /**
@@ -39,23 +39,24 @@ import type { TabKey } from "@/types/domain";
  */
 
 /** The pill's height, and the height of every tab inside it. */
-export const TAB_BAR_HEIGHT = 64;
+export const TAB_BAR_HEIGHT = controls.tabBarHeight;
 /** Between the bar's bottom edge and the safe-area inset. */
 const TAB_BAR_GAP = spacing.md;
-/** The Create button. A touch larger than the pill so it reads as the object in front. */
-const CREATE_SIZE = 60;
-/** The selected tab's disc. */
-const ACTIVE_DISC = 44;
-/** The room a screen's last row needs above the bar, on the largest bottom inset. */
-const LARGEST_BOTTOM_INSET = 34;
+/**
+ * The largest bottom inset a supported phone reports: Android's three-button
+ * navigation bar, at 48. An iPhone's home indicator is 34.
+ */
+const LARGEST_BOTTOM_INSET = 48;
 
 /**
  * How much a scrolling screen must pad its bottom so the bar covers nothing.
  *
- * The bar's height, its gap, the largest home-indicator inset any supported
- * phone has, and one step of air. A constant on purpose: every tabbed screen
- * sets this in a `StyleSheet`, where a hook cannot go, and a padding a few
- * points generous on a phone with no inset costs nothing a person can see.
+ * The bar's height, its gap, the largest bottom inset any supported phone
+ * reports, and one step of air. A constant on purpose: every tabbed screen
+ * sets this in a `StyleSheet`, and their test suites render them without a
+ * safe-area provider, so a hook there would be a second thing to mock in
+ * five places. A padding a few points generous on a phone with a smaller
+ * inset costs nothing a person can see.
  */
 export const TAB_BAR_CLEARANCE = TAB_BAR_HEIGHT + TAB_BAR_GAP +
   LARGEST_BOTTOM_INSET + spacing.lg;
@@ -76,40 +77,50 @@ export default function BottomTabs(
     // the gap between the pill and the button, or above either.
     <View
       pointerEvents="box-none"
+      testID="tab-bar-dock"
       style={[styles.dock, { bottom: TAB_BAR_GAP + insets.bottom }]}
     >
-      <View style={styles.bar} accessibilityRole="tablist">
-        {TABS.map(({ key, label, Icon }) => {
-          const active = selected === key;
-          return (
-            <Pressable
-              key={key}
-              onPress={() => onSelect(key)}
-              accessibilityRole="tab"
-              accessibilityLabel={label}
-              accessibilityState={{ selected: active }}
-              style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
-            >
-              <View style={[styles.disc, active && styles.discActive]}>
-                <Icon
-                  size={22}
-                  strokeWidth={active ? 2.4 : 2}
-                  color={active ? colors.accent : colors.strong}
-                />
-              </View>
-            </Pressable>
-          );
-        })}
+      {/* Bounded on a tablet or a web window: four tabs spread across 1000pt
+          are four tabs a thumb cannot reach and an eye cannot group. */}
+      <View pointerEvents="box-none" style={styles.row}>
+        <View style={styles.bar} accessibilityRole="tablist">
+          {TABS.map(({ key, label, Icon }) => {
+            const active = selected === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => onSelect(key)}
+                accessibilityRole="tab"
+                accessibilityLabel={label}
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
+              >
+                <View style={[styles.disc, active && styles.discActive]}>
+                  <Icon
+                    size={22}
+                    strokeWidth={active
+                      ? controls.iconButtonStrokeStrong
+                      : controls.iconButtonStroke}
+                    color={active ? colors.accent : colors.strong}
+                  />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          onPress={() => onSelect("create")}
+          accessibilityRole="button"
+          accessibilityLabel="Create story"
+          style={({ pressed }) => [styles.create, pressed && styles.createPressed]}
+        >
+          <Plus
+            size={28}
+            strokeWidth={controls.iconButtonStrokeStrong}
+            color={colors.surface}
+          />
+        </Pressable>
       </View>
-      <Pressable
-        onPress={() => onSelect("create")}
-        accessibilityRole="button"
-        accessibilityLabel="Create story"
-        hitSlop={4}
-        style={({ pressed }) => [styles.create, pressed && styles.createPressed]}
-      >
-        <Plus size={28} strokeWidth={2.6} color={colors.surface} />
-      </Pressable>
     </View>
   );
 }
@@ -119,6 +130,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: spacing.lg,
     right: spacing.lg,
+    alignItems: "center",
+  },
+  row: {
+    width: "100%",
+    maxWidth: controls.tabBarMaxWidth,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
@@ -146,17 +162,17 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.6 },
   disc: {
-    width: ACTIVE_DISC,
-    height: ACTIVE_DISC,
-    borderRadius: ACTIVE_DISC / 2,
+    width: controls.tabBarActiveDisc,
+    height: controls.tabBarActiveDisc,
+    borderRadius: controls.tabBarActiveDisc / 2,
     alignItems: "center",
     justifyContent: "center",
   },
   discActive: { backgroundColor: colors.accentSoft },
   create: {
-    width: CREATE_SIZE,
-    height: CREATE_SIZE,
-    borderRadius: CREATE_SIZE / 2,
+    width: controls.tabBarCreate,
+    height: controls.tabBarCreate,
+    borderRadius: controls.tabBarCreate / 2,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
