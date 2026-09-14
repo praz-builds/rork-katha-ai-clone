@@ -741,7 +741,9 @@ charged or counted anything at all.
 > It supersedes the 2026-09-11 amendment that made portraits unlimited for
 > subscribers as "an exception to the entitlement rule". That exception was
 > written on the observation that its only bound was 12 requests an hour — about
-> **$3.51/hour of images against $4.18/month of net revenue** — and §5 said in
+> **~$0.47/hour of images against $4.18/month of net revenue** (12 x $0.039;
+> this read $3.51/hour when it assumed a $0.2925 image, which no model we run
+> costs -- see §2 for the measured figures) — and §5 said in
 > as many words that this "is not a real bound". It is now a real bound.
 
 **Why six.** Onboarding draws one character and offers one reimagine, so a
@@ -826,7 +828,7 @@ the behaviour the product wants — a user building a recurring cast and writing
 more stories with it. Saved characters are not only a retention feature; they are
 the mechanism by which a heavy user becomes *cheaper* to serve rather than dearer.
 
-**It also means the free four are an investment, not a giveaway.** Four portraits
+**It also means the free six are an investment, not a giveaway.** Six portraits
 is a cast the user keeps. Every story they write with it afterwards costs us
 $0.117 less than one written with strangers.
 
@@ -1469,7 +1471,7 @@ is bounded by how fast a human can use the feature rather than by how many
 credits they hold.
 
 **What actually bounds it, and it is thin.** Portraits are capped at 12 requests
-per hour by `claim_character_portrait_request` (migration 00055) — ~$3.51/hour
+per hour by `claim_character_portrait_request` (migration 00055) — ~$0.47/hour
 against a yearly subscriber's $4.18/month of net revenue. Reimagine is bounded
 only by the six-per-user-per-minute generation limit. **Neither is a bound that
 survives a determined user**, and the honest statement of the position is that
@@ -1944,7 +1946,7 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 
 | Phase | Contents |
 |---|---|
-| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; the free tier's 1 reimagine per authored chapter and 4 portraits per account, both unlimited on a plan; streak ladder + repair; 3-credit welcome bonus; lapse warnings; paywall (no offer); 6 packs; 9 SKUs |
+| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; the free tier's 1 reimagine per authored chapter (unlimited on a plan) and **6 character images per account on every tier, then 1 credit each** -- the paywall still sells unlimited portraits and this ships narrower; see the dated note in the table above; streak ladder + repair; 3-credit welcome bonus; lapse warnings; paywall (no offer); 6 packs; 9 SKUs |
 | **2 — Audio** | Only after edge-tts cost/reliability is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
 | **3 — v1.1** | Referral with deep-link attribution |
 

@@ -256,6 +256,21 @@ begin
             where public.guest_portrait_quotas.claimed_count < v_free_max;
 
         if not found then
+            -- THE SAME WALL AS ABOVE, REPEATED WHERE IT CAN ALSO BE REACHED.
+            --
+            -- This branch means the free slot was gone by the time the upsert
+            -- ran, and it charged unconditionally -- so an anonymous caller
+            -- could be debited here despite `p_may_purchase` being false. The
+            -- advisory lock makes it unreachable from these RPCs, but 00086
+            -- grants service_role UPDATE on `guest_portrait_quotas` and that
+            -- writer takes no lock: a support correction landing between the
+            -- read and the upsert is enough. A guard that holds only on the
+            -- path somebody happened to think of is not a guard.
+            if not coalesce(p_may_purchase, false) then
+                raise exception using
+                    errcode = 'KTH02',
+                    message = 'Insufficient credits';
+            end if;
             -- Lost the race for the last free slot. Charge instead of refusing:
             -- the user asked for an image and can pay for one.
             v_credits := 1;

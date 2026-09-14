@@ -70,3 +70,36 @@ describe("portraitQuote", () => {
     ).toEqual({ free: false, label: "1 credit" });
   });
 });
+
+// A guest holds the three bootstrap credits, so an affordability check alone
+// says "yes" — and the server then refuses, because an anonymous identity may
+// use its six and buy none. Quoting a price there hands somebody an enabled
+// button that cannot work, which is the exact failure this quote exists for.
+describe("portraitQuote for an anonymous identity", () => {
+  it("offers no price once the six are gone, and says it cannot be bought", () => {
+    const quote = portraitQuote({
+      usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT,
+      isAnonymous: true,
+    });
+    expect(quote.free).toBe(false);
+    expect(quote.requiresAccount).toBe(true);
+    expect(quote.label).toMatch(/sign in/i);
+  });
+
+  it("still counts their free six the same way", () => {
+    const quote = portraitQuote({ usedOnAccount: 4, isAnonymous: true });
+    expect(quote.free).toBe(true);
+    // Two left of six — a guest is not on a smaller allowance, only a
+    // different wall at the end of it.
+    expect(quote.label).toContain("2");
+  });
+
+  it("quotes a named user the price, not the wall", () => {
+    const quote = portraitQuote({
+      usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT,
+      isAnonymous: false,
+    });
+    expect(quote.free).toBe(false);
+    expect(quote.requiresAccount).toBeUndefined();
+  });
+});

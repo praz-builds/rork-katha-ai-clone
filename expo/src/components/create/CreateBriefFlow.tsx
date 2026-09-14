@@ -868,6 +868,7 @@ export default function CreateBriefFlow({
           onDelete={editingCharacterIndex === null ? undefined : () => deleteCharacter(editingCharacterIndex)}
           onCreateImage={createCharacterImage}
           credits={credits}
+          isAnonymous={isAnonymous}
           portraitNotice={portraitNotice}
           onPickReference={pickCharacterReference}
           onClearReference={clearCharacterReference}
@@ -1328,6 +1329,11 @@ export function CharacterCraftScreen({
   onDelete,
   onCreateImage,
   credits,
+  /**
+   * An anonymous identity may use its six free images and buy none, so the
+   * sheet must refuse rather than quote a price its own server will decline.
+   */
+  isAnonymous = false,
   portraitNotice = null,
   onPickReference,
   onClearReference,
@@ -1343,6 +1349,7 @@ export function CharacterCraftScreen({
   onSave: () => void;
   onDelete?: () => void;
   onCreateImage: () => void;
+  isAnonymous?: boolean;
   /**
    * The caller's live balance, so a priced button that cannot be paid for is
    * not offered.
@@ -1372,14 +1379,22 @@ export function CharacterCraftScreen({
   const affordable = credits ?? lastKnownBalance;
   const portraitPrice = freeRemaining === null
     ? null
-    : portraitQuote({ usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT - freeRemaining });
+    : portraitQuote({
+      usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT - freeRemaining,
+      isAnonymous,
+    });
   const imageReady = character.portraitStatus === "ready" && Boolean(character.portraitUrl);
   const imageBusy = character.portraitStatus === "generating";
   // A priced image the balance cannot buy is a button that will certainly
   // fail. Quoting the price and then letting them press it is worse than not
   // offering it: they wait, and the refusal arrives where the portrait should.
+  // Two ways a priced image is unreachable, and a guest hits the second while
+  // holding enough credits for the first: `requiresAccount` means the server
+  // will refuse whatever the balance says, because an anonymous identity may
+  // not buy a seventh at all.
   const cannotAfford = portraitPrice !== null && !portraitPrice.free &&
-    affordable !== null && affordable < 1;
+    (portraitPrice.requiresAccount === true ||
+      (affordable !== null && affordable < 1));
   const canCreateImage = Boolean(
     character.name.trim() &&
       character.appearance.trim() &&

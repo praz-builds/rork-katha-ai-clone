@@ -46,7 +46,7 @@ Cost discipline changed shape rather than loosening. Onboarding makes **one imag
 call per portrait request, at most two per person** — the first attempt plus one
 reimagine — and **no story text call at all**. It spends no user credits and
 writes no ledger row. Behind the flow's own limit, an anonymous identity is
-capped server-side at four portrait requests for the life of that identity
+capped server-side at six character images for the life of that identity (migration 00088; it was four while the cap was anonymous-only)
 (migration 00084, §16). The 150-word preview this replaced cost one structured
 model call; this costs one or two flat-rate images, and it produces an artifact
 the person keeps rather than a truncated sample of one they cannot finish.
@@ -1779,12 +1779,22 @@ both refuse rather than degrade — a broken limiter is never a free pass.
 The hourly window bounds a burst inside one session; it does not bound anything
 at all when a fresh anonymous session is one `signInAnonymously` call away, which
 is the gap migration 00055 recorded against itself. 00084 closes it by giving an
-**anonymous identity** four portrait requests for the life of that identity,
+**anonymous identity** six character images for the life of that identity,
 reimagines and retries included, keyed on `auth.users.id`. **Never on a device
 identifier** — Katha collects none, and starting to would be a privacy and
-store-disclosure decision rather than a rate-limit detail (§17). A **named** user
-is not capped by this counter at all; it simply stops being consulted once
-`is_anonymous` is false, and it is not carried onto the account they sign into.
+store-disclosure decision rather than a rate-limit detail (§17).
+
+**The six are per ACCOUNT, and they survive verification** (migration 00088).
+The counter was anonymous-only when this section was written, and a named user
+was not bounded by it at all. It now bounds everyone — free tier and paid plan
+alike — and because it is keyed on `auth.users.id` while email verification
+converts the anonymous user *in place*, the count does not reset when somebody
+signs up. Someone who spent four getting a face they liked during onboarding has
+two left, not six.
+
+Past the six, each image costs **1 credit** — except for an anonymous identity,
+which is refused rather than charged: its credits are the three from
+`bootstrap_user` and those exist to get it a story, the thing that converts it.
 
 A generation that fails calls `release_guest_portrait_request`, so **Try again**
 costs the person nothing: the slot comes back and the endpoint has no credit
@@ -1797,7 +1807,7 @@ verification and it is acceptable for the same reason it always was: the cap is
 keyed on the identity, verification upgrades that identity in place, and the same
 person spends the same requests either way. **A W4 edit-and-resubmit spends a
 second**, which is the new way to reach the cap without failing anything, and
-four is comfortably above what two edits and a reimagine cost.
+six is comfortably above what two edits and a reimagine cost.
 
 ### The session
 

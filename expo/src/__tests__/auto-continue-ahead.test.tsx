@@ -22,7 +22,6 @@ import {
   __resetGenerationSessions,
   autoChapterToWriteAhead,
   chapterChargeNow,
-  getGenerationsSnapshot,
   loweredAutoRunFor,
   lowerAutoRunOnFailure,
   clearAutoChapterFailure,

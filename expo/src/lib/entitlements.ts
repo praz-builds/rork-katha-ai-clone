@@ -42,6 +42,9 @@ export const FREE_REIMAGINES_PER_CHAPTER = 1;
 const INCLUDED_LABEL = "Included in your plan";
 
 /** What one paid use of either action costs. */
+/** What a guest is told instead of a price they cannot pay. */
+const SIGN_IN_LABEL = "Sign in to make more";
+
 const PAID_LABEL = "1 credit";
 
 export type EntitlementQuote = {
@@ -49,6 +52,12 @@ export type EntitlementQuote = {
   free: boolean;
   /** The line to render on the control that spends it. */
   label: string;
+  /**
+   * True when the next one cannot be bought at all, only unlocked by signing
+   * in. The caller must disable the control regardless of balance: a guest
+   * holding credits still cannot spend them here.
+   */
+  requiresAccount?: boolean;
 };
 
 /** Whether the user holds any active Katha entitlement right now. */
@@ -104,9 +113,25 @@ export function reimagineQuote({
  */
 export function portraitQuote({
   usedOnAccount,
+  /**
+   * Whether this identity may BUY once its six are gone.
+   *
+   * An anonymous one may not: the server refuses it outright
+   * (`p_may_purchase` is false for a guest, migration 00088) because its
+   * credits are the three from `bootstrap_user` and those are for a story.
+   * Without this the sheet quoted "1 credit" to a guest holding exactly those
+   * three, enabled the button, and the tap failed on the round trip -- the
+   * same button-that-cannot-work this quote exists to prevent, just for the
+   * other identity.
+   */
+  isAnonymous = false,
 }: {
   usedOnAccount: number;
+  isAnonymous?: boolean;
 }): EntitlementQuote {
   const remaining = FREE_PORTRAITS_PER_ACCOUNT - Math.max(0, usedOnAccount);
-  return remaining > 0 ? freeQuote(remaining) : { free: false, label: PAID_LABEL };
+  if (remaining > 0) return freeQuote(remaining);
+  return isAnonymous
+    ? { free: false, label: SIGN_IN_LABEL, requiresAccount: true }
+    : { free: false, label: PAID_LABEL };
 }

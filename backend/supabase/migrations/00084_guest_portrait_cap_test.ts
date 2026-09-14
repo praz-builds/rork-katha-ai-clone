@@ -4,7 +4,7 @@
 // when it RUNS, so a mistake inside one deploys cleanly and passes any test
 // that only asserts the function exists. Every assertion below calls the
 // function and then calls it again, because the thing under test is whether the
-// fifth portrait of an anonymous session is refused.
+// seventh character image of an anonymous session is refused.
 //
 // What is asserted, in the order it matters:
 //
