@@ -257,18 +257,32 @@ function copyFor(name: string, purpose: OnboardingPaywallPurpose) {
       ? `${named} is ready. Step into the story.`
       : `${named} is ready. Give them a story.`
     : "Katha is ready when you are.";
+  // A reader came to read. "Start writing tonight" under a heading that just
+  // invited them into a story is the writer's line, not theirs.
+  const sub = reader
+    ? "Unlock Katha and start reading tonight."
+    : "Unlock Katha and start writing tonight.";
   const voiceLine = named
     ? reader ? "Hear your story read aloud" : `Hear ${named}'s story read aloud`
     : "Hear your stories read aloud";
+  // The named reader IS the character, so the promise is about them, not
+  // about a third person with their name.
   const portraitLine = named
-    ? `${named} looks the same in every chapter`
+    ? reader
+      ? "You look the same in every chapter"
+      : `${named} looks the same in every chapter`
     : "Your characters look the same in every chapter";
+  // What a reader spends credits on is being written into a story; what a
+  // writer spends them on is chapters. Same number, said for each.
+  const creditsLine = reader
+    ? "About 16 chapters with you as the lead, every month"
+    : "About 16 full chapters, every month";
 
   const rows: BenefitRow[] = [
     {
       emoji: "✨",
       lead: `${PLANS.yearly.credits} credits a month`,
-      body: "About 16 full chapters, every month",
+      body: creditsLine,
     },
     {
       emoji: "🎨",
@@ -283,7 +297,7 @@ function copyFor(name: string, purpose: OnboardingPaywallPurpose) {
     },
   ];
 
-  return { heading, rows };
+  return { heading, sub, rows };
 }
 
 export function OnboardingPaywall({
@@ -358,7 +372,7 @@ export function OnboardingPaywall({
     [packages],
   );
 
-  const { heading, rows } = useMemo(
+  const { heading, sub, rows } = useMemo(
     () => copyFor(characterName, purpose),
     [characterName, purpose],
   );
@@ -458,7 +472,7 @@ export function OnboardingPaywall({
             <Text style={styles.heading} accessibilityRole="header">
               {heading}
             </Text>
-            <Text style={styles.sub}>Unlock Katha and start writing tonight.</Text>
+            <Text style={styles.sub}>{sub}</Text>
           </View>
         </View>
 

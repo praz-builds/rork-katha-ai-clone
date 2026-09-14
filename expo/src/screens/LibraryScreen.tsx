@@ -7,6 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PenLine, Star } from "lucide-react-native";
 
+import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import NotesTab from "@/components/library/NotesTab";
 import StoryShelf, { type ShelfState } from "@/components/library/StoryShelf";
 import { fetchCreatedShelf, fetchStarredShelf } from "@/lib/api";
@@ -226,7 +227,7 @@ const styles = {
       at pixel zero is the one thing every screen here must not do, so the
       inset is explicit now rather than a side effect of having a title.
     */
-    withTabs: { paddingTop: spacing.xl, paddingBottom: 116 },
+    withTabs: { paddingTop: spacing.xl, paddingBottom: TAB_BAR_CLEARANCE },
     header: {
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.xl,

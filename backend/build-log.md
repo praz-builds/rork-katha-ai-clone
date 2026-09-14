@@ -7,6 +7,64 @@
 
 ---
 
+## 2026-09-14 UTC — Reader onboarding: three reader questions, one progress row, the Tonight rail, and the tab bar's CTA at the end
+
+**Session:** `codex/reader-onboarding`, client only. No schema change, nothing
+deployed.
+
+### What a reader walks now
+
+Name, genres, Reading, then three questions of their own: **How do you like
+your stories?** (the existing question, re-headed, no sub), **{name}, what are
+you in the mood for?** (new, six options) and **When do you usually read?**
+(new, five one-line options, an UP NEXT card teasing the character screen, and
+the flow's only Skip). Then the same W3 to W6, paywall and welcome as a writer,
+with every helper line saying "you". `source-of-truth/ONBOARDING_FLOW.md` §3C
+and decisions 69-72.
+
+### One progress row
+
+`expo/src/lib/onboarding-progress.ts` is the one table of pills per purpose:
+eight for a reader, seven for a writer or "both". The questionnaire now draws
+`OnboardingTopBar` (the character screens' plate and pills) instead of its own
+`n/5` track, and `CharacterOnboarding` reads its W3 and character pills from the
+same table instead of hardcoding 4 to 7. W4, W5, the code screen and W6 share
+one pill.
+
+### The Tonight rail
+
+`expo/src/lib/home-tonight.ts`: the reader's mood, this session only, becomes
+the first shelf under their own stories on Home, keyed to the mood's genres
+(standalones for "quick", their own genres for "surprise"). `buildFeedRows`
+takes it as a fifth argument; `App.tsx` passes `onboardingEntry.mood`.
+
+### Reader copy
+
+W4's KATHA WILL DRAW rows 2 and 3, W4's appearance placeholder, W5's sub, W6's
+loading eyebrow, heading and disabled CTA, W6's third benefit row, and the
+paywall's sub and first two benefit lines each gained a reader string. The
+paywall's "Unlimited portraits and reimagines" lead is NOT touched here: it is
+falsified by migration 00088 on `codex/character-image-credits`, and that lane
+owns the row.
+
+### The tab bar
+
+`expo/src/components/BottomTabs.tsx` is a pill of four icon-only tabs with the
+Create button beside it on the right, not a raised disc in the middle. It is
+offset by the bottom safe-area inset on both platforms, draws its edge with
+`shadows.overlay` rather than a border, and exports `TAB_BAR_CLEARANCE`, which
+Home, Explore, Library and Profile now pad by instead of a literal 116. No
+animation on the switch, by the animation skill's frequency gate.
+
+### Tests
+
+`onboarding-progress.test.ts` (new), `home-feed-rows.test.ts` (the Tonight
+rail), `katha-onboarding-flow.test.tsx` (the reader walk, skip, per-purpose
+pills, the selected look), `character-onboarding.test.tsx` (reader strings,
+pill continuity), `onboarding-paywall.test.tsx` (reader sub and lines).
+
+---
+
 ## 2026-09-12 UTC — Review close on #92: seventeen findings, and a CI test that read a deleted screen
 
 **Session:** `codex/character-onboarding`, review closing only. No schema

@@ -846,6 +846,7 @@ export default function App() {
       genreInterests: payload.onboarding.genres,
       otherGenre: payload.onboarding.otherGenre,
       refine: payload.onboarding.refine,
+      mood: payload.onboarding.mood,
       moment: payload.onboarding.moment,
     };
     setOnboardingEntry(entryContext);
@@ -938,6 +939,8 @@ export default function App() {
               setScreen({ name: "reader", storyId, chapterIndex })}
             onPaywall={() => setScreen({ name: "paywall" })}
             preferredGenres={toGenreKeys(onboardingEntry?.genreInterests)}
+            // "Tonight only", so it lives for this session and no longer.
+            mood={onboardingEntry?.mood ?? null}
             generatedStories={generatedStories}
             stories={allStories}
             onStory={openStory}

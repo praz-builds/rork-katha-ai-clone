@@ -155,3 +155,63 @@ describe("what belongs in a rail", () => {
     expect(continueRow).toBeUndefined();
   });
 });
+
+/*
+  "Tonight only. It sets the story" is what onboarding says under the mood
+  question, and this rail is the promise being kept. It is the first shelf
+  that is not the reader's own, and it is gone when the session is.
+*/
+describe("the Tonight rail", () => {
+  it("does not exist for a reader who was never asked", () => {
+    const rows = buildFeedRows(stories, [populatedGenre()], [], [], null);
+    expect(rows.find((row) => row.key === "tonight")).toBeUndefined();
+  });
+
+  it("answers a mood with that mood's genres, above the house picks", () => {
+    // `guessing` is mystery, thriller, horror. The seed has mystery.
+    const rows = buildFeedRows(stories, [], [], [], "guessing");
+    const tonight = rows.find((row) => row.key === "tonight");
+
+    expect(tonight).toBeDefined();
+    expect(tonight!.title).toBe("Tonight · Something that keeps me guessing");
+    expect(
+      tonight!.stories.every((story) =>
+        ["mystery", "thriller", "horror"].includes(story.genre)
+      ),
+    ).toBe(true);
+    const keys = rows.map((row) => row.key);
+    expect(keys.indexOf("tonight")).toBeLessThan(keys.indexOf("originals"));
+  });
+
+  it("sits under the reader's own stories, never above them", () => {
+    const written = mine({ chapters: stories[0].chapters.slice(0, 1) });
+    const rows = buildFeedRows(stories, [], [written], [], "escape");
+    expect(rows.map((row) => row.key).slice(0, 2)).toEqual(["yours", "tonight"]);
+  });
+
+  it("reads 'surprise me' as the reader's own genres", () => {
+    const genre = populatedGenre();
+    const rows = buildFeedRows(stories, [genre], [], [], "surprise");
+    const tonight = rows.find((row) => row.key === "tonight");
+    expect(tonight).toBeDefined();
+    expect(tonight!.stories.every((story) => story.genre === genre)).toBe(true);
+  });
+
+  it("reads 'quick' as stories that end when they end", () => {
+    const quick = mine({ storyMode: "standalone", isFeatured: false });
+    const long = mine({ storyMode: "series", plannedChapterCount: 7 });
+    const rows = buildFeedRows([quick, long], [], [], [], "quick");
+    const tonight = rows.find((row) => row.key === "tonight");
+    expect(tonight?.stories.map((story) => story.id)).toEqual([quick.id]);
+  });
+
+  it("draws no rail for a mood it does not know, or one nothing answers", () => {
+    expect(
+      buildFeedRows(stories, [], [], [], "melancholy").find((row) => row.key === "tonight"),
+    ).toBeUndefined();
+    // `surprise` with no genres chosen has nothing to pick from.
+    expect(
+      buildFeedRows(stories, [], [], [], "surprise").find((row) => row.key === "tonight"),
+    ).toBeUndefined();
+  });
+});

@@ -17,10 +17,12 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { Bell, ChevronRight, Flame, Sparkles } from "lucide-react-native";
+import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
 import { greetingName } from "@/lib/profile";
 import { homeCtaCopy, resolveHomeCta } from "@/lib/home-cta";
+import { isMood, tonightStories, tonightTitle } from "@/lib/home-tonight";
 import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
 
@@ -106,8 +108,12 @@ export function continueReading(stories: Story[]): Story[] {
  *
  * 1. **Your stories** - what the reader made. Nobody else's shelf can outrank it.
  * 2. **Continue reading** - what they already started.
- * 3. **Katha Originals** - the house's own writing.
- * 4. **One rail per genre they chose in onboarding** - and this is where
+ * 3. **Tonight** - what they said they were in the mood for, when onboarding
+ *    asked them this session (`lib/home-tonight.ts`). A reader who has
+ *    written nothing and started nothing opens the app to this row, which is
+ *    the answer to the last question they were asked.
+ * 4. **Katha Originals** - the house's own writing.
+ * 5. **One rail per genre they chose in onboarding** - and this is where
  *    trending lives now: each genre rail is ordered by reads, so "what is
  *    popular" is answered inside a genre the reader actually asked for rather
  *    than as a global chart they have no stake in.
@@ -130,6 +136,11 @@ export function buildFeedRows(
    * obeys is still exercised by passing a list here.
    */
   inProgress: Story[] = continueReading(stories),
+  /**
+   * The reader's mood from onboarding, this session, or null. Anything that
+   * is not a known mood draws no row rather than a wrong one.
+   */
+  mood: string | null = null,
 ): FeedRow[] {
   const rows: FeedRow[] = [];
 
@@ -144,6 +155,18 @@ export function buildFeedRows(
   const unfinished = inProgress;
   if (unfinished.length > 0) {
     rows.push({ key: "continue", title: "Continue reading", stories: unfinished });
+  }
+
+  if (isMood(mood)) {
+    const tonight = tonightStories(
+      stories,
+      mood,
+      Array.from(new Set(preferredGenres)),
+      RAIL_LENGTH,
+    );
+    if (tonight.length > 0) {
+      rows.push({ key: "tonight", title: tonightTitle(mood), stories: tonight });
+    }
   }
 
   const originals = stories.filter((story) => story.isFeatured);
@@ -277,6 +300,7 @@ export default function HomeScreen({
   streakDays = null,
   unreadNotifications = 0,
   preferredGenres = [],
+  mood = null,
   displayName = null,
   shelfLoaded = false,
   writingStoryId = null,
@@ -320,6 +344,12 @@ export default function HomeScreen({
    */
   unreadNotifications?: number;
   preferredGenres?: Genre[];
+  /**
+   * What the reader said they were in the mood for, this session. It draws
+   * the Tonight rail and nothing else; null is the ordinary case for anyone
+   * who did not onboard as a reader this session.
+   */
+  mood?: string | null;
   /**
    * What to call this reader, from the name onboarding asks for first.
    *
@@ -406,7 +436,13 @@ export default function HomeScreen({
     ? `${timeOfDay}, ${firstName} \u{1F44B}\u{1F3FC}`
     : timeOfDay;
 
-  const rows = buildFeedRows(stories, preferredGenres, generatedStories);
+  const rows = buildFeedRows(
+    stories,
+    preferredGenres,
+    generatedStories,
+    continueReading(stories),
+    mood,
+  );
 
   const ctaState = resolveHomeCta({
     stories: generatedStories,
@@ -579,7 +615,7 @@ export default function HomeScreen({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  withTabs: { paddingBottom: 116 },
+  withTabs: { paddingBottom: TAB_BAR_CLEARANCE },
 
   header: {
     paddingHorizontal: spacing.xl,

@@ -148,7 +148,26 @@ describe("OnboardingPaywall", () => {
     expect(view.getByText("Katha is ready when you are.")).toBeTruthy();
     expect(view.getByText("Hear your stories read aloud")).toBeTruthy();
     expect(view.getByText("Your characters look the same in every chapter")).toBeTruthy();
+    // The sub follows the purpose even with no character: a reader from Home
+    // is still here to read.
+    expect(view.getByText("Unlock Katha and start reading tonight.")).toBeTruthy();
+  });
+
+  it("speaks to the reader as the character, not about a third person", async () => {
+    const { view } = await renderPaywall({ purpose: "read" });
+    expect(view.getByText("You look the same in every chapter")).toBeTruthy();
+    expect(view.queryByText("Mira looks the same in every chapter")).toBeNull();
+    expect(
+      view.getByText("About 16 chapters with you as the lead, every month"),
+    ).toBeTruthy();
+    expect(view.getByText("Unlock Katha and start reading tonight.")).toBeTruthy();
+    expect(view.queryByText(/start writing tonight/)).toBeNull();
+  });
+
+  it("keeps the writer's sub for a writer", async () => {
+    const { view } = await renderPaywall();
     expect(view.getByText("Unlock Katha and start writing tonight.")).toBeTruthy();
+    expect(view.getByText("About 16 full chapters, every month")).toBeTruthy();
   });
 
   it("leaves by the close and only by the close", async () => {
