@@ -5632,3 +5632,34 @@ function still bounds an anonymous caller at the current number.
 file, 835 function tests, 245 migration tests.
 
 **Not deployed, not committed, not run against the remote.**
+
+### 2026-09-14 — Three known limits of the character-image ledger
+
+Six free character images per account then 1 credit each (00088). Three things
+found in review are NOT fixed, because each is an ops or product decision rather
+than a defect. Recorded so nobody discovers them in a support ticket.
+
+**A hard worker termination can strand a charged reservation.** The debit
+commits inside `claim_character_image_request`; the refund runs from the 502
+path or the catch. An OOM, a platform restart or a wall-clock kill between the
+two runs neither, and nothing sweeps `character_image_operations` where
+`status = 'reserved'`. The exposure is crashes rather than slowness — the
+portrait chain's deadline is 80s against a 150s ceiling — and remediation today
+is a manual `release_character_image_request`. A periodic "release reserved
+older than N minutes" job would close it, and would also close the softer case
+where a failed `complete_` after delivery leaves the row reserved.
+
+**Every refusal past the window claim spends one of the twelve hourly slots.**
+`claim_character_portrait_request` (00055) commits first and has no release, so
+a 402, 403, 400, 409 or 503 all consume one. Pre-existing structure, but the new
+out-of-credits refusal makes it common: a user at zero credits who taps twelve
+times is rate-limited for an hour even after topping up. The client fix in this
+change stops most people reaching it, since the button now disables rather than
+letting them try.
+
+**Platform re-delivery of one request id can yield a free image.** By design a
+replay that finds its row still `reserved` draws again. If that second draw
+fails before the first completes, the release refunds and marks the row
+refunded; the first then delivers and `complete_` is a no-op on a refunded row —
+image delivered, charge returned. Only reachable through infrastructure
+re-delivery, never from a client tap.
