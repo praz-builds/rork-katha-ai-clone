@@ -115,6 +115,11 @@ create table if not exists public.character_image_operations (
     -- back what was taken and the counter may have moved since.
     credits smallint not null default 0 check (credits >= 0 and credits <= 1),
     last_error text,
+    -- When a delivery took this reservation to draw with. One reservation
+    -- draws once; a second delivery inside the staleness window is told the
+    -- request is in flight, and one after it may take the claim because the
+    -- worker that held it is gone. See `claim_character_image_request`.
+    draw_claimed_at timestamptz,
     created_at timestamptz not null default pg_catalog.now(),
     updated_at timestamptz not null default pg_catalog.now(),
     unique (user_id, request_id)
@@ -192,9 +197,53 @@ begin
     from public.character_image_operations
     where user_id = p_user_id
       and request_id = p_request_id
-    limit 1;
+    for update;
 
     if found then
+        /*
+          ONE RESERVATION DRAWS ONCE.
+
+          A replay used to hand the reserved row straight back as usable, and
+          the caller drew again -- so two concurrent deliveries of the same
+          request id both called the provider and we paid twice for one charge.
+          The client mints a fresh id per tap, so this is never a person
+          pressing twice; it is the platform re-delivering an invocation.
+
+          `draw_claimed_at` is the claim. The first delivery takes it and draws;
+          a second while it is fresh is told the request is in flight and draws
+          nothing. The window exists so a delivery whose worker DIED can still
+          be retried -- without it a crashed attempt would hold its reservation
+          for ever and the user could never get the image they paid for. Three
+          minutes is comfortably past the portrait chain's own 80s deadline.
+        */
+        if v_operation.status = 'reserved'
+           and v_operation.draw_claimed_at is not null
+           and v_operation.draw_claimed_at
+               > pg_catalog.now() - interval '3 minutes' then
+            return pg_catalog.jsonb_build_object(
+                'operation_id', v_operation.id,
+                'status', v_operation.status,
+                'credits', v_operation.credits,
+                'replayed', true,
+                'drawing', false,
+                'free_remaining',
+                public.character_image_free_remaining(p_user_id),
+                'balance', coalesce((
+                    select balance_after from public.credit_ledger
+                    where user_id = p_user_id
+                    order by created_at desc, ledger_sequence desc limit 1
+                ), 0)
+            );
+        end if;
+
+        -- Reserved but unclaimed, or claimed long enough ago that the worker
+        -- holding it is gone: this delivery takes the claim and draws.
+        if v_operation.status = 'reserved' then
+            update public.character_image_operations
+            set draw_claimed_at = pg_catalog.now()
+            where id = v_operation.id;
+        end if;
+
         select balance_after
         into v_balance
         from public.credit_ledger
@@ -207,6 +256,7 @@ begin
             'status', v_operation.status,
             'credits', v_operation.credits,
             'replayed', true,
+            'drawing', v_operation.status = 'reserved',
             'free_remaining', public.character_image_free_remaining(p_user_id),
             'balance', coalesce(v_balance, 0)
         );
@@ -220,8 +270,10 @@ begin
     v_free_used := coalesce(v_free_used, 0::smallint);
 
     begin
-        insert into public.character_image_operations (user_id, request_id)
-        values (p_user_id, p_request_id)
+        -- Stamped on creation: this delivery is the one that draws.
+        insert into public.character_image_operations
+            (user_id, request_id, draw_claimed_at)
+        values (p_user_id, p_request_id, pg_catalog.now())
         returning * into v_operation;
     exception
         when unique_violation then
@@ -309,6 +361,8 @@ begin
         'status', 'reserved',
         'credits', v_credits,
         'replayed', false,
+        -- A fresh reservation is always this delivery's to draw with.
+        'drawing', true,
         'free_remaining', public.character_image_free_remaining(p_user_id),
         'balance', coalesce(v_balance, 0)
     );
@@ -490,6 +544,19 @@ comment on function public.release_character_image_request(uuid, uuid, text) is
 -- to something correct, not to `42883`. They touch the same column and take the
 -- same lock as the functions above, so the two can be live at once without
 -- disagreeing about the count. `release` is unchanged and is not restated.
+--
+-- WHAT THIS WINDOW DOES NOT COVER, stated because it cannot be closed from
+-- here. The currently deployed function calls the wrapper only for an
+-- ANONYMOUS caller; for a named one it calls nothing but the hourly window. So
+-- between this migration landing and the function being redeployed, a signed-in
+-- user still gets unbounded free images -- exactly the leak this migration
+-- exists to stop. No database change can charge a caller that never asks.
+--
+-- The only control is the size of the window, so DEPLOY THE FUNCTION
+-- IMMEDIATELY AFTER APPLYING THIS. The order still has to be migration-first:
+-- function-first means `claim_character_image_request` does not exist yet and
+-- every image request fails closed with 503 for everybody, which is worse than
+-- a few minutes of the leak that has been running for weeks already.
 --
 -- Removal condition: delete both, and their entries in 00084's test, once no
 -- deployed function calls them.

@@ -1,6 +1,7 @@
 import { stories } from "@/data/seed";
 import {
   setCharacterImageBalance,
+  observeCharacterImagesRemaining,
   setCharacterImagesRemaining,
 } from "@/lib/character-image-allowance";
 import { pushPermissionGranted } from "@/lib/notifications";
@@ -624,8 +625,10 @@ export async function generateCharacterImage(
   // The authoritative count, from the response that just moved it. Every
   // surface that quotes a portrait price reads this, so they cannot disagree
   // about what the next one costs.
+  // `observe`, not `set`: two requests in flight can finish out of order, and
+  // the older answer must not raise a count the newer one already lowered.
   if (typeof data?.free_remaining === "number") {
-    setCharacterImagesRemaining(data.free_remaining);
+    observeCharacterImagesRemaining(data.free_remaining);
   }
   if (typeof data?.balance === "number") {
     setCharacterImageBalance(data.balance);

@@ -97,6 +97,8 @@ type Claim = {
   status: string;
   credits: number;
   replayed: boolean;
+  /** Whether THIS delivery holds the claim and should call the provider. */
+  drawing: boolean;
   free_remaining: number;
   balance: number;
 };
@@ -625,6 +627,56 @@ Deno.test("the purchase flag defaults to refusing", async () => {
       refused = true;
     }
     assertEquals(refused, true);
+  } finally {
+    await db.close();
+  }
+});
+
+// One reservation draws once. A replay used to hand the reserved row back as
+// usable, so two concurrent deliveries of the same request id both called the
+// provider — and we paid twice for one charge.
+Deno.test("a second delivery of a live reservation is told it is in flight", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+    await fund(db, WRITER, 10);
+    const first = await claim(db, WRITER, "redelivered");
+    assertEquals(first.drawing, true);
+
+    const second = await claim(db, WRITER, "redelivered");
+    assertEquals(second.replayed, true);
+    // Same reservation, and this delivery must NOT draw.
+    assertEquals(second.drawing, false);
+    assertEquals(second.operation_id, first.operation_id);
+  } finally {
+    await db.close();
+  }
+});
+
+// The window exists so a delivery whose worker DIED can still be retried.
+// Without it a crashed attempt would hold its reservation for ever and the
+// user could never get the image they had already been charged for.
+Deno.test("a stale claim can be taken again", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+    await fund(db, WRITER, 10);
+    const first = await claim(db, WRITER, "crashed");
+    assertEquals(first.drawing, true);
+
+    // The worker died four minutes ago.
+    await db.query(
+      `update public.character_image_operations
+       set draw_claimed_at = now() - interval '4 minutes'
+       where id = $1`,
+      [first.operation_id],
+    );
+
+    const retry = await claim(db, WRITER, "crashed");
+    assertEquals(retry.drawing, true);
+    assertEquals(retry.operation_id, first.operation_id);
+    // Still one charge, not two.
+    assertEquals(retry.credits, first.credits);
   } finally {
     await db.close();
   }

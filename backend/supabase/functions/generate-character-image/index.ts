@@ -229,6 +229,26 @@ export async function handleRequest(req: Request): Promise<Response> {
       }, 409);
     }
 
+    /*
+      ANOTHER DELIVERY IS ALREADY DRAWING THIS RESERVATION.
+
+      One reservation draws once. The claim said no, which means a concurrent
+      delivery of the same request id holds it -- and drawing anyway is us
+      paying a provider twice for one charge. The client mints a fresh id per
+      tap, so this is never a person pressing twice; it is the platform
+      re-delivering an invocation.
+
+      Nothing is released here on purpose: the reservation belongs to the
+      delivery that holds the claim, and releasing it would refund a charge
+      whose image is still on its way.
+    */
+    if (reservation.drawing === false) {
+      return respond({
+        error: "That character image is already being made.",
+        code: "request_in_flight",
+      }, 409);
+    }
+
     releaseReservation = async () => {
       const { error } = await serviceClient.rpc(
         "release_character_image_request",

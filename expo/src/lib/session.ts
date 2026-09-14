@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { captureError } from "@/lib/analytics";
 import {
   setCharacterImageBalance,
+  clearCharacterImagesRemaining,
   setCharacterImagesRemaining,
 } from "@/lib/character-image-allowance";
 import { setViewerId } from "@/lib/ownership";
@@ -136,11 +137,21 @@ async function callBootstrap(
   // here rather than fetched by each screen, because this call already happens
   // at boot and again after sign-in -- the two moments the count can change
   // without the client having spent anything.
-  setCharacterImagesRemaining(
-    typeof payload.character_images_free_remaining === "number"
-      ? payload.character_images_free_remaining
-      : null,
-  );
+  /*
+    A FAILED READ IS NOT AN ANSWER OF ZERO, AND MUST NOT ERASE THE LAST ONE.
+
+    `bootstrap-user` returns null when it could not read the allowance -- a
+    transient RPC failure, not a statement about the user. Writing that null
+    through cleared a count the client already had, and the sheet then showed
+    no price at all in front of a button that may charge a credit. A number we
+    were told an hour ago is a better answer than none.
+
+    It is still cleared deliberately on sign-out, where the previous account's
+    count genuinely stops being true.
+  */
+  if (typeof payload.character_images_free_remaining === "number") {
+    setCharacterImagesRemaining(payload.character_images_free_remaining);
+  }
   setCharacterImageBalance(payload.balance);
 
   return {
@@ -496,6 +507,14 @@ export async function signOutToGuest(): Promise<void> {
   // A half-finished sign-in must not be resumable by the guest who replaces
   // it: the token recorded there belongs to the identity that just left.
   forgetPendingEmailOtp();
+
+  // The free-image count and the balance belong to the identity that just
+  // left, and the guest replacing them is a different person with a different
+  // allowance. Cleared BEFORE the new session is minted, so the window where
+  // the sheet could quote the previous account's remaining images -- and let
+  // the new guest spend against them -- does not exist rather than being
+  // short. The next bootstrap fills them in.
+  clearCharacterImagesRemaining();
 
   try {
     await AsyncStorage.removeItem("katha.displayName.v1");

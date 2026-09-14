@@ -208,9 +208,11 @@ Two consequences are deliberate and must not be softened without a product
 decision:
 
 - **The balance drops in one step, and it can drop to nearly nothing.** The run
-  is `min(chapters left in the plan, what the balance affords)`, so a
-  fifteen-chapter auto story takes fifteen credits only when the writer HAS
-  fifteen; with six it takes six and the story stops at chapter six. Do not
+  is `min(chapters left in the plan, what the balance affords)` — and the run
+  starts at chapter TWO, because chapter one is already paid for by the start
+  credit. So a fifteen-chapter auto story takes fourteen credits when the
+  writer has them; with six it buys chapters two through seven and stops at
+  chapter seven, not at chapter six. Do not
   write copy that quotes the plan's length as a price — the number is not
   knowable from the brief, because it depends on the balance at the moment the
   run starts. State the shape of the charge instead: all of it, up front, for as
