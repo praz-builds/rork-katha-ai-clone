@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { captureError } from "@/lib/analytics";
+import {
+  setCharacterImageBalance,
+  setCharacterImagesRemaining,
+} from "@/lib/character-image-allowance";
 import { setViewerId } from "@/lib/ownership";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -9,6 +13,15 @@ export type BootstrappedUser = {
   isAnonymous: boolean;
   welcomeGranted: boolean;
   rateLimited: boolean;
+  /**
+   * How many of the six free character images this account has left.
+   *
+   * `null` when the server could not say. Every surface that quotes a portrait
+   * price treats that as "no quote" rather than falling back to six, because a
+   * button that says "6 free" to someone with none left is an affordance that
+   * lies -- they tap it and the server charges, or refuses.
+   */
+  characterImagesFreeRemaining: number | null;
 };
 
 let bootstrapInFlight: Promise<BootstrappedUser | null> | null = null;
@@ -119,12 +132,28 @@ async function callBootstrap(
   // author-only) compare `story.authorId` against this.
   setViewerId(payload.user_id);
 
+  // And the one place it learns what a character image will cost it. Seeded
+  // here rather than fetched by each screen, because this call already happens
+  // at boot and again after sign-in -- the two moments the count can change
+  // without the client having spent anything.
+  setCharacterImagesRemaining(
+    typeof payload.character_images_free_remaining === "number"
+      ? payload.character_images_free_remaining
+      : null,
+  );
+  setCharacterImageBalance(payload.balance);
+
   return {
     userId: payload.user_id,
     balance: payload.balance,
     isAnonymous: payload.is_anonymous,
     welcomeGranted: payload.welcome_granted === true,
     rateLimited: payload.rate_limited === true,
+    // Absent on any deploy older than 00088, which reads as "no quote".
+    characterImagesFreeRemaining:
+      typeof payload.character_images_free_remaining === "number"
+        ? payload.character_images_free_remaining
+        : null,
   };
 }
 

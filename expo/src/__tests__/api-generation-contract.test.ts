@@ -29,6 +29,7 @@ jest.mock("@/lib/session", () => ({
 // cannot be satisfied here.
 /* eslint-disable import/first */
 import {
+  CharacterPortraitInsufficientCreditsError,
   continueStory,
   generateCharacterImage,
   generateStory,
@@ -37,6 +38,11 @@ import {
   registerPushToken,
   shapeStoryIdea,
 } from "@/lib/api";
+import {
+  getCharacterImageBalance,
+  getCharacterImagesRemaining,
+  setCharacterImagesRemaining,
+} from "@/lib/character-image-allowance";
 import type { CreateDraft } from "@/types/domain";
 /* eslint-enable import/first */
 
@@ -594,5 +600,72 @@ describe("generateCharacterImage", () => {
     });
 
     expect(bodyOf(mockInvoke.mock.calls[0]).image_style).toBe("auto");
+  });
+
+  it("records what the server says is left, so the next quote is the server's", async () => {
+    // Six free images per account (migration 00088). The count that prices the
+    // NEXT button has to come from the response that just moved it -- a client
+    // counting its own taps disagrees the moment two surfaces are used in one
+    // session, and the disagreement is a free-looking button that charges.
+    mockInvoke.mockResolvedValueOnce({
+      data: {
+        url: "https://example.test/priya.png",
+        credits_charged: 0,
+        free_remaining: 3,
+        balance: 7,
+      },
+      error: null,
+    });
+
+    const result = await generateCharacterImage({
+      requestId: "req-portrait-3",
+      name: "Priya",
+      appearance: "A baker.",
+    });
+
+    expect(result.creditsCharged).toBe(0);
+    expect(result.freeRemaining).toBe(3);
+    expect(getCharacterImagesRemaining()).toBe(3);
+    expect(getCharacterImageBalance()).toBe(7);
+  });
+
+  it("leaves the count alone when an older deploy does not send one", async () => {
+    setCharacterImagesRemaining(4);
+    mockInvoke.mockResolvedValueOnce({
+      data: { url: "https://example.test/priya.png" },
+      error: null,
+    });
+
+    await generateCharacterImage({
+      requestId: "req-portrait-4",
+      name: "Priya",
+      appearance: "A baker.",
+    });
+
+    // Not reset to null and not decremented by one: a deploy that says nothing
+    // about the allowance has not changed what we last knew about it.
+    expect(getCharacterImagesRemaining()).toBe(4);
+  });
+
+  it("tells an out-of-credits refusal apart from a failure to draw", async () => {
+    // 402 is the six being spent and the balance being short. The screens route
+    // on the type: a "Try again" offered on this refusal cannot succeed.
+    mockInvoke.mockResolvedValueOnce({
+      data: null,
+      error: Object.assign(new Error("failed"), {
+        context: {
+          status: 402,
+          json: async () => ({ code: "insufficient_credits" }),
+        },
+      }),
+    });
+
+    await expect(
+      generateCharacterImage({
+        requestId: "req-portrait-5",
+        name: "Priya",
+        appearance: "A baker.",
+      }),
+    ).rejects.toBeInstanceOf(CharacterPortraitInsufficientCreditsError);
   });
 });

@@ -48,21 +48,25 @@ describe("reimagineQuote", () => {
 });
 
 describe("portraitQuote", () => {
-  it("costs a subscriber nothing", () => {
-    expect(portraitQuote({ subscribed: true, usedOnAccount: 40 })).toEqual({
-      free: true,
-      label: "Included in your plan",
+  it("charges a subscriber the same as everyone else past the six", () => {
+    // The plan used to buy unlimited portraits and the server enforced no such
+    // thing. Since migration 00088 it enforces six for every account, so a
+    // quote of "Included in your plan" would be this module promising what the
+    // server is about to refuse.
+    expect(portraitQuote({ usedOnAccount: 40 })).toEqual({
+      free: false,
+      label: "1 credit",
     });
   });
 
-  it("counts down the free portraits rather than repeating 'free'", () => {
-    expect(portraitQuote({ subscribed: false, usedOnAccount: 0 }).label).toBe("4 free");
-    expect(portraitQuote({ subscribed: false, usedOnAccount: 3 }).label).toBe("1 free");
+  it("counts down the free images rather than repeating 'free'", () => {
+    expect(portraitQuote({ usedOnAccount: 0 }).label).toBe("6 free");
+    expect(portraitQuote({ usedOnAccount: 5 }).label).toBe("1 free");
   });
 
-  it("charges from the fifth portrait on", () => {
+  it("charges from the seventh image on", () => {
     expect(
-      portraitQuote({ subscribed: false, usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT }),
+      portraitQuote({ usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT }),
     ).toEqual({ free: false, label: "1 credit" });
   });
 });

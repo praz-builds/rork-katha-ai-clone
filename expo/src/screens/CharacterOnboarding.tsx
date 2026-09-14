@@ -102,10 +102,12 @@ import portraitPriya from "../../assets/onboarding/portrait-priya.png";
  *
  * ## What this spends
  *
- * One portrait request plus at most one reimagine. `generate-character-image`
- * is rate limited per user (12/hour, migration 00055) rather than priced, so
- * the budget below is a product decision about attention, not about money. The
- * first chapter is bought afterwards, from Home or from the Create studio.
+ * One portrait request plus at most one reimagine -- two of the six free
+ * character images every account gets for its lifetime (migration 00088), on
+ * top of the 12/hour window (00055). Two of six is deliberate headroom: a
+ * first-run user leaves onboarding with four left, so the Craft sheet is not
+ * already priced the first time they open it. The first chapter is bought
+ * afterwards, from Home or from the Create studio.
  */
 
 export type OnboardingPurpose = "read" | "write" | "both";
@@ -294,7 +296,10 @@ function portraitRefusal(error: unknown): string | null {
   try {
     if (
       error instanceof storyApi.CharacterPortraitRateLimitError ||
-      error instanceof storyApi.CharacterPortraitGuestCapError
+      error instanceof storyApi.CharacterPortraitGuestCapError ||
+      // Out of free images and out of credits (00088). A refusal, not a
+      // failure: "Try again" cannot succeed, so the screen must not offer it.
+      error instanceof storyApi.CharacterPortraitInsufficientCreditsError
     ) {
       return error.message;
     }
@@ -425,9 +430,10 @@ export default function CharacterOnboarding(
       const outcome = (async (): Promise<PortraitOutcome> => {
         try {
           const { url } = await storyApi.generateCharacterImage({
-            // A fresh id every time. The endpoint has no idempotency key and no
-            // credit reservation, so a replayed id would be a second paid
-            // provider call wearing the first one's name.
+            // A fresh id every time. Since 00088 a replayed id is refused as
+            // spent rather than charged twice -- which is the point of it --
+            // but a REIMAGINE is a genuinely new image and must not collide
+            // with the one it replaces.
             requestId: storyApi.createGenerationRequestId(),
             name: request.name,
             appearance: request.appearance,

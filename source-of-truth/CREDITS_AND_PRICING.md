@@ -42,11 +42,14 @@ Reading is **free and unlimited on every tier, forever**. Audio is **1 credit pe
 chapter, unlocked permanently**. **Editing by hand is free and unlimited**, and
 it is not capped, because it calls nothing.
 
-Two actions are **unlimited on any paid plan**: **reimagining a chapter** and
-**character portraits**. On the free tier a reimagine is free once per chapter on
-a story you created, and a portrait is free four times per account. Beyond that
-the free tier is offered the plan, not a price, for reimagine; a fifth portrait
-is 1 credit.
+**Reimagining a chapter** is unlimited on any paid plan; on the free tier it is
+free once per chapter on a story you created, and beyond that the free tier is
+offered the plan rather than a price.
+
+**Character images are six per account, for the life of the account, on every
+tier** — generating and editing both count — and the seventh costs 1 credit
+whether or not you pay. This is narrower than the paywall sells; see the dated
+note in §3 (*Character images*).
 
 One product, three durations. There is no separate reader tier.
 
@@ -141,6 +144,47 @@ subscription to read on Katha.
 
 One credit = one AI action.
 
+### Every price, in one place
+
+> **This subsection is the one to lift into the in-app "How credits work"
+> screen.** Prices only — no cost basis and no margin arithmetic, both of which
+> live in §2 and are internal. If a price appears here and elsewhere in this
+> file, here is where it is read from.
+
+**Always free, on every plan, with no cap**
+
+- Reading. Anything, as much as you like, forever.
+- Editing your own draft by hand — typing, rewriting, restructuring.
+- Using a character you already made in another story: their picture exists, so
+  nothing is drawn and nothing is charged.
+- Uploading your own cover, and keeping the free typographic concept card.
+- Re-listening to audio you have already unlocked.
+
+**What each thing costs**
+
+| | Credits |
+|---|---|
+| **Start a story** — bundles its cast, chapter 1's words, and chapter 1's art *(which becomes the cover)* | **1** |
+| Write another chapter | **1** |
+| Write another chapter **with art** | **2** |
+| **Auto-continue** — the story writes ahead without asking | **1 per chapter, or 2 illustrated**, and the whole run is bought at once |
+| Regenerate a cover | **1** — there is no free retry |
+| **Create or edit a character image** | **6 free per account, ever**, then **1** each |
+| Reimagine a chapter of a story you created | **1 free** per chapter, then a plan |
+| Reimagine a chapter of somebody else's story | **1** — it makes you your own copy |
+| Unlock a chapter's audio | **1**, once, and it is yours |
+
+**Two things worth saying plainly, because they surprise people:**
+
+- **Auto-continue buys its whole run up front.** When you set a story to write
+  itself, the chapters it is going to write are paid for the moment chapter one
+  lands — as many as your balance affords, and then it stops. It never writes
+  past the length you planned, and it never extends a finished story by itself.
+- **The six free character images are for the life of the account**, not per
+  story and not per month, and **editing one counts**. Changing a character's
+  appearance draws a brand-new picture, which costs us exactly what the first
+  one did.
+
 **Creating a story**
 
 A story runs to a length you choose. You are charged for each AI action as it
@@ -191,13 +235,36 @@ plan; we don't lock voices behind a tier.
 | Type, rewrite, restructure your draft by hand | **0**, unlimited | **0**, unlimited |
 | **Reimagine a chapter** — re-prompt it, recast it | **1 free** per chapter, on stories you created | **Unlimited** |
 | Reimagine a chapter in somebody else's story | **1** — it makes you your own copy | **Unlimited** |
-| **Create or edit a character image** | **4 free** per account, then **1** each | **Unlimited** |
+| **Create or edit a character image** | **6 free** per account, then **1** each | **Unlimited** ⚠ *not what ships today — see below* |
 | Use a saved character in a new story | **0**, always | **0**, always |
 | Regenerate a cover you paid for | **1** — there is no free retry | **1** |
 
 **Reimagine is the only AI editing action, and hand editing is free forever.**
 *(2026-09-11: the 3 free AI redrafts and 20 free paragraph edits this table used
 to list are retired — see §1a.)*
+
+> ### ⚠ The paid column above says unlimited character images. The build does not.
+>
+> **2026-09-14.** The paywall sells unlimited character generations on a plan,
+> and that row is left standing because it is what we currently promise and
+> anyone reading this file needs to see the promise and the behaviour side by
+> side. **What migration 00088 actually deploys is six per account for every
+> user, free and paid alike, then 1 credit each.**
+>
+> The product owner's decision is to ship the narrower thing and watch the
+> response before deciding whether unlimited comes back. It is **provisional**,
+> and it is the kind of decision someone may need to reverse quickly — the whole
+> reversal is a constant in one migration and one client module
+> (`FREE_PORTRAITS_PER_ACCOUNT`). Until it is reversed, a subscriber who reads
+> the paywall and then hits a price on their seventh character has been told two
+> different things by us. That is the cost of shipping it this way and it is
+> being accepted knowingly, not overlooked.
+>
+> The economics behind the choice are in §2: a character image is $0.039 against
+> a yearly credit netting $0.0836, so it is the one metered action in this
+> document that is comfortably profitable per credit — which is exactly why it
+> can be capped without hurting anyone much, and why the cap is about the tail
+> rather than about the median user.
 
 **If a paid action fails, its credit comes back automatically.** Text failure
 refunds the complete start reservation. After text succeeds, cast and cover are
@@ -253,7 +320,10 @@ best price per credit**, at every size, against every pack below.
 
 Paid plans also unlock **unlimited character portraits**, **unlimited
 reimagines**, **premium voices** and **Download PDF**, none of which the free tier
-has in full.
+has in full. ⚠ **The portrait row is sold but not shipped** — every user,
+including a subscriber, currently gets six character images and then pays 1
+credit each. See the dated note in §3 (*Character images*); it is a provisional
+position, not an error in this line.
 
 **Credit packs** — no subscription needed
 
@@ -285,10 +355,13 @@ is for.
 
 ## 2. Cost basis
 
-**Text.** Revised 2026-09-05. `_shared/llm.ts` now chains OpenRouter
-(`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) → Gemini 3.1 Pro
-Preview → OpenAI (`gpt-5.6-luna`, `gpt-5-mini`, `gpt-4o-mini`) → OpenRouter Free
-Router ([implementation](../backend/supabase/functions/_shared/llm.ts)).
+**Text.** Revised 2026-09-05, re-verified against the code 2026-09-14.
+`_shared/llm.ts` chains OpenRouter (`meta/muse-spark-1.3-contributor` —
+`OPENROUTER_MODEL`, `llm.ts:63` — then `meta/muse-spark-1.3`) → Gemini 3.1 Pro
+Preview → OpenRouter Free Router
+([implementation](../backend/supabase/functions/_shared/llm.ts)). The OpenAI
+position named in earlier drafts of this paragraph is **gone from the code**,
+not merely deprioritised.
 
 > **Superseded figures, kept so the history reads.** The **~$0.031 per chapter**
 > planning figure came from the retired Anthropic rate card. It was replaced by
@@ -365,10 +438,15 @@ it is still an order of magnitude under the cheapest image in the table below.
 **Images.** `google/gemini-2.5-flash-image` — "nano banana" — through OpenRouter,
 with `google/gemini-3.1-flash-image` behind it.
 
+Verified against `_shared/image.ts` (lines 16, 35-36) on 2026-09-14. Every
+image in the product — cover, chapter art, character image — comes from this
+chain, and Gemini charges a flat 1,290 output tokens per image with no size or
+quality parameter, so all three cost the same.
+
 | model | ≈ per image |
 |---|---|
-| google/gemini-2.5-flash-image ("nano banana") | **$0.039** |
-| google/gemini-3.1-flash-image (fallback) | ~$0.077 |
+| google/gemini-2.5-flash-image ("nano banana"), first | **$0.039** |
+| google/gemini-3.1-flash-image, fallback | ~$0.077 |
 
 > **This replaces `gpt-image-1`, and the tier model with it (2026-09-08).** The
 > OpenAI credential was revoked, so the whole size×quality price matrix that the
@@ -394,11 +472,11 @@ enforceable, because the provider does not price by size or quality.
 |---|---|---|---|---|
 | **Cover** — chapter 1's art | 1024×1536 medium | $0.063 | **$0.039** | The 390×340 hero, the 108×152 card and the 74×96 mini. Quality is visible everywhere. |
 | **Chapter art** — chapters 2–N | 1024×1024 medium | $0.042 | **$0.039** | An inline illustration at ~350pt in a reading column, seen once, in flow. Square suits the placement; it is not a shelf image. |
-| **Character portraits** | 1024×1024 low | $0.011 | **$0.039** | Displayed inline and small. The 6× reduction against the cover tier is what let a whole cast be one credit — **that reduction is gone**, and this is the number to recheck. |
+| **Character images** | 1024×1024 low | $0.011 | **$0.039** | Displayed inline and small. The 6× reduction against the cover tier is what let a whole cast be one credit — **that reduction is gone**. It is the number the six-free cap in §3 is drawn against. |
 
 A cast is capped at **3 characters**. That is a product bound, not a margin one —
-four portraits still clear the floor on a blended basis — chosen so the cast
-stays legible and matches the set-of-three costing above.
+a fourth portrait would still clear the floor on a blended basis — chosen so the
+cast stays legible and matches the set-of-three costing above.
 
 **Audio.** Fresh narration now has two cost bases:
 
@@ -428,85 +506,76 @@ number here is an estimate from published rates or infrastructure arithmetic.
 
 ### The credit's cost basis
 
-> **Rebuilt 2026-09-10** against the flat Gemini image rate and the bundled story
-> start. The tables this replaces used $0.063 / $0.042 / $0.011 image tiers the
-> provider no longer prices, and a $0.033 cast that is now $0.117.
+> **Recomputed 2026-09-14 for the ONE-credit story start.** The tables this
+> replaces were built when a start cost three and were never redone when 00087
+> put it back to one — the file said so itself, and said the re-derivation was
+> an open item. It is done here. Models re-verified against the code on the same
+> day: text is `meta/muse-spark-1.3-contributor` then `meta/muse-spark-1.3`
+> through OpenRouter (`_shared/llm.ts:63`); images are
+> `google/gemini-2.5-flash-image` at ~$0.039 with `google/gemini-3.1-flash-image`
+> at ~$0.077 behind it (`_shared/image.ts:16, 35-36`).
 
-| Action | Cost | Credits |
+**What is measured and what is an estimate.** The image rate is a published
+per-token price against a fixed 1,290-token output, so it is arithmetic on a
+rate card rather than a measurement — treat **$0.039** as firm. The chapter-text
+figure of **$0.0218** is derived from measured reasoning-plus-output token counts
+on `meta/muse-spark-1.3` and is the number to plan against. The contributor tier
+that currently leads the chain is roughly **17× cheaper** — about **$0.0013** a
+chapter — because it trains on prompts and completions; every figure below uses
+the conservative **$0.0218** so that a decision to stop using the contributor
+tier is not also a re-pricing. Audio is **⚠ not measured at all** and every
+audio number is an estimate from published rates.
+
+**Per action.**
+
+| Action | Credits | Cost | **$ per credit** |
+|---|---|---|---|
+| **Start a story** — cast of 3 + chapter 1's words + the cover | **1** | **$0.178** | **$0.178** |
+| Start a story with an **all-saved cast** | 1 | $0.061 | $0.061 |
+| Another chapter, words only | 1 | $0.0218 | **$0.0218** |
+| Another chapter, illustrated | 2 | $0.0608 | $0.0304 |
+| Auto-continue, per chapter it writes | 1 or 2 | same as above | same as above |
+| Regenerate a cover | 1 | $0.039 | **$0.039** |
+| **Character image past the sixth** | **1** | **$0.039** | **$0.039** |
+| Reimagine a chapter | 1 | $0.0218 | $0.0218 |
+| Character image within the free six | **0** | $0.039 | — *(unpriced by design)* |
+| Reusing a saved character's picture | 0 | **$0** | — |
+| Audio unlock — cached chapter | 1 | **~$0** | ~$0 |
+| Audio unlock — triggers fresh narration | 1 | ~$0.22 ⚠ | ~$0.22 ⚠ |
+
+**A credit is worth $0.0836 net on the yearly plan** (§4). Read the right-hand
+column against that number and the whole shape of the product's economics is one
+table:
+
+| | $ per credit | Against $0.0836 |
 |---|---|---|
-| **Start a story** — cast of 3 + chapter 1 + cover | **$0.178** | **3** |
-| Chapter text, streamed — live `meta/muse-spark-1.3` | $0.0218 | 1 |
-| Chapter text — if the contributor tier is enabled | $0.0013 | 1 |
-| Any single image — cover, chapter art, one portrait | **$0.039** | — |
-| Chapter art | $0.039 | 1 |
-| Cover regeneration | $0.039 | 1 |
-| Reimagine a chapter | $0.0218 | free: 1 per chapter on your own story, then the plan. Paid: unlimited |
-| Character image — create or edit | $0.039 | free: 0 ×4 per account, then 1. Paid: unlimited |
-| Reusing a saved character's portrait | **$0** | 0 |
-| Audio unlock — cached chapter | **~$0** | 1 |
-| Audio unlock — triggers fresh narration | ~$0.22 ⚠ | 1 |
+| A story start with a new cast | **$0.178** | **loses $0.094** |
+| A story start with a saved cast | $0.061 | +27% |
+| A further chapter | $0.0218 | **+74%** |
+| A cover regeneration | $0.039 | +53% |
+| **A character image past the sixth** | **$0.039** | **+53%** |
 
-**A story start is ONE credit** (product owner, 2026-09-14). It was raised to
-three on 2026-09-11 on the unit-economics argument below, and that argument has
-now been overruled deliberately. The analysis is kept rather than deleted,
-because the cost it describes is real and did not go away with the decision:
+**The contrast that justifies the cap.** A character image and a story start are
+both one credit, and one of them costs **4.6× what the other does**. The start is
+sold below cost on purpose — it is the action the whole product is built to get
+someone to take, and a saved cast turns it profitable on the second story. A
+character image has no such second act: it costs $0.039 every single time, it
+returns $0.0836, and **an uncapped one is the only action in this document that a
+user can repeat indefinitely with no story to show for it.** Six free and then a
+credit is not a margin fix — at 53% the margin was never the problem. It is a
+bound on the tail: before 00088 a signed-in account could draw twelve an hour,
+forever, for nothing, which is **~$0.47/hour against $4.18/month of net
+revenue**. The cap turns an unbounded number into six.
 
-> At one credit a start costs **$0.178 per credit** against $0.0218 for a
-> chapter — an **8× spread**, the widest this document has ever priced, and the
-> reason a flat daily credit can cost more than the subscription it sells. At
-> three it was $0.0593 per credit, a 2.7× spread.
+**Whoever next touches grant sizes, the daily credit, or the subscription price
+must price against $0.178 for a start**, not against the blended figure. The
+start is the outlier, it is where every free grant flows, and it is the reason a
+flat daily credit can cost more than the subscription that sells it.
 
-So the start is again the outlier, and it is again the action every free grant
-flows to. **Whoever next touches grant sizes, the daily credit, or the
-subscription price must price against $0.178, not against $0.0593.** The margin
-table further down this file has NOT been recomputed for one credit; treat its
-per-credit figures as describing the three-credit world until someone redoes
-them.
-
-**The per-credit tables below still divide by the retired one-credit start**, so
-every blended $/credit figure in them is an UPPER bound rather than a current
-one; re-deriving them at three is an open item. The per-action costs ($0.178 for
-a start, $0.0218 for a chapter, $0.039 for an image) are measured and unaffected.
-
-**A story, not a chapter, is the unit that matters.** The cast and the cover are
-paid once and amortise across every credit after them, so the blended cost per
-credit depends on the story's shape.
-
-**Live basis, streamed text at $0.0218 per chapter, every image $0.039:**
-
-| Story | Credits | Cost | **Blended $/credit** |
-|---|---|---|---|
-| 3 chapters, words only | 3 | $0.221 | **$0.0738** ← worst |
-| 7 chapters, words only | 7 | $0.309 | $0.0441 |
-| 15 chapters, words only | 15 | $0.483 | $0.0322 |
-| 3 chapters, illustrated | 5 | $0.299 | $0.0599 |
-| 7 chapters, illustrated | 13 | $0.543 | $0.0417 |
-| 15 chapters, illustrated | 29 | $1.029 | **$0.0355** |
-
-**The short words-only story is the worst shape, and the reason is structural.** A
-3-chapter words-only story spreads $0.156 of fixed image cost over 3 credits; a
-15-chapter one spreads the same $0.156 over 15. **Every margin in this document is
-tested at $0.0738**, never at a blended figure.
-
-**If the contributor tier is enabled, $0.0013 per chapter:**
-
-| Story | Credits | Cost | **Blended $/credit** |
-|---|---|---|---|
-| 3 chapters, words only | 3 | $0.160 | $0.0533 |
-| 7 chapters, words only | 7 | $0.165 | $0.0236 |
-| 15 chapters, words only | 15 | $0.176 | **$0.0117** |
-| 3 chapters, illustrated | 5 | $0.238 | $0.0476 |
-| 7 chapters, illustrated | 13 | $0.399 | $0.0307 |
-| 15 chapters, illustrated | 29 | $0.722 | $0.0249 |
-
-**Images are 70-95% of creation cost**, so the contributor tier moves the worst
-shape only from $0.0738 to $0.0533. Text is no longer the lever it was.
-
-**Creation costs between $0.0322 and $0.0738 per credit today**, against
-$0.0836/credit of net yearly revenue. The margin at the worst shape is 12%; at the
-best it is 62%.
-
----
+**The margin tables in §4 have NOT been redone at one credit.** They were written
+for the three-credit world and their blended $/credit figures are therefore
+optimistic. That is now the only stale arithmetic left in this file, and it is
+flagged rather than quietly carried.
 
 ## 3. Pricing and plans
 
@@ -643,83 +712,99 @@ keep and a simpler one to state.
 > this decision is worth reopening. It is not a principle, it is arithmetic.
 
 
-### Character portraits
+### Character images
 
-**Decided 2026-09-10: 4 free character images per account, then 1 credit each.
-Generating and editing both count against the same four.**
+**Decided 2026-09-14: six free character images per USER, for the life of the
+account, then 1 credit each. Generating and editing both count against the same
+six. This applies to every user — free tier and paid plan alike.**
 
-> **Amended 2026-09-11: subscribers get unlimited character portraits, and the
-> four are the free tier's allowance.** The cap was written before there was a
-> plan to attach it to, and "4 per account, lifetime" is not a rung on a ladder —
-> it is a wall that a paying user hits in their second week and then pays twice
-> for. A portrait is $0.039, the same as any other image, so a subscriber drawing
-> them is spending the grant they already bought; making it unlimited moves a
-> $0.039 action off the credit meter and onto the plan.
->
-> This is an **exception to the entitlement rule**, and §5's *Plan entitlements*
-> section records it as one rather than pretending the rule was never written.
-> The bound is the existing rate limit of 12 requests per hour
-> (`claim_character_portrait_request`), which caps a subscriber at ~$3.51/hour of
-> images against $4.18/month of net revenue. **That is not a real bound and the
-> section below says so.** Server-side enforcement of both the subscriber
-> exemption and the free tier's four is a stated follow-up; neither exists in
-> `generate-character-image` today, which charges nothing and counts nothing.
-
-> **Anonymous and named are two different bounds, and only one of them is
-> built. Decided 2026-09-11.** An **anonymous** identity gets **4 portraits for
-> the life of that identity, reimagines included** — enforced server-side today
-> by migration 00084 (`claim_guest_portrait_request`), because onboarding draws
-> its portrait before the email is asked for and nothing else stands between a
-> brand-new session and a paid provider call. At the cap the endpoint answers
-> **403 `guest_portrait_cap`** with "Sign in to keep making characters.", which
-> is the honest ask: the wall is there to be converted, not waited out. A
-> **named** user is unchanged for now — still only 00055's 12-per-hour window,
-> with the 4-free-then-1-credit ledger and the subscriber exemption above still
-> the stated follow-up. The two counters are separate and the guest one is never
-> carried across on sign-in (§9 control 6); a named user is not charged for work
-> done before they had an account. **Neither counter is keyed on a device.**
-
-**Why the counter is on the account and not the character or the story.** Saved
-characters are cross-story now (migration 00057) — the same character is used in
-as many stories as the user likes. A per-story allowance would reset every time
-they start one; a per-character allowance would reset every time they make a new
-one. Neither bounds anything. **The account is the only level at which four means
-four.**
-
-**Editing counts because editing costs.** A portrait is generated from the Name,
-Description and Appearance fields, so an edit that changes any of them is a fresh
-image and a fresh paid API call. Counting the generation and not the edit would
-make "edit the appearance" a free regeneration button, which is the same loophole
-under a different label.
+Enforced server-side by migration 00088 (`claim_character_image_request`,
+`release_character_image_request`), which is the first time this endpoint has
+charged or counted anything at all.
 
 | | Free | Any paid plan |
 |---|---|---|
-| Create or edit a character image — first 4, per account | **0** | **0**, unlimited |
-| Every one after that | **1** | **0**, unlimited |
-| Reusing a saved character in a new story | **0** — the portrait already exists | **0** |
+| Create or edit a character image — first 6, per account | **0** | **0** |
+| Every one after that | **1** | **1** |
+| Reusing a saved character in a new story | **0** — the picture already exists | **0** |
+
+> ### ⚠ This is narrower than the paywall sells, and that is deliberate.
+>
+> The paywall and §5's plan-entitlement grid both promise **unlimited character
+> portraits on a plan**, and neither has been rewritten, because the promise is
+> live and the contradiction has to be visible to whoever reads this next.
+> **What ships is six for everybody.** The decision is provisional: ship the
+> limit, watch what people do, and decide afterwards whether unlimited comes
+> back. Reversing it is a constant in migration 00088 and
+> `FREE_PORTRAITS_PER_ACCOUNT` in `expo/src/lib/entitlements.ts`.
+>
+> It supersedes the 2026-09-11 amendment that made portraits unlimited for
+> subscribers as "an exception to the entitlement rule". That exception was
+> written on the observation that its only bound was 12 requests an hour — about
+> **$3.51/hour of images against $4.18/month of net revenue** — and §5 said in
+> as many words that this "is not a real bound". It is now a real bound.
+
+**Why six.** Onboarding draws one character and offers one reimagine, so a
+first-run user arrives in the Craft sheet having spent two and with four left —
+enough to build a small recurring cast without ever seeing a price, which is the
+behaviour the product wants (see *Saved characters make the story start
+cheaper*, below). Six is also deliberately a number a person reaches only by
+using the feature repeatedly; the median user never meets it.
+
+**Why the counter is on the account and not the character or the story.** Saved
+characters are cross-story (migration 00057) — the same character is used in as
+many stories as the user likes. A per-story allowance would reset every time
+they start one; a per-character allowance would reset every time they make a new
+one. Neither bounds anything. **The account is the only level at which six means
+six.**
+
+**Editing counts because editing costs.** A character image is generated from
+the Name and Appearance fields, so an edit that changes either is a fresh image
+and a fresh paid API call. Counting the generation and not the edit would make
+"edit the appearance" a free regeneration button, which is the same loophole
+under a different label.
+
+**Anonymous and named are one counter now.** Migration 00084 gave an *anonymous*
+identity four images for the life of that identity, because onboarding draws its
+character before the email is asked for and nothing else stood between a
+brand-new session and a paid provider call. 00088 widens that same counter to
+six and to every user, so there is one number rather than two. Counts already
+spent carry: an identity that has used 3 of its 4 has 3 of 6 spent, not a fresh
+six. Email verification converts the identity **in place**, keeping the same
+`auth.users.id`, so the count follows the person through sign-up.
+
+At the wall, an **anonymous** caller who cannot pay is answered **403
+`guest_portrait_cap`** with "Sign in to keep making characters." — buying
+credits needs an account, so the account is the honest ask. A **named** caller
+who cannot pay is answered **402 `insufficient_credits`**. **Neither counter is
+keyed on a device**; see §9.
+
+**The credit is reserved, not simply taken.** The seventh image reserves 1
+credit before the provider is called and refunds it if no picture arrives, the
+same discipline `reserve_generation_operation` / `refund_generation_operation`
+apply to chapters. A free image is symmetrical: a failure gives the slot back,
+which is what makes onboarding's "Try again" honest. A re-delivered request
+replays its reservation rather than charging twice.
 
 **This is the pricing decision migration 00055 deferred**, and it closes a live
-hole. `generate-character-image` charges nothing today; it is bounded only by a
-rate limit of 12 requests/hour, and the migration says so in its own comments —
-*"This is a rate limit, not pricing... inventing one in a migration would be making
-a pricing decision in the wrong place."* One call can walk two providers across
-three safety levels, so a single request is **up to six paid generations**. Today's
-worst case is therefore **~$2.80–$5.50 per user per hour, unbounded over time.** A
-four-per-account cap makes the lifetime worst case **~$0.92–$1.85**, and the
-typical case $0.156. The rate limit stays — it bounds a loop; the cap bounds a
-user.
+hole. `generate-character-image` charged nothing until 00088; it was bounded only
+by a rate limit of 12 requests/hour, and 00055 said so in its own comments —
+*"This is a rate limit, not pricing... inventing one in a migration would be
+making a pricing decision in the wrong place."* One call can walk two models
+across three safety levels, so a single request is **up to six paid
+generations**. The rate limit stays — it bounds a loop; the cap bounds a user.
 
-> **The four are scoped to the standalone character path**, not to the cast
+> **The six are scoped to the standalone character path**, not to the cast
 > generated inside a story start. A story start's cast of three is already paid
-> for by its credit; it does not consume the free four, and the free four do not
-> subsidise it. Without this, one story start would eat three of four before the
-> user had touched the character sheet.
+> for by its credit; it does not consume the free six, and the free six do not
+> subsidise it. Without this, two story starts would eat the whole allowance
+> before the user had touched the character sheet.
 
 > **Written as a lifetime allowance**, like the welcome bonus and the streak
-> ladder, both of which terminate rather than recur. If it should instead refresh
-> monthly, the cost is 4 × $0.039 = **$0.156/month** per active user against a
-> yearly credit netting $0.0836 — affordable, but it is a different decision and
-> is **not** the one recorded here.
+> ladder, both of which terminate rather than recur. If it should instead
+> refresh monthly, the cost is 6 × $0.039 = **$0.234/month** per active user
+> against a yearly credit netting $0.0836 — affordable, but it is a different
+> decision and is **not** the one recorded here.
 
 ### Saved characters make the story start cheaper, and that changes the risk model
 
@@ -1356,7 +1441,7 @@ every future entitlement gets tested with the same question first:
 |---|---|---|
 | Read, unlimited, forever | ✓ | ✓ |
 | Credits every period | — | **50/month**, or 20/week on weekly |
-| **Unlimited character portraits** | 4 per account, then 1 credit | **✓** |
+| **Unlimited character portraits** ⚠ *sold, not shipped* | 6 per account, then 1 credit | 6 per account, then 1 credit |
 | **Unlimited reimagines** | 1 per chapter on your own stories | **✓** |
 | **Premium voices** | — | **✓** |
 | **Download stories as PDF** | **—** | **✓** |
@@ -1371,7 +1456,7 @@ Answer the test honestly, row by row:
 |---|---|---|
 | Download PDF | **No.** Our own compute, ~$0 per export | Legitimate entitlement |
 | Premium voices | **No, in the intended design.** The tiering line is `edge_tts` versus `runpod_minimax`, and paid MiniMax voices are unlimited only on the **pre-narrated catalogue**, where one narration serves every listener at ~$0 marginal. Narrating a brand-new chapter is still 1 credit on every tier | Legitimate entitlement, conditional on the edge-tts worker existing (§12 item 8) |
-| **Unlimited character portraits** | **Yes.** $0.039 per image, every time | **Fails the rule** |
+| **Unlimited character portraits** | **Yes.** $0.039 per image, every time | **Fails the rule — and as of 2026-09-14 it is no longer claimed.** Every user gets six and then pays; see §3 |
 | **Unlimited reimagines** | **Yes.** $0.0218 of chapter text, every time | **Fails the rule** |
 
 **So two metered actions are being made unlimited for subscribers, and the rule
@@ -1480,7 +1565,7 @@ before any purchase and before any grant
 │              (59 / 365, derived in code). No trial offered here, no
 │              monthly, no More options: monthly stays an in-app SKU, and
 │              no monthly-equivalent price appears on the yearly card.
-│              Four benefit rows: 50 credits a month, unlimited portraits
+│              Four benefit rows: 50 credits a month, unlimited portraits ⚠
 │              and reimagines, premium voices, PDF export.
 │              Dismiss is large, obvious, present from frame one.
 │                    │                                    │
@@ -1781,43 +1866,36 @@ of what **not** to build.
 5. **Referral gating** (v1.1): payout only after the invited user's first
    generation; invited account ≥24h old at payout; caps of 3/month and 10
    lifetime for the referrer.
-6. **Four character portraits per anonymous identity, for the life of that
-   identity** (decided 2026-09-11; migration 00084,
-   `claim_guest_portrait_request`, enforced in `generate-character-image`).
-   Onboarding's aha is now the portrait, and it is drawn **before** the email is
-   asked for — so the first thing an unverified identity can do is spend real
-   money at the image provider, with no credit reservation and no idempotency
-   key in front of it. 00055's 12-per-hour window does not bound that: it bounds
-   one session, and a fresh session is one `signInAnonymously` call away, which
-   00055 recorded as its own open gap. Four is the number because onboarding
-   makes one character and offers one reimagine (two requests), and four leaves
-   room for a retry and a second character while staying far under the hourly
-   window. It is also the free-tier portrait allowance the paywall already
-   promises, so a guest who signs in has spent the allowance they were told
-   about and not a hidden second one. **The key is `auth.users.id`, never a
-   device identifier** — see the "deliberately not building" list below;
-   collecting an IDFV or install UUID is a privacy and store-disclosure
-   decision, not a rate-limit detail. The residual hole (mint a new anonymous
-   session, get four more) is accepted and stated rather than closed, and is
-   bounded on the other side by control 1's three guest bootstraps per network
-   per day. A refusal is **403** with `code: "guest_portrait_cap"` and the copy
-   "Sign in to keep making characters." — not 429, because there is nothing to
-   wait for. A failed generation calls `release_guest_portrait_request` and does
-   not burn a slot. The counter stops being consulted the moment `is_anonymous`
-   is false; it is **not** carried to a named account by `claim_guest_characters`
-   (00082), which moves characters and nothing else.
+6. **Six character images per USER, for the life of the account, then 1 credit
+   each** (decided 2026-09-14; migration 00088,
+   `claim_character_image_request`, enforced in `generate-character-image`).
+   This replaces the anonymous-only four of 2026-09-11 (migration 00084) and
+   carries its counts forward rather than restarting them.
 
-   *Reading the counters (2026-09-13; migration 00086).* Both this counter and
-   00055's hourly window were created with RLS on, no policy, and no table grant
-   to anyone — which locks out `anon` and `authenticated` as intended, but also
-   locked out the service key, so support, an abuse review, or a test against
-   the live project got `permission denied for table guest_portrait_quotas`
-   instead of a number. 00086 grants `select, update, delete` on both tables to
-   `service_role` only, explicitly not to `anon` or `authenticated`, and leaves
-   RLS on. No cap changes: the app never reads either table, the
-   security-definer RPCs stay the only path the product uses, and `insert` is
-   still withheld so a quota row can only be opened by the claim RPC that owns
-   its shape.
+   Onboarding's aha is the character, and it is drawn **before** the email is
+   asked for — so the first thing an unverified identity can do is spend real
+   money at the image provider. 00055's 12-per-hour window does not bound that:
+   it bounds one session, and a fresh session is one `signInAnonymously` call
+   away, which 00055 recorded as its own open gap. It did not bound a *named*
+   account at all, which is the larger hole the four never closed: twelve an
+   hour, forever, free.
+
+   Six is the number because onboarding makes one character and offers one
+   reimagine (two requests), leaving four for the Craft sheet before a price
+   appears. Past six the request **reserves** a credit and refunds it if no
+   picture arrives, so a failure never costs anything, and a re-delivered
+   request replays rather than charging twice. If the claim cannot be evaluated
+   at all, the endpoint refuses (**503**) rather than drawing — a database blip
+   must not turn the only bound off.
+
+   **The key is `auth.users.id`, never a device identifier** — see the
+   "deliberately not building" list below; collecting an IDFV or install UUID
+   is a privacy and store-disclosure decision, not a rate-limit detail. Two
+   residual holes are accepted and stated rather than closed: minting a fresh
+   anonymous session gets a fresh six (bounded by the 3-bootstraps-per-network
+   -per-day limit of 00035), and a guest who signs into an **existing** account
+   does not carry their spent count onto it, because `claim_guest_characters`
+   (00082) moves characters and nothing else.
 7. **One monitoring query instead of a prevention system.** Daily: accounts where
    `subsidized_grants / total_grants > 0.9` **and** `lifetime_grants > 15`. Costs
    nothing, catches the farm, and produces the data needed to decide what to build
@@ -2122,17 +2200,19 @@ economy is tuned on evidence rather than argued about.
     dissolves once subscribers are exempt and the free allowance is one. The
     server-side subscriber exemption and the free counter are **not implemented** —
     `reimagine-chapter` charges everyone from the first call today.
-18d. **Character images: unlimited on any paid plan; 4 free per account then 1
-    credit each on the free tier** *(2026-09-10, amended 2026-09-11 to add the
-    subscriber exemption)*.
-    **Generating and editing draw on the same four**, because a portrait is made
-    from the Name/Description/Appearance fields and an edit to any of them is a
-    fresh paid image. The counter is on the **account** because saved characters
-    are cross-story, so no per-story or per-character allowance bounds anything.
-    The four are scoped to the standalone character path — a story start's cast of
-    three is already paid for by its credit and does not consume them. Written as
-    a lifetime allowance. This closes the pricing question migration 00055
-    deferred; the 12/hour rate limit stays alongside it.
+18d. **Character images: six free per account, for the life of the account,
+    then 1 credit each — for every user, free tier and paid plan alike**
+    *(2026-09-14; migration 00088)*. **Generating and editing draw on the same
+    six**, because a character image is made from the Name/Appearance fields
+    and an edit to either is a fresh paid image. The counter is on the
+    **account** because saved characters are cross-story, so no per-story or
+    per-character allowance bounds anything. The six are scoped to the
+    standalone character path — a story start's cast of three is already paid
+    for by its own credit. This **supersedes** the 2026-09-10 rule and its
+    2026-09-11 subscriber exemption outright; there is no longer a free-tier
+    number and a paid-tier number. **The paywall still sells unlimited on a
+    plan and has not been rewritten** — see the dated note in §3, which records
+    that as a provisional, reversible position rather than as an oversight.
 18e. **Reusing a saved character costs nothing, and that is load-bearing**
     *(2026-09-10)*. A story start with an all-saved cast costs $0.104 rather than
     $0.221, so the worst story shape falls from $0.0738 to $0.0348/credit and the
@@ -2143,7 +2223,11 @@ economy is tuned on evidence rather than argued about.
     never imply otherwise.
 18f. **The paywall sells four rows, in this order** *(2026-09-11, amended
     2026-09-12)*: 50 credits a month, unlimited portraits and reimagines, premium
-    voices, download as PDF. It was five until 2026-09-12: portraits and
+    voices, download as PDF. ⚠ **The portraits half of row two is not what
+    ships** as of 2026-09-14 — every user gets six character images and then
+    pays 1 credit each (18d, §3). The row is left standing because the decision
+    to ship the narrower thing is provisional; if it holds, this row is the
+    first thing to change. It was five until 2026-09-12: portraits and
     reimagines are ONE row because they are one entitlement (18g), and the
     free-tier figures that used to sit in each row as secondary text are gone —
     they argued with the product on the screen that sells it. The credits row
@@ -2244,7 +2328,8 @@ economy is tuned on evidence rather than argued about.
 30a. **The onboarding paywall sells two durations and four benefits**
     *(2026-09-11, the W7 hand-off)*. Weekly and yearly, yearly selected by
     default and badged SAVE 80%; **no trial, no monthly, no More options**. The
-    benefit rows are 50 credits a month, unlimited portraits and reimagines,
+    benefit rows are 50 credits a month, unlimited portraits ⚠ *(see 18f)* and
+    reimagines,
     premium voices, download as PDF — the character's name is in the portrait
     and voice rows, and the copy drops to a no-character voice ("Katha is ready
     when you are") on the in-app entry, which has no character to promise
@@ -2359,8 +2444,9 @@ economy is tuned on evidence rather than argued about.
     the character portrait got ~3.5× dearer ($0.011 → $0.039), which is exactly
     the number the "a whole cast is one credit" claim rests on. **Resolved
     2026-09-10:** a cast of three is $0.117 and stays bundled into the 1-credit
-    story start; standalone character images are 4 free per account then 1 credit
-    each (§3). Reusing a saved character's portrait costs nothing, which is what
+    story start; standalone character images are **six free per account, then 1
+    credit each, on every tier** *(revised 2026-09-14 from four, and from a
+    free-tier-only cap — §3)*. Reusing a saved character's portrait costs nothing, which is what
     keeps the bundled start affordable for repeat creators.
 
 <!-- markdownlint-enable MD029 -->

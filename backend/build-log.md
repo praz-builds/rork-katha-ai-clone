@@ -5562,3 +5562,73 @@ refund would return the entire start price for a story whose chapter the writer
 read and kept. Legacy 3-credit starts still refund components. If the product
 owner wants the whole credit back for a missing cover, that is a one-line change
 and a different decision.
+
+### 2026-09-14 — Six free character images per user, then a reserved credit
+
+`generate-character-image` charged nothing and counted nothing. Its only bound
+for a signed-in caller was 00055's 12-per-hour window, so a named account could
+draw twelve character images an hour, forever, free — and one call can become
+six paid provider requests (two models × three safety rungs). 00084 had built
+the missing half for anonymous identities only, four for the life of the
+identity, and said in its own closing paragraph that the named half was "the
+4-free-then-1-credit ledger when it lands". This is it landing, at the number
+the product owner revised it to.
+
+**The rule: six character images per USER, for the lifetime of the account —
+generations and edits alike — then 1 credit each. Free tier and paid plan, the
+same six.** Migration 00088. That withdraws `CREDITS_AND_PRICING.md`'s
+2026-09-11 subscriber exemption (§5 had already written that its only bound "is
+not a real bound"), and it widens 00084's counter rather than adding a second
+one, so a guest who has spent 3 of 4 has 3 of 6 spent, not a fresh six.
+
+**The credit is reserved, not deducted.** `claim_character_image_request`
+inserts a row in the new `character_image_operations` — its own table because
+`generation_operations.story_id` is `NOT NULL` and a character image has no
+story — and either takes a free slot or calls `deduct_credit`.
+`release_character_image_request` gives back whichever was taken on every path
+that does not deliver: the 502, a 400 that never reached a provider, and the
+catch-all. `complete_character_image_request` spends the request id so a replay
+cannot draw a second image against one charge.
+
+**Why a retry cannot double-charge.** The claim is keyed on
+`(user_id, request_id)`. The client mints a fresh id per tap, so a replay is
+only ever the same tap arriving twice — a network retry, a re-delivered
+invocation — and that replays the existing reservation and charges nothing. A
+replay of an id that already completed or refunded is answered 409
+`request_id_spent`. A user's own retry is a new id and a new provider call, so
+it is a new charge; it is never a charge for the failed attempt, because the
+failure released first.
+
+**Fail closed throughout.** An unevaluable claim answers 503 and draws nothing.
+Out of free images and out of credits is 403 `guest_portrait_cap` for an
+anonymous caller (buying needs an account) and 402 `insufficient_credits` for a
+named one.
+
+**Client.** `bootstrap-user` now returns `character_images_free_remaining`, and
+every image response carries `free_remaining`, `credits_charged` and `balance`.
+Both feed `src/lib/character-image-allowance.ts`, one server-sourced store the
+Craft sheet reads from whichever surface opened it — the studio, the
+saved-characters picker or the reimagine sheet. `portraitQuote` lost its
+`subscribed` parameter (a plan no longer buys unlimited) and
+`FREE_PORTRAITS_PER_ACCOUNT` is 6. The sheet quotes nothing until the server has
+said, and will not offer a priced image the balance cannot buy.
+
+**Docs.** `CREDITS_AND_PRICING.md` §3 rewritten and the four deleted outright;
+§1 gains a plain-language "Every price, in one place" for the future in-app
+education screen; §2's per-credit table recomputed for the one-credit start
+(a start is $0.178/credit and loses $0.094 against a yearly credit's $0.0836,
+a character image past the sixth is $0.039 and returns 53%). **The paywall's
+"unlimited character portraits" row is left standing and flagged** — we are
+knowingly shipping something narrower than we sell, provisionally, pending
+response data. `AGENTS.md`'s Character Portraits section and
+`STORY_GENERATION_FLOW.md` §4 updated.
+
+**Superseded tests.** 00084's and 00086's test files move from four to six.
+00084's pair is kept as a deprecated wrapper so an older deploy of the edge
+function still bounds an anonymous caller at the current number.
+
+**Gates.** `expo`: typecheck clean, lint 0 errors / 27 pre-existing warnings,
+1157 tests across 119 suites. `backend`: `deno check` clean on every changed
+file, 835 function tests, 245 migration tests.
+
+**Not deployed, not committed, not run against the remote.**
