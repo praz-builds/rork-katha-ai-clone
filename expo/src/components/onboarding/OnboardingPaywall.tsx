@@ -277,8 +277,11 @@ function copyFor(name: string, purpose: OnboardingPaywallPurpose) {
       : `${named} looks the same in every chapter`
     : "Your characters look the same in every chapter";
   // What a reader spends credits on is being written into a story; what a
-  // writer spends them on is chapters. Same number, said for each.
-  const creditsLine = reader
+  // writer spends them on is chapters. Same number, said for each -- and only
+  // when there is a character to be the lead: the in-app entry has none, so
+  // it gets the plain figure rather than a promise about a lead that does
+  // not exist.
+  const creditsLine = named && reader
     ? "About 16 chapters with you as the lead, every month"
     : "About 16 full chapters, every month";
 

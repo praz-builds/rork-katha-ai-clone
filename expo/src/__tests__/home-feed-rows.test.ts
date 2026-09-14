@@ -183,6 +183,17 @@ describe("the Tonight rail", () => {
     expect(keys.indexOf("tonight")).toBeLessThan(keys.indexOf("originals"));
   });
 
+  it("does not show a Tonight card again on Katha Originals one row down", () => {
+    const rows = buildFeedRows(stories, [], [], [], "guessing");
+    const tonight = rows.find((row) => row.key === "tonight")!;
+    const originals = rows.find((row) => row.key === "originals");
+    const shown = new Set(tonight.stories.map((story) => story.id));
+    // A featured story the mood claims is on Tonight; the house shelf keeps
+    // the rest rather than repeating it.
+    expect(tonight.stories.some((story) => story.isFeatured)).toBe(true);
+    expect(originals?.stories.every((story) => !shown.has(story.id))).toBe(true);
+  });
+
   it("sits under the reader's own stories, never above them", () => {
     const written = mine({ chapters: stories[0].chapters.slice(0, 1) });
     const rows = buildFeedRows(stories, [], [written], [], "escape");

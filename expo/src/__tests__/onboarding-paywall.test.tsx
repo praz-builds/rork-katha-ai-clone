@@ -152,6 +152,9 @@ describe("OnboardingPaywall", () => {
     // is opened by writers and readers alike, so the sub names neither.
     expect(view.getByText("Unlock Katha and start tonight.")).toBeTruthy();
     expect(view.queryByText(/start (reading|writing) tonight/)).toBeNull();
+    // And no lead is promised on the credits line: there is no character.
+    expect(view.getByText("About 16 full chapters, every month")).toBeTruthy();
+    expect(view.queryByText(/with you as the lead/)).toBeNull();
   });
 
   it("speaks to the reader as the character, not about a third person", async () => {

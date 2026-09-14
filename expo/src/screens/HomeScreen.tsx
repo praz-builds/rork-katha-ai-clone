@@ -157,6 +157,10 @@ export function buildFeedRows(
     rows.push({ key: "continue", title: "Continue reading", stories: unfinished });
   }
 
+  // What Tonight shows, so the house shelf directly under it does not show
+  // the same card again one row down. A featured mystery a reader in a
+  // guessing mood is offered belongs on Tonight; Originals keeps the rest.
+  const onTonight = new Set<string>();
   if (isMood(mood)) {
     const tonight = tonightStories(
       stories,
@@ -166,10 +170,13 @@ export function buildFeedRows(
     );
     if (tonight.length > 0) {
       rows.push({ key: "tonight", title: tonightTitle(mood), stories: tonight });
+      for (const story of tonight) onTonight.add(story.id);
     }
   }
 
-  const originals = stories.filter((story) => story.isFeatured);
+  const originals = stories.filter((story) =>
+    story.isFeatured && !onTonight.has(story.id)
+  );
   if (originals.length > 0) {
     rows.push({ key: "originals", title: "Katha Originals", stories: originals });
   }
