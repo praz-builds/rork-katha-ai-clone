@@ -87,12 +87,11 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   let observedUserId: string | null = null;
   let observedRequestId: string | null = null;
-  // Set only once a guest slot has actually been claimed, so the failure paths
-  // below can hand it back without having to re-derive whether the caller was
-  // anonymous. A release that runs when nothing was claimed is harmless (the
-  // RPC floors at zero) but a release that never runs costs a real person one
-  // of four lifetime portraits.
-  let releaseGuestSlot: (() => Promise<void>) | null = null;
+  // Set only once a reservation actually exists, so the failure paths below can
+  // settle it without having to re-derive what it cost. A release that runs
+  // when nothing was reserved is impossible (this stays null); a release that
+  // never runs costs a real person one of six lifetime images, or a credit.
+  let releaseReservation: (() => Promise<void>) | null = null;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -117,11 +116,10 @@ export async function handleRequest(req: Request): Promise<Response> {
     // Bounded before anything is spent.
     //
     // One call here can become six paid provider requests (two models across
-    // three safety rungs), and this endpoint has no credit reservation and no
-    // idempotency key -- the client mints a fresh request id on every tap, so
-    // there is nothing for a replay to collide with. Without this an
-    // authenticated caller could loop it. See migration 00055 for the numbers
-    // and for the anonymous-session gap it does not close.
+    // three safety rungs). This is the BURST bound and it runs first: a request
+    // the window refuses must not also cost one of the six below. See migration
+    // 00055 for the numbers and for the anonymous-session gap it does not close
+    // -- 00088 is what closes it, for every caller rather than only for guests.
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -145,53 +143,138 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     // The second bound, and the only one that survives a new session.
     //
-    // Character onboarding makes its aha before the email is asked for, so the
-    // first thing an unverified identity can do on this endpoint is spend money
-    // at the image provider -- and a fresh identity is one `signInAnonymously`
-    // away, which is exactly the gap 00055 documented and could not close with
-    // an hourly window. 00084 gives an anonymous identity four portraits for
-    // its whole life, reimagines included. Named users never reach this branch:
-    // their bound is the window above, and the 4-free-then-1-credit ledger when
-    // it lands. Keyed on `auth.users.id`, never a device identifier -- see
-    // 00084 for why that residual hole is accepted rather than closed.
-    if (user.is_anonymous === true) {
-      const { data: guestAllowed, error: guestError } = await serviceClient.rpc(
-        "claim_guest_portrait_request",
-        { p_user_id: user.id },
-      );
-      // Fails closed like the hourly claim: a database blip must not turn the
-      // only bound on an unverified caller off.
-      if (guestError || guestAllowed !== true) {
-        return respond(
-          {
+    // Six character images per user, for their whole life -- generations and
+    // edits alike, anonymous and named, free tier and plan -- and one credit
+    // each after that (migration 00088, `CREDITS_AND_PRICING.md` §3). This is
+    // what replaces "charges nothing, counts nothing": character onboarding
+    // makes its aha before the email is asked for, so the first thing an
+    // unverified identity can do here is spend money at the image provider, and
+    // a named account could do it twelve times an hour forever. Keyed on
+    // `auth.users.id`, never a device identifier -- see 00084 for why that
+    // residual hole is accepted rather than closed.
+    const {
+      data: reservationData,
+      error: reservationError,
+    } = await serviceClient.rpc("claim_character_image_request", {
+      p_user_id: user.id,
+      p_request_id: requestId,
+      // An anonymous identity may use its six and no more. Its credits are the
+      // three from `bootstrap_user`, and those are for a story -- the thing
+      // that converts them -- not for portraits they would spend before ever
+      // writing one.
+      p_may_purchase: user.is_anonymous !== true,
+    });
+
+    if (reservationError) {
+      const code = (reservationError as { code?: string }).code;
+      if (code === "KTH02") {
+        // Out of free images and out of credits. An anonymous caller is told to
+        // sign in rather than to buy, because buying needs an account: the wall
+        // is there to be converted, not waited out, and the client already
+        // routes on this code.
+        return user.is_anonymous === true
+          ? respond({
             error: "Sign in to keep making characters.",
             code: "guest_portrait_cap",
-          },
-          403,
-        );
+          }, 403)
+          : respond({
+            error: "Insufficient credits",
+            code: "insufficient_credits",
+          }, 402);
       }
-      releaseGuestSlot = async () => {
-        const { error } = await serviceClient.rpc(
-          "release_guest_portrait_request",
-          { p_user_id: user.id },
-        );
-        // Best effort. Losing the release costs the guest one of four; failing
-        // the response because we could not give it back costs them the error
-        // message that tells them to try again.
-        if (error) {
-          console.error(
-            "release_guest_portrait_request failed:",
-            safeErrorMessage(error),
-          );
-        }
-      };
+      if (code === "KTH01") {
+        return respond({
+          error: "That character image is already being made.",
+          code: "already_reserved",
+        }, 409);
+      }
+      // Fails closed, like both claims before it. If we cannot tell whether
+      // they have a free image left or the credits to pay for one, we do not
+      // draw: a database blip must not turn the only bound on this endpoint
+      // off, and it must not hand out a free provider call either.
+      console.error(
+        "claim_character_image_request failed:",
+        safeErrorMessage(reservationError),
+      );
+      return respond({
+        error: "Character images are unavailable right now. Please try again.",
+        code: "claim_unavailable",
+      }, 503);
     }
 
-    // A refusal from here down happens AFTER a guest slot was claimed, so it
-    // has to give the slot back before it answers. Four is a small number to
-    // spend on a request that never reached a provider.
+    const reservation = asRecord(reservationData);
+    const operationId = typeof reservation.operation_id === "string"
+      ? reservation.operation_id
+      : "";
+    if (!operationId) {
+      return respond({
+        error: "Character images are unavailable right now. Please try again.",
+        code: "claim_unavailable",
+      }, 503);
+    }
+    const creditsCharged = typeof reservation.credits === "number"
+      ? reservation.credits
+      : 0;
+
+    // The same request id arriving twice is the same tap -- a network retry, a
+    // re-delivered invocation -- and the claim replays it rather than charging
+    // again. But a replay of an id that already finished or was already
+    // refunded is a client reusing a spent id, and drawing a second image
+    // against one charge is the thing that must not happen. Same decision
+    // `_shared/cover-regeneration.ts` made for covers.
+    if (reservation.replayed === true && reservation.status !== "reserved") {
+      return respond({
+        error: "That character image has already been used. Try again.",
+        code: "request_id_spent",
+      }, 409);
+    }
+
+    /*
+      ANOTHER DELIVERY IS ALREADY DRAWING THIS RESERVATION.
+
+      One reservation draws once. The claim said no, which means a concurrent
+      delivery of the same request id holds it -- and drawing anyway is us
+      paying a provider twice for one charge. The client mints a fresh id per
+      tap, so this is never a person pressing twice; it is the platform
+      re-delivering an invocation.
+
+      Nothing is released here on purpose: the reservation belongs to the
+      delivery that holds the claim, and releasing it would refund a charge
+      whose image is still on its way.
+    */
+    if (reservation.drawing === false) {
+      return respond({
+        error: "That character image is already being made.",
+        code: "request_in_flight",
+      }, 409);
+    }
+
+    releaseReservation = async () => {
+      const { error } = await serviceClient.rpc(
+        "release_character_image_request",
+        {
+          p_operation_id: operationId,
+          p_user_id: user.id,
+          p_error: "character image was not delivered",
+        },
+      );
+      // Best effort. Losing the release costs one of six, or leaves a credit
+      // outstanding against an operation id support can find; failing the
+      // response because we could not give it back costs the user the error
+      // message that tells them to try again.
+      if (error) {
+        console.error(
+          "release_character_image_request failed:",
+          safeErrorMessage(error),
+        );
+      }
+    };
+
+    // A refusal from here down happens AFTER the reservation exists, so it has
+    // to settle it before it answers. Six is a small number to spend on a
+    // request that never reached a provider, and a credit is worse.
     const refuse = async (body: unknown, status: number) => {
-      await releaseGuestSlot?.();
+      await releaseReservation?.();
       return respond(body, status);
     };
 
@@ -250,13 +333,30 @@ export async function handleRequest(req: Request): Promise<Response> {
     if (!image) {
       // The chain exhausted both models across all three safety rungs. The
       // reveal screen offers a free "Try again" on exactly this response, so
-      // the slot must come back or the third failure in a row would end the
-      // onboarding flow with nothing made.
+      // the reservation must be settled or the third failure in a row would end
+      // the onboarding flow with nothing made and three of six spent.
       return await refuse(
         { error: "Character image could not be generated" },
         502,
       );
     }
+
+    // Delivered, so the reservation is spent and the request id with it. A
+    // complete that fails is not worth failing the response over -- the image
+    // exists and the user is looking at it -- but it does mean a replay of this
+    // id would find a `reserved` row and draw again, so it is logged.
+    const { error: completeError } = await serviceClient.rpc(
+      "complete_character_image_request",
+      { p_operation_id: operationId, p_user_id: user.id },
+    );
+    if (completeError) {
+      console.error(
+        "complete_character_image_request failed:",
+        safeErrorMessage(completeError),
+      );
+    }
+    // Settled. Nothing below may hand the reservation back.
+    releaseReservation = null;
 
     return respond({
       url: image.url,
@@ -264,12 +364,23 @@ export async function handleRequest(req: Request): Promise<Response> {
       storage_path: image.storagePath,
       provider: image.provider,
       model: image.model,
+      // What this one cost and what is left, so the client quotes the NEXT one
+      // from the server's count rather than from its own arithmetic. Additive:
+      // an older client reads neither.
+      credits_charged: creditsCharged,
+      free_remaining: typeof reservation.free_remaining === "number"
+        ? reservation.free_remaining
+        : 0,
+      balance: typeof reservation.balance === "number"
+        ? reservation.balance
+        : undefined,
     });
   } catch (error) {
     // Same reasoning as the 502: a throw means no portrait was delivered, so
-    // an anonymous caller must not be one of four poorer for it. `releaseGuestSlot`
-    // is null unless a slot was actually claimed, and swallows its own errors.
-    await releaseGuestSlot?.();
+    // the caller must not be one of six -- or one credit -- poorer for it.
+    // `releaseReservation` is null unless a reservation exists and has not been
+    // settled, and it swallows its own errors.
+    await releaseReservation?.();
     console.error("generate-character-image error:", safeErrorMessage(error));
     await logError({
       bucket: "generation.cover",
@@ -292,4 +403,11 @@ if (import.meta.main) {
 
 function stringField(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/** A jsonb RPC result as an object, without trusting it to be one. */
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }

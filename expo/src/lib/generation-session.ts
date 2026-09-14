@@ -741,8 +741,26 @@ function storyStartCost(story: Story): number {
  * app's running balance and walk the displayed number down to zero over a run
  * the writer paid for once.
  */
-function chapterChargeNow(story: Story, chapterNumber: number): number {
-  const paidThrough = story.autoRunThroughChapter;
+export function chapterChargeNow(
+  story: Story,
+  chapterNumber: number,
+): number {
+  /*
+    A REFUNDED RUN IS NOT A PAID ONE, and the story row on this client still
+    says it is. When a chapter fails the server refunds the rest of the run and
+    lowers `auto_run_through_chapter`; the retry of that chapter is then charged
+    normally. Reading only the stale row, the retry reported zero and the app's
+    balance drifted UP by a credit that had really been spent -- the direction
+    that eventually fires a request the server refuses.
+
+    `loweredAutoRunFor` is what this client learned when the failure happened,
+    so the lower of the two is the run that is actually still paid for.
+  */
+  const stored = story.autoRunThroughChapter;
+  const lowered = loweredAutoRunFor(story.id);
+  const paidThrough = typeof stored === "number"
+    ? (lowered === undefined ? stored : Math.min(stored, lowered))
+    : lowered;
   if (typeof paidThrough === "number" && chapterNumber <= paidThrough) return 0;
   return chapterCost(story);
 }

@@ -41,7 +41,11 @@ import type { DropdownOption } from "@/components/create/Dropdown";
 import DirectionStep from "@/components/create/DirectionStep";
 import { GENRE_EMOJI } from "@/lib/genre-content";
 import * as storyApi from "@/lib/api";
-import { portraitQuote, useIsSubscribed } from "@/lib/entitlements";
+import {
+  useCharacterImageBalance,
+  useCharacterImagesRemaining,
+} from "@/lib/character-image-allowance";
+import { FREE_PORTRAITS_PER_ACCOUNT, portraitQuote } from "@/lib/entitlements";
 import {
   CHAPTER_ART_CREDITS,
   CHAPTER_TEXT_CREDITS,
@@ -105,16 +109,6 @@ type Props = {
    */
   onGenerate: (choice?: { direction?: string; beats?: string[] }) => void;
   onBack: () => void;
-  /**
-   * How many character portraits this account has already generated, for the
-   * quoted price on the Craft sheet.
-   *
-   * Defaults to 0, which quotes the first-use price. The studio does not count
-   * them yet: the per-account total belongs in the credit ledger beside the
-   * charge, so the server can refuse a fifth free portrait that two devices
-   * asked for at once. FOLLOW-UP: ledger enforcement.
-   */
-  portraitsUsedOnAccount?: number;
   /** Test seams for the saved-character library; default to the real store. */
   loadSavedCharacters?: () => Promise<SavedCharacter[]>;
   saveSavedCharacter?: (input: SavedCharacterInput) => Promise<SavedCharacter>;
@@ -474,7 +468,6 @@ export default function CreateBriefFlow({
   setDraft,
   onGenerate,
   onBack,
-  portraitsUsedOnAccount = 0,
   loadSavedCharacters = listSavedCharacters,
   saveSavedCharacter = saveCharacterToLibrary,
 }: Props) {
@@ -708,9 +701,21 @@ export default function CreateBriefFlow({
     setCharacterBuffer((previous) => ({ ...previous, referenceImage: undefined }));
   }, []);
 
+  /**
+   * Why the last image attempt was refused, in the server's own words.
+   *
+   * Every failure used to land on `portraitStatus: "failed"` and nothing else,
+   * so "you are out of credits", "you have made a lot of these just now" and
+   * "the provider could not draw it" were one silent empty card. Only the
+   * server knows which of those it was -- the six and the price are its
+   * counters, not ours -- so its sentence is what is shown.
+   */
+  const [portraitNotice, setPortraitNotice] = useState<string | null>(null);
+
   const createCharacterImage = useCallback(async () => {
     const name = characterBuffer.name.trim();
     if (!name || characterBuffer.portraitStatus === "generating") return;
+    setPortraitNotice(null);
     setCharacterBuffer((previous) => ({
       ...previous,
       portraitStatus: "generating",
@@ -732,7 +737,12 @@ export default function CreateBriefFlow({
         portraitStatus: "ready",
       }));
       confirm();
-    } catch {
+    } catch (error) {
+      setPortraitNotice(
+        error instanceof Error && error.message
+          ? error.message
+          : "Could not create the character image. Please try again.",
+      );
       setCharacterBuffer((previous) => ({
         ...previous,
         portraitStatus: "failed",
@@ -857,7 +867,9 @@ export default function CreateBriefFlow({
           onSave={saveCharacter}
           onDelete={editingCharacterIndex === null ? undefined : () => deleteCharacter(editingCharacterIndex)}
           onCreateImage={createCharacterImage}
-          portraitsUsedOnAccount={portraitsUsedOnAccount}
+          credits={credits}
+          isAnonymous={isAnonymous}
+          portraitNotice={portraitNotice}
           onPickReference={pickCharacterReference}
           onClearReference={clearCharacterReference}
           unsavedPromptOpen={unsavedPromptOpen}
@@ -1316,7 +1328,13 @@ export function CharacterCraftScreen({
   onSave,
   onDelete,
   onCreateImage,
-  portraitsUsedOnAccount = 0,
+  credits,
+  /**
+   * An anonymous identity may use its six free images and buy none, so the
+   * sheet must refuse rather than quote a price its own server will decline.
+   */
+  isAnonymous = false,
+  portraitNotice = null,
   onPickReference,
   onClearReference,
   unsavedPromptOpen,
@@ -1331,8 +1349,18 @@ export function CharacterCraftScreen({
   onSave: () => void;
   onDelete?: () => void;
   onCreateImage: () => void;
-  /** Portraits already generated on this account, for the quoted price. Defaults to 0. */
-  portraitsUsedOnAccount?: number;
+  isAnonymous?: boolean;
+  /**
+   * The caller's live balance, so a priced button that cannot be paid for is
+   * not offered.
+   *
+   * Optional because this sheet is also opened from the reader, through the
+   * saved-characters picker, and the reader carries no balance. Absent falls
+   * back to the last balance the server reported alongside the free count.
+   */
+  credits?: number;
+  /** Why the last attempt was refused, in the server's own words. */
+  portraitNotice?: string | null;
   onPickReference: () => void;
   onClearReference: () => void;
   unsavedPromptOpen: boolean;
@@ -1342,17 +1370,36 @@ export function CharacterCraftScreen({
   bottomInset: number;
 }) {
   const set = (key: keyof CharacterDraft, value: string | boolean) => onChange((previous) => ({ ...previous, [key]: value }));
-  // What the next portrait costs, from the same module the paywall promised it
-  // with. The button used to carry no price at all, so the fifth portrait on a
-  // free account spent a credit the writer was never quoted.
-  const subscribed = useIsSubscribed();
-  const portraitPrice = portraitQuote({ subscribed, usedOnAccount: portraitsUsedOnAccount });
+  // What the next image costs, from the server's own count of what this
+  // account has left. The button used to carry no price at all, so the first
+  // charged image spent a credit the writer was never quoted -- and the count
+  // it quoted from was a prop nobody passed, so it always said "free".
+  const freeRemaining = useCharacterImagesRemaining();
+  const lastKnownBalance = useCharacterImageBalance();
+  const affordable = credits ?? lastKnownBalance;
+  const portraitPrice = freeRemaining === null
+    ? null
+    : portraitQuote({
+      usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT - freeRemaining,
+      isAnonymous,
+    });
   const imageReady = character.portraitStatus === "ready" && Boolean(character.portraitUrl);
   const imageBusy = character.portraitStatus === "generating";
+  // A priced image the balance cannot buy is a button that will certainly
+  // fail. Quoting the price and then letting them press it is worse than not
+  // offering it: they wait, and the refusal arrives where the portrait should.
+  // Two ways a priced image is unreachable, and a guest hits the second while
+  // holding enough credits for the first: `requiresAccount` means the server
+  // will refuse whatever the balance says, because an anonymous identity may
+  // not buy a seventh at all.
+  const cannotAfford = portraitPrice !== null && !portraitPrice.free &&
+    (portraitPrice.requiresAccount === true ||
+      (affordable !== null && affordable < 1));
   const canCreateImage = Boolean(
     character.name.trim() &&
       character.appearance.trim() &&
-      !imageBusy,
+      !imageBusy &&
+      !cannotAfford,
   );
   const canSave = Boolean(character.name.trim()) && !imageBusy;
   return (
@@ -1427,7 +1474,14 @@ export function CharacterCraftScreen({
                 and a name that changes with the writer's balance is a
                 different control every time they open the sheet.
               */}
-              {imageBusy ? null : <Text style={styles.portraitPrice}>{portraitPrice.label}</Text>}
+              {imageBusy || !portraitPrice ? null : (
+                <Text style={styles.portraitPrice}>
+                  {cannotAfford ? `${portraitPrice.label} — you have none` : portraitPrice.label}
+                </Text>
+              )}
+              {portraitNotice ? (
+                <Text style={styles.portraitPrice} accessibilityLiveRegion="polite">{portraitNotice}</Text>
+              ) : null}
               {/*
                 A photo steers the LOOK. It is not a likeness target, and the
                 copy says so where the writer is deciding whether to attach one

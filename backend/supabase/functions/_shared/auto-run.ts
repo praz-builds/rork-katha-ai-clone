@@ -101,6 +101,25 @@ export async function reserveAutoChapterRun(
       context: { story_id: input.storyId, from_chapter: input.fromChapter },
       userId: input.userId,
     });
+    /*
+      NULL MEANS "NO RUN WAS BOUGHT", AND THE STORY DEGRADES TO PER-CHAPTER.
+
+      Deliberate, and worth stating because the degradation is invisible from
+      the reader's side: `stories.auto_run_through_chapter` stays null, so the
+      write-ahead takes its pre-run path and buys a chapter at a time against
+      the live balance. The story still continues by itself -- that is the
+      promise auto mode actually makes -- but it is no longer bought in one
+      step, so the balance ticks down instead of dropping once.
+
+      Failing the whole generation instead would be worse by a distance: the
+      writer has already paid for chapter one and would lose it to a transient
+      RPC error on an optimisation. Falling back to the behaviour that worked
+      before pre-buying existed costs them nothing.
+
+      It is not silent to us: `auto_run_reservation_failed` is logged at medium
+      with the story and the chapter, so a run of these is visible even though
+      no single one interrupts a reader.
+    */
     return null;
   }
   if (!data || typeof data !== "object") return null;

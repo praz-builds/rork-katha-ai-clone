@@ -4,11 +4,11 @@
 // when it RUNS, so a mistake inside one deploys cleanly and passes any test
 // that only asserts the function exists. Every assertion below calls the
 // function and then calls it again, because the thing under test is whether the
-// fifth portrait of an anonymous session is refused.
+// seventh character image of an anonymous session is refused.
 //
 // What is asserted, in the order it matters:
 //
-//   1. The first four claims pass and the fifth does not, ever, for that
+//   1. The first six claims pass and the seventh does not, ever, for that
 //      identity -- there is no window to wait out.
 //   2. A release returns exactly one slot, so a failed generation does not
 //      burn one.
@@ -19,6 +19,16 @@
 //      verified the token.
 //   6. Nothing here touches `claim_guest_characters` (00082): a guest who signs
 //      in keeps their characters and does NOT carry the count to the owner.
+//
+// ## Why this file now says six
+//
+// 00088 widened this counter from "four per anonymous identity" to "six per
+// user, anonymous or named", and made anything past the six cost a credit
+// through `claim_character_image_request`. The pair asserted here is superseded
+// by that function and is kept only so an older deploy of
+// `generate-character-image` still bounds an anonymous caller at the CURRENT
+// number rather than the old one -- which is precisely what the counts below
+// pin. The credit half of the rule is tested in 00088's own file.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { assertRejects } from "https://deno.land/std@0.224.0/assert/assert_rejects.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
@@ -84,18 +94,18 @@ async function claimed(db: PGlite, userId: string): Promise<number> {
   return result.rows.length ? result.rows[0].claimed_count : 0;
 }
 
-Deno.test("four portraits, then no more, for an identity nobody signed up for", async () => {
+Deno.test("six portraits, then no more, through the superseded pair", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 6; i++) {
       assertEquals(await claim(db, GUEST), true, `claim ${i} was refused`);
     }
-    // A lifetime cap, not a window: there is nothing to wait out, so the fifth
-    // and the sixth are both refused with no clock involved.
+    // A lifetime cap, not a window: there is nothing to wait out, so the
+    // seventh and the eighth are both refused with no clock involved.
     assertEquals(await claim(db, GUEST), false);
     assertEquals(await claim(db, GUEST), false);
-    assertEquals(await claimed(db, GUEST), 4);
+    assertEquals(await claimed(db, GUEST), 6);
   } finally {
     await db.close();
   }
@@ -105,14 +115,14 @@ Deno.test("a failed generation gives the slot back", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 0; i < 4; i++) await claim(db, GUEST);
+    for (let i = 0; i < 6; i++) await claim(db, GUEST);
     assertEquals(await claim(db, GUEST), false);
 
-    // The endpoint has no credit reservation to refund, so this release is the
-    // only thing standing between a provider failure and a slot the user paid
-    // for with nothing.
+    // On this path there is no credit reservation to refund, so the release is
+    // the only thing standing between a provider failure and a slot the user
+    // paid for with nothing.
     await release(db, GUEST);
-    assertEquals(await claimed(db, GUEST), 3);
+    assertEquals(await claimed(db, GUEST), 5);
     assertEquals(await claim(db, GUEST), true);
     assertEquals(await claim(db, GUEST), false);
   } finally {
@@ -132,7 +142,7 @@ Deno.test("release floors at zero and cannot mint a slot", async () => {
     await release(db, GUEST);
     assertEquals(await claimed(db, GUEST), 0);
 
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 6; i++) {
       assertEquals(await claim(db, GUEST), true, `claim ${i} was refused`);
     }
     assertEquals(await claim(db, GUEST), false);
@@ -159,10 +169,10 @@ Deno.test("one identity's cap is not another's", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 0; i < 4; i++) await claim(db, GUEST);
+    for (let i = 0; i < 6; i++) await claim(db, GUEST);
     assertEquals(await claim(db, GUEST), false);
     assertEquals(await claim(db, OTHER_GUEST), true);
-    assertEquals(await claimed(db, GUEST), 4);
+    assertEquals(await claimed(db, GUEST), 6);
     assertEquals(await claimed(db, OTHER_GUEST), 1);
   } finally {
     await db.close();
@@ -186,18 +196,21 @@ Deno.test("signing in does not carry the guest's count to the owner", async () =
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 0; i < 4; i++) await claim(db, GUEST);
+    for (let i = 0; i < 6; i++) await claim(db, GUEST);
     await db.query(
       "insert into user_characters(owner_id, name, appearance) values ($1, $2, $3)",
       [GUEST, "Naina", "Paint on her hands, her grandmother's coat."],
     );
 
-    // 00082 moves characters and nothing else. A named account is not capped by
-    // this counter at all, so there is nothing to carry: the guest row simply
-    // stops being consulted.
+    // 00082 moves characters and nothing else, and it still does after 00088:
+    // a count is not carried onto the claiming account. That was free of
+    // consequence when only anonymous identities were capped; now that both are,
+    // it means a guest who signs into an EXISTING account arrives with that
+    // account's own six intact. See 00088's report note -- it is bounded by the
+    // three-guest-bootstraps-per-network-per-day limit (00035), not by this.
     await db.query("select claim_guest_characters($1, $2)", [GUEST, OWNER]);
     assertEquals(await claimed(db, OWNER), 0);
-    assertEquals(await claimed(db, GUEST), 4);
+    assertEquals(await claimed(db, GUEST), 6);
   } finally {
     await db.close();
   }

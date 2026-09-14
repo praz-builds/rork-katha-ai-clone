@@ -115,9 +115,19 @@ export function SavedCharactersPicker({
     closeCraft();
   }, [buffer, closeCraft]);
 
+  /**
+   * Why the last image attempt was refused, in the server's own words.
+   *
+   * Same reasoning as the brief's copy of this sheet: "you are out of credits",
+   * "you have made a lot of these just now" and "the provider could not draw
+   * it" were one silent empty card, and only the server knows which it was.
+   */
+  const [portraitNotice, setPortraitNotice] = useState<string | null>(null);
+
   const createImage = useCallback(async () => {
     const name = buffer.name.trim();
     if (!name || buffer.portraitStatus === "generating") return;
+    setPortraitNotice(null);
     setBuffer((previous) => ({ ...previous, portraitStatus: "generating" }));
     try {
       const { url } = await storyApi.generateCharacterImage({
@@ -128,7 +138,12 @@ export function SavedCharactersPicker({
         imageStyle,
       });
       setBuffer((previous) => ({ ...previous, portraitUrl: url, portraitStatus: "ready" }));
-    } catch {
+    } catch (error) {
+      setPortraitNotice(
+        error instanceof Error && error.message
+          ? error.message
+          : "Could not create the character image. Please try again.",
+      );
       setBuffer((previous) => ({ ...previous, portraitStatus: "failed" }));
     }
   }, [buffer, imageStyle]);
@@ -229,6 +244,7 @@ export function SavedCharactersPicker({
           onBack={requestCloseCraft}
           onSave={saveNew}
           onCreateImage={createImage}
+          portraitNotice={portraitNotice}
           onPickReference={pickReference}
           onClearReference={() => setBuffer((previous) => ({ ...previous, referenceImage: undefined }))}
           unsavedPromptOpen={unsavedPromptOpen}

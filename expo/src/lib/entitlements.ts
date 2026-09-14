@@ -20,8 +20,20 @@ import { useEffect, useState } from "react";
 
 import { revenueCatService } from "./revenuecat";
 
-/** Portraits a free account may generate before each one costs a credit. */
-export const FREE_PORTRAITS_PER_ACCOUNT = 4;
+/**
+ * Character images ANY account may generate before each one costs a credit.
+ *
+ * Six, for the life of the account, generations and edits alike -- and the
+ * same six whether or not the user pays. It is not a free-tier allowance: the
+ * subscriber exemption that used to make portraits unlimited on a plan was
+ * withdrawn on 2026-09-14, and `CREDITS_AND_PRICING.md` §3 carries the note
+ * saying the paywall still sells unlimited while this deployment caps it.
+ *
+ * The number is duplicated in migration 00088, which is the one that enforces
+ * it. This copy exists to QUOTE a price, never to decide one -- see the module
+ * note above.
+ */
+export const FREE_PORTRAITS_PER_ACCOUNT = 6;
 
 /** Reimagines a free account may run per chapter, on its own stories. */
 export const FREE_REIMAGINES_PER_CHAPTER = 1;
@@ -30,6 +42,9 @@ export const FREE_REIMAGINES_PER_CHAPTER = 1;
 const INCLUDED_LABEL = "Included in your plan";
 
 /** What one paid use of either action costs. */
+/** What a guest is told instead of a price they cannot pay. */
+const SIGN_IN_LABEL = "Sign in to make more";
+
 const PAID_LABEL = "1 credit";
 
 export type EntitlementQuote = {
@@ -37,6 +52,12 @@ export type EntitlementQuote = {
   free: boolean;
   /** The line to render on the control that spends it. */
   label: string;
+  /**
+   * True when the next one cannot be bought at all, only unlocked by signing
+   * in. The caller must disable the control regardless of balance: a guest
+   * holding credits still cannot spend them here.
+   */
+  requiresAccount?: boolean;
 };
 
 /** Whether the user holds any active Katha entitlement right now. */
@@ -81,15 +102,36 @@ export function reimagineQuote({
   return remaining > 0 ? freeQuote(remaining) : { free: false, label: PAID_LABEL };
 }
 
-/** What the next character portrait on THIS account costs. */
+/**
+ * What the next character image on THIS account costs.
+ *
+ * `subscribed` is deliberately not a parameter any more. A plan used to buy
+ * unlimited portraits, and the server enforced no such thing; since 00088 it
+ * enforces six for everybody, so quoting "Included in your plan" to a
+ * subscriber would be the client promising something the server will refuse --
+ * which is the exact failure this module exists to prevent.
+ */
 export function portraitQuote({
-  subscribed,
   usedOnAccount,
+  /**
+   * Whether this identity may BUY once its six are gone.
+   *
+   * An anonymous one may not: the server refuses it outright
+   * (`p_may_purchase` is false for a guest, migration 00088) because its
+   * credits are the three from `bootstrap_user` and those are for a story.
+   * Without this the sheet quoted "1 credit" to a guest holding exactly those
+   * three, enabled the button, and the tap failed on the round trip -- the
+   * same button-that-cannot-work this quote exists to prevent, just for the
+   * other identity.
+   */
+  isAnonymous = false,
 }: {
-  subscribed: boolean;
   usedOnAccount: number;
+  isAnonymous?: boolean;
 }): EntitlementQuote {
-  if (subscribed) return { free: true, label: INCLUDED_LABEL };
   const remaining = FREE_PORTRAITS_PER_ACCOUNT - Math.max(0, usedOnAccount);
-  return remaining > 0 ? freeQuote(remaining) : { free: false, label: PAID_LABEL };
+  if (remaining > 0) return freeQuote(remaining);
+  return isAnonymous
+    ? { free: false, label: SIGN_IN_LABEL, requiresAccount: true }
+    : { free: false, label: PAID_LABEL };
 }

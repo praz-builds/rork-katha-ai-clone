@@ -207,10 +207,17 @@ balance tick down over eleven minutes.
 Two consequences are deliberate and must not be softened without a product
 decision:
 
-- **The balance drops in one step, and it can drop to nearly nothing.** A
-  fifteen-chapter auto story takes fifteen credits at the moment it starts. The
-  copy on that control has to say so plainly; a writer who did not expect it has
-  been misled by us, not by the feature.
+- **The balance drops in one step, and it can drop to nearly nothing.** The run
+  is `min(chapters left in the plan, what the balance affords)` — and the run
+  starts at chapter TWO, because chapter one is already paid for by the start
+  credit. So a fifteen-chapter auto story takes fourteen credits when the
+  writer has them; with six it buys chapters two through seven and stops at
+  chapter seven, not at chapter six. Do not
+  write copy that quotes the plan's length as a price — the number is not
+  knowable from the brief, because it depends on the balance at the moment the
+  run starts. State the shape of the charge instead: all of it, up front, for as
+  many chapters as the credits reach. A writer who did not expect that has been
+  misled by us, not by the feature.
 - **A run that stops early refunds the remainder.** Failing at chapter four of
   six returns three — the chapter that failed and the two never attempted. The
   refund is idempotent on an operation key, because a double refund is a free
@@ -481,9 +488,16 @@ Placeholders are re-authored per mode (§3) and per genre where it helps. The
   then the portrait review. The user can save the character without an image,
   but if they tap Create image, that image request is its own backend call and
   the paid story generation call does not start from inside the sheet.
-- **Reimagine** regenerates it from the current field values. Per
-  `CREDITS_AND_PRICING.md` principle 4 and the editing table, the first
-  regenerate is **free**; further ones are 1 credit.
+- **Reimagine** regenerates it from the current field values, and it costs
+  exactly what a first generation costs: an image drawn from changed fields is a
+  fresh paid provider call, so it draws on the same allowance.
+- **Six character images per account, for the life of the account, then 1 credit
+  each** *(2026-09-14, migration 00088)* — for every user, free tier and paid
+  plan alike. `CREDITS_AND_PRICING.md` §3 (*Character images*) is canonical.
+  **The sheet must quote the price before the button is pressed** and must not
+  offer a priced image the balance cannot buy; the count comes from the server
+  (`bootstrap-user`, and every image response), never from the client counting
+  its own taps.
 - **Edit** re-opens the fields. **Delete** removes the character and its portrait.
 - Aspect ratio is portrait, full-body, on a plain ground — matching the reference
   and matching what the reader UI needs for a character strip.
@@ -494,9 +508,11 @@ Placeholders are re-authored per mode (§3) and per genre where it helps. The
 
 ### Limits
 
-Maximum **3** characters — *amended 2026-09-02, was 4; see §14 item 1.* Character
-art is **1 credit for the cast**, not per character, matching the existing
-"Generate its characters — 1" line, and portraits render at 1024×1024 low.
+Maximum **3** characters — *amended 2026-09-02, was 4; see §14 item 1.* A story
+start's cast is **bundled into the 1-credit start**, not priced per character,
+and it does **not** draw on the six free standalone character images above —
+that allowance is for the Craft sheet and the saved-character library. Images
+render at 1024×1024.
 
 ---
 

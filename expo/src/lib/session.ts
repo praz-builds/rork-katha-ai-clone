@@ -1,5 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { captureError } from "@/lib/analytics";
+import {
+  setCharacterImageBalance,
+  clearCharacterImagesRemaining,
+  setCharacterImagesRemaining,
+} from "@/lib/character-image-allowance";
 import { setViewerId } from "@/lib/ownership";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -9,6 +14,15 @@ export type BootstrappedUser = {
   isAnonymous: boolean;
   welcomeGranted: boolean;
   rateLimited: boolean;
+  /**
+   * How many of the six free character images this account has left.
+   *
+   * `null` when the server could not say. Every surface that quotes a portrait
+   * price treats that as "no quote" rather than falling back to six, because a
+   * button that says "6 free" to someone with none left is an affordance that
+   * lies -- they tap it and the server charges, or refuses.
+   */
+  characterImagesFreeRemaining: number | null;
 };
 
 let bootstrapInFlight: Promise<BootstrappedUser | null> | null = null;
@@ -119,12 +133,38 @@ async function callBootstrap(
   // author-only) compare `story.authorId` against this.
   setViewerId(payload.user_id);
 
+  // And the one place it learns what a character image will cost it. Seeded
+  // here rather than fetched by each screen, because this call already happens
+  // at boot and again after sign-in -- the two moments the count can change
+  // without the client having spent anything.
+  /*
+    A FAILED READ IS NOT AN ANSWER OF ZERO, AND MUST NOT ERASE THE LAST ONE.
+
+    `bootstrap-user` returns null when it could not read the allowance -- a
+    transient RPC failure, not a statement about the user. Writing that null
+    through cleared a count the client already had, and the sheet then showed
+    no price at all in front of a button that may charge a credit. A number we
+    were told an hour ago is a better answer than none.
+
+    It is still cleared deliberately on sign-out, where the previous account's
+    count genuinely stops being true.
+  */
+  if (typeof payload.character_images_free_remaining === "number") {
+    setCharacterImagesRemaining(payload.character_images_free_remaining);
+  }
+  setCharacterImageBalance(payload.balance);
+
   return {
     userId: payload.user_id,
     balance: payload.balance,
     isAnonymous: payload.is_anonymous,
     welcomeGranted: payload.welcome_granted === true,
     rateLimited: payload.rate_limited === true,
+    // Absent on any deploy older than 00088, which reads as "no quote".
+    characterImagesFreeRemaining:
+      typeof payload.character_images_free_remaining === "number"
+        ? payload.character_images_free_remaining
+        : null,
   };
 }
 
@@ -467,6 +507,14 @@ export async function signOutToGuest(): Promise<void> {
   // A half-finished sign-in must not be resumable by the guest who replaces
   // it: the token recorded there belongs to the identity that just left.
   forgetPendingEmailOtp();
+
+  // The free-image count and the balance belong to the identity that just
+  // left, and the guest replacing them is a different person with a different
+  // allowance. Cleared BEFORE the new session is minted, so the window where
+  // the sheet could quote the previous account's remaining images -- and let
+  // the new guest spend against them -- does not exist rather than being
+  // short. The next bootstrap fills them in.
+  clearCharacterImagesRemaining();
 
   try {
     await AsyncStorage.removeItem("katha.displayName.v1");

@@ -21,6 +21,7 @@ import ChapterEnd from "@/components/reader/ChapterEnd";
 import {
   __resetGenerationSessions,
   autoChapterToWriteAhead,
+  chapterChargeNow,
   loweredAutoRunFor,
   lowerAutoRunOnFailure,
   clearAutoChapterFailure,
@@ -29,6 +30,10 @@ import {
   startAutoChapterAhead,
   startChapterGeneration,
 } from "@/lib/generation-session";
+import {
+  CHAPTER_ART_CREDITS,
+  CHAPTER_TEXT_CREDITS,
+} from "@/lib/pricing-limits";
 import { setViewerId } from "@/lib/ownership";
 import type { Chapter, SeriesState, Story } from "@/types/domain";
 
@@ -594,5 +599,44 @@ describe("a run the server unwound", () => {
     // A later failure further along must not hand chapters back.
     lowerAutoRunOnFailure(story.id, 6);
     expect(loweredAutoRunFor(story.id)).toBe(2);
+  });
+});
+
+// The retry of a failed chapter is charged normally, because the server
+// refunded the run when it failed. Reading only the stale story row, the retry
+// reported zero and the app's balance drifted UP by a credit really spent —
+// the direction that eventually fires a request the server refuses.
+//
+// `creditsCharged` is decided at SETTLE, not at start, so this asserts the
+// function that decides it rather than a session snapshot taken before it runs
+// — a snapshot reads 0 either way and would pass whatever the code did.
+describe("what a chapter reports charging", () => {
+  const runStory = () =>
+    makeStory({
+      plannedChapterCount: 7,
+      chapters: [1, 2, 3].map((n) => makeChapter(n)),
+      autoRunThroughChapter: 7,
+    });
+
+  it("is nothing for a chapter the run already bought", () => {
+    expect(chapterChargeNow(runStory(), 4)).toBe(0);
+  });
+
+  it("is the real price once the server has refunded that run", () => {
+    const story = runStory();
+    lowerAutoRunOnFailure(story.id, 4);
+    // The row still says the run reaches 7; this client knows better.
+    expect(chapterChargeNow(story, 4)).toBe(CHAPTER_TEXT_CREDITS);
+  });
+
+  it("is two for an illustrated chapter outside the run", () => {
+    const story = makeStory({
+      plannedChapterCount: 7,
+      illustrateChapters: true,
+      chapters: [makeChapter(1)],
+    });
+    expect(chapterChargeNow(story, 2)).toBe(
+      CHAPTER_TEXT_CREDITS + CHAPTER_ART_CREDITS,
+    );
   });
 });

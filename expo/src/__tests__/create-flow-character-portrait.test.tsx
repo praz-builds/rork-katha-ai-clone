@@ -54,6 +54,10 @@ jest.mock("lucide-react-native", () => {
 });
 
 /* eslint-disable import/first */
+import {
+  setCharacterImageBalance,
+  setCharacterImagesRemaining,
+} from "@/lib/character-image-allowance";
 import CreateBriefFlow from "@/components/create/CreateBriefFlow";
 import type { StudioCreateDraft } from "@/components/create/CreateBriefFlow";
 /* eslint-enable import/first */
@@ -82,14 +86,16 @@ const BASE_DRAFT: StudioCreateDraft = {
 function Harness({
   initial = BASE_DRAFT,
   onGenerate = () => undefined,
+  credits = 10,
 }: {
   initial?: StudioCreateDraft;
   onGenerate?: (choice?: { direction?: string; beats?: string[] }) => void;
+  credits?: number;
 }) {
   const [draft, setDraft] = useState<StudioCreateDraft>(initial);
   return (
     <CreateBriefFlow
-      credits={10}
+      credits={credits}
       isAnonymous={false}
       draft={draft}
       setDraft={setDraft}
@@ -116,6 +122,91 @@ async function fillCharacter(name: string, appearance: string) {
 
 beforeEach(() => {
   mockGenerateCharacterImage.mockReset();
+  // Every test starts from "the server has not said", which is what a fresh
+  // app launch looks like before `bootstrap-user` answers.
+  setCharacterImagesRemaining(null);
+  setCharacterImageBalance(null);
+});
+
+/**
+ * What the price line says, and whether the button that spends it is offered.
+ *
+ * Six free character images per account, then 1 credit each (migration 00088).
+ * The panel used to quote from a prop nobody passed, so it always read "4
+ * free" -- including for the account that had spent all four and was about to
+ * be charged.
+ */
+describe("what the next character image costs", () => {
+  it("counts down the free six from the server's own number", async () => {
+    setCharacterImagesRemaining(6);
+    await render(<Harness />);
+    await openCharacterSheet();
+    await fillCharacter("Priya", "A baker.");
+
+    expect(screen.getByText("6 free")).toBeTruthy();
+  });
+
+  it("quotes a credit once the six are spent", async () => {
+    setCharacterImagesRemaining(0);
+    setCharacterImageBalance(4);
+    await render(<Harness credits={4} />);
+    await openCharacterSheet();
+    await fillCharacter("Priya", "A baker.");
+
+    expect(screen.getByText("1 credit")).toBeTruthy();
+    // Priced, affordable, and therefore still offered.
+    expect(screen.getByText("Create image").parent?.props.accessibilityState)
+      .toMatchObject({ disabled: false });
+  });
+
+  it("quotes nothing at all until the server has said", async () => {
+    // A guess here is an affordance that lies: "6 free" shown to an account
+    // with none left is a button that takes a credit without warning.
+    await render(<Harness />);
+    await openCharacterSheet();
+    await fillCharacter("Priya", "A baker.");
+
+    expect(screen.queryByText("6 free")).toBeNull();
+    expect(screen.queryByText("1 credit")).toBeNull();
+  });
+
+  it("does not offer a priced image the balance cannot buy", async () => {
+    setCharacterImagesRemaining(0);
+    await render(<Harness credits={0} />);
+    await openCharacterSheet();
+    await fillCharacter("Priya", "A baker.");
+
+    expect(screen.getByText("1 credit — you have none")).toBeTruthy();
+    expect(screen.getByText("Create image").parent?.props.accessibilityState)
+      .toMatchObject({ disabled: true });
+
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Create image"));
+    });
+    // The tap reached nothing. Letting them press it would spend twelve
+    // seconds arriving at a refusal we could see coming.
+    expect(mockGenerateCharacterImage).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's refusal instead of an empty card", async () => {
+    setCharacterImagesRemaining(1);
+    mockGenerateCharacterImage.mockRejectedValue(
+      new Error("You're out of credits. Top up to make more characters."),
+    );
+    await render(<Harness />);
+    await openCharacterSheet();
+    await fillCharacter("Priya", "A baker.");
+
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Create image"));
+    });
+
+    // Before this, a refusal and a provider failure were the same silent
+    // empty card, and only the server knows which of the two it was.
+    expect(
+      await screen.findByText("You're out of credits. Top up to make more characters."),
+    ).toBeTruthy();
+  });
 });
 
 describe("character portrait", () => {

@@ -1,4 +1,9 @@
 import { stories } from "@/data/seed";
+import {
+  setCharacterImageBalance,
+  observeCharacterImagesRemaining,
+  setCharacterImagesRemaining,
+} from "@/lib/character-image-allowance";
 import { pushPermissionGranted } from "@/lib/notifications";
 import { bootstrapUser } from "@/lib/session";
 import { postEventStream, StreamTransportError } from "@/lib/stream";
@@ -424,6 +429,17 @@ export type CharacterImageInput = {
   imageStyle?: ImageStyle;
 };
 
+/** What one character image cost, and what the account has left. */
+export type CharacterImageResult = {
+  url: string;
+  /** 0 for one of the six, 1 once they are spent. Absent on an old deploy. */
+  creditsCharged?: number;
+  /** Free images left AFTER this one. Absent on an old deploy. */
+  freeRemaining?: number;
+  /** The ledger balance the server saw. Absent on an old deploy. */
+  balance?: number;
+};
+
 /**
  * Separate character-image call used by the Craft character sheet.
  *
@@ -460,6 +476,22 @@ export class CharacterPortraitGuestCapError extends GenerationRequestError {
   constructor(message: string) {
     super(message, false);
     this.name = "CharacterPortraitGuestCapError";
+  }
+}
+
+/**
+ * The six free images are gone and the balance cannot buy the seventh.
+ *
+ * 402 `{ code: "insufficient_credits" }`, and it is the refusal a named account
+ * gets where an anonymous one gets the guest cap above -- buying credits needs
+ * an account, so only a signed-in caller can be told to buy. Separate from both
+ * because the way out is different again: not a wait, not a sign-in, a top-up.
+ */
+export class CharacterPortraitInsufficientCreditsError
+  extends GenerationRequestError {
+  constructor(message: string) {
+    super(message, false);
+    this.name = "CharacterPortraitInsufficientCreditsError";
   }
 }
 
@@ -507,7 +539,7 @@ async function edgeFunctionBody(
  */
 export async function generateCharacterImage(
   input: CharacterImageInput,
-): Promise<{ url: string }> {
+): Promise<CharacterImageResult> {
   if (!isSupabaseConfigured) {
     await new Promise((resolve) => setTimeout(resolve, 700));
     return { url: `draft-character://${input.requestId}` };
@@ -564,6 +596,14 @@ export async function generateCharacterImage(
         throw new CharacterPortraitGuestCapError(message);
       }
     }
+    // 402 is the six being spent and the balance being short. Unlike the two
+    // above it is not a wall: a top-up clears it, and the sheet that catches
+    // this is the one that can offer that.
+    if (edgeFunctionStatus(error) === 402) {
+      throw new CharacterPortraitInsufficientCreditsError(
+        "You're out of credits. Top up to make more characters.",
+      );
+    }
     throw new GenerationRequestError(
       "Could not create the character image. Please try again.",
       false,
@@ -582,7 +622,31 @@ export async function generateCharacterImage(
     );
   }
 
-  return { url };
+  // The authoritative count, from the response that just moved it. Every
+  // surface that quotes a portrait price reads this, so they cannot disagree
+  // about what the next one costs.
+  // `observe`, not `set`: two requests in flight can finish out of order, and
+  // the older answer must not raise a count the newer one already lowered.
+  if (typeof data?.free_remaining === "number") {
+    observeCharacterImagesRemaining(data.free_remaining);
+  }
+  if (typeof data?.balance === "number") {
+    setCharacterImageBalance(data.balance);
+  }
+
+  return {
+    url,
+    // What the server actually charged and what is left of the six, so the
+    // next quote comes from the ledger rather than from the client counting
+    // its own taps. Absent on any deploy older than 00088.
+    creditsCharged: typeof data?.credits_charged === "number"
+      ? data.credits_charged
+      : undefined,
+    freeRemaining: typeof data?.free_remaining === "number"
+      ? data.free_remaining
+      : undefined,
+    balance: typeof data?.balance === "number" ? data.balance : undefined,
+  };
 }
 
 export async function getLibrary(

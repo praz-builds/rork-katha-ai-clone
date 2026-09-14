@@ -22,6 +22,11 @@
 //      table, and cannot execute the RPCs.
 //   4. Neither table gained an INSERT grant.
 //   5. The claim / release contract from 00084 is unchanged by the grant.
+//
+// The counts below moved from four to six when 00088 widened this counter from
+// an anonymous-identity cap to every user's lifetime free allowance. Nothing
+// about the GRANT changed; the numbers are the subject under test only in the
+// sense that the contract has to still hold at whatever the ceiling is.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { assertRejects } from "https://deno.land/std@0.224.0/assert/assert_rejects.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
@@ -120,11 +125,11 @@ Deno.test("the service role can correct a count and clear a row", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 0; i < 4; i++) await claim(db, GUEST);
+    for (let i = 0; i < 6; i++) await claim(db, GUEST);
     assertEquals(await claim(db, GUEST), false);
 
     await db.exec("set role service_role");
-    // A support correction: four slots were spent on generations the provider
+    // A support correction: six slots were spent on generations the provider
     // mangled, and nobody called release.
     await db.query(
       "update guest_portrait_quotas set claimed_count = 1 where user_id = $1",
@@ -214,7 +219,7 @@ Deno.test("the claim and release contract is unchanged by the grant", async () =
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 6; i++) {
       assertEquals(await claim(db, GUEST), true, `claim ${i} was refused`);
     }
     assertEquals(await claim(db, GUEST), false);
@@ -231,7 +236,7 @@ Deno.test("the claim and release contract is unchanged by the grant", async () =
       "select user_id, claimed_count from guest_portrait_quotas order by user_id",
     );
     assertEquals(rows.rows.length, 2);
-    assertEquals(rows.rows[0].claimed_count, 4);
+    assertEquals(rows.rows[0].claimed_count, 6);
     assertEquals(rows.rows[1].claimed_count, 1);
     await db.exec("reset role");
   } finally {

@@ -68,6 +68,31 @@ serve(async (req) => {
       }
     }
 
+    // How many of the six free character images are left, so the client can
+    // price the button BEFORE the user taps it.
+    //
+    // It rides on bootstrap rather than on an endpoint of its own because this
+    // is the one call every client already makes at boot and after sign-in, and
+    // a second round trip for one small integer would be a second thing to keep
+    // in sync. A failure degrades to null and the client quotes nothing rather
+    // than quoting a guess -- an affordance that lies about a price is worse
+    // than one that shows none.
+    let characterImagesFreeRemaining: number | null = null;
+    {
+      const { data, error } = await serviceClient.rpc(
+        "character_image_free_remaining",
+        { p_user_id: user.id },
+      );
+      if (error) {
+        console.error(
+          "character_image_free_remaining failed:",
+          safeErrorMessage(error),
+        );
+      } else if (typeof data === "number") {
+        characterImagesFreeRemaining = data;
+      }
+    }
+
     // A character made before sign-in, on the one path where the identity
     // could not be kept. See migration 00082 for why this is verified here
     // rather than trusted from a user id in the body.
@@ -93,6 +118,8 @@ serve(async (req) => {
       rate_limited: rateLimited,
       // Additive: an older client that never sends a token always reads 0.
       claimed_characters: claimedCharacters,
+      // Additive too, and null when it could not be read. See above.
+      character_images_free_remaining: characterImagesFreeRemaining,
     });
   } catch (error) {
     console.error("bootstrap-user error:", safeErrorMessage(error));
