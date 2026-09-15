@@ -869,26 +869,32 @@ The failed-generation **auto-refund stays** (`refund_generation_operation`) but 
 
 ### Navigation
 
-3-tab layout: **Home** | **Create** (+, raised) | **Library**. Profile is a top-right avatar overlay, not a tab.
+Four icon-only tabs in a floating pill, with the **Create** button beside it on the right (since PR #97, 2026-09-14; it was a raised disc in the middle of a 3-tab bar): **Home** | **Explore** | **Library** | **You** (profile) | **+ Create**. `expo/src/components/BottomTabs.tsx` is the one bar; it sits `TAB_BAR_GAP` above the bottom safe-area inset on iOS and Android, caps at `controls.tabBarMaxWidth` (480pt) on wide windows, takes its sizes from the `controls` tokens, and does not animate the switch.
 
-- `TabKey`: `"home" | "create" | "library"`. `Screen` includes `{ name: "profile" }`.
-- **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): Progressive Editor flow (setup -> generating -> editor -> cover preview -> publish review -> publishing). Tab bar remains visible. Series mode adds chapter tabs with `+` tab in editor. Standalone stories skip chapter headings.
+- `TabKey` (`expo/src/types/domain.ts`): `"home" | "explore" | "create" | "library" | "profile"`. Profile is a real tab, not an avatar overlay.
+- Every tab screen pads its scroll content by `TAB_BAR_CLEARANCE` (exported from `BottomTabs.tsx`), never a literal.
+- **Home** (`expo/src/screens/HomeScreen.tsx`, one pure row-builder): Your stories -> Continue reading -> **Tonight** (`expo/src/lib/home-tonight.ts`, only when a reader answered the mood question in onboarding this session) -> Katha Originals -> one rail per onboarding genre, ordered by reads. Tonight is session-only by design ("Tonight only"); it is never persisted, and choosing Writing on the way back clears it. The order is the product owner's; do not reorder it in code.
+- **Explore** (`expo/src/screens/ExploreScreen.tsx`): discovery across genres and authors (PR #86).
+- **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
-- **Library**: 4 segments -- Saved, History, My Stories, Comments.
+- **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Notes.
 
 ### Onboarding
 
-- Entry point: `expo/src/screens/KathaOnboardingComplete.jsx`.
-- Composes `KathaOnboarding.jsx` and `KathaOnboardingFlowV2.jsx`.
-- 390 x 844 geometry, shared wordmark, fixed intro slots, read/write/both branches.
-- `KathaOnboardingFlowV2` emits collected result through `onDone`; persist when account/profile wiring is added.
-- Do not restore prototype's "Replay the flow" action. Success CTA hands off directly to Home.
-- Keep email/OTP after the paywall action; do not reintroduce mandatory authentication before personalization and value delivery.
-- Do not hard-code localized pricing when RevenueCat integration begins; render from store payload.
+`source-of-truth/ONBOARDING_FLOW.md` is canonical for every screen, string and transition; this section is only the map.
+
+- Entry point: `expo/src/screens/KathaOnboardingComplete.jsx`, which composes the three-screen animated intro `KathaOnboarding.jsx` and the questionnaire `KathaOnboardingFlowV2.tsx`. It fires `onCharacterPath`, and `App.tsx` then mounts `expo/src/screens/CharacterOnboarding.tsx` (W3 pitch -> W4 Craft -> W5 email -> code -> W6 Meet -> paywall -> welcome).
+- Questionnaire: name, three genre interests, then Reading / Writing / A bit of both. A **reader** then answers three questions of their own (how they like their stories, what they are in the mood for tonight, when they usually read); a writer and "both" answer two. The reader's mood feeds the Tonight rail on Home.
+- **One progress row.** `expo/src/lib/onboarding-progress.ts` is the single table of steps per purpose (eight for a reader, seven for a writer or "both"); both the questionnaire and the character screens read it, and `OnboardingTopBar` draws it. W4, W5, the code screen and W6 share one pill. Do not reintroduce a second progress indicator.
+- W4's CTA saves the character row and starts the portrait on the anonymous session; email/OTP covers the wait. Auth never gates the aha. Six character images per identity, then a reserved credit (migration 00088, `CREDITS_AND_PRICING.md`).
+- 390 x 844 geometry, light theme only, shared wordmark, fixed intro slots.
+- Do not restore the prototype's "Replay the flow" action. Success CTA hands off directly to Home.
+- Keep email/OTP after the value moment (the portrait); do not reintroduce mandatory authentication before personalization.
+- Do not hard-code localized pricing; render from the RevenueCat store payload.
 
 ### Product Integration Boundaries
 
-- Email/OTP, notification permission, subscriptions, restores, and offer purchases are currently UI handoff points. Keep callbacks explicit for Supabase/RevenueCat/native wiring.
+- Email/OTP is live (`expo/src/lib/session.ts`, Supabase `signInWithOtp` / `verifyOtp`, UI in `components/onboarding/EmailCodeAuth.tsx`). Notification permission, subscriptions, restores, and offer purchases are still UI handoff points; keep callbacks explicit for RevenueCat/native wiring.
 - Notification education: `Allow` is where the real native permission request must be inserted; only granted native response may set consent true.
 
 ### Production SDK Initialization
