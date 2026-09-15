@@ -888,14 +888,14 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - **One progress row.** `expo/src/lib/onboarding-progress.ts` is the single table of steps per purpose (eight for a reader, seven for a writer or "both"); both the questionnaire and the character screens read it, and `OnboardingTopBar` draws it. W4, W5, the code screen and W6 share one pill. Do not reintroduce a second progress indicator.
 - W4's CTA saves the character row and starts the portrait on the anonymous session; email/OTP covers the wait. Auth never gates the aha. Six character images per identity, then a reserved credit (migration 00088, `CREDITS_AND_PRICING.md`).
 - 390 x 844 geometry, light theme only, shared wordmark, fixed intro slots.
-- Do not restore the prototype's "Replay the flow" action. Success CTA hands off directly to Home.
-- Keep email/OTP after the value moment (the portrait); do not reintroduce mandatory authentication before personalization.
+- Do not restore the prototype's "Replay the flow" action. The welcome screen hands off straight into the tabs: a writer lands on Create with the onboarding character pre-filled as the hero, a reader or "both" lands on Home (`finishCharacterOnboarding` in `App.tsx`).
+- Email/OTP sits between W4 and W6 (W5 asks, the code screen verifies) so the two screens cover the portrait wait; the character already exists before the address is asked for. Do not move authentication ahead of W4, and do not reintroduce it as a gate before the aha.
 - Do not hard-code localized pricing; render from the RevenueCat store payload.
 
 ### Product Integration Boundaries
 
-- Email/OTP is live (`expo/src/lib/session.ts`, Supabase `signInWithOtp` / `verifyOtp`, UI in `components/onboarding/EmailCodeAuth.tsx`). Notification permission, subscriptions, restores, and offer purchases are still UI handoff points; keep callbacks explicit for RevenueCat/native wiring.
-- Notification education: `Allow` is where the real native permission request must be inserted; only granted native response may set consent true.
+- Email/OTP is live (`expo/src/lib/session.ts`, Supabase `signInWithOtp` / `verifyOtp`, UI in `components/onboarding/EmailCodeAuth.tsx`). Subscriptions, restores, and offer purchases are still UI handoff points; keep callbacks explicit for RevenueCat wiring.
+- Notification permission is requested once, when the onboarding paywall closes either way (`leavePaywall` in `CharacterOnboarding.tsx` calls `enableNotifications()`). iOS grants one OS dialog per install, so do not add a second ask elsewhere; only the granted native response may set consent true.
 
 ### Production SDK Initialization
 
