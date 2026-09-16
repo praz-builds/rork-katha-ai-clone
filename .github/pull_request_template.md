@@ -11,8 +11,8 @@
 ## Review Gate
 
 - [ ] Branch name uses `codex/<task-slug>`.
-- [ ] Latest CodeRabbit review completed successfully and approved the changes.
-- [ ] No CodeRabbit message says failed or requests changes.
+- [ ] Latest CodeAnt review completed successfully and raised nothing outstanding.
+- [ ] No CodeAnt message requests changes, and every actionable thread is answered.
 - [ ] All actionable review conversations are resolved.
 - [ ] Branch is current with `main`.
 
