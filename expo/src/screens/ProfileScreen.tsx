@@ -40,7 +40,7 @@ import {
   streakState,
 } from "@/lib/profile";
 import { revenueCatService } from "@/lib/revenuecat";
-import { signOutToGuest } from "@/lib/session";
+import { signOutToSignIn } from "@/lib/session";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
@@ -146,7 +146,7 @@ export default function ProfileScreen({
           text: "Sign out",
           style: "destructive",
           onPress: () => {
-            void signOutToGuest().then(onSignedOut).catch(() => {
+            void signOutToSignIn().then(onSignedOut).catch(() => {
               Alert.alert(
                 "Could not sign out",
                 "Something went wrong. Please try again.",

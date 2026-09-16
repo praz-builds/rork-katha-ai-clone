@@ -6,7 +6,7 @@ import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf } from "@/lib/api";
 import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
-import { bootstrapUser } from "@/lib/session";
+import { bootstrapUser, signOutToSignIn } from "@/lib/session";
 import { setEntitlementOverride } from "@/lib/entitlements";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
@@ -1057,10 +1057,17 @@ export default function App() {
             onPublicProfile={(authorId) =>
               setScreen({ name: "author", authorId })}
             onVoices={() => setScreen({ name: "voices" })}
-            // `signOutToGuest` has already reset the session; this is the app
-            // catching up with it and routing to sign-in (D1).
+            // `signOutToSignIn` has already cleared the session; this is the
+            // app catching up with it and routing to sign-in (D1).
             onSignedOut={leaveAccount}
             onDeleted={(storiesKept) => {
+              // The account is gone server-side, but its token is still on
+              // this device until something removes it. Clearing it is what
+              // stops the next launch restoring a session whose user no
+              // longer exists, which `bootstrapUser` can only recover from by
+              // minting a guest -- the exact identity D1 says must not appear
+              // behind the sign-in screen.
+              void signOutToSignIn();
               leaveAccount();
               Alert.alert(
                 "Your account is deleted",

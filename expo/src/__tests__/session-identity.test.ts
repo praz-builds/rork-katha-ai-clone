@@ -328,7 +328,20 @@ describe("a reload between the email screen and the code screen", () => {
   });
 });
 
-describe("signing out to a guest", () => {
+describe("signing out to the sign-in screen", () => {
+  // D1: signing out used to mint a fresh anonymous session, which left a live
+  // guest identity on the backend while the UI showed sign-in. It now clears
+  // the session and stops.
+  it("clears the session without minting a guest", async () => {
+    mockGetSession.mockResolvedValue(namedSession());
+    const { signOutToSignIn } = loadSession();
+
+    await signOutToSignIn();
+
+    expect(mockSignOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(mockSignInAnonymously).not.toHaveBeenCalled();
+  });
+
   it("drops a half-finished sign-in", async () => {
     mockGetSession.mockResolvedValue(guestSession());
     mockUpdateUser.mockResolvedValue({
@@ -339,10 +352,10 @@ describe("signing out to a guest", () => {
       data: { session: { access_token: "fresh-token" } },
       error: null,
     });
-    const { sendEmailCode, signOutToGuest, verifyEmailCode } = loadSession();
+    const { sendEmailCode, signOutToSignIn, verifyEmailCode } = loadSession();
 
     await sendEmailCode("writer@example.com");
-    await signOutToGuest();
+    await signOutToSignIn();
     mockGetSession.mockResolvedValue(namedSession());
     await verifyEmailCode("writer@example.com", "123456");
 
