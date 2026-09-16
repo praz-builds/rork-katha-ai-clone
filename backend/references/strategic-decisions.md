@@ -185,7 +185,7 @@ Deep-link based. New user installs from a referral link → account is tagged wi
 
 ### 5.4 Streak loop
 
-**Retuned, not removed.** Daily reading activity increments a streak counter; milestones pay **1 credit at day 2, day 5, day 7, then every 7 days** (`../../source-of-truth/CREDITS_AND_PRICING.md` §5). Streak breaks reset to zero and rewards restart at day 2. Dates are computed server-side and each milestone is keyed `streak:{user_id}:{milestone_day}` so replays are structural no-ops. The streak-warning push at 20:00 local time stays.
+**Retuned, not removed.** Daily reading activity increments a streak counter; milestones pay **1 credit at day 2, day 5, day 7, then every 7 days** (`../../source-of-truth/CREDITS_AND_PRICING.md` §5). **Superseded 2026-09-16 (pricing doc decision 49): the ladder is five rungs that rise, at days 2, 5, 10, 15 and 21, it terminates rather than repeating weekly, and it is data — `streak_ladder()`, migration 00089 — rather than a schedule written in two documents. The mechanism below is unchanged; the days and the amounts are not.** Streak breaks reset to zero and rewards restart at day 2. Dates are computed server-side and each milestone is keyed `streak:{user_id}:{milestone_day}` so replays are structural no-ops. The streak-warning push at 20:00 local time stays.
 
 ### 5.5 Ad loop (the paying-conversion funnel)
 
@@ -464,7 +464,7 @@ alter table profiles add column account_created_at timestamptz default now();
 | Your story crosses 10, 50, 100, 500, 1000 followers | Author | *"[N] people are waiting for chapter [next]"* |
 | You've earned 10, 50, 100 credits from reads | Author | *"Your readers just funded your next [N] stories"* |
 | Streak break warning at 20:00 local | User with active streak, no activity today | *"Your [N]-day streak is at risk. One story keeps it alive."* |
-| Streak milestone hit (2, 5, 7, then every 7 days) | User | *"[N]-day streak. Here's a credit on us."* |
+| Streak milestone hit (2, 5, 7, then every 7 days — superseded, see §5.4) | User | *"[N]-day streak. Here's a credit on us."* |
 | First generation completed | User (in-app moment, not push) | *"Your first story is ready. Welcome to Katha."* |
 
 All push notifications respect per-category opt-out in Settings → Notifications.
