@@ -968,13 +968,14 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - Never commit or push directly to `main`.
 - Before editing, fetch `origin/main` and create a `codex/<task-slug>` branch from it.
 - Commit only task-related files to the feature branch, push it, and open a pull request targeting `main`.
-- After every code-changing push, wait for CodeRabbit's incremental review.
-- Merge only when CodeRabbit's latest review completed successfully and approved the changes, no CodeRabbit message says failed or requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
-- A green CodeRabbit commit status alone is not approval. Read the latest review body and formal review state.
+- After every code-changing push, wait for **CodeAnt**'s incremental review (`@codeant-ai`).
+- Merge only when CodeAnt's latest review completed successfully and raised nothing outstanding, no message requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
+- A green commit status alone is not approval. Read the latest review body.
+- **CodeAnt skips a pull request that changes more than 100 files** and says so in a comment. A generated asset drop can trip that on a small code change -- PR #99 did, on 36 avatar files. Ask for the review explicitly with a `@codeant-ai : review` comment, and say in it which paths are worth looking at.
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
 - Exceptions require explicit user authorization and documentation in the pull request.
 
-CodeRabbit reviews `main` pull requests, including drafts and incremental pushes, and fails its status when review execution fails. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable for this private repository on its current plan, so this documented merge gate remains mandatory.
+CodeAnt reviews `main` pull requests, including drafts and incremental pushes. **`.coderabbit.yaml` is still tracked and is a leftover**: CodeRabbit is no longer the reviewer that runs on this repository, and the file configures nothing today. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable for this private repository on its current plan, so this documented merge gate remains mandatory.
 
 ## Reference Material
 
