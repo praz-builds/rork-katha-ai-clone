@@ -125,3 +125,113 @@ Two things would make it a non-issue even if it stood:
 
 No action. Re-check if the scanner keeps surfacing it — that would be a bug in
 its advisory feed rather than a change in our tree.
+
+---
+
+## Review of 2026-09-16 (branch `codex/profile-credits-launch`)
+
+A scan of the 00089 surface — the streak ladder, feedback claims, invite codes
+and the store reviewer's sign-in — returned nine findings. Five are fixed in
+this session; four are recorded here as accepted, with the reasoning, so that
+the next scan does not re-open them.
+
+| Finding | Where | Outcome |
+|---------|-------|---------|
+| `generateLink` could sign up a new auth user | `backend/supabase/functions/reviewer-signin/index.ts` | **Fixed** (see `build-log.md`) |
+| `content_reports` reason check was the union of both targets | migration 00090 | **Fixed** |
+| `streak_ladder()` missing its revoke/grant pair | migration 00090 | **Fixed** |
+| D9's qualifying read trusted a client-supplied duration | migration 00090 | **Fixed** |
+| `referral/index.ts` claimed globally unique operation keys | comment only | **Fixed** |
+| Per-email lockout on `reviewer-signin` is a denial-of-service on the reviewer | `reviewer_signin_locked` (00089) | **Accepted** |
+| `referral` `claim` has no rate limit | `backend/supabase/functions/referral/index.ts` | **Accepted** |
+| The upheld-report gate checks `actioned` only, and a claimed comment can be hard-deleted | `comment_credit_block_reason` (00089) | **Accepted** |
+| GHSA-2883-xcg3-v3hh — js-yaml | `expo/pnpm-workspace.yaml` | **Fixed by override** |
+
+---
+
+### Accepted — the per-email lockout can lock the store reviewer out
+
+`reviewer_signin_locked` refuses an address after five failures in fifteen
+minutes, and the bucket is the sha256 of the address, **not** of the address
+and the IP together. So anybody who knows the reviewer's address can send five
+wrong codes from anywhere and hold the account shut for a quarter of an hour,
+indefinitely, for the cost of five requests. The endpoint is `verify_jwt =
+false`, so no account is needed to do it.
+
+**Why this is accepted rather than fixed.**
+
+1. The address is not published. It reaches Google's review team through the
+   Play Console's App Access section and Apple's equivalent; neither surface is
+   public, and neither is indexed. An attacker has to be given the target
+   before they can attack it.
+2. The obvious alternative — scoping the lockout to (email, IP) rather than to
+   email — is worse. The code is six digits, a space of one million, and
+   `x-forwarded-for` is a header the caller writes. An attacker who rotates it
+   would get five guesses per rotation and no ceiling at all, which turns a
+   nuisance into an actual credential break. The per-IP limit that does exist
+   (100 an hour) is a backstop against volume, not an identity.
+3. The blast radius is one account for fifteen minutes. It cannot read
+   anything, cannot write anything, and cannot extend itself — a locked request
+   is refused *before* an attempt row is written, so hammering a locked address
+   does not push the window forward.
+
+**The mitigation, if it ever bites.** Rotate the six-digit code, re-seed
+`tester_accounts.code_hmac` with
+`hmac_sha256(email || ':' || code, REVIEWER_CODE_PEPPER)`, and hand the new
+code to the store. A rotation does not clear the lockout; it takes fifteen
+minutes of quiet for that, and the rotation is what stops a second round.
+Provisioning a second reviewer address is the other lever, and costs nothing.
+
+Re-open this if the reviewer's address ever appears in a public listing, a
+support macro, or a screenshot.
+
+---
+
+### Accepted — `referral` `claim` has no rate limit
+
+`claim_referral_code` is reachable once per authenticated caller with no
+per-minute ceiling in front of it, so an account can walk the code space and
+learn which codes exist. Codes are derived from public usernames, so the
+enumeration reveals nothing that a profile page does not, and a claim is
+one-shot per account: the first accepted code is recorded and every later
+attempt refuses with `already`. An attacker therefore gets one guess that pays,
+and the information they can farm before it is already on the profile.
+
+Worth adding a limiter when the referral surface next moves, not worth a
+migration of its own.
+
+---
+
+### Accepted — the upheld-report gate, and the deletable claimed comment
+
+Two narrower-than-the-spec behaviours in `comment_credit_block_reason`, both
+harmless as built:
+
+**`status = 'actioned'` only.** D9 says a comment that has been reported and
+upheld earns nothing. The gate reads `actioned` and ignores `reviewed`, so a
+report a moderator has looked at but not yet acted on does not block a claim.
+That is the correct direction to be wrong in — `reviewed` means "seen", not
+"upheld", and blocking on it would let any reporter suppress a credit by filing
+a report and waiting for a triage pass. If `reviewed` ever comes to mean
+"upheld, pending action", this becomes a real gap and the gate has to widen.
+
+**A claimed comment can still be hard-deleted.** The owner UPDATE policy
+excludes rows with `credit_claimed_at set`, which freezes the *content*, but
+the DELETE grant is table-wide, so the row itself can go. It does not reset
+anything: every cap in the gate — story, daily, monthly — counts rows in
+`credit_ledger`, never rows in `comments`. Deleting the comment therefore
+removes the feedback the author was paid for and leaves the payment, the
+`reference_id` and all three caps exactly where they were. The dishonest
+version of this attack costs the attacker a credit and buys them nothing.
+
+---
+
+### Fixed by override — js-yaml (GHSA-2883-xcg3-v3hh)
+
+Recorded here because it appears alongside the findings above and is **not**
+accepted. Both major lines in the Expo tree are pinned past the advisory
+through `overrides` in `expo/pnpm-workspace.yaml`: `js-yaml@3` → `3.15.2` and
+`js-yaml@4` → `4.3.2`. That is where pnpm 11 reads its settings from, not the
+`pnpm` block in `package.json` — the same rule the image-size patch entry
+above depends on. No further action; re-check the pins whenever the Expo
+toolchain's transitive `js-yaml` range moves.

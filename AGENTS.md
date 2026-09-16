@@ -340,7 +340,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 - Balance = newest ledger row by `created_at`, then **`ledger_sequence`**, never `id`. UUIDs are not chronological, and `refresh_subscription_grant` writes two rows in one transaction with an identical `created_at`, so ordering by `id` returns one of them at random. `00040` fixed the six functions that still did this, and its test scans every function in `public` and fails on any new one that gets it wrong.
 - **`SELECT ... FOR UPDATE SKIP LOCKED` must never be used in the credit RPCs.** They take `pg_advisory_xact_lock` plus `FOR UPDATE` on a single row keyed by `user_id`, and they must *block* under contention. Skipping would return "no row" and silently drop a deduction or a grant. `SKIP LOCKED` is correct only for independent queue rows, where skipping a row another worker already holds is the point.
 - **Auto-continue pre-buys its whole run, and the run is atomic.** `story_flow = 'auto'` means the reader asked not to be interrupted, so when chapter one lands `reserve_auto_chapter_run` works out `min(chapters the balance affords, chapters left in the plan)`, reserves **all of them in one transaction** and records the last one on `stories.auto_run_through_chapter`. A partial reservation is the failure it is designed against: six affordable must mean six reserved or none. Each chapter still gets its own `generation_operations` row and its own `deduct_credit`, so every existing refund path prices a chapter by reading the debit keyed to its operation. `reserve_generation_operation` CLAIMS a pre-bought row rather than inserting a second one (`claimed_at` is what stops two requests claiming the same paid chapter), and `refund_auto_chapter_run` hands back the unused remainder through `refund_generation_operation`, which is idempotent per operation. **Auto still never extends past the plan** -- extension is a deliberate tap (`p_extend_to_chapter`, 00085). Interactive stories and the chapter-end fallback reserve one chapter at a time, unchanged.
-- **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `feedback`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5).
+- **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `feedback`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5). `feedback` came back on 2026-09-16 (decision 51) as the claim `claim_comment_credit` writes, not as the retired post-time faucet.
 
 ## Grounding and the Entity Visibility Gate
 
@@ -451,7 +451,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `continue-story` | POST | Next chapter (author-only), max 7 chapters | Streams on `stream: true`; both transports return `story.series_state` / `story.beats` alongside the chapter |
 | `reimagine-chapter` | POST | Rewrite one existing chapter, optionally recasting it | Streams on `stream: true`. Forks the story for a non-author. 1 credit, refunded on failure |
 | `library` | GET | Paginated curated feed with genre filter + search; `?scope=mine` for the writer's own | Returns `cover_image_url`, `cover_status`, `chapters(count)`, `previously_summary`, `beats`, `series_state` — everything the Home "Your stories" rail and the chapter-end chips need |
-| `feedback` | POST | Comments + one-time feedback credit reward | Done |
+| `feedback` | POST | Posts a comment. Grants nothing: since migration 00089 the credit is claimed separately through `credit-claims` | Done |
 | `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
 | `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
 | `generate-audio` | POST | Cached narration lookup | Fresh RunPod generation is blocked until the durable 1-credit audio unlock exists |
@@ -850,19 +850,20 @@ Rules that constrain every future change:
 
 - **Subscription grants do not roll over**, and **credits lapse with the subscription** — when a plan ends the whole balance goes to zero, including earned and pack-purchased credits. What survives is the user's library, their unlocked audio, and free unlimited reading. Lapse must never be silent: 3-day pre-expiry warning stating the exact balance at risk, the same number in the cancellation flow. **Open item: confirm with App Review that voiding purchased pack credits is permitted** (`source-of-truth/CREDITS_AND_PRICING.md` §12).
 - **A subscription must always be the best price per credit against any pack it competes with.** Re-run the inversion check in `source-of-truth/CREDITS_AND_PRICING.md` §4 whenever a price or grant changes.
-- **Writer yearly is the binding constraint** at 40% margin at full burn. Test every pricing change against that row first.
+- **The yearly plan is the binding constraint**, tested at the worst story shape and never the blended one. Its margin figure lives in `source-of-truth/CREDITS_AND_PRICING.md` §4 and is not copied here. Test every pricing change against that row first.
+- **Country pricing is store-console work** (`source-of-truth/CREDITS_AND_PRICING.md` §3, decision 54): USD base, Google auto-convert, one manual override for India. The client renders RevenueCat's `priceString` and never converts a currency. Do not add conversion code.
 
 ### Free credit methods
 
-> Deliberately not reproduced. `source-of-truth/CREDITS_AND_PRICING.md` §5 is the only place these amounts and limits are written down, and this file's own working rules forbid copying its tables. The mechanics are: a reading streak, a referral, and a one-off welcome bonus.
+> Deliberately not reproduced. `source-of-truth/CREDITS_AND_PRICING.md` §5 is the only place these amounts and limits are written down, and this file's own working rules forbid copying its tables. The mechanics are: a reading streak with a fixed ladder of milestones, a claimed comment (feedback, read-gated and capped), a code-based referral, and a one-off welcome bonus.
 
-A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. The ladder is self-capping, so no monthly ceiling is enforced.
+A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. The ladder is data (`streak_ladder()`, migration 00089) and it terminates, so no monthly ceiling is enforced on it; the feedback claim carries its own monthly cap, which is the principle-7 bound.
 
 The failed-generation **auto-refund stays** (`refund_generation_operation`) but is not an earn mechanic and is not on this table.
 
-**Removed from the economy** -- do not reintroduce without amending `source-of-truth/CREDITS_AND_PRICING.md`: rewarded-ad credits, comment/feedback rewards, social post rewards, reader earnings, the flat daily app-open credit, premium voice tiers, and the 2x carry-over cap.
+**Removed from the economy** -- do not reintroduce without amending `source-of-truth/CREDITS_AND_PRICING.md`: rewarded-ad credits, social post rewards, reader earnings, the flat daily app-open credit, premium voice tiers, and the 2x carry-over cap. **Comment/feedback rewards are back as of 2026-09-16**, as a claim after a qualifying read under the caps in `source-of-truth/CREDITS_AND_PRICING.md` §5 (decision 51) -- the post-time faucet is not what returned.
 
-**Live defect:** `create_feedback` still grants a credit for a one-character comment, daily, uncapped. Disable before launch.
+**Resolved 2026-09-16:** the `create_feedback` faucet (a credit for a one-character comment, daily, uncapped) is retired by migration 00089; the RPC grants nothing and the credit is claimed through `claim_comment_credit`. **Tester accounts** (`tester_accounts`, premium override) are refused by every earn path and excluded from every metric (§9 of the pricing doc, decision 53).
 
 
 ## App Architecture
@@ -942,7 +943,7 @@ Node v22.23.0 for typecheck (v24 has tsc shim issues).
 
 ## Build Phases (Roadmap)
 
-See `backend/ROADMAP.md` for the full phased execution plan with checklists.
+See `backend/ROADMAP.md` for the full phased execution plan with checklists. The Play Store go-live checklist (pre-push / post-push, dated 2026-09-16) is its own section there: `backend/ROADMAP.md` § *Play Store go-live*.
 
 | Phase | Focus |
 |-------|-------|

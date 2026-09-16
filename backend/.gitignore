@@ -11,3 +11,9 @@ supabase/.temp/
 service-role-key.*
 provider-secret.*
 credentials.*
+
+# The store reviewer's six-digit sign-in code, written once at provisioning.
+# It is a live credential for an account with a paid entitlement override; it
+# belongs in the owner's password manager and the Play Console listing, never
+# in the repository.
+.reviewer-code.local

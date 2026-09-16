@@ -7,6 +7,277 @@
 
 ---
 
+## 2026-09-16 UTC — Security review close on 00089: the reviewer's account, the report targets, and a read gate that believed the client
+
+**Session:** `codex/profile-credits-launch`, WP1 (backend). Migration 00090
+pushed to `iafeuxgoiknncgyjmugd`; `reviewer-signin` and `referral` redeployed.
+Nine findings from the scan of 00089: five fixed, four recorded in
+[`SECURITY_TRIAGE.md`](../SECURITY_TRIAGE.md) with the reasoning for accepting
+them.
+
+### `reviewer-signin` could have minted a session for an account nobody provisioned
+
+MEDIUM, code only. After the HMAC verified, the function called
+`generateLink({type:"magiclink", email})` with **the address from the request**
+and returned the hash. `generateLink` for a magic link is a SIGN-UP path in
+GoTrue: an address it cannot find is created. So any drift between
+`tester_accounts.email` and the auth user's address — a rename, a re-seed
+against the wrong row, a typo in a provisioning script — would have produced a
+`token_hash` for a brand-new, empty account rather than a refusal, and the
+client would have exchanged it for a perfectly valid session.
+
+`tester_accounts.user_id` is now authoritative, in two steps. The address is
+read back out of `auth.users` by that id (`auth.admin.getUserById`) and it is
+*that* address `generateLink` is given, so the lookup can no longer miss; and
+the user the link resolves to is compared against the same id before anything
+is returned, so a sign-up that happened anyway is refused. Both refusals are
+`401 {"error":"invalid"}` — byte for byte what every other failure returns —
+and both happen after the attempt row is written, so the lockout arithmetic and
+the timing of every failure path are unchanged. A missing auth user is
+`reviewer_tester_user_missing`; a mismatched one is `reviewer_user_mismatch`,
+both `high` in `error_events`.
+
+Four tests added, with the network stubbed the way `save-phrase/index.test.ts`
+does it: the happy path returns a `token_hash` **and** proves the link was
+minted for the `auth.users` address rather than the one typed at the door; a
+link resolving to any other user id is refused with no token; a row whose
+`user_id` has no address refuses before `generate_link` is called at all; and a
+wrong code still fails before either admin call happens.
+
+### Migration 00090 — three things the table allowed that the function did not
+
+`content_reports` is reachable without the edge function. It carries a
+column-scoped INSERT grant to `authenticated` and an `auth.uid() =
+reporter_id` policy, so a client with the anon key and a session can POST
+straight to PostgREST. 00089 widened `content_reports_reason_check` to the
+UNION of the story reasons and the comment reasons, because one column now
+serves two targets — which meant a comment could be filed as
+`inappropriate_cover` (a comment has no cover) and a story as `hate_speech`.
+The constraint is now target-aware: `story_id is not null` selects
+`copyright, inappropriate_content, inappropriate_cover, other`, and the comment
+branch keeps the original eight. `content_reports_exactly_one_target` (00043)
+makes that a total discriminator, so no third branch is needed. The details
+ceiling moves the same way — 1,000 for a story (D13, what
+`validateStoryReportDetails` enforces), 2,000 for a comment — as a second
+constraint under the column's own 2,000 outer bound.
+
+Both are added inside a `do` block that counts violating rows first. With none,
+the constraint is added and validated; with any, it is added `not valid` and a
+warning names the count, because a single historical row must not turn a
+security fix into a failed deploy — `not valid` still binds every INSERT and
+UPDATE from that moment, it only declines to re-read the history. The push
+surfaced no warning and the live behaviour below is the validated behaviour.
+
+**D9's qualifying read no longer takes the client's word for it.** The gate
+summed `story_reads.duration_seconds` and asked for 120. `record-read` bounds
+that column 0..86400 and otherwise believes it, so **one** POST with
+`durationSeconds: 86400` was a qualifying read, and a claim could be fabricated
+in two requests with nothing read. The sum stays — removing it would let a
+hundred one-second reads qualify — and a second, independent condition sits
+under it: at least one `story_reads` row for that (user, story) whose
+**server-set** `read_at` is 60 seconds or more older than the comment's
+`created_at`. `read_at` defaults to `now()` and `record_read` (00052) never
+passes the column, which is what makes it the one part of the evidence a forged
+request cannot choose. 60 rather than 120 because the window measures the
+distance between two server writes, not reading time: a same-round-trip
+forgery cannot produce it, and an attacker patient enough to wait 60 seconds is
+equally happy to wait 120, so the larger number only starts refusing fast,
+genuine readers. **The reason string is still `not_read`**, so no client copy
+moves. `idx_story_reads_user_story_read_at` backs the new `exists`.
+
+**`streak_ladder()` gets the grants every other 00089 function has.** It leaks
+nothing — five hard-coded pairs the client already renders from
+`profile_overview` — so this is consistency, not containment: one function
+without the pair is a thing somebody has to re-derive the safety of later. Its
+SECURITY DEFINER callers run as the owner and do not notice.
+
+### `referral`'s header comment was wrong about the ledger
+
+LOW, comment only. It said the two operation keys exist "because the ledger's
+operation keys are globally unique". They are not.
+`idx_credit_ledger_operation_key` (00005) is unique on
+`(user_id, operation_key)`, and the only global index,
+`idx_credit_ledger_external_operation_key`, is partial — `reason in
+('purchase','subscription')` alone. The two halves of a referral go to two
+different users and could in fact share one key. The comment now says so, and
+states the real reason two keys are still right: the side has to be legible in
+the ledger for reconciliation, and a future change that ever pays both halves
+to one account would otherwise drop the second grant silently.
+
+### Accepted, not fixed
+
+Four, each with its reasoning in `SECURITY_TRIAGE.md`: the per-email lockout on
+`reviewer-signin` can hold the store reviewer out for fifteen minutes (the
+address is not public, and IP-scoping the lockout would weaken a six-digit
+space); `referral` `claim` has no rate limit (codes derive from public
+usernames, a claim is one-shot); the upheld-report gate reads `actioned` and
+not `reviewed` (the safe direction), and a claimed comment can be hard-deleted
+(harmless — every cap counts from `credit_ledger`, never from `comments`). The
+js-yaml advisory GHSA-2883-xcg3-v3hh is recorded there as **fixed** by the
+`expo/pnpm-workspace.yaml` overrides, not accepted.
+
+### Found while verifying, not fixed
+
+`service_role` has no `SELECT` on `public.content_reports`. 00043 revoked all
+from `public, anon` and granted only a column-scoped INSERT to
+`authenticated`, so the "moderation happens through the service role" note in
+that file describes an access the role does not have — `select` over PostgREST
+returns `42501`. Bypassing RLS is not the same as holding the privilege. It is
+a missing capability rather than an exposure, and it belongs with whatever
+builds the moderation surface, so it is not fixed here. It is also why the
+report smoke below is written the way it is.
+
+### Gates
+
+`deno fmt --check` and `deno check` clean on `reviewer-signin/index.ts`,
+`reviewer-signin/index.test.ts`, `referral/index.ts` and the new migration
+test. `deno test`: 7 new migration tests over 00090, 13 over `reviewer-signin`
+(4 new), and no regression — 21 over 00089 and 26 over `comments` still pass,
+including 00089's own read-gate cases, whose reads are recorded an hour before
+their comments and clear the new 60-second rule unchanged.
+
+**Live smoke against production, after the push and the two deploys.**
+`reviewer-signin` with a wrong code → `401 {"error":"invalid"}`; with the right
+code → `200 {token_hash, type}`, exchanged at `/auth/v1/verify` for a real
+session whose user is `41aa7229-f352-4b63-9a2a-ff9853c5e6ed` — the
+pre-provisioned id, which is the whole point of the fix.
+
+The report constraint was then exercised at the database layer as that
+authenticated user, POSTing straight to PostgREST with deliberately
+non-existent target ids. A CHECK constraint is evaluated on the heap insert and
+a foreign key is an AFTER trigger, so a `23503` proves the check passed and a
+`23514` proves it fired — and **no row is written either way**, which is what
+makes this safe to run against production moderation data:
+
+- story + `inappropriate_cover` → `23503` (check passed) — still works
+- story + `hate_speech` → `23514 content_reports_reason_check`
+- comment + `inappropriate_cover` → `23514 content_reports_reason_check`
+- comment + `spam` → `23503` (check passed)
+- story + `other` + 1,001 characters → `23514 content_reports_details_target_check`
+
+`error_events` is empty for the window (no rows since `2026-09-16T00:00:00Z`).
+
+**Not committed, not pushed.**
+
+---
+
+## 2026-09-16 UTC — The streak ladder, feedback claims, invite codes, creature avatars, one plan, and the store reviewer's account
+
+**Session:** `codex/profile-credits-launch`, WP1 (backend). Migration 00089
+pushed to `iafeuxgoiknncgyjmugd`; eight edge functions deployed; one new
+secret; two tester accounts provisioned.
+
+### Migration 00089 — six things that ship as one screen
+
+`streak_ladder()` is now the only place the rungs are written down (day
+2/5/10/15/21 pay 2/4/6/8/10, 30 lifetime, nothing repeats). `touch_streak`
+keeps 00069's `activity_days` insert and its same-day early return, and pays
+a rung through `grant_credit` with op key `streak:{user_id}:{milestone}` the
+moment `current_streak` reaches it — so the ledger's own uniqueness, not a
+flag, is what makes a rung unrepeatable. Accounts that had already passed a
+rung are backfilled as `credited = false` with `achieved_at = streaks
+.updated_at`: the economy did not pay for those days when they happened and
+does not pay for them retroactively.
+
+The `create_feedback` faucet stops granting. `claim_comment_credit` pays one
+credit for a comment the reader explicitly claims, under every rule of
+decision D9 — forty characters, somebody else's story, two minutes of reading
+recorded BEFORE the comment, one per story, one per day, six per month, not
+deleted, not upheld-reported, not a tester — all in SQL, none in the client,
+all re-derived under the lock immediately before the grant. A claimed comment
+is frozen: the owner UPDATE policy no longer matches it.
+
+Invite codes: `profiles.referral_code` (unique), `referrals` gains
+`unique(referred_id)`, `check (referrer_id <> referred_id)`, `claimed_at` and
+`credited_at`. `settle_referrals` pays 10 and 5 in one transaction under
+**two** operation keys, `referral:referrer:{referred_id}` and
+`referral:invitee:{referred_id}` — operation keys are globally unique, so a
+single key for both halves would have made the second grant vanish as a
+duplicate of the first. `complete_story_generation` and
+`complete_continuation_generation` stamp `first_generation_at` and settle;
+`profile` settles again on every open, because the 24-hour rule has no event
+to fire on.
+
+`ensure_identity` gives any profile missing them a handle
+(`adjective_noun_NN`, unique by retry against the index), a creature
+(`avatar_id`, deterministic from the user id) and an invite code.
+`avatar_id` and `avatar_url` are mutually exclusive in both directions.
+
+`tester_accounts`, `reviewer_signin_attempts` (sha256 digests only, never the
+address) and `reviewer_signin_locked` (5 failures per email per 15 min, 100
+attempts per IP per hour). `profiles.entitlement_override` reads as the plan
+without a receipt. **Every earn path refuses a tester** — streak, feedback
+and referral alike.
+
+Story reports accept `copyright`, `inappropriate_content` and
+`inappropriate_cover`; details are optional for a story and still required for
+a comment.
+
+### Functions
+
+New: `credit-claims` (list, claim), `referral` (code, claim),
+`reviewer-signin` (`verify_jwt = false`). The first two verify the caller's
+JWT with the anon key and then use a service-role client for the one purpose
+of invoking a SECURITY DEFINER RPC with the **verified** id — never a body
+field. `reviewer-signin` answers an identical `401 {"error":"invalid"}` for an
+unknown address, a wrong code, a lockout and a missing pepper, computes and
+compares the HMAC even when there is no account (so the unknown-email path
+does not answer faster), and writes no address or code to any table or log.
+
+Changed: `profile` (overview additions, `creature`, `ledger`,
+`settle_referrals`), `bootstrap-user` (`ensure_identity`, non-guests only),
+`comments` (target-aware report reasons), `_shared/revenuecat.ts`.
+
+### One plan, five packs
+
+`REVENUECAT_PRODUCT_MAP` is now `ai.katha.sub.{weekly,monthly,yearly}` at
+20/50/50 credits with 10 trial credits and the single entitlement `katha`,
+plus `ai.katha.credits.{2,10,50,200,1000}` paying exactly the number in the
+id. The reader/writer ladder and the small/medium/large packs are **absent,
+not remapped**: nothing was ever sold under them, so an event naming one is a
+store misconfiguration and "Unknown product" is the honest answer.
+
+### Entitlement override — what it does and does not reach
+
+Grepped the whole backend for a paid-tier read. There is no server-side
+entitlement gate: `refresh-subscription-grants` and `revenuecat-webhook` write
+the subscription record, `voices.tier` is a label, and narration is governed by
+`NARRATION_GENERATION_ENABLED` alone — an operational kill switch that says
+whether the provider is open for business, which is not something an account
+can be entitled to. So the override is **reported**, through
+`profile_overview` → `OwnProfile.entitlementOverride`, and applied by the
+client. Nothing was changed to honour it, because there was nothing to change.
+
+### Deployed and verified
+
+`supabase db push` (00089 the only pending migration), then
+`supabase functions deploy` for `credit-claims`, `referral`,
+`reviewer-signin`, `profile`, `bootstrap-user`, `comments`,
+`revenuecat-webhook` and `refresh-subscription-grants`. Secret
+`REVIEWER_CODE_PEPPER` set (32 random bytes, hex).
+
+`reviewer@thetractionlabs.com` (`41aa7229-f352-4b63-9a2a-ff9853c5e6ed`) created
+with `email_confirm`; `theprasannkumar@gmail.com`
+(`dd8e3937-6db9-4784-ae8b-2bfc14a540c0`) already existed. Both are in
+`tester_accounts` with `premium = true` and `entitlement_override = 'katha'`,
+and both hold 200 credits granted under op key `tester_seed:{email}`. Only the
+reviewer has a `code_hmac`; the plaintext is in `backend/.reviewer-code.local`,
+which is gitignored.
+
+Live smoke against production: wrong code → `401 {"error":"invalid"}`, right
+code → `token_hash`, exchanged for a real session, then `profile` `me` (all six
+new fields present, ladder of five, milestones of five), `credit-claims` list,
+`referral` code, `profile` ledger and `creature` (k99 → 400). Story report with
+`inappropriate_cover` and no details reaches the database; `hate_speech` on a
+story and `inappropriate_cover` on a comment are both refused. `error_events`
+is empty for the window.
+
+`deno fmt --check`, `deno check` and `deno test` are clean across every changed
+file: 99 tests over 00089, `credit-claims`, `referral`, `reviewer-signin`,
+`comments`, `_shared/profile` and `_shared/revenuecat`.
+
+---
+
 ## 2026-09-14 UTC — Reader onboarding: three reader questions, one progress row, the Tonight rail, and the tab bar's CTA at the end
 
 **Session:** `codex/reader-onboarding`, client only. No schema change, nothing

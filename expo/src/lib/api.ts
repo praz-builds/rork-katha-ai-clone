@@ -2636,3 +2636,241 @@ export async function registerPushToken(
   });
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------------
+// Free credits: feedback claims (D9) and invite codes (D10)
+// ---------------------------------------------------------------------------
+
+export type CreditClaimStatus = "claimable" | "claimed" | "ineligible";
+
+export type CreditClaim = {
+  commentId: string;
+  storyId: string;
+  storyTitle: string;
+  excerpt: string;
+  createdAt: string | null;
+  status: CreditClaimStatus;
+  /** Why an `ineligible` comment cannot be claimed, as the server's key. */
+  reason?: string;
+};
+
+export type CreditClaimsResult = {
+  claims: CreditClaim[];
+  remaining: { today: number; month: number };
+};
+
+export type ClaimCreditFailure =
+  | "too_short"
+  | "own_story"
+  | "not_read"
+  | "already_claimed"
+  | "story_cap"
+  | "daily_cap"
+  | "monthly_cap"
+  | "deleted"
+  | "reported"
+  | "tester"
+  | "offline";
+
+export type ClaimCreditResult =
+  | { ok: true; credits: number; balance: number }
+  | { ok: false; reason: ClaimCreditFailure };
+
+const CLAIM_FAILURES: readonly ClaimCreditFailure[] = [
+  "too_short",
+  "own_story",
+  "not_read",
+  "already_claimed",
+  "story_cap",
+  "daily_cap",
+  "monthly_cap",
+  "deleted",
+  "reported",
+  "tester",
+];
+
+function claimStatus(value: unknown): CreditClaimStatus {
+  return value === "claimable" || value === "claimed" ? value : "ineligible";
+}
+
+/**
+ * The caller's recent comments on other people's stories, each marked as
+ * claimable, already claimed, or ineligible, with how many claims are left
+ * today and this month. Null when the list could not be read.
+ */
+export async function fetchCreditClaims(): Promise<CreditClaimsResult | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("credit-claims", {
+      body: { action: "list" },
+    });
+    if (error || !data || !Array.isArray(data.claims)) return null;
+    const remaining = (data.remaining ?? {}) as Record<string, unknown>;
+    return {
+      claims: (data.claims as unknown[])
+        .map((row): CreditClaim | null => {
+          const record = row as Record<string, unknown> | null;
+          if (!record || typeof record.commentId !== "string") return null;
+          return {
+            commentId: record.commentId,
+            storyId: typeof record.storyId === "string" ? record.storyId : "",
+            storyTitle: typeof record.storyTitle === "string" ? record.storyTitle : "",
+            excerpt: typeof record.excerpt === "string" ? record.excerpt : "",
+            createdAt: typeof record.createdAt === "string" ? record.createdAt : null,
+            status: claimStatus(record.status),
+            ...(typeof record.reason === "string" ? { reason: record.reason } : {}),
+          };
+        })
+        .filter((claim): claim is CreditClaim => claim !== null),
+      remaining: {
+        today: typeof remaining.today === "number" ? remaining.today : 0,
+        month: typeof remaining.month === "number" ? remaining.month : 0,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Claim the one feedback credit for a comment.
+ *
+ * Every rule is the server's (length, a qualifying read before the comment,
+ * one per story, one per day, six per month, not reported, not a tester).
+ * The client only relays the verdict; `requestId` makes a double tap one
+ * claim rather than two.
+ */
+export async function claimCommentCredit(
+  commentId: string,
+  requestId: string = createGenerationRequestId(),
+): Promise<ClaimCreditResult> {
+  if (!isSupabaseConfigured) return { ok: false, reason: "offline" };
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("credit-claims", {
+      body: { action: "claim", comment_id: commentId, request_id: requestId },
+    });
+    if (error || !data) return { ok: false, reason: "offline" };
+    if (data.ok === true) {
+      return {
+        ok: true,
+        credits: typeof data.credits === "number" ? data.credits : 1,
+        balance: typeof data.balance === "number" ? data.balance : NaN,
+      };
+    }
+    const reason = CLAIM_FAILURES.find((candidate) => candidate === data.reason);
+    return { ok: false, reason: reason ?? "offline" };
+  } catch {
+    return { ok: false, reason: "offline" };
+  }
+}
+
+/** The sentence under a refused claim. */
+export function claimFailureMessage(reason: ClaimCreditFailure): string {
+  switch (reason) {
+    case "too_short":
+      return "Comments need at least 40 characters to earn a credit.";
+    case "own_story":
+      return "Comments on your own stories do not earn credits.";
+    case "not_read":
+      return "Read the story first, then the comment counts.";
+    case "already_claimed":
+      return "You have already claimed this one.";
+    case "story_cap":
+      return "One credit per story.";
+    case "daily_cap":
+      return "You have claimed today's credit. Come back tomorrow.";
+    case "monthly_cap":
+      return "You have claimed this month's six.";
+    case "deleted":
+      return "That comment was deleted.";
+    case "reported":
+      return "That comment was reported and cannot earn a credit.";
+    case "tester":
+      return "Test accounts do not earn credits.";
+    case "offline":
+      return "That could not be claimed just now. Try again in a moment.";
+  }
+}
+
+export type ReferralCode = {
+  code: string;
+  invited: number;
+  credited: number;
+  monthRemaining: number;
+};
+
+/** The caller's invite code and its counts, or null. */
+export async function fetchReferralCode(): Promise<ReferralCode | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("referral", {
+      body: { action: "code" },
+    });
+    if (error || typeof data?.code !== "string") return null;
+    return {
+      code: data.code,
+      invited: typeof data.invited === "number" ? data.invited : 0,
+      credited: typeof data.credited === "number" ? data.credited : 0,
+      monthRemaining: typeof data.monthRemaining === "number" ? data.monthRemaining : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type ReferralClaimFailure = "self" | "invalid" | "already" | "too_old" | "tester" | "offline";
+
+export type ReferralClaimResult =
+  | { ok: true }
+  | { ok: false; reason: ReferralClaimFailure };
+
+const REFERRAL_FAILURES: readonly ReferralClaimFailure[] = [
+  "self",
+  "invalid",
+  "already",
+  "too_old",
+  "tester",
+];
+
+/**
+ * Enter somebody else's invite code. Accepted on accounts under seven days
+ * old; the payout itself lands later, once this account has generated
+ * something and is a day old, and the server settles it on the next fetch.
+ */
+export async function claimReferralCode(code: string): Promise<ReferralClaimResult> {
+  const trimmed = code.trim();
+  if (trimmed.length === 0) return { ok: false, reason: "invalid" };
+  if (!isSupabaseConfigured) return { ok: false, reason: "offline" };
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("referral", {
+      body: { action: "claim", code: trimmed },
+    });
+    if (error || !data) return { ok: false, reason: "offline" };
+    if (data.ok === true) return { ok: true };
+    const reason = REFERRAL_FAILURES.find((candidate) => candidate === data.reason);
+    return { ok: false, reason: reason ?? "offline" };
+  } catch {
+    return { ok: false, reason: "offline" };
+  }
+}
+
+export function referralFailureMessage(reason: ReferralClaimFailure): string {
+  switch (reason) {
+    case "self":
+      return "That is your own code.";
+    case "invalid":
+      return "That code does not match anyone.";
+    case "already":
+      return "This account has already used an invite code.";
+    case "too_old":
+      return "Invite codes work on accounts less than a week old.";
+    case "tester":
+      return "Test accounts cannot use invite codes.";
+    case "offline":
+      return "That could not be checked just now. Try again in a moment.";
+  }
+}

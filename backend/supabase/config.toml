@@ -28,3 +28,10 @@ verify_jwt = false
 
 [functions.refresh-subscription-grants]
 verify_jwt = false
+
+# The store reviewer has no session to present: that is the whole point of the
+# function. Every other protection it needs -- one fixed address, a peppered
+# HMAC, a constant-time compare, an identical 401 for every failure, and a
+# per-email/per-IP lockout -- is inside the function itself.
+[functions.reviewer-signin]
+verify_jwt = false

@@ -30,8 +30,10 @@ jest.mock("expo-image-manipulator", () => ({
 
 import {
   claimUsername,
+  FALLBACK_LADDER,
   isRealAuthorId,
   nextMilestone,
+  nextRung,
   pickAndUploadAvatar,
   streakState,
   usernameMessage,
@@ -336,14 +338,34 @@ describe("streak state across day boundaries", () => {
 });
 
 describe("milestones", () => {
+  // The ladder is D2 now: 2, 5, 10, 15, 21, paying 2/4/6/8/10 once each.
+  it("runs the five rungs the server pays out on", () => {
+    expect(FALLBACK_LADDER.map((rung) => [rung.milestone, rung.credits])).toEqual([
+      [2, 2],
+      [5, 4],
+      [10, 6],
+      [15, 8],
+      [21, 10],
+    ]);
+  });
+
   it("only names one when it is close enough to act on", () => {
-    expect(nextMilestone(5)).toBe(7);
-    expect(nextMilestone(6)).toBe(7);
-    // Four days out: mentioning it every day would make it wallpaper.
-    expect(nextMilestone(3)).toBeNull();
+    expect(nextMilestone(3)).toBe(5);
+    expect(nextMilestone(7)).toBe(10);
+    // Five days out: mentioning it every day would make it wallpaper.
+    expect(nextMilestone(5)).toBeNull();
     expect(nextMilestone(0)).toBeNull();
     // Past the last one there is nothing left to promise, so nothing is said.
     expect(nextMilestone(400)).toBeNull();
+  });
+
+  // The server's ladder wins; the constant is only the fallback.
+  it("uses the ladder it is handed rather than the fallback", () => {
+    expect(nextMilestone(3, [{ milestone: 4, credits: 3 }])).toBe(4);
+    expect(nextRung(3, [{ milestone: 4, credits: 3 }])).toEqual({
+      milestone: 4,
+      credits: 3,
+    });
   });
 });
 

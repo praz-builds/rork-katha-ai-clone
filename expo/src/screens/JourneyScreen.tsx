@@ -21,9 +21,10 @@ import {
 } from "lucide-react-native";
 import ActivityGrid from "@/components/profile/ActivityGrid";
 import {
+  FALLBACK_LADDER,
   fetchActivityCalendar,
   type OwnProfile,
-  STREAK_MILESTONES,
+  type StreakRung,
   streakState,
 } from "@/lib/profile";
 import { colors, fonts, radius, spacing } from "@/theme";
@@ -46,14 +47,13 @@ import { sharedStyles } from "@/screens/shared";
  * streak turns a private record of a habit into a scoreboard. The owner's
  * decision, and the right one.
  *
- * NO COMMENTS EITHER. They were considered for this screen and belong on the
- * public profile instead, under the activity and the follower counts, because
- * a comment is a thing said to other people and this page is not for them.
- *
- * MILESTONES ARE NOT REWARDS. Reaching one grants nothing — no credit, no
- * badge, no unlock — because none of those exist, and inventing them here
- * would be the dishonest gamification the rest of the streak surface has
- * carefully avoided. A milestone is a name for a number, which is enough.
+ * MILESTONES ARE THE LADDER (D2). Five rungs, at 2, 5, 10, 15 and 21 days,
+ * paying 2, 4, 6, 8 and 10 credits once each, and this page lists exactly
+ * those with what each pays. The rungs come from `profile.ladder`, which is
+ * the server's `streak_ladder()`, so the page cannot promise a rung the
+ * server does not pay; `FALLBACK_LADDER` stands in only when a deploy
+ * predates it. A reached rung reads "Achieved on Sep 8, 2026" from
+ * `profile.milestones`, which is the row the grant was written against.
  */
 export default function JourneyScreen({
   profile,
@@ -114,6 +114,11 @@ export default function JourneyScreen({
     );
   }
 
+  const ladder: readonly StreakRung[] = profile.ladder.length > 0
+    ? profile.ladder
+    : FALLBACK_LADDER;
+  const rows = ladder.map((rung) => milestoneRow(rung, profile, current, longest));
+
   return (
     <SafeAreaView style={styles.flex} edges={["top"]}>
       <ScrollView
@@ -133,11 +138,11 @@ export default function JourneyScreen({
           <Text style={styles.title}>Your journey</Text>
         </View>
 
-        {profile?.memberSince && (
+        {profile.memberSince && (
           <View style={styles.memberSince}>
             <CalendarDays size={16} color={colors.muted} />
             <Text style={styles.memberSinceText}>
-              Member since {formatJoined(profile.memberSince)}
+              Member since {formatDate(profile.memberSince)}
             </Text>
           </View>
         )}
@@ -188,57 +193,87 @@ export default function JourneyScreen({
 
         <Text style={styles.sectionTitle}>Milestones</Text>
         <View style={styles.milestones}>
-          {STREAK_MILESTONES.map((milestone, index) => {
-            // Achieved is measured against the LONGEST streak, not the current
-            // one. Something reached in March stays reached in June; a
-            // milestone that un-achieves itself when a streak breaks would
-            // punish the same lapse twice.
-            const achieved = longest >= milestone;
-            return (
+          {rows.map((row, index) => (
+            <View
+              key={row.milestone}
+              testID={`milestone-${row.milestone}`}
+              style={[
+                styles.milestoneRow,
+                index < rows.length - 1 && styles.milestoneDivider,
+              ]}
+            >
               <View
-                key={milestone}
-                testID={`milestone-${milestone}`}
                 style={[
-                  styles.milestoneRow,
-                  index < STREAK_MILESTONES.length - 1 && styles.milestoneDivider,
+                  styles.milestoneIcon,
+                  row.achieved ? styles.milestoneIconDone : styles.milestoneIconLocked,
                 ]}
               >
-                <View
-                  style={[
-                    styles.milestoneIcon,
-                    achieved ? styles.milestoneIconDone : styles.milestoneIconLocked,
-                  ]}
-                >
-                  {achieved
-                    ? <Check size={16} color={colors.accent} strokeWidth={3} />
-                    : <Lock size={14} color={colors.tertiary} />}
-                </View>
-                <View style={styles.milestoneText}>
-                  <Text style={styles.milestoneTitle}>
-                    {milestone} day streak
-                  </Text>
-                  <Text style={styles.milestoneCaption}>
-                    {achieved
-                      ? "Reached"
-                      : current > 0
-                      ? `${milestone - current} to go`
-                      : "Keep going"}
-                  </Text>
-                </View>
+                {row.achieved
+                  ? <Check size={16} color={colors.accent} strokeWidth={3} />
+                  : <Lock size={14} color={colors.tertiary} />}
               </View>
-            );
-          })}
+              <View style={styles.milestoneText}>
+                <Text style={styles.milestoneTitle}>
+                  {row.milestone} day streak
+                </Text>
+                <Text
+                  style={[styles.milestoneCaption, row.achieved && styles.milestoneCaptionDone]}
+                >
+                  {row.caption}
+                </Text>
+              </View>
+              <Text style={[styles.milestoneCredits, row.achieved && styles.milestoneCreditsDone]}>
+                +{row.credits} {row.credits === 1 ? "credit" : "credits"}
+              </Text>
+            </View>
+          ))}
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+type MilestoneRow = {
+  milestone: number;
+  credits: number;
+  achieved: boolean;
+  caption: string;
+};
+
+/**
+ * One rung, as the page describes it.
+ *
+ * Achieved is read from `profile.milestones` first, which carries the date
+ * the rung was reached, and from the LONGEST streak second, for a deploy that
+ * has not written those rows yet. Never from the current streak: something
+ * reached in March stays reached in June, and a rung that un-achieves itself
+ * when a streak breaks punishes the same lapse twice.
+ */
+function milestoneRow(
+  rung: StreakRung,
+  profile: OwnProfile,
+  current: number,
+  longest: number,
+): MilestoneRow {
+  const reached = profile.milestones.find((row) => row.milestone === rung.milestone);
+  const achievedOn = reached?.achievedAt ? formatDate(reached.achievedAt) : "";
+  // `achievedAt`, not the row's existence: the server returns a row for EVERY
+  // rung on the ladder, reached or not, and reading presence alone lit up all
+  // five the moment a brand-new account opened this page.
+  const achieved = Boolean(reached?.achievedAt) || longest >= rung.milestone;
+  const caption = achieved
+    ? achievedOn ? `Achieved on ${achievedOn}` : "Achieved"
+    : current > 0
+    ? `${rung.milestone - current} to go`
+    : "Keep going";
+  return { milestone: rung.milestone, credits: rung.credits, achieved, caption };
+}
+
 /** "Aug 1, 2026" from an ISO timestamp, read as UTC so it never drifts a day. */
-function formatJoined(iso: string): string {
+function formatDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -379,5 +414,13 @@ const styles = {
       color: colors.muted,
       fontSize: 13,
     },
+    milestoneCaptionDone: { color: colors.accent },
+    milestoneCredits: {
+      fontFamily: fonts.ui,
+      color: colors.tertiary,
+      fontWeight: "800",
+      fontSize: 13,
+    },
+    milestoneCreditsDone: { color: colors.ink },
   }),
 };

@@ -103,3 +103,86 @@ export function contractedCreditsForWholeStory(
 export function formatCredits(n: number): string {
   return `${n} ${n === 1 ? "credit" : "credits"}`;
 }
+
+// ---------------------------------------------------------------------------
+// Credit packs — the one-time purchases (D8, CREDITS_AND_PRICING.md §3)
+// ---------------------------------------------------------------------------
+
+/**
+ * A credit pack as the store sells it.
+ *
+ * `usd` is the FALLBACK copy only, rendered when RevenueCat has no package for
+ * the SKU (web, or a build with no store configuration). With a package the
+ * screen renders the store's own `priceString`, because a hardcoded dollar
+ * figure is wrong for every non-US storefront. The unit price and the saving
+ * are computed from whichever price is on screen, never typed.
+ */
+export type CreditPack = {
+  credits: number;
+  /** The store product identifier, `ai.katha.credits.{n}`. */
+  sku: string;
+  /** Canonical USD price, the fallback when the store has no package. */
+  usd: number;
+  /** The fallback display form of `usd`. */
+  fallbackPrice: string;
+  /** The one pack the sheet marks "Popular". */
+  popular?: boolean;
+};
+
+/**
+ * Five packs, ascending. The 2-pack is the blocked-moment purchase and sets
+ * the base rate every other pack's "Save %" is measured against; the 1000 is
+ * deliberately close to the yearly rate and is the best value on the sheet.
+ * Pack credits never expire.
+ */
+export const CREDIT_PACKS: readonly CreditPack[] = [
+  { credits: 2, sku: "ai.katha.credits.2", usd: 0.99, fallbackPrice: "$0.99" },
+  { credits: 10, sku: "ai.katha.credits.10", usd: 3.49, fallbackPrice: "$3.49", popular: true },
+  { credits: 50, sku: "ai.katha.credits.50", usd: 15.99, fallbackPrice: "$15.99" },
+  { credits: 200, sku: "ai.katha.credits.200", usd: 44.99, fallbackPrice: "$44.99" },
+  { credits: 1000, sku: "ai.katha.credits.1000", usd: 119.99, fallbackPrice: "$119.99" },
+];
+
+/** The smallest pack's rate: the price every saving is a saving against. */
+export function creditPackBaseRate(
+  amountFor: (pack: CreditPack) => number = (pack) => pack.usd,
+): number {
+  const base = CREDIT_PACKS[0];
+  return amountFor(base) / base.credits;
+}
+
+/** Price per credit for a pack, from the amount actually on screen. */
+export function creditPackUnitPrice(pack: CreditPack, amount: number = pack.usd): number {
+  return amount / pack.credits;
+}
+
+/**
+ * "Save N%" against the 2-pack rate, rounded down to a whole percent and
+ * never negative. Zero for the base pack itself, which the sheet shows no
+ * badge for: a pack cannot save against its own price.
+ */
+export function creditPackSavingPercent(
+  pack: CreditPack,
+  amount: number = pack.usd,
+  baseRate: number = creditPackBaseRate(),
+): number {
+  if (!(baseRate > 0)) return 0;
+  const unit = creditPackUnitPrice(pack, amount);
+  return Math.max(0, Math.floor((1 - unit / baseRate) * 100));
+}
+
+/**
+ * "$0.35 per credit", in the currency of the price on screen.
+ *
+ * The symbol is whatever is left of `priceString` once the digits and the
+ * separators are gone, placed on the side it was already on -- the same rule
+ * the paywall's daily note uses, and for the same reason: RevenueCat gives the
+ * amount as a number and the currency only inside the formatted string.
+ */
+export function formatUnitPrice(unit: number, priceString: string): string {
+  const figure = unit < 0.1 ? unit.toFixed(3) : unit.toFixed(2);
+  const symbol = priceString.replace(/[\d\s.,  ]/g, "").trim();
+  if (!symbol) return `${figure} per credit`;
+  const leading = priceString.trimStart().startsWith(symbol);
+  return leading ? `${symbol}${figure} per credit` : `${figure}${symbol} per credit`;
+}

@@ -459,6 +459,43 @@ export async function verifyEmailCode(
 }
 
 /**
+ * The reviewer's fixed code (D11).
+ *
+ * `reviewer@thetractionlabs.com` never receives a real OTP: the store
+ * reviewer signs in with a six-digit code the server verifies (HMAC with a
+ * pepper it alone holds) and answers with a one-time `token_hash`, which is
+ * then verified as a magic link so the session is an ordinary Supabase one.
+ * Called only AFTER `verifyOtp` has refused the code, so a real account is
+ * never asked about here, and only the reviewer's address ever gets past the
+ * 401 the function returns for everyone else.
+ *
+ * Resolves true when a session was established, false for any refusal --
+ * unknown email, wrong code, lockout and network alike, because the function
+ * returns an identical body for the first three on purpose.
+ */
+export async function reviewerSignIn(email: string, code: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  const address = email.trim().toLowerCase();
+  const token = code.trim();
+  if (!/^\d{6}$/.test(token)) return false;
+  try {
+    const { data, error } = await supabase.functions.invoke("reviewer-signin", {
+      body: { email: address, code: token },
+    });
+    if (error || typeof data?.token_hash !== "string") return false;
+    const verified = await supabase.auth.verifyOtp({
+      token_hash: data.token_hash,
+      type: "magiclink",
+    });
+    if (verified.error) return false;
+    forgetPendingEmailOtp();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Move the guest's saved characters onto the account that just signed in.
  *
  * Never fatal. The user has verified their email and is standing on the last
@@ -488,22 +525,25 @@ async function claimGuestCharacters(guestAccessToken: string): Promise<void> {
 }
 
 /**
- * Sign out, and come back as a guest.
+ * Sign out, and land on the sign-in screen.
  *
- * Not just `auth.signOut()`. Every screen in Katha assumes there is an
- * identity behind it -- the feed, the credit balance, the streak all call
- * `bootstrapUser()` and expect a session -- so signing out into no session at
- * all leaves the app in a state nothing is written for. Signing out INTO a
- * fresh guest keeps that invariant: reading still works, the account's
- * credits and library are gone with the account, and signing back in restores
- * them.
+ * This used to sign out INTO a fresh guest, because every screen in Katha
+ * assumes an identity behind it -- the feed, the credit balance and the streak
+ * all call `bootstrapUser()`. D1 removed the reason: the product has no guests
+ * past the email step, so the screen this lands on is onboarding, which does
+ * not read any of those, and `bootstrapUser()` mints the pre-auth anonymous
+ * session lazily if and when onboarding needs one.
  *
- * The cached greeting name is cleared here too. It is a copy of something
- * that belonged to the account that just left, and a new guest greeted by the
- * previous person's name is the kind of small wrongness that makes an app feel
+ * Minting it eagerly here was worse than unnecessary. It left a live anonymous
+ * identity on the backend while the UI showed sign-in: a session nobody asked
+ * for, able to make requests, belonging to no one.
+ *
+ * The cached greeting name is cleared here too. It is a copy of something that
+ * belonged to the account that just left, and the next person greeted by the
+ * previous one's name is the kind of small wrongness that makes an app feel
  * untrustworthy.
  */
-export async function signOutToGuest(): Promise<void> {
+export async function signOutToSignIn(): Promise<void> {
   // A half-finished sign-in must not be resumable by the guest who replaces
   // it: the token recorded there belongs to the identity that just left.
   forgetPendingEmailOtp();
@@ -522,15 +562,22 @@ export async function signOutToGuest(): Promise<void> {
     // A stale cached name is a cosmetic problem; it must not block sign-out.
   }
 
-  // `restartGuestSession` signs out FIRST and then signs in, so a failure in
-  // the second half leaves the app with no session at all -- and every screen
-  // here assumes there is one. Retried once, because the common cause is a
-  // single dropped request, and the failure is surfaced rather than swallowed
-  // so the caller can say so instead of navigating into a signed-out app that
-  // cannot render.
-  try {
-    await restartGuestSession();
-  } catch {
-    await restartGuestSession();
-  }
+  // Signed out, and NOT replaced with a guest (D1).
+  //
+  // This used to call `restartGuestSession`, which signs out and immediately
+  // signs back in anonymously. That left a live anonymous identity on the
+  // backend while the UI showed the sign-in screen -- a session nobody had
+  // asked for, able to make requests, belonging to no one. The product has no
+  // guests past the email step, so leaving the device with no session is the
+  // honest end state.
+  //
+  // `scope: "local"` clears this device's stored session without asking the
+  // server to revoke it. Revocation needs a round trip that can fail, and a
+  // failed sign-out that leaves the token on the device is the one outcome
+  // this must not produce.
+  //
+  // Nothing downstream needs a session to exist: the app lands on onboarding,
+  // and `bootstrapUser` mints the pre-auth anonymous session lazily, when a
+  // screen actually needs one.
+  await supabase.auth.signOut({ scope: "local" }).catch(() => {});
 }

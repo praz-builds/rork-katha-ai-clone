@@ -26,7 +26,7 @@ import {
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { authorFor } from "@/data/seed";
 import CommentThread from "@/components/comments/CommentThread";
-import type { ReportReason } from "@/components/comments/types";
+import type { StoryReportReason } from "@/components/comments/types";
 import { blockAuthor, fetchCommentCount, reportContent } from "@/lib/comments";
 import { downloadStoryPdf } from "@/lib/story-pdf";
 import { setAuthorFollow, setStoryBookmark } from "@/lib/api";
@@ -469,12 +469,12 @@ export default function StoryDetailScreen({
   }, [author.displayName, onBack, requireSignIn, story.authorId]);
 
   /**
-   * Report the story. The description is required and is passed straight
-   * through; `reportContent` rejects a blank one, and the sheet does not show
-   * its confirmation over a rejection.
+   * Report the story. Details are optional for a story report; whatever the
+   * reporter wrote is passed straight through and `reportContent` omits an
+   * empty one. The sheet shows its confirmation only when the write landed.
    */
   const handleReportStory = useCallback(
-    async (reason: ReportReason, details: string) => {
+    async (reason: StoryReportReason, details: string) => {
       if (requireSignIn("report this story")) {
         throw new Error("Sign in to report a story.");
       }

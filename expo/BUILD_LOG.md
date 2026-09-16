@@ -2,6 +2,69 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-16: Profile, Credits, the streak ladder, and an account the store reviewer can use
+
+### Changed
+
+- **The product has no guests past the email step, so Profile stopped asking.**
+  The "Sign in to keep all of this" card is gone, and signing out lands on the
+  sign-in screen rather than quietly minting a fresh anonymous identity on
+  Home. The header is now the avatar and the handle on one row with a pencil at
+  the right, which is the only control that opens the identity sheet.
+- **Everyone gets a name and a face before they pick one.** `ensure_identity`
+  assigns a handle (`adjective_noun_NN`, checked against the reserved list) and
+  one of 36 creature avatars at bootstrap, so a new account is never a grey
+  circle called "Your profile". The creatures are 256px WebP, 99 KB for the
+  whole set, and the identity sheet offers all 36 plus the existing photo
+  upload. A photo clears the creature and a creature clears the photo: the two
+  cannot both be the answer to "what does this person look like".
+- **The streak ladder is five rungs and it rises.** Day 2/5/10/15/21 pay
+  2/4/6/8/10 credits — 30 once, then nothing, ever. The old 2/7/5 shape peaked
+  in the middle and its last rung was its smallest, which reads as a mistake to
+  anyone meeting it cold. `streak_ladder()` is the record; the client carries
+  the same five as a fallback for a deploy that has not answered yet.
+- **A milestone is achieved when it has a date, not when it has a row.** The
+  server returns a row for every rung, reached or not. Reading the row's
+  presence lit up all five the moment a brand-new account opened Your journey —
+  caught in the browser, not by a test, and now pinned by one.
+- **The activity grid is one dot per day in the brand orange, or a muted one.**
+  The shading levels are gone. They invented a second, louder definition of a
+  good day, and told somebody who read one chapter that their day counted less.
+- **Home greets once.** The line and the name are two Text elements now, and no
+  phrase in the rotation addresses the reader, because the name sits directly
+  beneath it. "Morning, storyteller" shipped for exactly one browser pass and
+  greeted the same person twice.
+- **Credits became the screen everything about credits lives on**: the balance
+  in the corner, Plus and the packs above the fold, how credits work lifted
+  verbatim from the pricing doc, then the three free sources — the streak, a
+  claim against a comment you left, and an invite code — and the real ledger
+  underneath, which had been seed data.
+- **The report sheet is the one Play asks for.** Copyright, story content,
+  cover image, other, with details optional, reachable from the story page and
+  from the reader's overflow menu.
+- **`Get more` is a View, not a button.** It sat inside the row's own Pressable,
+  which react-native-web renders as a button inside a button: invalid HTML, a
+  hydration error on every web load, and a row that stops responding.
+
+### Verification
+
+- `pnpm typecheck` clean. `pnpm lint`: 0 errors, 29 pre-existing warnings.
+- `pnpm exec jest`: 126 suites, 1240 tests passing.
+- `pnpm exec expo-doctor`: 18/18. `expo export --platform web` compiled, all 36
+  creature assets present in the bundle.
+- Browser pass at 390x844 against the deployed backend, signed in as
+  `reviewer@thetractionlabs.com` with the fixed code: the ladder, the member
+  state, the packs sheet, the invite code and the ledger all rendered from the
+  server rather than from seed.
+- **Not verified on web, and it cannot be:** RevenueCat is disabled there, so
+  the packs sheet shows its prices and a disabled Purchase. Price strings,
+  purchase, restore and Customer Center need an Android dev build.
+- **`expo/.env` now sets `EXPO_PUBLIC_APP_ENV=development`.** At `local`,
+  `authBypassed()` makes `verifyEmailCode` return success without verifying
+  anything, so every sign-in silently stayed on the guest identity and the
+  reviewer path never ran. That scaffold is pre-existing and `__DEV__`-only;
+  the env file is gitignored.
+
 ## 2026-09-10: Search moves to Explore, and Home's corner tells the reader about themselves
 
 ### Changed

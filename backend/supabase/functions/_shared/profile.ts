@@ -91,6 +91,17 @@ export function usernameProblem(raw: unknown): UsernameProblem {
 // Avatars
 // ---------------------------------------------------------------------------
 
+/**
+ * The 36 creature avatars, `k01`..`k36`.
+ *
+ * The same expression as `profiles_avatar_id_shape` in migration 00089 and as
+ * `CREATURE_ID_PATTERN` in the client. Three copies of one rule, for the same
+ * reason the username pattern has three: this one answers without a round
+ * trip, the constraint is the one that decides, and a disagreement can only
+ * ever produce a refusal, never a bad write.
+ */
+export const CREATURE_ID_PATTERN = /^k(0[1-9]|[12][0-9]|3[0-6])$/;
+
 export const AVATAR_BUCKET = "avatars";
 
 /** What the bucket's `allowed_mime_types` says, restated where it is checked. */
@@ -235,10 +246,42 @@ export type OwnProfile = {
    */
   displayName: string | null;
   avatarUrl: string | null;
+  /**
+   * The creature standing in for a photo: `k01`..`k36`, or null.
+   *
+   * Mutually exclusive with `avatarUrl` in the database, not merely in
+   * practice -- `set_creature_avatar` clears the photo and `set_avatar`
+   * clears this -- so the client's precedence rule (photo, then creature,
+   * then placeholder) can never have to choose between two live values.
+   */
+  avatarId: string | null;
   bio: string | null;
   memberSince: string | null;
   /** Non-null means a deleted account: a tombstone, not a reachable user. */
   deletedAt: string | null;
+  /**
+   * A plan this account holds without a receipt: `'katha'` or null.
+   *
+   * The two test accounts the store review needs (D11). It is reported rather
+   * than applied because the server has no paid-tier gate to apply it to --
+   * every entitlement decision in Katha is the client's, and this is what the
+   * client reads. It must never reach an operational kill switch such as
+   * `NARRATION_GENERATION_ENABLED`: that flag says whether the provider is
+   * open for business, which is not a thing any account can be entitled to.
+   */
+  entitlementOverride: "katha" | null;
+  /** The code this person shares, from `ensure_identity`. */
+  referralCode: string | null;
+  referral: { invited: number; credited: number; monthRemaining: number };
+  /** The five rungs and what each pays, straight from SQL `streak_ladder()`. */
+  ladder: { milestone: number; credits: number }[];
+  /** The same five, each with whether and when it was reached, and paid. */
+  milestones: {
+    milestone: number;
+    credits: number;
+    achievedAt: string | null;
+    credited: boolean;
+  }[];
   currentStreak: number;
   longestStreak: number;
   lastActivityDate: string | null;
@@ -317,6 +360,53 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/**
+ * The ladder and the milestones arrive as jsonb, which the client library
+ * hands back already parsed -- except when the driver returns it as a string,
+ * which PostgREST does for some jsonb shapes. Both are read, and anything
+ * else becomes an empty list rather than a crash on a profile screen.
+ */
+function jsonArray(value: unknown): Record<string, unknown>[] {
+  const parsed = typeof value === "string" ? safeParse(value) : value;
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((row): row is Record<string, unknown> =>
+    row !== null && typeof row === "object"
+  );
+}
+
+function safeParse(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function parseLadder(value: unknown): { milestone: number; credits: number }[] {
+  return jsonArray(value)
+    .filter((row) => typeof row.milestone === "number")
+    .map((row) => ({
+      milestone: count(row.milestone),
+      credits: count(row.credits),
+    }));
+}
+
+function parseMilestones(value: unknown): {
+  milestone: number;
+  credits: number;
+  achievedAt: string | null;
+  credited: boolean;
+}[] {
+  return jsonArray(value)
+    .filter((row) => typeof row.milestone === "number")
+    .map((row) => ({
+      milestone: count(row.milestone),
+      credits: count(row.credits),
+      achievedAt: text(row.achieved_at),
+      credited: row.credited === true,
+    }));
+}
+
 export async function readOwnProfile(
   client: RpcClient,
   userId: string,
@@ -333,9 +423,21 @@ export async function readOwnProfile(
     username: text(row.username),
     displayName: text(row.display_name),
     avatarUrl: text(row.avatar_url),
+    avatarId: CREATURE_ID_PATTERN.test(String(row.avatar_id ?? ""))
+      ? String(row.avatar_id)
+      : null,
     bio: text(row.bio),
     memberSince: text(row.member_since),
     deletedAt: text(row.deleted_at),
+    entitlementOverride: row.entitlement_override === "katha" ? "katha" : null,
+    referralCode: text(row.referral_code),
+    referral: {
+      invited: count(row.referral_invited),
+      credited: count(row.referral_credited),
+      monthRemaining: count(row.referral_month_remaining),
+    },
+    ladder: parseLadder(row.ladder),
+    milestones: parseMilestones(row.milestones),
     currentStreak: count(row.current_streak),
     longestStreak: count(row.longest_streak),
     lastActivityDate: text(row.last_activity_date),
@@ -427,6 +529,31 @@ export async function readPublicStories(
 // ---------------------------------------------------------------------------
 // The endpoint
 // ---------------------------------------------------------------------------
+
+/**
+ * The ledger read's own chain, typed separately.
+ *
+ * `RpcClient.from` is hand-typed to exactly the public-stories query and
+ * nothing else, which is a deliberate statement about how much of PostgREST
+ * this file is entitled to. The ledger needs a different chain (one filter,
+ * two orders, a limit), so it gets its own narrow shape rather than widening
+ * that one into something that would accept any query at all.
+ */
+type LedgerReader = {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: unknown): {
+        order(column: string, options: { ascending: boolean }): {
+          order(column: string, options: { ascending: boolean }): {
+            limit(count: number): PromiseLike<
+              { data: unknown; error: unknown }
+            >;
+          };
+        };
+      };
+    };
+  };
+};
 
 type ServiceClient = RpcClient & {
   /**
@@ -535,9 +662,91 @@ export async function handleProfile(req: Request): Promise<Response> {
     const service = serviceClient();
 
     if (action === "me") {
+      // Settle before reading, so the numbers the screen shows are the ones
+      // the settle just produced.
+      //
+      // A referral payout waits on two conditions: the invitee has generated
+      // something, and their account is 24 hours old. The generation path
+      // settles on the first condition, but nothing at all happens when the
+      // second one comes true -- there is no event for "a day passed". So the
+      // profile fetch tries again. `settle_referrals` is idempotent and does
+      // nothing when there is nothing to pay, which is the case on
+      // essentially every call; it is one indexed read against `referrals`
+      // for a user who has none.
+      //
+      // Swallowed on failure. A referral that cannot be settled is worth a
+      // log; it is not worth an unreadable profile.
+      const { error: settleError } = await service.rpc("settle_referrals", {
+        p_user_id: viewerId,
+      });
+      if (settleError) {
+        await logError({
+          bucket: "credits",
+          severity: "low",
+          errorCode: "settle_referrals_failed",
+          error: settleError,
+          context: { action },
+          userId: viewerId,
+        });
+      }
+
       const profile = await readOwnProfile(service, viewerId);
       if (!profile) return respond({ error: "Not found" }, 404);
       return respond({ profile });
+    }
+
+    if (action === "creature") {
+      // Shape first, and specifically: the RPC raises on a bad id and a raise
+      // becomes a 500, which would tell the client "we are broken" for what
+      // is really "that is not one of the 36".
+      const avatarId = typeof body.avatar_id === "string"
+        ? body.avatar_id.trim()
+        : "";
+      if (!CREATURE_ID_PATTERN.test(avatarId)) {
+        return respond({ error: "avatar_id must be k01..k36" }, 400);
+      }
+
+      const { error } = await service.rpc("set_creature_avatar", {
+        p_user_id: viewerId,
+        p_avatar_id: avatarId,
+      });
+      if (error) throw error;
+
+      // The photo is gone: `set_creature_avatar` clears `avatar_url`. Said
+      // here as well as in SQL because the client drops its own cached URL on
+      // this response.
+      return respond({ avatarId, avatarUrl: null });
+    }
+
+    if (action === "ledger") {
+      // The real history, and the only place the client gets one. `credit_
+      // ledger` has no policy for `authenticated`, so this read is the
+      // service role's, narrowed to the caller's own rows by the filter
+      // below and by the fact that `viewerId` came from a verified token and
+      // never from the body.
+      //
+      // Fifty rows, newest first, with `ledger_sequence` as the tiebreaker
+      // (00040): two rows written in the same millisecond have the same
+      // `created_at`, and ordering on the timestamp alone would show a grant
+      // before the spend that preceded it.
+      const { data, error } = await (service as unknown as LedgerReader)
+        .from("credit_ledger")
+        .select("id, amount, reason, created_at")
+        .eq("user_id", viewerId)
+        .order("created_at", { ascending: false })
+        .order("ledger_sequence", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+
+      const entries = (Array.isArray(data) ? data : []).map(
+        (row: Record<string, unknown>) => ({
+          id: String(row.id),
+          amount: typeof row.amount === "number" ? row.amount : 0,
+          reason: typeof row.reason === "string" ? row.reason : "",
+          createdAt: text(row.created_at),
+        }),
+      );
+      return respond({ entries });
     }
 
     if (action === "username") {

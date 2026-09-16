@@ -19,10 +19,19 @@ export default function SignInScreen({
   onDone,
   onExit,
 }: {
-  /** The code verified. */
-  onDone: () => void;
-  /** Back, from the email step. */
-  onExit: () => void;
+  /**
+   * The code verified. May return a promise: `EmailCodeAuth` keeps this screen
+   * busy until it settles, so the app does not navigate while the account it
+   * just signed into is still being rebuilt.
+   */
+  onDone: () => void | Promise<void>;
+  /**
+   * Back, from the email step. Omitted when sign-in is the only way forward:
+   * after a sign-out or a deletion there is no session behind this screen, so
+   * an exit would land on tabs with no identity and mint a guest to fix it --
+   * the very thing D1 removes.
+   */
+  onExit?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   return (

@@ -1,7 +1,12 @@
 import { StyleSheet, Text, View } from "react-native";
 import { Flame } from "lucide-react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
-import { nextMilestone, type StreakState } from "@/lib/profile";
+import {
+  FALLBACK_LADDER,
+  nextMilestone,
+  type StreakRung,
+  type StreakState,
+} from "@/lib/profile";
 
 /**
  * The streak, and the one place in Katha allowed to feel urgent.
@@ -22,12 +27,18 @@ import { nextMilestone, type StreakState } from "@/lib/profile";
  *     best instead. A zero presented as a streak, or a "best" presented as if
  *     it were current, is exactly the dishonesty this surface must not have.
  *
- * A milestone line appears only within three days of one, and it never
- * promises a reward, because there is no reward: no credit, no badge, no
- * unlock. Naming a number the reader is about to reach is enough, and it is
- * the only claim here that cannot become untrue.
+ * A milestone line appears only within three days of one. Since the ladder
+ * (D2) every rung named here pays credits, and the rung comes from the
+ * server's own ladder so the number is one that will actually pay.
  */
-export default function StreakCard({ state }: { state: StreakState }) {
+export default function StreakCard({
+  state,
+  ladder = FALLBACK_LADDER,
+}: {
+  state: StreakState;
+  /** The server's ladder (D2), so the rung named here is one that pays. */
+  ladder?: readonly StreakRung[];
+}) {
   if (state.kind === "none") {
     return (
       <View style={styles.card} testID="streak-card">
@@ -62,7 +73,7 @@ export default function StreakCard({ state }: { state: StreakState }) {
   }
 
   const urgent = state.kind === "at_risk";
-  const milestone = nextMilestone(state.days);
+  const milestone = nextMilestone(state.days, ladder);
 
   return (
     <View

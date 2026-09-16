@@ -5,10 +5,12 @@ import { controls, radius } from "@/theme";
 
 const mockSendEmailCode = jest.fn();
 const mockVerifyEmailCode = jest.fn();
+const mockReviewerSignIn = jest.fn();
 
 jest.mock("@/lib/session", () => ({
   sendEmailCode: (...args: unknown[]) => mockSendEmailCode(...args),
   verifyEmailCode: (...args: unknown[]) => mockVerifyEmailCode(...args),
+  reviewerSignIn: (...args: unknown[]) => mockReviewerSignIn(...args),
 }));
 
 jest.mock("react-native-safe-area-context", () => ({
@@ -44,6 +46,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSendEmailCode.mockResolvedValue(undefined);
   mockVerifyEmailCode.mockResolvedValue(undefined);
+  mockReviewerSignIn.mockResolvedValue(false);
 });
 
 describe("SignInScreen", () => {
@@ -99,5 +102,90 @@ describe("SignInScreen", () => {
     ) as { height?: number; borderRadius?: number };
     expect(cta.height).toBe(controls.onboardingCtaHeight);
     expect(cta.borderRadius).toBe(radius.pill);
+  });
+
+  /*
+    D1. Sign-in reached after a sign-out or a deletion has no session behind
+    it, so it must not offer a way back to the tabs: exiting there would render
+    Home with no identity and the first `bootstrapUser` would mint the guest
+    the product does not have. App.tsx withholds `onExit` for that entry, and
+    what this asserts is that withholding it removes the control rather than
+    leaving a dead one on screen.
+  */
+  it("draws no way back when there is no session behind it", async () => {
+    const view = await render(<SignInScreen onDone={jest.fn()} />);
+
+    expect(view.queryByLabelText("Back")).toBeNull();
+  });
+
+  /*
+    P2. `onDone` does the account rebuild -- bootstrap, balance, streak,
+    profile, entitlement override -- and App.tsx navigates in its `finally`.
+    If this screen did not AWAIT it, the tabs would render against the account
+    that just left, and the clearest victim is a tester whose premium override
+    only lands when `fetchOwnProfile` resolves: the paywall would flash before
+    the member state. It also leaves a live "Verify and continue" under the
+    person's thumb for the whole rebuild.
+  */
+  it("stays busy until the caller's follow-on work settles", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const onDone = jest.fn(() => pending);
+    const busy = () =>
+      view.getByText("Resend code").parent?.props.accessibilityState?.disabled;
+
+    const view = await render(<SignInScreen onDone={onDone} />);
+    await fireEvent.changeText(
+      view.getByLabelText("Email address"),
+      "a@b.com",
+    );
+    await fireEvent.press(view.getByLabelText("Continue with email"));
+    await fireEvent.changeText(
+      await view.findByLabelText("Verification code"),
+      "123456",
+    );
+
+    // NOT awaited: awaiting the press would wait on the very promise this test
+    // holds open, and deadlock rather than assert.
+    const press = fireEvent.press(view.getByLabelText("Verify and continue"));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(busy()).toBe(true);
+
+    release();
+    await press;
+    await waitFor(() => expect(busy()).toBe(false));
+  });
+
+  /*
+    A rebuild that fails AFTER the code verified is not a bad code. `onVerified`
+    used to share a `try` with `verifyEmailCode`, so a rejected hydration fell
+    into the reviewer fallback: a second authentication attempt for somebody
+    already signed in, and "That code did not match" blamed on the one thing
+    that had worked.
+  */
+  it("does not blame the code, or retry sign-in, when the rebuild fails", async () => {
+    const onDone = jest.fn(() => Promise.reject(new Error("profile fetch died")));
+
+    const view = await render(<SignInScreen onDone={onDone} />);
+    await fireEvent.changeText(
+      view.getByLabelText("Email address"),
+      "a@b.com",
+    );
+    await fireEvent.press(view.getByLabelText("Continue with email"));
+    await fireEvent.changeText(
+      await view.findByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(view.getByLabelText("Verify and continue"));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(mockReviewerSignIn).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(
+      view.queryByText("That code did not match. Try again or resend it."),
+    ).toBeNull();
   });
 });

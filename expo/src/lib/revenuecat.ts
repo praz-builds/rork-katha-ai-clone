@@ -118,6 +118,18 @@ class RevenueCatService {
     return this._profile;
   }
 
+  /**
+   * Whether the store can be talked to at all.
+   *
+   * False on web, and false in a native build whose SDK never configured (no
+   * key, activation failed). The credits screen reads this to decide between
+   * a live Purchase button and the disabled "Purchases work in the app" state
+   * (D8), rather than discovering it on the tap.
+   */
+  get isAvailable(): boolean {
+    return Platform.OS !== "web" && this._ready;
+  }
+
   /** Subscribe to CustomerInfo changes. Returns an unsubscribe function. */
   subscribe(listener: ProfileListener): () => void {
     this._listeners.push(listener);
@@ -144,6 +156,30 @@ class RevenueCatService {
       console.warn("RevenueCat getOfferings failed:", error);
       return null;
     }
+  }
+
+  /**
+   * The package selling one store product, searched across EVERY offering.
+   *
+   * The credit packs (`ai.katha.credits.*`) are one-time products and need
+   * not sit in the `current` subscription offering, so a lookup limited to
+   * `current` would report every pack as unavailable on a correctly
+   * configured dashboard. Null when the store has no such product, or when
+   * the store cannot be asked at all.
+   */
+  async findPackageByProductId(productId: string): Promise<PurchasesPackage | null> {
+    const offerings = await this.getOfferings();
+    if (!offerings) return null;
+    const pools: PurchasesPackage[][] = [];
+    if (offerings.current?.availablePackages) pools.push(offerings.current.availablePackages);
+    for (const offering of Object.values(offerings.all ?? {})) {
+      if (offering?.availablePackages) pools.push(offering.availablePackages);
+    }
+    for (const pool of pools) {
+      const match = pool.find((candidate) => candidate.product.identifier === productId);
+      if (match) return match;
+    }
+    return null;
   }
 
   /** Compatibility wrapper for the former placement-based service API. */
@@ -247,6 +283,15 @@ class RevenueCatService {
     } catch (error) {
       console.warn("RevenueCat identify failed:", error);
     }
+  }
+
+  /**
+   * `identify` under the name the post-auth contract uses. Same behaviour: a
+   * no-op on web or before activation, so `completeSignIn` can call it
+   * unconditionally.
+   */
+  async logIn(appUserID: string): Promise<void> {
+    await this.identify(appUserID);
   }
 
   async logout(): Promise<void> {

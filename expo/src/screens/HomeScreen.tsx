@@ -20,6 +20,7 @@ import { Bell, ChevronRight, Flame, Sparkles } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
+import { greetingLine } from "@/lib/greeting";
 import { greetingName } from "@/lib/profile";
 import { homeCtaCopy, resolveHomeCta } from "@/lib/home-cta";
 import { isMood, tonightStories, tonightTitle } from "@/lib/home-tonight";
@@ -423,25 +424,23 @@ export default function HomeScreen({
     transform: [{ scale: creditsBumpValue.get() }],
   }));
 
-  const hour = new Date().getHours();
-  const timeOfDay = hour < 12
-    ? "Good morning"
-    : hour < 17
-    ? "Good afternoon"
-    : "Good evening";
-  // The name is the point of the line, so it is not decoration around a
-  // second heading -- it IS the heading. Onboarding asks for it on the first
-  // screen, which is the only reason greeting somebody by name is honest here
-  // rather than a guess dressed up as familiarity.
+  // TWO LINES, NOT ONE. The phrase is the time of day's, chosen once per
+  // day (see `lib/greeting.ts`), and the name sits under it on a line of its
+  // own. Folding them into one string put a 31pt name after a 31pt
+  // "Good afternoon," and the whole thing wrapped under the pills on every
+  // phone narrower than a tablet.
+  //
+  // The name is the point, so it IS the heading. Onboarding asks for it on
+  // the first screen, which is the only reason greeting somebody by name is
+  // honest here rather than a guess dressed up as familiarity.
   //
   // No name is a real state, not an error: anyone who onboarded before the
-  // field was stored has none, and a guest may never give one. The greeting
-  // simply stops after the time of day rather than falling back to "there",
-  // which reads as a form letter that failed to merge.
+  // field was stored has none, and a guest may never give one. The name line
+  // is then simply absent and the phrase takes the heading's place, rather
+  // than falling back to "there", which reads as a form letter that failed
+  // to merge.
+  const greeting = greetingLine(new Date());
   const firstName = greetingName(displayName ?? null);
-  const greeting = firstName
-    ? `${timeOfDay}, ${firstName} \u{1F44B}\u{1F3FC}`
-    : timeOfDay;
 
   const rows = buildFeedRows(
     stories,
@@ -518,7 +517,22 @@ export default function HomeScreen({
             header does not need a second one. */}
         <View style={styles.header}>
           <View style={styles.headerGreeting}>
-            <Text style={styles.h1} numberOfLines={2}>{greeting}</Text>
+            <Text
+              style={firstName ? styles.greetingPhrase : styles.h1}
+              numberOfLines={firstName ? 1 : 2}
+              testID="home-greeting-phrase"
+            >
+              {greeting}
+            </Text>
+            {firstName ? (
+              <Text
+                style={styles.h1}
+                numberOfLines={2}
+                testID="home-greeting-name"
+              >
+                {`${firstName} \u{1F44B}\u{1F3FC}`}
+              </Text>
+            ) : null}
           </View>
           <View style={styles.headerActions}>
             {streakDays !== null && streakDays > 0 && (
@@ -646,6 +660,13 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 31,
     lineHeight: 35,
+  },
+  /** The time-of-day line above the name: the UI face, quiet, one line. */
+  greetingPhrase: {
+    ...type.bodySmall,
+    fontWeight: "600",
+    color: colors.muted,
+    lineHeight: 20,
   },
 
   /* ── Header actions: streak, credits, notifications ──

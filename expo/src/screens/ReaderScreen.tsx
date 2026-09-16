@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import {
+  Ellipsis,
   Pause,
   Play,
   Send,
@@ -30,6 +31,8 @@ import { EditStoryScreen, type SavedChapterEdit } from "@/components/reader/Edit
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import { ReimagineSheet } from "@/components/reader/ReimagineSheet";
+import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
+import type { StoryReportReason } from "@/components/comments/types";
 import { startReimagine, type ReimagineRequest, type ReimagineRun } from "@/lib/reimagine-client";
 import { FocalImage } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
@@ -43,7 +46,7 @@ import {
   subscribeToChapterSaves,
   type ChapterSaveEntry,
 } from "@/lib/chapter-save-queue";
-import { fetchThread, formatRelativeTime, postComment } from "@/lib/comments";
+import { blockAuthor, fetchThread, formatRelativeTime, postComment, reportContent } from "@/lib/comments";
 import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
@@ -55,6 +58,7 @@ import {
   useGeneration,
 } from "@/lib/generation-session";
 import { isOwnStory } from "@/lib/ownership";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   READER_THEMES,
   READING_THEME_ORDER,
@@ -1138,6 +1142,44 @@ export default function ReaderScreen({
     return true;
   }, [onRequireSignIn]);
 
+  /*
+    THE READER'S OWN MORE MENU.
+
+    The story page has a "..." that opens `StoryActionsSheet` -- report the
+    story, block its author. A reader who finds the problem three chapters
+    in should not have to leave the book to say so, so the same sheet is
+    mounted here too, fed by the story this screen already holds. Nothing
+    new comes in through props: the host that renders the reader does not
+    know the sheet exists, and does not need to.
+  */
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const handleBlockAuthor = useCallback(async () => {
+    if (requireSignIn()) {
+      setActionsOpen(false);
+      return false;
+    }
+    if (isSupabaseConfigured) {
+      try {
+        await blockAuthor(story.authorId);
+      } catch {
+        return false;
+      }
+    }
+    setActionsOpen(false);
+    onBack();
+    return true;
+  }, [onBack, requireSignIn, story.authorId]);
+  const handleReportStory = useCallback(
+    async (reason: StoryReportReason, details: string) => {
+      if (requireSignIn()) {
+        throw new Error("Sign in to report a story.");
+      }
+      if (!isSupabaseConfigured) return;
+      await reportContent({ storyId: story.id }, reason, details);
+    },
+    [requireSignIn, story.id],
+  );
+
 
 
   const handleToggleFollow = useCallback(() => {
@@ -1534,17 +1576,44 @@ export default function ReaderScreen({
                   writing tail already says so, in the one place where it is
                   actually happening.
                 */}
-                <Text
-                  style={[styles.pageFooter, { color: theme.muted }]}
-                  testID={`reader-page-label-${index}`}
-                >
-                  Page {index + 1}
-                </Text>
+                <View style={styles.pageFooterRow}>
+                  <Text
+                    style={[styles.pageFooter, { color: theme.muted }]}
+                    testID={`reader-page-label-${index}`}
+                  >
+                    Page {index + 1}
+                  </Text>
+                  {/* The "..." lives on the page strip, not in the chrome: it
+                    * is reachable without summoning the controls, and it sits
+                    * in the one row of every page that is not prose. */}
+                  <Pressable
+                    onPress={() => setActionsOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="More options"
+                    hitSlop={8}
+                    testID={`reader-more-options-${index}`}
+                    style={({ pressed }) => [
+                      styles.pageMoreButton,
+                      pressed && styles.pageMoreButtonPressed,
+                    ]}
+                  >
+                    <Ellipsis size={18} color={theme.muted} />
+                  </Pressable>
+                </View>
               </View>
             );
           })}
         </ScrollView>
       </Pressable>
+      <StoryActionsSheet
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        storyTitle={story.title}
+        authorName={author.displayName}
+        onBlockAuthor={handleBlockAuthor}
+        onSubmitReport={handleReportStory}
+        canBlockAuthor={!isAuthor}
+      />
       <ReaderChrome
         visible={chromeVisible && chapterComplete}
         storyTitle={story.title}
@@ -2011,6 +2080,26 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
     letterSpacing: 0,
+  },
+  /* The page label stays centred on the page; the "..." is absolute at the
+     strip's right edge so the label does not shift when it is there. */
+  pageFooterRow: {
+    position: "relative",
+    justifyContent: "center",
+  },
+  pageMoreButton: {
+    position: "absolute",
+    right: spacing.md,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.pill,
+  },
+  pageMoreButtonPressed: {
+    opacity: 0.6,
   },
   writingTail: {
     marginTop: spacing.lg,
