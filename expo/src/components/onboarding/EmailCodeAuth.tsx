@@ -132,19 +132,36 @@ export function EmailCodeAuth({
     setAuthBusy(true);
     setAuthError(null);
     try {
-      await verifyEmailCode(email, code);
-      await onVerified(email.trim());
-    } catch {
-      // The reviewer's fixed code (D11). Tried only after the real OTP
-      // refused, and the function answers 401 for every address but the
-      // reviewer's, so for anyone else this is one extra round trip on the
-      // way to the same error line.
-      const reviewer = await reviewerSignIn(email, code).catch(() => false);
-      if (reviewer) {
-        await onVerified(email.trim());
+      // ONLY the code check is allowed to fall through to the reviewer path.
+      // `onVerified` used to sit in this same `try`, which meant a failure
+      // while rebuilding the account -- work that happens AFTER the person is
+      // authenticated -- was answered by attempting a second sign-in and then
+      // blaming their code for it.
+      let verified = false;
+      try {
+        await verifyEmailCode(email, code);
+        verified = true;
+      } catch {
+        // The reviewer's fixed code (D11). Tried only after the real OTP
+        // refused, and the function answers 401 for every address but the
+        // reviewer's, so for anyone else this is one extra round trip on the
+        // way to the same error line.
+        verified = await reviewerSignIn(email, code).catch(() => false);
+      }
+
+      if (!verified) {
+        setAuthError("That code did not match. Try again or resend it.");
         return;
       }
-      setAuthError("That code did not match. Try again or resend it.");
+
+      try {
+        await onVerified(email.trim());
+      } catch {
+        // Authenticated already, so this is the caller's rebuild failing, not
+        // the credential. Saying "that code did not match" here would be a
+        // lie about the one thing that did work, and the caller navigates
+        // regardless -- every screen tolerates a profile that did not load.
+      }
     } finally {
       setAuthBusy(false);
     }

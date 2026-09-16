@@ -5,10 +5,12 @@ import { controls, radius } from "@/theme";
 
 const mockSendEmailCode = jest.fn();
 const mockVerifyEmailCode = jest.fn();
+const mockReviewerSignIn = jest.fn();
 
 jest.mock("@/lib/session", () => ({
   sendEmailCode: (...args: unknown[]) => mockSendEmailCode(...args),
   verifyEmailCode: (...args: unknown[]) => mockVerifyEmailCode(...args),
+  reviewerSignIn: (...args: unknown[]) => mockReviewerSignIn(...args),
 }));
 
 jest.mock("react-native-safe-area-context", () => ({
@@ -44,6 +46,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSendEmailCode.mockResolvedValue(undefined);
   mockVerifyEmailCode.mockResolvedValue(undefined);
+  mockReviewerSignIn.mockResolvedValue(false);
 });
 
 describe("SignInScreen", () => {
@@ -154,5 +157,35 @@ describe("SignInScreen", () => {
     release();
     await press;
     await waitFor(() => expect(busy()).toBe(false));
+  });
+
+  /*
+    A rebuild that fails AFTER the code verified is not a bad code. `onVerified`
+    used to share a `try` with `verifyEmailCode`, so a rejected hydration fell
+    into the reviewer fallback: a second authentication attempt for somebody
+    already signed in, and "That code did not match" blamed on the one thing
+    that had worked.
+  */
+  it("does not blame the code, or retry sign-in, when the rebuild fails", async () => {
+    const onDone = jest.fn(() => Promise.reject(new Error("profile fetch died")));
+
+    const view = await render(<SignInScreen onDone={onDone} />);
+    await fireEvent.changeText(
+      view.getByLabelText("Email address"),
+      "a@b.com",
+    );
+    await fireEvent.press(view.getByLabelText("Continue with email"));
+    await fireEvent.changeText(
+      await view.findByLabelText("Verification code"),
+      "123456",
+    );
+    await fireEvent.press(view.getByLabelText("Verify and continue"));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(mockReviewerSignIn).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(
+      view.queryByText("That code did not match. Try again or resend it."),
+    ).toBeNull();
   });
 });
