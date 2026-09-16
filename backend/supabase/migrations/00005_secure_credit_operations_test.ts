@@ -134,7 +134,13 @@ Deno.test("generation operations debit once and compensate failures once", async
   }
 });
 
-Deno.test("feedback request replay cannot duplicate a daily reward", async () => {
+// Migration 00089 retired the daily feedback faucet: `create_feedback` still
+// writes the comment and still dedupes a replayed `request_id`, but it grants
+// nothing. A credit for a comment is now claimed afterwards through
+// `claim_comment_credit`, which is where the 40-character floor, the
+// own-story exclusion, the qualifying read and the per-story/day/month caps
+// live. What this test guards is the replay contract, which is unchanged.
+Deno.test("feedback request replay writes one comment and no reward", async () => {
   const db = await createDatabase();
   const authorId = "00000000-0000-4000-8000-000000000011";
   const readerId = "00000000-0000-4000-8000-000000000012";
@@ -167,7 +173,7 @@ Deno.test("feedback request replay cannot duplicate a daily reward", async () =>
       [readerId, storyId],
     );
 
-    assertEquals(first.rows[0].create_feedback.credit_granted, true);
+    assertEquals(first.rows[0].create_feedback.credit_granted, false);
     assertEquals(replay.rows[0].create_feedback.replayed, true);
     await assertSqlState(
       () =>
@@ -185,7 +191,10 @@ Deno.test("feedback request replay cannot duplicate a daily reward", async () =>
           where user_id = $1 and reason = 'feedback') as rewards`,
       [readerId],
     );
-    assertEquals(counts.rows[0], { comments: 1, rewards: 1 });
+    // One comment, and no ledger row at all: the faucet is retired, so a
+    // replay cannot duplicate a reward that is never granted in the first
+    // place.
+    assertEquals(counts.rows[0], { comments: 1, rewards: 0 });
   } finally {
     await db.close();
   }
@@ -394,9 +403,12 @@ Deno.test("application errors expose stable SQLSTATE contracts", async () => {
       "select create_feedback($1, 'ownerless-story', $2, null, 'Feedback')",
       [readerId, missingId],
     );
+    // A story with no author is still commentable, and since 00089 retired the
+    // faucet no comment grants a credit. What matters here is that the
+    // ownerless row does not raise: this test is about SQLSTATE contracts.
     assertEquals(
       ownerlessFeedback.rows[0].create_feedback.credit_granted,
-      true,
+      false,
     );
   } finally {
     await db.close();
