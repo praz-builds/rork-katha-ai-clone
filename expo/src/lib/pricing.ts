@@ -138,7 +138,7 @@ export type CreditPack = {
 export const CREDIT_PACKS: readonly CreditPack[] = [
   { credits: 2, sku: "ai.katha.credits.2", usd: 0.99, fallbackPrice: "$0.99" },
   { credits: 10, sku: "ai.katha.credits.10", usd: 3.49, fallbackPrice: "$3.49", popular: true },
-  { credits: 50, sku: "ai.katha.credits.50", usd: 14.99, fallbackPrice: "$14.99" },
+  { credits: 50, sku: "ai.katha.credits.50", usd: 15.99, fallbackPrice: "$15.99" },
   { credits: 200, sku: "ai.katha.credits.200", usd: 44.99, fallbackPrice: "$44.99" },
   { credits: 1000, sku: "ai.katha.credits.1000", usd: 119.99, fallbackPrice: "$119.99" },
 ];

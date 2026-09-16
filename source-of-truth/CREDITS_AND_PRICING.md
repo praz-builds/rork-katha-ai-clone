@@ -340,7 +340,7 @@ position, not an error in this line.
 |---|---|---|
 | 2 credits | $0.99 | |
 | 10 credits | $3.49 | |
-| 50 credits | $14.99 | |
+| 50 credits | $15.99 | |
 | 200 credits | $44.99 | |
 | 1000 credits | $119.99 | best pack value |
 
@@ -939,12 +939,12 @@ month's grant before the month ends. No subscription required.
 |---|---|---|---|---|---|
 | **2** | $0.99 | $0.495 | $0.84 | $0.421 | 5.0× |
 | **10** | $3.49 | $0.349 | $2.97 | $0.297 | 3.5× |
-| **50** | $14.99 | $0.300 | $12.74 | $0.255 | 3.0× |
+| **50** | $15.99 | $0.320 | $13.59 | $0.272 | 3.3× |
 | **200** | $44.99 | $0.225 | $38.24 | $0.191 | 2.3× |
 | **1000** | $119.99 | $0.120 | $101.99 | $0.102 | **1.2×** |
 
 *Arithmetic: net is price × 0.85; $/credit is price ÷ credits; the multiple is
-gross $/credit ÷ $0.0983. The 50-pack is $0.2998 a credit, printed as $0.300.*
+gross $/credit ÷ $0.0983.*
 
 **The 2-credit pack exists for the blocked moment** (§7), not for value. At
 $0.495/credit it is five times the yearly rate, and that is the point: it
@@ -1066,7 +1066,7 @@ downside at **$0.74**.
 | `ai.katha.sub.yearly` | Yearly — $59 · 50/mo, 3-day trial |
 | `ai.katha.credits.2` | 2 credits — $0.99 |
 | `ai.katha.credits.10` | 10 credits — $3.49 |
-| `ai.katha.credits.50` | 50 credits — $14.99 |
+| `ai.katha.credits.50` | 50 credits — $15.99 |
 | `ai.katha.credits.200` | 200 credits — $44.99 |
 | `ai.katha.credits.1000` | 1000 credits — $119.99 |
 
@@ -1114,7 +1114,7 @@ package to read — the web preview, where purchases are disabled outright.
 |---|---|---|---|
 | Pack 2 / $0.99 | $0.495 | $0.421 | **82%** |
 | Pack 10 / $3.49 | $0.349 | $0.297 | **75%** |
-| Pack 50 / $14.99 | $0.300 | $0.255 | **71%** |
+| Pack 50 / $15.99 | $0.320 | $0.272 | **73%** |
 | Weekly $5.99 / 20 | $0.300 | $0.255 | **71%** |
 | Monthly $12.99 / 50 | $0.260 | $0.221 | **67%** |
 | Pack 200 / $44.99 | $0.225 | $0.191 | **61%** |
@@ -1149,15 +1149,17 @@ the cheapest subscription a pack buyer is choosing between:
 |---|---|---|
 | 2 / $0.99 | $0.495 | ✅ |
 | 10 / $3.49 | $0.349 | ✅ |
-| 50 / $14.99 | $0.300 | ✅ at parity — $0.2998 against weekly's $0.2995, above by $0.0003 |
+| 50 / $15.99 | $0.320 | ✅ above weekly by $0.0203 a credit |
 | 200 / $44.99 | $0.225 | ⚠ below weekly, below monthly, above yearly |
 | 1000 / $119.99 | $0.120 | ⚠ below both, above yearly |
 
-**The 50 passes on arithmetic and not on headroom, and that is stated rather
-than rounded away.** It is a month's grant bought outright, and it prices to the
-cent where the weekly plan does; the plan it actually sits next to for that
-buyer is monthly at $0.260, which it clears by 15%. If the weekly price ever
-falls or the 50 ever gets cheaper, this row inverts first.
+**The 50 was $14.99 until 2026-09-16, and that priced it to the cent where the
+weekly plan does** — $0.2998 a credit against weekly's $0.2995, clearing
+principle 6 by three hundredths of a cent. It passed the arithmetic and had no
+headroom: any future move in either price inverted it first, and a rule that
+holds by $0.0003 is a rule nobody can act on. At **$15.99** it clears weekly by
+**$0.0203 a credit** and monthly at $0.260 by 23%, which is a gap a pricing
+decision can be made against.
 
 **The two large packs sit below the weekly rung, and that is correct rather than
 a violation.** Weekly is a 20-credit product; nobody weighing a 200-credit pack is
@@ -2422,7 +2424,7 @@ economy is tuned on evidence rather than argued about.
     product uses a clock to pressure a purchase.
 16. ~~**Credit packs: $1.99/5 · $3.49/10 · $9.99/30 · $24.99/100 · $64.99/300 ·
     $119.99/1000.**~~ **Regridded 2026-09-16 — see decision 50.** Five packs:
-    **$0.99/2 · $3.49/10 · $14.99/50 · $44.99/200 · $119.99/1000.** Every
+    **$0.99/2 · $3.49/10 · $15.99/50 · $44.99/200 · $119.99/1000.** Every
     pack prices above the yearly rate, monotonically, so the subscription is
     always the best price per credit. **Pack credits never expire; plan
     credits refresh** — carry-over, not price, is what a pack sells.
@@ -2725,14 +2727,17 @@ economy is tuned on evidence rather than argued about.
     because the ladder pays zero in steady state; the 2026-09-10 open item that
     day 10 paid less than day 5 is closed, and the open item that nothing
     repeats stays open.
-50. **Five credit packs: 2 / 10 / 50 / 200 / 1000 at $0.99 / $3.49 / $14.99 /
+50. **Five credit packs: 2 / 10 / 50 / 200 / 1000 at $0.99 / $3.49 / $15.99 /
     $44.99 / $119.99, never expiring.** SKUs `ai.katha.credits.{2,10,50,200,1000}`.
     The six-pack grid this replaces never reached a store. At the $0.0738 worst
-    shape the packs clear 82 / 75 / 71 / 61 / 28%; every pack is above the
-    yearly rate (5.0× down to 1.2×), the 2, 10 and 50 are at or above the
-    weekly rate, and the 50 sits at parity with weekly to the cent, which is
-    recorded in the §4 inversion check rather than rounded away. The 2 is the
-    blocked-moment pack; the 1000 stays near parity with yearly on purpose.
+    shape the packs clear 82 / 75 / 73 / 61 / 28%; every pack is above the
+    yearly rate (5.0× down to 1.2×), and the 2, 10 and 50 are above the weekly
+    rate. **The 50 was $14.99 in the first draft of this grid**, which put it at
+    $0.2998 a credit against weekly's $0.2995 — clearing principle 6 by three
+    hundredths of a cent, with no headroom for either price to move. Raised to
+    $15.99 on 2026-09-16 so the gap is $0.0203 a credit, which is a margin a
+    decision can be made against. The 2 is the blocked-moment pack; the 1000
+    stays near parity with yearly on purpose.
     Prices render from RevenueCat `priceString` where a package exists; the USD
     list is fallback copy; on web the Purchase control is disabled.
 51. **Feedback credits return as a claim, not a grant: 1 credit per claimed
