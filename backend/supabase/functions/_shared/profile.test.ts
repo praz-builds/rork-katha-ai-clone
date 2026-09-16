@@ -232,6 +232,135 @@ Deno.test("the owner's profile reports zeros rather than nothing", async () => {
   assertEquals(profile.lastActivityDate, null);
 });
 
+/**
+ * THE FIELDS THE 2026-09-16 CONTRACT ADDED.
+ *
+ * The client parses each of these and the Journey screen maps over the
+ * ladder, so a mapping that silently produced `undefined` here would be a
+ * crash there rather than a missing row. `achieved_at` is the one the backfill
+ * writes with `credited = false`: a rung reached before the ladder paid is
+ * achieved and was never paid, and both halves of that have to survive the
+ * wire.
+ */
+Deno.test("the owner's profile carries the ladder, the milestones, the code and the override", async () => {
+  const { client } = stubClient({
+    profile_overview: [{
+      username: "ada",
+      avatar_url: null,
+      avatar_id: "k07",
+      bio: null,
+      member_since: "2026-01-01T00:00:00Z",
+      entitlement_override: "katha",
+      referral_code: "ada",
+      referral_invited: 4,
+      referral_credited: 2,
+      referral_month_remaining: 1,
+      current_streak: 6,
+      longest_streak: 12,
+      last_activity_date: "2026-09-16",
+      ladder: [
+        { milestone: 2, credits: 2 },
+        { milestone: 5, credits: 4 },
+      ],
+      milestones: [
+        {
+          milestone: 2,
+          credits: 2,
+          achieved_at: "2026-09-08T10:00:00Z",
+          credited: true,
+        },
+        { milestone: 5, credits: 4, achieved_at: null, credited: false },
+      ],
+      stories_written: 0,
+      chapters_written: 0,
+      total_reads: 0,
+      total_likes: 0,
+      phrases_saved: 0,
+      followers: 0,
+      following: 0,
+    }],
+  });
+
+  const profile = await readOwnProfile(client, "u1");
+  assert(profile);
+  assertEquals(profile.avatarId, "k07");
+  assertEquals(profile.entitlementOverride, "katha");
+  assertEquals(profile.referralCode, "ada");
+  assertEquals(profile.referral, {
+    invited: 4,
+    credited: 2,
+    monthRemaining: 1,
+  });
+  assertEquals(profile.ladder, [
+    { milestone: 2, credits: 2 },
+    { milestone: 5, credits: 4 },
+  ]);
+  assertEquals(profile.milestones, [
+    {
+      milestone: 2,
+      credits: 2,
+      achievedAt: "2026-09-08T10:00:00Z",
+      credited: true,
+    },
+    { milestone: 5, credits: 4, achievedAt: null, credited: false },
+  ]);
+});
+
+/**
+ * A creature id is a fixed vocabulary, and anything outside it is no
+ * creature at all. An avatar id the client does not have an image for would
+ * render as a broken tile; null renders as the placeholder, which is a real
+ * state the design has a picture for.
+ */
+Deno.test("an avatar id outside k01..k36 is read as no creature", async () => {
+  for (const value of ["k00", "k37", "K07", "", null, 7]) {
+    const { client } = stubClient({
+      profile_overview: [{ username: "ada", avatar_id: value }],
+    });
+    const profile = await readOwnProfile(client, "u1");
+    assertEquals(profile?.avatarId, null, String(value));
+  }
+});
+
+/**
+ * An override is `'katha'` or it is nothing. Any other string is a row this
+ * deploy does not understand, and the safe reading of a plan you do not
+ * understand is "no plan".
+ */
+Deno.test("only 'katha' is read as an entitlement override", async () => {
+  for (const value of ["writer", "KATHA", "", null, true]) {
+    const { client } = stubClient({
+      profile_overview: [{ username: "ada", entitlement_override: value }],
+    });
+    const profile = await readOwnProfile(client, "u1");
+    assertEquals(profile?.entitlementOverride, null, String(value));
+  }
+});
+
+/** A deploy that answers with no ladder gets an empty one, never a crash. */
+Deno.test("an absent or malformed ladder reads as an empty list", async () => {
+  for (const value of [undefined, null, "not json", "{}", 7, [null, 3]]) {
+    const { client } = stubClient({
+      profile_overview: [{ username: "ada", ladder: value, milestones: value }],
+    });
+    const profile = await readOwnProfile(client, "u1");
+    assertEquals(profile?.ladder, [], String(value));
+    assertEquals(profile?.milestones, [], String(value));
+  }
+});
+
+/** jsonb that arrives as a string is still the same list. */
+Deno.test("a ladder delivered as a JSON string is parsed", async () => {
+  const { client } = stubClient({
+    profile_overview: [{
+      username: "ada",
+      ladder: JSON.stringify([{ milestone: 21, credits: 10 }]),
+    }],
+  });
+  const profile = await readOwnProfile(client, "u1");
+  assertEquals(profile?.ladder, [{ milestone: 21, credits: 10 }]);
+});
+
 Deno.test("a public profile never carries a private field", async () => {
   const { client, calls } = stubClient({
     public_profile: [{

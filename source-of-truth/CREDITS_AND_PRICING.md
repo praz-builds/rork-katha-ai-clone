@@ -10,7 +10,7 @@
 > `AGENTS.md`, `backend/ROADMAP.md`, `backend/references/story-generator-app.md`,
 > `backend/references/strategic-decisions.md` and `expo/DESIGN.md`.
 >
-> Last revised 2026-09-12. Cost figures are computed from the shipped code;
+> Last revised 2026-09-16. Cost figures are computed from the shipped code;
 > external rates are cited inline. Sentences that are inference rather than a
 > cited fact say so.
 
@@ -75,7 +75,7 @@ The five findings that shape the numbers:
    one.
 3. **A 50-credit grant is more profitable than a 100-credit one**, and not only
    because of margin. 50 credits is ~50 chapters/month against a working writer's
-   ~63-credit appetite, so overflow demand routes into credit packs at 60–78%
+   ~63-credit appetite, so overflow demand routes into credit packs at 61–82%
    margin instead of being absorbed by a ~12%-margin subscription.
 4. **Audio only works as a catalog investment, not a per-user cost.** A Microsoft
    edge-tts narration is estimated at **~$0.001-$0.006** to generate and $0 to
@@ -121,10 +121,14 @@ future feature should be decided by them without reopening this document.
    it competes with. A pack that undercuts the plan it sits next to is a bug in
    the price list, not a promotion.
 7. **Steady-state earnable free credits stay at or below 50% of the cheapest paid
-   grant** — the streak ladder pays **nothing** in steady state (14 credits
-   once, inside the first ten days), so the headroom is the whole ceiling.
-   Measure it against the **most expensive action a credit can buy**, never the
-   blended cost: see §5, *The daily credit, re-examined*.
+   grant.** The cheapest paid grant is the weekly plan's 20 credits, so the
+   ceiling is **10 a month**. The streak ladder pays **nothing** in steady
+   state (30 credits once, across the first three weeks, then never again), and
+   the only recurring earn is the feedback claim at **at most 6 a month**
+   *(2026-09-16, §5)* — 6 against a ceiling of 10, with the ladder contributing
+   zero. Measure every future earn against the **most expensive action a
+   credit can buy**, never the blended cost: see §5, *The daily credit,
+   re-examined*.
 
 ---
 
@@ -300,13 +304,18 @@ and not a free allowance by default.
 
 | | Credits |
 |---|---|
-| Keep a reading streak | **2** at day 2, **7** at day 5, **5** at day 10 |
+| Keep a reading streak | **2** at day 2, **4** at day 5, **6** at day 10, **8** at day 15, **10** at day 21 |
+| Leave a thoughtful comment on a story you read, then claim it | **1** per comment — one a day, up to six a month |
 | Invite a friend who creates something | **10** to you, **5** to them |
 | Welcome bonus | **3**, once |
 
 A streak is consecutive days with reading activity. Miss a day and it resets to
 zero — the rewards start again from day 2. **Missed one?** Read for 30 minutes
 the next day and the streak carries on as if you hadn't (twice a month).
+
+A comment earns a credit only after you have actually read the story, and only
+once per story. You claim it from the Credits screen; once claimed, the comment
+can no longer be edited.
 
 **Plans**
 
@@ -329,14 +338,13 @@ position, not an error in this line.
 
 | | | |
 |---|---|---|
-| 5 credits | $1.99 | |
+| 2 credits | $0.99 | |
 | 10 credits | $3.49 | |
-| 30 credits | $9.99 | |
-| 100 credits | $24.99 | |
-| 300 credits | $64.99 | |
+| 50 credits | $14.99 | |
+| 200 credits | $44.99 | |
 | 1000 credits | $119.99 | best pack value |
 
-**Pack credits don't expire at the end of the month.** Plan credits refresh each
+**Pack credits never expire.** Plan credits refresh each
 month and don't stack — run out on the 20th and you wait for the next cycle. Pack
 credits sit in your balance until you spend them. That, not price, is what a pack
 is for.
@@ -601,9 +609,10 @@ flagged rather than quietly carried.
 
 **The ladder descends monotonically and never inverts.** Weekly is the most
 expensive credit, yearly the cheapest, and committing for a year is 5.2× cheaper
-than paying weekly for one. **Every credit pack prices above the weekly rung**
-(§*Credit packs*), so principle 6 holds against every SKU in the product — the
-first price list in this document's history for which that is true.
+than paying weekly for one. **Every credit pack prices above the yearly rung,
+and the three small packs price at or above the weekly one** (§*Credit packs*,
+and the inversion check in §4), so principle 6 holds against every SKU in the
+product wherever a user could act on it.
 
 **Presentation order: weekly and yearly upfront; monthly disclosed below them.**
 Weekly is the impulse entry, yearly is the value anchor, monthly exists for the
@@ -660,7 +669,7 @@ headline, not both.
 Fifty is also the better product decision independently of margin. It buys ~50
 chapters a month, against a working writer's appetite of ~63 credits. A grant
 deliberately set below the heavy user's appetite routes overflow demand into
-**credit packs at 60–78% margin** rather than absorbing it inside a 12%-margin
+**credit packs at 61–82% margin** rather than absorbing it inside a 12%-margin
 subscription. A 100-credit grant swallows that demand and you never see the pack
 revenue.
 
@@ -918,29 +927,50 @@ every user on every tier.
 For users who skip the paywall entirely, and for subscribers who exhaust a
 month's grant before the month ends. No subscription required.
 
-| Pack | Price | $/credit | Net after 15% | vs. yearly |
-|---|---|---|---|---|
-| **5** | $1.99 | $0.398 | $1.69 | 4.0× |
-| **10** | $3.49 | $0.349 | $2.97 | 3.5× |
-| **30** | $9.99 | $0.333 | $8.49 | 3.4× |
-| **100** | $24.99 | $0.250 | $21.24 | 2.5× |
-| **300** | $64.99 | $0.217 | $55.24 | 2.2× |
-| **1000** | $119.99 | $0.120 | $101.99 | **1.2×** |
+> **Regridded 2026-09-16 to five packs.** The six-pack grid this replaces
+> (5 / 10 / 30 / 100 / 300 / 1000 at $1.99 / $3.49 / $9.99 / $24.99 / $64.99 /
+> $119.99) **never shipped to a store**: no SKU under it was ever created in
+> App Store Connect or Google Play, and RevenueCat carried no product for it,
+> so this is a change to the price list and not a migration of anything a
+> buyer holds. The 10 and the 1000 keep their prices; the 5 / 30 / 100 / 300
+> are replaced by a 2, a 50 and a 200.
 
-**The 10 exists to close the gap between 5 and 30**, which was a 6× jump in size
-and a $8 jump in price with nothing between. It is the second-cheapest thing to
-buy in the product and the natural second purchase after a 5-pack ran out.
+| Pack | Price | $/credit | Net after 15% | Net $/credit | vs. yearly $0.0983 |
+|---|---|---|---|---|---|
+| **2** | $0.99 | $0.495 | $0.84 | $0.421 | 5.0× |
+| **10** | $3.49 | $0.349 | $2.97 | $0.297 | 3.5× |
+| **50** | $14.99 | $0.300 | $12.74 | $0.255 | 3.0× |
+| **200** | $44.99 | $0.225 | $38.24 | $0.191 | 2.3× |
+| **1000** | $119.99 | $0.120 | $101.99 | $0.102 | **1.2×** |
+
+*Arithmetic: net is price × 0.85; $/credit is price ÷ credits; the multiple is
+gross $/credit ÷ $0.0983. The 50-pack is $0.2998 a credit, printed as $0.300.*
+
+**The 2-credit pack exists for the blocked moment** (§7), not for value. At
+$0.495/credit it is five times the yearly rate, and that is the point: it
+unblocks someone mid-chapter who does not want a subscription conversation
+right now, for less than a dollar. Two credits is a story start plus one
+chapter, or two chapters — enough to finish the thing that was interrupted. It
+is the most expensive credit in the product and the one most likely to be
+bought without comparing anything, and at $0.99 it is the lowest price a store
+will list, which is the number the blocked moment wants.
+
+**The 10 is the natural second purchase.** It sits where it did in the old grid
+and it is still the pack the not-enough-credits sheet offers (§7): $3.49 is
+under the weekly plan and ten credits is a whole short story with room left.
+
+**The 50 and the 200 replace four packs with two**, and the reason is legibility
+rather than margin. A grid of six asks the buyer to compare six ratios; a grid
+of five at 2 / 10 / 50 / 200 / 1000 steps by roughly 5× each time, so each pack
+is clearly "the next size up" and the price list can be read at a glance. The
+50 is a month's plan grant bought outright, at parity with the weekly rate per
+credit; the 200 is four months' worth for a subscriber who runs dry, and it is
+the first pack that prices below the monthly plan.
 
 The yearly plan is **$0.0983/credit**. Every pack prices above it, monotonically,
 so principle 6 holds at every rung: **the subscription is always the best price
 per credit**, and that claim can be made on the paywall as a fact rather than a
 slogan.
-
-**The 5-credit pack exists for the blocked moment** (§7), not for value. At
-$0.398/credit it is four times the yearly rate, and that is the point: it unblocks
-someone mid-chapter who does not want a subscription conversation right now. It is
-the most expensive credit in the product and the one most likely to be bought
-without comparing anything.
 
 **The 1000-credit pack is deliberately close to the yearly rate**, at 1.2×. It is
 not competing with the subscription — 1000 credits is more than a year's grant
@@ -949,21 +979,29 @@ a plan, not a prospect choosing between the two. Pricing it near parity is what
 keeps that user from feeling punished for volume.
 
 **Margins**, at the $0.0738 worst-case blended credit cost (3-chapter words-only
-story, the shape that amortises the cast and cover over the fewest credits):
+story, the shape that amortises the cast and cover over the fewest credits).
+Cost is credits × $0.0738; profit is the net price less that cost; margin is
+profit over net:
 
-| Pack | Cost at worst shape | Profit | Margin |
-|---|---|---|---|
-| 5 | $0.37 | $1.32 | 78% |
-| 10 | $0.74 | $2.23 | 75% |
-| 30 | $2.21 | $6.28 | 74% |
-| 100 | $7.38 | $13.86 | 65% |
-| 300 | $22.14 | $33.10 | 60% |
-| 1000 | $73.80 | **$28.19** | **28%** |
+| Pack | Net | Cost at worst shape | Profit | Margin |
+|---|---|---|---|---|
+| 2 | $0.84 | $0.15 | $0.69 | **82%** |
+| 10 | $2.97 | $0.74 | $2.23 | 75% |
+| 50 | $12.74 | $3.69 | $9.05 | 71% |
+| 200 | $38.24 | $14.76 | $23.48 | 61% |
+| 1000 | $101.99 | $73.80 | **$28.19** | **28%** |
 
 **The top pack's 28% is the carry-over risk, and it is real.** Pack credits do not
-expire monthly, so a 1000-credit buyer can spend the lot on the most expensive
-shape whenever they choose. It is still the largest single profit line in the
-price list at $28.19, and 58% on blended shapes. Watch it; do not enlarge it.
+expire, so a 1000-credit buyer can spend the lot on the most expensive shape
+whenever they choose. It is still the largest single profit line in the price
+list at $28.19, and 58% on blended shapes ($101.99 net against 1000 × $0.043 =
+$43.00). Watch it; do not enlarge it.
+
+**Every pack still clears the worst shape**, and the 2 clears it by the widest
+margin in the product, which is what a blocked-moment price should do: the
+person buying it is spending it on the action they were blocked from, which is
+very likely a story start at $0.178, and $0.84 net against $0.36 for two starts
+is still 57%.
 
 ### Carry-over is the pack's real product, not its price
 
@@ -1026,20 +1064,41 @@ downside at **$0.74**.
 | `ai.katha.sub.weekly` | Weekly — $5.99 · 20 credits |
 | `ai.katha.sub.monthly` | Monthly — $12.99 · 50/mo |
 | `ai.katha.sub.yearly` | Yearly — $59 · 50/mo, 3-day trial |
-| `ai.katha.credits.5` | 5 credits — $1.99 |
+| `ai.katha.credits.2` | 2 credits — $0.99 |
 | `ai.katha.credits.10` | 10 credits — $3.49 |
-| `ai.katha.credits.30` | 30 credits — $9.99 |
-| `ai.katha.credits.100` | 100 credits — $24.99 |
-| `ai.katha.credits.300` | 300 credits — $64.99 |
+| `ai.katha.credits.50` | 50 credits — $14.99 |
+| `ai.katha.credits.200` | 200 credits — $44.99 |
 | `ai.katha.credits.1000` | 1000 credits — $119.99 |
 
+Eight SKUs, one entitlement (`katha`). The server-side product map is
+`_shared/revenuecat.ts`; migration 00089 and the functions deployed with it
+carry this list.
+
 > **The `reader.*` and `writer.*` SKU families are retired** with the two-audience
-> grid. Nothing has shipped to a store under them, so this is a rename rather than
-> a migration — but confirm that before creating the new ones.
+> grid, and **`ai.katha.credits.{5,30,100,300}` are retired with the six-pack
+> grid** *(2026-09-16)*. **Neither family ever shipped to a store** — as of this
+> revision no Katha product exists in App Store Connect, Google Play or
+> RevenueCat production, so every retirement in this table is a rename of
+> configuration rather than a migration of a live product. The store products
+> are created after the Play listing exists (`backend/ROADMAP.md`, *Play Store
+> go-live*), and they are created from this table.
 
 The client must read price, renewal terms, trial eligibility and offer copy from
 RevenueCat product data. The values above are the configuration, not hardcoded
-strings.
+strings. Where RevenueCat packages exist the client renders `priceString`
+verbatim; the USD list above is the fallback copy for a surface that has no
+package to read — the web preview, where purchases are disabled outright.
+
+> **Country pricing is a store-console job, not a code path** *(decided
+> 2026-09-16)*. The USD prices above are the base. Google Play's automatic
+> conversion sets every other country's price from them, and the one manual
+> override is **India, set by hand to a local figure ending in 9**. The client
+> never converts a currency, never applies a rate, and never formats a price
+> from a number: it renders the `priceString` the store hands it, or the USD
+> fallback copy, and nothing else. There is no conversion code anywhere in the
+> product, and adding any would be the wrong fix for a wrong price — the fix is
+> in the console. Apple's price tiers, when the iOS listing exists, are set the
+> same way.
 
 ---
 
@@ -1053,15 +1112,16 @@ strings.
 
 | SKU | $/credit | Net/credit | Margin at worst shape |
 |---|---|---|---|
-| Pack 5 / $1.99 | $0.398 | $0.338 | **78%** |
+| Pack 2 / $0.99 | $0.495 | $0.421 | **82%** |
 | Pack 10 / $3.49 | $0.349 | $0.297 | **75%** |
-| Pack 30 / $9.99 | $0.333 | $0.283 | **74%** |
+| Pack 50 / $14.99 | $0.300 | $0.255 | **71%** |
 | Weekly $5.99 / 20 | $0.300 | $0.255 | **71%** |
 | Monthly $12.99 / 50 | $0.260 | $0.221 | **67%** |
-| Pack 100 / $24.99 | $0.250 | $0.212 | **65%** |
-| Pack 300 / $64.99 | $0.217 | $0.184 | **60%** |
+| Pack 200 / $44.99 | $0.225 | $0.191 | **61%** |
 | Pack 1000 / $119.99 | $0.120 | $0.102 | **28%** |
 | **Yearly $59 / 600** | **$0.0983** | **$0.0836** | **12%** ← constraint |
+
+*(Pack rows regridded 2026-09-16; margin is 1 − $0.0738 ÷ net/credit.)*
 
 **Every SKU clears cost at every story shape.** That has not been true of any
 previous version of this price list — the retired $49.99/600 row was **−$1.79/yr**
@@ -1087,15 +1147,20 @@ the cheapest subscription a pack buyer is choosing between:
 
 | Pack | Gross $/cr | vs weekly $0.300 |
 |---|---|---|
-| 5 / $1.99 | $0.398 | ✅ |
+| 2 / $0.99 | $0.495 | ✅ |
 | 10 / $3.49 | $0.349 | ✅ |
-| 30 / $9.99 | $0.333 | ✅ |
-| 100 / $24.99 | $0.250 | ⚠ below weekly, above monthly |
-| 300 / $64.99 | $0.217 | ⚠ below weekly, below monthly |
+| 50 / $14.99 | $0.300 | ✅ at parity — $0.2998 against weekly's $0.2995, above by $0.0003 |
+| 200 / $44.99 | $0.225 | ⚠ below weekly, below monthly, above yearly |
 | 1000 / $119.99 | $0.120 | ⚠ below both, above yearly |
 
-**The three large packs sit below the weekly rung, and that is correct rather than
-a violation.** Weekly is a 20-credit product; nobody weighing a 300-credit pack is
+**The 50 passes on arithmetic and not on headroom, and that is stated rather
+than rounded away.** It is a month's grant bought outright, and it prices to the
+cent where the weekly plan does; the plan it actually sits next to for that
+buyer is monthly at $0.260, which it clears by 15%. If the weekly price ever
+falls or the 50 ever gets cheaper, this row inverts first.
+
+**The two large packs sit below the weekly rung, and that is correct rather than
+a violation.** Weekly is a 20-credit product; nobody weighing a 200-credit pack is
 weighing it against 20 credits a week. Every pack stays above the **yearly** rate,
 which is the subscription that actually competes for a bulk buyer, so the claim
 "a plan is always the best price per credit" holds where a user could act on it.
@@ -1173,29 +1238,39 @@ fallback for the long tail.
 
 ### Free tier exposure
 
-A maximally engaged free user earns **17 credits in month one** (3 welcome, once
-+ 14 from streak milestones at days 2, 5 and 10) and **nothing thereafter** — a
-one-time **$0.73** at the blended $0.043, and **$0.89** if they are spent the
-most expensive way there is. Seventeen credits is **five story starts** with two
-credits over, not seventeen — **that arithmetic assumed a three-credit start and
-is now wrong**. At one credit (2026-09-14) seventeen credits is seventeen starts
-and the worst case is 17 × $0.178, which is the figure this paragraph was
-written to rule out. It is left visible rather than quietly corrected because
-the conclusion it supports needs re-deriving, not patching. *(Was 24 while the welcome bonus
-was 10; reduced to 3 on 2026-09-11, §6. The $0.50 / $1.80 pair this replaces was
-arithmetic on the retired one-credit start.)*
+> **Re-derived 2026-09-16** against the one-credit start, the five-rung ladder
+> and the feedback claim. The paragraph this replaces was written for a
+> three-credit start and said so; it is now redone rather than carried.
 
-**Zero in steady state is trivially inside the principle-7 ceiling of 50%.** The
-milestone ladder needs no monthly cap because it does not recur at all: it pays
-three times, inside the first ten days, and is then exhausted. That is its
-advantage over a flat daily grant, which needed an explicit ceiling to stop it
-reaching 30/month and out-earning the paid tier. The cost is that a retained free
-user has no ongoing earn — see the open item in §5.
+A maximally engaged free user earns **33 credits in month one** (3 welcome,
+once, + 30 from streak milestones at days 2, 5, 10, 15 and 21) from the
+one-off sources, and at one credit a start that is **33 story starts**, not
+eleven. One-off exposure is therefore **$1.42** at the blended $0.043
+(33 × $0.043) and **$5.87** if every credit starts a story (33 × $0.178) — the
+worst case is, by coincidence, the same figure as the yearly plan's profit at
+the worst shape, and it is paid once per free user who holds a 21-day streak,
+which is a retained user by any definition in §11.
+
+The only recurring earn is the feedback claim: **at most 6 a month**, so a
+retained free user's steady state is **72 credits a year** — **$3.10** blended
+(72 × $0.043) or **$12.82** if every one starts a story (72 × $0.178), against
+the $50.15 a yearly subscription nets. Seventy-two credits is 12% of the
+600-credit annual grant, and it is earned one qualifying read and one
+40-character comment at a time.
+
+**Six a month is inside the principle-7 ceiling of ten**, which is half the
+weekly plan's 20. The milestone ladder still needs no monthly cap because it
+does not recur at all: it pays five times, across the first three weeks, and is
+then exhausted. That is its advantage over a flat daily grant, which needed an
+explicit ceiling to stop it reaching 30/month and out-earning the paid tier.
+The feedback claim carries its own ceiling — 1 a day and 6 a month, enforced
+server-side — and stays 4 under the principle's line with the ladder at zero.
 
 The headroom is deliberate. If free-tier engagement turns out too thin — the
 signal being D7 retention on free users tracking below subscribers by more than
-2× — the lever is to add a recurring rung (§5's open item) or shorten the gap
-days to 5, not to raise the per-milestone amount.
+2× — the lever is to add a recurring streak rung (§5's open item) or shorten
+the gap days, not to raise the per-milestone amount and not to raise the
+feedback cap past the ceiling.
 
 ---
 
@@ -1206,18 +1281,20 @@ users — reading is free and unlimited, so it carries no consumption burden.
 
 | Source | Credits | Cadence | Cap | `reason` | Ship |
 |---|---|---|---|---|---|
-| **Reading streak** | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime — nothing repeats | `streak` | Launch |
+| **Reading streak** | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime — nothing repeats | `streak` | Launch |
+| **Feedback — a claimed comment** | **1** | on claim in Credits, after a qualifying read of that story | 1 per story, 1 per UTC day, **6 per calendar month** | `feedback` | Launch |
 | **Welcome bonus** | **3** | once, on declining the paywall (§6) | once per authenticated account | `welcome` | Launch |
 | **Guest bootstrap** | **3** | once, on first guest bootstrap (§9) | once per anonymous account, 3 per network prefix / 24h | `guest_bootstrap` | Launch |
-| **Referral — referrer** | **10** | on invited user's 1st generation | 3/month, 10 lifetime | `referral` | v1.1 |
-| **Referral — invited** | **5** | on own 1st generation | once | `referral` | v1.1 |
+| **Referral — referrer** | **10** | when the invitee has generated once **and** is ≥ 24 h old | 3/month, 10 lifetime | `referral` | **Launch** (code-based) |
+| **Referral — invited** | **5** | same moment, same transaction | once — `referred_id` is unique | `referral` | **Launch** (code-based) |
 | **Streak repair** | **0** — restores the streak | day after a missed day, on 30 min of reading | 2/month | — | Launch |
 
-**Steady state for a free user: zero.** The streak ladder pays **14 credits
-once**, all of it inside the first ten days, and then stops. With the welcome
-bonus a free user's lifetime earn is **17 credits** — against **50/month, every
-month**, on every paid plan. The earn side is an activation mechanism, not an
-income.
+**Steady state for a free user: at most 6 a month, all of it from feedback.**
+The streak ladder pays **30 credits once**, across the first three weeks, and
+then stops; with the welcome bonus a free user's one-off earn is **33 credits**.
+The feedback claim is the one recurring source and it is capped at 6 a month
+against a principle-7 ceiling of 10 — **against 50/month, every month**, on
+every paid plan. The earn side is an activation mechanism, not an income.
 
 > **Resolved 2026-09-10.** §§1-4 have now been rebuilt against the decided
 > ladder — one product at three durations, weekly $5.99 · 20, monthly $12.99 · 50,
@@ -1226,47 +1303,68 @@ income.
 
 ### The streak ladder
 
-> **Rebuilt to the milestone shape, 2026-09-10.** The rungs used to sit at day 2,
-> day 5, day 7 and every 7 days after. They are now **milestones at day 2, day 5
-> and day 10**, matching the *Your journey* screen, which shows exactly these and
-> renders them as locked achievements. This replaced a briefly-held plan to pay
-> daily through the first week: paying on days 3, 4 and 6 while celebrating only
-> 2, 5 and 10 would hand out credits with no milestone on screen to explain them.
-> A rung the user cannot see is a rung that cannot motivate.
+> **Rebuilt to the milestone shape, 2026-09-10; extended to five rungs
+> 2026-09-16.** The rungs used to sit at day 2, day 5, day 7 and every 7 days
+> after; from 2026-09-10 they were milestones at day 2, day 5 and day 10 paying
+> 2 / 7 / 5. They are now **five milestones at day 2, 5, 10, 15 and 21**, and
+> the ladder rises. The *Your journey* screen lists exactly these five, each
+> with its credits, and renders an unreached rung as a locked achievement and a
+> reached one as "Achieved on {date}". The principle from 2026-09-10 is
+> unchanged: paying on a day with no milestone on screen would hand out
+> credits nothing explains, and a rung the user cannot see is a rung that
+> cannot motivate.
 
 | Milestone | Credits | Cumulative |
 |---|---|---|
 | Day 2 | **2** | 2 |
-| Day 5 | **7** | 9 |
-| Day 10 | **5** | 14 |
+| Day 5 | **4** | 6 |
+| Day 10 | **6** | 12 |
+| Day 15 | **8** | 20 |
+| Day 21 | **10** | 30 |
 
-**The ladder pays 14 credits, once, and then stops.** With the welcome bonus a
-free user's lifetime earn is **17 credits**. There is no recurring rung.
+**The ladder pays 30 credits, once, and then stops.** With the welcome bonus a
+free user's one-off earn is **33 credits**. There is no recurring rung.
 
-**The mass sits at day 5, deliberately.** Seven credits is the largest single
-grant in the earn table and it lands inside the D1-to-D7 cliff (below) rather
-than after it. At the bundled 1-credit story start that is seven whole stories
-arriving at the exact moment a wavering user decides whether this app is a habit.
-The earn side is an **activation** mechanism here, not an income.
+**The mass now sits at the back, and that is the trade the owner made.** The
+2026-09-10 ladder put seven of its fourteen credits at day 5, inside the
+D1-to-D7 cliff (below), on the argument that the biggest grant should land
+where a wavering user decides. This ladder pays six across that same window
+(2 + 4), and eighteen of its thirty on days 15 and 21. What is bought with the
+change: a ladder that reads as progress, where every rung is bigger than the
+one before and the last is the largest, on a screen built around exactly that.
+What it costs: less at the cliff, and more than twice as much in total — but
+the extra sixteen credits are paid only to a person who has held a streak for
+three weeks, and that person is retained. The earn side is still an
+**activation** mechanism here, not an income; it is just a longer one.
 
-> ⚠ **Two open items, both deliberate rather than overlooked.**
+> **No retroactive grants** *(2026-09-16, migration 00089)*. An account whose
+> streak was already past a rung when this ladder shipped gets its milestone
+> row backfilled as achieved, dated from the streak's last update, with
+> `credited = false`. It is not paid for rungs it crossed under the old table,
+> and the *Your journey* screen shows those rungs as achieved without a credit
+> line. The old 2 / 7 / 5 grants it did receive are left in the ledger as
+> they were.
+
+> ⚠ **The two open items of 2026-09-10, revisited.**
 >
-> 1. **Day 10 pays less than day 5** (5 against 7). Every other ladder in this
->    file rises. This one peaks at day 5 and steps down, which is the
->    front-loading argument taken to its end — but it will read as a mistake to
->    anyone meeting the table cold, and it means the *last* milestone is the
->    *smallest*. Recorded as intended, flagged as worth re-reading.
-> 2. **Nothing repeats.** Past day 10 the streak pays nothing and every milestone
->    on *Your journey* is unlocked, so a retained free user has no further reason
->    to hold the streak and no ongoing earn. That is the cheapest possible earn
->    side and a defensible position; it is also a visible dead end in a screen
->    built around progress. A repeating rung — *every 10 days, 2* — would cost
->    ~6/month (12% of the 50 grant, $0.31/month blended) and close it. **Not
->    decided.**
+> 1. ~~**Day 10 pays less than day 5.**~~ **Resolved 2026-09-16.** The ladder
+>    rises monotonically — 2, 4, 6, 8, 10 — and the last milestone is the
+>    largest. The step-down that would have read as a mistake to anyone
+>    meeting the table cold is gone.
+> 2. **Nothing repeats.** Still open, and still deliberate. Past day 21 the
+>    streak pays nothing and every milestone on *Your journey* is unlocked, so
+>    a retained free user has no further streak reason and the screen still
+>    ends. The feedback claim (below) now gives that user *something* to earn
+>    — up to 6 a month — but it is not a streak rung and it does not put a
+>    sixth row on the journey. A repeating rung — *every 10 days, 2* — would
+>    still cost ~6/month (12% of the 50 grant, $0.26/month blended), and with
+>    feedback already at 6 it would put the steady state at the principle-7
+>    ceiling exactly. **Not decided.**
 
-**Cost of the whole ladder: $0.60 blended, $2.49 if all 14 credits start
-stories** — one-time, per free user who reaches day 10. It is the cheapest earn
-side this document has ever costed.
+**Cost of the whole ladder: $1.29 blended, $5.34 if all 30 credits start
+stories** (30 × $0.043; 30 × $0.178) — one-time, per free user who reaches day
+21. That is $0.69 and $2.85 more than the ladder it replaces, paid only past
+day 10, to a user the old ladder had already stopped paying.
 
 **A streak is consecutive days with reading activity**, server-recorded: one
 chapter finished, or ≥60s of dwell. Miss a day and it resets to zero, and the
@@ -1276,12 +1374,14 @@ rewards restart at day 2.
 26% to D7 13%** ([Adjust 2026, via UXCam](https://uxcam.com/blog/mobile-app-retention-benchmarks/))
 — the cliff is between day one and day seven, so the first reward has to land
 before a user is already gone. Day 2 catches them at the top of the fall. The
-day-5 and day-7 rungs then bracket the steepest part of it.
+day-5 and day-10 rungs then bracket the steepest part of it, and days 15 and 21
+carry the habit through the third week, where the D7-to-D30 fall from 13% to
+7% is decided.
 
 **Why it beats a flat daily grant.** A flat "1 credit per app open" pays 30
 credits/month uncapped — 60% of the 50/month paid grant — so it needs an
 artificial monthly ceiling bolted on to stop the free tier dominating the paid
-one. The milestone ladder needs no ceiling because it terminates: 14 credits,
+one. The milestone ladder needs no ceiling because it terminates: 30 credits,
 once, and never again. One rule instead of two, and it rewards *consecutive* days
 rather than sporadic opens, which is the behavior actually worth paying for. The
 full cost comparison is in *The daily credit, re-examined* below.
@@ -1322,11 +1422,14 @@ thirty minutes every week."
 or ≥60s of dwell — accumulated to 30 minutes and recorded server-side. Client
 reported dwell is not trusted for this any more than it is anywhere else (§9).
 
-**Repair restores the streak but does not pay the missed credit.** The user keeps
-a ladder worth ~4 credits/month rather than being sent back to day 2; they do not
-also get paid for a day they missed. Paying it as well is defensible and would
-cost ~$0.04 a repair — it is a tuning question, not a structural one, and the cap
-bounds it either way.
+**Repair restores the streak but does not pay any rung the missed day would
+have reached.** The user keeps their place on a 30-credit ladder rather than
+being sent back to day 2; they do not also get paid for a day they missed. If
+the missed day was itself a milestone, the rung is paid when the repaired
+streak reaches it the next day, not for the day that was missed. Paying a
+missed rung outright would cost between $0.09 and $1.78 depending on which
+rung it was (2 to 10 credits at $0.043 to $0.178) — a tuning question, not a
+structural one, and the cap bounds it either way.
 
 ### The daily credit, re-examined
 
@@ -1340,7 +1443,8 @@ after the 15% store commission:
 | Model | Credits/mo | Cost/yr at blended $0.043 | Cost/yr if spent starting stories ($0.178) |
 |---|---|---|---|
 | **Flat daily credit** | 30, forever | $15.48/yr | **$64.08/yr** |
-| Milestone ladder (shipped) | 14 **once**, then 0 | **$0.60 once** | $2.49 once |
+| Milestone ladder (shipped, five rungs) | 30 **once**, then 0 | **$1.29 once** | $5.34 once |
+| 2026-09-10 three-rung ladder | 14 once, then 0 | $0.60 once | $2.49 once |
 | Retired day-2/5/7 ladder | ~4 | $2.06/yr | $8.54/yr |
 
 **The old argument, unchanged.** 30 credits/month is **60% of the 50/month paid
@@ -1364,17 +1468,60 @@ action a credit can buy, never the blended one.
 
 **What ships instead: the milestone ladder plus repair.** Together they answer
 what the daily credit was reaching for — a reason to open the app tomorrow, and
-forgiveness when you don't — for **$0.60 once** instead of $15.48-$64.08 every
-year. The gap is three orders of magnitude, which is the whole argument.
+forgiveness when you don't — for **$1.29 once** instead of $15.48-$64.08 every
+year. The flat credit costs twelve times as much in its first year alone and
+then does it again every year; the ladder is paid once and never again. That
+gap, not the first-year figure, is the whole argument.
 
 ### Referral
 
-10 + 5 = **$0.63 per activated referral**, cheap against any paid acquisition
-channel. Payout is gated on the invited user's **first generation**, not on
-signup, which is the right anti-farm design — it requires a real account doing a
-real thing. Caps of 3/month and 10 lifetime for the referrer.
+10 + 5 = 15 credits, **$0.65 per activated referral** at the blended $0.043 and
+**$2.67** if all fifteen start stories (15 × $0.178) — cheap against any paid
+acquisition channel either way. Payout is gated on the invited user's **first
+generation**, not on signup, which is the right anti-farm design — it requires
+a real account doing a real thing. Caps of 3/month and 10 lifetime for the
+referrer, so the most a referrer can ever earn this way is 100 credits.
 
-Deferred to v1.1 because it needs deep-link attribution that does not exist yet.
+> **Ships at launch, code-based, 2026-09-16.** This stood at v1.1 because it
+> was waiting on deep-link attribution. The owner's decision is to ship the
+> code without the link: the deep link was the *acquisition* half of the
+> design and the code was always the fallback, and a fallback that works on
+> its own is a working v1. What ships in migration 00089 and the `referral`
+> function:
+>
+> | Rule | Value |
+> |---|---|
+> | **The code** | `profiles.referral_code`, unique; derived from the username where one exists, generated otherwise |
+> | **Where it shows** | The Credits screen: the code, a Share control, and *Have an invite code?* — never the paywall, never onboarding |
+> | **Who can enter one** | An account **less than 7 days old**. A code entered later is refused — the invitee half of the payout is for arriving, not for remembering |
+> | **When it pays** | Once **both** hold: the invitee's `first_generation_at` is set **and** the invitee's account is **≥ 24 h old**. Settled by `settle_referrals` from the two generation-completion paths and from the profile overview, so a payout blocked only by the age rule lands on the next fetch after it clears |
+> | **What it pays** | 10 to the referrer and 5 to the invitee, both grants in one transaction, keyed `referral:referrer:{referred_id}` and `referral:invitee:{referred_id}` |
+> | **Caps** | Referrer: 3 a month, 10 lifetime. Invitee: once — `referrals.referred_id` is unique, so a second claim is structurally impossible |
+> | **Refused** | Self-referral (`referrer_id <> referred_id` is a check constraint), an unknown code, a second claim, an account over 7 days old, and any tester account (§9) on either side |
+>
+> **Why the 24-hour rule survives the move to launch.** With a deep link the
+> attribution happens at install, so the invitee has usually aged a day before
+> they generate anything; with a typed code the two can be seconds apart —
+> sign up, type the code, generate, collect. The age rule is what stops a
+> referrer minting invitees on a phone and cashing them the same afternoon,
+> and the first-generation gate is what stops them minting invitees who do
+> nothing. Both are needed; neither is enough alone.
+>
+> **The deep link is the v1.1 upgrade, not a replacement.** The table below
+> is unchanged as the design: `katha.ai/i/{code}` resolves the referrer on
+> first launch and stores the attribution, and the code field stays as the
+> recovery path for the installs where the link fails. When it ships, the
+> code and the link are the same artifact, and nothing in the payout rules
+> above changes.
+
+**Against principle 7.** A referral payout is not a steady-state earn and is not
+counted against the 10-a-month ceiling, and the reason should be stated rather
+than assumed: it is lifetime-capped at 100 per referrer, every payout requires a
+*second* account to do a real thing and to be a day old, and what it buys is a
+user — it is acquisition spend, priced per activated referral above, not a
+faucet the referrer can run alone. *This is a position, not arithmetic*; if the
+monitoring query in §9 shows referral grants clustering on a few accounts, it
+is the first thing to re-examine.
 
 **There is no code field on the paywall, and there never will be.** *(Decided
 2026-09-05.)* Three reasons, in order of weight:
@@ -1394,24 +1541,86 @@ Deferred to v1.1 because it needs deep-link attribution that does not exist yet.
 
 | Layer | Behaviour |
 |---|---|
-| **Primary** | Deferred deep link: `katha.ai/i/{code}` → install → referrer resolved on first launch → attribution stored → both grants fire on the invited user's first generation. No UI in the main path. |
-| **Fallback** | A code field in **Profile**, labelled *Have an invite code?* — never on the paywall, never in onboarding. Deferred deep links fail for a real share of installs: links opened in the WhatsApp or Instagram in-app browser, iOS clipboard permission, Android install-referrer edge cases. Without a recovery path those referrals are lost and the **referrer** blames us, which is what actually breaks the loop. |
-| **The code** | The code and the link are one artifact. 6 to 8 human-typeable characters, no ambiguous glyphs (no `0/O`, `1/l/I`), so the same string works pasted or typed. |
+| **Launch (v1)** | The code, in **Credits** (reached from Profile): shown with a Share control, and accepted through *Have an invite code?* — never on the paywall, never in onboarding. Both grants fire when the invitee has generated once and is a day old. |
+| **v1.1** | Deferred deep link: `katha.ai/i/{code}` → install → referrer resolved on first launch → attribution stored → the same payout, with no typing. The code field stays as the recovery path: deferred deep links fail for a real share of installs — links opened in the WhatsApp or Instagram in-app browser, iOS clipboard permission, Android install-referrer edge cases — and without it those referrals are lost and the **referrer** blames us, which is what actually breaks the loop. |
+| **The code** | The code and the link are one artifact. Derived from the username where there is one, so it is human-typeable; the generated form avoids ambiguous glyphs (no `0/O`, `1/l/I`), so the same string works pasted or typed. |
 | **Disclosure** | The invited user learns their balance from the in-app message after WELCOME, per decision 29a. Not on the paywall, not on the welcome screen. |
 
-**The invited bonus reads weaker against a 10-credit welcome than it did against
-3** — a 50% bump rather than a 167% one. Not a launch problem, because referral
-is v1.1, but rebalance the 5 when it actually ships rather than inheriting it.
+**The invited bonus ships at 5, unchanged.** The note that stood here worried
+that 5 read weak against a 10-credit welcome; the welcome went back to 3 on
+2026-09-11, so 5 is again a 167% bump on what a new user is otherwise given,
+and it is left as designed.
+
+### Feedback credits — the claimed comment
+
+**Decided 2026-09-16, by the product owner, and it reverses a removal recorded
+below.** *Deliberately removed* struck the comment reward on 2026-09-10 because
+what shipped paid a credit for a one-character comment on any public story,
+daily, uncapped, with no requirement the user had read it. That faucet is
+retired for good — **migration 00089 stops `create_feedback` granting
+anything** — and a different mechanic is put in its place: a comment earns
+nothing when it is posted, and **1 credit when the author of the comment claims
+it** from the Credits screen, if it qualifies.
+
+| Rule | Value |
+|---|---|
+| **Amount** | **1** credit, reason `feedback`, keyed `feedback:{comment_id}` — a second claim on the same comment is a structural no-op |
+| **The comment** | At least **40 characters** after trimming; not soft-deleted; not the subject of an upheld content report |
+| **The story** | Not the claimant's own |
+| **The read** | A qualifying read of that story recorded **before** the comment — 120 seconds of dwell, or the chapter completed, whichever the read table records — so the credit is for reading and then saying something, in that order |
+| **Caps** | **1 per story**, **1 per UTC day**, **6 per calendar month**, all enforced in `claim_comment_credit` |
+| **After the claim** | The comment's content is **frozen**: the owner's UPDATE policy excludes claimed rows, so a comment cannot be paid for and then edited into something else |
+| **Who cannot claim** | A tester account (§9), ever |
+
+**Cost.** Six a month is **$0.26 blended and $1.07 if every credit starts a
+story** (6 × $0.043; 6 × $0.178), per month, per free user who reads six
+stories and comments on each. Over a year that is 72 credits, $3.10 to $12.82,
+against the $50.15 a yearly plan nets — and it buys 72 qualifying reads and 72
+comments of at least forty characters on other people's stories, which is the
+community activity the product has no other way to pay for.
+
+**Against principle 7.** 6 a month against a ceiling of 10, with the streak
+ladder at zero in steady state. It is the only recurring earn in the product,
+and the cap is the whole of what keeps it inside the line: raising it to 10
+would put the free tier exactly at the ceiling, and past 10 is a violation.
+The monthly cap is therefore load-bearing and is not a tuning knob.
+
+**Why claim-after-the-fact, rather than granting when the comment is posted.**
+The 2026-09-10 removal was right about the mechanic it removed: paying at post
+time makes the payout the reason the comment exists, and every comment becomes
+a withdrawal. Separating the two changes what is being paid for.
+
+1. **The checks run at claim time, against the state then.** A report filed
+   after the comment was posted blocks the claim; a read that happened after
+   the comment does not count; a comment deleted in the meantime pays nothing.
+   Granting at post time would have to decide all of this in the instant the
+   comment lands, before anyone else has seen it.
+2. **The freeze has something to attach to.** A claimed comment is locked
+   because it has been paid for. A grant at post time would have to freeze
+   every comment, or none.
+3. **The cap is never felt in the comment box.** A person at their daily cap
+   still comments; nothing tells them "no credit for this one" while they are
+   writing. The refusal, when there is one, appears on the Credits screen as
+   a claim that is not yet claimable and says why (`daily_cap`, `not_read`,
+   `too_short`, and so on). Commenting stays a social act; earning is a
+   separate, deliberate tap.
+4. **The ledger is written once, on purpose.** One RPC, one idempotency key,
+   one row — rather than a grant inside every comment insert that has to be
+   made conditional and then defended.
+
+The cost of the design is a second tap that some people will never take, which
+means the true monthly spend will sit below the cap. That is the right side
+to err on.
 
 ### Deliberately removed
 
 | Mechanic | Why it's gone |
 |---|---|
-| **Comment for a credit** | Shipped code grants a credit for a **one-character** comment on any public story, daily, forever, with no requirement the user read it. Rather than harden it, remove it — paying for comments buys comment spam, not community. **This is live in `create_feedback` today and must be disabled before launch.** |
+| ~~**Comment for a credit**~~ | ~~Shipped code grants a credit for a **one-character** comment on any public story, daily, forever, with no requirement the user read it. Rather than harden it, remove it — paying for comments buys comment spam, not community.~~ **Reversed 2026-09-16 by the product owner, as a different mechanic** — see *Feedback credits — the claimed comment*, above. The faucet described here is retired by migration 00089 (`create_feedback` grants nothing); what replaces it is 1 credit on a *claim*, after a qualifying read, on a comment of at least 40 characters, capped at 1 per story, 1 a day and 6 a month, with the content frozen once paid. The objection this row made — that paying for comments buys spam — is answered by the read requirement and the caps, not dismissed. |
 | **Social post reward** | A manual moderation queue to pay out one credit is not worth building. |
 | **Reader earnings** | The highest-abuse surface in the app, requiring the full anti-gaming pipeline, and there is no reader volume to calibrate against pre-launch. The front-loaded curve in `strategic-decisions.md` §6 is well designed and can return in v1.2 once there is real traffic. |
 | **Rewarded ads** | Rewarded video clears $15–40 eCPM in tier-1 gaming ([RevenueFlex](https://revenueflex.com/blog/app-ad-revenue-benchmarks-2026/), [Business of Apps](https://www.businessofapps.com/ads/rewarded-video/)); *inference:* a global reading app should plan on $6–12 eCPM = **$0.006–$0.012 per impression** against $0.0322-$0.0738 for the credit it buys. Rewarded ads lose money as a credit source at any plausible eCPM. Whether to run **non-rewarded** ads as free-tier revenue is a separate question, deferred. |
-| **Flat daily app-open credit** | Rejected three times, most recently 2026-09-10 against the bundled story start — see *The daily credit, re-examined* above. Pays 30/month uncapped (60% of the 50/month paid grant, over principle 7's ceiling) and costs up to **$64.08/year** against the **$50.15** an annual subscription nets. The milestone ladder terminates instead of capping — 14 credits once, then nothing — rewards consecutive days rather than sporadic opens, and with streak repair answers the same product pull for **$0.60, once**. |
+| **Flat daily app-open credit** | Rejected three times, most recently 2026-09-10 against the bundled story start — see *The daily credit, re-examined* above. Pays 30/month uncapped (60% of the 50/month paid grant, over principle 7's ceiling) and costs up to **$64.08/year** against the **$50.15** an annual subscription nets. The milestone ladder terminates instead of capping — 30 credits once, then nothing — rewards consecutive days rather than sporadic opens, and with streak repair answers the same product pull for **$1.29, once**. |
 | **Premium voice tier** | ~~Every voice is available on every tier including free.~~ **Reversed 2026-09-10, then qualified the same day.** The original reasoning held while every voice was MiniMax, where voice choice is not a cost lever — the same $0.22 either way. `_shared/voices.ts` ships two *providers*: `edge_tts` and `runpod_minimax` (~$0.22 ⚠ unmeasured), and tiering across two engines is a real economic line rather than packaging. **But `edge_tts` does not work and is not free.** Microsoft's consumer endpoint returns 403 to a direct connection (verified 2026-09-10: Deno's `WebSocket` cannot set the required `Origin`/`User-Agent`, and a manual TLS handshake that does set them is refused anyway). `_shared/edge-tts.ts` therefore calls an external worker at `EDGE_TTS_SERVICE_URL` **which does not exist** — Spanish voices already fail as `edge_tts_service_missing`. So the design stands and the price does not: free-tier narration costs whatever hosting a Python worker costs, and **ships only once that worker exists**. Paid MiniMax voices are unlimited on the pre-narrated catalog, where one narration serves every listener, and metered on your own new chapters, where that $0.22 amortizes across exactly one person. |
 | **Carry-over cap (2×)** | Replaced by non-rolling monthly grants (§8). |
 | **Generation refund as a grant table row** | It is not earning, so it is not on the earn table. The **auto-refund behavior stays** — a failed generation returns every credit it reserved, per principle 4, already implemented as `refund_generation_operation`. It is documented in §1 as a guarantee, not as a way to earn. |
@@ -1698,7 +1907,7 @@ User taps a paid action.
 │          is usually still enough to do SOMETHING. Offer that first.
 │
 │     2. Streak row — INFORMATION, not a button:
-│          "Day 4 of your streak. Day 5 pays 1 credit."
+│          "Day 4 of your streak. Day 5 pays 4 credits."
 │          Shown ONLY when the next milestone lands within 48h.
 │          Otherwise omitted entirely — never render a 6-day wait
 │          as if it were an option.
@@ -1832,8 +2041,8 @@ no-ops until RevenueCat emits `EXPIRATION`.
 
 ## 9. Anti-abuse
 
-Proportionate to a pre-launch app. Seven controls to build, and an explicit list
-of what **not** to build.
+Proportionate to a pre-launch app. Nine controls, and an explicit list of what
+**not** to build.
 
 1. **Require a server-verified Supabase JWT before any grant.** Named-account
    grants require Apple / Google / email. The temporary guest bootstrap is the
@@ -1865,9 +2074,14 @@ of what **not** to build.
    this rule now applies only to trials started from the in-app surfaces — which
    also removes the cheapest path to a trial-abuse loop, since a trial can no
    longer be started by a session that has never left onboarding.
-5. **Referral gating** (v1.1): payout only after the invited user's first
-   generation; invited account ≥24h old at payout; caps of 3/month and 10
-   lifetime for the referrer.
+5. **Referral gating** *(at launch, code-based, since 2026-09-16 — §5)*: payout
+   only once the invited user has a first generation **and** is ≥24h old; a
+   code is accepted only by an account under 7 days old; caps of 3/month and
+   10 lifetime for the referrer; `referrals.referred_id` unique and
+   `referrer_id <> referred_id` as constraints, so a second claim and a
+   self-referral are structurally impossible rather than merely refused; both
+   grants in one transaction under `referral:referrer:{referred_id}` and
+   `referral:invitee:{referred_id}`; tester accounts refused on either side.
 6. **Six character images per USER, for the life of the account, then 1 credit
    each** (decided 2026-09-14; migration 00088,
    `claim_character_image_request`, enforced in `generate-character-image`).
@@ -1901,10 +2115,32 @@ of what **not** to build.
 7. **One monitoring query instead of a prevention system.** Daily: accounts where
    `subsidized_grants / total_grants > 0.9` **and** `lifetime_grants > 15`. Costs
    nothing, catches the farm, and produces the data needed to decide what to build
-   next.
-
-**Disable `create_feedback`'s credit grant before launch.** The comment reward is
-removed from the economy (§5) but the RPC still pays out in shipped code.
+   next. Exclude rows whose `operation_key` starts `tester_seed:` and any
+   user in `tester_accounts` (control 9), or the two seeded testers are the
+   first thing it finds every morning.
+8. **The feedback claim is checked at claim time, not post time** *(2026-09-16,
+   migration 00089, `claim_comment_credit`)*: a qualifying read of the story
+   recorded *before* the comment, 40 trimmed characters minimum, not the
+   claimant's own story, not soft-deleted, no upheld report, 1 per story,
+   1 per UTC day, 6 per calendar month, keyed `feedback:{comment_id}` so a
+   replay is a no-op. A claimed comment is frozen by the owner UPDATE policy.
+   The 6-a-month cap is the principle-7 bound and is not to be raised past 10
+   (§5). **`create_feedback` no longer grants anything** — the uncapped
+   one-character faucet this section used to say must be disabled before
+   launch is gone as of 00089.
+9. **Tester accounts are outside the economy** *(2026-09-16)*. A small
+   allowlist in `tester_accounts` — the store reviewer's account and the
+   owner's — carries `profiles.entitlement_override = 'katha'`, so client and
+   server treat the row as subscribed without a receipt. The override honours
+   every operational kill switch; it bypasses billing, not safety. A tester is
+   **refused by every earn path** — the feedback claim and the referral RPCs
+   answer `tester` by name, and a tester's seeded balance is granted under
+   `tester_seed:{email}` rather than any earn reason — and is **excluded from
+   every metric in §11**, so a reviewer walking the app for a week does not
+   register as a retained free user, a converting one, or a streak-holder.
+   The reviewer signs in with a fixed code verified server-side against an
+   HMAC; the code lives outside the repository and is never written into this
+   file or any other. Nothing about a tester is keyed on a device.
 
 **Deliberately not building pre-launch:** device fingerprinting, IP reputation, ML
 fraud scoring, pending-credit clawback buffers, per-device read caps, and
@@ -1926,8 +2162,9 @@ the abuse.
 | Schema | `audio_unlocks (user_id, chapter_id)` — the permanent listen entitlement | §1 |
 | **RPC `deduct_credit`** | Extend the reason allowlist beyond `'generation'`; add `'chargeback'` clamped to available balance | **Blocks every spend path in this document today** |
 | **RPC `reserve_generation_operation`** | Replace the hardcoded amount `1` with a per-action price lookup | Prices must be data, not literals |
-| RPC `create_feedback` | **Remove the credit grant** | §5, §9 |
-| RPC (new) | Streak milestone grant keyed `streak:{user_id}:{milestone_day}`; reuses `streaks.next_credit_at`, reinterpreted as "day-count of the next unclaimed milestone" (its default of 3 becomes 2). **Semantic change only, no schema change.** | §5, §9 |
+| RPC `create_feedback` | ~~**Remove the credit grant**~~ **Done, migration 00089** — it grants nothing; the credit moved to `claim_comment_credit`, claimed after the fact under §5's rules | §5, §9 |
+| RPC (new) | Streak milestone grant keyed `streak:{user_id}:{milestone_day}`. **Shipped in 00089** as `streak_ladder()` (the five rungs as data, read by the client) plus a `streak_milestones` table — one row per reached rung with `achieved_at` and `credited` — replacing the 00069 function while keeping its `activity_days` insert and same-day idempotency. Existing accounts are backfilled as achieved, not paid (§5). | §5, §9 |
+| RPC (new) | `claim_comment_credit` and the `referrals` RPCs (`claim_referral_code`, `settle_referrals`), all `SECURITY DEFINER`, service-role only, idempotent on their ledger keys | §5, §9 |
 | **Edge functions** | Separate spend paths for text, cover, character set, audio unlock | Unbundling |
 | **Edge function (new)** | Catalog narration job — top ~500 chapters by read volume, weekly refresh | §4 |
 | **Client** | Not-enough-credits sheet replaces the `Alert.alert` calls in `CreateStudioScreen.tsx:376` and `:683` | §7 |
@@ -1935,7 +2172,7 @@ the abuse.
 | Client | Cancellation flow must state the exact balance at risk before confirming | §8 |
 | Client | Price label on every paid action | §7 |
 | **Copy** | `expo/App.tsx` `CreditsScreen` — the credit explainer still describes the retired bundle (*"one credit each for the text, its cover and its characters"*). It must read: starting a story is 3, each further chapter 1, or 2 illustrated | Unbundling |
-| **RevenueCat** | The 10 SKUs in §3, replacing the current 5 | §3 |
+| **RevenueCat** | The 8 SKUs in §3 — three durations, five packs — under one entitlement, `katha`; nothing has been created in a store yet | §3 |
 
 **The single most important implementation note:** prices live in **one
 server-side price map**, not as literals across edge functions. Every tuning
@@ -1946,9 +2183,9 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 
 | Phase | Contents |
 |---|---|
-| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; the free tier's 1 reimagine per authored chapter (unlimited on a plan) and **6 character images per account on every tier, then 1 credit each** -- the paywall still sells unlimited portraits and this ships narrower; see the dated note in the table above; streak ladder + repair; 3-credit welcome bonus; lapse warnings; paywall (no offer); 6 packs; 9 SKUs |
+| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; the free tier's 1 reimagine per authored chapter (unlimited on a plan) and **6 character images per account on every tier, then 1 credit each** -- the paywall still sells unlimited portraits and this ships narrower; see the dated note in the table above; the five-rung streak ladder + repair; the feedback claim at 6/month; code-based referral; 3-credit welcome bonus; lapse warnings; paywall (no offer); 5 packs; 8 SKUs; tester accounts outside the economy |
 | **2 — Audio** | Only after edge-tts cost/reliability is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
-| **3 — v1.1** | Referral with deep-link attribution |
+| **3 — v1.1** | Referral deep-link attribution on top of the launch code (§5) |
 
 Phase 1 is a complete, coherent economy on its own. Audio is the only piece gated
 on an unmeasured number, and gating it is deliberate.
@@ -1963,11 +2200,13 @@ economy is tuned on evidence rather than argued about.
 | Metric | Why | Trigger → action |
 |---|---|---|
 | **Credit utilisation, yearly** | The 12%-margin row, and the plan that self-selects for heavy use | Median burn > 40 of 50 → reprice or cut the grant |
-| **Pack attach rate among Writer subscribers** | The 50-credit grant is designed to route overflow into 85–90% margin packs | < 15% of Writer subs buying a pack → the grant is too generous |
+| **Pack attach rate among subscribers** | The 50-credit grant is designed to route overflow into 61–82% margin packs (§3) | < 15% of subscribers buying a pack → the grant is too generous |
 | **Catalog hit rate on audio unlocks** | Cached audio is instant and keeps replay cost near zero | Fresh rate > 40% → widen the catalog job |
 | **Actual $/chapter narration by provider** | Every audio number here is extrapolated until a batch is measured | Edge > $0.01 or MiniMax > $0.30 → re-run the Reader math |
 | **D3 / D7 / D30 retention, streak-holders vs not** | Validates the ladder against the 26% / 13% / 7% baseline ([Adjust](https://uxcam.com/blog/mobile-app-retention-benchmarks/)) | No D7 lift after 8 weeks → the ladder is decoration; re-cadence it |
-| **Streak milestone claim rate, by rung** | Whether day 2 / 5 / 10 are the right rungs | Day-2 claim < 50% of D2-actives → the first rung lands too late; move it to day 1 |
+| **Streak milestone claim rate, by rung** | Whether day 2 / 5 / 10 / 15 / 21 are the right rungs | Day-2 claim < 50% of D2-actives → the first rung lands too late; move it to day 1. Day-21 reached by < 10% of day-10 reachers → the back-loaded 18 credits are paying nobody; shorten the tail |
+| **Feedback claims per user per month, distribution** | The only recurring earn, capped at 6 against a ceiling of 10 (§5) | > 20% of claimants at the cap → the mechanic is being farmed, audit the read records; median at 0 → the second tap is too hidden |
+| **Every metric above excludes `tester_accounts`** | Two allowlisted accounts walk the whole app on a premium override and never pay (§9) | Any dashboard that cannot filter them is wrong by two users |
 | **Free → paid conversion at D35** | Benchmark is 2.1% freemium median ([RevenueCat](https://www.revenuecat.com/blog/growth/subscription-app-trends-benchmarks-2026)) | < 1% → the paywall sequence is wrong before the earn table is; the free tier earns nothing in steady state, so the paywall is the only lever |
 | **Refund/chargeback rate after lapse** | Voiding a purchased balance is the highest-risk rule in this document | Any measurable lift over baseline → carve packs out of the lapse rule |
 | **Win-back rate on lapsed users** | Lapsing credits removes the strongest win-back hook we had | Below 5% reactivation at 90 days → reconsider zeroing earned credits |
@@ -2169,7 +2408,7 @@ economy is tuned on evidence rather than argued about.
     in its own right or as a struck-through former price.
 13. **The grant is 50 credits, not 100.** At $59/yr, 100 credits loses money at
     every story shape and 50 clears 12% at the worst and 49% blended. The smaller
-    grant also routes overflow demand into 60–78% margin packs. A competitor's
+    grant also routes overflow demand into 61–82% margin packs. A competitor's
     headline credit count is not comparable and must not drive this number.
 14. ~~**One-time offer: yearly, $29 first year.**~~ **Removed 2026-09-10.** It lost
     $19.63 at the worst story shape and cleared only 43% blended. The single ladder
@@ -2181,10 +2420,12 @@ economy is tuned on evidence rather than argued about.
     2026-09-10.)* §7's ban on false scarcity previously carried one carve-out for
     the one-time offer; removing the offer removes the carve-out. No surface in the
     product uses a clock to pressure a purchase.
-16. **Credit packs: $1.99/5 · $3.49/10 · $9.99/30 · $24.99/100 · $64.99/300 ·
-    $119.99/1000.** Every pack prices above the yearly rate, monotonically, so the
-    subscription is always the best price per credit. **Pack credits do not expire
-    monthly; plan credits do** — carry-over, not price, is what a pack sells.
+16. ~~**Credit packs: $1.99/5 · $3.49/10 · $9.99/30 · $24.99/100 · $64.99/300 ·
+    $119.99/1000.**~~ **Regridded 2026-09-16 — see decision 50.** Five packs:
+    **$0.99/2 · $3.49/10 · $14.99/50 · $44.99/200 · $119.99/1000.** Every
+    pack prices above the yearly rate, monotonically, so the subscription is
+    always the best price per credit. **Pack credits never expire; plan
+    credits refresh** — carry-over, not price, is what a pack sells.
 17. **Reduced trial grant: 10 credits** during the 3-day trial; the full 50 lands
     on first successful charge. Caps trial-abuse downside at $0.74.
 18. **Constraint of record:** yearly at $59/600 nets **$0.0836/credit** against
@@ -2269,41 +2510,52 @@ economy is tuned on evidence rather than argued about.
 
 21. **The grant table:**
 
+    *(Table revised 2026-09-16 — decisions 49, 51 and 52.)*
+
     | Source | Credits | Cadence | Cap | Ship |
     |---|---|---|---|---|
-    | Reading streak | **2 / 7 / 5** | milestones at day 2, day 5, day 10 | 14 lifetime, nothing repeats | Launch |
+    | Reading streak | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime, nothing repeats | Launch |
+    | Feedback — claimed comment | **1** | on claim, after a qualifying read | 1/story, 1/day, 6/month | Launch |
     | Streak repair | **0** — restores the streak | day after a missed day, on 30 min reading | 2/month | Launch |
     | Welcome bonus | **3** | on declining the paywall | once per authenticated account | Launch |
     | Guest bootstrap | **3** | on first guest bootstrap (§9) | once per anonymous account | Launch |
-    | Referral — referrer | **10** | on invited user's 1st generation | 3/mo, 10 lifetime | v1.1 |
-    | Referral — invited | **5** | on own 1st generation | once | v1.1 |
+    | Referral — referrer | **10** | invitee's 1st generation **and** ≥24h old | 3/mo, 10 lifetime | Launch, code-based |
+    | Referral — invited | **5** | same moment | once (`referred_id` unique) | Launch, code-based |
 
-22. **The streak ladder pays 2 at day 2, 7 at day 5, and 5 at day 10** — and then
-    nothing. *(Revised 2026-09-10; it previously paid 1 at day 2, day 5, day 7 and
-    every 7 days after.)* The rungs match the three milestones on the *Your
-    journey* screen, because a rung the user cannot see cannot motivate. A streak
-    is consecutive days with reading activity — one chapter finished or ≥60s
-    dwell, recorded server-side. Missing a day resets it to zero and the rewards
-    restart at day 2, unless repaired (22a).
+22. ~~**The streak ladder pays 2 at day 2, 7 at day 5, and 5 at day 10**~~ —
+    **superseded 2026-09-16 by decision 49: five rungs, 2 / 4 / 6 / 8 / 10 at
+    days 2, 5, 10, 15 and 21** — and then nothing. *(Revised 2026-09-10; it
+    previously paid 1 at day 2, day 5, day 7 and every 7 days after.)* The
+    rungs match the milestones on the *Your journey* screen, because a rung
+    the user cannot see cannot motivate. A streak is consecutive days with
+    reading activity — one chapter finished or ≥60s dwell, recorded
+    server-side. Missing a day resets it to zero and the rewards restart at
+    day 2, unless repaired (22a).
 22a. **A missed day can be repaired by reading 30 minutes the next day**, capped
     at 2/month, offered only after a *single* missed day. Repair restores the
     streak; it does not pay the missed rung. It costs nothing, because reading is
     free, and it buys a 30-minute reading session.
-23. **Ceiling: steady-state earnable free credits are zero.** The ladder pays 14
-    once, all inside the first ten days; lifetime free earn is 17 with the welcome
-    bonus, against 50/month on every paid plan. Trivially inside the 50%
-    principle-7 limit. **The ladder terminates rather than capping, so no monthly
-    ceiling is needed** — at the cost of a retained free user having no ongoing
-    earn, recorded as an open item in §5.
+23. **Ceiling: steady-state earnable free credits are at most 6 a month**
+    *(revised 2026-09-16 from zero)*, all of it from the feedback claim, against
+    a principle-7 ceiling of 10 — half the weekly plan's 20. The ladder pays 30
+    once, across the first three weeks, and contributes nothing in steady
+    state; one-off free earn is 33 with the welcome bonus, against 50/month on
+    every paid plan. **The ladder terminates rather than capping, so it needs
+    no monthly ceiling; the feedback claim carries its own, and 6 is
+    load-bearing** — the streak's dead end for a retained free user stays an
+    open item in §5.
 24. **The flat daily app-open credit is rejected.** Uncapped it pays 30/month —
     60% of the 50/month paid grant — and it needs an artificial ceiling bolted on
     to stay sane. The ladder terminates instead and rewards consecutive days rather than
     sporadic opens.
-25. **Removed:** the comment/feedback reward, social post rewards, reader
+25. **Removed:** ~~the comment/feedback reward,~~ social post rewards, reader
     earnings, rewarded-ad credits, the flat daily app-open credit, premium voice
-    tiers, and the 2× carry-over cap.
-26. **Disable `create_feedback`'s credit grant before launch** — it currently pays
-    a credit for a one-character comment, daily, uncapped.
+    tiers, and the 2× carry-over cap. *(The comment reward returned 2026-09-16
+    as a claimed, read-gated, capped mechanic — decision 51. The post-time
+    faucet this line removed stays removed.)*
+26. ~~**Disable `create_feedback`'s credit grant before launch** — it currently pays
+    a credit for a one-character comment, daily, uncapped.~~ **Done, migration
+    00089 (2026-09-16).** `create_feedback` grants nothing; see decision 51.
 27. **The generation refund is not on the grant table** — it is not earning. The
     **auto-refund behavior stays**: a failed generation returns every credit it
     reserved, per principle 4, already implemented as
@@ -2414,8 +2666,9 @@ economy is tuned on evidence rather than argued about.
 44. **Not building pre-launch:** device fingerprinting, IP reputation, ML fraud
     scoring, pending-credit buffers, or per-device read caps.
 45. **Three-phase rollout:** (1) unbundled creation, free reading, streak ladder,
-    paywall sequence, packs, all SKUs; (2) audio, after cost measurement, catalog
-    job first; (3) referral.
+    paywall sequence, packs, all SKUs, **and — since 2026-09-16 — the feedback
+    claim and code-based referral**; (2) audio, after cost measurement, catalog
+    job first; (3) referral deep-link attribution on top of the launch code.
 45a. **The welcome bonus is 3, the guest bootstrap is 3, and they are still
     separate grants under separate operation keys** — §6. *(Raised to 10 on
     2026-09-05; returned to 3 on 2026-09-11.)* Three credits is exactly one story
@@ -2426,9 +2679,11 @@ economy is tuned on evidence rather than argued about.
     grant, a network-prefix rate limit for the guest one — so their equality is a
     coincidence of this revision, not a merge. The open item the 10 carried is
     closed with it.
-45b. **Referral redemption is deep-link attribution, with a code field in Profile
+45b. **Referral redemption is deep-link attribution, with a code field
     as the fallback. No code field on the paywall, ever** — §5 Referral.
-    *(2026-09-05.)*
+    *(2026-09-05. Amended 2026-09-16, decision 52: the code ships first, at
+    launch, in Credits; the deep link is the v1.1 upgrade. The paywall rule is
+    unchanged.)*
 46. **`expo/App.tsx:953` must change.** *"1 credit creates 1 story or chapter"* is
     now incorrect. It must reflect a 3-credit story start, with each further
     chapter at 1, or 2 when illustrated.
@@ -2450,5 +2705,71 @@ economy is tuned on evidence rather than argued about.
     credit each, on every tier** *(revised 2026-09-14 from four, and from a
     free-tier-only cap — §3)*. Reusing a saved character's portrait costs nothing, which is what
     keeps the bundled start affordable for repeat creators.
+
+### 2026-09-16: the launch economy
+
+> Decisions 49-54 are the product owner's, made for the Play Store go-live
+> (`backend/ROADMAP.md`, *Play Store go-live*). They amend §0 principle 7, §1,
+> §3, §4, §5, §9, §10 and §11, and decisions 13, 16, 21-23, 25, 26, 45 and 45b
+> above carry pointers rather than being rewritten. Migration **00089** ships
+> the server side of 49, 51, 52 and 53.
+
+49. **The streak ladder has five rungs and rises: 2 / 4 / 6 / 8 / 10 credits at
+    days 2, 5, 10, 15 and 21 — 30 lifetime, nothing repeats.** The *Your
+    journey* screen lists exactly these five with their credits; a reached rung
+    reads "Achieved on {date}". The ladder is data — `streak_ladder()` — read by
+    the client with a local fallback, not a constant in two places. **No
+    retroactive grants**: an account already past a rung is backfilled as
+    achieved with `credited = false`. Cost is $1.29 blended and $5.34 if every
+    credit starts a story, once, per user who reaches day 21. Principle 7 holds
+    because the ladder pays zero in steady state; the 2026-09-10 open item that
+    day 10 paid less than day 5 is closed, and the open item that nothing
+    repeats stays open.
+50. **Five credit packs: 2 / 10 / 50 / 200 / 1000 at $0.99 / $3.49 / $14.99 /
+    $44.99 / $119.99, never expiring.** SKUs `ai.katha.credits.{2,10,50,200,1000}`.
+    The six-pack grid this replaces never reached a store. At the $0.0738 worst
+    shape the packs clear 82 / 75 / 71 / 61 / 28%; every pack is above the
+    yearly rate (5.0× down to 1.2×), the 2, 10 and 50 are at or above the
+    weekly rate, and the 50 sits at parity with weekly to the cent, which is
+    recorded in the §4 inversion check rather than rounded away. The 2 is the
+    blocked-moment pack; the 1000 stays near parity with yearly on purpose.
+    Prices render from RevenueCat `priceString` where a package exists; the USD
+    list is fallback copy; on web the Purchase control is disabled.
+51. **Feedback credits return as a claim, not a grant: 1 credit per claimed
+    comment, reason `feedback`.** Server-enforced in `claim_comment_credit`:
+    comment ≥ 40 trimmed characters on somebody else's story; a qualifying
+    read of that story (120 s or completed) recorded *before* the comment; not
+    deleted; no upheld report; 1 per story, 1 per UTC day, 6 per calendar
+    month; keyed `feedback:{comment_id}`; testers refused. A claimed comment's
+    content is frozen. **`create_feedback` no longer grants anything.** This
+    reverses the 2026-09-10 removal in mechanism, not in judgement: the
+    post-time faucet stays dead, and the claim is what makes a read
+    requirement, a report check and a freeze possible. Six a month against a
+    principle-7 ceiling of ten is the only recurring earn in the product; the
+    cap is load-bearing.
+52. **Referral ships at launch, code-based.** `profiles.referral_code` (from
+    the username, else generated), shown with Share in Credits; *Have an
+    invite code?* accepts a code on an account under 7 days old. 10 to the
+    referrer and 5 to the invitee, in one transaction, once the invitee has
+    `first_generation_at` **and** is ≥ 24 h old — settled by `settle_referrals`
+    from generation completion and the profile overview. Caps unchanged at
+    3/month and 10 lifetime; `referred_id` unique; self-referral a constraint;
+    testers refused. The deferred deep link is the v1.1 upgrade to this, not a
+    prerequisite of it. No code field on the paywall, still.
+53. **Tester accounts are outside the economy.** A server-side allowlist
+    (`tester_accounts`) carries a premium override
+    (`profiles.entitlement_override = 'katha'`) honoured by client and server,
+    which never bypasses an operational kill switch. Testers are refused by
+    every earn path, seeded under `tester_seed:{email}` rather than any earn
+    reason, and excluded from every §11 metric and from the §9 monitoring
+    query. The store reviewer signs in with a fixed code verified server-side
+    against an HMAC with a peppered secret; the code is never written into
+    the repository.
+54. **Country pricing is a store-console job with no code path.** USD is the
+    base; Google Play auto-converts every other country; India is the one
+    manual override, set by hand to a figure ending in 9. The client renders
+    the store's `priceString` and never converts, formats or derives a price
+    from a number. Apple's tiers follow the same rule when the iOS listing
+    exists.
 
 <!-- markdownlint-enable MD029 -->

@@ -47,30 +47,18 @@ import ActivityGrid from "@/components/profile/ActivityGrid";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import JourneyScreen from "@/screens/JourneyScreen";
 import VoicesScreen from "@/screens/VoicesScreen";
+import {
+  ownProfile,
+  reachedMilestone,
+  todayIso,
+} from "@/test-support/profileFixtures";
 /* eslint-enable import/first */
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayIso;
 
-const profile = (over: Record<string, unknown> = {}) => ({
-  userId: "u1",
-  username: "ada",
-  displayName: "Ada",
-  avatarUrl: null,
-  bio: null,
-  memberSince: "2026-08-01T00:00:00Z",
-  deletedAt: null,
-  currentStreak: 1,
-  longestStreak: 2,
-  lastActivityDate: today(),
-  storiesWritten: 0,
-  chaptersWritten: 0,
-  totalReads: 0,
-  totalLikes: 0,
-  phrasesSaved: 0,
-  followers: 0,
-  following: 0,
-  ...over,
-});
+// The shared fixture, so a new field on `OwnProfile` costs one edit in
+// src/test-support/profileFixtures.ts rather than one per literal here.
+const profile = ownProfile;
 
 // Explicit, because automatic cleanup is off in this project's setup and a
 // `Modal` left mounted from the previous test is still in the tree for the
@@ -150,6 +138,24 @@ describe("your journey", () => {
     expect(view.queryByText("Today's streak earned")).toBeNull();
   });
 
+  // The ladder is D2: five rungs at 2/5/10/15/21 paying 2/4/6/8/10, each once,
+  // and the page lists exactly those with what each pays.
+  it("lists the five ladder rungs with their credits", async () => {
+    const view = await render(
+      <JourneyScreen profile={profile()} onBack={jest.fn()} />,
+    );
+
+    await waitFor(() => view.getByTestId("milestone-2"));
+    for (const [milestone, credits] of [[2, 2], [5, 4], [10, 6], [15, 8], [21, 10]]) {
+      expect(view.getByTestId(`milestone-${milestone}`)).toBeTruthy();
+      expect(view.getByText(`${milestone} day streak`)).toBeTruthy();
+      expect(view.getByText(`+${credits} credits`)).toBeTruthy();
+    }
+    // The old 3/7/14/30 rungs are gone with the constant that held them.
+    expect(view.queryByTestId("milestone-3")).toBeNull();
+    expect(view.queryByTestId("milestone-30")).toBeNull();
+  });
+
   // A milestone reached in March stays reached in June. Measuring it against
   // the CURRENT streak would un-achieve it the moment a streak broke, which
   // punishes the same lapse twice.
@@ -161,11 +167,72 @@ describe("your journey", () => {
       />,
     );
 
-    await waitFor(() => view.getByTestId("milestone-3"));
-    expect(view.getByTestId("milestone-7")).toBeTruthy();
-    // 3 and 7 are behind them; 14 is not.
-    const reached = view.getAllByText("Reached");
-    expect(reached.length).toBe(2);
+    await waitFor(() => view.getByTestId("milestone-2"));
+    // 2 and 5 are behind them; 10 is not.
+    const achieved = view.getAllByText("Achieved");
+    expect(achieved.length).toBe(2);
+  });
+
+  // The date comes from the milestone row the grant was written against, not
+  // from anything the client works out.
+  it("dates an achieved rung from the server's own row", async () => {
+    const view = await render(
+      <JourneyScreen
+        profile={profile({
+          currentStreak: 6,
+          longestStreak: 6,
+          milestones: [reachedMilestone(2, 2), reachedMilestone(5, 4)],
+        })}
+        onBack={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByTestId("milestone-2"));
+    expect(view.getAllByText("Achieved on Sep 8, 2026").length).toBe(2);
+    // Unreached rungs still say how far away they are.
+    expect(view.getByText("4 to go")).toBeTruthy();
+  });
+
+  // Regression: the server returns a row for EVERY rung, reached or not, with
+  // `achievedAt` null until it is actually reached. Reading the row's presence
+  // instead of its date lit up all five rungs on a brand-new account — which
+  // is exactly what a signed-in reviewer saw on day zero.
+  it("locks every rung when the server sent the ladder but no dates", async () => {
+    const view = await render(
+      <JourneyScreen
+        profile={profile({
+          currentStreak: 0,
+          longestStreak: 0,
+          milestones: [
+            reachedMilestone(2, 2, null),
+            reachedMilestone(5, 4, null),
+            reachedMilestone(10, 6, null),
+            reachedMilestone(15, 8, null),
+            reachedMilestone(21, 10, null),
+          ],
+        })}
+        onBack={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByTestId("milestone-2"));
+    expect(view.queryAllByText("Achieved")).toHaveLength(0);
+    expect(view.queryAllByText(/^Achieved on/)).toHaveLength(0);
+    expect(view.getAllByText("Keep going")).toHaveLength(5);
+  });
+
+  // The server's `streak_ladder()` is the record; the client only falls back.
+  it("draws the rungs the server sent rather than its own list", async () => {
+    const view = await render(
+      <JourneyScreen
+        profile={profile({ ladder: [{ milestone: 4, credits: 3 }] })}
+        onBack={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByTestId("milestone-4"));
+    expect(view.getByText("+3 credits")).toBeTruthy();
+    expect(view.queryByTestId("milestone-21")).toBeNull();
   });
 
   // A failed request is not a streak of zero. Rendering the page with `?? 0`
@@ -177,7 +244,7 @@ describe("your journey", () => {
     );
     await waitFor(() => view.getByTestId("journey-unavailable"));
     expect(view.queryByTestId("journey-current-streak")).toBeNull();
-    expect(view.queryByTestId("milestone-3")).toBeNull();
+    expect(view.queryByTestId("milestone-2")).toBeNull();
   });
 
   // Reads, likes and chapter counts were on the old profile. They are a

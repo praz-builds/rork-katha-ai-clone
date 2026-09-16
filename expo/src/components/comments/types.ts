@@ -28,6 +28,38 @@ export const REPORT_REASONS: readonly { id: ReportReason; label: string }[] = [
   { id: "other", label: "Other" },
 ];
 
+/**
+ * Why a STORY gets reported. A different list from a comment's, because the
+ * things that go wrong with a generated story are different things: a cover
+ * that should not have been drawn, prose that should not have been written,
+ * and somebody else's work under a new name. The ids are the values the
+ * `content_reports.reason` check constraint accepts for story targets.
+ */
+export type StoryReportReason =
+  | "copyright"
+  | "inappropriate_content"
+  | "inappropriate_cover"
+  | "other";
+
+export const STORY_REPORT_REASONS: readonly {
+  id: StoryReportReason;
+  label: string;
+}[] = [
+  { id: "copyright", label: "Copyright violation" },
+  { id: "inappropriate_content", label: "Inappropriate story content" },
+  { id: "inappropriate_cover", label: "Inappropriate cover image" },
+  { id: "other", label: "Other" },
+];
+
+/**
+ * Details on a story report are optional, but bounded: this matches the
+ * server's trimmed-length ceiling for story reports.
+ */
+export const MAX_STORY_REPORT_DETAILS_LENGTH = 1_000;
+
+/** Any reason the `report` action accepts, for whichever target. */
+export type AnyReportReason = ReportReason | StoryReportReason;
+
 export interface CommentNode {
   id: string;
   /**

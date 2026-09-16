@@ -1,10 +1,10 @@
 import { parseUuid } from "./uuid.ts";
 import { isDuplicateCreditOperationError } from "./credits.ts";
 
-export type SubscriptionTier = "reader" | "writer";
+export type SubscriptionTier = "katha";
 export type RevenueCatProduct = {
   kind: "subscription" | "pack";
-  entitlement: "katha_reader" | "katha_writer" | null;
+  entitlement: "katha" | null;
   tier: SubscriptionTier | null;
   interval: "weekly" | "monthly" | "yearly" | null;
   credits: number;
@@ -14,67 +14,63 @@ export type RevenueCatProduct = {
 /**
  * Canonical server-side product map. Product credits and entitlement tiers are
  * deliberately co-located so a SKU can never be granted for the wrong tier.
+ *
+ * ONE PLAN, FIVE PACKS (2026-09-16). The two-tier ladder
+ * (`ai.katha.sub.reader.*` / `ai.katha.sub.writer.*`, entitlements
+ * `katha_reader` / `katha_writer`) and the three t-shirt-sized packs
+ * (`small`/`medium`/`large`) are gone. What replaced them is a single
+ * subscription at three billing intervals sharing one entitlement, `katha`,
+ * and five packs named for exactly the number of credits they contain --
+ * which is the whole reason for the rename: `ai.katha.credits.50` cannot
+ * quietly come to mean a different number of credits the way `medium` did.
+ *
+ * The retired ids are absent rather than mapped to the new ones. A webhook
+ * naming one throws "Unknown product" and is reported, which is the honest
+ * outcome: nothing was ever sold under them (the store listing had not gone
+ * live), so an event carrying one is a misconfiguration to be seen, not a
+ * purchase to be honoured.
+ *
+ * Credits per interval are the doc's (`CREDITS_AND_PRICING.md` §3): 20 a week,
+ * 50 a month, 50 a month on the yearly plan. Trial credits are 10 on every
+ * interval -- a trial must never be worth more than the period it precedes,
+ * and `creditAmountForEvent` clamps it to `credits` in any case.
  */
 export const REVENUECAT_PRODUCT_MAP: Readonly<
   Record<string, RevenueCatProduct>
 > = {
-  "ai.katha.sub.reader.weekly": {
+  "ai.katha.sub.weekly": {
     kind: "subscription",
-    entitlement: "katha_reader",
-    tier: "reader",
+    entitlement: "katha",
+    tier: "katha",
     interval: "weekly",
-    credits: 5,
-    trialCredits: 5,
-  },
-  "ai.katha.sub.reader.monthly": {
-    kind: "subscription",
-    entitlement: "katha_reader",
-    tier: "reader",
-    interval: "monthly",
     credits: 20,
-    trialCredits: 5,
+    trialCredits: 10,
   },
-  "ai.katha.sub.reader.yearly": {
+  "ai.katha.sub.monthly": {
     kind: "subscription",
-    entitlement: "katha_reader",
-    tier: "reader",
-    interval: "yearly",
-    credits: 20,
-    trialCredits: 5,
-  },
-  "ai.katha.sub.reader.yearly.offer": {
-    kind: "subscription",
-    entitlement: "katha_reader",
-    tier: "reader",
-    interval: "yearly",
-    credits: 20,
-    trialCredits: 5,
-  },
-  "ai.katha.sub.writer.weekly": {
-    kind: "subscription",
-    entitlement: "katha_writer",
-    tier: "writer",
-    interval: "weekly",
-    credits: 10,
-    trialCredits: 15,
-  },
-  "ai.katha.sub.writer.monthly": {
-    kind: "subscription",
-    entitlement: "katha_writer",
-    tier: "writer",
+    entitlement: "katha",
+    tier: "katha",
     interval: "monthly",
     credits: 50,
-    trialCredits: 15,
+    trialCredits: 10,
   },
-  "ai.katha.sub.writer.yearly": {
+  "ai.katha.sub.yearly": {
     kind: "subscription",
-    entitlement: "katha_writer",
-    tier: "writer",
+    entitlement: "katha",
+    tier: "katha",
     interval: "yearly",
     credits: 50,
-    trialCredits: 15,
+    trialCredits: 10,
   },
-  "ai.katha.credits.small": {
+  "ai.katha.credits.2": {
+    kind: "pack",
+    entitlement: null,
+    tier: null,
+    interval: null,
+    credits: 2,
+    trialCredits: null,
+  },
+  "ai.katha.credits.10": {
     kind: "pack",
     entitlement: null,
     tier: null,
@@ -82,20 +78,28 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     credits: 10,
     trialCredits: null,
   },
-  "ai.katha.credits.medium": {
+  "ai.katha.credits.50": {
     kind: "pack",
     entitlement: null,
     tier: null,
     interval: null,
-    credits: 40,
+    credits: 50,
     trialCredits: null,
   },
-  "ai.katha.credits.large": {
+  "ai.katha.credits.200": {
     kind: "pack",
     entitlement: null,
     tier: null,
     interval: null,
-    credits: 90,
+    credits: 200,
+    trialCredits: null,
+  },
+  "ai.katha.credits.1000": {
+    kind: "pack",
+    entitlement: null,
+    tier: null,
+    interval: null,
+    credits: 1000,
     trialCredits: null,
   },
 };

@@ -3,10 +3,16 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockSendEmailCode = jest.fn();
 const mockVerifyEmailCode = jest.fn();
+// D11: when Supabase's own verify fails, the screen offers the code to
+// `reviewer-signin` before it shows an error, so the store reviewer can sign
+// in with a fixed code. Everyone else pays one extra round trip to the same
+// error line, which is what these tests assert.
+const mockReviewerSignIn = jest.fn();
 
 jest.mock("@/lib/session", () => ({
   sendEmailCode: (...args: unknown[]) => mockSendEmailCode(...args),
   verifyEmailCode: (...args: unknown[]) => mockVerifyEmailCode(...args),
+  reviewerSignIn: (...args: unknown[]) => mockReviewerSignIn(...args),
 }));
 
 // The same passthrough mock `character-onboarding.test.tsx` uses: `StepScroll`
@@ -51,6 +57,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSendEmailCode.mockResolvedValue(undefined);
   mockVerifyEmailCode.mockResolvedValue(undefined);
+  mockReviewerSignIn.mockResolvedValue(false);
 });
 
 /** RNTL 14: `render` and `fireEvent` are async, or the assertion runs a frame early. */
@@ -121,6 +128,28 @@ describe("EmailCodeAuth", () => {
       "222222",
     );
     expect(onVerified).not.toHaveBeenCalled();
+    // The fallback was tried, and it said no.
+    expect(mockReviewerSignIn).toHaveBeenCalledWith(EMAIL, "111111");
+  });
+
+  // D11: the store reviewer's fixed code is verified by `reviewer-signin`,
+  // never by Supabase's OTP, so a failed verify is not the end of the attempt.
+  it("lets the reviewer through on the fixed code when the OTP fails", async () => {
+    mockVerifyEmailCode.mockRejectedValueOnce(new Error("no match"));
+    mockReviewerSignIn.mockResolvedValueOnce(true);
+    const { view, onVerified } = await mount();
+    await reachCodeStep(view);
+
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "424242",
+    );
+    await fireEvent.press(view.getByLabelText("Verify and continue"));
+
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith(EMAIL));
+    expect(
+      view.queryByText("That code did not match. Try again or resend it."),
+    ).toBeNull();
   });
 
   it("resends by calling sendEmailCode a second time", async () => {

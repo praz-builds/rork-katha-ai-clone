@@ -60,6 +60,29 @@ const REPORT_REASONS = new Set([
   "other",
 ]);
 
+/**
+ * Why a STORY gets reported (product decision D13, migration 00089).
+ *
+ * A different list from a comment's because the things that go wrong with a
+ * generated story are different things: a cover that should not have been
+ * drawn, prose that should not have been written, and somebody else's work
+ * under a new name. `other` is in both lists and is the only overlap.
+ *
+ * The union of the two lists is what 00089's check constraint accepts; which
+ * half applies to which target is decided here, so a story cannot be filed
+ * as `hate_speech` (a comment reason, useless on a whole story) and a comment
+ * cannot be filed as `inappropriate_cover` (a comment has no cover).
+ */
+const STORY_REPORT_REASONS = new Set([
+  "copyright",
+  "inappropriate_content",
+  "inappropriate_cover",
+  "other",
+]);
+
+/** Story reports take an optional note; this is its trimmed ceiling (D13). */
+const MAX_STORY_REPORT_DETAILS_LENGTH = 1_000;
+
 type AuthedClient = ReturnType<typeof createAuthedClient>;
 
 function createAuthedClient(url: string, anonKey: string, authHeader: string) {
@@ -90,8 +113,19 @@ export function validateVoteValue(value: unknown): -1 | 0 | 1 | null {
   return value === -1 || value === 0 || value === 1 ? value : null;
 }
 
-export function validateReportReason(value: unknown): string | null {
-  return typeof value === "string" && REPORT_REASONS.has(value) ? value : null;
+export type ReportTarget = "comment" | "story";
+
+export function validateReportReason(
+  value: unknown,
+  target: ReportTarget = "comment",
+): string | null {
+  const allowed = target === "story" ? STORY_REPORT_REASONS : REPORT_REASONS;
+  return typeof value === "string" && allowed.has(value) ? value : null;
+}
+
+/** The reasons offered for this target, for the 400 message. */
+export function reportReasonsFor(target: ReportTarget): string[] {
+  return [...(target === "story" ? STORY_REPORT_REASONS : REPORT_REASONS)];
 }
 
 /**
@@ -124,6 +158,29 @@ export function validateReportDetails(
     return { ok: false, reason: "missing" };
   }
   if (trimmed.length > MAX_REPORT_DETAILS_LENGTH) {
+    return { ok: false, reason: "length" };
+  }
+  return { ok: true, value: trimmed };
+}
+
+/**
+ * A story report's note, which is optional (D13).
+ *
+ * The comment rule above exists because a reason enum alone is a bucket a
+ * moderator cannot act on, and the sentence is what makes a rage-click cost
+ * something. A story report is different: the reasons ARE actionable on their
+ * own (a cover is drawn or it is not; a story is somebody else's work or it is
+ * not), and the sheet the reader sees says "Details (optional)". So blank is
+ * accepted and stored as null; anything typed is trimmed and bounded.
+ */
+export function validateStoryReportDetails(
+  value: unknown,
+): { ok: true; value: string | null } | { ok: false; reason: "length" } {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value !== "string") return { ok: true, value: null };
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return { ok: true, value: null };
+  if (trimmed.length > MAX_STORY_REPORT_DETAILS_LENGTH) {
     return { ok: false, reason: "length" };
   }
   return { ok: true, value: trimmed };
@@ -496,22 +553,40 @@ async function handleReport(
     };
   }
 
-  const reason = validateReportReason(body.reason);
+  const target: ReportTarget = storyResult.value !== null ? "story" : "comment";
+
+  const reason = validateReportReason(body.reason, target);
   if (!reason) {
     return {
       status: 400,
-      error: `reason must be one of: ${[...REPORT_REASONS].join(", ")}`,
+      error: `reason must be one of: ${reportReasonsFor(target).join(", ")}`,
     };
   }
 
-  const detailsResult = validateReportDetails(body.details);
-  if (!detailsResult.ok) {
-    return {
-      status: 400,
-      error: detailsResult.reason === "length"
-        ? `details must be ${MAX_REPORT_DETAILS_LENGTH} characters or fewer`
-        : `details is required and must be at least ${MIN_REPORT_DETAILS_LENGTH} characters describing the problem`,
-    };
+  // The two targets disagree about whether a note is required; see
+  // `validateStoryReportDetails`.
+  let details: string | null;
+  if (target === "story") {
+    const storyDetails = validateStoryReportDetails(body.details);
+    if (!storyDetails.ok) {
+      return {
+        status: 400,
+        error:
+          `details must be ${MAX_STORY_REPORT_DETAILS_LENGTH} characters or fewer`,
+      };
+    }
+    details = storyDetails.value;
+  } else {
+    const detailsResult = validateReportDetails(body.details);
+    if (!detailsResult.ok) {
+      return {
+        status: 400,
+        error: detailsResult.reason === "length"
+          ? `details must be ${MAX_REPORT_DETAILS_LENGTH} characters or fewer`
+          : `details is required and must be at least ${MIN_REPORT_DETAILS_LENGTH} characters describing the problem`,
+      };
+    }
+    details = detailsResult.value;
   }
 
   // No `.select()` here: `content_reports` has no SELECT policy for
@@ -523,7 +598,7 @@ async function handleReport(
     story_id: storyResult.value,
     comment_id: commentResult.value,
     reason,
-    details: detailsResult.value,
+    details,
   });
 
   if (error) {

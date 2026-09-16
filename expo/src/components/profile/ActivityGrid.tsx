@@ -3,21 +3,20 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
 
 /**
- * A year of reading and writing, one square per day.
+ * A year of reading and writing, one dot per day.
  *
  * WHY A GRID AND NOT A NUMBER. "You are on a 4 day streak" says what is true
  * today and nothing about the shape of the habit. The grid says the thing a
  * streak counter structurally cannot: that somebody read most evenings in
  * March, stopped in April, and came back. It is the only surface in the app
- * that shows a person their own pattern, and it is why the profile leads with
- * it.
+ * that shows a person their own pattern.
  *
- * WHY IT IS BINARY. GitHub shades its squares by volume. This does not, and
- * the restraint is deliberate: `activity_days` records that a day happened,
- * not how much happened in it, because the streak is defined the same way.
- * Shading by chapter count would invent a second, louder definition of a good
- * day sitting right next to the first, and would quietly tell somebody who
- * read one chapter that their day counted less. It counted.
+ * WHY IT IS BINARY, AND WHY THERE IS NO "LESS / MORE" KEY (D3). GitHub shades
+ * its squares by volume. This does not: `activity_days` records that a day
+ * happened, not how much happened in it, because the streak is defined the
+ * same way. A dot is brand orange for an active day and muted otherwise, and
+ * there is no intensity ramp, so there is nothing for a legend to explain.
+ * The one line under the grid is the count of active days.
  *
  * WHY IT SCROLLS TO THE END. The interesting end of a calendar is today. It
  * opens scrolled fully right so the reader sees this week without doing
@@ -25,8 +24,8 @@ import { colors, fonts, radius, spacing } from "@/theme";
  *
  * EMPTY IS A REAL ANSWER, MISSING IS NOT. `days` of `[]` draws an empty year,
  * which is the truth for a new account. `null` draws nothing at all -- a grid
- * of blank squares would tell somebody they had done nothing when what
- * actually happened is that we could not find out.
+ * of blank dots would tell somebody they had done nothing when what actually
+ * happened is that we could not find out.
  */
 
 const CELL = 11;
@@ -158,13 +157,18 @@ export default function ActivityGrid({
                 {column.map((cell) => (
                   <View
                     key={cell.day}
+                    testID={cell.future
+                      ? undefined
+                      : cell.active
+                      ? "activity-dot-active"
+                      : "activity-dot-idle"}
                     style={[
-                      styles.cell,
+                      styles.dot,
                       cell.future
-                        ? styles.cellFuture
+                        ? styles.dotFuture
                         : cell.active
-                        ? styles.cellActive
-                        : styles.cellIdle,
+                        ? styles.dotActive
+                        : styles.dotIdle,
                     ]}
                   />
                 ))}
@@ -174,19 +178,11 @@ export default function ActivityGrid({
         </View>
       </ScrollView>
 
-      <View style={styles.legend}>
-        <Text style={styles.legendText}>
-          {grid.total === 0
-            ? "No active days yet"
-            : `${grid.total} active ${grid.total === 1 ? "day" : "days"}`}
-        </Text>
-        <View style={styles.legendKey}>
-          <Text style={styles.legendText}>Less</Text>
-          <View style={[styles.legendCell, styles.cellIdle]} />
-          <View style={[styles.legendCell, styles.cellActive]} />
-          <Text style={styles.legendText}>More</Text>
-        </View>
-      </View>
+      <Text style={styles.count}>
+        {grid.total === 0
+          ? "No active days yet"
+          : `${grid.total} active ${grid.total === 1 ? "day" : "days"}`}
+      </Text>
     </View>
   );
 }
@@ -204,20 +200,18 @@ const styles = StyleSheet.create({
   },
   columns: { flexDirection: "row", gap: GAP },
   column: { gap: GAP },
-  cell: { width: CELL, height: CELL, borderRadius: 3 },
-  cellIdle: { backgroundColor: colors.surface2 },
-  cellActive: { backgroundColor: colors.accent },
+  /** A circle, not a rounded square: a dot is a mark on a calendar, not a tile. */
+  dot: { width: CELL, height: CELL, borderRadius: CELL / 2 },
+  dotIdle: { backgroundColor: colors.surface2 },
+  dotActive: { backgroundColor: colors.accent },
   // Not a missed day: it has not happened yet, so it is drawn as nothing.
-  cellFuture: { backgroundColor: "transparent" },
-  legend: {
+  dotFuture: { backgroundColor: "transparent" },
+  count: {
     marginTop: spacing.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 11,
   },
-  legendKey: { flexDirection: "row", alignItems: "center", gap: 4 },
-  legendCell: { width: CELL, height: CELL, borderRadius: 3 },
-  legendText: { fontFamily: fonts.ui, color: colors.tertiary, fontSize: 11 },
   unavailable: {
     padding: spacing.lg,
     borderRadius: radius.lg,

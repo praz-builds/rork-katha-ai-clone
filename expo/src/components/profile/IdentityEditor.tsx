@@ -3,6 +3,7 @@ import {
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,8 +11,10 @@ import {
 } from "react-native";
 import { Camera, X } from "lucide-react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
+import { CREATURES, creatureSource } from "@/lib/creatures";
 import {
   avatarMessage,
+  chooseCreature,
   claimUsername,
   normalizeUsername,
   pickAndUploadAvatar,
@@ -24,7 +27,16 @@ import {
 } from "@/lib/profile";
 
 /**
- * The sheet where a reader picks who they are: a picture, a handle, a line.
+ * The sheet where a reader picks who they are: a creature or a picture, a
+ * handle, a line.
+ *
+ * THE AVATAR (D5/D6). Thirty-six creatures in a grid, and one "Use a photo"
+ * control that keeps the upload path. The two are exclusive on the server --
+ * picking a creature clears the photo, uploading a photo clears the creature
+ * -- and the sheet reports each choice the moment it lands rather than
+ * waiting for Save, because the avatar is written by its own action and a
+ * choice that sat unsaved behind a second button was the choice most often
+ * lost.
  *
  * The handle field is where most of the care went, because it is the one field
  * in the app that can be refused by somebody else's action. Three things follow
@@ -39,11 +51,20 @@ import {
  *     send two claims and leave the second one's "taken" as the last word on a
  *     handle the first one actually got.
  */
+export type IdentityEdits = {
+  username?: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  avatarId?: string | null;
+  bio?: string | null;
+};
+
 export default function IdentityEditor({
   visible,
   username,
   displayName,
   avatarUrl,
+  avatarId = null,
   bio,
   onClose,
   onSaved,
@@ -53,19 +74,17 @@ export default function IdentityEditor({
   /** What this person is called. Separate from the handle; see `saveDisplayName`. */
   displayName: string | null;
   avatarUrl: string | null;
+  /** The creature, `k01`..`k36`, shown when there is no photo. */
+  avatarId?: string | null;
   bio: string | null;
   onClose: () => void;
-  onSaved: (next: {
-    username?: string;
-    displayName?: string | null;
-    avatarUrl?: string;
-    bio?: string | null;
-  }) => void;
+  onSaved: (next: IdentityEdits) => void;
 }) {
   const [name, setName] = useState(displayName ?? "");
   const [handle, setHandle] = useState(username ?? "");
   const [bioText, setBioText] = useState(bio ?? "");
   const [avatar, setAvatar] = useState(avatarUrl);
+  const [creature, setCreature] = useState(avatarId);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -97,7 +116,8 @@ export default function IdentityEditor({
     setHandle(username ?? "");
     setBioText(bio ?? "");
     setAvatar(avatarUrl);
-  }, [visible, username, displayName, bio, avatarUrl]);
+    setCreature(avatarId);
+  }, [visible, username, displayName, bio, avatarUrl, avatarId]);
 
   const editHandle = useCallback((next: string) => {
     edited.current = true;
@@ -114,21 +134,43 @@ export default function IdentityEditor({
     ? null
     : usernameMessage(verdict);
 
-  const chooseAvatar = useCallback(async () => {
+  const choosePhoto = useCallback(async () => {
     if (avatarBusy) return;
     setAvatarBusy(true);
     setNotice(null);
     const result = await pickAndUploadAvatar();
     setAvatarBusy(false);
     if (result.ok) {
+      // The server cleared the creature when it stored the photo (D6).
       setAvatar(result.avatarUrl);
-      onSaved({ avatarUrl: result.avatarUrl });
+      setCreature(null);
+      onSaved({ avatarUrl: result.avatarUrl, avatarId: null });
       return;
     }
     // Cancelling is not a failure and says nothing.
     const message = avatarMessage(result.reason);
     if (message) setNotice(message);
   }, [avatarBusy, onSaved]);
+
+  const pickCreature = useCallback(async (id: string) => {
+    if (avatarBusy || id === creature) return;
+    setAvatarBusy(true);
+    setNotice(null);
+    // Optimistic: the grid highlights the tap at once, and is put back on a
+    // refusal, so the choice reads as made rather than as pending.
+    const previous = { creature, avatar };
+    setCreature(id);
+    setAvatar(null);
+    const result = await chooseCreature(id);
+    setAvatarBusy(false);
+    if (result.ok) {
+      onSaved({ avatarId: result.avatarId, avatarUrl: null });
+      return;
+    }
+    setCreature(previous.creature);
+    setAvatar(previous.avatar);
+    setNotice("That creature could not be saved just now. Try again in a moment.");
+  }, [avatar, avatarBusy, creature, onSaved]);
 
   const save = useCallback(async () => {
     if (saving) return;
@@ -220,6 +262,8 @@ export default function IdentityEditor({
     verdict,
   ]);
 
+  const creatureImage = creatureSource(creature);
+
   return (
     <Modal
       visible={visible}
@@ -247,117 +291,169 @@ export default function IdentityEditor({
             </Pressable>
           </View>
 
-          <Pressable
-            onPress={chooseAvatar}
-            accessibilityRole="button"
-            accessibilityLabel="Change your picture"
-            testID="avatar-picker"
-            style={styles.avatarRow}
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.avatarWrap}>
-              {avatar
-                ? (
-                  <Image
-                    source={{ uri: avatar }}
-                    style={styles.avatar}
-                    accessibilityIgnoresInvertColors
-                  />
-                )
-                : <Camera size={22} color={colors.tertiary} />}
+            {/* The current avatar, and the photo path beside it. A photo wins
+                over a creature (D5), so the preview shows whichever is set. */}
+            <View style={styles.avatarRow}>
+              <View style={styles.avatarWrap} testID="identity-avatar">
+                {avatar
+                  ? (
+                    <Image
+                      source={{ uri: avatar }}
+                      style={styles.avatar}
+                      accessibilityIgnoresInvertColors
+                    />
+                  )
+                  : creatureImage
+                  ? (
+                    <Image
+                      source={creatureImage}
+                      style={styles.avatar}
+                      accessibilityIgnoresInvertColors
+                    />
+                  )
+                  : <Camera size={22} color={colors.tertiary} />}
+              </View>
+              <Pressable
+                onPress={choosePhoto}
+                disabled={avatarBusy}
+                accessibilityRole="button"
+                accessibilityLabel="Use a photo"
+                accessibilityState={{ disabled: avatarBusy }}
+                testID="avatar-picker"
+                style={({ pressed }) => [
+                  styles.photoButton,
+                  (pressed || avatarBusy) && styles.photoButtonPressed,
+                ]}
+              >
+                <Camera size={16} color={colors.ink} />
+                <Text style={styles.photoLabel}>
+                  {avatarBusy ? "Working..." : "Use a photo"}
+                </Text>
+              </Pressable>
             </View>
-            <Text style={styles.avatarLabel}>
-              {avatarBusy ? "Working..." : "Change picture"}
-            </Text>
-          </Pressable>
 
-          {/* Name before handle, and they are different things: this is what
-              you are called, the handle is where you are found. Home greets
-              somebody by this; a byline shows the handle. */}
-          <Text style={styles.fieldLabel}>Your name</Text>
-          <TextInput
-            value={name}
-            onChangeText={(next) => {
-              setNotice(null);
-              // Marks the form dirty, like the handle and bio fields do. The
-              // reset effect uses this to decide whether an incoming prop --
-              // an avatar upload landing, say -- may overwrite the fields, and
-              // without it a name being typed could be wiped mid-word.
-              edited.current = true;
-              setName(next.slice(0, 60));
-            }}
-            autoCapitalize="words"
-            maxLength={60}
-            placeholder="What should we call you?"
-            placeholderTextColor={colors.tertiary}
-            accessibilityLabel="Your name"
-            testID="display-name-input"
-            style={styles.input}
-          />
+            <Text style={styles.fieldLabel}>Or pick a creature</Text>
+            <View style={styles.creatureGrid} testID="creature-grid">
+              {CREATURES.map((item) => {
+                const selected = !avatar && item.id === creature;
+                return (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => void pickCreature(item.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected, disabled: avatarBusy }}
+                    accessibilityLabel={item.label}
+                    testID={`creature-${item.id}`}
+                    style={[styles.creatureCell, selected && styles.creatureCellSelected]}
+                  >
+                    <Image
+                      source={item.source}
+                      style={styles.creatureImage}
+                      accessibilityIgnoresInvertColors
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
 
-          <Text style={styles.fieldLabel}>Handle</Text>
-          <View style={styles.handleRow}>
-            <Text style={styles.at}>@</Text>
+            {/* Name before handle, and they are different things: this is what
+                you are called, the handle is where you are found. Home greets
+                somebody by this; a byline shows the handle. */}
+            <Text style={styles.fieldLabel}>Your name</Text>
             <TextInput
-              value={handle}
+              value={name}
               onChangeText={(next) => {
                 setNotice(null);
-                editHandle(normalizeUsername(next));
+                // Marks the form dirty, like the handle and bio fields do. The
+                // reset effect uses this to decide whether an incoming prop --
+                // an avatar upload landing, say -- may overwrite the fields, and
+                // without it a name being typed could be wiped mid-word.
+                edited.current = true;
+                setName(next.slice(0, 60));
               }}
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={USERNAME_MAX_LENGTH}
-              placeholder="yourname"
+              autoCapitalize="words"
+              maxLength={60}
+              placeholder="What should we call you?"
               placeholderTextColor={colors.tertiary}
-              accessibilityLabel="Handle"
-              testID="username-input"
-              style={styles.input}
+              accessibilityLabel="Your name"
+              testID="display-name-input"
+              style={[styles.input, styles.inputBoxed]}
             />
-          </View>
-          {localMessage
-            ? <Text style={styles.hint}>{localMessage}</Text>
-            : null}
 
-          <Text style={styles.fieldLabel}>About you</Text>
-          <TextInput
-            value={bioText}
-            onChangeText={(next) => editBio(next.slice(0, 200))}
-            multiline
-            placeholder="A line about what you write."
-            placeholderTextColor={colors.tertiary}
-            accessibilityLabel="About you"
-            testID="bio-input"
-            style={[styles.input, styles.bioInput]}
-          />
+            <Text style={styles.fieldLabel}>Handle</Text>
+            <View style={styles.handleRow}>
+              <Text style={styles.at}>@</Text>
+              <TextInput
+                value={handle}
+                onChangeText={(next) => {
+                  setNotice(null);
+                  editHandle(normalizeUsername(next));
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={USERNAME_MAX_LENGTH}
+                placeholder="yourname"
+                placeholderTextColor={colors.tertiary}
+                accessibilityLabel="Handle"
+                testID="username-input"
+                style={styles.input}
+              />
+            </View>
+            {localMessage
+              ? <Text style={styles.hint}>{localMessage}</Text>
+              : null}
 
-          {notice
-            ? (
-              <Text style={styles.notice} testID="identity-notice">
-                {notice}
+            <Text style={styles.fieldLabel}>About you</Text>
+            <TextInput
+              value={bioText}
+              onChangeText={(next) => editBio(next.slice(0, 200))}
+              multiline
+              placeholder="A line about what you write."
+              placeholderTextColor={colors.tertiary}
+              accessibilityLabel="About you"
+              testID="bio-input"
+              style={[styles.input, styles.bioInput]}
+            />
+
+            {notice
+              ? (
+                <Text style={styles.notice} testID="identity-notice">
+                  {notice}
+                </Text>
+              )
+              : null}
+
+            <Pressable
+              onPress={save}
+              disabled={saving}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: saving }}
+              accessibilityLabel="Save profile"
+              testID="identity-save"
+              style={({ pressed }) => [
+                styles.save,
+                (pressed || saving) && styles.savePressed,
+              ]}
+            >
+              <Text style={styles.saveLabel}>
+                {saving ? "Saving..." : "Save"}
               </Text>
-            )
-            : null}
-
-          <Pressable
-            onPress={save}
-            disabled={saving}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: saving }}
-            accessibilityLabel="Save profile"
-            testID="identity-save"
-            style={({ pressed }) => [
-              styles.save,
-              (pressed || saving) && styles.savePressed,
-            ]}
-          >
-            <Text style={styles.saveLabel}>
-              {saving ? "Saving..." : "Save"}
-            </Text>
-          </Pressable>
+            </Pressable>
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
 }
+
+/** Six across: 36 creatures in six rows, each cell 44pt plus the gap. */
+const CREATURE_CELL = 44;
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "flex-end" },
@@ -366,16 +462,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.scrimStrong,
   },
   sheet: {
+    maxHeight: "92%",
     backgroundColor: colors.bg,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
-    padding: spacing.xl,
-    gap: spacing.related,
+    paddingTop: spacing.xl,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: spacing.xl,
+  },
+  scroll: { flexGrow: 0 },
+  scrollContent: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.related,
   },
   title: { fontFamily: fonts.display, color: colors.ink, fontSize: 22 },
   close: {
@@ -402,12 +505,43 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   avatar: { width: "100%", height: "100%" },
-  avatarLabel: {
+  photoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  photoButtonPressed: { opacity: 0.7 },
+  photoLabel: {
     fontFamily: fonts.ui,
     color: colors.ink,
     fontWeight: "700",
-    fontSize: 15,
+    fontSize: 14,
   },
+  creatureGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  creatureCell: {
+    width: CREATURE_CELL,
+    height: CREATURE_CELL,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "transparent",
+    backgroundColor: colors.surface2,
+  },
+  creatureCellSelected: { borderColor: colors.accent },
+  creatureImage: { width: "100%", height: "100%" },
   fieldLabel: {
     marginTop: spacing.md,
     fontFamily: fonts.ui,
@@ -435,7 +569,16 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 16,
   },
+  inputBoxed: {
+    flex: 0,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   bioInput: {
+    flex: 0,
     minHeight: 84,
     textAlignVertical: "top",
     paddingHorizontal: spacing.md,

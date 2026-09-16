@@ -11,6 +11,7 @@ import {
   validateReportDetails,
   validateReportReason,
   validateReportTarget,
+  validateStoryReportDetails,
   validateVoteValue,
 } from "./index.ts";
 
@@ -92,6 +93,67 @@ Deno.test("validateReportDetails: required, trimmed, floored at 10 and capped at
     value: "a".repeat(2000),
   });
   assertEquals(validateReportDetails("a".repeat(2001)), {
+    ok: false,
+    reason: "length",
+  });
+});
+
+/**
+ * THE TWO TARGETS TAKE DIFFERENT REASONS (D13).
+ *
+ * The union of both lists is what 00089's check constraint accepts, so the
+ * only place a story can be stopped from being filed as `hate_speech` -- a
+ * comment reason that says nothing about a whole story -- is here.
+ */
+Deno.test("story reports take the story reasons and comment reports keep theirs", () => {
+  for (
+    const reason of [
+      "copyright",
+      "inappropriate_content",
+      "inappropriate_cover",
+      "other",
+    ]
+  ) {
+    assertEquals(validateReportReason(reason, "story"), reason);
+  }
+  assertEquals(validateReportReason("hate_speech", "story"), null);
+  assertEquals(validateReportReason("spam", "story"), null);
+
+  // A comment has no cover and is not somebody else's manuscript.
+  assertEquals(validateReportReason("inappropriate_cover", "comment"), null);
+  assertEquals(validateReportReason("copyright", "comment"), null);
+  assertEquals(validateReportReason("spam", "comment"), "spam");
+  // The default target is a comment, which is what every caller before D13
+  // meant by it.
+  assertEquals(validateReportReason("spam"), "spam");
+});
+
+/**
+ * A STORY REPORT'S NOTE IS OPTIONAL, AND BOUNDED.
+ *
+ * The comment rule is the opposite and stays that way; see
+ * `validateReportDetails` above. Blank becomes null rather than an empty
+ * string so the column reads as "nothing was said" instead of "something was
+ * said and it was empty".
+ */
+Deno.test("validateStoryReportDetails: optional, trimmed, capped at 1000", () => {
+  assertEquals(validateStoryReportDetails(undefined), {
+    ok: true,
+    value: null,
+  });
+  assertEquals(validateStoryReportDetails(null), { ok: true, value: null });
+  assertEquals(validateStoryReportDetails("   "), { ok: true, value: null });
+  assertEquals(validateStoryReportDetails(123), { ok: true, value: null });
+  // No ten-character floor: a story reason stands on its own.
+  assertEquals(validateStoryReportDetails("  cover  "), {
+    ok: true,
+    value: "cover",
+  });
+  assertEquals(validateStoryReportDetails("a".repeat(1000)), {
+    ok: true,
+    value: "a".repeat(1000),
+  });
+  assertEquals(validateStoryReportDetails("a".repeat(1001)), {
     ok: false,
     reason: "length",
   });

@@ -459,6 +459,43 @@ export async function verifyEmailCode(
 }
 
 /**
+ * The reviewer's fixed code (D11).
+ *
+ * `reviewer@thetractionlabs.com` never receives a real OTP: the store
+ * reviewer signs in with a six-digit code the server verifies (HMAC with a
+ * pepper it alone holds) and answers with a one-time `token_hash`, which is
+ * then verified as a magic link so the session is an ordinary Supabase one.
+ * Called only AFTER `verifyOtp` has refused the code, so a real account is
+ * never asked about here, and only the reviewer's address ever gets past the
+ * 401 the function returns for everyone else.
+ *
+ * Resolves true when a session was established, false for any refusal --
+ * unknown email, wrong code, lockout and network alike, because the function
+ * returns an identical body for the first three on purpose.
+ */
+export async function reviewerSignIn(email: string, code: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  const address = email.trim().toLowerCase();
+  const token = code.trim();
+  if (!/^\d{6}$/.test(token)) return false;
+  try {
+    const { data, error } = await supabase.functions.invoke("reviewer-signin", {
+      body: { email: address, code: token },
+    });
+    if (error || typeof data?.token_hash !== "string") return false;
+    const verified = await supabase.auth.verifyOtp({
+      token_hash: data.token_hash,
+      type: "magiclink",
+    });
+    if (verified.error) return false;
+    forgetPendingEmailOtp();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Move the guest's saved characters onto the account that just signed in.
  *
  * Never fatal. The user has verified their email and is standing on the last

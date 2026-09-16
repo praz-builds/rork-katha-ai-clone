@@ -20,6 +20,13 @@ overrides:
   "@expo/metro-config>postcss": 8.5.23
   "xcode>uuid": 11.1.1
   uuid: 11.1.1
+  # GHSA-2883-xcg3-v3hh: `maxTotalMergeKeys` does not bound CPU when a merge
+  # source is empty, so a crafted YAML can hang the parser. Both ranges are
+  # build-time only -- @expo/cli>@expo/xcpretty and babel-jest's nyc config
+  # loader -- and neither ships into the app bundle, but both have a fixed
+  # release, so they are bumped rather than ignored.
+  js-yaml@3: 3.15.2
+  js-yaml@4: 4.3.2
 # CVE-2025-71329 (JXL) and CVE-2025-71330 (ICNS): image-size 1.2.1 loops forever
 # on a crafted file whose box header declares a zero length, because the parser
 # advances its cursor by that length. metro pins image-size to ^1.0.2 and there

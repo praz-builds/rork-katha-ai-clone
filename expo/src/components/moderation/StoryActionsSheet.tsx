@@ -7,15 +7,14 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Ban, Download, Flag } from "lucide-react-native";
+import { Ban, Check, Download, Flag } from "lucide-react-native";
 
 import { colors, radius, shadows, spacing, type } from "@/theme";
-import { REPORT_REASONS } from "@/components/comments/types";
-import type { ReportReason } from "@/components/comments/types";
 import {
-  MAX_REPORT_DETAILS_LENGTH,
-  isReportDescriptionValid,
-} from "@/components/comments/CommentRow";
+  MAX_STORY_REPORT_DETAILS_LENGTH,
+  STORY_REPORT_REASONS,
+} from "@/components/comments/types";
+import type { StoryReportReason } from "@/components/comments/types";
 
 type SheetView = "menu" | "reportReasons" | "reportDone" | "blockConfirm" | "blockDone";
 type MaybePromise<T> = T | Promise<T>;
@@ -25,6 +24,12 @@ type MaybePromise<T> = T | Promise<T>;
  * the story, or block its author. Both destructive/consequential steps get an
  * in-sheet confirmation state rather than `Alert.alert` - the app renders on
  * web in the dev server and a native confirm() dialog blocks the page.
+ *
+ * The report step is the "Report story" form: four reasons as option rows,
+ * an optional details field, and a Cancel / Submit Report footer. Details are
+ * optional here, unlike a comment report, because the reasons already say
+ * what is wrong -- a moderator can act on "inappropriate cover image" with
+ * nothing else written.
  */
 export default function StoryActionsSheet({
   visible,
@@ -42,15 +47,16 @@ export default function StoryActionsSheet({
   authorName: string;
   onBlockAuthor: () => MaybePromise<boolean | void>;
   /**
-   * Persist the report. It receives the reason AND the reporter's description,
-   * which is required. Rejecting means the report did not save, and the sheet
-   * says so rather than thanking the reporter for nothing.
+   * Persist the report. It receives the reason and whatever the reporter
+   * wrote in Details, trimmed -- possibly an empty string, because details are
+   * optional for a story. Rejecting means the report did not save, and the
+   * sheet says so rather than thanking the reporter for nothing.
    *
    * Optional so the sheet still works in isolation and in tests; when absent
    * the sheet shows its confirmation and files nothing.
    */
   onSubmitReport?: (
-    reason: ReportReason,
+    reason: StoryReportReason,
     details: string,
   ) => Promise<void> | void;
   /** "Download as PDF". The sheet closes first; the platform's dialog takes over. Absent hides the row. */
@@ -59,7 +65,7 @@ export default function StoryActionsSheet({
   canBlockAuthor?: boolean;
 }) {
   const [view, setView] = useState<SheetView>("menu");
-  const [reason, setReason] = useState<ReportReason | null>(null);
+  const [reason, setReason] = useState<StoryReportReason | null>(null);
   const [details, setDetails] = useState("");
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -100,12 +106,11 @@ export default function StoryActionsSheet({
     }
   };
 
-  const describedEnough = isReportDescriptionValid(details);
-  const canSubmitReport = Boolean(reason) && describedEnough && !reportBusy;
+  const canSubmitReport = Boolean(reason) && !reportBusy;
 
   /**
-   * A report needs a reason AND a description, and the confirmation is shown
-   * only if the write actually happened.
+   * A report needs a reason; the details are the reporter's to add or not.
+   * The confirmation is shown only if the write actually happened.
    *
    * It used to show the "thanks" screen regardless, on the argument that a
    * report is a one-way signal. That argument is fine for a report that
@@ -113,7 +118,7 @@ export default function StoryActionsSheet({
    * believing something is being looked at, and nothing is.
    */
   const handleSubmitReport = async () => {
-    if (!reason || !describedEnough || reportBusy) return;
+    if (!reason || reportBusy) return;
     setReportBusy(true);
     setReportError(null);
     try {
@@ -196,63 +201,91 @@ export default function StoryActionsSheet({
           {view === "reportReasons" ? (
             <>
               <Text style={styles.title}>Report story</Text>
-              <Text style={styles.subtitle}>Why are you reporting this story?</Text>
-              {REPORT_REASONS.map((option) => (
-                <Pressable
-                  key={option.id}
-                  onPress={() => setReason(option.id)}
-                  style={styles.reasonRow}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: reason === option.id }}
-                  accessibilityLabel={option.label}
-                >
-                  <View
-                    style={[styles.radio, reason === option.id && styles.radioSelected]}
-                  />
-                  <Text style={styles.reasonLabel}>{option.label}</Text>
-                </Pressable>
-              ))}
-              <Text style={styles.fieldLabel}>What happened?</Text>
+              <Text style={styles.subtitle}>
+                Tell us what is wrong with this story.
+              </Text>
+              <View style={styles.reasonList} accessibilityRole="radiogroup">
+                {STORY_REPORT_REASONS.map((option) => {
+                  const selected = reason === option.id;
+                  return (
+                    <Pressable
+                      key={option.id}
+                      onPress={() => setReason(option.id)}
+                      style={({ pressed }) => [
+                        styles.reasonRow,
+                        selected && styles.reasonRowSelected,
+                        pressed && styles.reasonRowPressed,
+                      ]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected, selected }}
+                      accessibilityLabel={option.label}
+                      testID={`story-report-reason-${option.id}`}
+                    >
+                      <Text
+                        style={[
+                          styles.reasonLabel,
+                          selected && styles.reasonLabelSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      <View style={[styles.radio, selected && styles.radioSelected]}>
+                        {selected ? (
+                          <Check size={13} color={colors.surface} strokeWidth={3} />
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={styles.fieldLabel}>Details (optional)</Text>
               <TextInput
                 value={details}
                 onChangeText={setDetails}
-                placeholder="Describe the problem in a sentence or two."
+                placeholder="Anything that would help us take a look."
                 placeholderTextColor={colors.tertiary}
                 style={styles.detailsInput}
                 multiline
-                maxLength={MAX_REPORT_DETAILS_LENGTH}
+                maxLength={MAX_STORY_REPORT_DETAILS_LENGTH}
                 accessibilityLabel="Describe the problem"
                 testID="story-report-details-input"
               />
-              <Text style={styles.fieldHint}>
-                {describedEnough
-                  ? "Thanks - this is what a moderator reads first."
-                  : "A report needs a description before it can be sent."}
-              </Text>
               {reportError ? <Text style={styles.error}>{reportError}</Text> : null}
-              <Pressable
-                onPress={handleSubmitReport}
-                disabled={!canSubmitReport}
-                style={[
-                  styles.primaryButton,
-                  !canSubmitReport && styles.primaryButtonDisabled,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Submit report"
-                accessibilityState={{ disabled: !canSubmitReport }}
-              >
-                <Text style={styles.primaryButtonLabel}>
-                  {reportBusy ? "Sending..." : "Submit report"}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleClose}
-                style={styles.cancelButton}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-              >
-                <Text style={styles.cancelLabel}>Cancel</Text>
-              </Pressable>
+              <View style={styles.footer}>
+                <Pressable
+                  onPress={handleClose}
+                  style={({ pressed }) => [
+                    styles.footerCancel,
+                    pressed && styles.footerPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={styles.footerCancelLabel}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSubmitReport}
+                  disabled={!canSubmitReport}
+                  style={({ pressed }) => [
+                    styles.footerSubmit,
+                    !canSubmitReport && styles.footerSubmitDisabled,
+                    pressed && canSubmitReport && styles.footerPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Submit report"
+                  accessibilityState={{ disabled: !canSubmitReport }}
+                  testID="story-report-submit"
+                >
+                  <Text
+                    style={[
+                      styles.footerSubmitLabel,
+                      !canSubmitReport && styles.footerSubmitLabelDisabled,
+                    ]}
+                  >
+                    {reportBusy ? "Sending..." : "Submit Report"}
+                  </Text>
+                </Pressable>
+              </View>
             </>
           ) : null}
 
@@ -371,29 +404,55 @@ const styles = StyleSheet.create({
   destructiveLabel: {
     color: colors.premium,
   },
+
+  /* ── Report form: option rows per DESIGN.md "Option Row" ──
+     Radius 18, 1.5pt border, the whole row is the target, and the selected
+     state is fill + border + filled radio with a check, never orange alone. */
+  reasonList: {
+    gap: spacing.sm,
+  },
   reasonRow: {
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.md,
     paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.track,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  reasonRowSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  reasonRowPressed: {
+    opacity: 0.85,
+  },
+  reasonLabel: {
+    ...type.body,
+    flexShrink: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.ink,
+  },
+  reasonLabelSelected: {
+    color: colors.ink,
   },
   radio: {
-    width: 18,
-    height: 18,
+    width: 22,
+    height: 22,
     borderRadius: radius.pill,
     borderWidth: 2,
     borderColor: colors.borderStrong,
+    alignItems: "center",
+    justifyContent: "center",
   },
   radioSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.accent,
-  },
-  reasonLabel: {
-    ...type.body,
-    fontSize: 15,
-    color: colors.ink,
   },
   fieldLabel: {
     ...type.subhead,
@@ -407,15 +466,56 @@ const styles = StyleSheet.create({
     color: colors.ink,
     minHeight: 88,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surface2,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.related,
     textAlignVertical: "top",
   },
-  fieldHint: {
-    ...type.caption,
-    color: colors.muted,
+  footer: {
+    marginTop: spacing.related,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
   },
+  footerCancel: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  footerCancelLabel: {
+    ...type.body,
+    fontWeight: "700",
+    color: colors.strong,
+  },
+  footerSubmit: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  footerSubmitDisabled: {
+    backgroundColor: colors.surface2,
+  },
+  footerSubmitLabel: {
+    ...type.body,
+    fontWeight: "700",
+    color: colors.surface,
+  },
+  footerSubmitLabelDisabled: {
+    color: colors.tertiary,
+  },
+  footerPressed: {
+    opacity: 0.85,
+  },
+
   primaryButton: {
     marginTop: spacing.related,
     minHeight: 48,
@@ -423,9 +523,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
-  },
-  primaryButtonDisabled: {
-    backgroundColor: colors.surface2,
   },
   primaryButtonLabel: {
     ...type.body,

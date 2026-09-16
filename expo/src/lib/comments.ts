@@ -14,8 +14,8 @@
  */
 import { supabase } from "@/lib/supabase";
 import type {
+  AnyReportReason,
   CommentNode,
-  ReportReason,
   SortMode,
   VoteState,
 } from "@/components/comments/types";
@@ -309,13 +309,24 @@ export function voteOnComment(
  * enforce it in its UI today. `backend/supabase/functions/comments/index.ts`
  * enforces the same rule server-side.
  */
+/**
+ * File a report against a comment or a story.
+ *
+ * A COMMENT report needs a description: a reason enum on its own is a bucket
+ * name a moderator cannot act on, so a blank one is rejected here before it
+ * costs a round trip. A STORY report does not: its reasons (copyright, the
+ * cover, the prose) name the problem on their own, so details are optional
+ * and are sent only when the reporter wrote some -- an empty string is
+ * omitted from the body rather than posted as `""`.
+ */
 export function reportContent(
   target: { commentId?: string; storyId?: string },
-  reason: ReportReason,
-  details: string,
+  reason: AnyReportReason,
+  details: string = "",
 ): Promise<unknown> {
   const description = typeof details === "string" ? details.trim() : "";
-  if (!description) {
+  const isStoryReport = Boolean(target.storyId) && !target.commentId;
+  if (!isStoryReport && !description) {
     return Promise.reject(
       new Error("A report needs a description of the problem."),
     );
@@ -327,7 +338,7 @@ export function reportContent(
       comment_id: target.commentId ?? null,
       story_id: target.storyId ?? null,
       reason,
-      details: description,
+      ...(description ? { details: description } : {}),
     },
   });
 }

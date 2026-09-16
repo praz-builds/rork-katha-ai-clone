@@ -10,6 +10,7 @@
 
 /* eslint-disable import/first */
 import React from "react";
+import { Linking } from "react-native";
 import {
   act,
   cleanup,
@@ -47,31 +48,27 @@ jest.mock("@/lib/profile", () => {
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 
 import AuthorScreen from "@/screens/AuthorScreen";
-import ProfileScreen from "@/screens/ProfileScreen";
+import ProfileScreen, { PRIVACY_URL, TERMS_URL } from "@/screens/ProfileScreen";
 import FollowButton from "@/components/profile/FollowButton";
+import { ownProfile } from "@/test-support/profileFixtures";
 
 const AUTHOR = "11111111-1111-4111-8111-111111111111";
 
 /** A signed-in reader with a name, a handle, a live streak and two follows. */
-const ownProfileFixture = () => ({
-  userId: "u1",
-  username: "ada",
-  displayName: "Ada Lovelace",
-  avatarUrl: null,
-  bio: null,
-  memberSince: "2026-01-01T00:00:00Z",
-  deletedAt: null,
-  currentStreak: 4,
-  longestStreak: 9,
-  lastActivityDate: new Date().toISOString().slice(0, 10),
-  storiesWritten: 2,
-  chaptersWritten: 7,
-  totalReads: 42,
-  totalLikes: 8,
-  phrasesSaved: 12,
-  followers: 3,
-  following: 1,
-});
+const ownProfileFixture = () =>
+  ownProfile({
+    displayName: "Ada Lovelace",
+    memberSince: "2026-01-01T00:00:00Z",
+    currentStreak: 4,
+    longestStreak: 9,
+    storiesWritten: 2,
+    chaptersWritten: 7,
+    totalReads: 42,
+    totalLikes: 8,
+    phrasesSaved: 12,
+    followers: 3,
+    following: 1,
+  });
 
 const publicProfile = {
   authorId: AUTHOR,
@@ -411,7 +408,6 @@ const profileProps = () => ({
   credits: 5,
   onCredits: jest.fn(),
   onPaywall: jest.fn(),
-  onCustomerCenter: jest.fn(),
   onJourney: jest.fn(),
   onPublicProfile: jest.fn(),
   onVoices: jest.fn(),
@@ -420,17 +416,28 @@ const profileProps = () => ({
 });
 
 describe("the reader's own profile", () => {
-  it("offers a guest sign-in instead of a page of zeros", async () => {
-    const onSignIn = jest.fn();
-    const view = await render(
-      <ProfileScreen {...profileProps()} isAnonymous onSignIn={onSignIn} />,
-    );
+  // D1: onboarding forces email before Home, so there is nobody anonymous to
+  // show a "sign in to keep this" card to. The card, its button and the
+  // `isAnonymous`/`onSignIn` props that drove it are all gone.
+  it("has no guest card, because the product has no guests", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
 
-    await waitFor(() => view.getByTestId("profile-guest"));
-    fireEvent.press(view.getByTestId("profile-sign-in"));
-    expect(onSignIn).toHaveBeenCalledTimes(1);
-    // No edit affordance for someone with nothing to edit.
-    expect(view.queryByTestId("profile-edit")).toBeNull();
+    await waitFor(() => view.getByTestId("profile-journey"));
+    expect(view.queryByTestId("profile-guest")).toBeNull();
+    expect(view.queryByTestId("profile-sign-in")).toBeNull();
+    expect(view.queryByText("Sign in to keep all of this")).toBeNull();
+  });
+
+  // D5: avatar and handle on one row, and the pencil is the only edit door.
+  it("puts the pencil on the identity row and opens the editor with it", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+
+    await waitFor(() => view.getByTestId("profile-header"));
+    expect(view.getByTestId("profile-avatar")).toBeTruthy();
+    fireEvent.press(view.getByTestId("profile-edit"));
+    await waitFor(() => expect(view.getByText("Your profile")).toBeTruthy());
   });
 
   it("leads with who they are, then what the account can do", async () => {
@@ -485,16 +492,6 @@ describe("the reader's own profile", () => {
     expect(props.onJourney).toHaveBeenCalledWith(profile);
   });
 
-  // Sign out and Delete are only shown to somebody who has an account to lose.
-  it("shows no danger zone to a guest", async () => {
-    const view = await render(
-      <ProfileScreen {...profileProps()} isAnonymous onSignIn={jest.fn()} />,
-    );
-    await waitFor(() => view.getByTestId("profile-guest"));
-    expect(view.queryByTestId("profile-sign-out")).toBeNull();
-    expect(view.queryByTestId("profile-delete")).toBeNull();
-  });
-
   it("gives a signed-in reader both a way out and a way to delete", async () => {
     mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
     const view = await render(<ProfileScreen {...profileProps()} />);
@@ -514,14 +511,53 @@ describe("the reader's own profile", () => {
     expect(view.queryByTestId("profile-public")).toBeNull();
   });
 
-  it("routes a reader who wants more credits to the paywall", async () => {
-    const onPaywall = jest.fn();
-    const view = await render(
-      <ProfileScreen {...profileProps()} onPaywall={onPaywall} />,
-    );
+  // "Get more" opens Credits, not the paywall: D8 put every way of getting
+  // credits — packs, Plus, streak, feedback, invites — on that one screen, and
+  // sending this button straight to the subscription would hide the four free
+  // ones behind a price.
+  it("routes a reader who wants more credits to the credits screen", async () => {
+    const props = profileProps();
+    const view = await render(<ProfileScreen {...props} />);
 
+    // The "Get more" pill is a View, not a button — the whole row is the
+    // target, because a button inside a button is invalid HTML and breaks the
+    // web build. So the pill must be on screen and the ROW must be what fires.
     await waitFor(() => view.getByTestId("profile-buy-credits"));
-    fireEvent.press(view.getByTestId("profile-buy-credits"));
-    expect(onPaywall).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByTestId("profile-credits"));
+    expect(props.onCredits).toHaveBeenCalled();
+    expect(props.onPaywall).not.toHaveBeenCalled();
+  });
+
+  // D7: the Katha Plus row never sends a paying customer to a screen asking
+  // them to pay.
+  it("sends a free account to the paywall from the Katha Plus row", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const props = profileProps();
+    const view = await render(<ProfileScreen {...props} />);
+
+    await waitFor(() => view.getByTestId("profile-premium"));
+    expect(view.getByText("Subscription, voices, ad-free")).toBeTruthy();
+    fireEvent.press(view.getByTestId("profile-premium"));
+    expect(props.onPaywall).toHaveBeenCalledTimes(1);
+  });
+
+  // D12: the legal pages are the hosted ones, opened in the system browser.
+  it("opens the hosted privacy and terms pages", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const openURL = jest
+      .spyOn(Linking, "openURL")
+      .mockResolvedValue(true as unknown as void);
+    try {
+      const view = await render(<ProfileScreen {...profileProps()} />);
+      await waitFor(() => view.getByTestId("profile-privacy"));
+      fireEvent.press(view.getByTestId("profile-privacy"));
+      expect(openURL).toHaveBeenCalledWith(PRIVACY_URL);
+      fireEvent.press(view.getByTestId("profile-terms"));
+      expect(openURL).toHaveBeenCalledWith(TERMS_URL);
+      expect(PRIVACY_URL).toBe("https://katha.thetractionlabs.com/privacy");
+      expect(TERMS_URL).toBe("https://katha.thetractionlabs.com/terms");
+    } finally {
+      openURL.mockRestore();
+    }
   });
 });

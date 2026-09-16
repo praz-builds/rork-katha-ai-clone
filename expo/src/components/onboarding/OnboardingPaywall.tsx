@@ -88,6 +88,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TestimonialRail } from "@/components/onboarding/TestimonialRail";
+import { PLAN_FACTS } from "@/components/profile/MemberSheet";
+import { useIsSubscribed } from "@/lib/entitlements";
 import { revenueCatService, type RevenueCatPaywallProduct } from "@/lib/revenuecat";
 import {
   colors,
@@ -308,6 +310,112 @@ function copyFor(name: string, purpose: OnboardingPaywallPurpose) {
 }
 
 export function OnboardingPaywall({
+  characterName,
+  portraitUrl = null,
+  purpose,
+  onSubscribed,
+  onDismiss,
+}: OnboardingPaywallProps) {
+  const subscribed = useIsSubscribed();
+  if (subscribed) return <MemberState onDismiss={onDismiss} />;
+  return (
+    <PaywallOffer
+      characterName={characterName}
+      portraitUrl={portraitUrl}
+      purpose={purpose}
+      onSubscribed={onSubscribed}
+      onDismiss={onDismiss}
+    />
+  );
+}
+
+/**
+ * The member state (D7).
+ *
+ * A subscriber who reaches the paywall -- from Credits, from Home, or a
+ * tester account holding the entitlement override -- is shown that they have
+ * the plan, not a screen selling it to them. The four facts are the offer's
+ * four rows, so what a member reads here is what they read when they bought.
+ * "Manage subscription" opens the Customer Center where it exists; on web and
+ * in an unconfigured build it cannot, and the line under the facts says
+ * where the store keeps it instead.
+ */
+function MemberState({ onDismiss }: { onDismiss: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [notice, setNotice] = useState<string | null>(null);
+  const manage = useCallback(() => {
+    revenueCatService
+      .presentCustomerCenter()
+      .then((presented) => {
+        if (!presented) {
+          setNotice(
+            Platform.OS === "web"
+              ? "Manage or cancel from the store you subscribed on."
+              : "Subscription management is not available right now.",
+          );
+        }
+      })
+      .catch(() => setNotice("Subscription management is not available right now."));
+  }, []);
+
+  return (
+    <View
+      style={[styles.screen, { paddingTop: insets.top }]}
+      testID="paywall-member-state"
+    >
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          hitSlop={12}
+          style={styles.closeTile}
+        >
+          <IconClose size={22} color={colors.ink} />
+        </Pressable>
+      </View>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xl + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerCopy}>
+          <Text style={styles.heading} accessibilityRole="header">
+            You're a Katha member
+          </Text>
+          <Text style={styles.sub}>Your plan is active. Here is what it includes.</Text>
+        </View>
+        <View style={styles.benefits}>
+          {PLAN_FACTS.map((fact, index) => (
+            <View
+              key={fact}
+              style={[
+                styles.benefitRow,
+                index < PLAN_FACTS.length - 1 && styles.benefitRowDivided,
+              ]}
+            >
+              <IconCheck size={16} color={colors.accent} />
+              <View style={styles.benefitCopy}>
+                <Text style={styles.benefitLead}>{fact}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+        {notice ? <Text style={styles.memberNotice}>{notice}</Text> : null}
+        <Pressable
+          onPress={manage}
+          accessibilityRole="button"
+          accessibilityLabel="Manage subscription"
+          style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}
+        >
+          <Text style={styles.primaryText}>Manage subscription</Text>
+        </Pressable>
+      </ScrollView>
+    </View>
+  );
+}
+
+function PaywallOffer({
   characterName,
   portraitUrl = null,
   purpose,
@@ -839,6 +947,14 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 17,
     color: colors.accentPressed,
+    textAlign: "center",
+    marginTop: spacing.md,
+  },
+  memberNotice: {
+    fontFamily: fonts.ui,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: colors.muted,
     textAlign: "center",
     marginTop: spacing.md,
   },

@@ -9,8 +9,10 @@
 import {
   buildThread,
   formatRelativeTime,
+  reportContent,
   sortThread,
 } from "@/lib/comments";
+import { supabase } from "@/lib/supabase";
 import type { ServerComment } from "@/lib/comments";
 import { displayScore } from "@/components/comments/types";
 
@@ -111,5 +113,45 @@ describe("formatRelativeTime", () => {
 
   it("never renders a negative age from a clock skew", () => {
     expect(formatRelativeTime(NOW + 60_000, NOW)).toBe("just now");
+  });
+});
+
+
+/* ───────────────────────────── reportContent ───────────────────────────── */
+
+describe("reportContent", () => {
+  const invoke = supabase.functions.invoke as jest.Mock;
+
+  beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue({ data: { ok: true }, error: null });
+  });
+
+  it("files a story report with no details key when nothing was written", async () => {
+    await reportContent({ storyId: "s1" }, "inappropriate_cover", "   ");
+    expect(invoke).toHaveBeenCalledWith("comments", {
+      body: {
+        action: "report",
+        comment_id: null,
+        story_id: "s1",
+        reason: "inappropriate_cover",
+      },
+    });
+    expect(invoke.mock.calls[0][1].body).not.toHaveProperty("details");
+  });
+
+  it("sends trimmed details on a story report when the reporter wrote some", async () => {
+    await reportContent({ storyId: "s1" }, "copyright", "  Lifted wholesale.  ");
+    expect(invoke.mock.calls[0][1].body).toMatchObject({
+      story_id: "s1",
+      reason: "copyright",
+      details: "Lifted wholesale.",
+    });
+  });
+
+  it("still refuses a comment report with no description", async () => {
+    await expect(reportContent({ commentId: "c1" }, "spam", " "))
+      .rejects.toThrow("A report needs a description");
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,43 @@ serve(async (req) => {
     if (profileError) throw profileError;
 
     const guest = isAnonymousUser(user);
+
+    // A name, a face and an invite code, before the first screen renders.
+    //
+    // `ensure_identity` (00089) fills `username`, `avatar_id` and
+    // `referral_code` only when they are null, so this is a no-op on every
+    // call after the first and cheap enough to make unconditionally. It runs
+    // here because this is the one request every client makes at boot and
+    // again after sign-in, which means a profile can never reach the home
+    // screen as an unnamed, faceless row -- the state the old flow left
+    // anybody who skipped the identity editor.
+    //
+    // NOT for a guest. A pre-auth session is infrastructure (D1: nobody gets
+    // past onboarding without an email), and handing one a handle and an
+    // invite code would burn both on an account that is about to be thrown
+    // away -- and put a referral code into the hands of something that costs
+    // nothing to create.
+    //
+    // Reported, never fatal: a person with credits and no handle can still
+    // read, and failing boot over a cosmetic default would be the worse
+    // outcome by a wide margin.
+    if (!guest) {
+      const { error: identityError } = await serviceClient.rpc(
+        "ensure_identity",
+        { p_user_id: user.id },
+      );
+      if (identityError) {
+        await logError({
+          bucket: "engagement",
+          severity: "low",
+          source: "runtime",
+          errorCode: "ensure_identity_failed",
+          error: identityError,
+          userId: user.id,
+        });
+      }
+    }
+
     let balance = await getBalance(serviceClient, user.id);
     let welcomeGranted = false;
     let rateLimited = false;

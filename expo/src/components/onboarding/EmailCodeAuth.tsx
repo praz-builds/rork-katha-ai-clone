@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { Primary, StepScroll } from "@/components/onboarding/primitives";
-import { sendEmailCode, verifyEmailCode } from "@/lib/session";
+import { reviewerSignIn, sendEmailCode, verifyEmailCode } from "@/lib/session";
 import {
   colors,
   controls,
@@ -125,6 +125,15 @@ export function EmailCodeAuth({
       await verifyEmailCode(email, code);
       onVerified(email.trim());
     } catch {
+      // The reviewer's fixed code (D11). Tried only after the real OTP
+      // refused, and the function answers 401 for every address but the
+      // reviewer's, so for anyone else this is one extra round trip on the
+      // way to the same error line.
+      const reviewer = await reviewerSignIn(email, code).catch(() => false);
+      if (reviewer) {
+        onVerified(email.trim());
+        return;
+      }
       setAuthError("That code did not match. Try again or resend it.");
     } finally {
       setAuthBusy(false);

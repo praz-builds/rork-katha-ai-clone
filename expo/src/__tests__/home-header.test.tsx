@@ -128,3 +128,32 @@ it("keeps every header item at a 44pt touch target", async () => {
     expect(flat.minWidth).toBeGreaterThanOrEqual(44);
   }
 });
+
+/*
+  The greeting is two lines (D4): a phrase for the time of day on the first,
+  the name and a wave on the second. They are separate Text elements, so the
+  name never wraps mid-phrase under the pills, and a reader with no stored
+  name simply gets the phrase as the heading.
+*/
+describe("the greeting", () => {
+  it("puts the phrase and the name on two separate lines", async () => {
+    const view = await renderHome({ displayName: "Asha Rao" });
+    const phrase = view.getByTestId("home-greeting-phrase");
+    const name = view.getByTestId("home-greeting-name");
+    expect(name.props.children).toBe("Asha \u{1F44B}\u{1F3FC}");
+    expect(String(phrase.props.children)).not.toContain("Asha");
+    expect(String(phrase.props.children).length).toBeGreaterThan(0);
+  });
+
+  it("omits the name line when no name was ever given", async () => {
+    const view = await renderHome({ displayName: null });
+    expect(view.getByTestId("home-greeting-phrase")).toBeTruthy();
+    expect(view.queryByTestId("home-greeting-name")).toBeNull();
+    expect(view.queryByText(/\u{1F44B}/u)).toBeNull();
+  });
+
+  it("never renders the old single 'Good morning, Name' string", async () => {
+    const view = await renderHome({ displayName: "Asha" });
+    expect(view.queryByText(/^Good (morning|afternoon|evening), /)).toBeNull();
+  });
+});

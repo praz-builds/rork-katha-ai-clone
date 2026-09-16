@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,6 +21,7 @@ import {
   Flame,
   HelpCircle,
   LogOut,
+  Pencil,
   Shield,
   Sparkles,
   Trash2,
@@ -28,48 +30,55 @@ import {
 } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
-import IdentityEditor from "@/components/profile/IdentityEditor";
+import IdentityEditor, { type IdentityEdits } from "@/components/profile/IdentityEditor";
+import MemberSheet from "@/components/profile/MemberSheet";
+import { creatureSource } from "@/lib/creatures";
+import { useIsSubscribed } from "@/lib/entitlements";
 import {
   fetchOwnProfile,
   type OwnProfile,
   streakState,
 } from "@/lib/profile";
+import { revenueCatService } from "@/lib/revenuecat";
 import { signOutToGuest } from "@/lib/session";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
+/** The legal pages (D12). Opened in the system browser, never rendered in-app. */
+export const PRIVACY_URL = "https://katha.thetractionlabs.com/privacy";
+export const TERMS_URL = "https://katha.thetractionlabs.com/terms";
+
 /**
  * The reader's own profile.
  *
- * THE ORDER, AND WHY IT IS THIS ORDER. Premium, then Credits, then Your
+ * THE HEADER (D5). Avatar and username on one row, the pencil on the right.
+ * The pencil is the only edit affordance: the separate "Edit profile" button
+ * it replaced was a second door to the same sheet. The avatar is the photo if
+ * there is one, else the creature the server assigned (every account has
+ * one, preassigned and changeable), else a placeholder for a profile that has
+ * not loaded.
+ *
+ * NO GUESTS (D1). Onboarding forces email before Home, so there is nobody
+ * anonymous to show a "sign in to keep this" card to, and the card is gone.
+ * Signing out routes to the sign-in screen, never to a fresh guest.
+ *
+ * THE ORDER, AND WHY IT IS THIS ORDER. Katha Plus, then Credits, then Your
  * journey, then everything else. The first two are about what this account
- * can currently do — the two facts a reader opens this screen to check — and
- * the third is the only thing here that changes between two visits. Settings
- * are a list of things that are identical every day, so they sit below all of
- * it.
+ * can currently do, the third is the only thing here that changes between
+ * two visits, and settings are identical every day, so they sit below.
+ *
+ * KATHA PLUS (D7). A member sees a member state: the Customer Center where it
+ * exists, and a sheet of plan facts where it does not (web, or an
+ * unconfigured SDK). A free account goes to the paywall. The row never sends
+ * a paying customer to a screen that asks them to pay.
  *
  * NO HEADING. The tab bar already says which tab this is, in a word the reader
- * just tapped. Home is the one screen that keeps a heading, because it says
- * something the tab bar cannot: the reader's name.
- *
- * NO STATS GRID. Reads, likes, stories, chapters and saved phrases were all
- * here in an eight-cell grid. They are gone. Reads and likes are a scoreboard
- * and belong to nobody but the writer; the story counts already exist in
- * Library, next to the stories they count. What is left on the public side is
- * followers and following, which are the only two numbers here that describe a
- * relationship rather than a performance.
- *
- * WHAT OTHERS SEE IS A SEPARATE DOOR. "View public profile" opens the actual
- * public page rather than a preview of it, so there is exactly one description
- * of what a stranger sees and no second implementation to drift from it.
+ * just tapped.
  */
 export default function ProfileScreen({
   credits,
-  isAnonymous,
   onCredits,
   onPaywall,
-  onCustomerCenter,
-  onSignIn,
   onJourney,
   onPublicProfile,
   onVoices,
@@ -77,12 +86,8 @@ export default function ProfileScreen({
   onDeleted,
 }: {
   credits: number;
-  /** True for a guest. Almost nothing on this screen means anything to one. */
-  isAnonymous?: boolean;
   onCredits: () => void;
   onPaywall: () => void;
-  onCustomerCenter: () => void;
-  onSignIn?: () => void;
   onJourney: (profile: OwnProfile | null) => void;
   onPublicProfile: (authorId: string) => void;
   onVoices: () => void;
@@ -93,6 +98,8 @@ export default function ProfileScreen({
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [memberSheet, setMemberSheet] = useState(false);
+  const subscribed = useIsSubscribed();
 
   useEffect(() => {
     let alive = true;
@@ -110,19 +117,24 @@ export default function ProfileScreen({
     };
   }, []);
 
-  const applyEdits = useCallback(
-    (
-      next: {
-        username?: string;
-        displayName?: string | null;
-        avatarUrl?: string;
-        bio?: string | null;
-      },
-    ) => {
-      setProfile((current) => (current ? { ...current, ...next } : current));
-    },
-    [],
-  );
+  const applyEdits = useCallback((next: IdentityEdits) => {
+    setProfile((current) => (current ? { ...current, ...next } : current));
+  }, []);
+
+  const openPlus = useCallback(() => {
+    if (!subscribed) {
+      onPaywall();
+      return;
+    }
+    revenueCatService
+      .presentCustomerCenter()
+      .then((presented) => {
+        // Unavailable on web, or the SDK never configured: the sheet says
+        // what the plan includes rather than leaving the row doing nothing.
+        if (!presented) setMemberSheet(true);
+      })
+      .catch(() => setMemberSheet(true));
+  }, [onPaywall, subscribed]);
 
   const confirmSignOut = useCallback(() => {
     Alert.alert(
@@ -146,6 +158,12 @@ export default function ProfileScreen({
     );
   }, [onSignedOut]);
 
+  const openLink = useCallback((url: string) => {
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Could not open that page", url);
+    });
+  }, []);
+
   const streak = profile ? streakState(profile) : null;
   const streakDays = streak && streak.kind !== "none" && streak.kind !== "broken"
     ? streak.days
@@ -153,6 +171,7 @@ export default function ProfileScreen({
 
   const name = profile?.displayName ?? null;
   const handle = profile?.username ? `@${profile.username}` : null;
+  const creature = profile?.avatarUrl ? null : creatureSource(profile?.avatarId);
 
   return (
     <SafeAreaView style={styles.flex} edges={["top"]}>
@@ -160,79 +179,76 @@ export default function ProfileScreen({
         contentContainerStyle={styles.withTabs}
         showsVerticalScrollIndicator={false}
       >
-        {/* Identity. No page title above it — see the note on this component. */}
-        <View style={styles.identity}>
-          <View style={styles.avatarWrap}>
+        {/* Identity: avatar, name and handle on one row, the pencil on the
+            right. No page title above it; see the note on this component. */}
+        <View style={styles.identity} testID="profile-header">
+          <View style={styles.avatarWrap} testID="profile-avatar">
             {profile?.avatarUrl
               ? (
                 <Image
                   source={{ uri: profile.avatarUrl }}
                   style={styles.avatar}
                   accessibilityIgnoresInvertColors
+                  testID="profile-avatar-photo"
                 />
               )
-              : <UserRound size={30} color={colors.tertiary} />}
+              : creature
+              ? (
+                <Image
+                  source={creature}
+                  style={styles.avatar}
+                  accessibilityIgnoresInvertColors
+                  testID="profile-avatar-creature"
+                />
+              )
+              : <UserRound size={26} color={colors.tertiary} />}
           </View>
           <View style={styles.identityText}>
             <Text style={styles.name} numberOfLines={1}>
               {name ?? handle ?? "Your profile"}
             </Text>
             {name && handle
-              ? <Text style={styles.meta}>{handle}</Text>
-              : profile?.bio
-              ? <Text style={styles.meta} numberOfLines={2}>{profile.bio}</Text>
+              ? <Text style={styles.meta} numberOfLines={1}>{handle}</Text>
               : null}
           </View>
+          <Pressable
+            onPress={() => setEditing(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit your profile"
+            hitSlop={8}
+            testID="profile-edit"
+            style={({ pressed }) => [styles.pencil, pressed && styles.pressed]}
+          >
+            <Pencil size={18} color={colors.strong} />
+          </Pressable>
         </View>
 
-        {isAnonymous
-          ? (
-            <View style={styles.guestCard} testID="profile-guest">
-              <Text style={styles.guestTitle}>Sign in to keep all of this</Text>
-              <Text style={styles.guestBody}>
-                Your handle, your streak, the stories you write and the people
-                who follow you all live with your account. Reading stays open
-                either way.
-              </Text>
-              <Pressable
-                onPress={onSignIn}
-                accessibilityRole="button"
-                accessibilityLabel="Sign in"
-                testID="profile-sign-in"
-                style={({ pressed }) => [
-                  styles.guestButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.guestButtonLabel}>Sign in</Text>
-              </Pressable>
-            </View>
-          )
-          : (
-            <Pressable
-              onPress={() => setEditing(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Edit your profile"
-              testID="profile-edit"
-              style={({ pressed }) => [
-                styles.editButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.editLabel}>Edit profile</Text>
-            </Pressable>
-          )}
-
-        {/* 1. Premium. First because it is the answer to "what does this
+        {/* 1. Katha Plus. First because it is the answer to "what does this
             account get", which everything below is downstream of. */}
-        <Row
-          icon={Crown}
-          title="Katha Plus"
-          subtitle="Subscription, voices, ad-free"
-          onPress={onCustomerCenter}
+        <Pressable
+          onPress={openPlus}
+          accessibilityRole="button"
+          accessibilityLabel="Katha Plus"
           testID="profile-premium"
-          style={styles.firstGroup}
-        />
+          style={({ pressed }) => [styles.card, styles.firstGroup, pressed && styles.pressed]}
+        >
+          <View style={styles.rowIcon}>
+            <Crown size={20} color={colors.accent} />
+          </View>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Katha Plus</Text>
+            <Text style={styles.rowSubtitle}>
+              {subscribed ? "You're a Katha member" : "Subscription, voices, ad-free"}
+            </Text>
+          </View>
+          {subscribed
+            ? (
+              <View style={styles.memberBadge} testID="profile-member-badge">
+                <Text style={styles.memberBadgeLabel}>Member</Text>
+              </View>
+            )
+            : <ChevronRight size={16} color={colors.tertiary} />}
+        </Pressable>
 
         {/* 2. Credits. The number that gates creating anything. */}
         <Pressable
@@ -248,18 +264,16 @@ export default function ProfileScreen({
             <Text style={styles.rowTitle}>Credits</Text>
             <Text style={styles.rowSubtitle}>{credits} available</Text>
           </View>
-          <Pressable
-            onPress={onPaywall}
-            accessibilityRole="button"
-            accessibilityLabel="Buy credits"
-            testID="profile-buy-credits"
-            style={({ pressed }) => [
-              styles.buyButton,
-              pressed && styles.pressed,
-            ]}
-          >
+          {/*
+            A View, deliberately, not a second Pressable. The whole row already
+            navigates to Credits, so an inner button would be a button inside a
+            button: invalid HTML, and react-native-web renders exactly that on
+            the web build, where it throws a hydration error and the row stops
+            responding. The pill is the affordance; the row is the target.
+          */}
+          <View style={styles.buyButton} testID="profile-buy-credits">
             <Text style={styles.buyLabel}>Get more</Text>
-          </Pressable>
+          </View>
         </Pressable>
 
         {/* 3. Your journey. The streak lives behind this row rather than on
@@ -288,7 +302,7 @@ export default function ProfileScreen({
         </Pressable>
 
         {/* 4. The public page. Opened, not previewed. */}
-        {!isAnonymous && profile && (
+        {profile && (
           <Pressable
             onPress={() => onPublicProfile(profile.userId)}
             accessibilityRole="button"
@@ -311,7 +325,7 @@ export default function ProfileScreen({
           </Pressable>
         )}
 
-        {!profile && loaded && !isAnonymous && (
+        {!profile && loaded && (
           <Text style={styles.unavailable} testID="profile-unavailable">
             Your profile could not be loaded just now.
           </Text>
@@ -329,64 +343,57 @@ export default function ProfileScreen({
           />
           <Row
             icon={HelpCircle}
-            title="FAQ"
-            subtitle="How credits, streaks and stories work"
-            onPress={() => Alert.alert("Coming soon", "The FAQ is on its way.")}
+            title="How credits work"
+            subtitle="Every price, streaks and invites"
+            onPress={onCredits}
             testID="profile-faq"
             grouped
           />
           <Row
             icon={Shield}
             title="Privacy Policy"
-            onPress={() =>
-              Alert.alert("Coming soon", "The privacy policy is on its way.")}
+            onPress={() => openLink(PRIVACY_URL)}
             testID="profile-privacy"
             grouped
           />
           <Row
             icon={FileText}
             title="Terms of Use"
-            onPress={() =>
-              Alert.alert("Coming soon", "The terms are on their way.")}
+            onPress={() => openLink(TERMS_URL)}
             testID="profile-terms"
             grouped
             last
           />
         </View>
 
-        {/* The danger zone. Separated by space and by colour, and only ever
-            shown to somebody who has an account to lose — a guest signing out
-            of a session they never claimed is a button with no meaning. */}
-        {!isAnonymous && (
-          <View style={styles.dangerZone}>
-            <Text style={styles.dangerHeading}>Account</Text>
-            <Pressable
-              onPress={confirmSignOut}
-              accessibilityRole="button"
-              testID="profile-sign-out"
-              style={({ pressed }) => [
-                styles.dangerRow,
-                pressed && styles.pressed,
-              ]}
-            >
-              <LogOut size={18} color={colors.ink} />
-              <Text style={styles.signOutLabel}>Sign out</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setDeleting(true)}
-              accessibilityRole="button"
-              testID="profile-delete"
-              style={({ pressed }) => [
-                styles.dangerRow,
-                styles.dangerRowLast,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Trash2 size={18} color={colors.danger} />
-              <Text style={styles.deleteLabel}>Delete account</Text>
-            </Pressable>
-          </View>
-        )}
+        {/* The danger zone. Separated by space and by colour. */}
+        <View style={styles.dangerZone}>
+          <Text style={styles.dangerHeading}>Account</Text>
+          <Pressable
+            onPress={confirmSignOut}
+            accessibilityRole="button"
+            testID="profile-sign-out"
+            style={({ pressed }) => [
+              styles.dangerRow,
+              pressed && styles.pressed,
+            ]}
+          >
+            <LogOut size={18} color={colors.ink} />
+            <Text style={styles.signOutLabel}>Sign out</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setDeleting(true)}
+            accessibilityRole="button"
+            testID="profile-delete"
+            style={({ pressed }) => [
+              styles.dangerRow,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Trash2 size={18} color={colors.danger} />
+            <Text style={styles.deleteLabel}>Delete account</Text>
+          </Pressable>
+        </View>
 
         <Text style={styles.version}>v0.1.0</Text>
       </ScrollView>
@@ -396,10 +403,13 @@ export default function ProfileScreen({
         username={profile?.username ?? null}
         displayName={profile?.displayName ?? null}
         avatarUrl={profile?.avatarUrl ?? null}
+        avatarId={profile?.avatarId ?? null}
         bio={profile?.bio ?? null}
         onClose={() => setEditing(false)}
         onSaved={applyEdits}
       />
+
+      <MemberSheet visible={memberSheet} onClose={() => setMemberSheet(false)} />
 
       <DeleteAccountSheet
         visible={deleting}
@@ -458,6 +468,8 @@ function Row({
   );
 }
 
+const AVATAR = 56;
+
 const styles = {
   ...sharedStyles,
   ...StyleSheet.create({
@@ -474,74 +486,34 @@ const styles = {
       gap: spacing.md,
     },
     avatarWrap: {
-      width: 72,
-      height: 72,
-      borderRadius: radius.xl,
+      width: AVATAR,
+      height: AVATAR,
+      borderRadius: AVATAR / 2,
       backgroundColor: colors.surface2,
       alignItems: "center",
       justifyContent: "center",
       overflow: "hidden",
     },
     avatar: { width: "100%", height: "100%" },
-    identityText: { flex: 1 },
-    name: { fontFamily: fonts.display, color: colors.ink, fontSize: 24 },
+    identityText: { flex: 1, minWidth: 0 },
+    name: { fontFamily: fonts.display, color: colors.ink, fontSize: 22 },
     meta: {
-      marginTop: 2,
+      marginTop: spacing.tight,
       fontFamily: fonts.ui,
       color: colors.muted,
       fontSize: 13,
     },
-    editButton: {
-      marginTop: spacing.md,
-      alignSelf: "flex-start",
-      minHeight: 40,
-      paddingHorizontal: spacing.xl,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.borderStrong,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    editLabel: {
-      fontFamily: fonts.ui,
-      color: colors.ink,
-      fontWeight: "800",
-      fontSize: 14,
-    },
-    pressed: { opacity: 0.85 },
-    guestCard: {
-      marginTop: spacing.lg,
-      padding: spacing.lg,
-      borderRadius: radius.xl,
+    pencil: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      gap: spacing.related,
-    },
-    // 20 (`type.titleSmall`), not the 19 this was. A single off-ramp point is
-    // invisible on its own and is how a ramp stops being one.
-    guestTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 20 },
-    guestBody: {
-      fontFamily: fonts.ui,
-      color: colors.muted,
-      fontSize: 14,
-      lineHeight: 20,
-    },
-    guestButton: {
-      marginTop: spacing.sm,
-      minHeight: 46,
-      borderRadius: radius.pill,
-      backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",
     },
-    guestButtonLabel: {
-      fontFamily: fonts.ui,
-      color: colors.surface,
-      fontWeight: "800",
-      fontSize: 15,
-    },
+    pressed: { opacity: 0.85 },
     firstGroup: { marginTop: spacing.betweenGroups },
     card: {
       marginTop: spacing.md,
@@ -589,6 +561,18 @@ const styles = {
       fontFamily: fonts.ui,
       color: colors.muted,
       fontSize: 13,
+    },
+    memberBadge: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.pill,
+      backgroundColor: colors.accentSoft,
+    },
+    memberBadgeLabel: {
+      fontFamily: fonts.ui,
+      color: colors.accent,
+      fontWeight: "800",
+      fontSize: 12,
     },
     buyButton: {
       minHeight: 36,
@@ -638,7 +622,6 @@ const styles = {
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
-    dangerRowLast: {},
     signOutLabel: {
       fontFamily: fonts.ui,
       color: colors.ink,

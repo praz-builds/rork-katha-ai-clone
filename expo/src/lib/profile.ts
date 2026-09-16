@@ -20,6 +20,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
+import { setEntitlementOverride } from "@/lib/entitlements";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -282,7 +283,42 @@ export async function pickAndUploadAvatar(): Promise<AvatarResult> {
     if (error || typeof data?.avatarUrl !== "string") {
       return { ok: false, reason: "offline" };
     }
+    // The server clears `avatar_id` on a photo upload (D6): a photo and a
+    // creature are never both set, and the caller should drop its creature.
     return { ok: true, avatarUrl: data.avatarUrl };
+  } catch {
+    return { ok: false, reason: "offline" };
+  }
+}
+
+export type CreatureResult =
+  | { ok: true; avatarId: string }
+  | { ok: false; reason: "invalid" | "offline" };
+
+/** The creature ids the server accepts: `k01` to `k36`. Mirrors the edge function. */
+export const CREATURE_ID_PATTERN = /^k(0[1-9]|[12][0-9]|3[0-6])$/;
+
+/**
+ * Choose a creature avatar (D5/D6).
+ *
+ * Sets `avatar_id` and clears `avatar_url` on the server, so the photo, if
+ * there was one, is gone: precedence is photo first, then creature, and a
+ * creature that could never show through a photo would be a choice that did
+ * nothing. The caller drops its `avatarUrl` on success for the same reason.
+ */
+export async function chooseCreature(avatarId: string): Promise<CreatureResult> {
+  if (!CREATURE_ID_PATTERN.test(avatarId)) return { ok: false, reason: "invalid" };
+  if (!isSupabaseConfigured) return { ok: false, reason: "offline" };
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("profile", {
+      body: { action: "creature", avatar_id: avatarId },
+    });
+    if (error) return { ok: false, reason: "offline" };
+    return {
+      ok: true,
+      avatarId: typeof data?.avatarId === "string" ? data.avatarId : avatarId,
+    };
   } catch {
     return { ok: false, reason: "offline" };
   }
@@ -319,7 +355,138 @@ export type OwnProfile = {
   phrasesSaved: number;
   followers: number;
   following: number;
+  /** The creature avatar, `k01`..`k36`, shown when there is no photo. */
+  avatarId: string | null;
+  /** `katha` for a tester account holding the plan without a receipt (D11). */
+  entitlementOverride: "katha" | null;
+  /** The code this reader hands out (D10). Null until the server assigns one. */
+  referralCode: string | null;
+  referral: ReferralSummary;
+  /** The streak ladder the server pays out on. `FALLBACK_LADDER` when absent. */
+  ladder: StreakRung[];
+  /** What this account has reached on the ladder, one row per rung reached. */
+  milestones: StreakMilestone[];
 };
+
+export type ReferralSummary = {
+  /** People who entered this reader's code. */
+  invited: number;
+  /** Of those, how many have paid out. */
+  credited: number;
+  /** Referrer payouts left this month. */
+  monthRemaining: number;
+};
+
+export type StreakRung = { milestone: number; credits: number };
+
+export type StreakMilestone = {
+  milestone: number;
+  credits: number;
+  achievedAt: string | null;
+  credited: boolean;
+};
+
+/**
+ * The streak ladder as the product decided it (D2): five rungs, 30 credits
+ * for the lot, nothing repeats. The server's `streak_ladder()` is the record;
+ * this is what the client draws when a deploy predates it or the request
+ * failed, so a Journey page never renders an empty milestone list.
+ */
+export const FALLBACK_LADDER: readonly StreakRung[] = [
+  { milestone: 2, credits: 2 },
+  { milestone: 5, credits: 4 },
+  { milestone: 10, credits: 6 },
+  { milestone: 15, credits: 8 },
+  { milestone: 21, credits: 10 },
+];
+
+const REFERRAL_EMPTY: ReferralSummary = { invited: 0, credited: 0, monthRemaining: 0 };
+
+function num(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function str(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function parseLadder(value: unknown): StreakRung[] {
+  if (!Array.isArray(value)) return [...FALLBACK_LADDER];
+  const rungs = value
+    .map((row): StreakRung | null => {
+      const record = row as Record<string, unknown> | null;
+      const milestone = num(record?.milestone, NaN);
+      const credits = num(record?.credits, NaN);
+      if (!Number.isFinite(milestone) || !Number.isFinite(credits)) return null;
+      return { milestone, credits };
+    })
+    .filter((rung): rung is StreakRung => rung !== null)
+    .sort((a, b) => a.milestone - b.milestone);
+  return rungs.length > 0 ? rungs : [...FALLBACK_LADDER];
+}
+
+function parseMilestones(value: unknown): StreakMilestone[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((row): StreakMilestone | null => {
+      const record = row as Record<string, unknown> | null;
+      const milestone = num(record?.milestone, NaN);
+      if (!Number.isFinite(milestone)) return null;
+      return {
+        milestone,
+        credits: num(record?.credits),
+        achievedAt: str(record?.achievedAt),
+        credited: record?.credited === true,
+      };
+    })
+    .filter((row): row is StreakMilestone => row !== null);
+}
+
+/**
+ * The profile as the server sent it, with every field the contract added on
+ * 2026-09-16 defaulted when absent.
+ *
+ * A deploy older than the contract omits `avatarId`, `entitlementOverride`,
+ * `referralCode`, `referral`, `ladder` and `milestones`. Reading them as
+ * `undefined` would crash a screen that maps over the ladder, so each one is
+ * given the honest empty value: no creature, no override, no code, zero
+ * invites, the fallback ladder and no milestones reached.
+ */
+export function parseOwnProfile(raw: unknown, userId: string): OwnProfile {
+  const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const referral = (row.referral && typeof row.referral === "object"
+    ? row.referral
+    : {}) as Record<string, unknown>;
+  return {
+    userId,
+    username: str(row.username),
+    displayName: str(row.displayName),
+    avatarUrl: str(row.avatarUrl),
+    bio: str(row.bio),
+    memberSince: str(row.memberSince),
+    deletedAt: str(row.deletedAt),
+    currentStreak: num(row.currentStreak),
+    longestStreak: num(row.longestStreak),
+    lastActivityDate: str(row.lastActivityDate),
+    storiesWritten: num(row.storiesWritten),
+    chaptersWritten: num(row.chaptersWritten),
+    totalReads: num(row.totalReads),
+    totalLikes: num(row.totalLikes),
+    phrasesSaved: num(row.phrasesSaved),
+    followers: num(row.followers),
+    following: num(row.following),
+    avatarId: CREATURE_ID_PATTERN.test(String(row.avatarId ?? "")) ? String(row.avatarId) : null,
+    entitlementOverride: row.entitlementOverride === "katha" ? "katha" : null,
+    referralCode: str(row.referralCode),
+    referral: {
+      invited: num(referral.invited, REFERRAL_EMPTY.invited),
+      credited: num(referral.credited, REFERRAL_EMPTY.credited),
+      monthRemaining: num(referral.monthRemaining, REFERRAL_EMPTY.monthRemaining),
+    },
+    ladder: parseLadder(row.ladder),
+    milestones: parseMilestones(row.milestones),
+  };
+}
 
 export type PublicProfile = {
   authorId: string;
@@ -380,10 +547,87 @@ export async function fetchOwnProfile(): Promise<OwnProfile | null> {
       body: { action: "me" },
     });
     if (error || !data?.profile) return null;
-    return { ...data.profile as OwnProfile, userId: user.userId };
+    const profile = parseOwnProfile(data.profile, user.userId);
+    // The one place the client learns it holds the plan without a receipt.
+    // Set on every load rather than once, so a revoked override lands on the
+    // next fetch instead of surviving the session.
+    setEntitlementOverride(profile.entitlementOverride);
+    return profile;
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// The credit ledger
+// ---------------------------------------------------------------------------
+
+export type LedgerEntry = {
+  id: string;
+  amount: number;
+  reason: string;
+  createdAt: string | null;
+};
+
+/**
+ * The last fifty ledger rows, newest first, or null when they could not be
+ * read. Null rather than `[]` for the same reason as the calendar: an empty
+ * history is a real answer for a new account and a failed request is not.
+ */
+export async function fetchLedger(): Promise<LedgerEntry[] | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("profile", {
+      body: { action: "ledger" },
+    });
+    if (error || !Array.isArray(data?.entries)) return null;
+    return (data.entries as unknown[])
+      .map((row): LedgerEntry | null => {
+        const record = row as Record<string, unknown> | null;
+        if (!record || typeof record.id !== "string") return null;
+        return {
+          id: record.id,
+          amount: num(record.amount),
+          reason: typeof record.reason === "string" ? record.reason : "",
+          createdAt: str(record.createdAt),
+        };
+      })
+      .filter((entry): entry is LedgerEntry => entry !== null);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What a ledger reason means to the person reading it.
+ *
+ * The reason column is a machine key (`welcome`, `streak`, `feedback`, ...),
+ * and some of them carry a suffix the server uses for idempotency. The label
+ * is chosen by prefix so a key this table has never seen still reads as
+ * something rather than as a slug.
+ */
+export function ledgerLabel(reason: string, amount: number): string {
+  const key = reason.toLowerCase();
+  if (key.startsWith("welcome")) return "Welcome bonus";
+  if (key.startsWith("streak")) return "Streak milestone";
+  if (key.startsWith("feedback")) return "Feedback on a story";
+  if (key.startsWith("referral:invitee") || key.startsWith("invitee")) return "Joined with an invite";
+  if (key.startsWith("referral")) return "Invited a friend";
+  if (key.startsWith("purchase") || key.startsWith("pack")) return "Credit pack";
+  if (key.startsWith("subscription") || key.startsWith("plan") || key.startsWith("trial")) {
+    return "Plan credits";
+  }
+  if (key.startsWith("tester")) return "Tester credits";
+  if (key.startsWith("refund")) return "Refund";
+  if (key.startsWith("audio") || key.startsWith("narration")) return "Unlocked audio";
+  if (key.startsWith("cover")) return "Cover art";
+  if (key.startsWith("character") || key.startsWith("portrait")) return "Character image";
+  if (key.startsWith("reimagine")) return "Reimagined a chapter";
+  if (key.startsWith("continuation") || key.startsWith("chapter")) return "Wrote a chapter";
+  if (key.startsWith("generation") || key.startsWith("story")) return "Started a story";
+  if (key.startsWith("expire") || key.startsWith("lapse")) return "Credits expired";
+  return amount >= 0 ? "Credits added" : "Credits spent";
 }
 
 /** Somebody else's profile and their public stories, or null. */
@@ -615,22 +859,38 @@ function utcDayNumberFromDate(value: string): number | null {
 }
 
 /**
+ * The next rung of the ladder above `days`, or null past the top.
+ *
+ * Unlike the old sparse milestone list this one is never suppressed for
+ * being far away: the Credits screen's streak card names the next rung and
+ * what it pays whatever the distance, because that card exists to answer
+ * "what do I get for keeping this up" and a card that sometimes goes silent
+ * cannot answer it.
+ */
+export function nextRung(
+  days: number,
+  ladder: readonly StreakRung[] = FALLBACK_LADDER,
+): StreakRung | null {
+  const current = Math.max(0, days);
+  return ladder.find((rung) => rung.milestone > current) ?? null;
+}
+
+/**
  * The next streak milestone worth naming, or null when there is not one near.
  *
- * Milestones are sparse on purpose -- a week, a fortnight, a month, a hundred
- * days, a year -- and the screen only mentions one when it is within three
- * days. A target that is always visible is wallpaper; a target three days away
- * is a reason to open the app tomorrow. Nothing is awarded for reaching one:
- * there is no credit, no badge and no unlock, because none of those exist and
- * promising them would be the dishonest kind of gamification.
+ * Kept for the streak card, which only mentions a rung when it is within
+ * three days: a target that is always visible is wallpaper; a target three
+ * days away is a reason to open the app tomorrow. The rungs come from the
+ * server's ladder, or the fallback when there is none.
  */
-export const STREAK_MILESTONES = [3, 7, 14, 30, 60, 100, 180, 365] as const;
-
-export function nextMilestone(days: number): number | null {
+export function nextMilestone(
+  days: number,
+  ladder: readonly StreakRung[] = FALLBACK_LADDER,
+): number | null {
   if (days <= 0) return null;
-  const next = STREAK_MILESTONES.find((milestone) => milestone > days);
-  if (next === undefined) return null;
-  return next - days <= 3 ? next : null;
+  const next = nextRung(days, ladder);
+  if (next === null) return null;
+  return next.milestone - days <= 3 ? next.milestone : null;
 }
 
 /** "Writing since March 2026", from an ISO timestamp. Null when unknown. */

@@ -1053,6 +1053,18 @@ the in-flight image belong to the same anonymous identity either way.
 
 **Back** returns to W5. Never advance unauthenticated.
 
+> **There are no guest accounts past this screen** *(2026-09-16)*. The
+> anonymous session that carries W4's save and the portrait call is pre-auth
+> infrastructure and nothing more: the verified code is the only way to W6, and
+> W6 is the only way to Home, so no person reaches the app without an email.
+> Two things follow and both shipped with this note. **Profile no longer shows
+> a "Sign in to keep all of this" card**, because there is nobody it could be
+> shown to. **Signing out returns to the sign-in screen**, never to a fresh
+> anonymous session on Home — the session reset underneath is unchanged, but
+> the screen it lands on is the one that asks for an email. §16's in-place
+> conversion and its existing-account fallback are unaffected; they describe
+> how the anonymous session becomes the account, not a way around it.
+
 **Instrumentation:** §11.
 
 ---

@@ -60,9 +60,39 @@ export type EntitlementQuote = {
   requiresAccount?: boolean;
 };
 
+/**
+ * The server-side entitlement override, mirrored on the client.
+ *
+ * `profiles.entitlement_override` is how a tester account (D11) holds the
+ * plan without a receipt: the reviewer signing in with the fixed code, and the
+ * owner's own account. It arrives with the profile overview and is set here by
+ * `fetchOwnProfile`; sign-out resets it to null. It is deliberately NOT
+ * written into `revenueCatService`: that object mirrors the store, and faking
+ * a receipt in it would make a restore or a Customer Center visit disagree
+ * with what the app believes.
+ *
+ * The override never bypasses an operational kill switch. It answers "does
+ * this account hold the plan", and nothing else.
+ */
+export type EntitlementOverride = "katha" | null;
+
+let entitlementOverride: EntitlementOverride = null;
+const overrideListeners = new Set<() => void>();
+
+export function setEntitlementOverride(value: EntitlementOverride): void {
+  const next: EntitlementOverride = value === "katha" ? "katha" : null;
+  if (next === entitlementOverride) return;
+  entitlementOverride = next;
+  overrideListeners.forEach((listener) => listener());
+}
+
+export function getEntitlementOverride(): EntitlementOverride {
+  return entitlementOverride;
+}
+
 /** Whether the user holds any active Katha entitlement right now. */
 export function isSubscribed(): boolean {
-  return revenueCatService.isPremium;
+  return entitlementOverride !== null || revenueCatService.isPremium;
 }
 
 /**
@@ -72,15 +102,22 @@ export function isSubscribed(): boolean {
  * RevenueCat's CustomerInfo listener rather than through a navigation, so a
  * component that read `isSubscribed()` once at mount kept quoting the old price
  * for the rest of the session — most visibly straight after the paywall, which
- * is the one moment the user is watching for the change.
+ * is the one moment the user is watching for the change. The override arrives
+ * with the profile, which is later still, so the hook listens to both.
  */
 export function useIsSubscribed(): boolean {
-  const [subscribed, setSubscribed] = useState(() => revenueCatService.isPremium);
+  const [subscribed, setSubscribed] = useState(() => isSubscribed());
   useEffect(() => {
     // Re-read on mount as well as on change: activation may have completed
     // between the initial state and this effect.
-    setSubscribed(revenueCatService.isPremium);
-    return revenueCatService.subscribe(() => setSubscribed(revenueCatService.isPremium));
+    const refresh = () => setSubscribed(isSubscribed());
+    refresh();
+    const unsubscribeStore = revenueCatService.subscribe(refresh);
+    overrideListeners.add(refresh);
+    return () => {
+      unsubscribeStore();
+      overrideListeners.delete(refresh);
+    };
   }, []);
   return subscribed;
 }

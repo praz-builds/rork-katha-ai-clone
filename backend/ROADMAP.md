@@ -133,18 +133,12 @@ Server-side handling is implemented. Dashboard configuration needed.
 
 #### User Setup
 
-- [ ] Create RevenueCat project, configure products (canonical list: `../source-of-truth/CREDITS_AND_PRICING.md` §3):
-  - `ai.katha.sub.reader.weekly` — $4.99, 5 credits
-  - `ai.katha.sub.reader.monthly` — $8.99, 20 credits/mo
-  - `ai.katha.sub.reader.yearly` — $29.99, 20 credits/mo, 3-day trial
-  - `ai.katha.sub.reader.yearly.offer` — $19.99 first year, then $29.99 (one-time offer)
-  - `ai.katha.sub.writer.weekly` — $6.99, 10 credits
-  - `ai.katha.sub.writer.monthly` — $12.99, 50 credits/mo
-  - `ai.katha.sub.writer.yearly` — $49.99, 50 credits/mo, 3-day trial
-  - `ai.katha.credits.small` — $4.99, 10 credits
-  - `ai.katha.credits.medium` — $14.99, 40 credits
-  - `ai.katha.credits.large` — $29.99, 90 credits
-- [ ] Trial grants are reduced: 15 credits (Writer) / 5 (Reader) during the 3-day trial; full grant on first successful charge
+- [ ] Create RevenueCat project, configure products (canonical list, prices and grants: `../source-of-truth/CREDITS_AND_PRICING.md` §3 *Store SKUs* — the SKU names are repeated here so the console matches the code map in `_shared/revenuecat.ts`; the prices are not):
+  - `ai.katha.sub.weekly`, `ai.katha.sub.monthly`, `ai.katha.sub.yearly` (yearly carries the 3-day trial)
+  - `ai.katha.credits.2`, `ai.katha.credits.10`, `ai.katha.credits.50`, `ai.katha.credits.200`, `ai.katha.credits.1000`
+  - One entitlement: `katha`
+  - *(Updated 2026-09-16. The `reader.*` / `writer.*` families and the `small` / `medium` / `large` packs listed here before, and the 5 / 30 / 100 / 300 packs after them, never reached a store.)*
+- [ ] Trial grant is reduced during the 3-day trial; the full grant lands on the first successful charge (amount in the pricing doc §3)
 - [ ] Set webhook URL to `{SUPABASE_URL}/functions/v1/revenuecat-webhook`
 - [x] Set `REVENUECAT_WEBHOOK_SECRET` as a Supabase secret
 - [x] Set `SUBSCRIPTION_GRANT_CRON_SECRET` as a Supabase secret
@@ -156,18 +150,20 @@ Google Play listing, because RevenueCat products are *mappings* to store product
 and the platform SDK keys are only issued once the store apps are linked. Everything
 here is dashboard work, not code — the client and webhook are complete and deployed.
 
-- [ ] **Create the 10 store products** in App Store Connect and Google Play Console,
+- [ ] **Create the 8 store products** in App Store Connect and Google Play Console,
       matching the SKU list above exactly. First-time IAPs are reviewed alongside the
-      first app build, so budget for that review cycle.
+      first app build, so budget for that review cycle. Country pricing is set in the
+      console at the same time (USD base, auto-convert, India by hand — pricing doc
+      decision 54); no client code converts a price.
 - [ ] **Issue the production RevenueCat SDK keys** (`appl_…` for iOS, `goog_…` for
       Android) and paste them into `REVENUECAT_IOS_RELEASE_PUBLIC_KEY` /
       `REVENUECAT_ANDROID_RELEASE_PUBLIC_KEY` in `expo/src/lib/revenuecat.ts`.
       Until then a release build has no billing at all — `activate()` logs an error
       and returns. The Test Store key (`test_…`) simulates purchases and is
       development-only; it can never process a real transaction.
-- [ ] **Create the RevenueCat entitlements** `katha_reader` and `katha_writer`, and
-      the offerings the paywall reads. `katha_ai_pro` is wired as a legacy alias for
-      `katha_writer`.
+- [ ] **Create the RevenueCat entitlement** `katha` and the offerings the paywall
+      reads. *(Was `katha_reader` / `katha_writer` with a `katha_ai_pro` alias until
+      the single-plan grid; the code map moved to `katha` on 2026-09-16.)*
 - [ ] **Wire the paywall to live RevenueCat package data** — price, renewal terms,
       trial eligibility and offer copy must come from the SDK, not from the
       hardcoded `PAYWALL_PRODUCTS` constant. Cannot be validated until the products
@@ -430,13 +426,17 @@ Each is a simple POST with auth + upsert/delete + count update:
 - [ ] Generate audio narration for all 30 stories
 - [ ] Insert via seed script or migration
 
-### Referral Verification
+### Referral and feedback credits — shipped 2026-09-16, migration 00089
 
-- [ ] `POST /referral-verify` — validate referral claim
-- [ ] Same-device check (device fingerprint)
-- [ ] Self-referral prevention
-- [ ] Rate limit: max 20 successful referrals per user per month
-- [ ] On verified first-generation: grant 3 credits to referrer + 1 bonus to referred
+The design that stood here (`referral-verify`, a device fingerprint, 20 a month,
+3 + 1 credits) is superseded by the pricing doc's decisions 51 and 52. What
+shipped:
+
+- [x] `referral` edge function (`code`, `claim`) over `claim_referral_code` and `settle_referrals`; code-based, no deep link yet
+- [x] Payout only when the invitee has generated once **and** is ≥ 24 h old; caps, amounts and the 7-day claim window are in `../source-of-truth/CREDITS_AND_PRICING.md` §5 *Referral*
+- [x] Self-referral is a check constraint and a second claim is blocked by `unique (referred_id)`; tester accounts refused. **No device fingerprint** — the pricing doc's §9 "not building" list forbids it
+- [x] `credit-claims` edge function (`list`, `claim`) over `claim_comment_credit`: 1 credit per claimed comment after a qualifying read, capped per story / day / month; `create_feedback` no longer grants
+- [ ] v1.1: deferred deep link `katha.ai/i/{code}` resolving the referrer on first launch, with the code field kept as the recovery path (pricing doc §5)
 
 ### Remaining Cron Jobs
 
@@ -448,11 +448,12 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 - [ ] E2E: sign up -> generate story -> see cover + audio -> publish -> follower notified
 - [ ] E2E: purchase credits via RevenueCat -> ledger updated -> generate story
-- [ ] E2E: watch ad -> SSV verified -> credit granted -> 24hr cooldown enforced
+- ~~E2E: watch ad -> SSV verified -> credit granted -> 24hr cooldown enforced~~ — removed with rewarded-ad credits (Phase C2)
 - [ ] E2E: follow author -> author publishes -> FCM notification received
-- [ ] E2E: read stories for 2 days -> streak credit awarded (milestones: day 2, 5, 7, then every 7)
+- [ ] E2E: read stories for 2 days -> streak credit awarded at the day-2 rung; the five rungs are `streak_ladder()` (pricing doc §5), and a `streak_milestones` row is written per rung
 - [ ] E2E: subscription lapses -> credit balance zeroed, library + unlocked audio + free reading all intact
-- [ ] E2E: refer friend -> friend generates -> both get credits
+- [ ] E2E: enter invite code -> friend generates -> nothing until 24 h -> both get credits on the next profile fetch
+- [ ] E2E: read a story ≥ 120 s -> comment ≥ 40 chars -> Claim in Credits -> 1 credit; comment now uneditable; second claim on the same story refused
 - [ ] E2E: search stories -> find by title, theme, author, genre
 - [ ] E2E: kids mode ON -> mature content hidden everywhere
 
@@ -529,6 +530,44 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 | Subscription state | RevenueCat (`isPremium` source of truth) |
 | User surveys | PostHog |
 | Revenue dashboards | Both (RevenueCat for exact revenue, PostHog for revenue x behavior) |
+
+---
+
+## Play Store go-live (2026-09-16)
+
+**Goal:** the first Android build reaches a closed test and then production without a
+store rejection, and everything that can move by OTA afterwards is left for afterwards.
+
+Pre-push means "before the first AAB is uploaded"; the binary bakes in the OTA
+channel, the runtime version, the Sentry plugin config and any Firebase file, so
+those cannot be fixed by an update. Post-push is everything an `expo-updates`
+release or a console change can carry. Items ticked here shipped in the
+`codex/profile-credits-launch` PR.
+
+| Item | When | Done | Notes |
+|---|---|---|---|
+| EAS project + first AAB build | Pre-push | [ ] | EAS project id in `expo/app.json`; `eas build -p android --profile production`. First-time IAPs review with the first build |
+| OTA: `expo-updates` URL, channel and `runtimeVersion` baked into the binary | Pre-push | [ ] | A binary shipped without these cannot be updated over the air; a runtime-version bump later needs a store build |
+| Sentry: client DSN + source maps (plugin `organization` / `project`), backend `SENTRY_DSN` secret | Pre-push | [ ] | The DSN itself can be rotated by OTA later (last row); the plugin config cannot |
+| Firebase: `google-services.json` in the build, or drop Firebase Analytics from the plugin list | Pre-push | [ ] | Decide one; a configured plugin with no file fails the Android build |
+| Privacy and Terms URLs | Pre-push | [x] | `https://katha.thetractionlabs.com/privacy` and `/terms`, opened from Profile via `Linking.openURL`. The same URLs go on the Play listing and in the Data Safety form |
+| Play listing, Data Safety form, content rating questionnaire | Pre-push | [ ] | Data Safety must declare the email, the anonymous session id, story content and crash data; no device identifiers are collected (pricing doc §9) |
+| App Access: reviewer login | Pre-push | [x] | `reviewer@thetractionlabs.com` signs in with a fixed 6-digit code verified server-side by `reviewer-signin` (HMAC, peppered, rate-limited). The code is in `backend/.reviewer-code.local`, git-ignored; paste it into Play Console → App Access, never into the repo |
+| Closed test: 12 testers × 14 days | Pre-push (before production access) | [ ] | Google's requirement for new personal developer accounts. Opt-in URL from the console; the two `tester_accounts` rows do not count toward the twelve |
+| GenAI content reporting | Pre-push | [x] | Report sheet from the story page and the reader's ⋮ menu: copyright / inappropriate content / inappropriate cover / other, optional details; `content_reports` reasons extended in 00089. Satisfies the Generative AI policy's in-app reporting requirement |
+| Paid generation provider | Pre-push | [ ] | Gemini is quota-blocked (`429`) and the OpenRouter free router is the last position in the chain; fund a paid position before public traffic or the first busy evening runs on a random free model. Account action, no code |
+| Edge deploy audit | Pre-push | [x] | Done 2026-09-16: 34 / 34 functions deployed, migrations in sync through 00088. 00089 pushed and the three new functions (`credit-claims`, `referral`, `reviewer-signin`) plus five changed ones deployed the same day, taking it to 37 / 37 |
+| Seed library (Phase H) | Post-push, **start now** | [ ] | Thirty stories take longer to write than the review takes; the store does not need them, the first users do |
+| In-app feedback form | Post-push, via OTA | [ ] | A sheet posting to a `feedback` row; no store build needed |
+| RevenueCat production keys + 8 SKUs (5 packs, 3 subscriptions) + `katha` entitlement + country pricing | Post-push | [ ] | Blocked on the listing existing (Phase C). Until the keys are in, Purchase is disabled and the USD fallback copy renders; on web it is always disabled |
+| Push notifications (Phase G) | Post-launch | [ ] | Firebase service account, `device_tokens`, `register-device` |
+| Sentry DSN rotation | Post-push, via OTA | [ ] | The DSN is read at runtime; rotate it after the first public build so the value in the reviewed binary is not the one that stays live |
+
+**What this PR ships toward it, in one line:** the reviewer login, the report sheet,
+the legal links, the credits economy of decisions 49-53, and the deploy audit. The
+seven pre-push rows still open are build configuration (EAS, OTA, Sentry, Firebase)
+and console or account work (listing and Data Safety, the closed test, provider
+funding); none of them is app code.
 
 ---
 

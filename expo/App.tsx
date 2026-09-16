@@ -7,6 +7,7 @@ import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf } from "@/lib/api";
 import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
 import { bootstrapUser } from "@/lib/session";
+import { setEntitlementOverride } from "@/lib/entitlements";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
 import {
@@ -870,6 +871,10 @@ export default function App() {
       void saveDisplayName(given);
     }
 
+    // W5 verified the code, so the identity behind every screen from here
+    // on is a named one: re-read what the boot read for the guest.
+    void completeSignIn();
+
     const { character } = result;
     // A `draft-character://` stand-in is what the offline path returns. It is
     // an id, not an image, so the studio is handed no portrait at all rather
@@ -913,6 +918,56 @@ export default function App() {
   const goTabs = (nextTab: TabKey = tab) => {
     setTab(nextTab);
     setScreen({ name: "tabs" });
+  };
+
+  /**
+   * The post-auth routine, run once a code has verified.
+   *
+   * Everything the boot read for the guest is re-read for the account that
+   * just signed in: the balance, the streak, the profile (which carries the
+   * entitlement override for a tester account, set by `fetchOwnProfile`), and
+   * the store identity, so a purchase made on this device lands on this
+   * account. Used by the sign-in screen and by onboarding's post-OTP path.
+   */
+  const completeSignIn = async () => {
+    const user = await bootstrapUser().catch(() => null);
+    if (user) {
+      setCredits(
+        resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, user.balance),
+      );
+      void revenueCatService.logIn?.(user.userId);
+    }
+    // A verified code means a named session. `user.isAnonymous` says the same
+    // thing whenever the bootstrap answered; the fallback is for when it did not.
+    setIsAnonymous(user?.isAnonymous ?? false);
+    void fetchReadingStreak().then((streak) => setStreakDays(streak?.current ?? null));
+    const profile = await fetchOwnProfile().catch(() => null);
+    if (profile) {
+      setDisplayName(profile.displayName);
+      void cacheDisplayName(profile.displayName);
+      setJourneyProfile(profile);
+      setEntitlementOverride(profile.entitlementOverride);
+    }
+  };
+
+  /**
+   * The session is gone (sign-out or deletion). Every piece of state that
+   * belonged to the account is cleared and the app lands on sign-in, never on
+   * a fresh guest (D1).
+   */
+  const leaveAccount = () => {
+    void cacheDisplayName(null);
+    setIsAnonymous(true);
+    setDisplayName(null);
+    // The questionnaire's answers belong to the person who just left.
+    setOnboardingEntry(null);
+    setGeneratedStories([]);
+    setCredits(0);
+    setStreakDays(null);
+    setJourneyProfile(null);
+    setEntitlementOverride(null);
+    setTab("home");
+    setScreen({ name: "onboarding" });
   };
 
   const renderTab = () => {
@@ -992,8 +1047,6 @@ export default function App() {
         return (
           <ProfileScreen
             credits={credits}
-            isAnonymous={isAnonymous}
-            onSignIn={() => setScreen({ name: "onboarding" })}
             onJourney={(loaded) => {
               // Handed the profile the tab already loaded, so the journey page
               // opens with the numbers filled in instead of flashing zeros
@@ -1004,34 +1057,11 @@ export default function App() {
             onPublicProfile={(authorId) =>
               setScreen({ name: "author", authorId })}
             onVoices={() => setScreen({ name: "voices" })}
-            onSignedOut={() => {
-              void cacheDisplayName(null);
-              // Back to a guest, not to nothing: every surface here assumes an
-              // identity behind it. `signOutToGuest` has already established
-              // the new one; this is the app catching up with it.
-              setIsAnonymous(true);
-              setDisplayName(null);
-              // The questionnaire's answers belong to the person who just
-              // left. The next guest is not in their mood, and Home would
-              // otherwise keep drawing that person's Tonight rail.
-              setOnboardingEntry(null);
-              setGeneratedStories([]);
-              setCredits(0);
-              setStreakDays(null);
-              goTabs("home");
-            }}
+            // `signOutToGuest` has already reset the session; this is the app
+            // catching up with it and routing to sign-in (D1).
+            onSignedOut={leaveAccount}
             onDeleted={(storiesKept) => {
-              setIsAnonymous(true);
-              setDisplayName(null);
-              setOnboardingEntry(null);
-              // The DEVICE copy too, not just the state. Otherwise the next
-              // guest on this phone is greeted by the name of the person who
-              // just deleted their account, the moment a profile fetch fails.
-              void cacheDisplayName(null);
-              setGeneratedStories([]);
-              setCredits(0);
-              setStreakDays(null);
-              goTabs("home");
+              leaveAccount();
               Alert.alert(
                 "Your account is deleted",
                 storiesKept > 0
@@ -1045,23 +1075,6 @@ export default function App() {
             }}
             onCredits={() => setScreen({ name: "credits" })}
             onPaywall={() => setScreen({ name: "paywall" })}
-            onCustomerCenter={() => {
-              revenueCatService
-                .presentCustomerCenter()
-                .then((presented) => {
-                  // Unavailable on web, or the SDK never configured. Send the
-                  // user to the paywall rather than leaving the row doing
-                  // nothing.
-                  if (!presented) setScreen({ name: "paywall" });
-                })
-                .catch((error) => {
-                  Alert.alert(
-                    "Subscription management unavailable",
-                    "Please try again shortly.",
-                  );
-                  console.warn("RevenueCat Customer Center failed:", error);
-                });
-            }}
           />
         );
     }
@@ -1118,7 +1131,13 @@ export default function App() {
             just the email and the code, and either way out lands back on the
             tab they left.
           */
-          <SignInScreen onDone={() => goTabs()} onExit={() => goTabs()} />
+          <SignInScreen
+            onDone={() => {
+              void completeSignIn();
+              goTabs();
+            }}
+            onExit={() => goTabs()}
+          />
         )
         : screen.name === "story"
         ? (
@@ -1309,7 +1328,21 @@ export default function App() {
         : screen.name === "voices"
         ? <VoicesScreen onBack={() => goTabs("profile")} />
         : screen.name === "credits"
-        ? <CreditsScreen credits={credits} onBack={() => goTabs(tab)} />
+        ? (
+          <CreditsScreen
+            credits={credits}
+            onBack={() => goTabs(tab)}
+            onPaywall={() => setScreen({ name: "paywall" })}
+            onJourney={(loaded) => {
+              setJourneyProfile(loaded);
+              setScreen({ name: "journey" });
+            }}
+            onBalance={(balance) =>
+              setCredits(
+                resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, balance),
+              )}
+          />
+        )
         : screen.name === "paywall"
         ? (
           /*

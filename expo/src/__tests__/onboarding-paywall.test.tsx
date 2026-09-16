@@ -17,6 +17,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockGetOfferings = jest.fn();
 const mockPurchasePackage = jest.fn();
+const mockPresentCustomerCenter = jest.fn();
 /** What the service reports after a purchase attempt. Mutable per test. */
 const mockRevenueCatState = { premium: false };
 
@@ -29,6 +30,7 @@ jest.mock("@/lib/revenuecat", () => ({
     // No offering: the off-store path, which is what review and web walk.
     getOfferings: (...args: unknown[]) => mockGetOfferings(...args),
     purchasePackage: (...args: unknown[]) => mockPurchasePackage(...args),
+    presentCustomerCenter: (...args: unknown[]) => mockPresentCustomerCenter(...args),
     get isPremium() {
       return mockRevenueCatState.premium;
     },
@@ -72,6 +74,8 @@ function flatText(node: unknown): string[] {
 beforeEach(() => {
   mockGetOfferings.mockReset().mockResolvedValue(null);
   mockPurchasePackage.mockReset();
+  mockPresentCustomerCenter.mockReset().mockResolvedValue(true);
+  mockRevenueCatState.premium = false;
 });
 
 describe("OnboardingPaywall", () => {
@@ -273,11 +277,12 @@ describe("OnboardingPaywall", () => {
     }
   });
 
-  it("treats a cancelled store sheet as a cancel, even for someone already premium", async () => {
+  it("treats a cancelled store sheet as a cancel, even once the entitlement reads premium", async () => {
     // `purchasePackage` resolves null on a user cancel. Before it did, it
     // resolved with the OLD profile, and a premium user who cancelled read as
     // a purchase: `isPremium` was true, so they were granted a plan they had
-    // just declined. The entitlement is not the signal; the resolution is.
+    // just declined. The entitlement is not the signal; the resolution is —
+    // so the flag is flipped mid-attempt here, and the cancel still wins.
     mockGetOfferings.mockResolvedValue({
       current: {
         availablePackages: [
@@ -285,23 +290,51 @@ describe("OnboardingPaywall", () => {
         ],
       },
     });
-    mockPurchasePackage.mockResolvedValue(null);
+    mockPurchasePackage.mockImplementation(() => {
+      mockRevenueCatState.premium = true;
+      return Promise.resolve(null);
+    });
+    const { view, onSubscribed } = await renderPaywall();
+    await waitFor(() => expect(view.getByText(/\$59/)).toBeTruthy());
+    await fireEvent.press(view.getByLabelText("Unlock Katha"));
+    await waitFor(() => expect(mockPurchasePackage).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        view.getByLabelText("Unlock Katha").props.accessibilityState.busy,
+      ).toBeFalsy()
+    );
+    expect(onSubscribed).not.toHaveBeenCalled();
+    expect(view.queryByText("Purchase didn't go through. Try again.")).toBeNull();
+  });
+
+  // D7: a member who lands on the paywall is shown the plan they hold, not a
+  // screen selling it to them again.
+  it("shows a member state instead of the offer to somebody who already pays", async () => {
     mockRevenueCatState.premium = true;
-    try {
-      const { view, onSubscribed } = await renderPaywall();
-      await waitFor(() => expect(view.getByText(/\$59/)).toBeTruthy());
-      await fireEvent.press(view.getByLabelText("Unlock Katha"));
-      await waitFor(() => expect(mockPurchasePackage).toHaveBeenCalledTimes(1));
-      await waitFor(() =>
-        expect(
-          view.getByLabelText("Unlock Katha").props.accessibilityState.busy,
-        ).toBeFalsy()
-      );
-      expect(onSubscribed).not.toHaveBeenCalled();
-      expect(view.queryByText("Purchase didn't go through. Try again.")).toBeNull();
-    } finally {
-      mockRevenueCatState.premium = false;
-    }
+    const { view } = await renderPaywall();
+
+    await waitFor(() => expect(view.getByTestId("paywall-member-state")).toBeTruthy());
+    expect(view.getByText("You're a Katha member")).toBeTruthy();
+    expect(view.queryByLabelText("Unlock Katha")).toBeNull();
+    expect(view.queryByText(/\$/)).toBeNull();
+
+    await fireEvent.press(view.getByLabelText("Manage subscription"));
+    await waitFor(() => expect(mockPresentCustomerCenter).toHaveBeenCalledTimes(1));
+  });
+
+  // Web, and any build where the SDK never configured: the Customer Center
+  // cannot open, so the screen says where the subscription is managed instead
+  // of leaving the button doing nothing.
+  it("tells a member where to manage when the Customer Center cannot open", async () => {
+    mockRevenueCatState.premium = true;
+    mockPresentCustomerCenter.mockResolvedValue(false);
+    const { view } = await renderPaywall();
+
+    await waitFor(() => expect(view.getByTestId("paywall-member-state")).toBeTruthy());
+    await fireEvent.press(view.getByLabelText("Manage subscription"));
+    await waitFor(() =>
+      expect(view.getByText(/Manage or cancel|not available right now/)).toBeTruthy()
+    );
   });
 
   it("completes off-store so the flow can be walked without RevenueCat", async () => {
