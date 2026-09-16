@@ -11,7 +11,7 @@
   - `CREDITS_AND_PRICING.md` -- every credit price, plan price, grant, store SKU, earn mechanic, render tier and unit cost. Any pricing question is answered there and nowhere else.
   - `STORY_GENERATION_FLOW.md` -- the create flow: every field, label, ordering rule and post-generation step.
   - `STORY_PROMPT_SYSTEM.md` -- the prompt architecture (was `backend/prompts/story-generator.md`).
-  - `ONBOARDING_FLOW.md` -- onboarding, both paywalls, the one-time offer, the blocked-credits sheet.
+  - `ONBOARDING_FLOW.md` -- onboarding, both paywalls, the blocked-credits sheet. (The one-time offer was removed 2026-09-10; §14 records why.)
 - `expo/` -- approved and active Expo SDK 54 application.
 - `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
 - `docs/research/*.md` -- tracked craft-research memos backing specific `GENRE_VOICES` modules (an explicit exception in `.gitignore`; the rest of `docs/research/` and all of `docs/design/` stay gitignored, local-only agent working artifacts).
@@ -45,7 +45,7 @@ After onboarding or paywall changes:
 2. Run `pnpm exec expo-doctor` from `expo/`.
 3. Confirm an Expo web bundle can compile.
 4. Open `http://localhost:8090/` in a 390 x 844 mobile viewport.
-5. Walk the full flow: intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, one-time offer, success, Home handoff.
+5. Walk the full flow: intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, success, Home handoff. There is no one-time offer step -- it was removed 2026-09-10 (`source-of-truth/ONBOARDING_FLOW.md` §14).
 
 ## Security Gate (MANDATORY before pushing to GitHub)
 
@@ -304,7 +304,7 @@ Rules and known failure modes:
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00087` applied (verified with `supabase migration list` on 2026-09-14) except the deliberately absent `00016` and `00024`. All 34 edge functions were redeployed from `e123fa4` in the same session, so schema and code are in step. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00090` applied (`00089` and `00090` pushed 2026-09-16) except the deliberately absent `00016` and `00024`. All **37** edge functions are deployed, so schema and code are in step. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
 
 `_test.ts` files live alongside the `.sql` in this directory. The CLI skips them by filename pattern, which is why they are safe there, but they are not migrations and must never be numbered as if they were.
 
@@ -332,6 +332,8 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00050 (Entity visibility gate)** | `stories.entity_gate_reason` + the CHECK that makes `is_public = true` with a reason set an invalid row |
 | **00058 (Classification status)** | `stories.entity_classification_status` (`ok` / `unavailable` / null-for-legacy), plus `error_events.bucket` widened to accept `grounding`, `engagement` and `phrase.learning` |
 | **00087 (One-credit start + auto runs)** | `begin_story_generation` deducts 1; `stories.auto_run_through_chapter`; `generation_operations.auto_run_id` / `.claimed_at`; `reserve_auto_chapter_run` and `refund_auto_chapter_run` |
+| **00089 (Launch economy)** | `streak_milestones`, `tester_accounts`, `reviewer_signin_attempts`; `profiles.entitlement_override` / `.avatar_id` / `.referral_code`; `comments.credit_claimed_at` / `.credit_ledger_id`; `referrals.claimed_at` / `.credited_at` plus `unique(referred_id)`; `streak_ladder()`, `claim_comment_credit`, `ensure_identity`, `settle_referrals` |
+| **00090 (Report targets + read gate)** | Target-aware `content_reports` reason and details constraints (a story's four reasons vs a comment's eight; 1,000 vs 2,000 characters); the comment-credit read gate now also requires a `story_reads` row whose **server-set** `read_at` is 60s or more older than the comment; `streak_ladder()` gets the grants every other 00089 function has; `idx_story_reads_user_story_read_at` |
 
 ### Credit Ledger Pattern
 
@@ -452,6 +454,9 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `reimagine-chapter` | POST | Rewrite one existing chapter, optionally recasting it | Streams on `stream: true`. Forks the story for a non-author. 1 credit, refunded on failure |
 | `library` | GET | Paginated curated feed with genre filter + search; `?scope=mine` for the writer's own | Returns `cover_image_url`, `cover_status`, `chapters(count)`, `previously_summary`, `beats`, `series_state` — everything the Home "Your stories" rail and the chapter-end chips need |
 | `feedback` | POST | Posts a comment. Grants nothing: since migration 00089 the credit is claimed separately through `credit-claims` | Done |
+| `credit-claims` | POST | `action: "list"` returns the caller's claimable comments with their block reasons; `action: "claim"` pays one | Verifies the JWT, then calls `comment_credit_claims` / `claim_comment_credit` as service role. Every rule (40 characters, somebody else's story, a read recorded before the comment, the per-story / per-day / per-month caps) is re-derived in SQL under a lock; the function checks none of them |
+| `referral` | POST | `action: "code"` returns the caller's invite code and standing; `action: "claim"` records a code entered by an account under 7 days old | Pays nothing. `claim_referral_code` records the relationship, `settle_referrals` grants both halves under `referral:referrer:{id}` and `referral:invitee:{id}` once the invitee has generated and is 24h old |
+| `reviewer-signin` | POST | Exchanges the store reviewer's fixed six-digit code for a magic-link `token_hash` the client verifies | **The only new `verify_jwt = false` function** -- the reviewer has no session to present, so the protections are inside it: one allowlisted address, a peppered HMAC, a constant-time compare, an identical `401 {"error":"invalid"}` for every failure, and a per-email/per-IP lockout. `tester_accounts.user_id` is authoritative for which account the link may resolve to. **The plaintext code lives in `backend/.reviewer-code.local`, which is git-ignored, and is never written into the repository** |
 | `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
 | `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
 | `generate-audio` | POST | Cached narration lookup | Fresh RunPod generation is blocked until the durable 1-credit audio unlock exists |
@@ -838,7 +843,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - **Shipped today:** generation selects a Short, Standard or Long chapter band and stores a planned length of 3, 7 or 15 chapters. Continuations advance one chapter at a time and derive the finale from that stored length. The broader Create rebuild remains governed by `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
-- **3-credit welcome bonus**, granted only after the user declines both the paywall and the one-time offer.
+- **3-credit welcome bonus**, granted when the user declines the paywall. (It used to require declining the one-time offer as well; that offer was removed 2026-09-10.)
 - Kids mode off by default, PIN-gated in parental controls.
 
 ### Plans, packs, and grants
@@ -879,6 +884,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
 - **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Notes.
+- **You** (`expo/src/screens/ProfileScreen.tsx`): since 2026-09-16 the header is the avatar and the handle on one row with a pencil at the right, and the pencil is the only control that opens the identity editor. **There is no guest card.** The "Sign in to keep all of this" prompt is gone, because the product has no guests past the email step. **Sign out routes to the sign-in screen and leaves the device with no session** -- `signOutToSignIn` in `expo/src/lib/session.ts` clears the stored session (`scope: "local"`) and does *not* mint a replacement guest; the old `restartGuestSession` left a live anonymous identity behind the sign-in screen. Do not reintroduce it.
 
 ### Onboarding
 
@@ -888,6 +894,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - Questionnaire: name, three genre interests, then Reading / Writing / A bit of both. A **reader** then answers three questions of their own (how they like their stories, what they are in the mood for tonight, when they usually read); a writer and "both" answer two. The reader's mood feeds the Tonight rail on Home.
 - **One progress row.** `expo/src/lib/onboarding-progress.ts` is the single table of steps per purpose (eight for a reader, seven for a writer or "both"); both the questionnaire and the character screens read it, and `OnboardingTopBar` draws it. W4, W5, the code screen and W6 share one pill. Do not reintroduce a second progress indicator.
 - W4's CTA saves the character row and starts the portrait on the anonymous session; email/OTP covers the wait. Auth never gates the aha. Six character images per identity, then a reserved credit (migration 00088, `CREDITS_AND_PRICING.md`).
+- **A name and a face are preassigned, not asked for** (2026-09-16). `ensure_identity` (migration 00089) writes a handle (`adjective_noun_NN`, checked against the reserved list) and one of the 36 creature avatars at bootstrap, so no account is ever a grey circle called "Your profile". The identity editor offers all 36 plus a photo upload; a photo clears the creature and a creature clears the photo.
 - 390 x 844 geometry, light theme only, shared wordmark, fixed intro slots.
 - Do not restore the prototype's "Replay the flow" action. The welcome screen hands off straight into the tabs: a writer lands on Create with the onboarding character pre-filled as the hero, a reader or "both" lands on Home (`finishCharacterOnboarding` in `App.tsx`).
 - Email/OTP sits between W4 and W6 (W5 asks, the code screen verifies) so the two screens cover the portrait wait; the character already exists before the address is asked for. Do not move authentication ahead of W4, and do not reintroduce it as a gate before the aha.

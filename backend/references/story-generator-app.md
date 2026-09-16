@@ -2,7 +2,14 @@
 
 <!-- markdownlint-disable MD013 -->
 
-> Historical baseline material for the original AI story generator plan.
+> **Historical baseline material for the original AI story generator plan. Read it as a record of what was planned, not as a description of what ships.**
+> **Every price, pack, grant and earn mechanic below is superseded** by
+> `../../source-of-truth/CREDITS_AND_PRICING.md`, which is the only place those
+> numbers are written down. The `$4.99 / 10`, `$14.99 / 40` and `$29.99 / 90`
+> packs (§*Credits*), the day 2 / 5 / 7-then-weekly streak ladder and the five
+> earning methods on the Credits screen are all pre-2026-09-16 history; the
+> shipped grid is five packs and a five-rung ladder (pricing doc decisions 49
+> and 50). They are left standing here because this document is a record.
 > The active client is the Expo app in `../../expo/`; the Swift and Kotlin clients are preserved references.
 > Current requirements in `../../AGENTS.md` and `../references/strategic-decisions.md` override this blueprint where they differ. **Rewarded-ad credits are historical/deferred** (`../../source-of-truth/CREDITS_AND_PRICING.md` §5): do not use this blueprint to implement, configure, or QA AdMob reward flows.
 > Image and audio sections describe planned Phase B architecture; the current generation runtime returns text only.
