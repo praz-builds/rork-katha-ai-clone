@@ -967,7 +967,9 @@ export default function App() {
     setJourneyProfile(null);
     setEntitlementOverride(null);
     setTab("home");
-    setScreen({ name: "onboarding" });
+    // `required`: there is no session behind this screen, so it has no back
+    // arrow and no exit to the tabs.
+    setScreen({ name: "onboarding", required: true });
   };
 
   const renderTab = () => {
@@ -1139,11 +1141,28 @@ export default function App() {
             tab they left.
           */
           <SignInScreen
-            onDone={() => {
-              void completeSignIn();
-              goTabs();
-            }}
-            onExit={() => goTabs()}
+            /*
+              Navigate only once the account is rebuilt. `completeSignIn`
+              bootstraps the session, refreshes the balance and the streak,
+              fetches the profile and applies the entitlement override -- so
+              firing it and navigating in the same tick renders the tabs
+              against the account that just left. A tester is the clearest
+              case: the premium override lands with `fetchOwnProfile`, so the
+              paywall would flash before the member state did. `finally`, not
+              `then`, because a failed refresh must still let the person in;
+              the screens all tolerate a null profile.
+            */
+            onDone={() => completeSignIn().finally(() => goTabs())}
+            /*
+              No way out when sign-in IS the destination (D1). Reached from a
+              tab, this is a reader who chose to sign in and may change their
+              mind. Reached after a sign-out or a deletion, there is no session
+              behind it: going back to the tabs would render Home with no
+              identity, and the first `bootstrapUser` would mint the guest this
+              PR exists to remove. `undefined` also drops the back arrow, so
+              the way out is not offered and then refused.
+            */
+            onExit={screen.required ? undefined : () => goTabs()}
           />
         )
         : screen.name === "story"

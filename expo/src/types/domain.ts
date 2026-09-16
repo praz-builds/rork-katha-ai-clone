@@ -592,7 +592,13 @@ export type CharacterEntryContext = {
 export type Screen =
   | { name: "tabs" }
   | { name: "intro" }
-  | { name: "onboarding" }
+  /**
+   * Sign-in. `required` marks the one entry that has no way out: the screen
+   * reached after signing out or deleting the account, where there is no
+   * session to go back to. Every other entry is a reader who chose to sign in
+   * and may change their mind, so it keeps its back arrow.
+   */
+  | { name: "onboarding"; required?: boolean }
   /**
    * The character flow: bridge, who, wait, reveal, plan, email, code, paywall,
    * notify, welcome. It replaced `writer-onboarding` on 2026-09-11, and it is

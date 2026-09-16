@@ -51,8 +51,12 @@ export function EmailCodeAuth({
    * Back from the email step. Back from the code step returns to email,
    * EXCEPT in code-only mode, where there is no email step to return to and
    * Back is the caller's business.
+   *
+   * Optional: when this screen is the only way
+   * forward -- sign-in reached after a sign-out, where there is no session to
+   * go back to -- there is no back arrow to draw.
    */
-  onBack: () => void;
+  onBack?: () => void;
   /**
    * Fires once, right after `verifyEmailCode` resolves.
    *
@@ -61,8 +65,14 @@ export function EmailCodeAuth({
    * `CharacterOnboardingResult.email`) does not have to keep a second,
    * shadow copy of state this component already owns. A caller with no use
    * for it, like `SignInScreen`, is free to ignore the argument.
+   *
+   * May return a promise, and if it does this screen stays
+   * busy until it settles: the caller's follow-on work -- bootstrapping the
+   * session, refreshing the balance, fetching the profile -- has to finish
+   * before the app moves on, and until it does the person is still looking at
+   * this screen with a live button under their thumb.
    */
-  onVerified: (email: string) => void;
+  onVerified: (email: string) => void | Promise<void>;
   steps?: number;
   currentStep?: number;
   codeStep?: number;
@@ -91,7 +101,7 @@ export function EmailCodeAuth({
     // In code-only mode the email box belongs to the caller's own screen, so
     // "back" and "use a different email" both mean "hand the flow back".
     if (codeOnly) {
-      onBack();
+      onBack?.();
       return;
     }
     setAuthStep("email");
@@ -123,7 +133,7 @@ export function EmailCodeAuth({
     setAuthError(null);
     try {
       await verifyEmailCode(email, code);
-      onVerified(email.trim());
+      await onVerified(email.trim());
     } catch {
       // The reviewer's fixed code (D11). Tried only after the real OTP
       // refused, and the function answers 401 for every address but the
@@ -131,7 +141,7 @@ export function EmailCodeAuth({
       // way to the same error line.
       const reviewer = await reviewerSignIn(email, code).catch(() => false);
       if (reviewer) {
-        onVerified(email.trim());
+        await onVerified(email.trim());
         return;
       }
       setAuthError("That code did not match. Try again or resend it.");
