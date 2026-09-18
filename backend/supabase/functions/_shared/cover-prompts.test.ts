@@ -8,7 +8,10 @@ import {
   buildCoverPrompt,
   hasCoverPromptConfig,
   MAX_CHAPTER_MOMENT_LENGTH,
+  NO_FRAME_CLAUSE,
+  settingForSentence,
 } from "./cover-prompts.ts";
+import { describePreviousCover } from "./cover-regeneration.ts";
 import { PRIMARY_GENRES } from "./types.ts";
 
 /**
@@ -25,6 +28,7 @@ Deno.test("a story with no characters gets a well-formed genre cover", () => {
   assert(!prompt.includes("undefined"));
   assert(!prompt.includes("Feature a character"));
   assert(!prompt.includes("silhouetted figure"));
+  assert(!prompt.includes("lead character"));
 });
 
 // The Craft character sheet requires only a Name (§4), so a name-only character
@@ -98,6 +102,8 @@ Deno.test("a name-only lead does not displace a describable supporting character
 });
 
 // Decision 53 — this is what stops every mystery cover being the same doorway.
+// The chip's leading "A" is lowered on the way in: "set in A hill town" reads
+// to the model like the start of a proper name.
 Deno.test("where-and-when reaches the scene line", () => {
   const prompt = buildCoverPrompt(
     "mystery",
@@ -106,7 +112,8 @@ Deno.test("where-and-when reaches the scene line", () => {
     undefined,
     "A hill town, off-season, present day",
   );
-  assert(prompt.includes("set in A hill town, off-season, present day"));
+  assert(prompt.includes("set in a hill town, off-season, present day"));
+  assert(!prompt.includes("set in A hill town"));
 });
 
 Deno.test("an absent or blank where-and-when adds nothing", () => {
@@ -335,14 +342,20 @@ Deno.test("a trailing separator in Avoid does not double the clause period", () 
 // ---------------------------------------------------------------------------
 
 Deno.test("each new v7 genre has its own cover prompt config", () => {
-  for (
-    const genre of ["educational", "fanfiction", "folktale", "sliceOfLife"]
-  ) {
+  // The genre line reads as English: the key's camel case is split and the
+  // article agrees with it ("an educational", never "a educational").
+  const expected: Record<string, string> = {
+    educational: "an educational",
+    fanfiction: "a fanfiction",
+    folktale: "a folktale",
+    sliceOfLife: "a slice of life",
+  };
+  for (const [genre, phrase] of Object.entries(expected)) {
     assert(hasCoverPromptConfig(genre), `${genre} has no cover prompt config`);
     const prompt = buildCoverPrompt(genre, "T", []);
     assert(
-      prompt.includes(`Book cover illustration for a ${genre} story.`),
-      `${genre} did not render its own genre line`,
+      prompt.includes(`Book cover illustration for ${phrase} story.`),
+      `${genre} did not render its own genre line: ${prompt}`,
     );
   }
 });
@@ -517,4 +530,316 @@ Deno.test("the chapter moment is bounded before it leaves for the provider", () 
     moment: "a".repeat(4_000),
   });
   assert(!prompt.includes("a".repeat(MAX_CHAPTER_MOMENT_LENGTH + 1)));
+});
+
+// ---------------------------------------------------------------------------
+// The 2026-09-18 two-model cover test
+//
+// 13 production prompts drawn by two different image models. Every failure
+// below happened on BOTH, which is what makes it a prompt bug rather than a
+// model quirk -- and what makes it worth pinning here, where a prompt change
+// is the only thing that can bring it back.
+// ---------------------------------------------------------------------------
+
+const SCENE_GENRES = [
+  "comedy",
+  "educational",
+  "sliceOfLife",
+  "contemporary",
+  "cozyFantasy",
+  "poetry",
+  "bedtime",
+];
+const SILHOUETTE_GENRES = [
+  "fantasy",
+  "mystery",
+  "thriller",
+  "horror",
+  "scifi",
+  "adventure",
+  "darkAcademia",
+  "folktale",
+];
+const POSTMAN = "a 74-year-old retired postman, stooped, flat cap";
+
+// Failure 1: a scene genre sent no cast, so the model invented one. A story
+// about a 74-year-old retired postman got an old woman.
+Deno.test("a scene genre names the lead character inside the scene", () => {
+  for (const genre of SCENE_GENRES) {
+    const prompt = buildCoverPrompt(genre, "Last Round", [], [
+      { name: "Friend", appearance: "a young neighbour" },
+      { name: "Harold", appearance: POSTMAN, isHero: true },
+    ]);
+    assertStringIncludes(
+      prompt,
+      `Include the story's lead character within the scene, as one part of it rather than posed for a portrait: ${POSTMAN}`,
+    );
+    // The hero, not whoever is listed first -- the same rule as every other
+    // approach.
+    assert(!prompt.includes("a young neighbour"), genre);
+    // A scene is still a scene: not the portrait framing.
+    assert(!prompt.includes("shoulders up"), genre);
+  }
+});
+
+Deno.test("a scene genre with no describable cast still gets no cast clause", () => {
+  for (const genre of SCENE_GENRES) {
+    for (
+      const characters of [undefined, [], [{ name: "Name only" }], [{
+        name: "Blank",
+        appearance: "   ",
+      }]]
+    ) {
+      const prompt = buildCoverPrompt(genre, "T", [], characters);
+      assert(!prompt.includes("lead character"), `${genre}: ${prompt}`);
+      assert(!prompt.includes("undefined"), genre);
+    }
+  }
+});
+
+// Chapter art shares `buildCharacterNote`, so the plates and the cover agree
+// on who the story is about.
+Deno.test("chapter art in a scene genre names the lead too", () => {
+  const prompt = buildChapterArtPrompt({
+    genre: "educational",
+    storyTitle: "The Cloud Jar",
+    chapterNumber: 2,
+    characters: [{
+      name: "Mia",
+      appearance: "an eight-year-old with a cloud in a jar",
+      isHero: true,
+    }],
+  });
+  assertStringIncludes(
+    prompt,
+    "lead character within the scene, as one part of it rather than posed for a portrait: an eight-year-old with a cloud in a jar",
+  );
+});
+
+// Failure 3: "a distant silhouetted figure suggesting <eye colour, a chipped
+// tooth>" argued with itself and both models drew the detailed figure. The
+// word is gone; distance is asked for honestly instead.
+Deno.test("a silhouette genre asks for a readable mid-distance figure, not a silhouette", () => {
+  for (const genre of SILHOUETTE_GENRES) {
+    const prompt = buildCoverPrompt(genre, "T", [], [
+      {
+        name: "Ines",
+        appearance: "green eyes, a chipped front tooth, a hearing aid",
+      },
+    ]);
+    assert(!/silhouetted/i.test(prompt), `${genre}: ${prompt}`);
+    // "silhouette" survives only as the thumbnail-shape rule, never as a way
+    // to draw a person.
+    assertEquals(
+      prompt.match(/silhouette/gi)?.length ?? 0,
+      1,
+      `${genre} still asks for a silhouette somewhere: ${prompt}`,
+    );
+    assertStringIncludes(prompt, "full figure at mid-distance");
+    assertStringIncludes(
+      prompt,
+      "recognisable by body shape, posture, clothing and what they carry rather than by facial detail: green eyes",
+    );
+  }
+});
+
+// The look is followed by our own punctuation, so its own trailing full stop
+// used to produce "coat.," in the prompt.
+Deno.test("an appearance ending in a full stop does not double the punctuation", () => {
+  for (const genre of ["comedy", "mystery", "romance"]) {
+    const prompt = buildCoverPrompt(genre, "T", [], [
+      { name: "Mira", appearance: "tall, cropped grey hair. Oilskin coat." },
+    ]);
+    assertStringIncludes(prompt, "Oilskin coat");
+    assert(!/coat\.[.,]/.test(prompt), `${genre}: ${prompt}`);
+  }
+});
+
+// Failure 2: "keep the upper third quiet, it is cropped away in the landscape
+// hero" was written for a hero that no longer exists. Both models moved faces
+// UP in response -- under the story page's status bar and round buttons.
+Deno.test("the cover's crop guidance matches the current hero, card and square", () => {
+  for (const genre of ["mystery", "comedy", "romance", "nonsense"]) {
+    const prompt = buildCoverPrompt(genre, "T", ["a"]);
+    assert(!prompt.includes("upper third"), genre);
+    assert(!prompt.includes("landscape hero"), genre);
+    assertStringIncludes(
+      prompt,
+      "keep the top 15% of the image free of faces and important detail",
+    );
+    assertStringIncludes(prompt, "between 20% and 50% of the image height");
+    assertStringIncludes(prompt, "a 3:4 crop and a square crop");
+    // One subject and thumbnail readability are kept, not replaced.
+    assertStringIncludes(prompt, "ONE clear subject");
+    assertStringIncludes(prompt, "still reads at thumbnail size");
+  }
+});
+
+// A chapter plate is shown whole at 2:3 in the reader; nothing crops it and
+// nothing sits over it, so the cover's safe zone would only waste its top.
+Deno.test("chapter art does not carry the cover's crop guidance", () => {
+  const prompt = buildChapterArtPrompt({
+    genre: "mystery",
+    storyTitle: "T",
+    chapterNumber: 3,
+  });
+  assert(!prompt.includes("top 15%"), prompt);
+  assertStringIncludes(prompt, "ONE clear subject");
+});
+
+// Failure 4b: ornate frames on 3 of 13 covers, which every crop cuts unevenly.
+Deno.test("every cover and every chapter plate forbids a border or frame", () => {
+  assertEquals(
+    NO_FRAME_CLAUSE,
+    "No border, no frame, no decorative edge, no vignette; the illustration runs to every edge.",
+  );
+  for (const genre of [...PRIMARY_GENRES, "nonsense"]) {
+    const cover = buildCoverPrompt(genre, "T", ["a"]);
+    const chapter = buildChapterArtPrompt({
+      genre,
+      storyTitle: "T",
+      chapterNumber: 2,
+    });
+    for (const prompt of [cover, chapter]) {
+      assertStringIncludes(prompt, NO_FRAME_CLAUSE);
+      // And no genre config asks for one anywhere else in the prompt: three of
+      // them used to ("ornate border elements", "decorative border patterning").
+      assert(
+        !/border/i.test(prompt.replace(NO_FRAME_CLAUSE, "")),
+        `${genre} asks for a border: ${prompt}`,
+      );
+    }
+  }
+});
+
+// Failure 4a: comic came out painterly, watercolour came out digital. The pick
+// was one clause among six; it now opens and closes the prompt.
+Deno.test("a picked art style is stated first and last", () => {
+  const comic = buildCoverPrompt(
+    "darkAcademia",
+    "T",
+    ["a"],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    "comic",
+  );
+  assert(
+    comic.startsWith(
+      "Art style: graphic-novel comic art, bold confident inking",
+    ),
+    comic,
+  );
+  assert(
+    comic.includes(
+      "The whole image, edge to edge, is graphic-novel comic art, not a blend with any other style. Portrait orientation",
+    ),
+    comic,
+  );
+  // Replaced, not repeated: the genre's middle `Visual style:` line is gone,
+  // and so is the genre's own look.
+  assert(!comic.includes("Visual style:"), comic);
+  assert(!comic.includes("moody gothic illustration"), comic);
+  // The genre's emotional read survives.
+  assertStringIncludes(comic, "intellectual, brooding, secretive");
+
+  const chapter = buildChapterArtPrompt({
+    genre: "darkAcademia",
+    storyTitle: "T",
+    chapterNumber: 2,
+    artStyle: "watercolor",
+  });
+  assert(chapter.startsWith("Art style: delicate watercolour painting"));
+  assertStringIncludes(
+    chapter,
+    "is delicate watercolour painting, not a blend with any other style.",
+  );
+});
+
+Deno.test("the genre's own style keeps its place when nothing is picked", () => {
+  const prompt = buildCoverPrompt("mystery", "T", []);
+  assert(prompt.startsWith("Book cover illustration for a mystery story."));
+  assertStringIncludes(prompt, "Visual style: noir illustration");
+  assert(!prompt.includes("Art style:"));
+  assert(!prompt.includes("not a blend with any other style"));
+});
+
+// Failure 5a: "for a adventure story".
+Deno.test("the genre line uses the right article", () => {
+  assertStringIncludes(
+    buildCoverPrompt("adventure", "T", []),
+    "Book cover illustration for an adventure story.",
+  );
+  assertStringIncludes(
+    buildCoverPrompt("scifi", "T", []),
+    "Book cover illustration for a science fiction story.",
+  );
+  assertStringIncludes(
+    buildCoverPrompt("darkRomance", "T", []),
+    "Book cover illustration for a dark romance story.",
+  );
+  assertStringIncludes(
+    buildChapterArtPrompt({
+      genre: "educational",
+      storyTitle: "T",
+      chapterNumber: 2,
+    }),
+    "Interior chapter illustration for an educational story.",
+  );
+  for (const genre of PRIMARY_GENRES) {
+    const prompt = buildCoverPrompt(genre, "T", []);
+    assert(!/ a [aeiou]/i.test(prompt.slice(0, 60)), prompt.slice(0, 60));
+  }
+});
+
+// Failure 5b: "set in A sunny primary school". Only a leading article is
+// lowered -- the value is free text that very often opens on a real name.
+Deno.test("where-and-when loses a leading article's capital and nothing else", () => {
+  const cases: [string, string][] = [
+    ["A sunny primary school", "a sunny primary school"],
+    ["An old lighthouse, 1952", "an old lighthouse, 1952"],
+    ["The last winter of the war", "the last winter of the war"],
+    ["  A hill town  ", "a hill town"],
+    ["Lisbon, 1755", "Lisbon, 1755"],
+    ["Anand's village", "Anand's village"],
+    ["Amsterdam in the rain", "Amsterdam in the rain"],
+    ["Theo's flat", "Theo's flat"],
+    ["A", "A"],
+    ["A. Smith's farm", "A. Smith's farm"],
+    ["", ""],
+  ];
+  for (const [input, expected] of cases) {
+    assertEquals(settingForSentence(input), expected, input);
+  }
+  assertEquals(settingForSentence(undefined), "");
+
+  const chapter = buildChapterArtPrompt({
+    genre: "mystery",
+    storyTitle: "T",
+    chapterNumber: 2,
+    whereAndWhen: "The docks at night",
+  });
+  assertStringIncludes(chapter, "set in the docks at night");
+});
+
+// `describePreviousCover` recovers the last cover's subject from the span
+// between "Inspired by the story" and the no-text line. The new closing
+// clauses must land AFTER that line, or a regeneration steer would quote our
+// own scaffolding back as "what the last cover was".
+Deno.test("the new closing clauses stay out of the regeneration subject", () => {
+  const prompt = buildCoverPrompt(
+    "comedy",
+    "Last Round",
+    ["kindness"],
+    [{ name: "Harold", appearance: POSTMAN, isHero: true }],
+    "A seaside town",
+    undefined,
+    undefined,
+    "comic",
+  );
+  const subject = describePreviousCover(prompt) ?? "";
+  assert(subject.startsWith('"Last Round"'), subject);
+  assert(!subject.includes("No border"), subject);
+  assert(!subject.includes("not a blend"), subject);
 });

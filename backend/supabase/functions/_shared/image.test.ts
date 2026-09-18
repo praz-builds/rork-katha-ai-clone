@@ -604,6 +604,9 @@ Deno.test("a character whose appearance sanitizes to nothing is dropped, not dra
   assert(attempts.length > 0);
   for (const attempt of attempts) {
     assert(!attempt.prompt.includes("silhouetted figure suggesting ."));
+    // The silhouette wording is gone (2026-09-18); the guard is that no cast
+    // clause of any wording is emitted for a character with nothing to draw.
+    assert(!attempt.prompt.includes("lead character"), attempt.prompt);
     assert(!attempt.prompt.includes("undefined"));
   }
 });
@@ -736,5 +739,86 @@ Deno.test("the framing survives every rung of the safety ladder", async () => {
   assert(attempts.length > 1, "the ladder did not run");
   for (const attempt of attempts) {
     assertEquals(attempt.aspectRatio, "4:5", attempt.prompt);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// No frame, on every rung
+// ---------------------------------------------------------------------------
+
+// Gemini drew ornate frames unasked on 3 of 13 covers in the 2026-09-18 test.
+// The ladder rebuilds the prompt at every rung, and the frame clause is fixed
+// text that cannot be what a filter objected to -- so a rung that lost it would
+// bring the frames back on exactly the stories that press hardest on a filter.
+Deno.test("the no-frame clause reaches every cover and portrait attempt", async () => {
+  const covers = await withStubbedProviders(
+    () => moderationRejection(),
+    () => generateCoverImage(cover),
+  );
+  const portraits = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-no-frame", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+      }),
+  );
+
+  assert(covers.length > 1 && portraits.length > 1, "the ladder did not run");
+  for (const attempt of [...covers, ...portraits]) {
+    assert(
+      attempt.prompt.includes(
+        "No border, no frame, no decorative edge, no vignette; the illustration runs to every edge.",
+      ),
+      attempt.prompt,
+    );
+  }
+});
+
+// Watercolour that came back as smooth digital paint is most obvious on a
+// portrait, where the whole frame is one figure. The portrait's subject still
+// leads, so the pick is restated at the end rather than moved to the front.
+Deno.test("a portrait restates the picked style at the end, on every rung", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait(
+        "user-1",
+        "req-style-reminder",
+        { name: "Naina", appearance: "Curly hair, a satchel" },
+        "watercolor",
+      ),
+  );
+
+  assert(attempts.length > 1, "the ladder did not run");
+  for (const attempt of attempts) {
+    assert(
+      attempt.prompt.startsWith(
+        "Character portrait illustration of Curly hair",
+      ),
+      attempt.prompt,
+    );
+    assert(
+      attempt.prompt.includes(
+        "The whole image, edge to edge, is delicate watercolour painting, not a blend with any other style.",
+      ),
+      attempt.prompt,
+    );
+  }
+});
+
+Deno.test("a portrait with no picked style has no style reminder", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateDraftCharacterPortrait("user-1", "req-no-reminder", {
+        name: "Naina",
+        appearance: "Curly hair, a satchel",
+      }),
+  );
+
+  assert(attempts.length > 0);
+  for (const attempt of attempts) {
+    assert(!attempt.prompt.includes("not a blend with any other style"));
   }
 });

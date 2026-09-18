@@ -33,6 +33,23 @@ interface GenrePromptConfig {
   characterApproach: "scene" | "silhouette" | "portrait";
 }
 
+/**
+ * NO CONFIG MAY ASK FOR A BORDER, A FRAME OR A SILHOUETTE.
+ *
+ * Fantasy asked for "ornate border elements", historical for "decorative
+ * border elements" and folktale for "decorative border patterning". They read
+ * as period flavour and they are poison: one source image is cropped to a
+ * near-3:4 hero, a 3:4 Home card and a square library card, and a border drawn
+ * into the art is cut unevenly by every one of those crops. The 2026-09-18
+ * two-model test got ornate frames on 3 of 13 covers, some from genres that
+ * never asked for one -- which is why `NO_FRAME_CLAUSE` is now on every prompt
+ * as well. The ornament those genres wanted lives WITHIN the scene instead.
+ *
+ * "Silhouette" is gone from the compositions for the reason given at
+ * `buildCharacterNote`: the cast note hands the model a detailed appearance,
+ * and a composition that also says "silhouette" is an instruction arguing with
+ * itself.
+ */
 const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
   romance: {
     style:
@@ -45,10 +62,9 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
   },
   fantasy: {
     style:
-      "epic fantasy illustration, rich painterly detail, ornate decorative elements, atmospheric depth",
+      "epic fantasy illustration, rich painterly detail, ornate detail within the scene, atmospheric depth",
     palette: "deep emerald greens, royal purples, antique gold, moonlit silver",
-    composition:
-      "sweeping landscape or silhouetted figure against magical sky, ornate border elements",
+    composition: "sweeping landscape or a lone figure against a magical sky",
     mood: "mystical, grand, wonder",
     characterApproach: "silhouette",
   },
@@ -98,7 +114,7 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
     palette:
       "deep space black, electric cyan, neon magenta, cool chrome, holographic accents",
     composition:
-      "expansive cosmic vista or character silhouette against technological backdrop, geometric framing",
+      "expansive cosmic vista or a lone figure against a technological backdrop, geometric lines within the scene",
     mood: "wonder, vast, alien",
     characterApproach: "silhouette",
   },
@@ -117,7 +133,7 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
       "rich period illustration, ornamental texture, aged paper quality, detailed and layered",
     palette: "warm sepia, aged gold, burgundy wine, ivory, rich earth tones",
     composition:
-      "layered historical scene with period architecture, decorative border elements, textured surfaces",
+      "layered historical scene with period architecture, ornamental detail within the scene, textured surfaces",
     mood: "atmospheric, dignified, evocative",
     characterApproach: "portrait",
   },
@@ -237,7 +253,7 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
     palette:
       "burnt umber, mustard gold, forest green, faded indigo, cream background",
     composition:
-      "a single symbolic creature or object at the center (a fox, a lantern, a river), decorative border patterning",
+      "a single symbolic creature or object at the center (a fox, a lantern, a river), patterned folk-print texture within the image",
     mood: "timeless, warm, wise",
     characterApproach: "silhouette",
   },
@@ -389,6 +405,112 @@ function styleClause(config: GenrePromptConfig, artStyle?: string): string {
 }
 
 /**
+ * The picked style, stated as the prompt's opening line.
+ *
+ * WHY FIRST AND LAST, AND NOT ONLY IN THE MIDDLE. The pick used to arrive as
+ * one `Visual style:` clause among six -- palette, composition, mood, scene,
+ * wardrobe, discipline -- every one of which describes a look of its own. The
+ * 2026-09-18 two-model test drew a "comic" cover that came out painterly and a
+ * "watercolour" one that came out as smooth digital paint: the genre's palette
+ * and composition words ("rich painterly", "oil painting texture") outvoted
+ * the one clause the writer actually chose. A model weights the opening and
+ * the close of a prompt most heavily, so a picked style now holds both.
+ *
+ * `auto` gets neither. The genre's own style is the default look and already
+ * agrees with the genre's palette and composition; there is nothing for it to
+ * be outvoted by.
+ */
+function artStyleOpening(artStyle?: string): string | null {
+  const clause = coverArtStyleClause(artStyle);
+  return clause
+    ? `Art style: ${clause}. Draw the entire image in this style.`
+    : null;
+}
+
+/**
+ * The picked style restated as the prompt's closing instruction, or null for
+ * `auto`.
+ *
+ * Only the style's name -- the first phrase of its clause -- so the close is a
+ * reminder and not a second copy of the whole description. Exported because
+ * cast portraits end on the same reminder: a portrait is where "watercolour
+ * came out digital" is most visible, since the whole frame is one figure.
+ */
+export function artStyleReminder(artStyle?: string): string | null {
+  const clause = coverArtStyleClause(artStyle);
+  if (!clause) return null;
+  const name = clause.split(",")[0].trim();
+  return `The whole image, edge to edge, is ${name}, not a blend with any other style.`;
+}
+
+/**
+ * No border, no frame, on every image this module and `image.ts` ask for.
+ *
+ * Gemini added ornate decorative frames unasked on 3 of 13 covers in the
+ * 2026-09-18 test. A frame is the one thing a cover cannot survive: the same
+ * source is cropped three different ways (see `SAFE_ZONE_CLAUSE`), and a
+ * border is cut unevenly by all of them -- a sliver of gilt down one side of
+ * the Home card, a heavy band across the top of the square. A vignette fails
+ * the same way, and on the story page it fights the dissolve into the ground.
+ *
+ * Stated on every prompt rather than left to the genre configs, because the
+ * model reached for frames on genres that never mentioned one. Exported for
+ * the portrait prompts in `image.ts`.
+ */
+export const NO_FRAME_CLAUSE =
+  "No border, no frame, no decorative edge, no vignette; the illustration runs to every edge.";
+
+/**
+ * The human name of a genre key, for the sentence that opens a prompt.
+ *
+ * The keys are identifiers -- `sliceOfLife`, `darkRomance`, `scifi` -- and
+ * they used to be interpolated as they are, so the model read "a sliceOfLife
+ * story". Split on the camel-case boundary instead, with the one key whose
+ * split is still not English named explicitly.
+ */
+function genreLabel(genreKey: string): string {
+  if (genreKey === "scifi") return "science fiction";
+  return genreKey.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+/**
+ * "a" or "an", by the label's first letter.
+ *
+ * "Book cover illustration for a adventure story" reached the provider on
+ * every adventure, educational and (after the label above) every other genre
+ * starting with a vowel. The model forgives it; the prompt is still the one
+ * string we control completely, and it should read as written by someone who
+ * cares. Vowel letter, not vowel sound: no genre key starts with a silent
+ * consonant or a "you" sound, so the simple rule is also the correct one here.
+ */
+function withArticle(label: string): string {
+  return `${/^[aeiou]/i.test(label) ? "an" : "a"} ${label}`;
+}
+
+/**
+ * The writer's where-and-when, ready to follow "set in".
+ *
+ * The chip text is written to stand alone, so it starts with a capital: "A
+ * sunny primary school", "The last winter of the war". Interpolated after "set
+ * in" that became "set in A sunny primary school" -- a capital mid-sentence
+ * that reads to the model like the start of a proper name.
+ *
+ * ONLY a leading article is lowered, and only when a word follows it. The
+ * value is free text and very often starts with a real proper noun -- "Lisbon,
+ * 1755", "Tokyo in the rain", "Anand's village" -- and lowering the first
+ * letter of anything capitalised would mangle exactly the names that make a
+ * cover specific. "A", "An" and "The" are the capitals that are never a name
+ * in this position; everything else is left exactly as the writer typed it.
+ */
+export function settingForSentence(whereAndWhen?: string): string {
+  const value = whereAndWhen?.trim() ?? "";
+  return value.replace(
+    /^(A|An|The)(?=\s+\S)/,
+    (article) => article.toLowerCase(),
+  );
+}
+
+/**
  * What everyone in the picture is wearing, unless the story said otherwise.
  *
  * WHY THIS CLAUSE EXISTS. Nothing in this file ever asked for cultural or
@@ -411,58 +533,124 @@ const WARDROBE_CLAUSE =
  * WHY. The prompt used to be genre + palette + mood + "inspired by the story
  * X, with themes of Y" and nothing about how a cover has to WORK. What came
  * back was busy: four competing focal points, symbols of every abstract theme
- * stacked in one frame, detail at a scale nobody ever sees it at. A Katha cover
- * is displayed at 390x340 as a hero, at 108x152 in a card, and at 74x96 in a
- * mini row — the mini is the size most covers are seen at, and an image with
- * four subjects is mud at 74 points wide.
+ * stacked in one frame, detail at a scale nobody ever sees it at. A cover is
+ * seen far more often as a 116-point Home card or a library tile than as the
+ * story-page hero, and an image with four subjects is mud at that width.
  *
  * So the two things a book cover must actually do are stated: ONE subject, and
  * a silhouette that survives being shrunk. Neither is something a model does by
  * default when asked for "a book cover"; both are what an illustrator does
- * first.
+ * first. ("Silhouette" here is the SHAPE of the subject -- its outline at
+ * thumbnail size -- not a request to draw anyone as a shadow.)
  *
- * The quiet-upper-third clause is about CROPPING, not about type. No client
- * surface overlays a title on a cover -- `StoryCard` and the feed cards set the
- * title beside or beneath the image -- and an earlier version of this comment
- * claimed otherwise, which would have made the instruction pure superstition.
- * It earns its place for a different reason: one square source image is
- * centre-cropped to a 390x340 landscape hero, and a landscape crop of a
- * portrait composition discards the top and bottom. Detail packed into the
- * upper third is detail the hero never shows, so the subject is better served
- * by it being quiet.
+ * Shared by the cover and chapter art. Where the subject sits in the frame is a
+ * separate clause, `SAFE_ZONE_CLAUSE`, because only the cover is cropped.
  */
 const SUBJECT_DISCIPLINE_CLAUSE =
-  "Compose it as a real book cover: ONE clear subject, one focal point, and a strong readable silhouette that still reads at thumbnail size. No collage, no split panels, no multiple vignettes, no floating symbolic objects. Keep the upper third relatively quiet -- it is cropped away in the landscape hero. Depth over detail: simplify the background rather than filling it.";
+  "Compose it as a real book cover: ONE clear subject, one focal point, and a strong readable silhouette that still reads at thumbnail size. No collage, no split panels, no multiple vignettes, no floating symbolic objects. Depth over detail: simplify the background rather than filling it.";
+
+/**
+ * Where the subject has to sit so ONE 2:3 source survives every place a cover
+ * is shown.
+ *
+ * WHY THIS REPLACED "keep the upper third quiet". That sentence was written for
+ * a 390x340 LANDSCAPE hero, which centre-cropped a portrait source down to its
+ * middle band and threw the top third away. That hero is gone. The story page
+ * (`StoryDetailScreen`, `HERO_HEIGHT_FRACTION` 0.62) is now nearly portrait --
+ * 390x523 on a 390x844 phone -- so the numbers the prompt has to respect are:
+ *
+ * - Story-page hero, ~3:4 from a 2:3 source: only ~5% is cropped off each end.
+ *   The top ~15% sits under the status bar and the round back/share buttons,
+ *   and the bottom ~45% of the hero (`HERO_FADE_FRACTION`) dissolves into the
+ *   page ground behind the title.
+ * - Home card (`StoryFeedCard`, 116x155, 3:4): the same ~5% crop, nothing on
+ *   top of it, and so small that only one subject survives.
+ * - Library card, square: keeps the middle two-thirds, centred slightly above
+ *   the focal point (`focalY - 0.07`), so roughly 10%..77% of the height.
+ *
+ * The old sentence was not merely stale, it was harmful: told the top third was
+ * cropped away, both models moved the face UP -- which is exactly where the
+ * buttons now sit. 20%..50% is the band that is clear of the buttons, above the
+ * dissolve, and inside the square crop all at once; the Originals run
+ * (`backend/originals/build-cover-prompts.ts`) used it and its covers landed.
+ * Horizontal centring is what keeps the subject in the Home card and the square.
+ */
+const SAFE_ZONE_CLAUSE =
+  "Framing: keep the top 15% of the image free of faces and important detail; place the main character's face, or the single focal point, between 20% and 50% of the image height and near the horizontal centre, so it survives a 3:4 crop and a square crop; the bottom third may be simple and fade out.";
 
 /**
  * How the cast enters the picture, per the genre's `characterApproach`.
  *
  * Shared by the cover and by chapter art so the two cannot drift: a story whose
- * cover shows a distant silhouette and whose chapter plates show close
- * portraits reads as two different books, which is the same failure the shared
+ * cover shows a distant figure and whose chapter plates show close portraits
+ * reads as two different books, which is the same failure the shared
  * `artStyle` pick exists to prevent.
+ *
+ * ## `scene` used to mean "no cast at all", and that was wrong
+ *
+ * Seven genres (comedy, educational, sliceOfLife, contemporary, cozyFantasy,
+ * poetry, bedtime) returned "" here, on the theory that a scene genre is about
+ * a place rather than a person. The model does not read it that way: handed a
+ * scene with nobody described, it puts somebody in it anyway, and invents them.
+ * In the 2026-09-18 two-model test a story about a 74-year-old retired postman
+ * got an old woman, and an eight-year-old with a cloud in a jar got a generic
+ * girl sketching -- on BOTH models, so the prompt, not the model, was at fault.
+ *
+ * So a scene genre now names the lead too, phrased as a figure IN the scene
+ * rather than a portrait of one: the genre's composition still leads, and the
+ * person it was always going to draw is at least the right person. The
+ * zero-cast case is unchanged -- no describable character, no clause.
+ *
+ * ## `silhouette` no longer says "silhouette"
+ *
+ * It asked for "a distant silhouetted figure suggesting <appearance>", where
+ * the appearance lists eye colour, a chipped tooth, a hearing aid. That is an
+ * instruction arguing with itself -- draw a shadow, and here is what its face
+ * looks like -- and both models resolved it by ignoring "silhouetted" and
+ * drawing the full detailed figure.
+ *
+ * Two ways out: strip the face-level details from the appearance, or drop the
+ * word. We drop the word. Stripping would mean keyword-filtering free text the
+ * writer typed in English, Portuguese or Spanish, and any list of "face words"
+ * is a list of the ones we thought of; a miss puts the contradiction straight
+ * back, and a false hit deletes the one detail that made the character theirs.
+ * What these genres actually want -- a figure the setting dwarfs, so the cover
+ * carries dread or scale rather than a headshot -- is a question of DISTANCE,
+ * and distance can be asked for honestly: a mid-distance full figure that
+ * reads by shape, clothing and what they carry. Facial detail is then simply
+ * too small to matter, which is true rather than contradictory.
  */
 function buildCharacterNote(
   config: GenrePromptConfig,
   characters?: PromptCharacter[],
 ): string {
-  if (!characters?.length || config.characterApproach === "scene") return "";
+  if (!characters?.length) return "";
   // Resolve BEFORE filtering, and interpolate the resolved string below.
   // The look is interpolated straight into the prompt, and the Craft sheet
   // requires only a Name, so a name-only character used to put the literal
   // string "suggesting undefined" into the prompt. Reading through
   // `characterAppearance` also keeps a cast written before the field merge --
   // which has only the retired `description` -- drawable.
+  //
+  // Trailing terminators are trimmed because the look is followed by our own
+  // punctuation: "Oilskin coat." would otherwise reach the model as
+  // "Oilskin coat., shown from".
   const described = characters
-    .map((c) => ({ isHero: c.isHero, look: characterAppearance(c) }))
+    .map((c) => ({
+      isHero: c.isHero,
+      look: characterAppearance(c).replace(/[\s.,;:!?]+$/, ""),
+    }))
     .filter((c) => c.look);
   // No usable look anywhere in the cast leaves `hero` undefined, and the
   // prompt falls through to the genre cover — a legitimate result, not a
   // degraded one.
   const hero = described.find((c) => c.isHero) ?? described[0];
   if (!hero) return "";
+  if (config.characterApproach === "scene") {
+    return `. Include the story's lead character within the scene, as one part of it rather than posed for a portrait: ${hero.look}`;
+  }
   if (config.characterApproach === "silhouette") {
-    return `. Include a distant silhouetted figure suggesting ${hero.look}`;
+    return `. Include the story's lead character as a full figure at mid-distance, small enough that the setting still dominates, recognisable by body shape, posture, clothing and what they carry rather than by facial detail: ${hero.look}`;
   }
   return `. Feature a character: ${hero.look}, shown from shoulders up or three-quarter view`;
 }
@@ -535,15 +723,29 @@ export function buildChapterArtPrompt(input: {
         input.themes.slice(0, 3).join(", ")
       }`;
   }
-  if (input.whereAndWhen?.trim()) {
-    sceneDescription += `, set in ${input.whereAndWhen.trim()}`;
+  const setting = settingForSentence(input.whereAndWhen);
+  if (setting) {
+    sceneDescription += `, set in ${setting}`;
   }
 
   const exclusion = sanitizeExclusion(input.avoid);
 
+  // No `SAFE_ZONE_CLAUSE` here, deliberately. A chapter plate is shown whole,
+  // at its own 2:3, inside the reader (`ReaderScreen`'s `chapterArtWrap`) --
+  // nothing is cropped and nothing floats over it, so telling the model to keep
+  // the top 15% empty would only waste the top of a picture that is fully seen.
+  // Chapter 1's art is the cover and comes from `buildCoverPrompt`, which does
+  // carry it.
+  const opening = artStyleOpening(input.artStyle);
+  const reminder = artStyleReminder(input.artStyle);
   return [
-    `Interior chapter illustration for a ${safeGenre} story.`,
-    `Visual style: ${styleClause(config, input.artStyle)}.`,
+    ...(opening ? [opening] : []),
+    `Interior chapter illustration for ${
+      withArticle(genreLabel(safeGenre))
+    } story.`,
+    ...(opening
+      ? []
+      : [`Visual style: ${styleClause(config, input.artStyle)}.`]),
     `Color palette: ${config.palette}.`,
     `Composition: ${config.composition}.`,
     `Mood: ${config.mood}.`,
@@ -552,7 +754,9 @@ export function buildChapterArtPrompt(input: {
     SUBJECT_DISCIPLINE_CLAUSE,
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
-    `Portrait orientation, subject centered in frame, high quality, professional book illustration.`,
+    NO_FRAME_CLAUSE,
+    ...(reminder ? [reminder] : []),
+    `Portrait orientation, subject centered in frame from left to right, high quality, professional book illustration.`,
   ].join(" ");
 }
 
@@ -633,8 +837,9 @@ export function buildCoverPrompt(
         themes.slice(0, 4).join(", ")
       }`;
   }
-  if (whereAndWhen?.trim()) {
-    sceneDescription += `, set in ${whereAndWhen.trim()}`;
+  const setting = settingForSentence(whereAndWhen);
+  if (setting) {
+    sceneDescription += `, set in ${setting}`;
   }
 
   const characterNote = buildCharacterNote(config, characters);
@@ -654,19 +859,39 @@ export function buildCoverPrompt(
   // enough not to cut an already-budgeted steer.
   const steer = sanitizeExclusion(variation, MAX_COVER_STEER_LENGTH);
 
+  // Order matters twice here. A picked style opens and closes the prompt (see
+  // `artStyleOpening`), and when it opens it the middle `Visual style:` line is
+  // dropped rather than repeated -- three statements of the same style is noise,
+  // and the middle one was the position that lost to the palette words.
+  //
+  // Everything the writer's own text can shape -- the scene, the steer, the
+  // exclusion -- stays between "Inspired by the story" and "The image must
+  // contain NO text", because `describePreviousCover` in
+  // `cover-regeneration.ts` recovers the previous subject from exactly that
+  // span. The frame clause and the style reminder go AFTER the no-text line so
+  // they are fixed scaffolding to that parser, not part of the subject.
+  const opening = artStyleOpening(artStyle);
+  const reminder = artStyleReminder(artStyle);
   return [
-    `Book cover illustration for a ${safeGenre} story.`,
-    `Visual style: ${styleClause(config, artStyle)}.`,
+    ...(opening ? [opening] : []),
+    `Book cover illustration for ${withArticle(genreLabel(safeGenre))} story.`,
+    ...(opening ? [] : [`Visual style: ${styleClause(config, artStyle)}.`]),
     `Color palette: ${config.palette}.`,
     `Composition: ${config.composition}.`,
     `Mood: ${config.mood}.`,
     `${sceneDescription}${characterNote}.`,
     WARDROBE_CLAUSE,
     SUBJECT_DISCIPLINE_CLAUSE,
+    SAFE_ZONE_CLAUSE,
     ...(steer ? [`${steer}.`] : []),
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
-    `Portrait orientation, subject centered in frame, high quality, professional book cover art.`,
+    NO_FRAME_CLAUSE,
+    ...(reminder ? [reminder] : []),
+    // "From left to right" because the vertical placement is now
+    // `SAFE_ZONE_CLAUSE`'s job: a bare "centered" invited the model to put the
+    // face at 50% height, on the edge of the story page's dissolve.
+    `Portrait orientation, subject centered in frame from left to right, high quality, professional book cover art.`,
   ].join(" ");
 }
 
