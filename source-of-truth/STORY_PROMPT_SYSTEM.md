@@ -690,6 +690,29 @@ Evren.
 - No bullet lists in story text.
 - No meta-commentary.
 - No moral lecture at the end.
+- The brief is private guidance: moments, plan beats and every character's
+  background and appearance are never quoted or paraphrased into narration or
+  dialogue. No references to chapters or the book ("from Chapter 1"), no
+  address to the reader, no notes to self (word counts, checklists, remarks
+  about banned phrases). Brand names include the everyday ones (clubs, cars,
+  supermarkets, drinks, banks, money transfer, magazines).
+
+**Enforced after generation, not only asked for** (2026-09-18).
+`_shared/prose-integrity.ts` runs on every chapter body immediately before it
+is persisted, on every path that writes model prose (`generate-story`,
+`generate-story-stream`, `continue-story` on both transports,
+`reimagine-chapter`, and `edit-story`'s AI paragraph rewrite; never the
+notepad save, which is the writer's own text). It removes trailing JSON and
+markup residue, a final paragraph duplicating an earlier one, model-note lines,
+sentences sharing a run of nine or more normalised words with a moment, beat or
+cast sheet sentence, and cross-references like "from Chapter 1" (lifting the
+phrase out when the rest is still a sentence). It is deliberately conservative:
+in-world books ("chapter three of the manual") are left alone, the echo rule
+stands down if it would take more than 15% of a chapter's sentences, and a pass
+that would remove over 40% of the words reverts to the residue cleanup. Every
+removal is logged to `error_events` (`prose_integrity_removed`, low, kinds and
+counts only). Brand names from the editors' list are logged
+(`brand_name_leaked`), never rewritten.
 
 ## Read-Aloud Rules
 
@@ -1176,6 +1199,19 @@ not know which ones we mean; these are the specific strings that came back over
 and over. A chapter title is one to four words, never numbered, never a colon
 subtitle, and never a spoiler for the chapter's own ending.
 
+**Every continuation is told the titles already used** (2026-09-18).
+`CHAPTER_TITLE_SHAPE` always said a chapter title must differ from every title
+already in the story, but no call was ever given that list, and auto-run series
+came back with "The Spare Keys" twice and three chapters called "The Urdu
+Newspaper". `buildUsedChapterTitlesBlock` now puts the full list into both the
+continuation user prompt and the naming call. Behind it,
+`_shared/chapter-titles.ts` guards persistence: a title that normalises (case,
+punctuation, leading article, plural) to an existing one, or to the story
+title, is refused; the next candidate is tried (the streamed path offers the
+metadata name after the early one), then a title derived deterministically from
+the chapter's hook, first line or opening sentence, then `Chapter N` as the
+last resort. A duplicate early name is not painted.
+
 An earlier revision put all of this inside `buildOutputSchema` alone and claimed
 it reached every path. It did not: the streamed transport takes the prose
 contract, so the rules governed only the handlers kept for retries while the
@@ -1276,6 +1312,12 @@ Required request fields:
   accept Spanish or Portuguese from new Create submissions. Existing Spanish and
   Portuguese stories retain their stored language for reading and continuation
   compatibility — the withdrawal is from the offer, not from the stored value.
+- `title`: optional, trimmed, whitespace-collapsed, at most 120 characters
+  (longer is refused, never clipped; blank is absent). When present it is the
+  story's title on both transports: it overrides whatever the model or the
+  early naming call produces, is what the streamed `title` event paints, and is
+  what the cover prompt and the `done` payload carry. Absent means the model
+  names the story, as before (2026-09-18).
 - `image_style`: optional `auto | anime | cinematic | comic | watercolor`,
   defaulting to `auto`. Normalised, never rejected: it decides only what the art
   looks like, and refusing a paid generation over art direction is the wrong

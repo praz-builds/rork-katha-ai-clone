@@ -80,6 +80,10 @@ import {
 } from "../_shared/operations.ts";
 import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
+  enforceProseIntegrity,
+  proseIntegrityBrief,
+} from "../_shared/prose-integrity.ts";
+import {
   buildStoryProsePrompt,
   buildUserPrompt,
   PROSE_CLOSING_INSTRUCTION,
@@ -172,6 +176,7 @@ serve(async (req) => {
       grounding,
       groundingEntities,
       visibility,
+      title: writerTitle,
     } = input;
     const chapterRole: ChapterRole = storyMode === "series"
       ? "series_opening"
@@ -536,16 +541,24 @@ serve(async (req) => {
           //
           // It is never load-bearing. `nameChapterEarly` answers null on any
           // failure and the metadata title is used exactly as it was before.
+          //
+          // A WRITER WHO NAMED THE STORY IS NOT OVERRULED. Their title goes in
+          // as `storyTitle`, which turns this into the continuation form of the
+          // call ("name chapter 1 of a story already titled ..."), and it is
+          // what the `title` event paints -- so the heading the reader sees
+          // first is the one the writer chose, not a model's that is replaced
+          // 50 seconds later.
           const namingPromise = nameChapterEarly({
             seed,
             primaryGenre,
             chapterNumber: 1,
+            storyTitle: writerTitle ?? null,
             characterNames: characters?.map((c) => c.name).filter(Boolean),
           });
           namingPromise.then((names) => {
             if (!names) return;
             send("title", {
-              title: names.title,
+              title: writerTitle ?? names.title,
               chapter_title: names.chapterTitle,
             });
             // DETACHED, SO IT MUST SWALLOW ITS OWN FAILURES. Nothing awaits
@@ -574,6 +587,24 @@ serve(async (req) => {
 
           send("stage", { stage: "shaping" });
 
+          // Cleaned BEFORE the metadata call, not just before persistence, so
+          // the summary, the first line and the series state are all derived
+          // from the chapter that will actually be stored -- a `previously`
+          // written from a model note would carry the note into chapter two.
+          // The reader has already seen the raw stream; `done` carries the
+          // cleaned row, and that is what the reader shows from then on.
+          const integrity = await enforceProseIntegrity(
+            prose.text,
+            proseIntegrityBrief({ moments, beats, characters }),
+            {
+              feature: "generate_story_stream",
+              storyId: story.id,
+              userId: user.id,
+              chapterNumber: 1,
+            },
+          );
+          const chapterBody = integrity.text;
+
           const { error: characterError } = await charactersSettled;
           if (characterError) throw characterError;
 
@@ -584,7 +615,7 @@ serve(async (req) => {
           const metadata = await generateFastStructuredText(
             CHAPTER_METADATA_SYSTEM_PROMPT,
             buildChapterMetadataPrompt({
-              prose: prose.text,
+              prose: chapterBody,
               storyMode,
               seed,
             }),
@@ -603,10 +634,15 @@ serve(async (req) => {
           const output = parseStructuredOutput(
             JSON.stringify({
               ...(JSON.parse(metadata.text) as Record<string, unknown>),
-              chapter_body: prose.text,
+              chapter_body: chapterBody,
               // The metadata call still returns both names, and it is still the
-              // fallback for a naming call that failed. It only loses.
-              ...(earlyNames?.title ? { title: earlyNames.title } : {}),
+              // fallback for a naming call that failed. It only loses -- and
+              // both lose to a title the writer chose.
+              ...(writerTitle
+                ? { title: writerTitle }
+                : earlyNames?.title
+                ? { title: earlyNames.title }
+                : {}),
               ...(earlyNames?.chapterTitle
                 ? { chapter_title: earlyNames.chapterTitle }
                 : {}),
@@ -623,12 +659,12 @@ serve(async (req) => {
           );
           // The reader has already been shown this prose, so the scan can only
           // report - see the module comment in content-scan.ts.
-          await reportCrudeLexicon(prose.text, {
+          await reportCrudeLexicon(chapterBody, {
             feature: "generate_story_stream",
             storyId: story.id,
             userId: observedUserId,
           });
-          const verdict = chapterLengthVerdict(prose.text, band);
+          const verdict = chapterLengthVerdict(chapterBody, band);
           if (!verdict.usable) {
             // Not a failure: the reader has already read this chapter, so
             // discarding it would take away something they were shown and
@@ -663,7 +699,7 @@ serve(async (req) => {
               p_story_id: story.id,
               p_author_id: user.id,
               p_title: output.title,
-              p_content: prose.text,
+              p_content: chapterBody,
               p_word_count: verdict.words,
               p_themes: output.themes,
               p_first_line: output.first_line || null,

@@ -30,6 +30,7 @@ import {
   MAX_STORY_GENRES,
   isPlannedChapterCount,
   MAX_PLANNED_CHAPTER_COUNT,
+  MAX_STORY_TITLE_LENGTH,
   MIN_PLANNED_CHAPTER_COUNT,
   type PlannedChapterCount,
   PRIMARY_GENRES,
@@ -270,6 +271,26 @@ export function validateGenerationRequest(
     }
   }
 
+  // --- Title ---
+  // Optional, and the writer's when present. Blank is absent, not an error: a
+  // client that binds an empty text input to this field is asking the model to
+  // name the story, which is what every request did before the field existed.
+  // Over-long is an error rather than a silent clip, because a clipped title is
+  // a title nobody chose.
+  let title: string | undefined;
+  if (body.title !== undefined && body.title !== null) {
+    if (typeof body.title !== "string") {
+      return { error: "title must be a string" };
+    }
+    const trimmed = body.title.replace(/\s+/g, " ").trim();
+    if (trimmed.length > MAX_STORY_TITLE_LENGTH) {
+      return {
+        error: `title must be ${MAX_STORY_TITLE_LENGTH} characters or fewer`,
+      };
+    }
+    if (trimmed) title = trimmed;
+  }
+
   // --- Request ID ---
   const requestId = parseRequestId(body.request_id);
   if (!requestId) return { error: "Invalid request_id" };
@@ -445,6 +466,7 @@ export function validateGenerationRequest(
     grounding,
     groundingEntities,
     visibility,
+    ...(title ? { title } : {}),
   };
 }
 

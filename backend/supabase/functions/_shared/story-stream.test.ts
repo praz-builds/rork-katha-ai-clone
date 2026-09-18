@@ -690,3 +690,29 @@ Deno.test("a continuation is told the story is already named", () => {
   assertStringIncludes(prompt, "The Debt at My Door");
   assertStringIncludes(prompt, "<katha:previously>");
 });
+
+Deno.test("a continuation's naming call is told every title already used", () => {
+  const prompt = buildChapterNamingPrompt({
+    seed: "a bakery in kochi",
+    primaryGenre: "sliceOfLife",
+    chapterNumber: 4,
+    storyTitle: "The Debt at My Door",
+    previousChapterTitles: ["The Spare Keys", "The Urdu Newspaper"],
+  });
+  assertStringIncludes(prompt, "Chapter titles already used in this story");
+  assertStringIncludes(prompt, "The Urdu Newspaper");
+  assertStringIncludes(prompt, "must be new");
+});
+
+Deno.test("a first chapter with a writer's title names only the chapter", () => {
+  // generate-story-stream passes the writer's title as `storyTitle`, which is
+  // what keeps the naming call from inventing a competing one.
+  const prompt = buildChapterNamingPrompt({
+    seed: "a bakery in kochi",
+    primaryGenre: "sliceOfLife",
+    chapterNumber: 1,
+    storyTitle: "Flour and Salt",
+  });
+  assertStringIncludes(prompt, "already titled \"Flour and Salt\"");
+  assert(!prompt.includes("Name the story and its first chapter"));
+});

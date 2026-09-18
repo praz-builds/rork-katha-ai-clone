@@ -6024,3 +6024,60 @@ fails before the first completes, the release refunds and marks the row
 refunded; the first then delivers and `complete_` is a no-op on a refunded row —
 image delivered, charge returned. Only reachable through infrastructure
 re-delivery, never from a client tap.
+
+### 2026-09-18 — Prose integrity pass, the writer's title, distinct chapter titles
+
+Editors reviewed 83 production chapters and every one needed a fix. This
+change takes the server-side ones.
+
+**The writer's title is kept.** The generation request had no `title` field,
+so the model named every story, including ones somebody had already titled.
+`validateGenerationRequest` now accepts an optional `title` (trimmed,
+whitespace-collapsed, ≤ 120 characters, refused rather than clipped when
+longer, blank means absent). Both generation handlers assign it over
+`output.title` before anything reads it, so the completion RPC, the cover
+prompt and the `done` payload all carry it; the streamed path also passes it to
+the early naming call as `storyTitle` and paints it in the `title` event.
+Client: `CreateDraft.title` and `buildGenerationRequestBody` send it only when
+non-blank. The Create flow has no title input and none was added.
+
+**`_shared/prose-integrity.ts` cleans every chapter before it is persisted**,
+on all five paths that write model prose (generate-story, generate-story-stream,
+continue-story on both transports via `persistContinuation`, reimagine-chapter,
+edit-story's AI paragraph rewrite; not the notepad save). It strips trailing
+JSON/markup residue (`arrived."}",`), a duplicated final paragraph, model-note
+lines ("...is banned, avoid. Use:", "Word count check: approx 1330 words",
+"(Note:", "[Author's note"), sentences sharing a nine-word normalised run with
+a moment, beat or cast background/appearance sentence (pronouns collapsed, so
+a sheet line in a character's mouth is caught), and "from Chapter 1"-style
+cross-references and reader address. Conservative by construction: in-world
+books are exempt, the echo rule stands down above 15% of a chapter's
+sentences, a pass removing over 40% of the words reverts to residue-only, and a
+chapter nothing matched is returned byte for byte. Each removal logs
+`prose_integrity_removed` (bucket `generation.story`, severity `low`, kinds and
+counts only). Brands from the editors' list log `brand_name_leaked` and are not
+rewritten. `errors.ts` now allows `terms` and `removed_count` -- `terms` had
+been silently dropped from every `crude_lexicon_leaked` row since that scan was
+written.
+
+**Prompt.** Layer 1 gains a brand reinforcement beside "No real brand names",
+and three rules under What NOT to Do: the brief is private guidance and is
+never quoted or paraphrased; never refer to chapters or the reader; never
+include notes to yourself.
+
+**Distinct chapter titles.** `continue-story` now reads every chapter title
+(a fifth read in the existing `Promise.all`) and passes them to the
+continuation prompt and the naming call (`buildUsedChapterTitlesBlock`).
+`_shared/chapter-titles.ts` guards persistence: a title normalising to an
+existing one or to the story title is refused, then the metadata name, then a
+title derived from the hook / first line / opening sentence, then `Chapter N`.
+A duplicate early name is not painted. Replacements log
+`duplicate_chapter_title_replaced` (low). `reimagine-chapter` is not guarded
+yet: its window stops at the chapters before the target.
+
+**Gates.** Backend: `deno check` clean on every function, 916 function tests
+pass. Expo (Node 22): `tsc --noEmit` clean, lint 0 errors / 29 warnings,
+1246 tests across 126 suites (with `--maxWorkers=2`; the reader UI suites time
+out under the default worker count while this machine's load average is ~200).
+
+**Not deployed, not run against the remote, no database touched.**

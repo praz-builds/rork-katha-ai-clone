@@ -12,6 +12,7 @@ import {
   StreamCommittedError,
 } from "../_shared/story-stream.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
+import { enforceProseIntegrity } from "../_shared/prose-integrity.ts";
 
 const EDIT_SYSTEM_PROMPT =
   `You are a story editor. You will receive a paragraph from a story and an editing instruction.
@@ -258,8 +259,20 @@ serve(async (req) => {
     // optimistic-concurrency predicate in particular must not be duplicated:
     // it is the only thing standing between two overlapping edits and a
     // silently discarded one.
+    //
+    // The rewrite is model prose, so it passes the same integrity check as a
+    // generated chapter before it is spliced in: an editor model asked for
+    // "only the edited paragraph" still returns a note or a trailing brace
+    // often enough. No brief is passed -- this path never sends the model one,
+    // so there is nothing for it to have pasted. The notepad save below is the
+    // writer's own typing and is deliberately NOT checked: what a person wrote
+    // is theirs, whatever it looks like.
     const persistRewrite = async (rewritten: string) => {
-      paragraphs[paragraphIndex] = rewritten.trim();
+      const checked = await enforceProseIntegrity(rewritten, {}, {
+        feature: "edit_story",
+        storyId,
+      });
+      paragraphs[paragraphIndex] = checked.text.trim();
       const updatedContent = paragraphs.join("\n\n");
       const wordCount = updatedContent.split(/\s+/).filter(Boolean).length;
       const { updated } = await updateChapterContentIfUnchanged(

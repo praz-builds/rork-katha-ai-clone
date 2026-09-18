@@ -6,7 +6,9 @@ import {
 import {
   buildContinuationSystemPrompt,
   buildContinuationUserPrompt,
+  buildStoryProsePrompt,
   buildStorySystemPrompt,
+  buildUsedChapterTitlesBlock,
   buildUserPrompt,
   type ContinuationPromptInput,
   fenceUserText,
@@ -2197,4 +2199,53 @@ Deno.test("every other planned length keeps the contract it always had", () => {
     plannedChapterCount: 1,
   });
   assertStringIncludes(standalone, "## Standalone Story Contract");
+});
+
+// ---------------------------------------------------------------------------
+// Prose integrity reinforcement (2026-09-18 editorial review)
+// ---------------------------------------------------------------------------
+
+Deno.test("the continuation prompt lists every title already used and asks for a new one", () => {
+  const { jsonPrompt, prosePrompt } = buildContinuationUserPrompt(
+    continuationInput({
+      previousChapterTitles: ["The Spare Keys", "The Urdu Newspaper"],
+    }),
+  );
+  for (const prompt of [jsonPrompt, prosePrompt]) {
+    assertStringIncludes(prompt, "Chapter titles already used in this story");
+    assertStringIncludes(prompt, "The Spare Keys");
+    assertStringIncludes(prompt, "The Urdu Newspaper");
+    assertStringIncludes(prompt, "This chapter's title must be new");
+  }
+  // The exclusion stays last: the titles go in front of it, not after it.
+  assert(
+    jsonPrompt.indexOf("Chapter titles already used") <
+      jsonPrompt.indexOf("This must not appear in the story"),
+  );
+});
+
+Deno.test("a continuation with no titled chapters renders no titles block", () => {
+  const { jsonPrompt } = buildContinuationUserPrompt(continuationInput());
+  assert(!jsonPrompt.includes("Chapter titles already used"));
+  assertEquals(buildUsedChapterTitlesBlock(["  ", ""]), "");
+});
+
+Deno.test("the base rules make the brief private and ban notes, chapter talk and everyday brands", () => {
+  const prompt = buildStorySystemPrompt({ primaryGenre: "mystery" });
+  assertStringIncludes(prompt, "The brief is private guidance, not text");
+  assertStringIncludes(prompt, "never quote them, and never paraphrase them");
+  assertStringIncludes(prompt, "Never refer to chapters");
+  assertStringIncludes(prompt, "never address the reader");
+  assertStringIncludes(prompt, "Never include notes to yourself");
+  assertStringIncludes(prompt, "car makers and car");
+  // The reinforcement sits beside the rule it reinforces.
+  assert(
+    prompt.indexOf("No real brand names") <
+      prompt.indexOf("Brand names include the everyday ones"),
+  );
+  // And it reaches the prose contract the streamed path uses.
+  assertStringIncludes(
+    buildStoryProsePrompt({ primaryGenre: "mystery" }),
+    "The brief is private guidance, not text",
+  );
 });

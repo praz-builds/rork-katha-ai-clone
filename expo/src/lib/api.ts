@@ -1219,6 +1219,10 @@ function buildGenerationRequestBody(
       spice_level: draft.spiceLevel,
       identity_lenses: draft.identityLenses,
       topic: draft.seed,
+      // Only when somebody chose one. Omitted rather than sent blank, so an
+      // untitled request is byte-identical to what it was before the field
+      // existed and the server names the story exactly as it always has.
+      ...(draft.title?.trim() ? { title: draft.title.trim() } : {}),
       // Blank rows never leave the device.
       //
       // The create screen used to seed one empty character and send it as-is;

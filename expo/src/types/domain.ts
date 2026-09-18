@@ -468,6 +468,17 @@ export type ImageStyle = typeof IMAGE_STYLES[number];
 export type StoryFlow = "interactive" | "auto";
 
 export type CreateDraft = {
+  /**
+   * The story's title, when somebody chose one. Absent means "name it for me",
+   * which is what the Create flow always asks for today -- it has no title
+   * input. The field exists for callers that do title a story before it is
+   * written (the house library does), because without it the server named
+   * every story itself and a chosen title was silently replaced.
+   *
+   * When sent, the server keeps it over any name the model produces
+   * (`validation.ts` bounds it at 120 characters).
+   */
+  title?: string;
   primaryGenre: Genre;
   /** Primary first. Extra values are editable secondary shelf tags. */
   genres?: Genre[];

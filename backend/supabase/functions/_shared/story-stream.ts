@@ -65,6 +65,7 @@ import {
   systemMessage,
 } from "./llm.ts";
 import {
+  buildUsedChapterTitlesBlock,
   CHAPTER_TITLE_SHAPE,
   STORY_TITLE_RULES,
 } from "./story-prompts.ts";
@@ -765,6 +766,13 @@ export interface ChapterNamingInput {
   /** What the writer asked this chapter to do, for a continuation. */
   instruction?: string | null;
   characterNames?: readonly string[];
+  /**
+   * Every chapter title the story already has. This call's title WINS at
+   * persist time, so it is the one call that most needs the list -- and the
+   * one that, until 2026-09-18, never had it. The server still guards the
+   * result (`_shared/chapter-titles.ts`); this is what makes the guard rare.
+   */
+  previousChapterTitles?: readonly string[];
 }
 
 /** A fenced block, with the fence characters stripped out of the content. */
@@ -809,6 +817,8 @@ export function buildChapterNamingPrompt(input: ChapterNamingInput): string {
       fenced("instruction", input.instruction.trim()),
     );
   }
+  const usedTitles = buildUsedChapterTitlesBlock(input.previousChapterTitles);
+  if (usedTitles) lines.push(``, usedTitles);
   return lines.join("\n");
 }
 
