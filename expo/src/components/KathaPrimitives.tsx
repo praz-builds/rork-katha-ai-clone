@@ -47,9 +47,16 @@ export function FocalImage({
         <Image source={source as number} style={StyleSheet.absoluteFill} resizeMode="cover" onLoad={onLoad} />
       );
     }
+    // Absolutely positioned, like the native branch's `absoluteFill`. Callers
+    // layer a genre gradient (itself `absoluteFill`) under the art, and CSS
+    // paints positioned boxes above in-flow ones whatever the source order -
+    // so a static <img> here loaded fine and was hidden behind the gradient.
     return React.createElement("img", {
       src: uri,
       style: {
+        position: "absolute",
+        top: 0,
+        left: 0,
         width: style?.width ?? "100%",
         height: style?.height ?? "100%",
         objectFit: "cover",
