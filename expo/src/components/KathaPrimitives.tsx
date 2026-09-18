@@ -47,9 +47,16 @@ export function FocalImage({
         <Image source={source as number} style={StyleSheet.absoluteFill} resizeMode="cover" onLoad={onLoad} />
       );
     }
+    // Absolutely positioned, like the native branch's `absoluteFill`. Callers
+    // layer a genre gradient (itself `absoluteFill`) under the art, and CSS
+    // paints positioned boxes above in-flow ones whatever the source order -
+    // so a static <img> here loaded fine and was hidden behind the gradient.
     return React.createElement("img", {
       src: uri,
       style: {
+        position: "absolute",
+        top: 0,
+        left: 0,
         width: style?.width ?? "100%",
         height: style?.height ?? "100%",
         objectFit: "cover",
@@ -136,7 +143,15 @@ export function Chip({
 }
 
 export function Cover({ story, size = "card" }: { story: Story; size?: "card" | "mini" }) {
-  const image = story.coverImage ? imageAssets[story.coverImage] : undefined;
+  // The generated cover first, the bundled seed asset second, as in
+  // StoryFeedCard and StoryDetailScreen. Reading only `coverImage` meant every
+  // story from the database - every one a user wrote - showed the bare genre
+  // gradient on Library shelves and author pages.
+  const image = story.coverImageUrl
+    ? { uri: story.coverImageUrl }
+    : story.coverImage
+    ? imageAssets[story.coverImage]
+    : undefined;
   const gradient = genreGradients[story.genre];
   const focalX = story.focalX ?? 0.5;
   const focalY = story.focalY ?? 0.5;
