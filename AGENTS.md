@@ -732,8 +732,9 @@ Chapter 1's art **is** the story's cover, and it is generated with chapter 1 rat
 
 1. **Genre config** (static per genre from `GENRE_PROMPTS`): style, palette, composition, mood, characterApproach (`"scene"` | `"silhouette"` | `"portrait"`).
 2. **Story-specific context** (dynamic): title, themes (up to 4).
-3. **Character integration** (dynamic): scene (no explicit characters), silhouette (distant figure), portrait (three-quarter view).
-4. **Invariant suffix**: no text/titles/words/letters/watermarks, portrait orientation, centered composition, professional book cover art quality.
+3. **Character integration** (dynamic): scene (the lead character placed within the scene, not posed), silhouette (a mid-distance full figure read by shape, clothing and props -- the word "silhouette" is deliberately not sent, since the appearance it came with lists facial detail), portrait (three-quarter view). No describable cast means no cast clause, in every approach.
+4. **Invariant suffix**: the cover-only safe zone (top 15% free of faces; main face between 20% and 50% of the height, centred left-to-right, so the story-page hero, the 3:4 Home card and the square library card all keep it), no text/titles/words/letters/watermarks, no border/frame/decorative edge/vignette (on covers, chapter art and portraits -- no genre config may ask for a border), portrait orientation, professional book cover art quality.
+5. **A picked art style opens and closes the prompt** (`Art style: ...` first, a one-line reminder last) and replaces the genre's `Visual style:` line; `auto` keeps the genre's style in its usual place.
 
 ### Retry Strategy
 

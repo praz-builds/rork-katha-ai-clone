@@ -37,6 +37,55 @@ backend change was needed.
 - Tests: `curated-stories.test.ts`, `story-catalogue.test.ts`. Full suite
   128/128 suites, 1266 tests.
 
+## 2026-09-18 UTC — Cover prompts: the cast in scene genres, a safe zone for today's hero, no frames
+
+**Session:** `codex/cover-prompt-fixes` (backend, prompt text only). Not
+deployed; no image API called.
+
+13 production cover prompts were drawn by two image models (Codex's and
+Gemini 2.5 Flash Image via OpenRouter). Five failures appeared on BOTH, so
+they were the prompt's. Fixed in `_shared/cover-prompts.ts` and `_shared/image.ts`:
+
+1. **Scene genres sent no cast** (comedy, educational, sliceOfLife,
+   contemporary, cozyFantasy, poetry, bedtime), so the model invented the
+   person -- a retired postman became an old woman. They now name the lead
+   "within the scene, as one part of it rather than posed for a portrait".
+   Zero describable cast still means no clause.
+2. **Stale crop line.** "Keep the upper third quiet -- cropped in the landscape
+   hero" described a hero that no longer exists and pushed faces UP, under the
+   story page's buttons. Replaced by `SAFE_ZONE_CLAUSE` (top 15% clear, face at
+   20-50% of height, centred left-to-right) on covers only; chapter plates are
+   shown whole at 2:3 and do not get it.
+3. **"Silhouette" contradicted the appearance it carried** (eye colour, a
+   chipped tooth). The word is dropped rather than filtering face words out of
+   free text in three languages: a mid-distance full figure read by shape,
+   clothing and props. Fantasy and scifi compositions lost the word too.
+4. **Picked art style too weak; frames unasked.** A picked style now opens
+   (`Art style: ...`) and closes the prompt and replaces the middle
+   `Visual style:` line. `NO_FRAME_CLAUSE` is on every cover, chapter plate and
+   portrait, and the three genre configs that asked for borders (fantasy,
+   historical, folktale) no longer do. Both new closing clauses sit after the
+   no-text line so `describePreviousCover` does not quote them back.
+5. **Grammar.** "a adventure" -> "an adventure", genre keys read as English
+   ("a slice of life", "a science fiction"), and where-and-when's leading
+   "A/An/The" is lower-cased after "set in" -- nothing else, so proper nouns
+   are untouched.
+
+**Gates.** `deno check` clean on every edge function; `deno test` over
+`backend/supabase/functions/` 884 passed, 0 failed. `AGENTS.md` (Cover Image
+System > Prompt Construction) and `backend/COVER_IMAGES.md` updated to match.
+
+**Review follow-up (PR #104, CodeAnt).** Where-and-when was interpolated raw
+and could end our sentence with an instruction of its own. It is now bounded
+by `settingForSentence` -- first line only, quote/bracket characters removed,
+whitespace collapsed, capped at 160 at a word boundary, and emitted as quoted
+data (`set in "..."`) -- in the cover and chapter builders, so every safety
+level gets it. Punctuation is kept ("St. Ives"), unlike `sanitizeExclusion`.
+The picked-style reminder is now genuinely the last clause of cover, chapter
+and portrait prompts (after the orientation line and, on portraits, after the
+reference clause, whose rule is only that the text precedes the image).
+889 function tests pass.
+
 ---
 
 ## 2026-09-16 UTC — Security review close on 00089: the reviewer's account, the report targets, and a read gate that believed the client
