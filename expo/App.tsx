@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSharedValue } from "react-native-reanimated";
 import { initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
-import { fetchCreatedShelf } from "@/lib/api";
+import { fetchCreatedShelf, fetchCuratedStories } from "@/lib/api";
 import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
 import { bootstrapUser, signOutToSignIn } from "@/lib/session";
 import { setEntitlementOverride } from "@/lib/entitlements";
@@ -46,6 +46,13 @@ import {
   plannedChapterCountOf,
 } from "@/lib/generation-session";
 import { loadStoryChapters } from "@/lib/search";
+import {
+  buildStoryCatalogue,
+  hydrateForOpen,
+  isSeries,
+  needsChapters,
+  openTarget,
+} from "@/lib/story-catalogue";
 import {
   cachedDisplayName,
   cacheDisplayName,
@@ -213,6 +220,16 @@ export default function App() {
    * work and must never appear in "Your stories".
    */
   const [discoveredStories, setDiscoveredStories] = useState<Story[]>([]);
+  /**
+   * The Katha Originals, read from the database on boot. Metadata only: a
+   * tap hydrates the one story chosen (see `openStory`).
+   *
+   * Empty until the read answers, and empty for good when it fails -- and
+   * empty means "show the bundled seed catalogue instead", so an offline
+   * first launch still opens onto a Home with something on it. The rule that
+   * swaps one for the other lives in `buildStoryCatalogue`.
+   */
+  const [curatedStories, setCuratedStories] = useState<Story[]>([]);
   /**
    * The reader's streak in days, or null while it is unknown.
    *
@@ -421,6 +438,23 @@ export default function App() {
       // The visible app is intentionally sign-in-free. Leave paid actions
       // unavailable until a later retry can establish their server identity.
       console.warn("Guest bootstrap failed:", error);
+    }).finally(() => {
+      // The Katha Originals, once the session question is settled either way.
+      //
+      // After it rather than beside it so the read goes out with whatever
+      // identity the boot established, the way the created shelf does. But
+      // in `finally`, not in the `then`: RLS lets the anonymous key read
+      // curated stories with no session at all, so a failed bootstrap (a
+      // rate-limited anonymous sign-in, say) is no reason to show a reader
+      // the placeholder catalogue when the real one is readable.
+      //
+      // `fetchCuratedStories` never rejects and answers `[]` for every
+      // failure, and an empty answer is left alone rather than written: the
+      // seed catalogue is what an empty `curatedStories` means.
+      if (!active) return;
+      void fetchCuratedStories().then((curated) => {
+        if (active && curated.length > 0) setCuratedStories(curated);
+      });
     });
     return () => {
       active = false;
@@ -621,8 +655,14 @@ export default function App() {
   const gatedSession = generations.find((session) => session.gatedReason);
 
   const allStories = useMemo(
-    () => [...generatedStories, ...discoveredStories, ...stories],
-    [generatedStories, discoveredStories],
+    () =>
+      buildStoryCatalogue({
+        generated: generatedStories,
+        discovered: discoveredStories,
+        curated: curatedStories,
+        seed: stories,
+      }),
+    [generatedStories, discoveredStories, curatedStories],
   );
 
   /**
@@ -771,20 +811,29 @@ export default function App() {
   if (preview === "loader") return <LoaderPreview />;
   if (preview === "narration-loader") return <NarrationLoaderPreview />;
 
-  /**
-   * A series gets a landing page; a standalone opens straight into its prose.
-   *
-   * The landing page earns its extra tap only when there is something to land
-   * ON - a chapter list to choose from, a series premise to read before
-   * committing. For a single-chapter story that page would be a wall between
-   * the reader and the one thing they tapped for, so the tap goes where the
-   * intent went.
-   */
-  const isSeries = (story: Story) =>
-    story.storyMode === "series" || story.chapters.length > 1;
+  // `isSeries` -- whether a tap lands on the series page or in the prose --
+  // lives in `lib/story-catalogue.ts` beside the hydrate-on-open decision it
+  // has to be made after.
 
   const openStory = (storyId: string) => {
     const story = allStories.find((item) => item.id === storyId);
+    // A Katha Original arrives without its chapters (`fetchCuratedStories`
+    // is metadata only), and so does anything else read the same way. Every
+    // screen hands its taps to this one function -- Home's rails, Tonight,
+    // Explore's browse, Story detail's "more like this" -- so this is the
+    // single place a chapterless story can be caught before the reader opens
+    // onto a cover, a title and no words. It takes the same road Explore's
+    // search results do.
+    if (
+      story &&
+      needsChapters(
+        story,
+        new Set(generatedStories.map((item) => item.id)),
+      )
+    ) {
+      void openDiscoveredStory(story);
+      return;
+    }
     setScreen(
       story && isSeries(story)
         ? { name: "story", storyId }
@@ -792,10 +841,12 @@ export default function App() {
     );
   };
   /**
-   * Opens a story that came back from Explore's search.
+   * Opens a story whose chapters the client does not have yet: a result from
+   * Explore's search, or a Katha Original tapped anywhere (`openStory` routes
+   * every chapterless story here).
    *
    * Two things have to happen before the navigation, and in this order.
-   * First the chapters are fetched: search returns metadata only, so the
+   * First the chapters are fetched: both reads return metadata only, so the
    * story in hand has an empty `chapters` array and the reader would open on
    * a blank page. Then it is merged into `discoveredStories`, so the id the
    * screen is about to be pointed at actually resolves in `allStories`.
@@ -812,21 +863,33 @@ export default function App() {
    * leaves the tap available to try again.
    */
   const openDiscoveredStory = async (story: Story) => {
-    const { ok, story: full } = await loadStoryChapters(story);
-    if (!ok) {
+    const opened = await hydrateForOpen(story, loadStoryChapters);
+    if (opened.kind === "unreachable") {
       Alert.alert(
         "We could not open that story",
         "Check your connection and try again.",
       );
       return;
     }
+    // A story with no published chapter is a real answer from the server,
+    // not a failure to retry -- and still not something to open. The reader
+    // and the series page both assume a first chapter, so navigating showed
+    // an empty page with no explanation. Say so, and stay where the tap was.
+    if (opened.kind === "unpublished") {
+      Alert.alert(
+        "This story is not ready yet",
+        "Its first chapter has not been published. Try another story.",
+      );
+      return;
+    }
+    const full = opened.story;
     setDiscoveredStories((current) =>
       current.some((item) => item.id === full.id)
         ? current.map((item) => (item.id === full.id ? full : item))
         : [...current, full]
     );
     setScreen(
-      isSeries(full)
+      openTarget(full) === "story"
         ? { name: "story", storyId: full.id }
         : { name: "reader", storyId: full.id },
     );

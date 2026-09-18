@@ -7,6 +7,38 @@
 
 ---
 
+## 2026-09-18 UTC — Katha Originals on Home: the client reads curated stories from the database
+
+**Session:** `codex/originals-on-home` (client only; no schema, no deploy).
+
+Home never read `stories`. Its house shelf was the bundled seed catalogue
+(`expo/src/data/seed.ts`), so the ~83 curated originals about to be published
+(`is_curated = true`, `is_public = true`, cover set, chapters published) would
+have appeared nowhere in the app. RLS has allowed anyone, anonymous included,
+to read `is_public OR is_curated` rows and their chapters since 00002, so no
+backend change was needed.
+
+- `fetchCuratedStories()` (`expo/src/lib/api.ts`): `is_curated = true`,
+  `status = 'complete'`, newest first, limit 120, **metadata only** — no
+  chapter query per row. Mapped by `mapStoryRow`, split out of
+  `hydrateStoryRow` so the created shelf, Starred and the curated read share
+  one mapper. Fails soft to `[]`. Two mapper fixes ride along: a curated row
+  is tagged with its `themes` instead of `"draft"` (Explore turns tags into
+  filter chips), and every row is dated by `created_at` via
+  `publishedOffsetFrom` instead of `0`.
+- `App.tsx` reads it once the boot session settles (in `finally`, so a failed
+  anonymous bootstrap does not keep the placeholders up), and builds
+  `allStories` with `buildStoryCatalogue` (`expo/src/lib/story-catalogue.ts`):
+  curated stories replace the seed catalogue once any have loaded; the seed
+  stays as the offline / not-yet-seeded fallback.
+- A tap on any chapterless story goes through the existing search open path
+  (`openDiscoveredStory` → `loadStoryChapters`), now via `hydrateForOpen`,
+  which also refuses to navigate when a story has no published chapter.
+- Tests: `curated-stories.test.ts`, `story-catalogue.test.ts`. Full suite
+  128/128 suites, 1266 tests.
+
+---
+
 ## 2026-09-16 UTC — Security review close on 00089: the reviewer's account, the report targets, and a read gate that believed the client
 
 **Session:** `codex/profile-credits-launch`, WP1 (backend). Migration 00090

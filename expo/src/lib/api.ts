@@ -6,6 +6,9 @@ import {
 } from "@/lib/character-image-allowance";
 import { pushPermissionGranted } from "@/lib/notifications";
 import { bootstrapUser } from "@/lib/session";
+// The age helper Explore's search results are dated with, so a story reads
+// the same age whichever read it arrived through.
+import { publishedOffsetFrom } from "@/lib/search";
 import { postEventStream, StreamTransportError } from "@/lib/stream";
 import {
   isSupabaseConfigured,
@@ -818,13 +821,78 @@ export async function fetchStarredShelf(): Promise<ShelfResult> {
   return { ok: true, stories };
 }
 
-/** One library row plus its chapters, or null when the row is unusable. */
-async function hydrateStoryRow(row: unknown): Promise<Story | null> {
+/**
+ * The Katha Originals: every curated story, newest first, WITHOUT chapter
+ * bodies.
+ *
+ * Home never read the database before this. Its house shelf was the bundled
+ * seed catalogue, so a curated story published to production appeared
+ * nowhere in the app -- not on Home, not in a genre rail, not on Tonight -- no
+ * matter how many were published. RLS has let anyone, anonymous guests
+ * included, read `is_public OR is_curated` stories and their chapters since
+ * 00002, so this is a straight PostgREST read with no edge function in front.
+ *
+ * METADATA ONLY, and that is the point of it. The shelf reads above fetch
+ * every chapter of every row, which is right for a writer's thirty stories
+ * and wrong for a catalogue of eighty-odd novels a reader will open two of:
+ * that would be a chapter query per story and every word of every chapter
+ * downloaded on boot, before the first frame of Home. Cards need a title, a
+ * cover and a genre. The chapters are bought once, for the one story tapped,
+ * by `loadStoryChapters` -- the same path Explore's search results already
+ * take, and `App.tsx` routes a tap on any chapterless story through it.
+ *
+ * Bounded at `CURATED_LIMIT` so a catalogue that grows past what a rail can
+ * show does not grow the boot request with it.
+ *
+ * Mapped by `mapStoryRow`, the mapper the shelf reads use, so a curated story
+ * reads identically whether it arrived here, from Starred, or from a shelf.
+ *
+ * Fails soft, like `fetchMyStories`: this runs on boot, and a network blip
+ * should give the reader the app, not an error. The caller treats an empty
+ * answer as "keep the bundled catalogue", which is the offline first launch.
+ */
+export async function fetchCuratedStories(): Promise<Story[]> {
+  if (!isSupabaseConfigured) return [];
+  try {
+    const { data, error } = await supabase
+      .from("stories")
+      // `themes` beyond the shelf columns: it is what a curated story has in
+      // place of the "draft" tag a writer's own story carries. See
+      // `mapStoryRow`.
+      .select(`${SHELF_STORY_COLUMNS}, themes`)
+      .eq("is_curated", true)
+      .eq("status", "complete")
+      .order("created_at", { ascending: false })
+      .limit(CURATED_LIMIT);
+    if (error || !Array.isArray(data)) return [];
+    return data
+      .map((row) => {
+        const record = storyRecord(row);
+        return record ? mapStoryRow(record, []) : null;
+      })
+      .filter((story): story is Story => story !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** The most curated stories one boot read will fetch. */
+export const CURATED_LIMIT = 120;
+
+/** A story row with the two fields nothing can be shown without, or null. */
+function storyRecord(row: unknown): Record<string, unknown> | null {
   if (!row || typeof row !== "object") return null;
   const record = row as Record<string, unknown>;
-  const id = typeof record.id === "string" ? record.id : null;
-  const title = typeof record.title === "string" ? record.title : null;
-  if (!id || !title) return null;
+  if (typeof record.id !== "string" || !record.id) return null;
+  if (typeof record.title !== "string" || !record.title) return null;
+  return record;
+}
+
+/** One library row plus its chapters, or null when the row is unusable. */
+async function hydrateStoryRow(row: unknown): Promise<Story | null> {
+  const record = storyRecord(row);
+  if (!record) return null;
+  const id = record.id as string;
 
   const { data: chapterRows } = await supabase
     .from("chapters")
@@ -861,6 +929,23 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
   // leads to an empty page.
   if (chapters.length === 0) return null;
 
+  return mapStoryRow(record, chapters);
+}
+
+/**
+ * A `stories` row, plus whatever chapters the caller has for it, as a `Story`.
+ *
+ * The single mapper for every direct read of `stories`: the created shelf,
+ * Starred, and the curated catalogue. `chapters` may be empty -- the curated
+ * read is metadata only by design -- so nothing here may assume a first
+ * chapter exists. `storyRecord` has already checked `id` and `title`.
+ */
+function mapStoryRow(
+  record: Record<string, unknown>,
+  chapters: Chapter[],
+): Story {
+  const id = record.id as string;
+  const title = record.title as string;
   const serverGenres = Array.isArray(record.genre) ? record.genre : [];
   const genre = isGenre(record.primary_genre)
     ? record.primary_genre
@@ -918,13 +1003,22 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
       : undefined,
     synopsis: typeof record.topic === "string" && record.topic.trim()
       ? record.topic.trim()
-      : chapters[0].paragraphs[0]?.slice(0, 180) ?? "",
+      : chapters[0]?.paragraphs[0]?.slice(0, 180) ?? "",
     chapters,
     likes: numberOrZero(record.like_count),
     bookmarks: numberOrZero(record.bookmark_count),
     views: numberOrZero(record.read_count),
-    tags: ["draft"],
-    publishedOffset: 0,
+    // A house original is not a draft. Explore turns every tag into a filter
+    // chip, so eighty curated stories tagged "draft" would add a chip that
+    // selects the entire house catalogue under a label that describes none
+    // of it. Their themes are the honest tags; the writer's own shelf keeps
+    // the label it has always had.
+    tags: record.is_curated === true ? stringList(record.themes) : ["draft"],
+    // The row's real age, not "today". It was 0 for every row, which dated
+    // every shelf story on Story detail to the day it was opened and left
+    // Explore's Newest sort nothing to tell two of them apart by -- harmless
+    // for one writer's handful, and the whole sort for a curated catalogue.
+    publishedOffset: publishedOffsetFrom(record.created_at),
     isFeatured: record.is_curated === true,
     language: typeof record.language === "string" ? record.language : "English",
     coverImageUrl: stringOrUndefined(record.cover_image_url),
