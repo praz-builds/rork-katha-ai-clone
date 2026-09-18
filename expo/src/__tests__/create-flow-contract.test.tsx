@@ -514,7 +514,7 @@ describe("approved Create flow", () => {
     },
   );
 
-  it("defaults visibility to private in the generation payload", async () => {
+  it("defaults visibility to public in the generation payload", async () => {
     mockGenerateStory.mockResolvedValueOnce(generatedStory);
     const view = await renderCreate({ isAnonymous: false });
     await fillIdea(view);
@@ -524,27 +524,7 @@ describe("approved Create flow", () => {
     ).toBeTruthy();
     // The control itself says so before anything is spent -- there is no
     // review screen left to restate it on.
-    expect(
-      view.getByRole("button", { name: "Who can read it" }).props
-        .accessibilityValue,
-    ).toEqual({ text: "Private" });
-
-    await fireEvent.press(view.getByRole("button", { name: /create/i }));
-    await startFromDirectionStep(view);
-    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
-
-    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
-      visibility: "private",
-    });
-  });
-
-  it("can be switched to Public visibility and it reaches the generation payload", async () => {
-    mockGenerateStory.mockResolvedValueOnce(generatedStory);
-    const view = await renderCreate({ isAnonymous: false });
-    await fillIdea(view);
-
-    await fireEvent.press(view.getByRole("button", { name: "Who can read it" }));
-    await fireEvent.press(view.getByRole("button", { name: "Public" }));
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
     expect(
       view.getByRole("button", { name: "Who can read it" }).props
         .accessibilityValue,
@@ -556,6 +536,28 @@ describe("approved Create flow", () => {
 
     expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
       visibility: "public",
+    });
+  });
+
+  it("can be switched to Private visibility and it reaches the generation payload", async () => {
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+    await fireEvent.press(view.getByRole("button", { name: "Who can read it" }));
+    await fireEvent.press(view.getByRole("button", { name: "Private" }));
+    expect(
+      view.getByRole("button", { name: "Who can read it" }).props
+        .accessibilityValue,
+    ).toEqual({ text: "Private" });
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await startFromDirectionStep(view);
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      visibility: "private",
     });
   });
 

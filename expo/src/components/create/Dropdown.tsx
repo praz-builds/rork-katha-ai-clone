@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
-import { Check, ChevronDown } from "lucide-react-native";
+import { Check, ChevronDown, HelpCircle } from "lucide-react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
 
 /**
@@ -49,7 +49,11 @@ export type DropdownOption<T extends string = string> = {
   accessibilityLabel?: string;
   /** Optional leading glyph, e.g. a genre emoji. */
   icon?: string;
-  /** Optional supporting caption shown under the label inside the menu only. */
+  /**
+   * What this option means. Never shown in the menu itself -- the menu is a
+   * plain list of labels. It appears only in the dropdown's help card, opened
+   * from the "?" on a trigger that sets `help`.
+   */
   detail?: string;
 };
 
@@ -71,6 +75,12 @@ type Anchor = { x: number; y: number; width: number; height: number };
 
 type OpenMenuDescriptor = {
   id: string;
+  /** "options" is the picker; "help" is the "?" card explaining the options. */
+  kind: "options" | "help";
+  /** The field name, used as the help card's title. */
+  label: string;
+  /** Optional sentence at the top of the help card, above the option list. */
+  helpIntro?: string;
   testID?: string;
   // Starts null: opening must not wait on `measureInWindow`, which is
   // asynchronous (and, in tests, may never resolve at all -- see the
@@ -93,6 +103,13 @@ type DropdownContextValue = {
 const DropdownContext = createContext<DropdownContextValue | null>(null);
 
 const SCREEN_MARGIN = 12;
+
+/**
+ * Marks the menu, the help card, every trigger and every "?" so the web
+ * outside-click listener below leaves them alone. `dataSet` is how
+ * react-native-web renders a `data-*` attribute; native ignores it.
+ */
+const KEEP_OPEN = { dataSet: { dropdownKeep: "1" } } as Record<string, unknown>;
 
 /**
  * Closes whichever entry matches `id` (or, with no `id`, whichever is open).
@@ -125,7 +142,7 @@ function DropdownOverlayHost({
   children: ReactNode;
 }) {
   const rootRef = useRef<View>(null);
-  const [origin, setOrigin] = useState({ x: 0, y: 0 });
+  const [origin, setOrigin] = useState({ x: 0, y: 0, height: 0 });
 
   const measureOrigin = useCallback(() => {
     // The root is not itself a Modal, so the menu's window-absolute anchor
@@ -135,7 +152,7 @@ function DropdownOverlayHost({
     // above a `DropdownGroup` scrolls it -- so measuring once on layout is
     // enough; re-measuring per open would only matter if the root itself
     // could move, which it does not.
-    rootRef.current?.measureInWindow((x, y) => setOrigin({ x, y }));
+    rootRef.current?.measureInWindow((x, y, _width, height) => setOrigin({ x, y, height }));
   }, []);
 
   // Re-measured on every open, not only on layout.
@@ -158,6 +175,29 @@ function DropdownOverlayHost({
     return () => sub.remove();
   }, [openId, requestClose]);
 
+  /*
+    Web: a click ANYWHERE outside the open menu closes it.
+
+    The scrim cannot do this on its own. It is painted behind the page so the
+    other triggers stay reachable, which also puts every text field, label and
+    card in front of it -- so a click on the Writing style box, say, never
+    reached the scrim and a help card stayed open over the form. Clicks on a
+    trigger or a "?" are left to their own handlers, so pressing the same
+    control still toggles and pressing another still switches.
+  */
+  useEffect(() => {
+    if (Platform.OS !== "web" || !openId) return undefined;
+    const doc = (globalThis as { document?: Document }).document;
+    if (!doc) return undefined;
+    const onPointerDown = (event: Event) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.("[data-dropdown-keep]")) return;
+      requestClose(openId);
+    };
+    doc.addEventListener("pointerdown", onPointerDown, true);
+    return () => doc.removeEventListener("pointerdown", onPointerDown, true);
+  }, [openId, requestClose]);
+
   return (
     <View ref={rootRef} onLayout={measureOrigin} style={rootStyle} collapsable={false}>
       {openId ? (
@@ -172,7 +212,13 @@ function DropdownOverlayHost({
       ) : null}
       {children}
       {openId && openMenu ? (
-        <DropdownMenu descriptor={openMenu} originX={origin.x} originY={origin.y} onDone={() => requestClose(openId)} />
+        <DropdownMenu
+          descriptor={openMenu}
+          originX={origin.x}
+          originY={origin.y}
+          originHeight={origin.height}
+          onDone={() => requestClose(openId)}
+        />
       ) : null}
     </View>
   );
@@ -182,11 +228,13 @@ function DropdownMenu({
   descriptor,
   originX,
   originY,
+  originHeight,
   onDone,
 }: {
   descriptor: OpenMenuDescriptor;
   originX: number;
   originY: number;
+  originHeight: number;
   onDone: () => void;
 }) {
   const { anchor, options, value, onChange } = descriptor;
@@ -217,16 +265,66 @@ function DropdownMenu({
   const anchorBottom = anchor ? anchor.y + anchor.height : 0;
   const roomBelow = screenHeight - anchorBottom - MENU_GAP - SCREEN_MARGIN;
   const roomAbove = anchorTop - MENU_GAP - SCREEN_MARGIN;
-  // Only flip when it is a real improvement. Flipping for a few pixels would
-  // make the menu jump sides between two visually identical triggers.
-  const openUpward = roomBelow < MENU_MIN_HEIGHT && roomAbove > roomBelow;
+  /*
+    Open below the trigger whenever the list itself fits there, like every
+    other dropdown. The flip used to fire whenever there was less than
+    MENU_MIN_HEIGHT below -- so Language, the last field on the page with a
+    single option, jumped above itself though its one row fitted below with
+    room to spare. It now flips only when this menu's own height does not fit
+    below (capped at MENU_MIN_HEIGHT for long lists, which may scroll), and
+    only when above is a real improvement.
+  */
+  const neededHeight = descriptor.kind === "help"
+    ? MENU_MIN_HEIGHT
+    : Math.min(options.length * OPTION_MIN_HEIGHT + spacing.xs * 2 + 2, MENU_MIN_HEIGHT);
+  const openUpward = roomBelow < neededHeight && roomAbove > roomBelow;
   const available = Math.max(openUpward ? roomAbove : roomBelow, MENU_MIN_HEIGHT);
   const maxHeight = Math.min(MENU_MAX_HEIGHT, available);
-  const top = anchor
-    ? openUpward
-      ? anchorTop - originY - MENU_GAP - maxHeight
-      : anchorBottom - originY + MENU_GAP
-    : 0;
+  /*
+    An upward menu is pinned by its BOTTOM edge, just above the trigger.
+
+    It used to be pinned by its top at `trigger - maxHeight`, which is only
+    right when the menu is exactly `maxHeight` tall. A short list -- Language
+    has one option -- then floated up to 320px above its own trigger, over
+    whatever field sat there, and read as a different dropdown opening.
+    Anchoring the bottom edge keeps the menu against its trigger whatever its
+    real height turns out to be. `bottom` needs the root's height; until that
+    has been measured the old top-based placement is the fallback.
+  */
+  const placement: ViewStyle = !anchor
+    ? { top: 0 }
+    : openUpward && originHeight > 0
+      ? { bottom: originHeight - (anchorTop - originY) + MENU_GAP }
+      : openUpward
+        ? { top: anchorTop - originY - MENU_GAP - maxHeight }
+        : { top: anchorBottom - originY + MENU_GAP };
+
+  if (descriptor.kind === "help") {
+    const explained = options.filter((option) => option.detail);
+    return (
+      <View
+        {...KEEP_OPEN}
+        accessibilityViewIsModal
+        style={[
+          styles.menu,
+          styles.helpCard,
+          placement,
+          { left, minWidth: menuWidth, maxWidth: Math.min(screenWidth - SCREEN_MARGIN * 2, 360), maxHeight },
+        ]}
+      >
+        <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
+          <Text style={styles.helpTitle} accessibilityRole="header">{descriptor.label}</Text>
+          {descriptor.helpIntro ? <Text style={styles.helpText}>{descriptor.helpIntro}</Text> : null}
+          {explained.map((option) => (
+            <View key={option.value} style={styles.helpRow}>
+              <Text style={styles.helpOption}>{option.label}</Text>
+              <Text style={styles.helpText}>{option.detail}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
 
   // Worth stating because it is the difference between a scrollable list and
   // a truncated one: `showsVerticalScrollIndicator` is ON here. With it off,
@@ -236,15 +334,18 @@ function DropdownMenu({
 
   return (
     <View
+      {...KEEP_OPEN}
       accessibilityViewIsModal
       accessibilityRole={Platform.OS === "web" ? "menu" : undefined}
       style={[
         styles.menu,
-        { top, left, minWidth: menuWidth, maxWidth: screenWidth - SCREEN_MARGIN * 2, maxHeight },
+        placement,
+        { left, minWidth: menuWidth, maxWidth: screenWidth - SCREEN_MARGIN * 2, maxHeight },
       ]}
     >
       <ScrollView
         style={styles.menuScroll}
+        contentContainerStyle={styles.menuList}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={scrolls}
         persistentScrollbar={scrolls}
@@ -261,16 +362,23 @@ function DropdownMenu({
               accessibilityRole="button"
               accessibilityLabel={option.accessibilityLabel ?? option.label}
               accessibilityState={{ selected: isSelected }}
-              style={[styles.option, isSelected && styles.optionActive]}
+              // No dividers. Rows are told apart by their own rounded
+              // highlight -- peach when selected, a quiet track tint under a
+              // finger or pointer -- and by the gap between them.
+              style={(state) => {
+                const { pressed, hovered } = state as { pressed: boolean; hovered?: boolean };
+                return [
+                  styles.option,
+                  (pressed || hovered) && !isSelected && styles.optionHover,
+                  isSelected && styles.optionActive,
+                ];
+              }}
             >
               <View style={styles.optionCopy}>
                 {option.icon ? <Text style={styles.triggerIcon}>{option.icon}</Text> : null}
-                <View style={styles.optionTextGroup}>
-                  <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>
-                    {option.label}
-                  </Text>
-                  {option.detail ? <Text style={styles.optionDetail}>{option.detail}</Text> : null}
-                </View>
+                <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>
+                  {option.label}
+                </Text>
               </View>
               {isSelected ? <Check size={16} color={colors.accent} /> : null}
             </Pressable>
@@ -326,6 +434,7 @@ export function Dropdown<T extends string = string>({
   onOpen,
   variant = "field",
   disabled = false,
+  help,
   style,
   testID,
 }: {
@@ -341,6 +450,13 @@ export function Dropdown<T extends string = string>({
   /** "field": labelled box (Chapters, Chapter length, Language). "pill": icon + value chip (Genre). */
   variant?: "field" | "pill";
   disabled?: boolean;
+  /**
+   * Puts a "?" at the trigger's top-right that opens a card explaining the
+   * options (each option's `detail`). `true` lists the options alone; a string
+   * is shown first, above them. Omit it where the options explain themselves
+   * (Chapters, Language). Field variant only.
+   */
+  help?: boolean | string;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
@@ -355,7 +471,10 @@ export function Dropdown<T extends string = string>({
   const [localOpenMenu, setLocalOpenMenu] = useState<OpenMenuDescriptor | null>(null);
 
   const openId = context ? context.openId : localOpenId;
-  const isOpen = openId === dropdownId;
+  const openKind = context ? context.openMenu?.kind : localOpenMenu?.kind;
+  const isOpen = openId === dropdownId && openKind !== "help";
+  const helpId = `${dropdownId}:help`;
+  const isHelpOpen = openId === helpId;
 
   const localRequestClose = useCallback((closeId?: string) => {
     setLocalOpenId((current) => closeMatching(current, closeId));
@@ -377,8 +496,9 @@ export function Dropdown<T extends string = string>({
     returnFocusToTrigger();
   }, [context, dropdownId, localRequestClose, returnFocusToTrigger]);
 
-  const open = useCallback(() => {
+  const show = useCallback((kind: "options" | "help") => {
     Keyboard.dismiss();
+    const menuId = kind === "help" ? helpId : dropdownId;
     // Opens synchronously with no anchor yet, rather than waiting on
     // `measureInWindow` to open -- that call is asynchronous (a bridge
     // round-trip on a real device, and never resolved at all by the test
@@ -388,8 +508,11 @@ export function Dropdown<T extends string = string>({
     // `DropdownMenu` renders a sensible fallback position until the anchor
     // measurement lands and this is upgraded to the real one.
     const descriptor: OpenMenuDescriptor = {
-      id: dropdownId,
-      testID,
+      id: menuId,
+      kind,
+      label,
+      helpIntro: typeof help === "string" ? help : undefined,
+      testID: testID && kind === "help" ? `${testID}-help` : testID,
       anchor: null,
       options: options as readonly DropdownOption[],
       value,
@@ -397,18 +520,28 @@ export function Dropdown<T extends string = string>({
     };
     if (context) context.requestOpen(descriptor);
     else {
-      setLocalOpenId(dropdownId);
+      setLocalOpenId(menuId);
       setLocalOpenMenu(descriptor);
     }
     onOpen?.();
     triggerRef.current?.measureInWindow((x, y, width, height) => {
       const anchor: Anchor = { x, y, width, height };
-      if (context) context.updateAnchor(dropdownId, anchor);
+      if (context) context.updateAnchor(menuId, anchor);
       else {
-        setLocalOpenMenu((current) => (current && current.id === dropdownId ? { ...current, anchor } : current));
+        setLocalOpenMenu((current) => (current && current.id === menuId ? { ...current, anchor } : current));
       }
     });
-  }, [context, dropdownId, onChange, onOpen, options, testID, value]);
+  }, [context, dropdownId, help, helpId, label, onChange, onOpen, options, testID, value]);
+
+  const open = useCallback(() => show("options"), [show]);
+  const closeHelp = useCallback(() => {
+    if (context) context.requestClose(helpId);
+    else localRequestClose(helpId);
+  }, [context, helpId, localRequestClose]);
+  const toggleHelp = useCallback(() => {
+    if (isHelpOpen) closeHelp();
+    else show("help");
+  }, [closeHelp, isHelpOpen, show]);
 
   const toggle = useCallback(() => {
     if (isOpen) close();
@@ -428,9 +561,11 @@ export function Dropdown<T extends string = string>({
   }, [isOpen, close]);
 
   const selected = options.find((option) => option.value === value);
+  const showHelp = variant === "field" && help !== undefined && help !== false;
 
   const trigger = (
     <Pressable
+      {...KEEP_OPEN}
       ref={triggerRef}
       onPress={disabled ? undefined : toggle}
       disabled={disabled}
@@ -448,7 +583,7 @@ export function Dropdown<T extends string = string>({
       ]}
       testID={testID}
     >
-      {variant === "field" ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      {variant === "field" ? <Text style={[styles.fieldLabel, showHelp && styles.fieldLabelWithHelp]}>{label}</Text> : null}
       <View style={styles.triggerValueRow}>
         {selected?.icon ? <Text style={styles.triggerIcon}>{selected.icon}</Text> : null}
         <Text
@@ -465,11 +600,32 @@ export function Dropdown<T extends string = string>({
     </Pressable>
   );
 
+  /*
+    A sibling of the trigger, not a child: a pressable inside a pressable is a
+    button inside a button on web, and a tap on the "?" must never also open
+    the menu. It stays tappable while the trigger is disabled, because a
+    locked control is exactly the one whose options need explaining.
+  */
+  const helpButton = showHelp ? (
+    <Pressable
+      {...KEEP_OPEN}
+      onPress={toggleHelp}
+      accessibilityRole="button"
+      accessibilityLabel={`About ${label}`}
+      accessibilityState={{ expanded: isHelpOpen }}
+      hitSlop={8}
+      style={styles.helpButton}
+      testID={testID ? `${testID}-help-button` : undefined}
+    >
+      <HelpCircle size={14} color={isHelpOpen ? colors.accent : colors.tertiary} />
+    </Pressable>
+  ) : null;
+
   if (context) {
     // A DropdownGroup ancestor owns the shared scrim and menu -- see
     // `DropdownOverlayHost` above -- so this instance only ever renders its
     // trigger.
-    return <View style={style}>{trigger}</View>;
+    return <View style={style}>{trigger}{helpButton}</View>;
   }
 
   return (
@@ -480,6 +636,7 @@ export function Dropdown<T extends string = string>({
       rootStyle={style}
     >
       {trigger}
+      {helpButton}
     </DropdownOverlayHost>
   );
 }
@@ -500,16 +657,16 @@ const styles = StyleSheet.create({
     bottom: -2000,
   },
   fieldTrigger: {
-    minHeight: 48,
+    minHeight: 52,
     flexDirection: "column",
     justifyContent: "center",
-    gap: 2,
+    gap: 4,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
   },
   pillTrigger: {
     minWidth: 128,
@@ -526,6 +683,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   triggerDisabled: { opacity: 0.5 },
+  fieldLabelWithHelp: { paddingRight: spacing.xl },
+  // Level with the field label, and over the chevron's column so the two
+  // right-edge glyphs line up; the trigger's taller padding keeps them apart.
+  helpButton: {
+    position: "absolute",
+    top: 6,
+    right: spacing.md - 5,
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   fieldLabel: {
     color: colors.tertiary,
     fontFamily: fonts.ui,
@@ -557,8 +726,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOpacity: 0.12,
@@ -567,21 +734,25 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   menuScroll: { flexGrow: 0 },
+  menuList: { padding: spacing.xs, gap: 2 },
   option: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.sm,
+    borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
+  optionHover: { backgroundColor: colors.track },
   optionActive: { backgroundColor: colors.accentSoft },
   optionCopy: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
-  optionTextGroup: { flex: 1, gap: 1 },
-  optionLabel: { color: colors.ink, fontFamily: fonts.ui, fontSize: 14, fontWeight: "700" },
+  optionLabel: { flex: 1, color: colors.ink, fontFamily: fonts.ui, fontSize: 14, fontWeight: "700" },
   optionLabelActive: { color: colors.accent, fontWeight: "800" },
-  optionDetail: { color: colors.tertiary, fontFamily: fonts.ui, fontSize: 12 },
+  helpCard: { padding: spacing.md },
+  helpTitle: { color: colors.ink, fontFamily: fonts.ui, fontSize: 14, fontWeight: "800", marginBottom: spacing.xs },
+  helpRow: { marginTop: spacing.sm, gap: 2 },
+  helpOption: { color: colors.ink, fontFamily: fonts.ui, fontSize: 13, fontWeight: "700" },
+  helpText: { color: colors.muted, fontFamily: fonts.ui, fontSize: 13, lineHeight: 18 },
 });

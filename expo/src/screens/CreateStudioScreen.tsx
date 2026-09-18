@@ -174,7 +174,9 @@ const INITIAL_DRAFT: StudioDraft = {
   // value instead of on their own label.
   imageStyle: "auto",
   storyFlow: "interactive",
-  visibility: "private",
+  // Public by default: everyone reaching Create has signed in with email, and
+  // the server still forces a story private when the entity gate says so.
+  visibility: "public",
 };
 
 // ---------------------------------------------------------------------------

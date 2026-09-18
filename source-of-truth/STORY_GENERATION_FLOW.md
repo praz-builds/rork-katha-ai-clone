@@ -146,9 +146,9 @@ Create  ──▶  1. Idea      ──▶  2. Where does it begin?
 ```
 
 The main Create surface is one scrollable screen. Genre and Kids Mode sit in one
-parent row at the top, then **six dropdowns** (below), the user's idea, starter
-prompts, optional Premise, Values for kids, and Characters. Remaining
-lower-priority craft controls sit inside **More options**. The only second
+parent row at the top, then the user's idea, starter prompts, optional Premise,
+Values for kids, and Characters. **More options** sits last, above the Create
+button, and holds everything else, including all **six dropdowns** (below). The only second
 surface in main Create is the full-screen Craft character modal opened by **Add
 a character**.
 
@@ -180,9 +180,12 @@ sits on the direction step's own submit label.
 
 ### The six dropdowns
 
-Four sit above the text fields and two at the foot of the surface, outside
-**More options**, because each is a decision about the story rather than a
-refinement of it:
+All six live inside **More options** (2026-09-18, product-owner call). Inside
+the panel the order is: Moments to include, then Writing style and Avoid, then
+the four story dropdowns (Story mode, Chapters, Chapter length, Chapter cover),
+then Image style and Who can read it, then Language. The menus list plain
+labels; what each option means is in the "?" card on Story mode, Chapter
+length, Chapter cover, Image style and Who can read it (DESIGN_SYSTEM.md §6A.1).
 
 | Dropdown | Values | Default |
 |---|---|---|
@@ -191,7 +194,7 @@ refinement of it:
 | Chapter length | Short · Standard · Long | Standard |
 | Chapter cover | Cover art only · Auto-generated per chapter | Cover art only |
 | Image style | Auto · Anime · Cinematic · Comic · Watercolor | Auto |
-| Who can read it | Private · Public | Private |
+| Who can read it | Private · Public | Public |
 
 **Story mode** is `stories.story_flow` (migration 00076). `interactive` is the
 existing behaviour: direction chips at every chapter end, nothing written until
@@ -671,13 +674,16 @@ Collapsed by default. Identical in both modes except where §3 says otherwise.
 | Language | English | English |
 | Avoid | Free text — *exclude a topic* | empty |
 
-**Four of these controls left More options** (2026-09-11) and are now dropdowns
-on the main surface: Chapters, Chapter length, Chapter cover and Visibility.
-They are listed above as removed rather than deleted from the table, because a
-row that silently disappears reads as a control that was cut rather than moved.
-The live list of the six dropdowns, with their values and defaults, is in §2 and
-is the one to read. **Moments** and **Language** are the last two entries here
-by design: Moments sits directly above Language at the foot of the panel.
+**The six dropdowns are back inside More options** (2026-09-18). They left it on
+2026-09-11 and returned on the product owner's call; the live list, with values,
+defaults and the order inside the panel, is in §2 and is the one to read.
+**Moments** now opens the panel. Its cast tags come from the story's characters,
+so a saved character added to the story, or a new one, shows up as a tag as
+soon as it has a name. **Language** stays last.
+
+**Who can read it defaults to Public** (2026-09-18). Everyone who reaches Create
+has signed in with email during onboarding. The entity gate still forces a
+story private when it names a real person.
 
 Guests see Public as locked and stay Private. Public publishing unlocks only
 after a real account is linked; the backend enforces the same rule independently
