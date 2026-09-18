@@ -862,6 +862,9 @@ export async function fetchCuratedStories(): Promise<Story[]> {
       .select(`${SHELF_STORY_COLUMNS}, themes`)
       .eq("is_curated", true)
       .eq("status", "complete")
+      // The same line Explore's browse draws (`search.ts`): explicit work is
+      // never surfaced by a shelf the reader did not ask for.
+      .neq("content_rating", "explicit")
       .order("created_at", { ascending: false })
       .limit(CURATED_LIMIT);
     if (error || !Array.isArray(data)) return [];

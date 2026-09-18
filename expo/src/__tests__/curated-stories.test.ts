@@ -37,6 +37,7 @@ import { CURATED_LIMIT, fetchCuratedStories } from "@/lib/api";
 type Calls = {
   select: unknown[];
   eq: unknown[][];
+  neq: unknown[][];
   order: unknown[][];
   limit: unknown[];
 };
@@ -47,7 +48,7 @@ type Calls = {
  * too, because there must not be one.
  */
 function stubStories(result: { data: unknown; error: unknown } | "throw"): Calls {
-  const calls: Calls = { select: [], eq: [], order: [], limit: [] };
+  const calls: Calls = { select: [], eq: [], neq: [], order: [], limit: [] };
   mockFrom.mockImplementation((table: string) => {
     if (table !== "stories") {
       throw new Error(`unexpected read of ${table}`);
@@ -59,6 +60,10 @@ function stubStories(result: { data: unknown; error: unknown } | "throw"): Calls
     };
     chain.eq = (...args: unknown[]) => {
       calls.eq.push(args);
+      return chain;
+    };
+    chain.neq = (...args: unknown[]) => {
+      calls.neq.push(args);
       return chain;
     };
     chain.order = (...args: unknown[]) => {
@@ -208,4 +213,10 @@ it("returns nothing rather than throwing when the query errors", async () => {
 it("returns nothing rather than throwing when the request itself rejects", async () => {
   stubStories("throw");
   await expect(fetchCuratedStories()).resolves.toEqual([]);
+});
+
+test("never surfaces explicit curated stories, the same line Explore draws", async () => {
+  const calls = stubStories({ data: [CURATED_ROW], error: null });
+  await fetchCuratedStories();
+  expect(calls.neq).toContainEqual(["content_rating", "explicit"]);
 });

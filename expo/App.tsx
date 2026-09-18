@@ -305,6 +305,8 @@ export default function App() {
    * mounted over Home.
    */
   const [welcomeGrant, setWelcomeGrant] = useState(WELCOME_CREDITS);
+  /** Counts taps into `openDiscoveredStory`; see the note there. */
+  const openTapRef = useRef(0);
   const creditsPillRef = useRef<View | null>(null);
   const creditsBump = useSharedValue(1);
   const generations = useGenerations();
@@ -863,7 +865,12 @@ export default function App() {
    * leaves the tap available to try again.
    */
   const openDiscoveredStory = async (story: Story) => {
+    // Only the most recent tap may navigate. Two taps in quick succession
+    // hydrate concurrently and can finish in either order; without this the
+    // slower, older one would pull the reader away from what they chose last.
+    const tap = ++openTapRef.current;
     const opened = await hydrateForOpen(story, loadStoryChapters);
+    if (tap !== openTapRef.current) return;
     if (opened.kind === "unreachable") {
       Alert.alert(
         "We could not open that story",
