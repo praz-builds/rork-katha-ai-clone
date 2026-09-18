@@ -21,6 +21,7 @@ import BottomTabs from "@/components/BottomTabs";
 import { LaunchScreen } from "@/components/brand/LaunchScreen";
 import LoaderPreview from "@/screens/dev/LoaderPreview";
 import NarrationLoaderPreview from "@/screens/dev/NarrationLoaderPreview";
+import OriginalsCoverPreview from "@/screens/dev/OriginalsCoverPreview";
 import { ScreenScaffold } from "@/components/KathaPrimitives";
 import CreateStudioScreen from "@/screens/CreateStudioScreen";
 import AuthorScreen from "@/screens/AuthorScreen";
@@ -812,6 +813,7 @@ export default function App() {
 
   if (preview === "loader") return <LoaderPreview />;
   if (preview === "narration-loader") return <NarrationLoaderPreview />;
+  if (preview === "originals") return <OriginalsCoverPreview />;
 
   // `isSeries` -- whether a tap lands on the series page or in the prose --
   // lives in `lib/story-catalogue.ts` beside the hydrate-on-open decision it
