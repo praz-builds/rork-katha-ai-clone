@@ -690,9 +690,17 @@ function buildPortraitPrompt(
     PORTRAIT_WARDROBE_CLAUSE,
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.`,
     NO_FRAME_CLAUSE,
-    ...(reminder ? [reminder] : []),
     `Full-body portrait orientation, subject centered in frame, high quality.`,
+    // The reference clause does NOT need to follow the orientation line, and
+    // the style reminder does need to be last, so the reminder goes after it.
+    // What the reference clause's ordering rationale actually requires (see
+    // `generateWithOpenRouter`) is that the TEXT part of the message, which
+    // carries the clause, is sent BEFORE the image part, so the model is told
+    // what the photo is for before it sees it. Where the clause sits inside
+    // that text does not change that, and the reminder names only a drawing
+    // style -- it cannot be read as licence to copy the reference's likeness.
     ...(hasReference ? [STYLE_REFERENCE_CLAUSE] : []),
+    ...(reminder ? [reminder] : []),
   ].join(" ");
 }
 

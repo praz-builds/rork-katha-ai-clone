@@ -75,6 +75,17 @@ they were the prompt's. Fixed in `_shared/cover-prompts.ts` and `_shared/image.t
 `backend/supabase/functions/` 884 passed, 0 failed. `AGENTS.md` (Cover Image
 System > Prompt Construction) and `backend/COVER_IMAGES.md` updated to match.
 
+**Review follow-up (PR #104, CodeAnt).** Where-and-when was interpolated raw
+and could end our sentence with an instruction of its own. It is now bounded
+by `settingForSentence` -- first line only, quote/bracket characters removed,
+whitespace collapsed, capped at 160 at a word boundary, and emitted as quoted
+data (`set in "..."`) -- in the cover and chapter builders, so every safety
+level gets it. Punctuation is kept ("St. Ives"), unlike `sanitizeExclusion`.
+The picked-style reminder is now genuinely the last clause of cover, chapter
+and portrait prompts (after the orientation line and, on portraits, after the
+reference clause, whose rule is only that the text precedes the image).
+889 function tests pass.
+
 ---
 
 ## 2026-09-16 UTC — Security review close on 00089: the reviewer's account, the report targets, and a read gate that believed the client

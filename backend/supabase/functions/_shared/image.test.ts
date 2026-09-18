@@ -822,3 +822,45 @@ Deno.test("a portrait with no picked style has no style reminder", async () => {
     assert(!attempt.prompt.includes("not a blend with any other style"));
   }
 });
+
+// PR #104 review: "last" has to mean last. The orientation line and, with a
+// photo attached, the reference clause used to follow the reminder. Where the
+// reference clause sits inside the text does not matter to its own rule --
+// that rule is that the text part goes before the image part -- so the
+// reminder can close the text in both shapes of request.
+Deno.test("the portrait's style reminder is its final clause, with or without a reference", async () => {
+  const reminder =
+    "The whole image, edge to edge, is delicate watercolour painting, not a blend with any other style.";
+  // The transport appends its own fixed restatement of the aspect parameter
+  // after the prompt; that is framing, and it is stripped here.
+  const suffix = / Render as a single image, [^.]*\.$/;
+  for (const referenceImage of [undefined, REFERENCE]) {
+    const attempts = await withStubbedProviders(
+      () => moderationRejection(),
+      () =>
+        generateDraftCharacterPortrait(
+          "user-1",
+          `req-last-${referenceImage ? "ref" : "plain"}`,
+          {
+            name: "Naina",
+            appearance: "Curly hair, a satchel",
+            referenceImage,
+          },
+          "watercolor",
+        ),
+    );
+    assert(attempts.length > 1, "the ladder did not run");
+    for (const attempt of attempts) {
+      const prompt = attempt.prompt.replace(suffix, "");
+      assert(prompt.endsWith(reminder), prompt);
+    }
+    if (referenceImage) {
+      // The reference clause is still in the text that precedes the image.
+      assert(
+        attempts[0].prompt.includes("STYLE AND APPEARANCE REFERENCE ONLY"),
+        attempts[0].prompt,
+      );
+      assertEquals(attempts[0].referenceImage, REFERENCE);
+    }
+  }
+});

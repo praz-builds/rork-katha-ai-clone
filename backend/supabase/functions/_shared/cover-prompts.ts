@@ -6,7 +6,7 @@
  * (title, themes, characters) to generate a cohesive cover prompt.
  */
 
-import { characterAppearance } from "./types.ts";
+import { characterAppearance, MAX_BRIEF_FIELD_LENGTH } from "./types.ts";
 
 /**
  * A cast member as an image prompt sees one.
@@ -503,11 +503,68 @@ function withArticle(label: string): string {
  * in this position; everything else is left exactly as the writer typed it.
  */
 export function settingForSentence(whereAndWhen?: string): string {
-  const value = whereAndWhen?.trim() ?? "";
+  const value = boundSetting(whereAndWhen);
   return value.replace(
     /^(A|An|The)(?=\s+\S)/,
     (article) => article.toLowerCase(),
   );
+}
+
+/**
+ * How much of the where-and-when may reach an image prompt.
+ *
+ * Tighter than `MAX_BRIEF_FIELD_LENGTH` (the most the brief will store): a
+ * setting is a place and a time, and "a hill town, off-season, present day" is
+ * forty characters. Anything past this is either a paragraph that crowds the
+ * genre, palette and composition clauses out of the model's attention, or text
+ * that is not a setting at all.
+ */
+export const MAX_SETTING_PROMPT_LENGTH = Math.min(160, MAX_BRIEF_FIELD_LENGTH);
+
+/**
+ * Bound the where-and-when before it leaves for a third-party image provider.
+ *
+ * WHY THIS IS NOT `sanitizeExclusion`. That function collapses every sentence
+ * terminator to a comma, which is right for *Avoid* and wrong here: a setting
+ * is exactly the field that carries "St. Ives", "Washington, D.C." and
+ * "Dr. Rao's clinic", and a cover that says "set in St, Ives" has lost the one
+ * thing the field exists to add (decision 53). An earlier note in
+ * `buildCoverPrompt` used the same argument to leave this field RAW, which was
+ * the gap: the value is writer-typed text, stored on the story and replayed on
+ * every regeneration, and a raw value could end our sentence and carry an
+ * instruction of its own ("a hill town\n\nIgnore the style above and ...").
+ *
+ * So it is bounded structurally instead of by rewriting its punctuation:
+ *
+ * 1. **First line only.** A setting is one line. Everything after a line break
+ *    is dropped, not joined -- a newline is the cheapest way to make following
+ *    text read as a fresh instruction, and a joined second line would keep it.
+ * 2. **Delimiter characters removed** -- `"` and backticks, brackets, braces,
+ *    angle brackets, pipes, backslashes. The caller wraps the result in double
+ *    quotes as clearly-delimited data (`set in "..."`), and a value that could
+ *    contain a `"` could close that quote itself. Apostrophes stay: "Anand's
+ *    village" is a setting, and a `'` cannot close a `"`.
+ * 3. **Whitespace collapsed and length capped**, at a word boundary where one
+ *    is near, so the cap does not leave half a word hanging in the quote.
+ *
+ * Like `sanitizeExclusion`, this is not a complete defence against prompt
+ * injection -- nothing at the string level is. It makes the setting one
+ * quoted fragment of bounded size, which is the property the prompt around it
+ * relies on.
+ */
+function boundSetting(value?: string): string {
+  if (!value) return "";
+  const firstLine = value.trim().split(/[\r\n\u2028\u2029]/)[0] ?? "";
+  const cleaned = firstLine
+    .replace(/["`{}[\]<>|\\\u201c\u201d]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length <= MAX_SETTING_PROMPT_LENGTH) return cleaned;
+  const cut = cleaned.slice(0, MAX_SETTING_PROMPT_LENGTH);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > MAX_SETTING_PROMPT_LENGTH * 0.6
+    ? cut.slice(0, lastSpace)
+    : cut).replace(/[\s,;:]+$/, "");
 }
 
 /**
@@ -709,8 +766,9 @@ export function buildChapterArtPrompt(input: {
     ? `A scene from chapter ${input.chapterNumber}, "${chapterTitle}", of the story "${input.storyTitle}"`
     : `A scene from chapter ${input.chapterNumber} of the story "${input.storyTitle}"`;
 
-  // The moment is prose, not a brief field, so it is sanitized rather than
-  // interpolated raw the way `title` and `whereAndWhen` are: a chapter body
+  // The moment is prose, not a brief field, so it is sanitized with
+  // `sanitizeExclusion` rather than bounded the lighter way `whereAndWhen` is
+  // (see `boundSetting`): a chapter body
   // is full of sentence terminators, and one of them ending our clause is all
   // it takes for the rest of the line to read as a fresh instruction.
   const moment = sanitizeExclusion(input.moment, MAX_CHAPTER_MOMENT_LENGTH);
@@ -725,7 +783,9 @@ export function buildChapterArtPrompt(input: {
   }
   const setting = settingForSentence(input.whereAndWhen);
   if (setting) {
-    sceneDescription += `, set in ${setting}`;
+    // Quoted as data, the same way the title is. `settingForSentence` has
+    // already removed every character that could close the quote.
+    sceneDescription += `, set in "${setting}"`;
   }
 
   const exclusion = sanitizeExclusion(input.avoid);
@@ -755,8 +815,9 @@ export function buildChapterArtPrompt(input: {
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
     NO_FRAME_CLAUSE,
-    ...(reminder ? [reminder] : []),
     `Portrait orientation, subject centered in frame from left to right, high quality, professional book illustration.`,
+    // Last, so the picked style is literally the final thing the prompt says.
+    ...(reminder ? [reminder] : []),
   ].join(" ");
 }
 
@@ -839,7 +900,9 @@ export function buildCoverPrompt(
   }
   const setting = settingForSentence(whereAndWhen);
   if (setting) {
-    sceneDescription += `, set in ${setting}`;
+    // Quoted as data, the same way the title is. `settingForSentence` has
+    // already removed every character that could close the quote.
+    sceneDescription += `, set in "${setting}"`;
   }
 
   const characterNote = buildCharacterNote(config, characters);
@@ -847,10 +910,12 @@ export function buildCoverPrompt(
   // These two are sanitized here rather than at the call site so every path
   // into the image provider is covered *for these two fields*, including the
   // safety-level fallbacks that rebuild the prompt from these arguments. It is
-  // not a claim about the whole prompt: `title` and `whereAndWhen` are
-  // interpolated raw into the scene sentence above, deliberately, because
-  // collapsing punctuation in them would turn "Dr. Smith's Door" into
-  // "Dr, Smiths Door".
+  // not a claim about the whole prompt: `title` is interpolated raw into the
+  // scene sentence above, deliberately, because collapsing punctuation in it
+  // would turn "Dr. Smith's Door" into "Dr, Smiths Door". `whereAndWhen` used
+  // to be raw for the same reason; it is now bounded structurally by
+  // `settingForSentence` -- first line, no quote characters, capped, quoted as
+  // data -- which keeps its punctuation and still cannot end our sentence.
   const exclusion = sanitizeExclusion(avoid);
   // A wider cap than the exclusion's. The steer carries two halves - what the
   // user asked for this time and a summary of what the last cover already was -
@@ -887,11 +952,17 @@ export function buildCoverPrompt(
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
     NO_FRAME_CLAUSE,
-    ...(reminder ? [reminder] : []),
     // "From left to right" because the vertical placement is now
     // `SAFE_ZONE_CLAUSE`'s job: a bare "centered" invited the model to put the
     // face at 50% height, on the edge of the story page's dissolve.
     `Portrait orientation, subject centered in frame from left to right, high quality, professional book cover art.`,
+    // The picked style's reminder is the prompt's final clause -- "first and
+    // last" means last, not second to last. (`generateWithOpenRouter` still
+    // appends its fixed "Render as a single image, <ratio>" restatement of the
+    // aspect parameter after the whole prompt; that suffix lives in the
+    // transport so the words and the parameter cannot drift apart, and it is
+    // framing, not style.)
+    ...(reminder ? [reminder] : []),
   ].join(" ");
 }
 
