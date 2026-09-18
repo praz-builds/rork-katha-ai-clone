@@ -1,7 +1,6 @@
 covers/
 run.log
 review/
-reviews*.jsonl
 reviewed.txt
 pending-review.txt
 priority.txt

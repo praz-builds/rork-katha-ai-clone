@@ -527,43 +527,6 @@
   "media_settled": true,
   "published": false
  },
- "low-orbit-lullaby@draft1": {
-  "start_request_id": "2d91b0f3-ca2e-47e8-bdd7-6dbc258ca010",
-  "story_id": "109f761c-e440-4b81-91a8-43c0e73dcc15",
-  "chapters_done": 10,
-  "chapter_request_ids": {
-   "2": "19c79928-1171-4af7-ad02-f53a4c02c4ec",
-   "3": "08ac2bad-52a7-4d1f-8f35-a3d7093e8f19",
-   "4": "8010d75a-14ac-4dcf-915f-09dd49b271c8",
-   "5": "e8d13469-7625-4d91-981c-8d3393c24b54",
-   "6": "959416e2-9575-4906-971a-6deb3af3076f",
-   "7": "d204c280-678e-449b-a14a-5d05be3c0cbf",
-   "8": "756286b7-49e5-43f8-97c4-8f35e515d96f",
-   "9": "16c67c59-25dd-4c04-bb03-a0d92128d410",
-   "10": "c7307701-4e61-4295-a4ec-d62c46f2d0b7"
-  },
-  "media_settled": true,
-  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/109f761c-e440-4b81-91a8-43c0e73dcc15/original-v1.png",
-  "published": false
- },
- "nine-oclock-zanzibar@draft1": {
-  "start_request_id": "ea6f0e0b-754e-46c4-8b35-9462e3e1a92a",
-  "story_id": "2108f40a-8ae6-4193-b55f-4a9abf8c6c14",
-  "chapters_done": 8,
-  "chapter_request_ids": {
-   "2": "520d2d9f-6d63-4789-a374-610eb8852559",
-   "3": "3370171d-024f-4cad-ba57-4a968402769c",
-   "4": "fda85169-67e8-4a87-b4ae-c26278e80c1b",
-   "5": "7cd396e7-9829-4ba8-bc6e-67b53874bf61",
-   "6": "7cd6e7ef-fc58-46b5-b797-b69e99a34ac0",
-   "7": "b1798687-60cd-45d9-b5a0-10d7c594cd14",
-   "8": "0b573139-6628-4d54-8eec-9e4ac2876315"
-  },
-  "published": false,
-  "media_settled": true,
-  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/2108f40a-8ae6-4193-b55f-4a9abf8c6c14/original-v1.png",
-  "awaiting_review": true
- },
  "nine-oclock-zanzibar": {
   "start_request_id": "92755632-18f3-48b6-970a-e1082f05f271",
   "story_id": "69fd169b-6fe1-4faa-9cc9-0596257373a6",
@@ -988,75 +951,6 @@
   "media_settled": true,
   "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/fe47f293-30ba-4207-a98f-03ec8ea18038/original-v1.png",
   "awaiting_review": true
- },
- "last-train-from-shimla@draft1": {
-  "start_request_id": "ab2a50b7-56a4-45f2-8c9c-3624d28e7f5d",
-  "story_id": "b8148cf7-9a3d-4411-8958-8087cf917d34",
-  "chapters_done": 8,
-  "chapter_request_ids": {
-   "2": "8f2d6da5-10f8-4b0a-8081-dcec439bed11",
-   "3": "08aeaa05-83db-47c3-9d8d-2e06aaa2f05f",
-   "4": "0ea22f88-7013-4b1f-8f06-ad29491e23b4",
-   "5": "658dfc74-3aca-491b-8165-97efd49ecd79",
-   "6": "9decb384-2126-4093-9e92-1d48db82a749",
-   "7": "7caed363-0630-4e5c-bfd7-4b2314f026ff",
-   "8": "5b3c8e00-681d-4fea-ad34-f2ed72b09de4"
-  },
-  "errors": [
-   "2026-09-18T14:47:37.281Z continue-story ch8 500 {\"error\":\"Generation failed. Credit refunded.\",\"operation_id\":\"4d25a8d0-d1d8-44b4-a6f0-292bea5f60e7\",\"status\":\"refunded\"}"
-  ],
-  "published": false,
-  "media_settled": true,
-  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/b8148cf7-9a3d-4411-8958-8087cf917d34/original-v1.png",
-  "awaiting_review": true
- },
- "returned-on-thursdays@draft1": {
-  "start_request_id": "cc7a8fb5-a86f-48ca-b267-a7d6ccf0192e",
-  "story_id": "a41df3bd-4249-4a16-9733-8b4abf5ffeaf",
-  "chapters_done": 10,
-  "chapter_request_ids": {
-   "2": "0b8f2f52-79fd-43d4-bf15-510e8eecf68a",
-   "3": "4dde39f5-f8fe-414a-aec5-405e549c8981",
-   "4": "c27fb637-eb2c-4ea0-a7cd-2bbdab7f396b",
-   "5": "a71556ad-9637-485e-ae99-789016281bb3",
-   "6": "813ad7df-a800-4e09-bdb5-946dee19fedf",
-   "7": "36d403fb-7838-4334-af16-38521ddefb6c",
-   "8": "7e9774a9-c79f-413c-a078-6324181b2101",
-   "9": "e4b96845-3525-48dd-836f-ff47eb0d9a99",
-   "10": "5e75f2fb-bb25-464b-a3c2-ceb9207a258e"
-  },
-  "media_settled": true,
-  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/a41df3bd-4249-4a16-9733-8b4abf5ffeaf/original-v1.png",
-  "awaiting_review": true,
-  "published": false
- },
- "a-coffin-shaped-like-a-mackerel@draft1": {
-  "start_request_id": "20e63321-9d64-4fa0-a673-db926f488867",
-  "story_id": "214be191-b56e-4663-a19f-14e0f872fd2c",
-  "chapters_done": 1,
-  "chapter_request_ids": {},
-  "media_settled": true,
-  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/214be191-b56e-4663-a19f-14e0f872fd2c/original-v1.png",
-  "awaiting_review": true,
-  "published": false
- },
- "last-train-from-shimla": {
-  "start_request_id": "412afc4b-cf13-455c-9df9-15aeddb3fcc4",
-  "story_id": "29ac3f5e-a857-4fbf-ad55-d71286d79f0d",
-  "chapters_done": 8,
-  "chapter_request_ids": {
-   "2": "cad338a5-8b51-4efe-a34c-f6acece355d5",
-   "3": "de14282c-6ee1-44b9-a762-d1a3febb8ed6",
-   "4": "32224a57-9ae1-4f8a-aa7a-d68d4008df3d",
-   "5": "3e766b2b-232b-44ce-84a2-757eb14e8537",
-   "6": "0355cdfb-e91b-4a8d-bcc6-728894b5653c",
-   "7": "83f3a73e-dbd5-4a4d-8c91-5da66b98db9f",
-   "8": "94809ab2-7556-4db2-b0bb-c67cc3e403d4"
-  },
-  "media_settled": true,
-  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/29ac3f5e-a857-4fbf-ad55-d71286d79f0d/original-v1.png",
-  "awaiting_review": true,
-  "published": false
  },
  "returned-on-thursdays": {
   "start_request_id": "102ef1d0-cc8f-4de0-a265-a569757706a1",
