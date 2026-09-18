@@ -29,6 +29,7 @@ import { claimGroundingFallback } from "../_shared/grounding-rate-limit.ts";
 import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
 import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
+  alignFirstLine,
   enforceProseIntegrity,
   proseIntegrityBrief,
 } from "../_shared/prose-integrity.ts";
@@ -453,6 +454,14 @@ serve(async (req) => {
           },
         );
         output.chapter_body = integrity.text;
+        // The model wrote `first_line` from the uncleaned body; keep it true
+        // to what is stored (a removed heading must not become the opening a
+        // card or share preview shows).
+        output.first_line = alignFirstLine(
+          output.first_line,
+          integrity.text,
+          integrity.changed,
+        );
       }
       if (!output.chapter_body) {
         throw new Error("Generation returned no story content");

@@ -242,11 +242,40 @@ export interface ProseIntegrityContext {
  * substitute the story never asked for (see the module note in
  * `content-scan.ts` for the same trade on crude vocabulary).
  */
+export interface EnforcedProse extends ProseIntegrityResult {
+  /**
+   * The telemetry writes, already handed to the runtime's background runner.
+   *
+   * Not awaited by the handlers, deliberately: `logError` can take its whole
+   * 1.5s timeout against a slow database, and a writer waiting for a chapter
+   * must not pay that for a measurement. Exposed so a test can wait for it.
+   */
+  telemetry: Promise<void>;
+}
+
+/**
+ * Run telemetry after the response, where the runtime allows it.
+ *
+ * The same contract as `runInBackground` in `media.ts`, restated rather than
+ * imported: `media.ts` pulls in the image and cover-prompt modules, which the
+ * text paths deliberately load lazily. `logError` never rejects, so the catch
+ * is only a second guarantee that an unhandled rejection cannot take an
+ * isolate down mid-stream.
+ */
+function inBackground(work: Promise<unknown>): Promise<void> {
+  const settled = work.then(() => {}, () => {});
+  const runtime = (globalThis as {
+    EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (typeof runtime?.waitUntil === "function") runtime.waitUntil(settled);
+  return settled;
+}
+
 export async function enforceProseIntegrity(
   text: string,
   brief: ProseIntegrityBrief,
   context: ProseIntegrityContext,
-): Promise<ProseIntegrityResult> {
+): Promise<EnforcedProse> {
   let result: ProseIntegrityResult;
   try {
     result = cleanChapterProse(text, brief);
@@ -254,7 +283,7 @@ export async function enforceProseIntegrity(
     // Unreachable by design, and still guarded: a bug in a cleanup pass must
     // never cost a writer a chapter they have paid for.
     console.error("[prose-integrity] pass threw; keeping the original text");
-    await logError({
+    const telemetry = inBackground(logError({
       bucket: "generation.story",
       severity: "medium",
       source: "runtime",
@@ -262,8 +291,8 @@ export async function enforceProseIntegrity(
       error,
       context: baseContext(context),
       userId: context.userId ?? null,
-    });
-    return { text, removals: [], changed: false };
+    }));
+    return { text, removals: [], changed: false, telemetry };
   }
 
   const telemetry: Promise<unknown>[] = [];
@@ -313,8 +342,10 @@ export async function enforceProseIntegrity(
       userId: context.userId ?? null,
     }));
   }
-  await Promise.allSettled(telemetry);
-  return result;
+  return {
+    ...result,
+    telemetry: inBackground(Promise.allSettled(telemetry)),
+  };
 }
 
 function baseContext(context: ProseIntegrityContext): Record<string, unknown> {
@@ -325,6 +356,29 @@ function baseContext(context: ProseIntegrityContext): Record<string, unknown> {
       ? { chapter_number: context.chapterNumber }
       : {}),
   };
+}
+
+/**
+ * The chapter's `first_line`, kept true to the body that is actually stored.
+ *
+ * The model writes `first_line` alongside the body, so when the pass removed a
+ * heading or an opening note, the model's line quotes text that is no longer
+ * there -- and `first_line` is what a card and a share preview show as the
+ * chapter's opening. When the body is unchanged the model's line stands; when
+ * it changed and the line no longer opens it, the stored body's first
+ * paragraph replaces it, which is the same fallback `parseStructuredOutput`
+ * uses when the model sent none.
+ */
+export function alignFirstLine(
+  firstLine: string | null | undefined,
+  body: string,
+  bodyChanged: boolean,
+): string {
+  const line = (firstLine ?? "").trim();
+  if (!bodyChanged) return line;
+  const opening = body.trimStart();
+  if (line && opening.startsWith(line)) return line;
+  return opening.split(/\n/)[0]?.trim() ?? "";
 }
 
 /** The same brief shape every caller already holds, from a request or a row. */
@@ -611,12 +665,27 @@ function stripModelNotes(paragraph: string, note: Note): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Words that put a chapter INSIDE the story world: a character reading a
- * manual, writing a thesis, quoting scripture. A sentence containing one is
- * left alone whatever else it says.
+ * Nouns that put a chapter INSIDE the story world: a manual, a thesis, a
+ * scripture. A sentence naming one is somebody's book, and its chapter
+ * references are left alone.
+ *
+ * NOUNS ONLY. The first version also exempted any sentence containing "read",
+ * "wrote" or "page", which let a leak through whenever the model's sentence
+ * happened to use one of them for something else ("She read the label on the
+ * evidence bag from Chapter 1"). Reading a chapter in-world is caught by
+ * `READING_VERB_BEFORE_RE` instead, which looks only at the words directly in
+ * front of the reference.
  */
 const IN_WORLD_BOOK_RE =
-  /\b(?:book|books|novel|novels|manual|textbook|handbook|guide|guidebook|bible|scripture|quran|koran|torah|gospel|verse|report|thesis|dissertation|draft|manuscript|memoir|diary|journal|script|screenplay|play|cookbook|syllabus|course|lecture|exam|law|act|code|constitution|statute|reading|read|reads|wrote|writes|writing|page|pages|edition|chapters|author|publisher|story she|story he)\b/i;
+  /\b(?:book|books|novel|novels|manual|textbook|handbook|guidebook|bible|scripture|quran|koran|torah|gospel|verse|thesis|dissertation|manuscript|memoir|diary|journal|screenplay|cookbook|syllabus|constitution|statute|edition|publisher)\b/i;
+
+/**
+ * A reading or writing verb within two words of the reference: "read aloud
+ * from Chapter 3", "quoting from chapter two", "skipped back to chapter 4".
+ * That is a character with a book in their hands, not the story citing itself.
+ */
+const READING_VERB_BEFORE_RE =
+  /\b(?:read|reads|reading|recit\w*|quot\w*|wrote|writ\w*|flip\w*|skip\w*|turn\w*|open\w*|study\w*|studied|memori[sz]\w*)\s+(?:\S+\s+){0,2}$/i;
 
 /**
  * "from Chapter 1", "back in Chapter 2", "(see Chapter 3)". The preposition is
@@ -658,16 +727,26 @@ function stripStructureReferences(paragraph: string, note: Note): string {
       structure++;
       return null;
     }
+    // Lift each cross-reference out, unless the words right before it say a
+    // character is reading. Then keep the sentence when what is left is still
+    // a sentence: "She held up the evidence bag from Chapter 1." becomes "She
+    // held up the evidence bag." When it is not ("That was in Chapter 1."),
+    // the whole sentence was the reference and goes.
+    let lifts = 0;
     STRUCTURE_PHRASE_RE.lastIndex = 0;
-    if (!STRUCTURE_PHRASE_RE.test(sentence)) return sentence;
-    STRUCTURE_PHRASE_RE.lastIndex = 0;
-
-    // Lift the cross-reference out and keep the sentence when what is left is
-    // still a sentence: "She held up the evidence bag from Chapter 1." becomes
-    // "She held up the evidence bag." When it is not ("That was in Chapter
-    // 1."), the whole sentence was the reference and goes.
+    const replaced = sentence.replace(
+      STRUCTURE_PHRASE_RE,
+      (match: string, offset: number) => {
+        if (READING_VERB_BEFORE_RE.test(sentence.slice(0, offset + 1))) {
+          return match;
+        }
+        lifts++;
+        return " ";
+      },
+    );
+    if (!lifts) return sentence;
     structure++;
-    const lifted = tidySentence(sentence.replace(STRUCTURE_PHRASE_RE, " "));
+    const lifted = tidySentence(replaced);
     return countWords(lifted) >= 4 ? lifted : null;
   });
   note("structure_reference", structure);

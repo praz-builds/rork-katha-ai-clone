@@ -6070,7 +6070,8 @@ include notes to yourself.
 continuation prompt and the naming call (`buildUsedChapterTitlesBlock`).
 `_shared/chapter-titles.ts` guards persistence: a title normalising to an
 existing one or to the story title is refused, then the metadata name, then a
-title derived from the hook / first line / opening sentence, then `Chapter N`.
+title derived from the hook / first line / opening sentence, then `Chapter N`
+(itself checked; suffixed `Chapter Na`, `Nb`, ... if taken).
 A duplicate early name is not painted. Replacements log
 `duplicate_chapter_title_replaced` (low). `reimagine-chapter` is not guarded
 yet: its window stops at the chapters before the target.
@@ -6081,3 +6082,12 @@ pass. Expo (Node 22): `tsc --noEmit` clean, lint 0 errors / 29 warnings,
 out under the default worker count while this machine's load average is ~200).
 
 **Not deployed, not run against the remote, no database touched.**
+
+**Review follow-ups (PR #108, CodeAnt).** Integrity telemetry now runs via
+`EdgeRuntime.waitUntil` instead of being awaited on the chapter path; the
+in-world-book exemption is nouns only, with reading verbs checked just before
+the reference (a stray "read" no longer shields "from Chapter 1");
+`first_line` is realigned to the stored body when cleaning changed its opening;
+a writer's title is painted in the stream's `title` event immediately rather
+than only when early naming succeeds; the offline `localGeneratedStory` keeps
+`draft.title`.

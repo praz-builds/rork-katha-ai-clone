@@ -120,3 +120,21 @@ Deno.test("titleFromLine refuses a line too thin to name anything", () => {
   assertEquals(titleFromLine("No."), null);
   assertEquals(titleFromLine(null), null);
 });
+
+Deno.test("the numbered last resort is itself never a duplicate", () => {
+  // A writer can type "Chapter 6" as chapter two's title in the notepad.
+  const result = chooseDistinctChapterTitle({
+    candidates: ["The Spare Keys"],
+    existingTitles: ["The Spare Keys", "Chapter 6", "Chapter 6a"],
+    chapterNumber: 6,
+  });
+  assertEquals(result.title, "Chapter 6b");
+  assertEquals(result.source, "numbered");
+  assert(
+    !isDuplicateChapterTitle(result.title, [
+      "The Spare Keys",
+      "Chapter 6",
+      "Chapter 6a",
+    ]),
+  );
+});

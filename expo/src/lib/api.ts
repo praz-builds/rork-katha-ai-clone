@@ -1647,7 +1647,11 @@ function localGeneratedStory(draft: CreateDraft): Promise<Story> {
   const hero = draft.characters.find((character) => character.isHero) ??
     draft.characters[0];
   const heroName = hero?.name ?? "Mira";
-  const title = generateMockTitle(draft.primaryGenre);
+  // A chosen title survives the offline path too. The server keeps a writer's
+  // title over the model's; a local build that invented one anyway would make
+  // the same draft come back under two different names depending on whether
+  // Supabase happened to be configured.
+  const title = draft.title?.trim() || generateMockTitle(draft.primaryGenre);
   const storyId = `generated-${Date.now()}`;
 
   // Simulate realistic generation time (3-6 seconds)

@@ -19,6 +19,7 @@ import {
   isDuplicateChapterTitle,
 } from "../_shared/chapter-titles.ts";
 import {
+  alignFirstLine,
   enforceProseIntegrity,
   proseIntegrityBrief,
 } from "../_shared/prose-integrity.ts";
@@ -610,8 +611,8 @@ serve(async (req) => {
       // Cleaned before anything reads it: the stored chapter, its word count
       // and the next chapter's context window are all built from this. Both
       // transports land here, so both are covered exactly once.
-      const content = output.chapter_body
-        ? (await enforceProseIntegrity(
+      const checked = output.chapter_body
+        ? await enforceProseIntegrity(
           output.chapter_body,
           proseIntegrityBrief({ moments, beats, characters }),
           {
@@ -620,9 +621,17 @@ serve(async (req) => {
             userId: observedUserId,
             chapterNumber: nextChapterNum,
           },
-        )).text
-        : output.chapter_body;
+        )
+        : null;
+      const content = checked?.text ?? output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
+      // Kept true to the stored body, which the model's line may no longer
+      // open (a removed heading or note). See `alignFirstLine`.
+      output.first_line = alignFirstLine(
+        output.first_line,
+        content,
+        checked?.changed ?? false,
+      );
 
       // A NEW TITLE, GUARANTEED. The prompt now carries every title already
       // used, which makes a repeat rare; this makes it impossible. A candidate

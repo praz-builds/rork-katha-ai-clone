@@ -245,8 +245,35 @@ export function chooseDistinctChapterTitle(
     }
   }
   return {
-    title: `Chapter ${input.chapterNumber}`,
+    title: numberedTitle(input.chapterNumber, taken),
     source: "numbered",
     replacedDuplicate,
   };
+}
+
+/**
+ * `Chapter N`, or the first of `Chapter Na`, `Chapter Nb`, ... that is free.
+ *
+ * The last resort has to be checked like everything before it, or the guard
+ * has a hole exactly where it is supposed to be unconditional: a writer can
+ * title chapter two "Chapter 5" in the notepad, and then chapter five would
+ * persist a duplicate. The suffix is attached to the number rather than added
+ * as a separate word because `isDuplicateChapterTitle` treats "Chapter 5
+ * Again" as a repeat of "Chapter 5" (a two-word run contained in it), which is
+ * the right rule for real titles and would reject every spaced variant here.
+ * A story tops out at fifteen chapters, so 27 options always contain a free
+ * one; the final line is unreachable and exists for the type checker.
+ */
+function numberedTitle(
+  chapterNumber: number,
+  taken: readonly string[],
+): string {
+  const options = [
+    `Chapter ${chapterNumber}`,
+    ..."abcdefghijklmnopqrstuvwxyz".split("").map((suffix) =>
+      `Chapter ${chapterNumber}${suffix}`
+    ),
+  ];
+  return options.find((title) => !isDuplicateChapterTitle(title, taken)) ??
+    options[options.length - 1];
 }

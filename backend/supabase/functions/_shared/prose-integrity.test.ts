@@ -4,6 +4,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  alignFirstLine,
   cleanChapterProse,
   enforceProseIntegrity,
   type ProseIntegrityBrief,
@@ -356,6 +357,9 @@ Deno.test("enforceProseIntegrity cleans and never throws without a database", as
   assert(!result.text.includes("Word count"));
   // Brands are reported, never rewritten.
   assertStringIncludes(result.text, "Manchester United");
+  // Telemetry is handed off, not awaited by the caller, and settles on its
+  // own (no database here, so each write degrades to a console line).
+  await result.telemetry;
 });
 
 // ---------------------------------------------------------------------------
@@ -381,4 +385,65 @@ Deno.test("sentence splitting round-trips and respects abbreviations", () => {
   const text = 'Mr. Baig said nothing. "Go," she said! Then: silence… And rain';
   assertEquals(splitSentences(text).join(""), text);
   assertEquals(splitSentences(text)[0], "Mr. Baig said nothing. ");
+});
+
+Deno.test("a reading word elsewhere in the sentence does not shield a leaked reference", () => {
+  const result = cleanChapterProse(
+    chapter(
+      "She read the label on the evidence bag from Chapter 1 and set it down.",
+    ),
+  );
+  assert(
+    result.text.endsWith(
+      "She read the label on the evidence bag and set it down.",
+    ),
+  );
+  assertEquals(kinds(result), ["structure_reference"]);
+});
+
+Deno.test("a character reading from a chapter keeps the reference", () => {
+  const prose = chapter(
+    "Her grandmother read aloud from Chapter 3 while the kettle boiled.",
+    "He was quoting from chapter two again, the part about the flood.",
+  );
+  assertEquals(cleanChapterProse(prose).text, prose);
+});
+
+Deno.test("enforceProseIntegrity does not wait for telemetry", async () => {
+  let resolved = false;
+  const pending = enforceProseIntegrity(
+    chapter("Word count check: approx 1330 words."),
+    {},
+    { feature: "generate_story" },
+  ).then((r) => {
+    resolved = true;
+    return r;
+  });
+  const result = await pending;
+  assert(resolved);
+  assert(result.telemetry instanceof Promise);
+  await result.telemetry;
+});
+
+Deno.test("first_line follows the stored body when cleaning changed its opening", () => {
+  // The heading was the model's "first line"; the stored chapter opens on prose.
+  assertEquals(
+    alignFirstLine(
+      "Chapter 3: The Spare Keys",
+      "The door was open.\n\nMore.",
+      true,
+    ),
+    "The door was open.",
+  );
+  // A line that still opens the body is kept, and so is anything when the
+  // body did not change.
+  assertEquals(
+    alignFirstLine(
+      "The door was open.",
+      "The door was open. She went in.",
+      true,
+    ),
+    "The door was open.",
+  );
+  assertEquals(alignFirstLine("Anything", "Other text.", false), "Anything");
 });

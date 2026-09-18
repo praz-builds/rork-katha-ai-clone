@@ -1210,7 +1210,9 @@ punctuation, leading article, plural) to an existing one, or to the story
 title, is refused; the next candidate is tried (the streamed path offers the
 metadata name after the early one), then a title derived deterministically from
 the chapter's hook, first line or opening sentence, then `Chapter N` as the
-last resort. A duplicate early name is not painted.
+last resort -- itself checked, becoming `Chapter Na`, `Chapter Nb`, ... if a
+writer already used that exact title, so no path can persist a duplicate. A
+duplicate early name is not painted.
 
 An earlier revision put all of this inside `buildOutputSchema` alone and claimed
 it reached every path. It did not: the streamed transport takes the prose

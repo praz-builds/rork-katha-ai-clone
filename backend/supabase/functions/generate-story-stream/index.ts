@@ -555,6 +555,12 @@ serve(async (req) => {
             storyTitle: writerTitle ?? null,
             characterNames: characters?.map((c) => c.name).filter(Boolean),
           });
+          // The writer's title does not wait on a model. Painted now, so it is
+          // on screen even when the naming call fails and never answers; the
+          // naming result below then only adds the chapter's name. A client
+          // keeps a name the event omits (`titleEventNames`), so the missing
+          // `chapter_title` here blanks nothing.
+          if (writerTitle) send("title", { title: writerTitle });
           namingPromise.then((names) => {
             if (!names) return;
             send("title", {

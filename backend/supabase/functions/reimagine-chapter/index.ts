@@ -87,6 +87,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import {
+  alignFirstLine,
   enforceProseIntegrity,
   proseIntegrityBrief,
 } from "../_shared/prose-integrity.ts";
@@ -673,8 +674,8 @@ serve(async (req) => {
       // way, and more readily: its prompt carries the whole chapter it is
       // replacing, which is one more text to paste from. Checked against the
       // RECAST cast, because that is the brief this chapter was written to.
-      const content = output.chapter_body
-        ? (await enforceProseIntegrity(
+      const checked = output.chapter_body
+        ? await enforceProseIntegrity(
           output.chapter_body,
           proseIntegrityBrief({ moments, beats, characters }),
           {
@@ -683,9 +684,15 @@ serve(async (req) => {
             userId: observedUserId,
             chapterNumber,
           },
-        )).text
-        : output.chapter_body;
+        )
+        : null;
+      const content = checked?.text ?? output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
+      output.first_line = alignFirstLine(
+        output.first_line,
+        content,
+        checked?.changed ?? false,
+      );
       await reportCrudeLexicon(content, {
         feature: "reimagine_chapter",
         storyId,
