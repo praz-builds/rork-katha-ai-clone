@@ -77,6 +77,9 @@ jest.mock("@/lib/api", () => ({
     const seed = require("@/data/seed");
     return Promise.resolve({ stories: seed.stories, source: "mock" });
   },
+  // The Katha Originals read on boot. Empty is the offline answer, which
+  // keeps the bundled seed catalogue on Home.
+  fetchCuratedStories: () => Promise.resolve([]),
   generateStory: jest.fn(),
   continueStory: jest.fn(),
   editParagraph: jest.fn(),

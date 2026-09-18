@@ -68,6 +68,9 @@ jest.mock("@/lib/api", () => ({
   getLibrary: () => Promise.resolve({ stories: [], source: "mock" }),
   getFeed: () => Promise.resolve({ stories: [], source: "mock" }),
   fetchCreatedShelf: () => Promise.resolve({ ok: false, stories: [] }),
+  // The Katha Originals read on boot. Empty is the offline answer, which
+  // keeps the bundled seed catalogue on Home.
+  fetchCuratedStories: () => Promise.resolve([]),
   generateStory: jest.fn(),
   generateCharacterImage: jest.fn(async () => ({ imageUrl: null })),
   continueStory: jest.fn(),
