@@ -143,7 +143,15 @@ export function Chip({
 }
 
 export function Cover({ story, size = "card" }: { story: Story; size?: "card" | "mini" }) {
-  const image = story.coverImage ? imageAssets[story.coverImage] : undefined;
+  // The generated cover first, the bundled seed asset second, as in
+  // StoryFeedCard and StoryDetailScreen. Reading only `coverImage` meant every
+  // story from the database - every one a user wrote - showed the bare genre
+  // gradient on Library shelves and author pages.
+  const image = story.coverImageUrl
+    ? { uri: story.coverImageUrl }
+    : story.coverImage
+    ? imageAssets[story.coverImage]
+    : undefined;
   const gradient = genreGradients[story.genre];
   const focalX = story.focalX ?? 0.5;
   const focalY = story.focalY ?? 0.5;
