@@ -1,0 +1,1225 @@
+{
+ "the-show-home": {
+  "start_request_id": "e6bafde3-c8eb-43b6-a385-4e161cbcabdb",
+  "story_id": "3ed71c48-286d-4da0-8498-e1bcabfa6292",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "cb847eb8-f059-49e8-a172-9307fde41f70",
+   "3": "0d402dc2-c2ad-465b-a033-4db11b788227"
+  },
+  "errors": [
+   "2026-09-18T14:18:34.322Z continue-story ch2 500 {\"error\":\"Generation failed. Credit refunded.\",\"operation_id\":\"6f6c7e83-3f04-42ca-8bcd-86b5ffdf6761\",\"status\":\"refunded\"}",
+   "2026-09-18T14:23:36.473Z story publish new row for relation \"stories\" violates check constraint \"stories_entity_gate_forces_private\""
+  ],
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/3ed71c48-286d-4da0-8498-e1bcabfa6292/original-v1.png",
+  "published": true
+ },
+ "cartographers-heir": {
+  "start_request_id": "34ce0d3d-dd03-4cf3-b27e-c4082e79d2de",
+  "story_id": "3a221461-c97f-4987-af50-d84194072407",
+  "chapters_done": 15,
+  "chapter_request_ids": {
+   "2": "c6efbd40-4d5f-4e97-a6fe-ae876d19a0a8",
+   "3": "4fa7398a-795c-41d2-b719-4e1837b85334",
+   "4": "6315bb1b-1d46-4674-ac1f-bcdc42c08771",
+   "5": "5b136848-54ed-4b54-b8a1-a5c31b7dc5fb",
+   "6": "3b1d23a6-6b5f-4351-8b44-5fc9632598b2",
+   "7": "22f4356e-4a87-4aa6-9950-fc5917d2f872",
+   "8": "e9c7df0b-4dab-4bba-b646-6f032fd2c3fc",
+   "9": "c807eb26-3238-4f2b-a406-2f2591c1557f",
+   "10": "54c3de9e-2be9-41bd-a650-d494142ebeec",
+   "11": "1940731d-91b3-4c7f-8bcb-b2de575efa05",
+   "12": "30faa780-b8a8-4e63-91bb-fce237e03fb9",
+   "13": "ad4efdef-2ef3-4f22-a2a9-1149a189c750",
+   "14": "7a0c0dbb-3b49-4df5-a8a5-25122409168e",
+   "15": "4e20ab88-e99a-40e1-84b2-6b462c446789"
+  },
+  "errors": [
+   "2026-09-18T14:44:00.229Z continue-story ch9 500 {\"error\":\"Generation failed. Credit refunded.\",\"operation_id\":\"a0441205-0ae2-4d07-beff-853fe8ead728\",\"status\":\"refunded\"}"
+  ],
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/3a221461-c97f-4987-af50-d84194072407/original-v1.png",
+  "awaiting_review": true
+ },
+ "mirror-of-salt": {
+  "start_request_id": "fe98f530-8ba9-4dda-acc3-783fbb5974fd",
+  "story_id": "10faaff7-c0f5-4104-9329-09090ead137e",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "6faa08cf-07b7-4eb5-87f2-ce4a192f6211",
+   "3": "3dba8d24-9d42-4f38-ac77-d4fac4272a06",
+   "4": "80efe37c-9f20-42fe-9b8b-2984c01534c5",
+   "5": "6ecaa5c3-63bb-4843-8d18-76663a159ce8",
+   "6": "67bb3e4a-1219-4167-8644-36f26d34ff46",
+   "7": "f3e5f64c-b41b-462d-9e85-92c22cc7e37b",
+   "8": "ab6e3ae8-fdc9-4b46-a36b-efd0253e0a7c"
+  },
+  "media_settled": true,
+  "published": true
+ },
+ "the-morning-ferry": {
+  "start_request_id": "11795da3-66ec-4486-bb52-6bfb4367c2c9",
+  "story_id": "2bd87092-2b3e-4742-ad3c-bdc5620e15d6",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "18fc4e39-96ac-44a7-a157-7ef3ef1ce881",
+   "3": "7c437891-bbbf-43d4-9eb5-e0a57e6ae4df",
+   "4": "0cb5873a-99c9-4aaa-8e81-6b251b7ce0b2",
+   "5": "04cf5603-1c08-419d-8169-1b3b37797087"
+  },
+  "errors": [
+   "2026-09-18T14:44:30.999Z continue-story ch4 500 {\"error\":\"Generation failed. Credit refunded.\",\"operation_id\":\"dea758b5-1d71-47ee-97d9-920483b0b403\",\"status\":\"refunded\"}"
+  ],
+  "published": false,
+  "media_settled": true
+ },
+ "woven-air": {
+  "start_request_id": "032fbf3c-4b3a-447a-9848-df204c37a77c",
+  "story_id": "7fdcdc21-0125-4d9a-a668-de6203819b68",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "e209c90f-164e-462b-b431-b3f30a48bbd4",
+   "3": "c6890a56-83dc-44bd-8c2f-e2814c3b9a87",
+   "4": "83e881ec-c8e9-40e6-96d7-17e468e881ff",
+   "5": "13f22044-4671-498c-aa3a-72d849002b32"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/7fdcdc21-0125-4d9a-a668-de6203819b68/original-v1.png",
+  "awaiting_review": true
+ },
+ "the-landlady-investigates": {
+  "start_request_id": "c1f7db81-f4cf-4b22-ae6e-a8de20cbe006",
+  "story_id": "4bce2d8c-e4b8-4b05-ac84-81665f3fec01",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "64a16d48-09ab-4c2c-b7ed-d75cff4436ca",
+   "3": "4dfb97ac-7235-42bd-ad2e-7dbe62742258",
+   "4": "40fbc436-02af-4d0e-95fd-66f97c86f219",
+   "5": "7dcd0659-b30a-4482-8be6-d1257a565cf5"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/4bce2d8c-e4b8-4b05-ac84-81665f3fec01/original-v1.png",
+  "awaiting_review": true
+ },
+ "lola-swipes-right": {
+  "start_request_id": "68ebfaf4-c233-4324-940c-58dcf94c6ed3",
+  "story_id": "421c483c-26ff-46b5-8f0f-fafd1b3ee678",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "62fa5740-3fea-47e6-8d43-7399901d4d7f",
+   "3": "a5a1c7e0-c665-4abb-8b2d-72cadcb117b3"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/421c483c-26ff-46b5-8f0f-fafd1b3ee678/original-v1.png",
+  "published": true
+ },
+ "the-girl-who-borrowed-the-moon": {
+  "start_request_id": "a946a2a8-954d-4f4c-8d95-2dd1e8739c2f",
+  "story_id": "83351967-b5df-461d-bc2e-b21613b00219",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "3454f06e-d368-42b8-a3a0-13f2c2d233d3",
+   "3": "b71da05d-9498-4c17-ad22-6e504f84653b"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/83351967-b5df-461d-bc2e-b21613b00219/original-v1.png",
+  "published": true
+ },
+ "tavi-and-the-pocket-thunderstorm": {
+  "start_request_id": "7c2c4022-eb14-47a7-87d2-7a2e3e077666",
+  "story_id": "252b373f-1363-44ca-a294-f8fbec97bb42",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "4b30bebb-7aa5-4068-aa83-61143b9f79ff",
+   "3": "d37139dd-6185-4d4c-a098-e57f7f39a913"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/252b373f-1363-44ca-a294-f8fbec97bb42/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "tuesday-tea-at-number-nine": {
+  "start_request_id": "0a023a07-8199-4c2b-8941-f3655754d59b",
+  "story_id": "54b5f899-8c29-4314-a6da-f4f99d47ec31",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "published": false
+ },
+ "gap-at-kilometre-forty": {
+  "start_request_id": "e10c7b7d-d8df-407b-9f9e-faeaeb0bcf1d",
+  "story_id": "b8129a5b-26be-4a08-95f3-8670d7e66223",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "55976129-60ba-4462-a9f6-f7ec104190d7",
+   "3": "9c3febc2-7d4f-4497-96d5-fdec3c0e2d84"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/b8129a5b-26be-4a08-95f3-8670d7e66223/original-v1.png",
+  "published": true,
+  "awaiting_review": true
+ },
+ "eleven-days-missing": {
+  "start_request_id": "528d9c0f-38df-4ed9-bc85-175ada96c17b",
+  "story_id": "9a8e59ce-a837-4168-afe8-eaf56c52046c",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "fcd34265-209f-4de5-b3d3-4af5867baeac",
+   "3": "0849165f-1ea6-4591-b439-ec5874ed278d"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/9a8e59ce-a837-4168-afe8-eaf56c52046c/original-v1.png",
+  "published": true,
+  "awaiting_review": true
+ },
+ "island-calling": {
+  "start_request_id": "f5299155-4c71-423c-93e4-1d8a23c505ca",
+  "story_id": "0770abbf-9b32-4308-99e5-206c5c7c7cc3",
+  "chapters_done": 10,
+  "chapter_request_ids": {
+   "2": "3ff1466a-4ba7-41c2-b156-3f8d7ce225bb",
+   "3": "2692d222-6cb6-48e2-9439-c605a4819a5d",
+   "4": "00f7fb25-6cfd-426f-b5e3-7541a95599b6",
+   "5": "65bc84a9-e9d4-4d42-9cbf-ae22e301f668",
+   "6": "639f0727-765c-4a5a-8f34-f9eb6b7d2a63",
+   "7": "004380bc-8d18-4126-b961-63ec41642d1a",
+   "8": "7845b25f-4eb6-479c-8ea8-f0da9bd71d96",
+   "9": "31dbe570-cfa2-465a-9af2-f08775b4bf3b",
+   "10": "6f947cc2-657c-4327-abbc-132e20ab2412"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/0770abbf-9b32-4308-99e5-206c5c7c7cc3/original-v1.png",
+  "published": true,
+  "awaiting_review": true
+ },
+ "the-heidelberg-summer": {
+  "start_request_id": "b2b4935a-d07b-4b52-9bd0-b064443db6bd",
+  "story_id": "deb3247a-cf7e-44f6-b54b-c702e6806f07",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "f20aae9c-f630-4ddd-887e-71d8928465ab",
+   "3": "dccd82ef-1cb3-476a-ae76-67bf2b70c32b",
+   "4": "01d9aef5-f9c5-4eae-8376-dd888c6bb74f",
+   "5": "3753f15b-1918-4732-a9fb-53e1dbc9aaae"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/deb3247a-cf7e-44f6-b54b-c702e6806f07/original-v1.png",
+  "published": true,
+  "awaiting_review": true
+ },
+ "going-down-at-seven-twelve": {
+  "start_request_id": "b9ce8b90-8440-4876-bde1-10a4443804f0",
+  "story_id": "7f9c1f61-9d5e-4006-9cce-f3a8a6cb8f6b",
+  "chapters_done": 6,
+  "chapter_request_ids": {
+   "2": "de5054ec-02ff-4bdd-9bc5-025f4e18ca5c",
+   "3": "0332a67e-79d8-4629-9048-661070986c59",
+   "4": "9c19ddec-03c3-49d3-88ce-2beb18a5cdd5",
+   "5": "03269114-0f8f-4189-9803-bdcfc0b80d08",
+   "6": "b6769ea9-b27f-4380-bcd4-f166b11752cf"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/7f9c1f61-9d5e-4006-9cce-f3a8a6cb8f6b/original-v1.png",
+  "awaiting_review": true
+ },
+ "side-b": {
+  "start_request_id": "5c740429-dccf-43a5-9323-a266334c5b96",
+  "story_id": "e87068cf-e0cf-45b0-865f-bc9d5508356b",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/e87068cf-e0cf-45b0-865f-bc9d5508356b/original-v1.png",
+  "published": true,
+  "awaiting_review": true
+ },
+ "say-it-in-nains-words": {
+  "start_request_id": "ea6995ae-83b3-4537-ae23-569ffd65bad2",
+  "story_id": "e29c36db-cb6b-454c-8437-2631b11a6add",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "d8039f5d-25d8-4faf-9e8b-911db5b60be2",
+   "3": "78d70f16-d3ed-4dc8-8df4-4bd523fb4aab",
+   "4": "97e1a2b0-04e3-4e14-a7f9-c360dce00ae4"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/e29c36db-cb6b-454c-8437-2631b11a6add/original-v1.png",
+  "awaiting_review": true
+ },
+ "four-days-to-the-mehndi": {
+  "start_request_id": "f5bac385-05b7-40db-a1e0-425e6a735e5e",
+  "story_id": "9ae8f5ec-21b7-44a3-870c-6f657f8b88b9",
+  "chapters_done": 1,
+  "chapter_request_ids": {
+   "2": "3e07999f-d5c8-4c3e-894a-7024f1cd0a58"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/9ae8f5ec-21b7-44a3-870c-6f657f8b88b9/original-v1.png",
+  "awaiting_review": true
+ },
+ "a-place-for-a-stranger": {
+  "start_request_id": "39762d5a-21f8-4b28-9a67-271692e38fd3",
+  "errors": [
+   "2026-09-18T15:05:33.112Z generate-story 409 http {\"error\":\"Generation is already in progress.\",\"story_id\":\"528b5344-bbbe-41f7-9682-cdb4fc68552b\",\"status\":\"reserved\"}"
+  ],
+  "story_id": "528b5344-bbbe-41f7-9682-cdb4fc68552b",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/528b5344-bbbe-41f7-9682-cdb4fc68552b/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-star-that-would-not-fit": {
+  "start_request_id": "8d35af98-5b78-4de8-a999-60bc71620a73",
+  "story_id": "939a3975-8094-49f0-a588-8c6b9dfa51ff",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "bd944deb-b926-4885-99e8-8027ed4c37c9",
+   "3": "6d6498ac-b0c6-4a6a-b52d-357e210901da",
+   "4": "b5adb60f-51bf-4412-9fbe-ed93f427d4b0",
+   "5": "a6a6306f-aa02-4f09-b73f-e7ba97246e9c"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "eya-and-the-thinnest-moon": {
+  "start_request_id": "da845234-bef3-458d-8c4f-fad90a6a37d3",
+  "story_id": "bcd49907-a563-4c68-a413-adbcc0783630",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/bcd49907-a563-4c68-a413-adbcc0783630/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "shontelle-guards-the-nest": {
+  "start_request_id": "89140a15-489b-472f-9d69-f3d932ec6edb",
+  "story_id": "3e5c6399-54af-40cf-8d1c-c6b52fef0423",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "c1f711cd-880f-408f-9665-f6e49caab8a5",
+   "3": "b441e1db-bcfe-4005-8c29-569e8593701b"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/3e5c6399-54af-40cf-8d1c-c6b52fef0423/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "wumpini-reads-the-bee-dance": {
+  "start_request_id": "f4bbba43-7602-4984-90f2-80c0a55a2edb",
+  "story_id": "ed5c61b5-3635-42b0-aa37-b2ecd9c3c0be",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "published": false
+ },
+ "teddy-builds-a-bridge": {
+  "start_request_id": "7e3e762f-f826-4cce-ba1b-a02a4bcb4427",
+  "story_id": "a8655411-3151-4ffc-bd63-00a9431002c7",
+  "chapters_done": 2,
+  "chapter_request_ids": {
+   "2": "e3098faa-d7a9-42c4-ba94-44a83a5d016f"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/a8655411-3151-4ffc-bd63-00a9431002c7/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "hello-from-up-there": {
+  "start_request_id": "607a42a7-10ff-4344-bac8-0a6adca1fb92",
+  "story_id": "8fde8727-13f4-4b4e-98e1-20f5a40c28ee",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "6a1c2d61-3c5c-47cf-843c-128cd5e8aca2",
+   "3": "f5e29224-eacb-492a-8213-46fbe13b94c4",
+   "4": "c10b2579-dad3-4899-84e2-c492de7f0bf9"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/8fde8727-13f4-4b4e-98e1-20f5a40c28ee/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "garua": {
+  "start_request_id": "cda8563b-6b0c-4392-8d9a-67390fbe8486",
+  "story_id": "a1ff5ab7-7802-4461-8516-b039811905ae",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "7308a847-71e3-4815-b6cf-678f979c6ad8",
+   "3": "01c7eadc-b137-4bdf-8801-eac23fc41247",
+   "4": "3f2ea25f-b682-498a-9fee-1b3d24473955"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/a1ff5ab7-7802-4461-8516-b039811905ae/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "splashdown-off-son-tra": {
+  "start_request_id": "e1fbbc8a-4124-4a16-aeeb-a3d91b1ef565",
+  "story_id": "ddee1855-1669-4862-8f06-85d816d2573c",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/ddee1855-1669-4862-8f06-85d816d2573c/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "nine-minutes-over-goonhilly": {
+  "start_request_id": "5f874280-4784-4095-8fb5-cabd445b4c77",
+  "story_id": "04c12562-4822-4675-90a5-18590ecd6851",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/04c12562-4822-4675-90a5-18590ecd6851/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "a-glacier-for-phyang": {
+  "start_request_id": "3d3603a4-4ac4-430b-8aaa-31534ca16dbe",
+  "story_id": "4b6a9844-d85c-4c2e-a18d-2b4dd4143a58",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "677f6c3e-70fd-4f2c-999f-357a391ede37",
+   "3": "a8d82089-ae33-4828-93b9-1ebec9f1ab4d",
+   "4": "d3838cce-2524-442b-884f-bbf3689851db",
+   "5": "87d3a77e-e045-4029-8dff-b546c61195bd"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/4b6a9844-d85c-4c2e-a18d-2b4dd4143a58/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "what-the-river-kills": {
+  "start_request_id": "4b2d4732-f3e7-412c-baa8-411c2ff04945",
+  "story_id": "f732e8b8-ca34-4202-bacc-cd2ec1d6e75f",
+  "chapters_done": 6,
+  "chapter_request_ids": {
+   "2": "8dd61fec-bc93-43c9-8fb1-355cde38d832",
+   "3": "b53c22f2-aeeb-40f6-8966-976fbd0966bb",
+   "4": "99099c9b-3b93-4f5a-b8bb-6f7631c8df83",
+   "5": "49d4de44-3ff4-46be-8fb1-4e38fd295a2b",
+   "6": "aa60f938-60d4-489d-8023-966ca1c22729"
+  },
+  "published": false,
+  "media_settled": true
+ },
+ "cholpon-and-the-yak-who-ate-hats": {
+  "start_request_id": "d9e74f4b-dee9-40d0-8c49-f747cad8ca02",
+  "story_id": "7ca29594-4ac9-466b-a015-fb36e63b69d7",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/7ca29594-4ac9-466b-a015-fb36e63b69d7/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-puffling-patrol": {
+  "start_request_id": "30a2cecc-f2ac-4255-97e7-e304e5a55374",
+  "story_id": "4dabf8d3-fd80-446d-8591-774732221b34",
+  "chapters_done": 2,
+  "chapter_request_ids": {
+   "2": "054f14ae-fdea-4cd5-aee0-8b4154919779"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "back-to-plymouth-town": {
+  "start_request_id": "388fdfbf-5617-41c6-92fe-c71a58051ab8",
+  "story_id": "8fccb4ba-ee37-440f-8c57-7bfb591148fb",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "b04f0233-fe2a-4ee1-97e3-322f355fe06e",
+   "3": "5fbfbbc3-e889-4d11-b5fa-8fba590d99eb"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/8fccb4ba-ee37-440f-8c57-7bfb591148fb/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "four-oclock-ferry-to-tarkwa-bay": {
+  "start_request_id": "410169de-60a4-4917-9a9c-9c7249416453",
+  "story_id": "5b5d1e77-be33-434f-818f-2c7728791d9f",
+  "chapters_done": 2,
+  "chapter_request_ids": {
+   "2": "4db0cb4d-ab85-4107-8d25-ab5fc633861f"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/5b5d1e77-be33-434f-818f-2c7728791d9f/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "rising-water-under-greenbrier": {
+  "start_request_id": "9f583142-1a78-45df-81fb-4003b7bd7041",
+  "story_id": "a45506b3-59f5-4a24-8524-ead9470d6202",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "c95a6848-27ea-4a08-b9ce-a50f5ed84742",
+   "3": "551c99ba-e6a7-4400-8adc-841eae905a08",
+   "4": "6266d63c-c52f-4073-94c6-17bf75d209af"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/a45506b3-59f5-4a24-8524-ead9470d6202/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "bones-in-the-nemegt": {
+  "start_request_id": "6c9f603e-c22f-4cd1-b6d5-a639c3f67af7",
+  "errors": [
+   "2026-09-18T15:18:34.330Z generate-story 409 http {\"error\":\"Generation is already in progress.\",\"story_id\":\"cc60aeec-4c18-4488-972a-f78976d3ccea\",\"status\":\"reserved\"}"
+  ],
+  "story_id": "cc60aeec-4c18-4488-972a-f78976d3ccea",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "8d8b10dc-1601-4fed-a5b3-ef0f9eaecd05",
+   "3": "f4833cb6-be9c-4041-9689-572f0f6a0646"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/cc60aeec-4c18-4488-972a-f78976d3ccea/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "case-of-the-silent-violin": {
+  "start_request_id": "d0002ea4-9927-4a2a-a34a-bbfa05cbe0a2",
+  "story_id": "eb7cf0cd-2c06-472b-9433-4ea067be864b",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/eb7cf0cd-2c06-472b-9433-4ea067be864b/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "orlagh-and-the-dawn-letters": {
+  "start_request_id": "df0d7a5f-d0db-4100-b04e-24c1eb6a0dbb",
+  "story_id": "4eababaa-eea4-43bc-ba00-65bf1c8cd48a",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "7ef33b13-df10-4e83-97cc-a676761f482f",
+   "3": "352e5f64-b030-4cc6-b954-e619b6b1c389"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/4eababaa-eea4-43bc-ba00-65bf1c8cd48a/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "nine-years-of-bark": {
+  "start_request_id": "7dda2559-77bf-40b1-88ca-5d447950d246",
+  "story_id": "72bfc30e-92d3-4be1-9f9b-82e0ef60fb87",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "88c53399-8219-4cf2-89a8-832bc0d5f9a8",
+   "3": "60e40841-269d-4f46-933e-1eebe919f9f0",
+   "4": "da896a39-ae2e-4c0e-9861-69fadd2445fb"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "what-the-kazan-knew": {
+  "start_request_id": "bf496fc6-3f37-482e-a893-323cab81c5ff",
+  "story_id": "4da20a2f-86b2-4dbf-b0dd-1b89a9ec1a9f",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "published": false
+ },
+ "low-orbit-lullaby@draft1": {
+  "start_request_id": "2d91b0f3-ca2e-47e8-bdd7-6dbc258ca010",
+  "story_id": "109f761c-e440-4b81-91a8-43c0e73dcc15",
+  "chapters_done": 10,
+  "chapter_request_ids": {
+   "2": "19c79928-1171-4af7-ad02-f53a4c02c4ec",
+   "3": "08ac2bad-52a7-4d1f-8f35-a3d7093e8f19",
+   "4": "8010d75a-14ac-4dcf-915f-09dd49b271c8",
+   "5": "e8d13469-7625-4d91-981c-8d3393c24b54",
+   "6": "959416e2-9575-4906-971a-6deb3af3076f",
+   "7": "d204c280-678e-449b-a14a-5d05be3c0cbf",
+   "8": "756286b7-49e5-43f8-97c4-8f35e515d96f",
+   "9": "16c67c59-25dd-4c04-bb03-a0d92128d410",
+   "10": "c7307701-4e61-4295-a4ec-d62c46f2d0b7"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/109f761c-e440-4b81-91a8-43c0e73dcc15/original-v1.png",
+  "published": false
+ },
+ "nine-oclock-zanzibar@draft1": {
+  "start_request_id": "ea6f0e0b-754e-46c4-8b35-9462e3e1a92a",
+  "story_id": "2108f40a-8ae6-4193-b55f-4a9abf8c6c14",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "520d2d9f-6d63-4789-a374-610eb8852559",
+   "3": "3370171d-024f-4cad-ba57-4a968402769c",
+   "4": "fda85169-67e8-4a87-b4ae-c26278e80c1b",
+   "5": "7cd396e7-9829-4ba8-bc6e-67b53874bf61",
+   "6": "7cd6e7ef-fc58-46b5-b797-b69e99a34ac0",
+   "7": "b1798687-60cd-45d9-b5a0-10d7c594cd14",
+   "8": "0b573139-6628-4d54-8eec-9e4ac2876315"
+  },
+  "published": false,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/2108f40a-8ae6-4193-b55f-4a9abf8c6c14/original-v1.png",
+  "awaiting_review": true
+ },
+ "nine-oclock-zanzibar": {
+  "start_request_id": "92755632-18f3-48b6-970a-e1082f05f271",
+  "story_id": "69fd169b-6fe1-4faa-9cc9-0596257373a6",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "49c45bd4-930a-43f5-a62d-4c4401af978e",
+   "3": "d3c08f75-fde3-42f6-b4a3-ea6aea3121ac",
+   "4": "0b2a5d21-2c59-40ee-8411-efa3032a3e45",
+   "5": "43272b2b-b847-4c8c-9c8f-61398f5ddecf",
+   "6": "ad45e333-4486-448a-8355-2e4efc71eddc",
+   "7": "5341f483-ce82-4286-9810-66bc99c9a838",
+   "8": "7d77f3d9-11db-40b1-a3d7-51547e68749b"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/69fd169b-6fe1-4faa-9cc9-0596257373a6/original-v1.png",
+  "awaiting_review": true,
+  "published": false
+ },
+ "low-orbit-lullaby": {
+  "start_request_id": "66499498-faa9-4b41-aca3-a576c3d1af69",
+  "story_id": "42f89782-e4b5-4473-a1b3-9b5915026baa",
+  "chapters_done": 10,
+  "chapter_request_ids": {
+   "2": "37396bd7-6842-4b2d-a5af-3755a9447f52",
+   "3": "a2470f65-2ac6-40ea-927f-04399a1a1e06",
+   "4": "05298c69-4efe-4d44-9118-e2e8686a9f4b",
+   "5": "a941e496-7728-4df4-8d82-bcf90f1682fe",
+   "6": "8e0b0afc-2f51-416b-af7b-b28bd565195a",
+   "7": "9789f859-8256-4f56-929b-750c8e7074c2",
+   "8": "66e8efd8-97cc-42b9-93de-1c974fc022a8",
+   "9": "84247692-6778-4086-a398-e605d000c488",
+   "10": "8ffd7322-ad03-48d5-8954-0d70d3f8a437"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/42f89782-e4b5-4473-a1b3-9b5915026baa/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "sultan-comes-home": {
+  "start_request_id": "9a740477-b9bf-4fea-91dd-a17d771550b4",
+  "story_id": "a59f1963-e780-4095-8002-7cb4116781eb",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "927837f8-8ef3-443e-ab74-faa08dc86ef2",
+   "3": "8bb93b7d-33b8-4db1-9435-73a3291d03b0",
+   "4": "097e2f31-4f45-4a31-beeb-cfeee7c1eaf4",
+   "5": "5cb81c70-4426-495e-97fe-d4e6f73b72c2"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/a59f1963-e780-4095-8002-7cb4116781eb/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "one-flat-note": {
+  "start_request_id": "7ce31dce-cf9b-46be-9ce8-e8914f6050b2",
+  "story_id": "c3abf454-7e6b-4a32-a0aa-f30ab7daad76",
+  "chapters_done": 12,
+  "chapter_request_ids": {
+   "2": "4f166ad2-e89d-476b-a171-c93cc642bab2",
+   "3": "d0d4c7ec-5d17-4a47-b0f7-d8a0eaf04647",
+   "4": "ef74fbad-4f84-4873-ba0b-fac37747fc2e",
+   "5": "41690271-d6cd-414d-9acf-79423e238d05",
+   "6": "450eb5cc-bf5b-45d5-9999-a902f4763ffb",
+   "7": "ac1fbb1b-1bba-4213-b7e6-91380078826b",
+   "8": "e4df5c09-dd41-4ea7-934e-024851e960ec",
+   "9": "4cc9af70-3c92-46ad-aef9-c02baa4b24dc",
+   "10": "bbacf138-8743-41d9-bc3b-1c1659ff61c0",
+   "11": "9bb18410-d418-4ee6-908b-fdf6ed5ddd56",
+   "12": "7fe4b356-8808-475c-8fb8-a1313eb82142"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/c3abf454-7e6b-4a32-a0aa-f30ab7daad76/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "mile-marker-212": {
+  "start_request_id": "2332dfd5-5c7f-4ad4-b367-788ad0c74a54",
+  "story_id": "4ecc5074-8c14-482d-a5b5-1e7970e7a755",
+  "chapters_done": 2,
+  "chapter_request_ids": {
+   "2": "b2a769ce-2893-402d-bee5-a22cf206b223"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/4ecc5074-8c14-482d-a5b5-1e7970e7a755/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-paper-house-on-wenming-road": {
+  "start_request_id": "0dbda71c-06cb-471d-8ba6-4aed16120dd8",
+  "story_id": "086d4a11-adaa-47f8-8360-45c3e2fb327b",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "03765ddc-5019-4c69-bf87-9cb7854a0fb7",
+   "3": "4464b446-cb32-442b-b3f0-5b7f347e2037",
+   "4": "c09a7bdb-e71f-4c28-87ea-c8152de2b30b",
+   "5": "36088bff-2a45-4a35-93e4-f7c758216cea"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "the-sun-came-back-wrong": {
+  "start_request_id": "6f87cb7b-8bb6-4e20-9d2c-3ba8d4d29e3a",
+  "story_id": "e75bfca6-9c4c-4e41-ae57-43f9c846e12a",
+  "chapters_done": 6,
+  "chapter_request_ids": {
+   "2": "1f5a3443-1884-4b1a-a6e3-f534ef7313da",
+   "3": "cf2f3ef6-5df7-4e82-8967-2b9a59b9d8ae",
+   "4": "fdc26048-2771-4dda-bd5d-ff990d9f978b",
+   "5": "8ab0556c-f43f-4439-89d1-7eab28826f03",
+   "6": "fa7c94d2-eb14-4519-98e2-35283322fb28"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "the-night-count": {
+  "start_request_id": "3428d8c5-ef36-4d21-bb39-6dc6e8ead7f3",
+  "story_id": "78cabfe0-6238-4259-b27b-cdeeba3a7c5b",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "published": false
+ },
+ "booth-nine": {
+  "start_request_id": "bf8ed32e-b756-4622-a359-1b9eff90dcea",
+  "story_id": "8dc81878-6b76-4147-8087-6499f9d9a638",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "bb658ed5-7457-489a-bdd4-171136ae73be",
+   "3": "0f8adb80-0e6c-41c6-8884-334e79968fdc",
+   "4": "51c931bf-ca22-4efa-ac24-8578c238aa0c"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/8dc81878-6b76-4147-8087-6499f9d9a638/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-dugout": {
+  "start_request_id": "4c45514e-2dc7-4351-8efd-dbc24d8e5d05",
+  "story_id": "f3e9503d-0b44-4b43-82ce-a588203b0328",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "3cf937e7-b863-4487-9bbe-f655ccc3cf7b",
+   "3": "c6ce6e9b-58b8-4708-bff7-257caea37762",
+   "4": "8432f40b-496c-4332-bc63-cd67dc170f50"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/f3e9503d-0b44-4b43-82ce-a588203b0328/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-day-my-shadow-quit": {
+  "start_request_id": "dfe97411-3319-4b12-ad25-93064c20cb9e",
+  "story_id": "c3165dcc-f139-41c8-949a-07ba29d72e47",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "25d2776f-d8f8-4083-8f0a-7c58decd6275",
+   "3": "770f4ee3-a567-4cd8-85b9-454f86c43d96"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/c3165dcc-f139-41c8-949a-07ba29d72e47/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "basant-after-dark": {
+  "start_request_id": "ddaf2907-c6ae-4559-88ba-77bbb009e2e5",
+  "story_id": "f827667e-c92a-487c-b5ed-25695cf47470",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "c006876f-31bd-4a8a-b5e6-9b441bc39409",
+   "3": "48f32b77-b83b-404e-ad2d-68ecb1928a36",
+   "4": "0894e00b-f414-4604-bd28-dbf8c9020764",
+   "5": "d8ff5d91-06de-4fea-aa24-f81577c5eb32"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/f827667e-c92a-487c-b5ed-25695cf47470/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-weather-auction": {
+  "start_request_id": "b56c0706-1385-46d6-a4d6-78fc88402aa8",
+  "story_id": "e0e15343-388e-4836-9519-c51092b4f4d7",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "e2dde0ef-e68a-46ff-8263-c333a87594fe",
+   "3": "e9699cfe-66bf-42b5-b85d-0c5b4247f608",
+   "4": "fe44c1ed-f2d3-4bdc-9aa9-01c6fef42184",
+   "5": "7a5e848e-e7bc-4dbc-98e3-3e4977bdc6f1"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "the-sea-comes-back-on-thursday": {
+  "start_request_id": "42424bb4-e439-45ee-a1b3-39444330677f",
+  "story_id": "17d001bc-38f7-482b-bb37-ffdd3d14311d",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "0b59a28b-1545-4543-935a-d19b2d3058a6",
+   "3": "c3bc858f-e711-448b-887a-064d78ca3767"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "the-salt-notary": {
+  "start_request_id": "ed78caec-8a4e-4c12-b34b-b33f78587c23",
+  "story_id": "ed59ebbc-b97e-49b2-b39f-cb7ab1880bc3",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "28d0c2c9-e77b-4398-b139-18ad839ec0c2",
+   "3": "4538353a-fbc6-4f74-888a-88a2c226fda3",
+   "4": "61416cd8-edc0-4793-8a50-7e6490710187",
+   "5": "d1eb3616-bb21-4786-ad0a-30c3d28a1424",
+   "6": "422e5efb-7250-4d9a-b78c-a4d7ad4b2a5d",
+   "7": "17f6eb35-859b-44ab-ad6c-564219eb2d70",
+   "8": "886e18a2-e14c-486a-9f6a-9a151c406a77"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "what-the-hyenas-carry": {
+  "start_request_id": "b02429e4-2050-4736-bc76-973e7de51890",
+  "story_id": "fb4a80c2-6326-4a21-b89b-231362e3c46c",
+  "chapters_done": 6,
+  "chapter_request_ids": {
+   "2": "c7d80891-d9ea-4431-b454-301f65e54b42",
+   "3": "d1aa28c3-3565-4353-b2fc-9f9b5e5225cd",
+   "4": "70d771d0-67ea-415f-a58e-f48a0438386b",
+   "5": "cc6e8749-0de8-490e-afca-aae760e2e56c",
+   "6": "766d45f0-88e7-4761-9569-4f2569a998ca"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "heavy-is-the-house": {
+  "start_request_id": "58b1a80c-ddef-41da-8ee7-c3c63227059a",
+  "story_id": "54ecb81a-7098-4c50-be72-ff4724720247",
+  "chapters_done": 2,
+  "chapter_request_ids": {
+   "2": "d7b7c882-c7ce-4244-b7fc-3c1b00de27ee"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/54ecb81a-7098-4c50-be72-ff4724720247/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "lapin-wont-dig": {
+  "start_request_id": "1d15c23c-f072-4617-a2c0-769a6ce3d4ca",
+  "story_id": "16e55b2d-5869-4ced-858d-38d240f6dc6d",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "62f82fc9-9abe-4706-92cf-d6a12df5225b",
+   "3": "0dbff03d-f007-482b-981a-6def14a67eb9",
+   "4": "d148732c-2f48-4f05-b413-9093130f0d9c"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/16e55b2d-5869-4ced-858d-38d240f6dc6d/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "nobody-eats-my-dumplings": {
+  "start_request_id": "288694c2-c143-4d7d-a1f5-c63ca3e84686",
+  "story_id": "55224719-c6d9-47c4-8199-ecc48e5f4d39",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "8af708cb-5958-47bb-86c1-548f9b8e2fb8",
+   "3": "c817fbf7-603f-4714-a3f4-f9b2c0627ce8",
+   "4": "1efa0530-5308-4b19-91e7-e15020ae4d03",
+   "5": "20e50241-620b-43c9-808b-9b834bb6456b"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/55224719-c6d9-47c4-8199-ecc48e5f4d39/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-aspen-daughter": {
+  "start_request_id": "f9cbbcb4-ff82-40de-9e6c-eaeb906d9b2a",
+  "story_id": "d85dbc2c-79aa-4960-9d89-07c5a70b6102",
+  "chapters_done": 6,
+  "chapter_request_ids": {
+   "2": "a0775f78-f5bc-4eff-b690-96f23f76255b",
+   "3": "9decfb42-82ef-4a02-9299-ad083e8f541f",
+   "4": "f2cbe5d0-12c4-4294-b592-fa3699f822da",
+   "5": "012a1413-102a-41cb-88bb-c2266fed0035",
+   "6": "4e4c8df5-cb65-4e39-9dc2-682e387fe451"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/d85dbc2c-79aa-4960-9d89-07c5a70b6102/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "every-echo-in-kanfara": {
+  "start_request_id": "ebd98045-8f0f-4f5c-bd26-89e31cc0f6f2",
+  "story_id": "16b8166e-3dc5-4853-9ac2-f6d446351e55",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "989f1a1f-d5b4-4365-9ead-e241fc6ee098",
+   "3": "ca30d033-28c5-4362-ad7d-c46af90e067e"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/16b8166e-3dc5-4853-9ac2-f6d446351e55/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "a-bridge-by-cockcrow": {
+  "start_request_id": "607c133e-8fe4-41a2-8915-328880ef88a8",
+  "story_id": "0da6a6bb-8b84-458a-8e89-3da7a8046e0d",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "57dfae76-9702-44ba-85b5-6488611fd66c",
+   "3": "34e769c2-27fd-4423-bdc4-845af72b62e2"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/0da6a6bb-8b84-458a-8e89-3da7a8046e0d/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "mrs-hanabusa-goes-around-the-world": {
+  "start_request_id": "f1f18de2-c4fa-4cba-bad5-1aa4691ac16a",
+  "story_id": "62397423-6386-4cf6-83aa-5c9bea917eec",
+  "chapters_done": 4,
+  "chapter_request_ids": {
+   "2": "34d875f4-1894-4207-b1a5-c5ddd7c39f14",
+   "3": "4fe87895-8f79-4d9e-b18a-595fc593a53d",
+   "4": "6c1d5287-b145-445e-9989-4eb7804ca08f"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/62397423-6386-4cf6-83aa-5c9bea917eec/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "two-imaginary-fiances": {
+  "start_request_id": "61585188-f93b-462f-ad4a-a3848d6b198b",
+  "story_id": "12335e78-947e-4d38-9144-4f94718d7075",
+  "chapters_done": 6,
+  "chapter_request_ids": {
+   "2": "2c05f3ad-e9de-4fbe-9e55-bd5746968862",
+   "3": "ae4d99bb-c99b-406a-b645-d530cefa664d",
+   "4": "cde110b7-5ec9-4ec2-9464-385fbd09c8c8",
+   "5": "a83c2d96-ee57-4d8a-b7f3-d135f5e6affe",
+   "6": "b2ca4ff8-939e-4768-bc0f-f04502b5917a"
+  },
+  "published": false,
+  "media_settled": true
+ },
+ "taught-to-break-hearts": {
+  "start_request_id": "3d6e4c96-f984-4494-bd9a-bf98a613d05f",
+  "story_id": "b34b580b-5aed-4253-936e-2aef1e56ed96",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "0e045312-3a29-4824-84d7-eec6eb07cc18",
+   "3": "5056515b-179b-43d9-b685-af0bd8e59d58",
+   "4": "7b6c884c-76d5-45c6-a756-16190416466c",
+   "5": "21d7fd48-1873-4c2b-9454-fab7c05d9edb",
+   "6": "a311c329-dd3b-4c36-95ca-4578d36a2c55",
+   "7": "7ef71a18-7465-46f5-a3b3-659f2bf7fafe",
+   "8": "16bad4a3-2fec-498c-96c7-4f9d6d5644ff"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/b34b580b-5aed-4253-936e-2aef1e56ed96/original-v1.png",
+  "awaiting_review": true
+ },
+ "the-six-hundredth-night": {
+  "start_request_id": "0b2cedb2-6ffc-42ba-96ef-12f37fb384f7",
+  "story_id": "840aaf63-0859-41da-9ecd-d5b9b7bb74a7",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "published": false
+ },
+ "six-months-under-clay": {
+  "start_request_id": "41289ebd-6603-4583-ac5e-22669a67f898",
+  "story_id": "bd19f5dd-fe4e-40a9-8c21-3ffbe6515c09",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "336cb4e8-32c0-41e5-ac8e-8c601a577028",
+   "3": "1845ff60-49da-41ab-8cd8-29716b47b03f",
+   "4": "97fa7545-faa8-49be-8d14-0f23140af01c",
+   "5": "6a6ff8dd-bad8-4a83-a45d-951034fd7721",
+   "6": "67c2a9ba-ad03-412f-b75a-84ae0e631f97",
+   "7": "60cdde9f-1044-4b6e-bf8a-20444113b70e",
+   "8": "c8ae375e-9a09-4349-a70a-96c8f65c7535"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/bd19f5dd-fe4e-40a9-8c21-3ffbe6515c09/original-v1.png",
+  "awaiting_review": true
+ },
+ "a-winter-for-the-eagle": {
+  "start_request_id": "91450acd-6127-448e-b6b4-a7115b939f92",
+  "story_id": "959f1c6b-1593-474b-a153-f535b2f2be45",
+  "chapters_done": 15,
+  "chapter_request_ids": {
+   "2": "bd860c0d-d7f0-4edc-a78a-5cb6a460b519",
+   "3": "adcbdedb-e944-4414-a1b0-7b5d9d935f27",
+   "4": "f8a90ea5-25f7-485e-bf2e-9b3ddab3f771",
+   "5": "28a28991-6cdb-4b1b-8abe-db7da39faab5",
+   "6": "38566d6b-ef9c-4537-aac9-3330fff7ccd8",
+   "7": "d2cdbb9e-a649-4fb7-a47e-39858f6a7597",
+   "8": "d8e1b061-83d0-473e-b415-dff163d1cc2c",
+   "9": "aca6a989-70c3-4e5e-a820-aead646b6331",
+   "10": "e2802c1e-88f3-4f37-bccd-6fea667ac33e",
+   "11": "fdfc2fb3-50b8-4688-a6b8-d4470cb8c7b8",
+   "12": "f9610395-caac-4245-9967-ed6ef125cfc2",
+   "13": "2b9d65e3-e258-41eb-8a46-f8e4a63ffc6f",
+   "14": "29ab6010-89e9-4228-b1ec-b2a6d9f494e0",
+   "15": "81ccd2ed-b431-453f-94b5-237fb18aeee3"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/959f1c6b-1593-474b-a153-f535b2f2be45/original-v1.png",
+  "awaiting_review": true
+ },
+ "ink-for-two-weddings": {
+  "start_request_id": "aa5f445f-13fc-4788-8a9d-f1cd8bdf5d51",
+  "story_id": "fe47f293-30ba-4207-a98f-03ec8ea18038",
+  "chapters_done": 2,
+  "chapter_request_ids": {
+   "2": "5c343808-2fc1-4c62-94f1-e11a147a5adc",
+   "3": "0d13c899-5b39-43e9-ab48-8ff5de760a44"
+  },
+  "published": true,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/fe47f293-30ba-4207-a98f-03ec8ea18038/original-v1.png",
+  "awaiting_review": true
+ },
+ "last-train-from-shimla@draft1": {
+  "start_request_id": "ab2a50b7-56a4-45f2-8c9c-3624d28e7f5d",
+  "story_id": "b8148cf7-9a3d-4411-8958-8087cf917d34",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "8f2d6da5-10f8-4b0a-8081-dcec439bed11",
+   "3": "08aeaa05-83db-47c3-9d8d-2e06aaa2f05f",
+   "4": "0ea22f88-7013-4b1f-8f06-ad29491e23b4",
+   "5": "658dfc74-3aca-491b-8165-97efd49ecd79",
+   "6": "9decb384-2126-4093-9e92-1d48db82a749",
+   "7": "7caed363-0630-4e5c-bfd7-4b2314f026ff",
+   "8": "5b3c8e00-681d-4fea-ad34-f2ed72b09de4"
+  },
+  "errors": [
+   "2026-09-18T14:47:37.281Z continue-story ch8 500 {\"error\":\"Generation failed. Credit refunded.\",\"operation_id\":\"4d25a8d0-d1d8-44b4-a6f0-292bea5f60e7\",\"status\":\"refunded\"}"
+  ],
+  "published": false,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/b8148cf7-9a3d-4411-8958-8087cf917d34/original-v1.png",
+  "awaiting_review": true
+ },
+ "returned-on-thursdays@draft1": {
+  "start_request_id": "cc7a8fb5-a86f-48ca-b267-a7d6ccf0192e",
+  "story_id": "a41df3bd-4249-4a16-9733-8b4abf5ffeaf",
+  "chapters_done": 10,
+  "chapter_request_ids": {
+   "2": "0b8f2f52-79fd-43d4-bf15-510e8eecf68a",
+   "3": "4dde39f5-f8fe-414a-aec5-405e549c8981",
+   "4": "c27fb637-eb2c-4ea0-a7cd-2bbdab7f396b",
+   "5": "a71556ad-9637-485e-ae99-789016281bb3",
+   "6": "813ad7df-a800-4e09-bdb5-946dee19fedf",
+   "7": "36d403fb-7838-4334-af16-38521ddefb6c",
+   "8": "7e9774a9-c79f-413c-a078-6324181b2101",
+   "9": "e4b96845-3525-48dd-836f-ff47eb0d9a99",
+   "10": "5e75f2fb-bb25-464b-a3c2-ceb9207a258e"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/a41df3bd-4249-4a16-9733-8b4abf5ffeaf/original-v1.png",
+  "awaiting_review": true,
+  "published": false
+ },
+ "a-coffin-shaped-like-a-mackerel@draft1": {
+  "start_request_id": "20e63321-9d64-4fa0-a673-db926f488867",
+  "story_id": "214be191-b56e-4663-a19f-14e0f872fd2c",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/214be191-b56e-4663-a19f-14e0f872fd2c/original-v1.png",
+  "awaiting_review": true,
+  "published": false
+ },
+ "last-train-from-shimla": {
+  "start_request_id": "412afc4b-cf13-455c-9df9-15aeddb3fcc4",
+  "story_id": "29ac3f5e-a857-4fbf-ad55-d71286d79f0d",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "cad338a5-8b51-4efe-a34c-f6acece355d5",
+   "3": "de14282c-6ee1-44b9-a762-d1a3febb8ed6",
+   "4": "32224a57-9ae1-4f8a-aa7a-d68d4008df3d",
+   "5": "3e766b2b-232b-44ce-84a2-757eb14e8537",
+   "6": "0355cdfb-e91b-4a8d-bcc6-728894b5653c",
+   "7": "83f3a73e-dbd5-4a4d-8c91-5da66b98db9f",
+   "8": "94809ab2-7556-4db2-b0bb-c67cc3e403d4"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/29ac3f5e-a857-4fbf-ad55-d71286d79f0d/original-v1.png",
+  "awaiting_review": true,
+  "published": false
+ },
+ "returned-on-thursdays": {
+  "start_request_id": "102ef1d0-cc8f-4de0-a265-a569757706a1",
+  "story_id": "9d7bc07d-299c-4a01-8eb8-1eec0391e9e4",
+  "chapters_done": 10,
+  "chapter_request_ids": {
+   "2": "9565fbb4-4567-4362-b6a1-a4fba1e5cb8f",
+   "3": "4bd940d2-8ce8-45b3-aa98-b8ab8f7f028c",
+   "4": "caa64465-b348-410f-aa65-7d00762683eb",
+   "5": "0ca599cf-a0e2-4f2c-a203-58880d32d4cb",
+   "6": "765861a4-99be-4c49-bddd-eef1e2be19ad",
+   "7": "9ed76100-823e-49d6-9596-5a69c3d454c6",
+   "8": "aa709827-97bd-412b-a513-1fff43018350",
+   "9": "f4a6226d-bcdd-4c85-adb9-ea2c20c96bc9",
+   "10": "f9e79310-476d-40dc-bcb2-f44551dfaac7"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/9d7bc07d-299c-4a01-8eb8-1eec0391e9e4/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "a-coffin-shaped-like-a-mackerel": {
+  "start_request_id": "cae26298-eaa6-4d06-bf65-f15dda2e9c6f",
+  "story_id": "e0669c17-6cd9-4aa7-b001-df257e141c27",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/e0669c17-6cd9-4aa7-b001-df257e141c27/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "married-by-friday": {
+  "start_request_id": "6cf55567-192f-4e2e-95ab-dc47b1fd8e49",
+  "story_id": "8516bfb3-68ab-4d0c-93e4-4bbc4e59b6a2",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "b44c4f05-2fd9-45ee-9565-6cc0dc190b84",
+   "3": "b001991f-123f-4438-adbe-cd7299d0d380",
+   "4": "bc481b9e-06a3-4b08-bffb-8551bd5bcd93",
+   "5": "7c5b2fa6-beae-4917-8f2c-642eb5d15071"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/8516bfb3-68ab-4d0c-93e4-4bbc4e59b6a2/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "stitched-for-the-arena": {
+  "start_request_id": "75926c28-9037-4508-933f-88c1050ce425",
+  "story_id": "7ed81a36-e660-46b0-99b0-5005c502ab1f",
+  "chapters_done": 10,
+  "chapter_request_ids": {
+   "2": "9f3b0f54-bde9-4060-9c8b-bda8ac958f71",
+   "3": "724d326e-fcc2-4fbf-9dc1-55d1ffb2cc08",
+   "4": "4cb7a4b2-b98b-4ca5-a089-d56f854b2512",
+   "5": "3eb0d978-1906-45f4-bb89-57b407d4f0f6",
+   "6": "36a58ff6-0574-4b46-b9db-db672963f948",
+   "7": "6ace8daf-7822-4a6e-a3d0-b1c6475e5c27",
+   "8": "64512ae5-72c4-4ab3-973e-09e49ae2db7e",
+   "9": "a6b38f3e-51ef-413a-9777-e7e0ec104625",
+   "10": "2e1eee4b-e8ba-4cc7-951f-dfc465fdee84"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/7ed81a36-e660-46b0-99b0-5005c502ab1f/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-westbound-stop": {
+  "start_request_id": "3c1f89d2-8cc8-463a-b047-7e2bb36aa836",
+  "story_id": "d77d2521-eeab-4c42-8370-b3a0463820a8",
+  "chapters_done": 5,
+  "chapter_request_ids": {
+   "2": "aec9a3ba-c5ce-4a5f-8efa-bbe3437a1ec0",
+   "3": "b303af84-965c-45e4-a088-60289b2eb74e",
+   "4": "e21576d8-3441-45ca-93d3-8cad6a9a2712",
+   "5": "eb764d33-a1ab-4c22-af59-78a2d7aa652a"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "typhoon-day": {
+  "start_request_id": "89a4dc8c-fd8b-475b-a660-bd96b7041b83",
+  "story_id": "0d7d6f15-64e1-4cfc-a8eb-11dbec4f83a3",
+  "chapters_done": 1,
+  "chapter_request_ids": {},
+  "media_settled": true,
+  "published": false
+ },
+ "before-the-ice-goes": {
+  "start_request_id": "b0d1ed41-fe3e-4ae7-884d-a0d0742feced",
+  "story_id": "d601c8e5-9e01-4dd9-8910-de2ef0eabf2a",
+  "chapters_done": 2,
+  "chapter_request_ids": {
+   "2": "dbb5062e-3421-4078-b9e4-04a23d17cce4"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/d601c8e5-9e01-4dd9-8910-de2ef0eabf2a/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "the-island-with-hiccups": {
+  "start_request_id": "8f74fbf6-46c2-44a1-a06b-ad01a4f0102d",
+  "story_id": "36d80e50-95ec-4927-b436-a9be0e6500d2",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "cf260c96-f415-44f7-8fe0-35761a4ab67e",
+   "3": "76777a0c-df97-4847-afb1-312c00fd9ab9"
+  },
+  "media_settled": true,
+  "published": false
+ },
+ "play-him-out": {
+  "start_request_id": "50dd480b-62f7-438b-b161-f72b18bd43f7",
+  "story_id": "6a8530b7-1bf3-41d3-ad45-76e06e9792cb",
+  "chapters_done": 3,
+  "chapter_request_ids": {
+   "2": "52e08a8c-fb58-4706-8193-6253930c9b12",
+   "3": "c3aea6d9-4cfa-4677-949d-4ddf149424d5"
+  },
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/6a8530b7-1bf3-41d3-ad45-76e06e9792cb/original-v1.png",
+  "awaiting_review": true,
+  "published": true
+ },
+ "who-took-the-big-snapper": {
+  "start_request_id": "eac4299e-95db-4b6c-a529-aad29603ac17",
+  "story_id": "58f1fa5d-a78a-40be-9f41-c97de2318e0d",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "80dc2266-2a0d-482e-83b3-59aeb7020c6f",
+   "3": "c1df96ef-93e3-422a-a966-3b635ad875f4",
+   "4": "6f6d9a28-60b0-4045-bc08-d97b4d6a835f",
+   "5": "11a0bd75-51e1-41fb-bdc4-43f7bc68838e",
+   "6": "6230d9d1-17c1-46af-be2b-3126f3647a90",
+   "7": "787d5a1a-c822-4024-8098-9728a927a8e9",
+   "8": "c2e5f541-ccff-4f6f-9673-508a65d0c9c9"
+  },
+  "errors": [
+   "2026-09-18T16:45:10.396Z The signal has been aborted"
+  ],
+  "published": false,
+  "media_settled": true
+ },
+ "hallelujah-express": {
+  "start_request_id": "7d52246b-f26f-42e1-956f-9a09d5da6ed4",
+  "story_id": "8fec8d78-37c4-4453-bb84-ea97b530b619",
+  "chapters_done": 8,
+  "chapter_request_ids": {
+   "2": "0fe20eef-60a7-4d8d-9931-61e76473736d",
+   "3": "267d6fa3-8c13-4b6b-b788-dfcde9e4d251",
+   "4": "f449274a-2057-425f-8d1c-cda9cb887f8c",
+   "5": "83831c74-f455-4f63-afe6-28e4e4ef025c",
+   "6": "65f77514-e29f-4dbd-9e3d-c090bc32946e",
+   "7": "bd534344-3bbb-4eee-a601-414fe8c8be62",
+   "8": "b12f2f4f-0de6-4803-8c1c-8a11f45f5fd3"
+  },
+  "errors": [
+   "2026-09-18T16:44:48.702Z The signal has been aborted"
+  ],
+  "published": false,
+  "media_settled": true,
+  "cover_uploaded": "https://iafeuxgoiknncgyjmugd.supabase.co/storage/v1/object/public/covers/covers/8fec8d78-37c4-4453-bb84-ea97b530b619/original-v1.png",
+  "awaiting_review": true
+ },
+ "small-explosions": {},
+ "whoever-cooks-it-right": {}
+}

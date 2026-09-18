@@ -1,0 +1,946 @@
+{
+  "stories": [
+    {
+      "slot": "S01",
+      "slug": "six-months-under-clay",
+      "title": "Six Months Under Clay",
+      "logline": "Hail wipes out a Georgian village's harvest except for two feuding winemakers' vines - and the only way to save the vintage is to seal their grapes in one clay jar together.",
+      "themes": [
+        "inherited feuds",
+        "patience",
+        "what the land remembers",
+        "making something together"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 8,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "Ten minutes of September hail flatten a Kakheti village's vineyards. Only two strips survive, either side of a fence the Dolidze and Chkheidze families have not crossed since 1994. Alone, neither has grapes enough for one qvevri. Together they have exactly one - and six months to share a cellar.",
+        "where_and_when": "A wine village in Kakheti, eastern Georgia, from the September harvest to the April opening of the qvevri; buried clay jars in a stone marani, walnut trees, churchkhela drying on lines, snow on the Caucasus behind the vines",
+        "characters": [
+          {
+            "name": "Ketevan Dolidze",
+            "isHero": true,
+            "background": "36, makes unfiltered amber wine the old way, in buried qvevri, on four hectares her grandfather gave her. Blunt, proud, allergic to help. Hides that her small winery is one bad year from closing. Talks to her jars when she thinks nobody is listening.",
+            "appearance": "sturdy Georgian woman, olive skin reddened by sun, thick black hair in a knot held with a pencil, strong forearms stained purple to the elbow, faded men's work shirt, rubber boots, a beeswax candle stub in her pocket for sealing jars"
+          },
+          {
+            "name": "Zurab Chkheidze",
+            "background": "39, came home from ten years as a sommelier in Berlin to run his late father's vineyard with steel tanks and export labels. Polite, precise, secretly homesick even now he is home. Has kept every letter his father never sent to the Dolidze house.",
+            "appearance": "tall lean Georgian man, close-cropped greying beard, heavy dark eyebrows, one chipped front tooth, clean navy fleece over a pressed shirt, reading glasses on a cord, a steel refractometer always in his hand"
+          },
+          {
+            "name": "Shalva Dolidze",
+            "background": "84, Ketevan's grandfather, village toastmaster at every feast for fifty years, and the man who started the feud over a land title when the collective farm was broken up. Charming, theatrical, and afraid the truth will cost him his granddaughter.",
+            "appearance": "small wiry old man, bald brown head, huge white moustache, black felt hat, cardigan buttoned wrong, a ram's horn drinking cup hanging from his belt"
+          }
+        ],
+        "moments": [
+          "The two of them stand in the ruined vines after the hail, each waiting for the other to say it first",
+          "Treading the grapes together in a hollowed log press at midnight, arguing about stems",
+          "Sealing the qvevri with clay and beeswax while the whole village watches from the wall",
+          "Shalva gives a toast at a winter feast that accidentally confesses what he did in 1994",
+          "Opening the jar in April - and tasting what they made"
+        ],
+        "story_values": [
+          "forgiveness",
+          "patience"
+        ],
+        "avoid": "drunkenness played as romance, national or ethnic stereotypes, cruelty between the leads",
+        "writing_style": "earthy and sensory, dry humour, feeling carried by work done side by side; seasons turn in the details",
+        "beats": [
+          "Sept, hail day: ten minutes of ice flatten Kakheti; Ketevan and Zurab stand in the two surviving strips either side of the 1994 fence, each waiting for the other to speak first.",
+          "Next day: neither has grapes for one qvevri; terms at the fence: his grapes, her marani, both names. (Truth, told ch6: in 1994 Shalva bribed a clerk to title the Chkheidze walnut row as his.)",
+          "Harvest week, midnight: they tread the grapes together in Ketevan's hollowed log press and argue about stems until they laugh; she lets him see she talks to her jars.",
+          "Early October: sealing the qvevri with clay and beeswax while the whole village watches from the wall; Shalva stays home, and Ketevan notices he cannot look at the jar.",
+          "December, first snow: the bank letter arrives and Zurab learns her winery is one year from closing; she refuses his money; he shows her Levan's unsent letters, all asking Shalva for peace.",
+          "13 January, Old New Year supra: Shalva's toast accidentally confesses 1994 - the bribed clerk, the walnut row taken from Levan - and Ketevan's surviving vines are that stolen row.",
+          "February pruning: Ketevan takes the land title to Zurab and signs the walnut row back; he refuses to own it alone. Shalva, afraid, asks them both what he must do to be forgiven.",
+          "April: the village gathers, the clay seal breaks, and they taste the amber wine they made; Shalva's honest toast, the fence taken down, one label with both names, a kiss in the marani."
+        ]
+      }
+    },
+    {
+      "slot": "S02",
+      "slug": "a-winter-for-the-eagle",
+      "title": "A Winter for the Eagle",
+      "logline": "A burnt-out city vet is paid to keep a champion golden eagle alive until the winter festival - but the bird is being poisoned, and it only eats from the hand of the man who wants her gone.",
+      "themes": [
+        "trust",
+        "healing",
+        "wildness and care",
+        "the last of a craft"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "adventure",
+          "mystery"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 15,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Dilnaz Seitkali left her Almaty clinic after a mistake she cannot forgive. Now a village pays her to save Karakoz, a golden eagle dying of lead poisoning, before the winter hunting festival. Its hunter, Bakhytzhan, trusts no vet. Someone keeps leaving poisoned carcasses on the mountain.",
+        "where_and_when": "A Kazakh village in the foothills of the Ile-Alatau mountains, Almaty region, from October to the February eagle festival; felt yurts beside brick houses, horse trails, frozen rivers, a clinic in a converted shipping container",
+        "characters": [
+          {
+            "name": "Dilnaz Seitkali",
+            "isHero": true,
+            "background": "29, avian vet, gifted and exhausted. Lost a patient in Almaty through a dosage error and has not touched a scalpel since. Sarcastic, tidy, makes lists of everything. Cannot ride a horse and refuses to admit it.",
+            "appearance": "slim young Kazakh woman, pale skin wind-chapped at the cheeks, straight black hair in a low ponytail, steel-rimmed glasses, oversized red down jacket over scrubs, fur-lined boots, a battered green vet's bag"
+          },
+          {
+            "name": "Bakhytzhan Ormanov",
+            "background": "33, eagle hunter, the last in his family line, also the village school's maths teacher. Quiet, stubborn, funny only with children and birds. Blames a vet for the death of his father's eagle. Sings to Karakoz under his breath.",
+            "appearance": "broad Kazakh man, weathered brown face, narrow dark eyes, short black beard, fox-fur hat with ear flaps, long sheepskin coat, thick leather gauntlet on his left arm, a golden eagle wearing a tooled leather hood"
+          },
+          {
+            "name": "Ruslan Zhaksybekov",
+            "background": "46, trader who buys trained eagles for wealthy foreign falconers and argali hunts. Generous, reasonable, always with a better offer. Needs Bakhytzhan to sell Karakoz before the festival, and knows exactly where the lead is coming from.",
+            "appearance": "heavyset Kazakh man, smooth round face, silver at the temples, expensive camel coat over a tracksuit, gold ring, a thermos of hot tea he offers everyone"
+          }
+        ],
+        "moments": [
+          "Karakoz refuses Dilnaz's hand and takes food from Bakhytzhan's while he watches her fail",
+          "An X-ray on the kitchen table shows lead shot in the eagle's gut, and Dilnaz has to operate for the first time in a year",
+          "Snow closes the pass and the two of them wait out a storm in a herder's winter hut",
+          "Tracking the poisoned carcasses to a hunting camp and finding Ruslan's name in the logbook",
+          "At the festival Karakoz flies to Dilnaz's glove, not his"
+        ],
+        "story_values": [
+          "trust",
+          "courage"
+        ],
+        "avoid": "graphic animal suffering or death of the eagle, cruelty to animals shown approvingly, gore, exoticising the culture",
+        "writing_style": "clean, cinematic scenes with big mountain skies and small silences; banter that thaws slowly; accurate falconry and vet detail",
+        "beats": [
+          "October, day 1: Dilnaz reaches the container clinic; Karakoz refuses her hand and eats from Bakhytzhan's while he watches her fail. (Truth, fixed: see ch2.)",
+          "Day 3: blood test shows lead; chelation begins. Ruslan arrives with tea and an offer. (Truth, told ch11: his argali camp's shot killed Akkanat in 2014; now he baits Karakoz's ridge to force a sale.)",
+          "Day 6: an X-ray on Bakhytzhan's kitchen table shows lead shot in Karakoz's gut; chelation cannot clear it, and Dilnaz must operate for the first time in a year.",
+          "Day 6, night: the surgery. Dilnaz checks every dose three times aloud, Bakhytzhan holds the hooded bird and sings; the shot comes out and Karakoz wakes.",
+          "Late October: Bakhytzhan's maths class visits the clinic; the children adopt Karakoz. Walking the ridge, Dilnaz finds a fox carcass laid out where the eagle hunts - peppered with shot.",
+          "November: Bakhytzhan teaches her to ride an old mare, badly; he tells her Akkanat, his father's eagle, died in 2014 and an Almaty vet was blamed. She asks for the old file.",
+          "December: snow closes the pass and they wait out a two-day storm in a herder's winter hut; she tells him her Almaty dosage error, he tells her why he still sings; a near kiss.",
+          "MIDPOINT, after the storm: Karakoz relapses with fresh lead, and the 2014 file arrives - Akkanat died of lead too; the vet was right. One poisoner, ten years. His grudge breaks.",
+          "Mid-December: Ruslan offers triple for Karakoz, and the school boiler needs money; Bakhytzhan almost signs. Dilnaz and Bakhytzhan have their worst fight; Karakoz recovers a second time.",
+          "Late December: the maths class plots every carcass Dilnaz has logged on a grid; the lines of drag marks all point up one gorge beyond the pass.",
+          "New Year's week: Dilnaz rides alone for the first time; they track the carcasses up the gorge to Ruslan's hunting camp and find his name in the logbook, with 'ridge' beside each kill.",
+          "January: Ruslan's calm denial; the Almaty clinic offers Dilnaz her old job from 1 February. She takes the logbook to the district wildlife inspector; Ruslan's hunting licence is suspended.",
+          "Late January: clearing the last bait, Bakhytzhan's horse falls and he breaks his left wrist - no gauntlet for the festival. Dilnaz turns down Almaty and starts training Karakoz herself.",
+          "February, festival week: every day Karakoz refuses her glove; on the last evening, with Bakhytzhan singing beside her, the eagle eats from Dilnaz's hand. He says what he feels.",
+          "Festival day, February: Dilnaz rides in on the mare; Karakoz, healthy, flies to Dilnaz's glove, not his; the crowd roars; she stays in the village with him, the clinic hers."
+        ]
+      }
+    },
+    {
+      "slot": "S03",
+      "slug": "ink-for-two-weddings",
+      "title": "Ink for Two Weddings",
+      "logline": "A widowed calligrapher in Fez is hired to letter her granddaughter's wedding - and the groom's grandfather is the man her father refused her to in 1977.",
+      "themes": [
+        "second chances",
+        "late love",
+        "family memory",
+        "craft"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "standard",
+        "image_style": "watercolor",
+        "topic": "Zineb Bennani, 68, letters her granddaughter's wedding invitations by hand in reed pen and saffron ink. The groom's grandfather arrives to check the spelling of his family name. Fifty years ago he asked for her hand and her father said no. The wedding is in three weeks.",
+        "where_and_when": "Fez, Morocco, in spring, the present day; the old medina's lanes, a calligraphy studio above a courtyard with an orange tree, a zellige workshop, a rooftop at dusk, a wedding hall with a henna night",
+        "characters": [
+          {
+            "name": "Zineb Bennani",
+            "isHero": true,
+            "background": "68, calligrapher, widowed four years after a kind, dull marriage. Ferociously correct about letterforms and hopeless about her own heart. Still keeps the one letter she never answered. Hums Andalusian music while she works.",
+            "appearance": "small plump Moroccan woman, soft brown skin, grey hair under a loosely tied cream headscarf, gold-rimmed half-moon glasses, plum djellaba with rolled sleeves, ink on her right thumb, a bundle of reed pens in a tin"
+          },
+          {
+            "name": "Abdelhak Lahlou",
+            "background": "71, retired zellige master who cut tile for half the fountains in the medina. Widower, patient, slightly deaf in one ear and uses it to ignore what he dislikes. Kept a single eight-pointed star he cut for her the week her father refused him.",
+            "appearance": "tall stooped Moroccan man, dark weathered skin, white stubble, deep laugh lines, grey wool djellaba with a pointed hood, yellow leather babouches, fingers scarred by a lifetime of tile hammers, a flat cap"
+          },
+          {
+            "name": "Nouhaila Bennani",
+            "background": "26, Zineb's granddaughter and the bride, a civil engineer who is organised enough to notice two old people being careful around each other. Decides to meddle, lovingly and badly.",
+            "appearance": "tall young Moroccan woman, curly dark hair tied up, gold hoops, bright green kaftan for fittings, phone full of seating plans in her hand"
+          }
+        ],
+        "moments": [
+          "Abdelhak corrects no letter at all and simply asks if she still takes her tea without sugar",
+          "Zineb spoils a whole invitation when he tells her why he never came back",
+          "On the rooftop at dusk he gives her the tile star he cut in 1977",
+          "At the henna night Nouhaila sits them side by side and Zineb letters his name for the first time"
+        ],
+        "story_values": [
+          "courage",
+          "tenderness"
+        ],
+        "avoid": "disrespect toward the late spouses, villainising the families, religious mockery",
+        "writing_style": "luminous and restrained, humour of two elders who know each other too well; craft detail of ink, reed and tile"
+      }
+    },
+    {
+      "slot": "S04",
+      "slug": "married-by-friday",
+      "title": "Married by Friday",
+      "logline": "A Jamaican jerk cook will lose custody of his orphaned niece unless he can show the court a steady home - so her teacher offers him one, with a ring.",
+      "themes": [
+        "chosen family",
+        "what makes a home",
+        "friendship turning",
+        "responsibility"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "standard",
+        "image_style": "comic",
+        "topic": "Delroy Findlay works nights at a jerk pan and sleeps in a one-room shack. His sister's daughter Tamoya, ten, is his now, unless the social worker's report says otherwise. Her teacher, Kimone, owns a two-bedroom house and has a plan. The hearing is in six weeks; the wedding is Friday.",
+        "where_and_when": "Portland parish, Jamaica, the present day; jerk pits smoking under pimento wood at Boston Bay, a tin-roofed primary school, a blue-painted house with a mango tree, a parish court in Port Antonio, rain every afternoon",
+        "characters": [
+          {
+            "name": "Kimone Rattray",
+            "isHero": true,
+            "background": "33, primary school teacher, divorced, sensible to a fault. Keeps a laminated plan for everything, including this marriage. Has quietly loved Delroy since they were twelve and considers that a private matter. Terrible cook, and knows it.",
+            "appearance": "tall Jamaican woman, dark brown skin, short natural hair with a yellow headwrap, gold stud earrings, navy school-uniform-style dress with a lanyard, red reading glasses, a clipboard hugged to her chest"
+          },
+          {
+            "name": "Delroy Findlay",
+            "background": "36, jerk cook who learned from his grandmother and has never written a recipe down. Gentle, loud, proud, frightened of paperwork. Has never been inside a courtroom and dreams of opening a real restaurant with Tamoya's name over the door.",
+            "appearance": "big broad-shouldered Jamaican man, very dark skin, shaved head, neat beard with one grey patch, smoke-stained apron over a mesh vest, cargo shorts, flip-flops, burn scars on his forearms, long metal tongs"
+          },
+          {
+            "name": "Beverley Minto",
+            "background": "58, the children's services officer on Tamoya's case. Strict, thorough, arrives unannounced. Once approved a home that looked perfect on paper and never forgave herself. Can tell a real marriage from a fake one, and is about to find out which this is.",
+            "appearance": "short stout Jamaican woman, grey hair pressed into a bob, large tinted glasses, lilac skirt suit, sensible black shoes, a thick case file bound with rubber bands"
+          }
+        ],
+        "moments": [
+          "Kimone proposes over a jerk pan with a laminated list of terms",
+          "A registry-office wedding where Tamoya insists on being the witness and the ring bearer",
+          "Beverley Minto turns up at dawn and asks which side of the bed each of them sleeps on",
+          "Delroy cooks for Kimone's disastrous school fundraiser and saves it",
+          "In court, Delroy is asked why he married her, and does not lie"
+        ],
+        "story_values": [
+          "family",
+          "honesty"
+        ],
+        "avoid": "mocking social workers or the court, child in danger, patois as caricature",
+        "writing_style": "bright, bouncy dialogue with a Jamaican lilt used lightly and respectfully; comedy of paperwork against warmth of food and family",
+        "beats": [
+          "Monday, Boston Bay: Beverley Minto's first report calls Delroy's shack unfit; hearing in six weeks. Kimone proposes over his jerk pan with a laminated list of terms. He says yes.",
+          "Friday: the registry-office wedding in Port Antonio, Tamoya the witness and ring bearer; Delroy moves into the blue house, into the spare room, per clause four of the list.",
+          "Week 3, dawn: Beverley arrives unannounced and asks which side of the bed each sleeps on; they answer differently, Tamoya rescues them, and they start learning each other at night.",
+          "Week 5: Kimone's school fundraiser collapses under her cooking; Delroy fires up the pan and saves it while Beverley watches; that night the laminated list goes in the drawer.",
+          "Week 6, Port Antonio parish court: asked why he married her, Delroy does not lie - for Tamoya, and because he has loved Kimone since they were twelve. Beverley's report: a real home."
+        ]
+      }
+    },
+    {
+      "slot": "S05",
+      "slug": "stitched-for-the-arena",
+      "title": "Stitched for the Arena",
+      "logline": "A Dakar tailor who has never sewn for a wrestler inherits her father's most superstitious client - a heavyweight who will not step into the arena without her stitches on his back.",
+      "themes": [
+        "faith and doubt",
+        "craft",
+        "slow love",
+        "honour"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 10,
+        "chapter_length": "short",
+        "image_style": "watercolor",
+        "topic": "Ndeye Fatou Sarr's father sewed the ceremonial outfits of Senegal's great wrestlers. He died in March. In April the heavyweight Babacar Faye walks into her shop and refuses to fight again unless she makes his season's outfits. She thinks luck is nonsense. His three biggest fights say otherwise.",
+        "where_and_when": "Dakar, Senegal, one wrestling season from spring to the national arena final; a narrow tailor shop in the Medina, a foot-pedal sewing machine, beach training at dawn, drummers and griots, the roar of the arena",
+        "characters": [
+          {
+            "name": "Ndeye Fatou Sarr",
+            "isHero": true,
+            "background": "29, tailor, trained in Dakar and a year in Lyon, makes sharp modern dresses that nobody buys. Rational, stubborn, quick-tongued. Hides that she has kept her father's wrestler patterns but cannot bring herself to open the book.",
+            "appearance": "tall slender Senegalese woman, deep dark skin, short twists under a patterned indigo headwrap, gold nose stud, tailored black trousers and a boubou-style printed top, a measuring tape around her neck, pins in her mouth"
+          },
+          {
+            "name": "Babacar Faye",
+            "background": "27, heavyweight wrestler called the Baobab, son of a fisherman from Rufisque. Enormous, soft-spoken, deeply superstitious, and funnier than his public image. Wants to win the title for his mother. Terrified of what he will be if he loses.",
+            "appearance": "huge muscular Senegalese man, very dark skin, shaved head, wide gentle face, a gap-toothed smile, white training vest and loose trousers, leather amulets tied at his arms and waist"
+          },
+          {
+            "name": "Pape Mbengue",
+            "background": "48, the season's biggest promoter, slick, charming, and practical. Wants a grudge match and a story to sell tickets. Offers Ndeye Fatou a fortune to dress Babacar's rival too, and knows about a debt her father left behind.",
+            "appearance": "stocky Senegalese man, neat moustache, mirrored sunglasses, gleaming white kaftan with gold embroidery, two phones, a string of prayer beads in one hand"
+          }
+        ],
+        "moments": [
+          "Taking Babacar's measurements in a shop too small for him while half the street watches through the door",
+          "His first fight in her outfit, and she cannot bear to watch",
+          "A torn shoulder, a loss, and a night of sewing while he sits silently beside her",
+          "Pape's offer and the discovery of her father's unpaid debt",
+          "Before the final, she sews something of her own into the lining and does not tell him"
+        ],
+        "story_values": [
+          "loyalty",
+          "integrity"
+        ],
+        "avoid": "graphic injury, mocking religious or traditional practice, violence outside the sport",
+        "writing_style": "rhythmic and warm, drums and street noise under every scene; a slow burn told in fittings, glances and stitches",
+        "beats": [
+          "April, Medina: Babacar squeezes into the tiny shop and takes his measurements while half the street watches. (Truth, told ch8: her father sewed her mother's prayer for her into every lining.)",
+          "Days later: Ndeye Fatou opens her father's pattern book for the first time; dawn fitting on the beach while Babacar trains; she thinks luck is nonsense and says so.",
+          "May, first fight in her outfit: she cannot bear to watch and paces outside the arena reading the drums; the Baobab wins, and he comes to the shop to thank the stitches.",
+          "Late May: evenings at the foot-pedal machine; he tells her about his mother in Rufisque and his fear of losing; she shows him the Lyon sketches nobody buys.",
+          "June: a torn shoulder seam, a loss, and a night of sewing while Babacar sits silently beside her until dawn; neither leaves.",
+          "MIDPOINT, late June: Pape offers her a fortune to dress Babacar's rival Lamine Ndour and reveals her father's debt: 2 million CFA borrowed in 2019 to pay for her Lyon year.",
+          "July: she measures Lamine to pay the debt; Babacar finds out from the street and walks away without a word; she tells herself it is only business.",
+          "Mid-July: unpicking her father's last unfinished outfit, she finds the same stitched line inside every lining - her mother's prayer for her. The luck was love. She turns Pape down.",
+          "Week before the final: she sells her whole Lyon collection at a Medina night market to clear the debt, then sews words of her own into Babacar's lining and does not tell him.",
+          "The national final: she watches every second; Babacar wins, finds her stitches in the changing room, and comes to the shop in his outfit to answer them."
+        ]
+      }
+    },
+    {
+      "slot": "S06",
+      "slug": "the-westbound-stop",
+      "title": "The Westbound Stop",
+      "logline": "For three years an Acadian trucker has stopped at the same prairie diner every ninth day for forty minutes and pie - and now the highway bypass will close it by spring.",
+      "themes": [
+        "distance",
+        "small rituals",
+        "late courage",
+        "home"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "long",
+        "image_style": "watercolor",
+        "topic": "Aurele Doucet drives Halifax to Vancouver and back; every ninth day he eats Wes Kowalchuk's saskatoon pie in a Saskatchewan diner. Forty minutes, three years, nothing said. Then the new bypass is announced. By April no trucks will pass the diner, and Aurele has one winter of stops left.",
+        "where_and_when": "A roadside diner on the Trans-Canada Highway in southwest Saskatchewan, one winter, the present day; grain elevators, blowing snow, a neon coffee cup sign, a truck cab at night, a phone line full of static",
+        "characters": [
+          {
+            "name": "Aurele Doucet",
+            "isHero": true,
+            "background": "47, long-haul trucker from Cheticamp, Nova Scotia, came out late and quietly and has lived alone since. Keeps a paper logbook, calls his mother every Sunday, reads westerns. Has never once asked anyone for anything.",
+            "appearance": "stocky Acadian man, ruddy weathered white skin, salt-and-pepper beard, receding brown hair under a faded fishing-co-op cap, red-checked flannel jacket, work gloves tucked in a pocket, a steel thermos"
+          },
+          {
+            "name": "Wes Kowalchuk",
+            "background": "42, the diner's cook, Ukrainian-Canadian, divorced, raising a sharp fifteen-year-old daughter. Makes pie from his baba's recipe and perogies on Fridays. Funny, tired, stuck. Has been saving the last slice every ninth day and pretending it is a coincidence.",
+            "appearance": "tall lanky white man, long pale face, dark stubble, brown hair in a short ponytail, white cook's apron over a grey thermal shirt, a burn mark on one wrist, a spatula in his back pocket"
+          },
+          {
+            "name": "Verna Fiddler",
+            "background": "71, Metis owner of the diner for thirty-one years, selling up before the bypass takes her customers. Nosy, sharp, a champion cribbage player. Has watched the two men for three years and is out of patience with both of them.",
+            "appearance": "small round elderly Metis woman, brown skin, long grey braid, beaded earrings, purple fleece vest over a flowered blouse, reading glasses on a chain, a cribbage board under her arm"
+          }
+        ],
+        "moments": [
+          "A blizzard closes the highway and Aurele spends a whole night in the diner instead of forty minutes",
+          "Wes's daughter works out what is going on before either of them does",
+          "A missed stop: Aurele is rerouted and calls the diner's landline from a truck stop in Ontario",
+          "Verna deals the cards and makes them both say what they are going to do in April",
+          "The last night before the bypass opens, the neon cup switched off"
+        ],
+        "story_values": [
+          "courage",
+          "kindness"
+        ],
+        "avoid": "coming-out trauma as spectacle, homophobic violence, infidelity",
+        "writing_style": "quiet, tender, working-class and funny; wide prairie space and small warm rooms; what is not said carries the weight",
+        "beats": [
+          "November: the radio in the diner announces the bypass - no trucks past Verna's by April. That night a blizzard shuts the highway and Aurele spends a whole night there instead of forty minutes.",
+          "January: Wes's daughter Daria, fifteen, finds the calendar with every ninth day circled and the saved last slice, and works out what is going on before either man does.",
+          "February: a missed stop - Aurele is rerouted and calls the diner's landline from a truck stop in Thunder Bay, Ontario; through the static they say more than in three years.",
+          "March, sale signed: Verna deals the cribbage cards and will not let either of them leave the table until each says out loud what he is going to do in April.",
+          "April, the last night before the bypass opens: Verna switches off the neon cup; Aurele's truck is still in the lot at dawn, and he and Wes leave together with the pie recipe."
+        ]
+      }
+    },
+    {
+      "slot": "S07",
+      "slug": "typhoon-day",
+      "title": "Typhoon Day",
+      "logline": "A Taipei night-owl who has spent a year leaving angry notes about her neighbour's midnight piano gets stuck in the lift with him during a typhoon blackout.",
+      "themes": [
+        "neighbours",
+        "listening",
+        "small courage",
+        "strangers becoming known"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "Hsu Pei-chun has left her upstairs neighbour fourteen sticky notes about the same three bars of piano he plays at midnight. On a typhoon day the city shuts, the power fails, and the building's lift stops between floors seven and eight with both of them inside.",
+        "where_and_when": "An old twelve-storey apartment building in Taipei during a typhoon day in September, the present day; rain sideways against the windows, a stalled lift lit by phone torches, the security guard's crackling intercom",
+        "characters": [
+          {
+            "name": "Hsu Pei-chun",
+            "isHero": true,
+            "background": "31, freelance subtitle translator who works nights on Korean dramas. Witty on paper, curt out loud, lives on convenience-store rice balls. Has secretly timed her subtitles to his playing for months. Claustrophobic.",
+            "appearance": "small Taiwanese woman, pale skin, blunt-cut black bob, big round glasses, oversized grey sweatshirt, pyjama shorts, plastic slippers, a pack of yellow sticky notes and a pen in her fist"
+          },
+          {
+            "name": "Tsai Cheng-en",
+            "background": "34, piano teacher to children by day, trying out for a hotel lounge job he is too shy to want. Plays the same nocturne every midnight because he freezes at the same three bars. Has kept all fourteen notes in a folder.",
+            "appearance": "tall thin Taiwanese man, messy black hair, soft round face, wire glasses, faded blue shirt buttoned to the top, rain-soaked canvas shoes, a bag of instant noodles for the typhoon"
+          },
+          {
+            "name": "Tung Wan-lai",
+            "background": "79, the building's night security guard, who listens to everything on the intercom and offers commentary, advice and weather updates nobody asked for. Has been hoping these two would meet.",
+            "appearance": "tiny elderly Taiwanese man, bald with a white fringe, blue guard's uniform too big for him, radio clipped to his chest, a tea jar in his hand"
+          }
+        ],
+        "moments": [
+          "The lift lurches, the lights go out, and he recognises her handwriting on the note in her hand",
+          "Tung Wan-lai reads the typhoon warnings over the intercom like a sports commentator",
+          "In the dark, he hums the three bars he can never play, and she finishes the phrase",
+          "The power comes back and she asks him to play the whole piece, all the way through"
+        ],
+        "story_values": [
+          "kindness",
+          "courage"
+        ],
+        "avoid": "danger or injury in the lift, cruelty, anything beyond sweet",
+        "writing_style": "funny, fast, intimate; one evening in real time; the rain and the dark do the romance"
+      }
+    },
+    {
+      "slot": "S08",
+      "slug": "before-the-ice-goes",
+      "title": "Before the Ice Goes",
+      "logline": "A Stockholm sound engineer crosses the frozen sea to an Estonian island to sell her late mother's house, with the woman who measures the ice - and the road is melting.",
+      "themes": [
+        "homecoming",
+        "thaw",
+        "what we keep",
+        "listening"
+      ],
+      "request": {
+        "primary_genre": "romance",
+        "genres": [
+          "romance",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 2,
+        "chapter_length": "standard",
+        "image_style": "anime",
+        "topic": "For a few weeks each winter an ice road crosses the sea to the island of Kihnu. Annika Vaher has come home to sell her mother's house before it melts. Rental cars are banned, so the ice inspector, Kadri, drives her across. The thaw is three days away.",
+        "where_and_when": "Kihnu island and the ice road across the Gulf of Riga, Estonia, in late February, the present day; a white sea with marker poles, a wooden farmhouse, women in striped red wool skirts, a small church, a sauna by the shore",
+        "characters": [
+          {
+            "name": "Annika Vaher",
+            "isHero": true,
+            "background": "35, Kihnu-born sound engineer in Stockholm who records orchestras and has not been home in twelve years. Precise, guarded, afraid of silence. Her mother was a folk singer she never recorded. Wants to sign the papers and leave on the next crossing.",
+            "appearance": "tall Estonian woman, very pale skin, ash-blonde hair cut short, grey eyes, black wool coat far too thin for the ice, big over-ear headphones around her neck, a portable field recorder in her hand"
+          },
+          {
+            "name": "Kadri Lepik",
+            "background": "39, road maintenance worker who drills the ice every morning to see if it will hold. Stocky, cheerful, unhurried, and absolutely certain about ice and nothing else. Moved to the island five years ago and knew Annika's mother better than Annika did.",
+            "appearance": "stocky Estonian woman, ruddy cheeks, brown hair in two short braids under a knitted hat, orange hi-vis jacket over a thick sweater, rubber boots, an ice auger over her shoulder"
+          },
+          {
+            "name": "Roosi Kuusk",
+            "background": "83, Annika's mother's neighbour and oldest friend, who wants the house for her grandson and pretends not to care who gets it. Has kept a box of cassette tapes of Annika's mother singing, and is deciding whether Annika deserves them.",
+            "appearance": "small bent elderly Estonian woman, deeply lined face, red and orange striped wool skirt, knitted cardigan, white headscarf, felt boots, a basket of smoked fish on her arm"
+          }
+        ],
+        "moments": [
+          "Kadri stops the van in the middle of the frozen sea to drill a hole and let Annika hear the ice creak",
+          "Roosi plays a cassette of Annika's mother singing in the farmhouse kitchen",
+          "A sauna by the shore, snow on the roof, the conversation neither of them planned",
+          "On the last morning the ice road closes, and Annika has to decide which shore she is on"
+        ],
+        "story_values": [
+          "honesty",
+          "belonging"
+        ],
+        "avoid": "anyone falling through the ice, homophobia, grief turned melodramatic",
+        "writing_style": "spare and luminous, lots of white space and sound; soft humour; feelings arrive the way the thaw does"
+      }
+    },
+    {
+      "slot": "S09",
+      "slug": "the-island-with-hiccups",
+      "title": "The Island With Hiccups",
+      "logline": "A whole town lives on the back of a giant sleeping tortoise, and today the tortoise has hiccups - every hic bounces the bakery into the air.",
+      "themes": [
+        "kindness",
+        "problem-solving",
+        "calm",
+        "community"
+      ],
+      "request": {
+        "primary_genre": "comedy",
+        "genres": [
+          "comedy",
+          "adventure"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "The town of Shellbury sits on the back of Mossback, a tortoise as big as a hill. After gobbling the Harvest Day cake in one bite, he gets hiccups, and every hic bounces the town. Dot, eight, has until sunset to cure him before the festival lanterns go up.",
+        "where_and_when": "Shellbury, an invented town of crooked houses, bridges and gardens on a giant tortoise's shell, floating along a warm green sea; one Harvest Day from morning to sunset",
+        "characters": [
+          {
+            "name": "Dot Tumbleweather",
+            "isHero": true,
+            "background": "8, the smallest kid in Shellbury and the only one who talks to Mossback every morning through the knothole by his ear. Asks questions, notices things grown-ups miss, hops on one foot when thinking.",
+            "appearance": "small girl with warm brown skin, frizzy dark hair in one big puff, gap-toothed grin, yellow dungarees with patched knees, mismatched striped socks, a tin whistle on a string around her neck"
+          },
+          {
+            "name": "Mossback",
+            "background": "A giant, very old, very polite tortoise who carries the whole town and mostly sleeps. Loves cake too much. Deeply embarrassed by his hiccups and apologises after every single one.",
+            "appearance": "an enormous gentle tortoise with a mossy green shell covered in tiny houses and gardens, a kind wrinkly face, sleepy golden eyes, a crumb of pink cake on his chin"
+          },
+          {
+            "name": "Fennimore Puddick",
+            "background": "58, the town mayor, grand, fussy and full of Official Plans, each sillier than the last. Secretly scared of heights, which is awkward when the town keeps bouncing. Good-hearted underneath the sash.",
+            "appearance": "round pink-faced man with a curly grey moustache, tall striped hat, a mayor's red sash over a tight green waistcoat, holding a megaphone shaped like a seashell"
+          }
+        ],
+        "moments": [
+          "The first hic bounces the bakery's loaves out of the window and into the sea",
+          "The mayor's Official Plan to cure hiccups by giving Mossback a fright goes very wrong",
+          "Dot learns hiccups are a muscle under the lungs jumping, and slow breathing helps it calm down",
+          "The whole town breathes slowly together with Mossback as the sun sets, and the lanterns go up"
+        ],
+        "story_values": [
+          "kindness",
+          "patience"
+        ],
+        "avoid": "anything frightening, anyone hurt, mean jokes",
+        "writing_style": "bouncy, silly, read-aloud rhythm with sound words like HIC; simple sentences; big warm ending"
+      }
+    },
+    {
+      "slot": "S10",
+      "slug": "play-him-out",
+      "title": "Play Him Out",
+      "logline": "The Flemish village grump who complained about the brass band for forty years leaves them sixty thousand euros - if they play his funeral, from a list he wrote himself.",
+      "themes": [
+        "community",
+        "grudges",
+        "music",
+        "being seen"
+      ],
+      "request": {
+        "primary_genre": "comedy",
+        "genres": [
+          "comedy",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "watercolor",
+        "topic": "Fons Verhaeghe, 88, called the police on the village brass band twice. Now he is dead, and his will leaves them the exact cost of their collapsing hall roof - if they play his funeral, march his coffin round the village three times, and perform a march he wrote. It is awful. The funeral is Saturday.",
+        "where_and_when": "Heulebrugge, a small invented village in West Flanders, Belgium, one rainy week in October, the present day; a brass band hall with buckets under the leaks, a brick church, a cafe with a billiard table, flat fields and poplars",
+        "characters": [
+          {
+            "name": "Griet Vandenbussche",
+            "isHero": true,
+            "background": "44, the village pharmacist and the band's unpaid conductor for sixteen years. Organised, exasperated, loves the band more than it deserves. Was the person Fons complained about most, and is still offended.",
+            "appearance": "tall solid Flemish woman, pale freckled skin, short cropped auburn hair, practical glasses, pharmacy white coat thrown over a knitted jumper, yellow rain jacket, a conductor's baton sticking out of her handbag"
+          },
+          {
+            "name": "Maurice Delvaux",
+            "background": "70, the notary who wrote the will and is enjoying every clause of it. Dry, precise, delighted by chaos. Knows why Fons did this and has been told not to say until after the burial.",
+            "appearance": "thin elderly Belgian man, pale skin, neat white hair, bow tie, grey three-piece suit a little shiny at the elbows, a folded black umbrella, a leather document case"
+          },
+          {
+            "name": "Fien Deprez",
+            "background": "17, the band's only tuba player and Fons's great-niece, who barely knew him. Deadpan, gloomy on purpose, secretly thrilled to be in charge of the march's worst part. Finds his old band photo in the hall attic.",
+            "appearance": "skinny teenage girl, pale skin, dyed black hair with green tips, black hoodie under the band's navy uniform jacket, chunky boots, a tuba bigger than she is"
+          }
+        ],
+        "moments": [
+          "The will reading, and the first rehearsal of Fons's march, which nobody can finish without laughing",
+          "Fien finds a 1951 photo of the band with a boy on the end holding a cornet: Fons, before he was thrown out",
+          "The funeral march in pouring rain, the third lap round the village, and the whole village following",
+          "Maurice reveals the last clause of the will"
+        ],
+        "story_values": [
+          "forgiveness",
+          "community"
+        ],
+        "avoid": "mocking the dead or grief, cruelty, crude humour",
+        "writing_style": "deadpan European comedy with a warm heart; fast, visual, a little absurd; the laugh and the lump in the throat together"
+      }
+    },
+    {
+      "slot": "S11",
+      "slug": "who-took-the-big-snapper",
+      "title": "Who Took the Big Snapper",
+      "logline": "Eight days before the tourism judges arrive, a New Zealand seaside town wakes to find its giant fibreglass snapper gone - and the only people willing to investigate are the postmistress and a retired English traffic warden.",
+      "themes": [
+        "small-town pride",
+        "grief and humour",
+        "friendship",
+        "promises kept"
+      ],
+      "request": {
+        "primary_genre": "comedy",
+        "genres": [
+          "comedy",
+          "mystery"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 8,
+        "chapter_length": "long",
+        "image_style": "watercolor",
+        "topic": "Pakiri Heads has one attraction: a nine-metre fibreglass snapper built in 1987 by Mereana Paewai's late husband. One morning it is gone, leaving four bolts and a tyre track. The Best Small Town judges arrive in eight days. The police have bigger things to do. Mereana does not.",
+        "where_and_when": "Pakiri Heads, an invented seaside town in Northland, New Zealand, in summer, the present day; one main street, a post office inside a dairy, a surf club, pohutukawa in bloom, a rival town an hour up the coast",
+        "characters": [
+          {
+            "name": "Mereana Paewai",
+            "isHero": true,
+            "background": "58, runs the post office counter and the tourism noticeboard, widowed two years. Knows everyone's business and most of their secrets. Brisk, bossy, very funny, has not cried about her husband once and does not plan to start now.",
+            "appearance": "big solid Maori woman, brown skin, grey-streaked black hair piled in a clip, pounamu pendant, bright floral shirt, jandals, a clipboard, reading glasses on her head, a battered ute's keys on a fish keyring"
+          },
+          {
+            "name": "Clive Pettifer",
+            "background": "66, retired traffic warden from Swindon, moved here to be near his daughter and understands nothing about the place. Pedantic, lonely, keeps notebooks of registration plates. His notebooks turn out to be the best evidence in the country.",
+            "appearance": "short pale Englishman, sunburned nose, thin combed-over ginger hair, knee-length socks and sandals, short-sleeved shirt with a pen in the pocket, a floppy white sun hat, a small notebook in his hand"
+          },
+          {
+            "name": "Bevan Tuckey",
+            "background": "50, publican and self-appointed tourism chief of the rival town up the coast, which has a giant fibreglass kumara. Smug, competitive, has an alibi that is almost too good. Innocent of this, guilty of plenty else.",
+            "appearance": "tall paunchy white New Zealander, red face, sunglasses on a cord, rugby shorts, a polo shirt with his pub's name stitched on, gumboots, a can of sunscreen"
+          }
+        ],
+        "moments": [
+          "Mereana and Clive meet over the four bolts where the snapper stood and immediately disagree about everything",
+          "A stakeout of Bevan's pub that ends with both of them at the quiz night, winning",
+          "Clive's notebook shows a rest-home minibus on the coast road at 4am",
+          "They find the snapper on a flatbed at a campsite, surrounded by eight pensioners on a road trip Mereana's husband once promised them",
+          "The judges arrive to find the snapper back, freshly painted, and the whole town on the beach"
+        ],
+        "story_values": [
+          "friendship",
+          "joy"
+        ],
+        "avoid": "mocking Maori culture or accents, cruelty, crude humour",
+        "writing_style": "warm Kiwi deadpan, long funny scenes with room to breathe; small-town gossip as a plot engine; the grief shows only at the edges",
+        "beats": [
+          "Day 1, 6am: the snapper is gone - four bolts, one tyre track; Mereana and Clive meet over the bolts and disagree about everything. (Truth, told ch7: eight rest-home pensioners took it; see ch5.)",
+          "Day 2: they drive up the coast to the rival town's giant kumara to accuse Bevan, whose alibi - a fishing charter with a sergeant - is almost too good.",
+          "Day 3, night: a stakeout of Bevan's pub ends with Mereana and Clive on the quiz team, winning; Bevan is innocent of this, and lets slip he fiddled last year's judging.",
+          "Day 4: Clive's notebook shows a rest-home minibus on the coast road at 4am on the night of the theft; the home's manager says eight residents are 'on an outing'.",
+          "Day 5: in the rest home Mereana finds a card in Hemi's handwriting: a promise, made before he died, to take the eight to Cape Reinga with the snapper. Hemi never told her.",
+          "Day 6: tracking marine-paint receipts north, the ute breaks down; on the roadside Clive talks about his wife, and Mereana nearly talks about Hemi.",
+          "Day 7: at a Far North campsite they find the snapper on a flatbed, being repainted by eight pensioners on the road trip Hemi promised them; Mereana finally cries.",
+          "Day 8: the judges arrive to find the snapper back on its bolts, freshly painted, the pensioners and Bevan's borrowed truck on the beach, and the whole town there; Clive belongs now."
+        ]
+      }
+    },
+    {
+      "slot": "S12",
+      "slug": "hallelujah-express",
+      "title": "Hallelujah Express",
+      "logline": "A strict Nairobi Sunday-school teacher inherits her late brother's outrageous party minibus - neon lights, a subwoofer and his face painted on the side - plus his debts, and eight weeks to pay them.",
+      "themes": [
+        "family",
+        "loosening up",
+        "generosity",
+        "city life"
+      ],
+      "request": {
+        "primary_genre": "comedy",
+        "genres": [
+          "comedy",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 8,
+        "chapter_length": "standard",
+        "image_style": "anime",
+        "topic": "Philomena Njoroge, 52, has never been late, loud or in debt. Her brother Gitau was all three. Now she owns his matatu, the Hallelujah Express, and what he owed his route cooperative. Eight weeks to pay, or a rival takes the route - so she rides it every day with his nineteen-year-old tout.",
+        "where_and_when": "Nairobi, Kenya, the present day, over one rainy season; the matatu stage in the city centre, traffic jams on Ngong Road, a church hall, a bus garage full of airbrush artists, loud music and louder hawkers",
+        "characters": [
+          {
+            "name": "Philomena Njoroge",
+            "isHero": true,
+            "background": "52, accounts clerk and Sunday-school teacher, never married, lives by timetables and hymn numbers. Disapproved of her younger brother for thirty years. Discovers she is very good at shouting fares and very bad at staying offended.",
+            "appearance": "short round Kenyan woman, dark brown skin, neat grey-streaked relaxed hair, thick-framed glasses, pleated navy skirt and cardigan, large handbag held like a shield, a small hymn book in her fist"
+          },
+          {
+            "name": "Kevo Odhiambo",
+            "background": "19, the matatu's tout, fast-talking, broke, loyal to Gitau's memory. Can talk anyone onto a bus and knows every shortcut in the city. Secretly got into a college engineering course and cannot afford to go.",
+            "appearance": "skinny young Kenyan man, very dark skin, high-top fade, silver chain, oversized neon-green football shirt, ripped jeans, sneakers, a fistful of banknotes folded between his fingers, hanging out of a minibus door"
+          },
+          {
+            "name": "Josphat Kamande",
+            "background": "55, chairman of the rival route cooperative who holds Gitau's debt note. Smooth, patient, pious in public, wants the route. Keeps finding new rules. The only person in Nairobi who can out-quote Philomena on scripture.",
+            "appearance": "tall portly Kenyan man, dark skin, bald head, grey goatee, pinstriped suit with a flag lapel pin, gold watch, a leather-bound ledger under his arm"
+          }
+        ],
+        "moments": [
+          "Philomena's first day on board: she turns off the music and the passengers riot",
+          "She discovers Gitau gave free rides to half the city's nurses and schoolchildren",
+          "A traffic-jam choir: she leads the whole stalled matatu in a hymn with a subwoofer bassline",
+          "Kamande produces a clause that doubles the debt",
+          "The route race to the stage with the whole of Ngong Road cheering"
+        ],
+        "story_values": [
+          "family",
+          "generosity"
+        ],
+        "avoid": "mocking faith, tribal stereotypes, reckless driving glamorised, crude humour",
+        "writing_style": "loud, colourful, fast-cut comedy with a big heart; Nairobi street energy; Philomena's prim inner voice against the noise",
+        "beats": [
+          "Week 1: Philomena inherits the Hallelujah Express and Gitau's 600,000-shilling debt to Kamande, due in eight weeks; on her first day aboard she turns off the music and the passengers riot.",
+          "Week 2: learning to shout fares with Kevo, she finds Gitau's notebook and discovers he gave free rides to half the city's nurses and schoolchildren.",
+          "Week 3: in a Ngong Road jam she leads the whole stalled matatu in a hymn with a subwoofer bassline; the video spreads and fares climb.",
+          "Week 4: on track to pay; a college letter falls out of Kevo's jacket and she learns he got into engineering and cannot afford to go.",
+          "MIDPOINT, week 5: Kamande produces a late-payment clause that doubles the debt to 1.2 million; Philomena out-quotes him on scripture and loses anyway.",
+          "Week 6: in the airbrush garage she refuses to paint Gitau's face off; the nurses and parents Gitau carried free fill the church hall with a fundraiser for the Express.",
+          "Week 7: Kamande's last rule - the route goes to whichever matatu reaches the city stage first on the deadline morning, full and legal; Philomena accepts.",
+          "Week 8, deadline dawn: the route race to the stage within the speed limit, Kevo's shortcuts and Ngong Road cheering; she wins, pays, and puts Kevo's fees in Gitau's name."
+        ]
+      }
+    },
+    {
+      "slot": "S13",
+      "slug": "small-explosions",
+      "title": "Small Explosions",
+      "logline": "A Bogota sports reporter who cried on live TV is exiled to cover a mountain village's pensioner team at the national championship of tejo - a sport where you throw iron at gunpowder.",
+      "themes": [
+        "second chances",
+        "joy in the game",
+        "age and nerve",
+        "belonging"
+      ],
+      "request": {
+        "primary_genre": "comedy",
+        "genres": [
+          "comedy",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 10,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "Hernando Pulido wept on air when his football club was relegated, and the clip went everywhere. His punishment: ten weeks covering Santa Rita del Paramo's tejo team, four pensioners and a hothead teenager, at the national championship. He wants his job back. The team wants him to stop sighing.",
+        "where_and_when": "Santa Rita del Paramo, an invented mountain village in Boyaca, Colombia, and tournament halls around the country, the present day; clay tejo pitches, little paper triangles of gunpowder that bang, cold mist, ruanas, aguapanela and arepas",
+        "characters": [
+          {
+            "name": "Hernando Pulido",
+            "isHero": true,
+            "background": "41, television sports reporter, polished, vain, and deeply sentimental. Has never been to Boyaca and brought the wrong shoes. Wants his old life back. Slowly realises he has not loved sport like this since he was eight.",
+            "appearance": "neat Colombian man, light brown skin, gelled black hair going grey at the temples, perfect teeth, city suit and polished loafers ruined by mud, a microphone with a TV logo cube, a borrowed striped wool ruana over everything"
+          },
+          {
+            "name": "Otilia Chaparro",
+            "background": "74, team captain, retired primary teacher, the best tejo thrower in the province and a ruthless strategist. Refuses to be a cute story. Has a bad hip, a secret deal with her doctor, and one last championship in her.",
+            "appearance": "small wiry Colombian woman, weathered tan skin, long white braid, felt hat with a ribbon, thick grey wool ruana, long skirt, rubber boots, a heavy iron tejo in her hand"
+          },
+          {
+            "name": "Yeison Rincon",
+            "background": "19, the team's youngest thrower and Otilia's grandson, talented, dramatic, wants to be a sports streamer and treats Hernando as both enemy and idol. Loses his temper on the pitch at the worst possible moments.",
+            "appearance": "lanky young Colombian man, brown skin, curly hair bleached orange at the tips, national team football shirt, cheap headphones round his neck, phone on a selfie stick"
+          }
+        ],
+        "moments": [
+          "Hernando's first live report is interrupted by a gunpowder bang and he hits the floor",
+          "Otilia makes him throw a tejo before she will give him an interview",
+          "Yeison's viral meltdown gets the team disqualified from a round and Hernando has to talk them back in",
+          "Otilia's hip gives out the night before the final and Hernando learns her secret",
+          "The final throw, live, and Hernando cries on television again, on purpose this time"
+        ],
+        "story_values": [
+          "joy",
+          "loyalty"
+        ],
+        "avoid": "anyone injured by the gunpowder, drunkenness played for laughs, mocking rural people",
+        "writing_style": "punchy, warm, cinematic sports comedy; every chapter ends on a bang; sentiment earned, never syrupy",
+        "beats": [
+          "Week 1: Hernando's first live report in Santa Rita is cut off by a gunpowder bang and he hits the floor. (Truth, told ch9: Otilia asked the channel for him; her hip surgery waits for the final.)",
+          "Week 1, next day: Otilia will not be interviewed until he throws a tejo; he hits a paper triangle, it bangs, and he grins for the first time in months.",
+          "Week 3: the regional round in Tunja; the team wins, Yeison streams everything, and Hernando's reports start getting watched for the right reasons.",
+          "Week 4: the overnight bus to the Medellin round; the team's history, and Hernando's own, at eight, crying with joy in a stadium; his boss wants 'cute grannies' and he refuses.",
+          "Week 5: Yeison's viral meltdown gets the team disqualified from a round, and Hernando has to talk the officials into letting them back in.",
+          "MIDPOINT, week 6: the channel offers Hernando his Bogota job back tomorrow if he leaves now; he takes it and walks out on the team before the quarterfinal.",
+          "Week 7, the Bogota studio: he watches the team lose a quarterfinal game badly on a feed nobody else watches, and realises what he left; he quits the anchor desk.",
+          "Week 8: back in Boyaca, he makes up with Yeison in front of Yeison's stream; they reach the final together.",
+          "Week 10, night before the final: Otilia's hip gives out, and Hernando learns her secret - the surgery she delayed, and that she asked for the man who cried.",
+          "The final, live: Otilia throws the last tejo on one crutch, it bangs, they win, and Hernando cries on national television again, on purpose this time."
+        ]
+      }
+    },
+    {
+      "slot": "S14",
+      "slug": "whoever-cooks-it-right",
+      "title": "Whoever Cooks It Right",
+      "logline": "A Penang hawker dies without writing down his famous noodle recipe, and his will gives the stall to whichever of his five children his regular customers say cooks it right - in fifteen days.",
+      "themes": [
+        "siblings",
+        "inheritance",
+        "food as memory",
+        "coming home"
+      ],
+      "request": {
+        "primary_genre": "comedy",
+        "genres": [
+          "comedy",
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 15,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "Khoo Siew Ping quit her Kuala Lumpur law firm the week her father died. His char kway teow stall is famous, the recipe is in no one's head, and his will lets thirty regular customers choose which of his five children inherits it. Each sibling gets three days at the wok. Siew Ping has never cooked.",
+        "where_and_when": "George Town, Penang, Malaysia, the present day, fifteen hot days in the rainy season; a hawker centre at night, charcoal flames, a shophouse above the stall, a wet market at dawn, the family altar, sudden downpours on tin roofs",
+        "characters": [
+          {
+            "name": "Khoo Siew Ping",
+            "isHero": true,
+            "background": "34, youngest of five, the family's clever one, burnt out as a corporate lawyer. Moved away at eighteen and barely called. Argues like a litigator, cooks like a hazard. Wants the stall to prove she was always his child too.",
+            "appearance": "slim Malaysian Chinese woman, pale skin, blunt black bob, dark circles, oversized white T-shirt and cycling shorts, rubber kitchen boots, a burn plaster on one finger, a stained notebook of failed recipe attempts"
+          },
+          {
+            "name": "Khoo Boon Hock",
+            "background": "48, eldest son, insurance agent, self-appointed head of the family since the funeral. Bossy, sentimental, brilliant at sabotage disguised as advice. Worked the stall every weekend for twenty years and was never once praised for it.",
+            "appearance": "heavyset Malaysian Chinese man, round face, thinning hair combed back, gold-rimmed glasses, short-sleeved batik shirt tucked into slacks, a phone in each hand, a folder of insurance forms"
+          },
+          {
+            "name": "Rohani Salleh",
+            "background": "67, runs the nasi lemak stall next door and was her father's best friend for forty years. Serves as one of the judges, will not take sides, and knows exactly why the noodles tasted the way they did. Waits for someone to ask her the right question.",
+            "appearance": "small plump Malay woman, warm brown skin, bright patterned tudung, floral baju kurung under a checked apron, gold bangle, a wooden spatula tucked in her waistband"
+          }
+        ],
+        "moments": [
+          "Siew Ping's first night at the wok sets off the hawker centre's fire alarm and gets a round of applause",
+          "Boon Hock 'helps' by swapping her soy sauces and she catches him on the stall's old CCTV",
+          "The siblings discover their father cooked each regular a slightly different plate",
+          "Rohani finally tells Siew Ping the secret, which was never an ingredient",
+          "On the fifteenth night the five siblings cook one plate together"
+        ],
+        "story_values": [
+          "family",
+          "forgiveness"
+        ],
+        "avoid": "racial or ethnic stereotypes, mocking accents, food waste played as a joke on the poor",
+        "writing_style": "brisk, noisy, cinematic comedy of sibling war with real tenderness underneath; the smell of charcoal in every scene",
+        "beats": [
+          "Day 1: the will is read above the stall; lots drawn at the altar give Siew Ping the first three nights; her first night at the wok sets off the fire alarm and wins a round of applause.",
+          "Day 2, dawn wet market: Rohani, neutral judge, watches Siew Ping buy the wrong cockles. (Truth, told ch12: Papa asked every regular about their day and cooked each plate for it.)",
+          "Day 3: Siew Ping's plates taste wrong; Boon Hock has swapped her soy sauces, and she catches him on the stall's old CCTV; a litigator's cross-examination at the family altar.",
+          "Day 4: Siew Kim, the second daughter, takes the wok and plates the noodles pretty for her phone; the regulars are polite. Siew Ping starts watching years of CCTV for Papa's hands.",
+          "Day 5: a downpour traps all five siblings under the tin roof, old wars reopen; Siew Ping's KL firm calls offering her job back if she returns on Day 16.",
+          "Day 6: Siew Kim's scores come in low; she admits she only entered to sell the stall to a developer who has made an offer on the shophouse.",
+          "Day 7: Boon Keat, the middle son, cooks it exactly as he remembers, and old Mr Lim says it is 'too correct'; nobody knows what that means yet.",
+          "MIDPOINT, Day 8: the CCTV and the regulars' comments line up - Papa cooked each regular a slightly different plate. There is no one recipe, so no one can win.",
+          "Day 9: Boon Keat tries to cook thirty different plates at once and the stall falls apart; the siblings, for once, all jump in to save him.",
+          "Day 10: Siew Lan, the eldest daughter, refuses to cook and backs the developer's offer; the family splits three against two, and the vote looks meaningless.",
+          "Day 11: Boon Hock explodes - twenty years of weekends at this wok, never once praised; Siew Ping sees what he gave while she was away and apologises.",
+          "Day 12: Rohani finally tells Siew Ping the secret, which was never an ingredient: Papa listened to each regular first and cooked what their day needed.",
+          "Day 13: Boon Hock's first night; Siew Ping stands beside him taking each regular's story as he cooks, and for the first time a customer praises him by name.",
+          "Day 14: Siew Ping turns down the KL firm; Siew Lan and Siew Kim drop the developer; Boon Hock invites all five to cook his last night together.",
+          "Day 15: the five siblings cook one plate together, each doing one part, asking every regular about their day; the thirty choose all five, and the stall stays theirs."
+        ]
+      }
+    }
+  ]
+}

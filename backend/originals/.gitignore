@@ -1,1 +1,10 @@
 covers/
+run.log
+review/
+reviews*.jsonl
+reviewed.txt
+pending-review.txt
+priority.txt
+beats-pending.txt
+rewritten-chapters.txt
+r.tmp

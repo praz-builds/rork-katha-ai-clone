@@ -86,14 +86,27 @@
           }
         ],
         "moments": [
-          "Tomasz hears the lullaby for the first time and plays it back to find the recording is silent",
-          "The family module, sealed for thirty years, still has air in it",
-          "Haruka admits she knew the child's name",
-          "With hours left, Tomasz has to choose between the last shuttle down and answering the song"
+          "Tomasz hears a child singing a Polish lullaby through his hearing aid; the station recording of the same channel is silent",
+          "The fixed truth, never changed: in year one the Nowak family module lost pressure; Ola Nowak, 7, and her mother died; her father recorded Ola singing before evacuation",
+          "The sealed family module still holds air, and a transmitter running on a dead man's loop",
+          "Haruka first lies that the module was empty, then admits she sealed it herself and knew Ola's name",
+          "With hours left before burn-up, Tomasz chooses to carry Ola's recording home instead of silencing it"
         ],
         "story_values": ["compassion"],
-        "avoid": "body horror, graphic death",
-        "writing_style": "quiet, precise, cinematic; tension from silence"
+        "avoid": "body horror, graphic death, human remains, anyone surviving decades alone, contradictions in the Nowak family history",
+        "writing_style": "quiet, precise, cinematic; tension from silence",
+        "beats": [
+          "Day 11 to burn-up, night shift: Tomasz hears a child sing 'Aa, kotki dwa' through his hearing aid on channel 7, dead since 2061; the station recording of it is silent. (Truth: see ch2.)",
+          "Day 10: he traces an analogue carrier to sealed family module C4. (Truth, fixed: in 2061 C4 lost pressure; Ola Nowak, 7, and her mother Ewa died; bodies went home to Earth.)",
+          "Day 9: Beatriz, auditing his hours, pulls the 2061 file: C4 housed the Nowaks - Piotr, Ewa, Ola; sealed 3 October 2061 by H. Ishida, MD. (Truth: Piotr looped a recording of Ola singing.)",
+          "Day 8: Haruka says C4 was always empty storage - but she names the song before Tomasz does, and her hands stop on the bonsai. Tomasz and the reader know she is lying.",
+          "Day 6: Tomasz and Beatriz crawl the dark ring to C4; the hatch gauge shows the module still holds air after thirty years. Beatriz's orders: vent it and purge channel 7.",
+          "Day 5: inside C4 - no one, no remains: drawings, a small cardigan on a hook, and a transmitter on a battery loop Piotr wired in 2061. Piotr died in Gdansk in 2079: a dead man's loop.",
+          "Day 4: Haruka confesses: she was 31, she treated Ola and Ewa, she knew Ola; at Piotr's request she sealed C4 with the song running, and every year on Ola's birthday she listens.",
+          "Day 2: the company refuses any delay and orders the loop wiped; Beatriz finds Piotr's sister Irena, 80, still in Gdansk, and risks her contract to delay the purge.",
+          "Burn-up minus 20 hours: last hours aboard; Tomasz and Haruka in C4 hear the song together one last time, and Haruka says goodbye to Ola aloud.",
+          "Burn-up minus 5 hours, the last shuttle: Tomasz chooses to carry Ola's recording home to Irena instead of silencing it; Harrow burns up in the window; he has someone on Earth now."
+        ]
       }
     },
     {
@@ -109,7 +122,7 @@
         "identity_lenses": [],
         "language": "English",
         "story_mode": "series",
-        "planned_chapter_count": 8,
+        "planned_chapter_count": 5,
         "chapter_length": "standard",
         "image_style": "cinematic",
         "topic": "December 1962. The last narrow-gauge train of the season leaves Shimla in a blizzard and stops dead inside Barog tunnel. By morning a passenger in the first-class carriage is dead, the telegraph line is cut, and railway inspector Rosalind D'Souza is the only official aboard.",
@@ -133,14 +146,22 @@
           }
         ],
         "moments": [
-          "The train stops inside the tunnel and every lamp in first class goes out at once",
-          "Rosalind finds a railway telegram in the dead man's pocket that was never sent",
-          "The Major asks Rosalind to leave one question unasked",
-          "The solution turns on a timetable only Rosalind has memorised"
+          "Stopped inside Barog tunnel, the first-class lamps all fail together",
+          "The dead man's pocket holds a railway telegram he never sent",
+          "The woman booked as Mrs Hale is unmasked and admits what she took",
+          "The Major asks Rosalind to leave one question unasked, and she does",
+          "The answer rests on a timetable only Rosalind has memorised"
         ],
         "story_values": ["justice"],
-        "avoid": "graphic violence, gore",
-        "writing_style": "classic fair-play mystery, crisp dialogue, period detail worn lightly"
+        "avoid": "gore; times, seats or stops not in the beats; Solan or Dharampur before the tunnel; a changed telegram; a second poison; the Major's plea twice or its answer; dining car; bitter-almond smell; real brands or hotels (Paris Match, Cecil Hotel); pasted moment wording; addressing the reader",
+        "writing_style": "classic fair-play mystery, crisp dialogue, period detail worn lightly",
+        "beats": [
+          "14 Dec 1962: at Shimla Kohli carries the Major's case; lamps die. (A: Bhalla alone; B: 'Mrs Hale'; 4-berth: Major, Kohli, Rosalind) (Solan 18:30-18:45; Barog 19:08 halt 90s, room shut; slide 19:20)",
+          "15 Dec 06:30: Bhalla dead in coupe A, flask empty; Major's veronal 6 short. Wire (text: 'GREWAL SIGNED FALSE CERTIFICATES POLICE MEET KALKA BHALLA') (truth: Kohli forged, dosed Solan coffee)",
+          "Midpoint, noon: Rosalind unmasks 'Mrs Hale' (booked at Shimla) as Vivienne; Bhalla blackmailed her. Between Barog and the slide she took her photo from coupe A: he was snoring, flask empty.",
+          "Dusk: Kohli's false alibi: he filled the flask at Barog, gave it to Bhalla awake. Once, the Major asks her to leave one question unasked (did he read what Kohli had him sign?). She never asks.",
+          "Reveal in the 4-berth: (Barog 19:08 halt 90s, room shut) so the coffee was Solan's; Kohli had the Major's case. Kohli breaks. 16 Dec: Dharampur gang digs out; Kalka police. Question unanswered."
+        ]
       }
     },
     {
