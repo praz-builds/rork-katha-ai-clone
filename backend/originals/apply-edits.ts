@@ -3,9 +3,11 @@
  *
  *   deno run -A backend/originals/apply-edits.ts edits-x.jsonl [--dry-run]
  *
- * Titles and exact replacements are applied directly to `chapters`; every
+ * Titles and exact replacements are applied directly to `chapters`. Every
  * `find` must occur exactly once in its chapter or the whole story's edits are
- * refused (a half-applied continuity fix is worse than none). Rewrites are run
+ * refused before anything is written. Writes are guarded on the content that
+ * was validated and stop at the first failure (no rewrites after one); they
+ * are not a single transaction. Rewrites are run
  * through the app's Reimagine afterwards (reimagine.ts), one chapter at a time.
  */
 import { callStream, houseClient, service } from "./lib.ts";
@@ -64,16 +66,29 @@ for (const line of lines) {
     changed += 1;
     if (dry) continue;
     const firstLine = c.content.split("\n")[0].slice(0, 500);
-    const { error } = await service.from("chapters").update({
+    // Guarded on the content we validated against: if the chapter changed
+    // since it was read (a concurrent edit, a reimagine), the update matches no
+    // row and nothing is overwritten.
+    const { data: updated, error } = await service.from("chapters").update({
       title: c.title,
       content: c.content,
       word_count: words(c.content),
       first_line: firstLine,
-    }).eq("id", c.id);
-    if (error) problems.push(`ch${c.chapter_number} ${error.message}`);
+    }).eq("id", c.id).eq("content", orig.content).select("id");
+    if (error || !updated?.length) {
+      problems.push(`ch${c.chapter_number} ${error ? error.message : "changed since it was read - not overwritten"}`);
+      // Stop at the first failure. Not a transaction: chapters already
+      // written in this story stay written, and are listed so a rerun (whose
+      // finds will then no longer match) is investigated rather than trusted.
+      break;
+    }
   }
   console.log(`${e.slug}: ${changed} chapters edited${dry ? " (dry run)" : ""}${problems.length ? " ERR " + problems.join(" | ") : ""}`);
 
+  if (problems.length) {
+    console.log(`${e.slug}: rewrites SKIPPED after a failed update`);
+    continue;
+  }
   for (const r of e.rewrite ?? []) {
     if (dry) {
       console.log(`${e.slug}: would reimagine ch${r.chapter}`);

@@ -4,8 +4,8 @@
  *   deno run -A backend/originals/delete-drafts.ts <story_id> [...]
  * Refuses any story that is curated or not owned by the house account.
  */
-import { service } from "./lib.ts";
-const HOUSE = "3ae4750d-f24a-4dc9-a810-991dae1ce029";
+import { houseUserId, service } from "./lib.ts";
+const HOUSE = await houseUserId();
 for (const id of Deno.args) {
   const { data: row } = await service.from("stories").select("id,title,author_id,is_curated").eq("id", id).maybeSingle();
   if (!row) { console.log(`${id}: already gone`); continue; }

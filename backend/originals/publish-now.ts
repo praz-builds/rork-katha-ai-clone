@@ -3,8 +3,11 @@
  * pipeline's own cover for now. publish.ts later swaps in the Codex cover.
  *   deno run -A backend/originals/publish-now.ts slug [slug...]
  */
-import { service } from "./lib.ts";
+import { approvedSlugs, service } from "./lib.ts";
 const here = new URL(".", import.meta.url);
+// Only review-approved stories may go live: see approvedSlugs in lib.ts.
+const approved = await approvedSlugs(here);
+
 const state = JSON.parse(await Deno.readTextFile(new URL("run-state.json", here)));
 const titles = new Map<string, string>();
 for await (const e of Deno.readDir(here)) {
@@ -13,6 +16,10 @@ for await (const e of Deno.readDir(here)) {
   }
 }
 for (const slug of Deno.args) {
+  if (!approved.has(slug)) {
+    console.log(`${slug}: REFUSED - no passing review (reviews*.jsonl) and not in approved.txt`);
+    continue;
+  }
   const id = state[slug]?.story_id;
   if (!id) { console.log(`${slug}: unknown`); continue; }
   const { data } = await service.from("stories").select("cover_image_url").eq("id", id).single();

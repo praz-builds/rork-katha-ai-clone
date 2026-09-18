@@ -17,7 +17,7 @@
  * Every request id is saved BEFORE its request is sent, so a timeout followed
  * by a rerun replays the same generation instead of paying for a second one.
  */
-import { callFunction, callStream, env, houseClient, service } from "./lib.ts";
+import { approvedSlugs, callFunction, callStream, env, houseClient, service } from "./lib.ts";
 
 type Brief = {
   slug: string;
@@ -58,22 +58,7 @@ const todo = briefs.filter((b) => (!only || only.includes(b.slug)) && !exclude.i
  * in approved.txt (a "fix" verdict whose fixes have been applied and checked).
  * Until then it is written and covered but stays private.
  */
-const approved = new Set<string>();
-for await (const entry of Deno.readDir(here)) {
-  if (/^reviews.*\.jsonl$/.test(entry.name)) {
-    for (const line of (await Deno.readTextFile(new URL(entry.name, here))).split("\n")) {
-      try {
-        const review = JSON.parse(line);
-        if (review.verdict === "publish") approved.add(review.slug);
-      } catch { /* blank or partial line */ }
-    }
-  }
-}
-try {
-  for (const slug of (await Deno.readTextFile(new URL("approved.txt", here))).split("\n")) {
-    if (slug.trim()) approved.add(slug.trim());
-  }
-} catch { /* none yet */ }
+const approved = await approvedSlugs(here);
 
 const statePath = new URL("run-state.json", here);
 let state: Record<string, StoryState> = {};
@@ -126,15 +111,33 @@ async function write(brief: Brief, s: StoryState) {
       notify_on_ready: false,
     });
     const story = res.body.story as { id?: string } | undefined;
-    if (res.event !== "done" || !story?.id) {
+    // A replayed start whose generation is still running answers 409 with the
+    // story it reserved. Adopt it and wait for chapter one to land instead of
+    // failing - otherwise every rerun replays the same 409 forever.
+    const reserved = typeof res.body.story_id === "string" ? res.body.story_id : null;
+    if (res.event !== "done" && reserved && res.status === 409) {
+      s.story_id = reserved;
+      await save();
+      const deadline = Date.now() + 6 * 60_000;
+      while (Date.now() < deadline && (await chapterCount(reserved)) < 1) {
+        await new Promise((r) => setTimeout(r, 15_000));
+      }
+      if ((await chapterCount(reserved)) < 1) {
+        throw new Error("adopted an in-progress start, but chapter one never landed");
+      }
+      s.chapters_done = 1;
+      await save();
+      log(brief.slug, `adopted in-progress start ${reserved}`);
+    } else if (res.event !== "done" || !story?.id) {
       // A failed start is refunded; the next run must not replay its id.
       if (res.event === "error") delete s.start_request_id;
       throw new Error(`generate-story ${res.status} ${res.event} ${JSON.stringify(res.body).slice(0, 300)}`);
+    } else {
+      s.story_id = story.id;
+      s.chapters_done = 1;
+      await save();
+      log(brief.slug, `ch 1/${planned} ${Math.round((Date.now() - started) / 1000)}s ${s.story_id}`);
     }
-    s.story_id = story.id;
-    s.chapters_done = 1;
-    await save();
-    log(brief.slug, `ch 1/${planned} ${Math.round((Date.now() - started) / 1000)}s ${s.story_id}`);
   }
 
   s.chapter_request_ids ??= {};
