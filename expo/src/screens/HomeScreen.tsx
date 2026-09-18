@@ -179,7 +179,14 @@ export function buildFeedRows(
     story.isFeatured && !onTonight.has(story.id)
   );
   if (originals.length > 0) {
-    rows.push({ key: "originals", title: "Katha Originals", stories: originals });
+    // Capped like every other rail. Originals now come from the database -
+    // eighty-odd of them - and an uncapped row is a scroll nobody finishes;
+    // the rest stay reachable through the genre rails and Explore.
+    rows.push({
+      key: "originals",
+      title: "Katha Originals",
+      stories: originals.slice(0, RAIL_LENGTH),
+    });
   }
 
   if (preferredGenres.length > 0) {
