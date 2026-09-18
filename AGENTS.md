@@ -329,11 +329,12 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00038-00041 (Hardening)** | Profile update policy, shape-claim ordering, ledger tie-breaker, `characters.story_id` index |
 | **00043-00044 (Comments + covers)** | Threaded comments/votes/moderation, cover regeneration counters |
 | **00045 (Entity grounding)** | `entity_grounding` (shared expiring fact-card cache, service-role only), `stories.grounding`, `stories.grounding_entities` |
-| **00050 (Entity visibility gate)** | `stories.entity_gate_reason` + the CHECK that makes `is_public = true` with a reason set an invalid row |
+| **00050 (Entity visibility gate)** | `stories.entity_gate_reason` + the CHECK that made `is_public = true` with a reason set an invalid row. **Removed by 00091.** |
 | **00058 (Classification status)** | `stories.entity_classification_status` (`ok` / `unavailable` / null-for-legacy), plus `error_events.bucket` widened to accept `grounding`, `engagement` and `phrase.learning` |
 | **00087 (One-credit start + auto runs)** | `begin_story_generation` deducts 1; `stories.auto_run_through_chapter`; `generation_operations.auto_run_id` / `.claimed_at`; `reserve_auto_chapter_run` and `refund_auto_chapter_run` |
 | **00089 (Launch economy)** | `streak_milestones`, `tester_accounts`, `reviewer_signin_attempts`; `profiles.entitlement_override` / `.avatar_id` / `.referral_code`; `comments.credit_claimed_at` / `.credit_ledger_id`; `referrals.claimed_at` / `.credited_at` plus `unique(referred_id)`; `streak_ladder()`, `claim_comment_credit`, `ensure_identity`, `settle_referrals` |
 | **00090 (Report targets + read gate)** | Target-aware `content_reports` reason and details constraints (a story's four reasons vs a comment's eight; 1,000 vs 2,000 characters); the comment-credit read gate now also requires a `story_reads` row whose **server-set** `read_at` is 60s or more older than the comment; `streak_ladder()` gets the grants every other 00089 function has; `idx_story_reads_user_story_read_at` |
+| **00091 (Entity gate removed)** | Drops both 00050 constraints, clears `stories.entity_gate_reason` on every row and leaves the column nullable and unused for older clients; re-issues `public_profile`, `profile_comments` and `activity_calendar` without the gate clause. A writer's publish toggle is honoured. |
 
 ### Credit Ledger Pattern
 
@@ -344,9 +345,24 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 - **Auto-continue pre-buys its whole run, and the run is atomic.** `story_flow = 'auto'` means the reader asked not to be interrupted, so when chapter one lands `reserve_auto_chapter_run` works out `min(chapters the balance affords, chapters left in the plan)`, reserves **all of them in one transaction** and records the last one on `stories.auto_run_through_chapter`. A partial reservation is the failure it is designed against: six affordable must mean six reserved or none. Each chapter still gets its own `generation_operations` row and its own `deduct_credit`, so every existing refund path prices a chapter by reading the debit keyed to its operation. `reserve_generation_operation` CLAIMS a pre-bought row rather than inserting a second one (`claimed_at` is what stops two requests claiming the same paid chapter), and `refund_auto_chapter_run` hands back the unused remainder through `refund_generation_operation`, which is idempotent per operation. **Auto still never extends past the plan** -- extension is a deliberate tap (`p_extend_to_chapter`, 00085). Interactive stories and the chapter-end fallback reserve one chapter at a time, unchanged.
 - **Reasons:** `purchase`, `subscription`, `ad_reward`, `streak`, `feedback`, `referral`, `social`, `generation`, `welcome`, `refund`, `reader_earning`, `chargeback`, `lapse`. The column keeps every value for ledger-history compatibility, but only `purchase`, `subscription`, `streak`, `feedback`, `welcome`, `referral`, `generation`, `refund`, `chargeback`, and `lapse` are live under the current economy; `ad_reward`, `social` and `reader_earning` are retired (`source-of-truth/CREDITS_AND_PRICING.md` §5). `feedback` came back on 2026-09-16 (decision 51) as the claim `claim_comment_credit` writes, not as the retired post-time faucet.
 
-## Grounding and the Entity Visibility Gate
+## Grounding and Entity Classification
 
-Two features share one classifier and must not share one posture.
+> **The entity visibility gate was removed on 2026-09-18 (owner decision,
+> migration 00091).** Every name on a character sheet is classified
+> `private_individual` (the sheet is the sole authority on who a character
+> is), so the gate kept every story with a named cast private whatever the
+> writer's toggle said. A requested `visibility: "public"` now publishes; the
+> only refusal left is `account_required` for a guest, which is abuse control,
+> not privacy. `_shared/entity-visibility-gate.ts`, `publish-story`'s
+> `story_gated_private` refusal, `shape-story`'s `gating_reason`, and the
+> client's warning and "kept private" modals are deleted.
+> `stories.entity_gate_reason` stays as a nullable, always-null column so older
+> clients do not break. **Classification itself stays**: it fills
+> `grounding_entities` and `entity_classification_status`, feeds fallback
+> cards, and keeps a cast member's name out of every search query. The history
+> below is kept because the budget lessons in it still apply to classification.
+
+Two features shared one classifier and must not share one posture.
 
 **Grounding cards** are prompt enrichment. `resolveGrounding` classifies an
 idea, buys a fact card for each entity worth grounding, and caches cards per
@@ -354,9 +370,9 @@ entity in `entity_grounding` (00045). It fails open by construction: every
 failure returns an empty result, and the story is written from model knowledge,
 which is what every story had before the feature existed.
 
-**The entity visibility gate** is a safety control. A story whose idea names a
-`living_public_figure` or a `private_individual` is forced private
-(`_shared/entity-visibility-gate.ts`, migration 00050 plus its CHECK
+**The entity visibility gate** (removed 2026-09-18, see above) was a safety
+control. A story whose idea named a `living_public_figure` or a
+`private_individual` was forced private (migration 00050 plus its CHECK
 constraint). Historical figures, real places, real events and organisations do
 **not** gate — a story about Shivaji Maharaj or the Taj Mahal is exactly what
 grounding exists to serve.
@@ -405,7 +421,9 @@ grounding exists to serve.
 >    window, and each model in front of it gives up one
 >    `FAST_OPENROUTER_RESERVE_MS` (6s) so a stalled leader can never abort the
 >    runner-up before `fetch` is called. `llm.test.ts` pins every row.
-> 3. **The publish decision fails closed, and only that decision.**
+> 3. **The publish decision fails closed, and only that decision.** *(Superseded
+>    2026-09-18: 00091 removed the gate and this refusal with it; `_shared/publish.ts`
+>    now refuses only a guest.)*
 >    `_shared/publish.ts` refuses a public request when classification produced
 >    no verdict (`classification_unavailable`), in the order guest →
 >    classification unavailable → entity gate → database constraint.
@@ -415,14 +433,14 @@ grounding exists to serve.
 >    still fails open everywhere else.
 > 4. **The failure is logged.** Every classification that fails, times out or
 >    returns unparseable output writes an `error_events` row with
->    `bucket: 'grounding'`, `severity: 'high'`,
+>    `bucket: 'grounding'`, `severity: 'medium'` (was `'high'` while the gate existed),
 >    `errorCode: 'entity_classification_unavailable'`, and a context of
 >    `failure`, `code` and `elapsed_ms` — never the idea, never an entity name.
 >    `entity-classify.ts` still documents "silent failure is the contract for
 >    the whole grounding path"; that contract holds for cards and **is void for
 >    the gate**. A control that silently does nothing is the root cause here.
 >
-> **Known limit:** `shape-story`'s pre-generation warning is a courtesy, not a
+> **Known limit (moot since 2026-09-18 — the warning is gone):** `shape-story`'s pre-generation warning was a courtesy, not a
 > gate. It awaits shaping and grounding together in front of a waiting writer,
 > so it answers only when classification is cheap. A null `gating_reason` there
 > means "no warning to show", never "checked and clear". A completed
@@ -475,7 +493,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 Locked product decisions are in the design handoff at `docs/design/created-flow.md`. What the backend contract says:
 
-- **Publishing is the visibility toggle, not a step.** `generate-story` and `generate-story-stream` accept `visibility: "private" | "public"` (absent means private) and apply it the moment the first chapter is persisted — `_shared/publish.ts`. The response's `visibility` is `{ requested, applied, reason }`; `reason` is the entity gate's own enum, `account_required` (a guest asked to publish), or `gate_constraint`. There is no separate review step.
+- **Publishing is the visibility toggle, not a step.** `generate-story` and `generate-story-stream` accept `visibility: "private" | "public"` (absent means private) and apply it the moment the first chapter is persisted — `_shared/publish.ts`. The response's `visibility` is `{ requested, applied, reason }`; `reason` is `account_required` (a guest asked to publish) or null; the entity gate's reasons and `gate_constraint` were removed with the gate on 2026-09-18 (00091). There is no separate review step.
 - **The `done` payload is built once**, by `_shared/generation-done.ts`, for both transports. Its nesting is `{ story, chapter, balance, model, timings, visibility }` — extend it, never flatten it. `DONE_PAYLOAD_LOCATIONS` ties every field of `STORY_OUTPUT_JSON_SCHEMA` to where it lands, and the test fails if a schema field has no home. That is what stopped `beats` and `themes` from quietly dropping out of the streamed payload.
 - **Saved characters are per user** (`user_characters`, migration 00057), auto-populated from every finished story's cast. A brief may reference one by `saved_character_id`; an id the caller does not own is dropped rather than failing a paid generation.
 - **Reimagining somebody else's chapter forks their story.** `fork_story` copies the row, its chapters and its cast into a private story owned by the caller, with `stories.forked_from_story_id` set. The fork is looked up before it is created, keyed on (source story, caller), so a reader ends up with one copy however many chapters they rewrite.
@@ -518,7 +536,7 @@ At least one of `prompt` and `character_replacements` is required — a rewrite 
 
 `edit-story` takes a second, model-free path: a body carrying `chapter_body` (≤ 200,000 characters, optional `chapter_title`) is the notepad's whole-chapter save and is routed before any paragraph-edit validation. It deliberately does not use the AI path's compare-and-swap — an AI edit rewrites text it read, so a concurrent write must invalidate it; a notepad save is the writer typing at text they can see, and refusing their copy because a cover job touched the row would lose visible work. Narration is dropped either way.
 
-`library?scope=mine` is the writer's own stories, and carries `story_mode`, `beats`, `series_state`, `planned_chapter_count` and `entity_gate_reason` beside the feed fields, because the Home rail and the chapter-end chips are rendered from a row, not from a fresh generation.
+`library?scope=mine` is the writer's own stories, and carries `story_mode`, `beats`, `series_state` and `planned_chapter_count` beside the feed fields, because the Home rail and the chapter-end chips are rendered from a row, not from a fresh generation.
 
 ### TODO Functions by Phase
 

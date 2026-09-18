@@ -540,11 +540,8 @@ async function buildContinueReading(
     //
     // Every other feed query filters on it; this one selected purely by "the
     // caller has read it", so a story kept its place on the reader's home
-    // screen -- title, topic, cover -- after its author took it private. That
-    // includes a story forced private by 00050 for naming a real living
-    // person, where continuing to show it is the specific outcome the gate
-    // exists to prevent. Having read something once is not a standing licence
-    // to keep seeing it.
+    // screen -- title, topic, cover -- after its author took it private.
+    // Having read something once is not a standing licence to keep seeing it.
     //
     // The author keeps their own: a writer reading back their own private
     // draft should still find it here.

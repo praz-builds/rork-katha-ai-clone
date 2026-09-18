@@ -47,7 +47,6 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
-import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
@@ -202,11 +201,10 @@ serve(async (req) => {
     // than an empty verdict, and why the ordering against
     // `begin_story_generation` must not change.
     //
-    // The streamed path has one extra reason to want this shape. It is the
-    // path a first chapter actually takes, so it is the path the publish
-    // toggle rides on, and it is also the one that cannot afford latency in
-    // front of the first token - page one is meant to appear ~20s in. A
-    // classification that resolves at persist time costs it nothing.
+    // The streamed path has one extra reason to want this shape: it cannot
+    // afford latency in front of the first token - page one is meant to
+    // appear ~20s in. A classification that resolves at persist time costs it
+    // nothing.
     const classificationPromise: Promise<ClassificationOutcome> =
       claimGroundingFallback({
         user,
@@ -246,10 +244,10 @@ serve(async (req) => {
     // there until the whole chapter lands, so nine seconds of enrichment buys
     // something rather than delaying the first page.
     //
-    // The SAFETY GATE IS UNTOUCHED. `classificationPromise` still starts
-    // above, is still awaited after the chapter is persisted, and still
-    // decides `entity_gate_reason` and the applied visibility. Only the card
-    // enrichment -- prose flavour, never a safety control -- is off the path.
+    // `classificationPromise` still starts above and is still awaited after
+    // the chapter is persisted, where it records `grounding_entities`. It no
+    // longer decides visibility: the entity gate it once fed was removed on
+    // 2026-09-18 (migration 00091). Only the card enrichment is off the path.
 
     const { data: begun, error: beginError } = await serviceClient.rpc(
       "begin_story_generation",
@@ -688,16 +686,13 @@ serve(async (req) => {
           // the chapter is written and on disk, and this started before the
           // opening RPC. Same trade as the buffered path.
           const classification = await classificationPromise;
-          const gateReason = classification.status === "ok"
-            ? deriveGatingReason(classification.entities)
-            : null;
           const resolvedEntities = classification.status === "ok"
             ? classification.entities
             : groundingEntities;
           if (classification.status !== "ok") {
             await reportClassificationFailure({
               outcome: classification,
-              feature: "entity_gate",
+              feature: "grounding",
               storyId: story.id,
               userId: user.id,
             });
@@ -714,7 +709,6 @@ serve(async (req) => {
               .update({
                 grounding: resolvedGrounding,
                 grounding_entities: resolvedEntities,
-                entity_gate_reason: gateReason,
                 entity_classification_status: classification.status === "ok"
                   ? "ok"
                   : "unavailable",
@@ -737,19 +731,16 @@ serve(async (req) => {
             }
           }
 
-          // The visibility toggle is the publish button. Applied after the
-          // grounding write above so the gate reason is on the row before the
-          // 00050 CHECK is asked to admit `is_public = true`; the outcome
-          // travels in `done` so the client can say why a public request
-          // stayed private without a second call.
+          // The visibility toggle is the publish button, and it is honoured
+          // (2026-09-18): a signed-in writer who asked for public gets public.
+          // The outcome travels in `done`, so a guest's request that stayed
+          // private is explained without a second call.
           const visibilityOutcome = await applyRequestedVisibility(
             serviceClient as unknown as VisibilityClient,
             {
               storyId: story.id,
               requested: visibility,
               isAnonymous: user.is_anonymous === true,
-              classificationAvailable: classification.status === "ok",
-              gateReason,
             },
           );
 

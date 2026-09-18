@@ -504,10 +504,10 @@ export type CreateDraft = {
      *
      * It is a STYLE reference, not a likeness target. The backend states that
      * to the model explicitly (`STYLE_REFERENCE_CLAUSE` in `_shared/image.ts`),
-     * the base Safety Rules forbid real people, and a real person's name typed
-     * into a cast is reclassified `private_individual` and locks the story
-     * private (migration 00050). Three layers, because prompt text alone is
-     * the weakest of them.
+     * and the base Safety Rules forbid real people. More than one layer,
+     * because prompt text alone is the weakest of them. (A real name in the
+     * cast used to lock the story private too; that gate was removed on
+     * 2026-09-18, migration 00091.)
      */
     referenceImage?: string;
     /**

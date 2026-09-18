@@ -7,6 +7,75 @@
 
 ---
 
+## 2026-09-18 UTC — The entity privacy gate is removed: a public toggle means public
+
+**Session:** `codex/pipeline-fixes`. Migration 00091 written and tested
+locally against PGlite; **not pushed to any database and nothing deployed.**
+
+### Why
+
+Owner decision, 2026-09-18: remove the privacy gating completely for the MVP
+and honour the writer's publish toggle. The gate (00050) forced a story private
+when its idea named a `living_public_figure` or a `private_individual`. Every
+name on a character sheet is classified `private_individual` — the sheet is the
+sole authority on who a character is — so every story with a named cast, which
+is nearly every story, could never be published, whatever the toggle said.
+
+### What changed
+
+- **Migration 00091** drops `stories_entity_gate_forces_private` and
+  `stories_entity_gate_reason_is_valid`, clears `entity_gate_reason` on every
+  row, and leaves the column nullable and unused so older clients that select
+  it get `null`. It re-issues `public_profile`, `profile_comments` and
+  `activity_calendar` without the `entity_gate_reason is null` clause (same
+  bodies and grants otherwise), and rewrites the two column comments. It
+  publishes nothing on anybody's behalf: a story the gate kept private stays
+  private until its writer publishes it. The 00050 migration test is deleted
+  (it asserted constraints that no longer exist after the full chain); the
+  00057 and 00060 tests no longer seed or assert a gate reason.
+- **Server:** `_shared/entity-visibility-gate.ts` and its test are deleted.
+  `_shared/publish.ts`'s `applyRequestedVisibility` takes only
+  `{ storyId, requested, isAnonymous }`; the only refusal left is
+  `account_required` for a guest (abuse control, not privacy), and a database
+  error on the flip is thrown instead of being folded into `gate_constraint`.
+  `publish-story` no longer selects or refuses on `entity_gate_reason` /
+  `entity_classification_status`. `generate-story` and `generate-story-stream`
+  stop writing `entity_gate_reason`; `shape-story` stops returning
+  `gating_reason`; `library` stops selecting the column; `readPublicStories`
+  drops its `.is("entity_gate_reason", null)` filter in step with 00091.
+- **Classification stays.** It still fills `grounding_entities`,
+  `entity_classification_status` and fallback cards, and still forces a cast
+  name to `private_individual` so it is never a search query. A failed
+  classification is now logged at `severity: 'medium'` with
+  `feature: 'grounding'` — `high` was justified only by a story going public
+  unchecked.
+- **Client:** `src/lib/entity-gate.ts`, `PublicEntityWarningModal`,
+  `StoryGatedPrivateModal`, `StoryGatedPrivateError`, the session's
+  `gatedReason`/`acknowledgeGate`, and their three test files are deleted.
+  Create no longer interrupts a public request with "this will stay private";
+  a failed background publish is only ever transport.
+
+### Tests
+
+New: `00091_remove_entity_visibility_gate_test.ts` (a gated row is cleared by
+the migration, stays private, and can then be published; both constraints are
+gone and the column remains; a public named-cast story counts on
+`public_profile` and `profile_comments`; no profile function reads the column).
+`publish-story/index.test.ts` now asserts a named-cast story requested public
+IS published, that a `living_public_figure` row and an `'unavailable'`
+classification publish too, that the handler no longer selects the old
+columns, and that a guest is still refused. `_shared/publish.test.ts` asserts a
+named-cast public request writes chapters then story.
+
+### Follow-ups, not done
+
+- Classification still runs on every generation (a breadth chosen for the
+  gate). Narrowing it back to the unshaped path would save an LLM call per
+  shaped story; that is a cost decision for the owner.
+- `stories.entity_gate_reason` can be dropped once no shipped client selects it.
+
+---
+
 ## 2026-09-18 UTC — Katha Originals on Home: the client reads curated stories from the database
 
 **Session:** `codex/originals-on-home` (client only; no schema, no deploy).

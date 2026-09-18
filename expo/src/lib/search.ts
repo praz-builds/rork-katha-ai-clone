@@ -21,9 +21,6 @@
  *                                        silently eat a slot in the page
  *
  * A row the `feed` function would hide is therefore a row this cannot return.
- * The entity visibility gate needs no clause here: migration 00050's CHECK
- * makes `is_public = true` with an `entity_gate_reason` an invalid row, so a
- * gated story cannot satisfy the visibility disjunction in the first place.
  *
  * FALLING BACK RATHER THAN GOING BLANK. Supabase is not configured in tests,
  * in a bare checkout, or on a device with no network, and a discovery surface

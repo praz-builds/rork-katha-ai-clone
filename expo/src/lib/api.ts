@@ -75,43 +75,6 @@ export class StoryShapeRequestError extends Error {
   }
 }
 
-/** Why the entity visibility gate kept a story private. Mirrors the backend enum. */
-export type StoryGatingReason = "living_public_figure" | "private_individual";
-
-/**
- * Every reason a story the writer asked to publish came back private.
- *
- * The two gate reasons are decisions: the server read the idea, found a real
- * living person in it, and applied the rule. `classification_unavailable` is
- * the absence of a decision - the check itself did not finish - and it is a
- * separate value because it means something different to the writer. The
- * gated story will never be public; the unchecked one can be published later,
- * unchanged, once the check runs.
- *
- * It exists at all because of the defect found on 2026-09-09: the check had
- * never completed in production, and "no answer" arrived at the publish
- * decision looking exactly like "nobody real in this idea". The backend now
- * fails closed on that one decision and says which it was.
- */
-export type StoryPrivateReason =
-  | StoryGatingReason
-  | "classification_unavailable";
-
-/**
- * The server refused to make a story public - because its idea names a real
- * living person, or because it could not finish checking - and kept the story
- * private instead. This is not a failed publish in the ordinary sense: every
- * edit was still saved, the story still exists and reads exactly as before,
- * and nothing needs to be retried. The caller's job is to explain that, not to
- * offer a retry button.
- */
-export class StoryGatedPrivateError extends Error {
-  constructor(readonly gatingReason: StoryPrivateReason) {
-    super("This story stays private.");
-    this.name = "StoryGatedPrivateError";
-  }
-}
-
 export type StoryShape = {
   /** Primary first, then up to two editable secondary genre chips. */
   genres: Genre[];
@@ -682,8 +645,8 @@ export async function getLibrary(
  *
  * This closes a gap that cost real work: stories persisted correctly, but no
  * endpoint returned a writer's own PRIVATE ones (the library query is
- * `is_public OR is_curated`, and a fresh story is private by column default and
- * by the entity gate), and the client held its stories in a `useState` array.
+ * `is_public OR is_curated`, and a fresh story is private by column default),
+ * and the client held its stories in a `useState` array.
  * So every story a writer made vanished from the interface on reload while the
  * rows sat safe in the database -- stories they had spent credits on.
  *
@@ -734,8 +697,8 @@ export async function fetchCreatedShelf(): Promise<ShelfResult> {
   const { data, error } = await supabase
     .from("stories")
     .select(
-      // `beats`, `series_state`, `story_mode`, `planned_chapter_count`,
-      // `is_public` and `entity_gate_reason` are not decoration. The
+      // `beats`, `series_state`, `story_mode`, `planned_chapter_count` and
+      // `is_public` are not decoration. The
       // chapter-end screen derives its "what happens next" chips from the
       // beats, the open hooks, the promised payoffs and the next-chapter
       // pressure; without them a story opened from Library or Home offers a
@@ -758,7 +721,7 @@ export async function fetchCreatedShelf(): Promise<ShelfResult> {
 
 /** The column list every shelf read selects. Kept in one place so they stay identical. */
 const SHELF_STORY_COLUMNS =
-  "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, story_flow, beats, series_state, planned_chapter_count, illustrate_chapters, entity_gate_reason, like_count, bookmark_count, read_count, created_at, auto_run_through_chapter";
+  "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, cover_regen_count, length_type, audience_mode, spice_level, content_rating, language, is_curated, is_public, story_mode, story_flow, beats, series_state, planned_chapter_count, illustrate_chapters, like_count, bookmark_count, read_count, created_at, auto_run_through_chapter";
 
 /**
  * The stories this reader starred, newest star first.
@@ -1334,43 +1297,6 @@ function objectFailure(
       (typeof payload.operation_id === "string" &&
         /refunded|start a new request/i.test(message)),
   };
-}
-
-/**
- * Read `publish-story`'s typed refusal out of a failed invoke, or null for
- * every other kind of failure.
- *
- * Reuses the same `error.context.json()` reach-through as `edgeFunctionFailure`
- * above - the Supabase JS SDK reports a non-2xx function response as an error
- * with no parsed body, and the body is the only place `error_code` and
- * `gating_reason` live.
- */
-async function storyGatedPrivateReason(
-  error: unknown,
-): Promise<StoryPrivateReason | null> {
-  const context = error && typeof error === "object"
-    ? (error as { context?: { json?: () => Promise<unknown> } }).context
-    : undefined;
-  if (typeof context?.json !== "function") return null;
-  try {
-    const body = await context.json();
-    if (!body || typeof body !== "object") return null;
-    const payload = body as Record<string, unknown>;
-    if (payload.error_code !== "story_gated_private") return null;
-    // Matched explicitly rather than defaulted, now that there are three. The
-    // old two-way ternary would have rendered "this names a real living
-    // person" over a story that had simply not been checked - a claim about
-    // the writer's idea that the server never made.
-    if (payload.gating_reason === "private_individual") {
-      return "private_individual";
-    }
-    if (payload.gating_reason === "classification_unavailable") {
-      return "classification_unavailable";
-    }
-    return "living_public_figure";
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -2577,9 +2503,10 @@ export async function publishStory(
     },
   });
 
+  // No typed "kept private" refusal to read out of the error any more: the
+  // entity gate that produced it was removed on 2026-09-18 (migration 00091),
+  // so a signed-in writer's public request either publishes or fails.
   if (error) {
-    const gatingReason = await storyGatedPrivateReason(error);
-    if (gatingReason) throw new StoryGatedPrivateError(gatingReason);
     throw new Error("Publishing failed. Please try again.");
   }
 }

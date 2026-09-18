@@ -63,8 +63,6 @@ Deno.test("a private request writes nothing", async () => {
     storyId: STORY,
     requested: "private",
     isAnonymous: false,
-    classificationAvailable: true,
-    gateReason: null,
   });
   assertEquals(outcome, {
     requested: "private",
@@ -80,28 +78,9 @@ Deno.test("a guest asking for public stays private and is told to make an accoun
     storyId: STORY,
     requested: "public",
     isAnonymous: true,
-    classificationAvailable: true,
-    gateReason: null,
   });
   assertEquals(outcome.applied, "private");
   assertEquals(outcome.reason, "account_required");
-  assertEquals(writes, []);
-});
-
-Deno.test("a gated story stays private with the gate's own reason, before any write", async () => {
-  const { client, writes } = recordingClient();
-  const outcome = await applyRequestedVisibility(client, {
-    storyId: STORY,
-    requested: "public",
-    isAnonymous: false,
-    classificationAvailable: true,
-    gateReason: "living_public_figure",
-  });
-  assertEquals(outcome, {
-    requested: "public",
-    applied: "private",
-    reason: "living_public_figure",
-  });
   assertEquals(writes, []);
 });
 
@@ -111,8 +90,6 @@ Deno.test("an allowed public request writes the same columns publish-story write
     storyId: STORY,
     requested: "public",
     isAnonymous: false,
-    classificationAvailable: true,
-    gateReason: null,
   });
   assertEquals(outcome, {
     requested: "public",
@@ -132,20 +109,21 @@ Deno.test("an allowed public request writes the same columns publish-story write
   assertEquals(writes[1].filters, [["id", STORY]]);
 });
 
-Deno.test("the database refusing the flip is reported as the constraint, not as success", async () => {
+Deno.test("a database error on the story flip is thrown, never reported as a private outcome", async () => {
+  // There used to be a `gate_constraint` outcome for the 00050 CHECK refusing
+  // this write. The constraint is gone (00091), so nothing may quietly turn a
+  // public request private any more: a refusal is an error.
   const { client } = recordingClient({ stories: { code: "23514" } });
-  const outcome = await applyRequestedVisibility(client, {
-    storyId: STORY,
-    requested: "public",
-    isAnonymous: false,
-    classificationAvailable: true,
-    gateReason: null,
-  });
-  assertEquals(outcome.applied, "private");
-  assertEquals(outcome.reason, "gate_constraint");
+  await assertRejects(() =>
+    applyRequestedVisibility(client, {
+      storyId: STORY,
+      requested: "public",
+      isAnonymous: false,
+    })
+  );
 });
 
-Deno.test("any other database error is thrown, never swallowed into a private outcome", async () => {
+Deno.test("a database error on the chapters is thrown, never swallowed into a private outcome", async () => {
   const { client } = recordingClient({
     chapters: { code: "42501", message: "denied" },
   });
@@ -154,82 +132,27 @@ Deno.test("any other database error is thrown, never swallowed into a private ou
       storyId: STORY,
       requested: "public",
       isAnonymous: false,
-      classificationAvailable: true,
-      gateReason: null,
     })
   );
 });
 
-Deno.test("a public request stays private when classification never answered", async () => {
-  // The 2026-09-09 defect, as a test. Classification had a ~5s budget for a
-  // ~25s call, so it failed on every request and handed the gate an empty
-  // entity list - which is also what an idea naming nobody produces. The
-  // Taylor Swift story went public on a real account with
-  // `entity_gate_reason: null`, because "we never checked" and "we checked and
-  // it was fine" were the same value.
-  //
-  // Grounding still fails open everywhere else: the story is written, saved
-  // and readable. Only this one decision fails closed.
+Deno.test("a named-cast story requested public IS public", async () => {
+  // The 2026-09-18 decision, as a test. Every name on a character sheet is
+  // classified `private_individual`, and until then that alone turned every
+  // public request with a named cast into a private story. The function no
+  // longer takes a classification or a gate reason at all, so there is
+  // nothing a cast can do to the outcome: signed in and asked for public is
+  // public, and both writes happen.
   const { client, writes } = recordingClient();
   const outcome = await applyRequestedVisibility(client, {
     storyId: STORY,
     requested: "public",
     isAnonymous: false,
-    classificationAvailable: false,
-    gateReason: null,
   });
   assertEquals(outcome, {
     requested: "public",
-    applied: "private",
-    reason: "classification_unavailable",
+    applied: "public",
+    reason: null,
   });
-  // Refused before any write, like every other refusal here.
-  assertEquals(writes, []);
-});
-
-Deno.test("a private request is unaffected by classification being unavailable", async () => {
-  // Failing closed applies to the publish decision and to nothing else. A
-  // writer who never asked to publish is not told anything went wrong,
-  // because for them nothing did.
-  const { client, writes } = recordingClient();
-  const outcome = await applyRequestedVisibility(client, {
-    storyId: STORY,
-    requested: "private",
-    isAnonymous: false,
-    classificationAvailable: false,
-    gateReason: null,
-  });
-  assertEquals(outcome.reason, null);
-  assertEquals(outcome.applied, "private");
-  assertEquals(writes, []);
-});
-
-Deno.test("a guest is told to make an account before being told about the check", async () => {
-  // Order matters for the copy the client renders: an anonymous writer's
-  // problem is that they have no account, and telling them a check timed out
-  // would send them to fix the wrong thing.
-  const { client } = recordingClient();
-  const outcome = await applyRequestedVisibility(client, {
-    storyId: STORY,
-    requested: "public",
-    isAnonymous: true,
-    classificationAvailable: false,
-    gateReason: "living_public_figure",
-  });
-  assertEquals(outcome.reason, "account_required");
-});
-
-Deno.test("an unchecked story is refused for being unchecked, not for a gate reason it never got", async () => {
-  // A gate reason cannot exist without a classification, so this pairing is
-  // only reachable through a bug - and if it is reached, the honest answer is
-  // that nothing was checked.
-  const { client } = recordingClient();
-  const outcome = await applyRequestedVisibility(client, {
-    storyId: STORY,
-    requested: "public",
-    isAnonymous: false,
-    classificationAvailable: false,
-    gateReason: "private_individual",
-  });
-  assertEquals(outcome.reason, "classification_unavailable");
+  assertEquals(writes.map((w) => w.table), ["chapters", "stories"]);
 });
