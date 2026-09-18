@@ -85,6 +85,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { sseStream } from "../_shared/sse.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { validateGroundingCards } from "../_shared/grounding-card.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
@@ -886,134 +887,122 @@ serve(async (req) => {
     // `applyAcrossChapters` and `refundReimagine` are shared with the buffered
     // path below.
     if (body.stream === true) {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          let closed = false;
-          const send = (event: string, data: unknown) => {
-            if (closed) return;
-            controller.enqueue(
-              encoder.encode(
-                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+      // `sseStream` owns the framing, the ~15s keep-alive comment and the close
+      // on every exit path (`_shared/sse.ts`). The keep-alive is what lets the
+      // client tell a dead connection from a slow metadata call, and a reader
+      // who hangs up does not stop this run: the replay of its request id is
+      // how they get the finished chapter back.
+      const stream = sseStream(async ({ send }) => {
+        try {
+          // `story_id` rides on the first event, not only the last: a reader
+          // who is not the author needs to know which story they are reading
+          // before the prose arrives, because it is no longer the one they
+          // opened.
+          send("meta", {
+            story_id: storyId,
+            forked_from_story_id: forkedFromStoryId,
+            operation_id: operation.id,
+            chapter_number: chapterNumber,
+            chapter_id: targetChapter.id,
+            balance: operation.balance,
+          });
+          send("stage", { stage: "context" });
+
+          const prose = await streamChapterProse({
+            systemPrompt: systemPromptFor("prose"),
+            userPrompt: prosePrompt,
+            wordBand: band,
+            onCommit: () => send("stage", { stage: "writing" }),
+            onDelta: (text) => send("delta", { text }),
+          });
+
+          send("stage", { stage: "shaping" });
+
+          // The structured half, recovered after the prose rather than
+          // around it: `series_state` and the hook are what the chapter-end
+          // screen and the next continuation read, so they stay behind a
+          // strict schema instead of a partial-JSON parser.
+          const metadata = await generateFastStructuredText(
+            CHAPTER_METADATA_SYSTEM_PROMPT,
+            buildChapterMetadataPrompt({
+              prose: prose.text,
+              storyMode,
+              seed: (story.topic as string) ?? "",
+            }),
+            CHAPTER_METADATA_OUTPUT,
+            2_000,
+            45_000,
+          );
+          const output = parseStructuredOutput(
+            JSON.stringify({
+              ...(JSON.parse(metadata.text) as Record<string, unknown>),
+              chapter_body: prose.text,
+            }),
+            `Chapter ${chapterNumber}`,
+          );
+
+          const verdict = chapterLengthVerdict(prose.text, band);
+          if (!verdict.usable) {
+            // Recorded, not refused. The reader has already read it, and
+            // taking it back is worse than a chapter that ran long. Same
+            // rule as the streamed continuation.
+            await logError({
+              bucket: "generation.story",
+              severity: "medium",
+              source: "runtime",
+              errorCode: "streamed_chapter_outside_band",
+              error: new Error(
+                `Reimagined chapter ran ${verdict.words} words against a ${band.min}-${band.max} band`,
               ),
-            );
-          };
-          try {
-            // `story_id` rides on the first event, not only the last: a reader
-            // who is not the author needs to know which story they are reading
-            // before the prose arrives, because it is no longer the one they
-            // opened.
-            send("meta", {
-              story_id: storyId,
-              forked_from_story_id: forkedFromStoryId,
-              operation_id: operation.id,
-              chapter_number: chapterNumber,
-              chapter_id: targetChapter.id,
-              balance: operation.balance,
+              context: {
+                story_id: storyId,
+                operation_id: operation.id,
+                chapter_number: chapterNumber,
+                words: verdict.words,
+                band_min: band.min,
+                band_max: band.max,
+                model: prose.model,
+                kind: "reimagine",
+              },
+              userId: user.id,
             });
-            send("stage", { stage: "context" });
-
-            const prose = await streamChapterProse({
-              systemPrompt: systemPromptFor("prose"),
-              userPrompt: prosePrompt,
-              wordBand: band,
-              onCommit: () => send("stage", { stage: "writing" }),
-              onDelta: (text) => send("delta", { text }),
-            });
-
-            send("stage", { stage: "shaping" });
-
-            // The structured half, recovered after the prose rather than
-            // around it: `series_state` and the hook are what the chapter-end
-            // screen and the next continuation read, so they stay behind a
-            // strict schema instead of a partial-JSON parser.
-            const metadata = await generateFastStructuredText(
-              CHAPTER_METADATA_SYSTEM_PROMPT,
-              buildChapterMetadataPrompt({
-                prose: prose.text,
-                storyMode,
-                seed: (story.topic as string) ?? "",
-              }),
-              CHAPTER_METADATA_OUTPUT,
-              2_000,
-              45_000,
-            );
-            const output = parseStructuredOutput(
-              JSON.stringify({
-                ...(JSON.parse(metadata.text) as Record<string, unknown>),
-                chapter_body: prose.text,
-              }),
-              `Chapter ${chapterNumber}`,
-            );
-
-            const verdict = chapterLengthVerdict(prose.text, band);
-            if (!verdict.usable) {
-              // Recorded, not refused. The reader has already read it, and
-              // taking it back is worse than a chapter that ran long. Same
-              // rule as the streamed continuation.
-              await logError({
-                bucket: "generation.story",
-                severity: "medium",
-                source: "runtime",
-                errorCode: "streamed_chapter_outside_band",
-                error: new Error(
-                  `Reimagined chapter ran ${verdict.words} words against a ${band.min}-${band.max} band`,
-                ),
-                context: {
-                  story_id: storyId,
-                  operation_id: operation.id,
-                  chapter_number: chapterNumber,
-                  words: verdict.words,
-                  band_min: band.min,
-                  band_max: band.max,
-                  model: prose.model,
-                  kind: "reimagine",
-                },
-                userId: user.id,
-              });
-            }
-
-            const chapter = await persistReimagine(output);
-            const renamed = await applyAcrossChapters();
-
-            send("done", {
-              chapter,
-              story_id: storyId,
-              forked_from_story_id: forkedFromStoryId,
-              balance: operation.balance,
-              model: prose.model,
-              timings: { total: Date.now() - startedAt },
-              renamed,
-            });
-          } catch (error) {
-            const committed = error instanceof StreamCommittedError;
-            console.error(
-              "reimagine-chapter stream failed:",
-              safeErrorMessage(error),
-            );
-            const { refund, refundError } = await refundReimagine(error);
-            send("error", {
-              error: refundError
-                ? "The rewrite failed. Refund is pending retry."
-                : refund?.refunded
-                ? "The rewrite failed. Credit refunded."
-                : "The rewrite failed.",
-              operation_id: operation.id,
-              story_id: storyId,
-              // Whatever reached the reader stays on screen. Blanking prose
-              // somebody has read is the worse of the two bad outcomes - but
-              // the OLD chapter is untouched either way, because nothing is
-              // persisted until the rewrite is whole.
-              partial_prose_shown: committed,
-              refunded: Boolean(refund?.refunded),
-            });
-          } finally {
-            if (!closed) {
-              closed = true;
-              controller.close();
-            }
           }
-        },
+
+          const chapter = await persistReimagine(output);
+          const renamed = await applyAcrossChapters();
+
+          send("done", {
+            chapter,
+            story_id: storyId,
+            forked_from_story_id: forkedFromStoryId,
+            balance: operation.balance,
+            model: prose.model,
+            timings: { total: Date.now() - startedAt },
+            renamed,
+          });
+        } catch (error) {
+          const committed = error instanceof StreamCommittedError;
+          console.error(
+            "reimagine-chapter stream failed:",
+            safeErrorMessage(error),
+          );
+          const { refund, refundError } = await refundReimagine(error);
+          send("error", {
+            error: refundError
+              ? "The rewrite failed. Refund is pending retry."
+              : refund?.refunded
+              ? "The rewrite failed. Credit refunded."
+              : "The rewrite failed.",
+            operation_id: operation.id,
+            story_id: storyId,
+            // Whatever reached the reader stays on screen. Blanking prose
+            // somebody has read is the worse of the two bad outcomes - but
+            // the OLD chapter is untouched either way, because nothing is
+            // persisted until the rewrite is whole.
+            partial_prose_shown: committed,
+            refunded: Boolean(refund?.refunded),
+          });
+        }
       });
 
       return new Response(stream, {

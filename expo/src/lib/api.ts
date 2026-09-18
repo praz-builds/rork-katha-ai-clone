@@ -9,7 +9,16 @@ import { bootstrapUser } from "@/lib/session";
 // The age helper Explore's search results are dated with, so a story reads
 // the same age whichever read it arrived through.
 import { publishedOffsetFrom } from "@/lib/search";
-import { postEventStream, StreamTransportError } from "@/lib/stream";
+import {
+  postEventStream,
+  StreamStalledError,
+  StreamTransportError,
+} from "@/lib/stream";
+import {
+  classifyReplayResponse,
+  recoverByReplay,
+  STREAM_STALL_TIMEOUT_MS,
+} from "@/lib/stream-recovery";
 import {
   isSupabaseConfigured,
   SUPABASE_ANON_KEY,
@@ -1035,6 +1044,24 @@ function mapStoryRow(
   };
 }
 
+/**
+ * The BUFFERED first chapter. Not for interactive use: call
+ * `generateStoryStreaming`.
+ *
+ * `supabase.functions.invoke()` waits for the whole body, so the entire
+ * provider chain - retries, fallbacks, the metadata call, the persist - has to
+ * fit inside the Supabase gateway's 150s idle timeout, with not one byte sent
+ * in the meantime. Measured on production it does not, about 30% of the time,
+ * and a request cut off there reaches the client as a bare timeout with no
+ * refund payload. The streamed path is immune: its first byte lands in seconds
+ * and every chunk (and every ~15s keep-alive) resets the clock.
+ *
+ * Kept, not deleted, because `api-generation-contract.test.ts` pins the
+ * request body through it and that body is built by the same
+ * `buildGenerationRequestBody` the streamed path sends - removing it would
+ * delete those assertions, not the risk. No screen calls it. Reintroducing a
+ * caller reintroduces the 30% failure rate.
+ */
 export async function generateStory(
   draft: CreateDraft,
   requestId: string,
@@ -1799,33 +1826,61 @@ function generateMockTitle(genre: Genre): string {
 // ---------------------------------------------------------------------------
 
 /**
- * The three streamed calls differ only in their endpoint and their body.
+ * The streamed calls differ only in their endpoint and their body.
  *
- * Auth, header assembly, event dispatch and the "closed without a terminal
- * event" check are identical, and a second copy of the last one in particular
- * is how a truncated response quietly becomes a success.
+ * Auth, header assembly, event dispatch, the stall watchdog and what happens
+ * when a stream ends without a terminal event are identical, and a second copy
+ * of the last one in particular is how a truncated response quietly becomes a
+ * success - or, as it was until 2026-09-18, how a finished chapter became a
+ * 25-minute spinner.
+ *
+ * # A stream that ends without `done` or `error` is a question, not a failure
+ *
+ * Three ways to get here: the watchdog fired (no bytes, keep-alives included,
+ * for `STREAM_STALL_TIMEOUT_MS`), the connection dropped mid-read, or the body
+ * closed early. In none of them does the client know how the generation ended,
+ * and on production it had usually SUCCEEDED. So instead of reporting a
+ * failure, the call replays its own request id (`recoverByReplay`) and takes
+ * the server's answer: the finished payload is handed back exactly as a `done`
+ * event would have been, "in progress" is polled with backoff for about three
+ * minutes, and "the previous generation failed" becomes the ordinary failure
+ * with `resetRequestId` set, so the reader's retry is a fresh reservation.
+ *
+ * Prose already painted through `onDelta` is never retracted by any of this.
+ * The replay's chapter replaces it the same way `done` would have.
+ *
+ * `replayable: false` is for a call with no request id (`edit-story`): a replay
+ * there would be a second edit, not a lookup, so its stall fails fast instead.
  */
-async function runStreamedCall(input: {
+export async function runStreamedCall(input: {
   fn: string;
   body: unknown;
   onEvent: (event: string, payload: Record<string, unknown>) => void;
+  replayable?: boolean;
 }): Promise<Record<string, unknown>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const accessToken = session?.access_token;
+  const replayable = input.replayable !== false;
+  const accessToken = await currentAccessToken();
   if (!accessToken) {
     throw new GenerationRequestError("Please sign in to continue.", false);
   }
 
+  const url = `${SUPABASE_URL}/functions/v1/${input.fn}`;
   const outcome: {
     done: Record<string, unknown> | null;
     failure: { message: string; partial: boolean } | null;
   } = { done: null, failure: null };
+  let opened = false;
+  let answeredWithJson: { json?: unknown } = {};
 
   try {
-    await postEventStream({
-      url: `${SUPABASE_URL}/functions/v1/${input.fn}`,
+    answeredWithJson = await postEventStream({
+      url,
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
       body: input.body,
+      stallTimeoutMs: STREAM_STALL_TIMEOUT_MS,
+      onOpen: () => {
+        opened = true;
+      },
       onEvent: ({ event, data }) => {
         const payload = (data ?? {}) as Record<string, unknown>;
         if (event === "done") outcome.done = payload;
@@ -1841,25 +1896,80 @@ async function runStreamedCall(input: {
     });
   } catch (error) {
     if (error instanceof StreamTransportError) {
-      // `resetRequestId` stays false: the call may already have reserved a
-      // credit before the connection dropped, and reusing the same id is what
-      // lets the replay path hand back the finished work instead of charging
-      // twice.
-      throw new GenerationRequestError(error.message, false);
+      // The server answered and refused before opening the stream. Read the
+      // refusal the way a replay's answer is read: a 409 for an id that is
+      // still running (the reader retried while it worked) is waited on
+      // below; a refunded id is a failure that needs a fresh one.
+      //
+      // Otherwise `resetRequestId` stays false: the call may already have
+      // reserved a credit before the connection dropped, and reusing the same
+      // id is what lets the replay path hand back the finished work instead
+      // of charging twice.
+      const verdict = error.status === undefined
+        ? null
+        : classifyReplayResponse(error.status, error.body);
+      if (!(replayable && error.status === 409 && verdict?.kind === "pending")) {
+        throw new GenerationRequestError(
+          error.message,
+          verdict?.kind === "failed" && verdict.resetRequestId,
+        );
+      }
+    } else if (!(error instanceof StreamStalledError) && !opened) {
+      // Never reached the server, or never heard back and not by the
+      // watchdog's verdict (an abort from the caller). Unchanged behaviour.
+      throw error;
     }
-    throw error;
+    // A stall, or a read that failed after the stream opened: recover below,
+    // unless a terminal event already arrived before the connection died.
   }
 
+  // Terminal events win over whatever happened to the connection afterwards.
   if (outcome.failure) {
     throw new GenerationRequestError(outcome.failure.message, false);
   }
-  if (!outcome.done) {
+  if (outcome.done) return outcome.done;
+
+  // A replayed id answered with the finished payload as plain JSON.
+  if (answeredWithJson.json !== undefined) {
+    const verdict = classifyReplayResponse(200, answeredWithJson.json);
+    if (verdict.kind === "done") return verdict.payload;
+  }
+
+  if (!replayable) {
     throw new GenerationRequestError(
       "The response stopped partway through. Please try again.",
       false,
     );
   }
-  return outcome.done;
+
+  const recovered = await recoverByReplay({
+    url,
+    body: input.body,
+    headers: async () => ({
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${(await currentAccessToken()) ?? accessToken}`,
+    }),
+  });
+  if (recovered.kind === "done") return recovered.payload;
+  if (recovered.kind === "failed") {
+    throw new GenerationRequestError(
+      recovered.message,
+      recovered.resetRequestId,
+    );
+  }
+  // Still "in progress" after about three minutes. The id is kept: if the
+  // generation does finish, the reader's retry replays it rather than paying
+  // again, and if it was abandoned the server reconciles it to refunded and
+  // the retry is told to start fresh.
+  throw new GenerationRequestError(
+    "The response stopped partway through. Please try again.",
+    false,
+  );
+}
+
+async function currentAccessToken(): Promise<string | undefined> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token;
 }
 
 export interface StreamedChapterHandlers {
@@ -2268,6 +2378,8 @@ export async function editParagraphStreaming(
 
   const done = await runStreamedCall({
     fn: "edit-story",
+    // No request id: a replay would be a second edit, not a lookup.
+    replayable: false,
     body: {
       story_id: storyId,
       chapter_id: chapterId,
@@ -2294,6 +2406,16 @@ export async function editParagraphStreaming(
   return updated;
 }
 
+/**
+ * The BUFFERED continuation. Not for interactive use: call
+ * `continueStoryStreaming`.
+ *
+ * Same ceiling as `generateStory`: the whole chapter must be generated and
+ * persisted inside the gateway's 150s idle timeout with nothing sent in the
+ * meantime, which fails about 30% of the time on production. Kept only because
+ * `api-generation-contract.test.ts` pins the continuation request body through
+ * it; no screen calls it, and none should.
+ */
 export async function continueStory(
   storyId: string,
   requestId: string,
