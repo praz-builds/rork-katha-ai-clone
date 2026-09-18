@@ -27,6 +27,7 @@ import {
   CHAPTER_METADATA_OUTPUT,
   CHAPTER_METADATA_SYSTEM_PROMPT,
   chapterLengthVerdict,
+  chapterOutputFromStreamedMetadata,
   nameChapterEarly,
   streamChapterProse,
   StreamCommittedError,
@@ -912,16 +913,18 @@ serve(async (req) => {
           // mutable binding so the title that is PERSISTED is the one the
           // `title` event already put on screen.
           const earlyNames = await namingPromise;
-          const output = parseStructuredOutput(
-            JSON.stringify({
-              ...(JSON.parse(metadata.text) as Record<string, unknown>),
-              chapter_body: prose.text,
-              ...(earlyNames?.chapterTitle
-                ? { chapter_title: earlyNames.chapterTitle }
-                : {}),
-            }),
-            `Chapter ${nextChapterNum}`,
-          );
+          // Refuses metadata with no series state or hook, as the buffered
+          // path refuses `structured === false`: chapter n+1 is written from
+          // this chapter's `series_state`, so persisting it empty freezes the
+          // series. The throw lands in the catch below, which refunds.
+          const output = chapterOutputFromStreamedMetadata({
+            metadataText: metadata.text,
+            prose: prose.text,
+            fallbackTitle: `Chapter ${nextChapterNum}`,
+            overrides: earlyNames?.chapterTitle
+              ? { chapter_title: earlyNames.chapterTitle }
+              : undefined,
+          });
 
           const verdict = chapterLengthVerdict(prose.text, band);
           if (!verdict.usable) {

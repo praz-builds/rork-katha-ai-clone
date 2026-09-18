@@ -99,6 +99,7 @@ import {
   CHAPTER_METADATA_OUTPUT,
   CHAPTER_METADATA_SYSTEM_PROMPT,
   chapterLengthVerdict,
+  chapterOutputFromStreamedMetadata,
   streamChapterProse,
   StreamCommittedError,
 } from "../_shared/story-stream.ts";
@@ -933,13 +934,16 @@ serve(async (req) => {
             2_000,
             45_000,
           );
-          const output = parseStructuredOutput(
-            JSON.stringify({
-              ...(JSON.parse(metadata.text) as Record<string, unknown>),
-              chapter_body: prose.text,
-            }),
-            `Chapter ${chapterNumber}`,
-          );
+          // Refuses metadata with no series state or hook, as the buffered
+          // path below refuses `structured === false`: a rewrite persisted
+          // without them wipes continuity for every later chapter. The throw
+          // lands in the catch below, which refunds, and the OLD chapter is
+          // untouched because nothing has been written yet.
+          const output = chapterOutputFromStreamedMetadata({
+            metadataText: metadata.text,
+            prose: prose.text,
+            fallbackTitle: `Chapter ${chapterNumber}`,
+          });
 
           const verdict = chapterLengthVerdict(prose.text, band);
           if (!verdict.usable) {

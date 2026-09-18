@@ -144,6 +144,23 @@ timeout and does not about 30% of the time. They are kept because
 `api-generation-contract.test.ts` pins the request body through them; no
 screen calls them.
 
+### Review follow-up (PR #105): streamed metadata that erased continuity
+
+CodeAnt flagged `reimagine-chapter`'s streamed path. The defect predates this
+branch (identical on `origin/main` under `git diff -w`) and `continue-story`'s
+streamed path had it too: both spread the metadata into an object that always
+carried `chapter_body`, so `parseStructuredOutput` reported `structured: true`
+whatever the metadata said, and `{}` or an object missing `series_state` was
+persisted with an empty series state and a default hook. The buffered paths
+already refuse `structured === false`. New
+`chapterOutputFromStreamedMetadata` in `_shared/story-stream.ts` requires an
+object `series_state` and a string `hook_type`, and throws
+`StreamedMetadataError` before anything is persisted, so the existing catch
+refunds and the old chapter stays. Both streamed paths use it.
+`generate-story-stream` is unchanged: a first chapter has no prior continuity
+to erase, and its comment records the lenient behaviour as deliberate. Eight
+Deno cases in `story-stream.test.ts`; backend suite 882 passed.
+
 ### Verification
 
 `deno check` on every function; `deno test backend/supabase/functions/` 874

@@ -9,11 +9,13 @@ import {
   CHAPTER_METADATA_SCHEMA,
   CHAPTER_NAMING_SCHEMA,
   chapterLengthVerdict,
+  chapterOutputFromStreamedMetadata,
   chapterTokenBudget,
   parseChapterNames,
   parseSseData,
   streamChapterProse,
   StreamCommittedError,
+  StreamedMetadataError,
   trimToParagraph,
 } from "./story-stream.ts";
 import { STORY_OUTPUT_JSON_SCHEMA } from "./story_schema.ts";
@@ -690,3 +692,88 @@ Deno.test("a continuation is told the story is already named", () => {
   assertStringIncludes(prompt, "The Debt at My Door");
   assertStringIncludes(prompt, "<katha:previously>");
 });
+
+// ---------------------------------------------------------------------------
+// Joining streamed prose to its metadata
+//
+// A streamed continuation or rewrite used to spread whatever the metadata call
+// returned into an object that always had `chapter_body`, so the parser
+// called it structured and `{}` was persisted with an empty series state and a
+// default hook - erasing continuity for every later chapter. The buffered
+// paths already refused that (`structured === false`); these pin the same
+// refusal on the streamed side, before anything is persisted.
+// ---------------------------------------------------------------------------
+
+const GOOD_METADATA = {
+  title: "The Tide Table",
+  chapter_title: "Low Water",
+  themes: ["sea"],
+  first_line: "The ferry was late.",
+  previously_summary: "Mira found the letter.",
+  series_state: {
+    central_conflict: "Who wrote the letter",
+    protagonist_want: "The truth",
+    relationship_state: "",
+    open_hooks: ["the second letter"],
+    resolved_hooks: [],
+    promised_payoffs: [],
+    world_facts: [],
+    character_changes: [],
+    next_chapter_pressure: "The tide turns at dawn",
+    delivered_moments: [],
+  },
+  hook_type: "unanswered_question",
+  hook_text: "Who signed it?",
+};
+
+Deno.test("streamed metadata: a complete answer keeps its series state, hook and the streamed prose", () => {
+  const output = chapterOutputFromStreamedMetadata({
+    metadataText: JSON.stringify(GOOD_METADATA),
+    prose: "The ferry was late.\n\nNobody minded.",
+    fallbackTitle: "Chapter 3",
+    overrides: { chapter_title: "Named Early" },
+  });
+  assertEquals(output.structured, true);
+  assertEquals(output.chapter_body, "The ferry was late.\n\nNobody minded.");
+  assertEquals(output.chapter_title, "Named Early");
+  assertEquals(output.hook_type, "unanswered_question");
+  assertEquals(output.series_state.open_hooks, ["the second letter"]);
+});
+
+for (
+  const [name, metadataText] of [
+    ["unparseable text", "Here is the metadata you asked for: {"],
+    ["an empty object", "{}"],
+    ["a JSON array", "[]"],
+    ["JSON null", "null"],
+    [
+      "no series_state",
+      JSON.stringify({ ...GOOD_METADATA, series_state: undefined }),
+    ],
+    [
+      "a series_state that is not an object",
+      JSON.stringify({ ...GOOD_METADATA, series_state: "ongoing" }),
+    ],
+    [
+      "no hook_type",
+      JSON.stringify({ ...GOOD_METADATA, hook_type: undefined }),
+    ],
+  ] as const
+) {
+  Deno.test(`streamed metadata: refuses ${name} rather than persisting a chapter without continuity`, () => {
+    let caught: unknown;
+    try {
+      chapterOutputFromStreamedMetadata({
+        metadataText,
+        prose: "The ferry was late.",
+        fallbackTitle: "Chapter 3",
+      });
+    } catch (error) {
+      caught = error;
+    }
+    assert(
+      caught instanceof StreamedMetadataError,
+      `expected StreamedMetadataError, got ${String(caught)}`,
+    );
+  });
+}
