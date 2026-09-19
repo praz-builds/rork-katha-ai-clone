@@ -331,13 +331,11 @@ type RpcClient = {
       eq(column: string, value: unknown): {
         eq(column: string, value: unknown): {
           eq(column: string, value: unknown): {
-            is(column: string, value: unknown): {
-              neq(column: string, value: unknown): {
-                order(column: string, options: { ascending: boolean }): {
-                  limit(count: number): PromiseLike<
-                    { data: unknown; error: unknown }
-                  >;
-                };
+            neq(column: string, value: unknown): {
+              order(column: string, options: { ascending: boolean }): {
+                limit(count: number): PromiseLike<
+                  { data: unknown; error: unknown }
+                >;
               };
             };
           };
@@ -486,11 +484,10 @@ export async function readPublicProfile(
  * The predicate is character-for-character the one inside `public_profile`'s
  * counts, and that is not an accident that can be allowed to drift: a list
  * that is narrower than its own count reads as censorship, and a list that is
- * wider than its count is a leak. `entity_gate_reason is null` is the clause
- * that matters most -- a story kept private because it names a real living
- * person must never appear under any circumstances -- and it is stated here
- * even though `is_public = true` already implies it through migration 00050's
- * constraint.
+ * wider than its count is a leak. Migration 00091 took the entity-gate clause
+ * out of `public_profile` when the gate was removed, and out of this list in
+ * the same commit, for exactly that reason: `is_public = true` is the
+ * writer's own decision and the only visibility rule left.
  */
 export async function readPublicStories(
   client: RpcClient,
@@ -505,7 +502,6 @@ export async function readPublicStories(
     .eq("author_id", authorId)
     .eq("is_public", true)
     .eq("status", "complete")
-    .is("entity_gate_reason", null)
     .neq("content_rating", "explicit")
     .order("created_at", { ascending: false })
     .limit(limit);

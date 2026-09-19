@@ -70,9 +70,10 @@ Deno.test("a story records whether its entity classification ever answered", asy
     ]);
 
     // The three legal states, and the distinction the whole migration exists
-    // for: 'ok' with a null gate reason means "checked, names nobody", while
-    // 'unavailable' means "not checked" - values that used to be the same
-    // null and were therefore both read as permission to publish.
+    // for: 'ok' with an empty entity list means "checked, names nobody",
+    // while 'unavailable' means "not checked" - values that used to be the
+    // same empty answer. (00058 made this a publish permission; 00091 removed
+    // that, and the column is a record now.)
     await seedStory(db, "00000000-0000-4000-8000-000000000582", "ok");
     await seedStory(db, "00000000-0000-4000-8000-000000000583", "unavailable");
     await seedStory(db, "00000000-0000-4000-8000-000000000584", null);

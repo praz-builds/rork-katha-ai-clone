@@ -308,8 +308,9 @@ export async function handleRequest(req: Request): Promise<Response> {
     // STYLE reference, never a likeness target: `_shared/image.ts` tells the
     // model so explicitly, the base Safety Rules forbid real people, and a real
     // name typed into a character sheet is reclassified `private_individual`
-    // and locks the story private (00050). Three layers, because the prompt
-    // alone is the weakest of them.
+    // so it is never searched. Several layers, because the prompt alone is the
+    // weakest of them. (The story-level privacy lock from 00050 was removed on
+    // 2026-09-18, 00091.)
     const reference = parseReferenceImage(body.reference_image);
     if ("error" in reference) {
       return await refuse({ error: reference.error }, 400);

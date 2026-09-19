@@ -34,9 +34,7 @@ import ChapterEnd, {
   deriveContinuationOptions,
 } from "@/components/reader/ChapterEnd";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
-import StoryGatedPrivateModal from "@/components/create/StoryGatedPrivateModal";
 import {
-  acknowledgeGate,
   adoptReimagineGeneration,
   findStoryGeneration,
   provisionalStory,
@@ -645,16 +643,6 @@ export default function App() {
     availableCreditsRef.current = Math.max(0, availableCreditsRef.current - total);
     setCredits((value) => Math.max(0, value - total));
   }, [generations]);
-
-  /**
-   * The entity gate, explained once.
-   *
-   * A story naming a living public figure or somebody from the writer's own
-   * life is kept private however the toggle was set, and the writer is told
-   * why. It is rendered here, above the reader, because by the time the server
-   * answers, the writer has already been handed their story to read.
-   */
-  const gatedSession = generations.find((session) => session.gatedReason);
 
   const allStories = useMemo(
     () =>
@@ -1491,12 +1479,6 @@ export default function App() {
               : null}
           </>
         )}
-        {gatedSession?.gatedReason ? (
-          <StoryGatedPrivateModal
-            reason={gatedSession.gatedReason}
-            onAcknowledge={() => acknowledgeGate(gatedSession.id)}
-          />
-        ) : null}
       </ScreenScaffold>
     </SafeAreaProvider>
   );

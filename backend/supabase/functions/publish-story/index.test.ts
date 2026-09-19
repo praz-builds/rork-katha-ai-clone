@@ -41,8 +41,14 @@ interface Recorded {
 async function publish(
   body: Record<string, unknown>,
   storyIsPublic = false,
-  entityGateReason: string | null = null,
-  entityClassificationStatus: string | null = "ok",
+  /**
+   * Extra columns on the story row the stub answers with. Used to hand the
+   * handler a row still carrying what the removed privacy gate used to read
+   * (a classified cast, a classification that never answered), to prove the
+   * handler no longer reads any of it.
+   */
+  extraRow: Record<string, unknown> = {},
+  isAnonymous = false,
 ): Promise<{
   status: number;
   json: Record<string, unknown>;
@@ -77,7 +83,7 @@ async function publish(
         id: AUTHOR_ID,
         aud: "authenticated",
         role: "authenticated",
-        is_anonymous: false,
+        is_anonymous: isAnonymous,
         app_metadata: {},
         user_metadata: {},
         created_at: new Date().toISOString(),
@@ -96,8 +102,7 @@ async function publish(
         author_id: AUTHOR_ID,
         status: "complete",
         is_public: storyIsPublic,
-        entity_gate_reason: entityGateReason,
-        entity_classification_status: entityClassificationStatus,
+        ...extraRow,
       });
     }
     if (url.includes("/rest/v1/chapters")) {
@@ -201,119 +206,125 @@ Deno.test("an explicit public publish still publishes", async () => {
   }
 });
 
-Deno.test("a story naming a living public figure is refused, independently of what the client asks for", async () => {
+// ---------------------------------------------------------------------------
+// A named cast publishes
+// ---------------------------------------------------------------------------
+//
+// Until 2026-09-18 a story whose idea named a living public figure or a
+// private individual was refused here with a 403, and so was a story whose
+// entity classification never answered. Every name on a character sheet is
+// classified `private_individual`, so in practice that refused every story
+// with a named cast. The owner removed the gate for the MVP (migration 00091);
+// these tests are what keeps it removed. The stub row deliberately still
+// carries the columns the old gate read, the way a row written before 00091
+// could, so a handler that quietly went back to reading them fails here.
+
+/** What a story row looked like to the old gate when its cast had names. */
+const NAMED_CAST_ROW = {
+  entity_gate_reason: "private_individual",
+  entity_classification_status: "ok",
+  grounding_entities: [
+    { surfaceForm: "Aarav", entityClass: "private_individual" },
+  ],
+};
+
+Deno.test("a story with a named cast, requested public, IS published", async () => {
   const beforeEnv = setTestEnv();
   try {
     const { status, json, requests } = await publish(
       { story_id: STORY_ID, visibility: "public" },
       false,
-      "living_public_figure",
+      NAMED_CAST_ROW,
     );
 
-    assertEquals(status, 403);
-    assertEquals(json.error_code, "story_gated_private");
-    assertEquals(json.gating_reason, "living_public_figure");
-    assertFalse(
-      wentPublic(requests),
-      "a gated story must never be published, whatever the client asked for",
-    );
-    assertFalse(
+    assertEquals(status, 200);
+    assertEquals(json.published, true);
+    assertEquals(json.error_code, undefined);
+    assert(wentPublic(requests), "the writer's public toggle must be honoured");
+    assert(
       requests.some((r) =>
         r.method === "PATCH" && r.url.includes("/rest/v1/chapters") &&
         (r.body as Record<string, unknown>).is_published === true
       ),
-      "a refused publish must not publish the chapters either",
+      "its chapters must be published alongside it",
     );
   } finally {
     restoreEnv(beforeEnv);
   }
 });
 
-Deno.test("a story naming a private individual is likewise refused", async () => {
+Deno.test("a story naming a living public figure publishes too", async () => {
   const beforeEnv = setTestEnv();
   try {
     const { status, json, requests } = await publish(
       { story_id: STORY_ID, visibility: "public" },
       false,
-      "private_individual",
+      { ...NAMED_CAST_ROW, entity_gate_reason: "living_public_figure" },
+    );
+
+    assertEquals(status, 200);
+    assertEquals(json.published, true);
+    assert(wentPublic(requests));
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a story whose classification never answered still publishes", async () => {
+  // Classification is enrichment for grounding now, not a permission. A
+  // provider outage costs a story its fact cards, never its visibility.
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, json, requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+      false,
+      { entity_classification_status: "unavailable" },
+    );
+
+    assertEquals(status, 200);
+    assertEquals(json.published, true);
+    assert(wentPublic(requests));
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("the handler no longer reads the old gate's columns at all", async () => {
+  // The select list is the contract with the row: a column not asked for
+  // cannot be acted on, whatever it holds.
+  const beforeEnv = setTestEnv();
+  try {
+    const { requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+      false,
+      NAMED_CAST_ROW,
+    );
+    const storyRead = requests.find((r) =>
+      r.method === "GET" && r.url.includes("/rest/v1/stories")
+    );
+    assert(storyRead, "the handler must read the story row");
+    const select = decodeURIComponent(
+      new URL(storyRead.url).searchParams.get("select") ?? "",
+    );
+    assertFalse(select.includes("entity_gate_reason"));
+    assertFalse(select.includes("entity_classification_status"));
+  } finally {
+    restoreEnv(beforeEnv);
+  }
+});
+
+Deno.test("a guest still cannot publish - that rule is abuse control, not privacy", async () => {
+  const beforeEnv = setTestEnv();
+  try {
+    const { status, requests } = await publish(
+      { story_id: STORY_ID, visibility: "public" },
+      false,
+      {},
+      true,
     );
 
     assertEquals(status, 403);
-    assertEquals(json.error_code, "story_gated_private");
-    assertEquals(json.gating_reason, "private_individual");
     assertFalse(wentPublic(requests));
-  } finally {
-    restoreEnv(beforeEnv);
-  }
-});
-
-Deno.test("a gated story can still be saved privately - the gate blocks going public, not the save", async () => {
-  const beforeEnv = setTestEnv();
-  try {
-    const { status, json, requests } = await publish(
-      { story_id: STORY_ID, visibility: "private", title: "Kept private" },
-      false,
-      "living_public_figure",
-    );
-
-    assertEquals(status, 200);
-    assertEquals(json.saved, true);
-    assertEquals(json.published, false);
-    assert(
-      requests.some((r) =>
-        r.method === "PATCH" && r.url.includes("/rest/v1/stories") &&
-        (r.body as Record<string, unknown>).title === "Kept private"
-      ),
-      "a gated story's edits must still be saved",
-    );
-  } finally {
-    restoreEnv(beforeEnv);
-  }
-});
-
-Deno.test("a historical figure, a real place, or a real event never gates - null reason publishes normally", async () => {
-  const beforeEnv = setTestEnv();
-  try {
-    // A story about Shivaji Maharaj or the Taj Mahal is exactly what grounding
-    // exists to serve, and the gate only ever stores a reason for the two
-    // classes that are about a real, identifiable, un-consented person - so a
-    // story about a historical figure, a place or an event carries a null
-    // entity_gate_reason and publishes exactly as before.
-    const { status, json } = await publish(
-      { story_id: STORY_ID, visibility: "public" },
-      false,
-      null,
-    );
-    assertEquals(status, 200);
-    assertEquals(json.published, true);
-  } finally {
-    restoreEnv(beforeEnv);
-  }
-});
-
-Deno.test("an already-public gated story is never retroactively touched by this gate", async () => {
-  // This applies going forward only. A story that is already public keeps
-  // that visibility even if - hypothetically - it somehow carried a gate
-  // reason: the gate only ever blocks the private-to-public transition, and
-  // `alreadyPublic` guards exactly that case the same way the demotion guard
-  // above does for the private branch.
-  const beforeEnv = setTestEnv();
-  try {
-    const { status, json, requests } = await publish(
-      { story_id: STORY_ID, visibility: "public" },
-      true,
-      "living_public_figure",
-    );
-
-    assertEquals(status, 200);
-    assertEquals(json.published, true);
-    assertFalse(
-      requests.some((r) =>
-        r.method === "PATCH" && r.url.includes("/rest/v1/stories") &&
-        (r.body as Record<string, unknown> | undefined)?.is_public === false
-      ),
-      "an already-public story must never be unpublished by this gate",
-    );
   } finally {
     restoreEnv(beforeEnv);
   }
@@ -491,53 +502,6 @@ Deno.test("a title edit on an already-public story is persisted", async () => {
   }
 });
 
-Deno.test("a story whose classification never answered cannot be published", async () => {
-  // The 2026-09-09 defect reaching this endpoint. `entity_gate_reason` is
-  // null both when the classifier found nobody and when it never ran, and
-  // this endpoint published on null. `entity_classification_status`
-  // (migration 00058) is the distinction, and 'unavailable' fails closed.
-  const beforeEnv = setTestEnv();
-  try {
-    const { status, json, requests } = await publish(
-      { story_id: STORY_ID, visibility: "public" },
-      false,
-      null,
-      "unavailable",
-    );
-
-    assertEquals(status, 403);
-    assertEquals(json.error_code, "story_gated_private");
-    assertEquals(json.gating_reason, "classification_unavailable");
-    assert(!wentPublic(requests), "an unchecked story must not go public");
-    // An explanation, not a dead end: the copy says the story is saved and
-    // can be published later.
-    assert(String(json.error).includes("later"));
-  } finally {
-    restoreEnv(beforeEnv);
-  }
-});
-
-Deno.test("a story from before the column existed publishes exactly as before", async () => {
-  // Null is not 'unavailable'. Every story generated before migration 00058
-  // carries null, and treating that as unchecked would lock the whole
-  // existing corpus out of publishing to close a hole only new stories can
-  // be in.
-  const beforeEnv = setTestEnv();
-  try {
-    const { status, requests } = await publish(
-      { story_id: STORY_ID, visibility: "public" },
-      false,
-      null,
-      null,
-    );
-
-    assertEquals(status, 200);
-    assert(wentPublic(requests), "a legacy story must still publish");
-  } finally {
-    restoreEnv(beforeEnv);
-  }
-});
-
 // ---------------------------------------------------------------------------
 // The writing streak, and what may not advance it
 // ---------------------------------------------------------------------------
@@ -548,41 +512,24 @@ function countedAWritingDay(requests: Recorded[]): boolean {
 }
 
 Deno.test("a refused publish does not count as a day's writing", async () => {
-  // `touchStreak` used to run before the gate checks -- about fifty lines
-  // above the refusal its own comment claimed it came after. So a writer
-  // whose story the gate turned down was still credited with a writing day
-  // for work the server declined to do. A streak is worth nothing if it
-  // counts days on which nothing happened.
+  // `touchStreak` used to run above the refusals its own comment claimed it
+  // came after, so a writer whose publish the server turned down was still
+  // credited with a writing day for work the server declined to do. The one
+  // refusal left on the public path is the guest rule; it must not count.
   const beforeEnv = setTestEnv();
   try {
     const { status, requests } = await publish(
       { story_id: STORY_ID, visibility: "public" },
       false,
-      "living_public_figure",
+      {},
+      true,
     );
 
     assertEquals(status, 403);
     assertFalse(
       countedAWritingDay(requests),
-      "a publish the gate refused must not advance the streak",
+      "a publish the server refused must not advance the streak",
     );
-  } finally {
-    restoreEnv(beforeEnv);
-  }
-});
-
-Deno.test("a story whose classification never answered does not count either", async () => {
-  const beforeEnv = setTestEnv();
-  try {
-    const { status, requests } = await publish(
-      { story_id: STORY_ID, visibility: "public" },
-      false,
-      null,
-      "unavailable",
-    );
-
-    assertEquals(status, 403);
-    assertFalse(countedAWritingDay(requests));
   } finally {
     restoreEnv(beforeEnv);
   }
@@ -607,14 +554,12 @@ Deno.test("a publish that actually goes through counts the day", async () => {
 });
 
 Deno.test("a private save counts too - the edits are the work", async () => {
-  // The gate refuses PUBLISHING, not saving. A gated story saved privately
-  // has real, committed edits behind it, and that is a writing day.
+  // A story saved privately has real, committed edits behind it, and that is
+  // a writing day.
   const beforeEnv = setTestEnv();
   try {
     const { status, requests } = await publish(
-      { story_id: STORY_ID, visibility: "private", title: "Kept private" },
-      false,
-      "living_public_figure",
+      { story_id: STORY_ID, visibility: "private", title: "A quieter title" },
     );
 
     assertEquals(status, 200);

@@ -38,9 +38,9 @@ import { sharedStyles } from "@/screens/shared";
  * public stories, and four counts taken over exactly those public stories.
  * Nothing else, and the boundary is enforced on the server rather than here --
  * `public_profile` and the list query in `_shared/profile.ts` share one
- * predicate, so their drafts, their private stories, the stories the entity
- * gate kept private, their credits, their saved phrases and their own reading
- * streak are not merely hidden by this screen: they never leave the database.
+ * predicate, so their drafts, their private stories, their credits, their
+ * saved phrases and their own reading streak are not merely hidden by this
+ * screen: they never leave the database.
  *
  * A visitor cannot tell from this page whether the author has drafts at all.
  * That is the intended property. "3 published, 11 total" would be flattering

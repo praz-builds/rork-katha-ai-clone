@@ -70,6 +70,8 @@ import {
   STORY_TITLE_RULES,
 } from "./story-prompts.ts";
 import { STORY_OUTPUT_JSON_SCHEMA } from "./story_schema.ts";
+import { parseStructuredOutput } from "./story_text.ts";
+import type { StoryGenerationOutput } from "./types.ts";
 import { countWords, type WordBand, wordBandBounds } from "./types.ts";
 
 /**
@@ -233,6 +235,145 @@ export const CHAPTER_METADATA_OUTPUT = {
   name: "katha_chapter_metadata",
   schema: CHAPTER_METADATA_SCHEMA,
 } as const;
+
+/**
+ * The metadata call answered, but not with anything a later chapter can be
+ * written from.
+ *
+ * Thrown BEFORE persistence, so the caller's refund path runs and the chapter
+ * the reader already had is left untouched. Distinct from
+ * `StreamCommittedError`, which is about the prose; the prose here is fine and
+ * stays on screen.
+ */
+export class StreamedMetadataError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StreamedMetadataError";
+  }
+}
+
+/**
+ * Join a streamed chapter's prose to its separately generated metadata, or
+ * refuse to.
+ *
+ * # Why refuse
+ *
+ * `series_state` and the hook are what the next continuation is written from.
+ * The buffered continuation and rewrite already refuse a chapter whose output
+ * fell back to the plain-text parser (`output.structured === false`), because
+ * persisting one "ends nowhere and freezes continuity for the rest of the
+ * series, while still charging a credit".
+ *
+ * The streamed paths could not hit that check and so never had it. They spread
+ * the metadata into an object that always carries `chapter_body`, which makes
+ * `parseStructuredOutput` report `structured: true` no matter what the
+ * metadata said: `{}`, a JSON array, or an object missing `series_state`
+ * would all be persisted with an empty series state and a default hook,
+ * silently wiping continuity. Strict JSON schema makes that rare on the
+ * leading model, but the fast chain falls through to providers that honour
+ * `response_format` loosely, and "rare" is not the bar for corrupting every
+ * chapter after this one.
+ *
+ * So, for a SERIES chapter, the two fields that carry continuity must be
+ * present with the right shape (`requireContinuity: true`). Unparseable text
+ * is refused either way - it used to surface as a bare `SyntaxError` - and is
+ * a `StreamedMetadataError`, as is missing continuity on a series chapter.
+ *
+ * # Why continuity is opt-in
+ *
+ * A standalone story has no next chapter to hand state to. Its rewrite reads
+ * `series_state` and the hook from nowhere and writes them to nowhere, so
+ * valid metadata for it may leave them out, and refunding that rewrite would
+ * charge the reader a failed attempt over fields nothing reads. Standalone
+ * callers keep the old lenient merge: a JSON object is merged, anything else
+ * contributes nothing, and the parser's defaults fill the gaps.
+ * `continue-story` only runs on series stories, so it always requires;
+ * `reimagine-chapter` requires exactly when the story is a series.
+ *
+ * `overrides` are applied after the metadata and before parsing: the early
+ * chapter/story names that were already put on screen.
+ */
+export function chapterOutputFromStreamedMetadata(input: {
+  metadataText: string;
+  prose: string;
+  fallbackTitle: string;
+  /** True when a later chapter will be written from this one's state. */
+  requireContinuity: boolean;
+  /**
+   * The chapter title to keep when the metadata names none. Defaults to
+   * `fallbackTitle`; a rewrite passes the chapter's CURRENT title, so
+   * metadata that came back empty leaves the title it already had.
+   */
+  fallbackChapterTitle?: string;
+  overrides?: Record<string, unknown>;
+}): StoryGenerationOutput {
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(input.metadataText);
+  } catch {
+    throw new StreamedMetadataError(
+      "Chapter metadata was not valid JSON; refusing to persist a chapter without hook or series state",
+    );
+  }
+  const isObject = Boolean(metadata) && typeof metadata === "object" &&
+    !Array.isArray(metadata);
+  const record = isObject ? metadata as Record<string, unknown> : {};
+
+  if (input.requireContinuity) {
+    if (!isObject) {
+      throw new StreamedMetadataError(
+        "Chapter metadata was not a JSON object; refusing to persist a series chapter without hook or series state",
+      );
+    }
+    const seriesState = record.series_state;
+    if (
+      !seriesState || typeof seriesState !== "object" ||
+      Array.isArray(seriesState)
+    ) {
+      throw new StreamedMetadataError(
+        "Chapter metadata had no series_state; refusing to persist a series chapter that would erase continuity",
+      );
+    }
+    if (typeof record.hook_type !== "string") {
+      throw new StreamedMetadataError(
+        "Chapter metadata had no hook_type; refusing to persist a series chapter without a hook",
+      );
+    }
+  }
+
+  /*
+    The parser defaults an absent `chapter_title` to the literal string
+    "Chapter 1" -- not to `fallbackTitle`, which it uses only for the STORY
+    title. Harmless where every chapter carries its own title, and not
+    harmless on the lenient path this function now admits: metadata that came
+    back as `{}` used to retitle chapter nine of a story "Chapter 1" and throw
+    away the title it had. So the caller's fallback is put in explicitly
+    whenever the model named none.
+  */
+  const namedChapter = typeof record.chapter_title === "string" &&
+    record.chapter_title.trim().length > 0;
+  const output = parseStructuredOutput(
+    JSON.stringify({
+      ...record,
+      ...(namedChapter
+        ? {}
+        : {
+          chapter_title: input.fallbackChapterTitle ?? input.fallbackTitle,
+        }),
+      chapter_body: input.prose,
+      ...(input.overrides ?? {}),
+    }),
+    input.fallbackTitle,
+  );
+  // Unreachable with a string `chapter_body`, and asserted anyway: this is the
+  // same line the buffered paths draw, and it should be drawn in one place.
+  if (output.structured === false) {
+    throw new StreamedMetadataError(
+      "Chapter output fell back to the text parser; refusing to persist a chapter without hook or series state",
+    );
+  }
+  return output;
+}
 
 function openRouterKey(): string | undefined {
   return Deno.env.get("OPENROUTER_API_KEY") ?? undefined;

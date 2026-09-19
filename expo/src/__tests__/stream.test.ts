@@ -152,6 +152,21 @@ describe("postEventStream", () => {
     expect(events).toHaveLength(1);
   });
 
+  it("ignores the server's heartbeat wherever it lands, even split across reads", async () => {
+    // `_shared/sse.ts` writes exactly ": keep-alive\n\n" every ~15s while a
+    // chapter is generating. It must never become an event, never merge into
+    // the one after it, and never be mistaken for the end of the stream.
+    const events = await collect([
+      'event: delta\ndata: {"text":"a"}\n\n: keep',
+      "-alive\n\n: keep-alive\n\n",
+      'event: done\ndata: {"ok":true}\n\n: keep-alive\n\n',
+    ]);
+    expect(events).toEqual([
+      { event: "delta", data: { text: "a" } },
+      { event: "done", data: { ok: true } },
+    ]);
+  });
+
   it("surfaces a non-2xx as a transport error carrying the server message", async () => {
     // Everything that can reject a request happens before the body opens, so
     // an error here is ordinary JSON and must not be mistaken for a stream.

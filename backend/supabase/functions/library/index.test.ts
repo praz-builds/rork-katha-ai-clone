@@ -2,7 +2,7 @@
 //
 // Before it, no endpoint anywhere returned a story that was not public: the
 // library query is `is_public OR is_curated`, and a fresh story is private
-// both by column default and because the entity gate forces it. Stories were
+// by column default unless its writer asked for public. Stories were
 // persisted and then unreachable — the interface forgot them on reload while
 // the rows sat safe in Postgres, stories the writer had paid credits for.
 //

@@ -79,14 +79,14 @@ async function seedUsers(db: PGlite) {
 
 async function seedStory(
   db: PGlite,
-  overrides: { isCurated?: boolean; gate?: string | null } = {},
+  overrides: { isCurated?: boolean } = {},
 ) {
   await db.query(
     `insert into stories
-       (id, author_id, title, genre, primary_genre, status, is_curated, entity_gate_reason, story_mode, word_count, series_state)
-     values ($1, $2, 'The Corner Table', array['romance'], 'romance', 'complete', $3, $4, 'series', 900,
+       (id, author_id, title, genre, primary_genre, status, is_curated, story_mode, word_count, series_state)
+     values ($1, $2, 'The Corner Table', array['romance'], 'romance', 'complete', $3, 'series', 900,
              '{"open_hooks": ["Maya has not said why she came back"]}'::jsonb)`,
-    [STORY, AUTHOR, overrides.isCurated ?? false, overrides.gate ?? null],
+    [STORY, AUTHOR, overrides.isCurated ?? false],
   );
   await db.query(
     `insert into chapters (id, story_id, chapter_number, title, content, word_count, chapter_role, is_published)
@@ -197,11 +197,10 @@ Deno.test("fork_story copies a readable story privately for a non-author and ref
   const db = await createDatabase();
   try {
     await seedUsers(db);
-    // Curated and gated: readable by everyone (Katha Originals), yet a story
-    // that names a living person and so can never be public. 00050 forbids
-    // the public+gated combination outright, which is why the readable half
-    // here is `is_curated`.
-    await seedStory(db, { isCurated: true, gate: "living_public_figure" });
+    // Curated: readable by everyone (Katha Originals) without being public,
+    // which is the case that proves a fork copies the private flag rather
+    // than inheriting the source's readability.
+    await seedStory(db, { isCurated: true });
 
     // The author cannot fork their own story.
     assertEquals(
@@ -221,31 +220,20 @@ Deno.test("fork_story copies a readable story privately for a non-author and ref
       is_public: boolean;
       is_curated: boolean;
       forked_from_story_id: string;
-      entity_gate_reason: string;
       title: string;
       status: string;
       like_count: number;
     }>(
-      "select author_id, is_public, is_curated, forked_from_story_id, entity_gate_reason, title, status, like_count from stories where id = $1",
+      "select author_id, is_public, is_curated, forked_from_story_id, title, status, like_count from stories where id = $1",
       [copyId],
     );
     assertEquals(copy.rows[0].author_id, READER);
     assertEquals(copy.rows[0].is_public, false);
     assertEquals(copy.rows[0].is_curated, false);
     assertEquals(copy.rows[0].forked_from_story_id, STORY);
-    assertEquals(copy.rows[0].entity_gate_reason, "living_public_figure");
     assertEquals(copy.rows[0].title, "The Corner Table");
     assertEquals(copy.rows[0].status, "complete");
     assertEquals(copy.rows[0].like_count, 0);
-
-    // The gate travels with the copy: 00050's CHECK still holds.
-    assertEquals(
-      await attempt(
-        db,
-        `update stories set is_public = true where id = '${copyId}'`,
-      ),
-      "23514",
-    );
 
     const chapters = await db.query<{
       chapter_number: number;

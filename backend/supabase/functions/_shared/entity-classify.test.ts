@@ -63,7 +63,7 @@ Deno.test("searchable is derived, never read from the payload", () => {
   assertEquals(result.entities[0].needsGrounding, false);
 });
 
-Deno.test("a name from the user's own cast is forced private", () => {
+Deno.test("a name from the user's own cast is forced to private_individual", () => {
   // A model that "canonicalises" a user's character into a real person of the
   // same name and marks her searchable would otherwise leak a private cast
   // member's name to a search provider.
