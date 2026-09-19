@@ -135,8 +135,13 @@ export const GROUNDING_DEADLINE_MS = 20_000;
 export const GENERATION_GROUNDING_DEADLINE_MS = 9_000;
 
 /**
- * Classification's own budget on the generation paths, and the number that
- * makes the entity visibility gate a real control rather than a decoration.
+ * Classification's own budget on the generation paths.
+ *
+ * It was sized for the entity visibility gate, which read this classification
+ * to force a story private; the gate was removed on 2026-09-18 (migration
+ * 00091). The number stays because a classification that completes is still
+ * what fills `grounding_entities` and, when the client sent none, the
+ * prompt's cards.
  *
  * Measured against the live models on 2026-09-09 with a classification-shaped
  * prompt ("Taylor Swift secretly moves into a flat above a struggling Mumbai
@@ -157,8 +162,8 @@ export const GENERATION_GROUNDING_DEADLINE_MS = 9_000;
  * no latency, because this call no longer sits in front of the prose: it is
  * started before `begin_story_generation` and awaited only when the chapter is
  * persisted 55-100s later, so the answer is already waiting by the time
- * anything needs it. What it does buy is the difference between a safety check
- * that runs and one that times out.
+ * anything needs it. What it does buy is the difference between a
+ * classification that runs and one that times out.
  *
  * It is deliberately NOT the budget for grounding cards. Cards are prompt
  * enrichment and must be in the prompt before the first token, so they keep
@@ -231,10 +236,11 @@ export interface ClassifyIdeaInput {
  *
  * Split out of `resolveGrounding` on 2026-09-09. The two halves of grounding
  * answer to different owners: the cards are enrichment the writer never asked
- * for and must never slow prose down, while the classification is the input to
- * a publish decision. Sharing one budget meant the safety half inherited the
- * enrichment half's "give up quickly, say nothing" posture, and that is how a
- * gate stays inert for weeks without anybody noticing.
+ * for and must never slow prose down, while the classification was then the
+ * input to a publish decision (the entity gate, removed 2026-09-18). Sharing
+ * one budget meant that half inherited the enrichment half's "give up
+ * quickly, say nothing" posture, and that is how a control stays inert for
+ * weeks without anybody noticing.
  */
 export async function classifyIdea(
   input: ClassifyIdeaInput,
@@ -242,7 +248,7 @@ export async function classifyIdea(
   const started = Date.now();
   const idea = input.idea?.trim();
   // Nothing to classify is a genuine verdict, not a failure: an empty idea
-  // names nobody, and a story with no idea behind it cannot be gated by one.
+  // names nobody.
   if (!idea) return { status: "ok", entities: [], elapsedMs: 0 };
 
   const generate = input.generate ?? generateFastStructuredText;
@@ -280,8 +286,8 @@ export async function classifyIdea(
     };
   } catch (error) {
     // A provider outage, a refused key, or a blown deadline. All of them mean
-    // the same thing to the gate - no verdict - and all of them are now said
-    // out loud rather than collapsed into an empty array.
+    // the same thing - no verdict - and all of them are said out loud rather
+    // than collapsed into an empty array.
     return {
       status: "failed",
       entities: [],
@@ -390,7 +396,7 @@ export async function resolveGrounding(
 /** The narrow slice of `logError` this module needs, injectable for tests. */
 export type ClassificationLogger = (input: {
   bucket: "grounding";
-  severity: "high";
+  severity: "medium";
   source: "runtime";
   errorCode: string;
   error: unknown;
@@ -404,10 +410,9 @@ export type ClassificationLogger = (input: {
  * The root cause of the 2026-09-09 defect was not the deadline. It was that a
  * deadline this badly wrong produced no signal at all: `entity-classify.ts`
  * documents "silent failure is the contract for the whole grounding path", and
- * `catch {}` honoured it. That contract is right for enrichment - a missing
- * fact card is invisible and harmless - and wrong for a safety control, where
- * "nothing happened" and "the check ran and passed" have to look different
- * from the outside or nobody finds out for weeks.
+ * `catch {}` honoured it, and the classifier was dead for weeks before
+ * anybody found out. "Nothing happened" and "it ran and found nobody" have to
+ * look different from the outside, whatever the classification is for.
  *
  * PII rule, same as every other `error_events` row and stricter in spirit
  * here: the idea, the surface forms and the canonical names are the whole
@@ -426,9 +431,11 @@ export async function reportClassificationFailure(input: {
   const log = input.log ?? logError;
   await log({
     bucket: "grounding",
-    // High, not low. A story that goes public unchecked is the failure this
-    // row describes, and it is not a degraded convenience.
-    severity: "high",
+    // Medium, down from high on 2026-09-18. High was for a story going public
+    // unchecked; with the entity gate removed (00091) a failed classification
+    // costs a story its entity record and fallback cards, which is degraded
+    // enrichment, not a safety failure.
+    severity: "medium",
     source: "runtime",
     errorCode: "entity_classification_unavailable",
     error: new Error(
@@ -601,16 +608,15 @@ async function storeCard(
  * Re-validate classified entities arriving from a client.
  *
  * The cards are the story's grounding; this list is the story's *record* of
- * what the idea named, and it exists for a decision that has not shipped yet:
- * a story featuring a living public figure may later be held to private
- * publishing. That gate needs to know the class, and a story generated before
- * the gate exists still needs to be classifiable when it arrives - otherwise
- * the feature's first task is a backfill over the whole corpus.
+ * what the idea named, including the entities no card was built for. It was
+ * kept for an entity visibility gate (shipped 00050, removed 2026-09-18 in
+ * 00091); it stays because a record of what a story names is cheap to keep
+ * and expensive to reconstruct - backfilling it means an LLM call per story.
  *
  * Cards alone cannot serve that purpose. A well-known living figure is exactly
  * the case where `needsGrounding` is false - the model knows Taylor Swift
- * perfectly well - so she produces no card while being precisely the entity the
- * gate would care about. The two lists answer different questions.
+ * perfectly well - so she produces no card while still being named. The two
+ * lists answer different questions.
  */
 export function validateEntityMentions(value: unknown): EntityMention[] {
   if (!Array.isArray(value)) return [];

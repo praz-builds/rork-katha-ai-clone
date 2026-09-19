@@ -619,9 +619,11 @@ const PORTRAIT_WARDROBE_CLAUSE =
  * This does not stand alone. The base Safety Rules in `story-prompts.ts` already
  * forbid real people, and naming a real person in a character sheet routes
  * through `entity-classify.ts`, which forcibly reclassifies that name as
- * `private_individual` and locks the story private (migration 00050). Prompt
- * text is the weakest of those three layers and is treated as such: it is the
- * one that shapes the output, not the one that enforces the rule.
+ * `private_individual` so it never becomes a search query. (It also used to
+ * lock the story private - migration 00050 - until the owner removed that
+ * gate on 2026-09-18, 00091.) Prompt text is the weakest of these layers and
+ * is treated as such: it is the one that shapes the output, not the one that
+ * enforces the rule.
  */
 const STYLE_REFERENCE_CLAUSE =
   "An attached image is provided as a STYLE AND APPEARANCE REFERENCE ONLY. " +
