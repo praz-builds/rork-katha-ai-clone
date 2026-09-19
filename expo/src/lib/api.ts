@@ -1209,6 +1209,10 @@ function buildGenerationRequestBody(
       spice_level: draft.spiceLevel,
       identity_lenses: draft.identityLenses,
       topic: draft.seed,
+      // Only when somebody chose one. Omitted rather than sent blank, so an
+      // untitled request is byte-identical to what it was before the field
+      // existed and the server names the story exactly as it always has.
+      ...(draft.title?.trim() ? { title: draft.title.trim() } : {}),
       // Blank rows never leave the device.
       //
       // The create screen used to seed one empty character and send it as-is;
@@ -1608,7 +1612,11 @@ function localGeneratedStory(draft: CreateDraft): Promise<Story> {
   const hero = draft.characters.find((character) => character.isHero) ??
     draft.characters[0];
   const heroName = hero?.name ?? "Mira";
-  const title = generateMockTitle(draft.primaryGenre);
+  // A chosen title survives the offline path too. The server keeps a writer's
+  // title over the model's; a local build that invented one anyway would make
+  // the same draft come back under two different names depending on whether
+  // Supabase happened to be configured.
+  const title = draft.title?.trim() || generateMockTitle(draft.primaryGenre);
   const storyId = `generated-${Date.now()}`;
 
   // Simulate realistic generation time (3-6 seconds)

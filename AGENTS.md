@@ -487,7 +487,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ### Shared Utilities (`_shared/`)
 
-`chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `sse.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
+`chapter-titles.ts`, `chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `prose-integrity.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `sse.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
 
 ### The "created" story flow (2026-09-09)
 

@@ -15,6 +15,15 @@ import { sseStream } from "../_shared/sse.ts";
 import { notifyInBackground } from "../_shared/notify.ts";
 import { generateChapterArt, runInBackground } from "../_shared/media.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
+import {
+  chooseDistinctChapterTitle,
+  isDuplicateChapterTitle,
+} from "../_shared/chapter-titles.ts";
+import {
+  alignFirstLine,
+  enforceProseIntegrity,
+  proseIntegrityBrief,
+} from "../_shared/prose-integrity.ts";
 import { validateGroundingCards } from "../_shared/grounding-card.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
@@ -116,7 +125,7 @@ serve(async (req) => {
     // window. Only the waiting moved. Reading a row for a caller who turns out
     // not to own the story is harmless -- these are service-role reads whose
     // results are discarded, and the response is byte-identical to what it was.
-    const [operationRead, storyRead, castRead, chapterWindowRead] =
+    const [operationRead, storyRead, castRead, chapterWindowRead, titlesRead] =
       await Promise
         .all([
           serviceClient
@@ -146,6 +155,17 @@ serve(async (req) => {
             .eq("story_id", story_id)
             .order("chapter_number", { ascending: false })
             .limit(4),
+          // Every title the story has, which the window above cannot give: it
+          // stops at four chapters, and "The Urdu Newspaper" was reused in
+          // chapters five apart. Titles only, so reading all of them costs a
+          // few hundred bytes. Bounded by the chapter ceiling, which the
+          // extension rules below never let a story pass.
+          serviceClient
+            .from("chapters")
+            .select("chapter_number, title")
+            .eq("story_id", story_id)
+            .order("chapter_number", { ascending: true })
+            .limit(MAX_PLANNED_CHAPTER_COUNT),
         ]);
 
     const { data: existingOperation, error: existingOperationError } =
@@ -250,6 +270,22 @@ serve(async (req) => {
     }
 
     const nextChapterNum = chapters[0].chapter_number + 1;
+
+    // Advisory context, so a failed read degrades to "no list" rather than
+    // failing a chapter: the prompt loses one line and the persist-time guard
+    // below still has the window's titles to check against.
+    const { data: titleRows, error: titlesError } = titlesRead;
+    if (titlesError) {
+      console.error(
+        "chapter titles read failed:",
+        safeErrorMessage(titlesError),
+      );
+    }
+    const previousChapterTitles: string[] = (titleRows?.length
+      ? titleRows
+      : [...chapters].reverse())
+      .map((row) => (typeof row.title === "string" ? row.title.trim() : ""))
+      .filter(Boolean);
 
     // The stored plan is a RANGE now, not one of three values.
     //
@@ -548,6 +584,7 @@ serve(async (req) => {
         seriesState,
         title: story.title,
         previousChapters: `${previousText}${earliestContext}`,
+        previousChapterTitles,
         isFinale,
         // Replayed from chapter one, not re-derived. Re-classifying per chapter
         // would spend two LLM calls on every continuation and still let the
@@ -563,10 +600,76 @@ serve(async (req) => {
     // decides what an absent field means, and two copies would drift.
     const persistContinuation = async (
       output: ReturnType<typeof parseStructuredOutput>,
+      options: {
+        /**
+         * Other names the chapter was offered, tried after `chapter_title`.
+         * The streamed path passes the metadata call's name here, so an early
+         * name that duplicates an earlier chapter loses to a distinct one the
+         * model also wrote before anything is derived.
+         */
+        fallbackTitles?: readonly (string | null | undefined)[];
+      } = {},
     ) => {
-      const chapterTitle = output.chapter_title || output.title;
-      const content = output.chapter_body;
+      // Cleaned before anything reads it: the stored chapter, its word count
+      // and the next chapter's context window are all built from this. Both
+      // transports land here, so both are covered exactly once.
+      const checked = output.chapter_body
+        ? await enforceProseIntegrity(
+          output.chapter_body,
+          proseIntegrityBrief({ moments, beats, characters }),
+          {
+            feature: "continue_story",
+            storyId: story_id,
+            userId: observedUserId,
+            chapterNumber: nextChapterNum,
+          },
+        )
+        : null;
+      const content = checked?.text ?? output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
+      // Kept true to the stored body, which the model's line may no longer
+      // open (a removed heading or note). See `alignFirstLine`.
+      output.first_line = alignFirstLine(
+        output.first_line,
+        content,
+        checked?.changed ?? false,
+      );
+
+      // A NEW TITLE, GUARANTEED. The prompt now carries every title already
+      // used, which makes a repeat rare; this makes it impossible. A candidate
+      // that normalises to an existing title (or to the story's own) is
+      // refused, and the fallback is derived from this chapter's own hook and
+      // opening -- deterministic, and always about this chapter.
+      // `output.title` is not a candidate: for a continuation it is the story
+      // title echoed back, which is exactly what a chapter must not be called.
+      const titled = chooseDistinctChapterTitle({
+        candidates: [output.chapter_title, ...(options.fallbackTitles ?? [])],
+        existingTitles: previousChapterTitles,
+        storyTitle: typeof story.title === "string" ? story.title : null,
+        chapterNumber: nextChapterNum,
+        hookText: output.hook_text,
+        firstLine: output.first_line,
+        body: content,
+      });
+      const chapterTitle = titled.title;
+      if (titled.replacedDuplicate || titled.source !== "candidate") {
+        await logError({
+          bucket: "generation.story",
+          severity: "low",
+          source: "runtime",
+          errorCode: titled.replacedDuplicate
+            ? "duplicate_chapter_title_replaced"
+            : "chapter_title_missing",
+          error: new Error("Chapter title was replaced before persisting"),
+          context: {
+            feature: "continue_story",
+            story_id,
+            chapter_number: nextChapterNum,
+            recovered_by: titled.source,
+          },
+          userId: observedUserId,
+        });
+      }
       // Both the buffered and streamed continuations land here, so the scan
       // covers each of them exactly once.
       await reportCrudeLexicon(content, {
@@ -859,9 +962,20 @@ serve(async (req) => {
               story.previously_summary,
             instruction: effectiveInstruction || null,
             characterNames: characters.map((c) => c.name).filter(Boolean),
+              previousChapterTitles,
           });
           namingPromise.then((names) => {
             if (!names?.chapterTitle) return;
+              // A duplicate is not painted. Persisting will refuse it anyway,
+              // and a heading that changes under the reader at the end is the
+              // bug early naming exists to remove; better no early heading
+              // than a wrong one.
+              if (
+                isDuplicateChapterTitle(names.chapterTitle, [
+                  ...previousChapterTitles,
+                  ...(typeof story.title === "string" ? [story.title] : []),
+                ])
+              ) return;
             send("title", { chapter_title: names.chapterTitle });
             // Detached on purpose, so it has to swallow its own failures: an
             // unhandled rejection on this runtime can take the isolate down,
@@ -913,6 +1027,26 @@ serve(async (req) => {
           // mutable binding so the title that is PERSISTED is the one the
           // `title` event already put on screen.
           const earlyNames = await namingPromise;
+          /*
+            The metadata call's own chapter title, kept as a second candidate.
+
+            `chapterOutputFromStreamedMetadata` below overrides
+            `chapter_title` with the EARLY name when there is one, and an
+            early name can turn out to duplicate an earlier chapter's. When
+            it does, `persistContinuation` should be able to fall back to the
+            name the model wrote from the finished prose rather than deriving
+            one. Parsed defensively: unparseable text is refused a line
+            later, so this only ever loses a candidate, never a chapter.
+          */
+          let metadataFields: Record<string, unknown> = {};
+          try {
+            const parsed = JSON.parse(metadata.text);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              metadataFields = parsed as Record<string, unknown>;
+            }
+          } catch {
+            // Left empty; the throw below is the one that matters.
+          }
           // Refuses metadata with no series state or hook, as the buffered
           // path refuses `structured === false`: chapter n+1 is written from
           // this chapter's `series_state`, so persisting it empty freezes the
@@ -961,7 +1095,13 @@ serve(async (req) => {
           }
 
           const { chapter, seriesState: nextSeriesState } =
-            await persistContinuation(output);
+            await persistContinuation(output, {
+              fallbackTitles: [
+                typeof metadataFields.chapter_title === "string"
+                  ? metadataFields.chapter_title
+                  : null,
+              ],
+            });
           notifyChapterReady(chapter);
           send("done", {
             chapter,

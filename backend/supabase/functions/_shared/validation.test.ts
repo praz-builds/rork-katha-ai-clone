@@ -1004,3 +1004,40 @@ Deno.test("an inherited property name is not an art style", () => {
     assertEquals(coverArtStyleClause(key), null, key);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The writer's title (2026-09-18)
+// ---------------------------------------------------------------------------
+
+Deno.test("a writer's title is accepted, trimmed and whitespace-collapsed", () => {
+  const result = validateGenerationRequest(
+    validRequest({ title: "  The   Lighthouse   Debt  " }),
+  );
+  assert(!("error" in result));
+  assertEquals(result.title, "The Lighthouse Debt");
+});
+
+Deno.test("an absent, null or blank title means the model names the story", () => {
+  for (const title of [undefined, null, "", "   "]) {
+    const result = validateGenerationRequest(validRequest({ title }));
+    assert(!("error" in result));
+    assertEquals(result.title, undefined);
+    // Absent, not merely undefined: a request without a title validates to the
+    // same shape it did before the field existed.
+    assert(!("title" in result));
+  }
+});
+
+Deno.test("an over-long or non-string title is refused, never clipped", () => {
+  const long = validateGenerationRequest(
+    validRequest({ title: "x".repeat(121) }),
+  );
+  assert("error" in long);
+  assertEquals(long.error, "title must be 120 characters or fewer");
+  const exact = validateGenerationRequest(
+    validRequest({ title: "x".repeat(120) }),
+  );
+  assert(!("error" in exact));
+  const wrongType = validateGenerationRequest(validRequest({ title: 42 }));
+  assert("error" in wrongType);
+});

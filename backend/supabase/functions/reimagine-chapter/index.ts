@@ -87,6 +87,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { sseStream } from "../_shared/sse.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
+import {
+  alignFirstLine,
+  enforceProseIntegrity,
+  proseIntegrityBrief,
+} from "../_shared/prose-integrity.ts";
 import { validateGroundingCards } from "../_shared/grounding-card.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
@@ -667,8 +672,29 @@ serve(async (req) => {
     const persistReimagine = async (
       output: ReturnType<typeof parseStructuredOutput>,
     ) => {
-      const content = output.chapter_body;
+      // The rewrite is model prose like any other chapter and leaks the same
+      // way, and more readily: its prompt carries the whole chapter it is
+      // replacing, which is one more text to paste from. Checked against the
+      // RECAST cast, because that is the brief this chapter was written to.
+      const checked = output.chapter_body
+        ? await enforceProseIntegrity(
+          output.chapter_body,
+          proseIntegrityBrief({ moments, beats, characters }),
+          {
+            feature: "reimagine_chapter",
+            storyId,
+            userId: observedUserId,
+            chapterNumber,
+          },
+        )
+        : null;
+      const content = checked?.text ?? output.chapter_body;
       if (!content) throw new Error("Generation returned no chapter content");
+      output.first_line = alignFirstLine(
+        output.first_line,
+        content,
+        checked?.changed ?? false,
+      );
       await reportCrudeLexicon(content, {
         feature: "reimagine_chapter",
         storyId,

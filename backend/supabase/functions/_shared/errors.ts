@@ -57,6 +57,12 @@ export type LogErrorInput = {
 // how far off its band the chapter ran -- was never recorded on a single
 // row. Everything added for that reason is a count, a boolean or a fixed
 // enum; nothing here can carry user text.
+//
+// `terms` joined the list on 2026-09-18 for the same reason: `content-scan.ts`
+// had been passing the matched crude terms since it was written and every row
+// arrived without them. It and the brand scan in `prose-integrity.ts` both put
+// slugs from a closed, code-defined list there, never text from a chapter.
+// `removed_count` is how many non-prose units the integrity pass took out.
 const ALLOWED_CONTEXT_KEYS = new Set([
   "attempted_status",
   "attempts",
@@ -87,6 +93,7 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "renames",
   "providers",
   "recovered_by",
+  "removed_count",
   "request_id",
   "retryable",
   "status",
@@ -96,6 +103,7 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "story_id",
   "story_mode",
   "term_count",
+  "terms",
   "truncated",
   "upstream_status",
   "words",

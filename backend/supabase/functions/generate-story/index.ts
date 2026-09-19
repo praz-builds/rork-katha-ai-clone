@@ -28,6 +28,11 @@ import { claimGroundingFallback } from "../_shared/grounding-rate-limit.ts";
 import { AllProvidersFailedError, generateStoryText } from "../_shared/llm.ts";
 import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
+  alignFirstLine,
+  enforceProseIntegrity,
+  proseIntegrityBrief,
+} from "../_shared/prose-integrity.ts";
+import {
   errorMessage,
   isStaleReservation,
   readJsonObject,
@@ -121,6 +126,7 @@ serve(async (req) => {
       grounding,
       groundingEntities,
       visibility,
+      title: writerTitle,
     } = input;
     const chapterRole = storyMode === "series"
       ? "series_opening"
@@ -424,6 +430,36 @@ serve(async (req) => {
       mark("characters");
 
       const output = parseStructuredOutput(result.text, "Untitled Story");
+      // The writer's title wins, and it wins HERE, before anything reads
+      // `output.title`: the completion RPC, the cover prompt and the `done`
+      // payload all take it from this object, so one assignment reaches all
+      // three and no later step can put the model's name back.
+      if (writerTitle) output.title = writerTitle;
+      // What the model left in the chapter that is not the chapter -- brief
+      // text pasted in, its own notes, JSON residue, "from Chapter 1". Run on
+      // every path that persists model prose, immediately before it is
+      // persisted; see `_shared/prose-integrity.ts`.
+      if (output.chapter_body) {
+        const integrity = await enforceProseIntegrity(
+          output.chapter_body,
+          proseIntegrityBrief({ moments, beats, characters }),
+          {
+            feature: "generate_story",
+            storyId: story.id,
+            userId: user.id,
+            chapterNumber: 1,
+          },
+        );
+        output.chapter_body = integrity.text;
+        // The model wrote `first_line` from the uncleaned body; keep it true
+        // to what is stored (a removed heading must not become the opening a
+        // card or share preview shows).
+        output.first_line = alignFirstLine(
+          output.first_line,
+          integrity.text,
+          integrity.changed,
+        );
+      }
       if (!output.chapter_body) {
         throw new Error("Generation returned no story content");
       }

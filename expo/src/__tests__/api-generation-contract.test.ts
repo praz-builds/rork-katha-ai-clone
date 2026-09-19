@@ -116,6 +116,23 @@ describe("generateStory request contract", () => {
     expect(bodyOf(mockInvoke.mock.calls[0]).story_mode).toBe("standalone");
   });
 
+  it("sends the writer's title, trimmed, when the draft has one", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory({ ...draft, title: "  The Moving Valley " }, "req-title");
+
+    expect(bodyOf(mockInvoke.mock.calls[0]).title).toBe("The Moving Valley");
+  });
+
+  it("omits title entirely when the draft has none or a blank one", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory(draft, "req-untitled");
+    await generateStory({ ...draft, title: "   " }, "req-blank-title");
+
+    // Absent, not blank: the server then names the story as it always has.
+    expect(bodyOf(mockInvoke.mock.calls[0])).not.toHaveProperty("title");
+    expect(bodyOf(mockInvoke.mock.calls[1])).not.toHaveProperty("title");
+  });
+
   it('defaults to "standalone" when isSeries is omitted', async () => {
     mockInvoke.mockResolvedValue(storyResponse("standalone"));
     await generateStory(draft, "req-3");

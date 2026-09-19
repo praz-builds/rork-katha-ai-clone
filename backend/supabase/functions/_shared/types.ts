@@ -458,6 +458,17 @@ export const MAX_PLAN_BEATS = 15;
 /** A single beat is a line, not a chapter. */
 export const MAX_BEAT_LENGTH = 200;
 
+/**
+ * The longest story title a generation request may carry.
+ *
+ * The same bound `parseChapterNames` in `story-stream.ts` puts on a title the
+ * model returns: past it the string is a sentence, not a name, and it has to
+ * fit on a cover and a feed card. Tighter than `publish-story`'s 200 on
+ * purpose -- that one guards a rename of an existing row, this one guards what
+ * gets painted onto a brand-new cover.
+ */
+export const MAX_STORY_TITLE_LENGTH = 120;
+
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
@@ -612,6 +623,17 @@ export interface ValidatedGenerationParams {
    * is persisted (`_shared/publish.ts`); absent means private.
    */
   visibility: "private" | "public";
+  /**
+   * The title the writer chose, trimmed. Absent means "name it for me", which
+   * is every story generated before 2026-09-18.
+   *
+   * When present it is the story's title, full stop: the model is still asked
+   * for one (the schema requires it and the metadata call returns it), but a
+   * writer who named their story -- or the house library, which titles every
+   * story before it is written -- must never find the model's name on it
+   * instead. The editors found exactly that on every titled story they read.
+   */
+  title?: string;
 }
 
 export interface SeriesState {
