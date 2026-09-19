@@ -161,6 +161,21 @@ describe("generateStory request contract", () => {
     expect(body.story_flow).toBe("auto");
   });
 
+  /**
+   * The publish toggle travels with the generation request. It used to be
+   * left out entirely, so the server always generated private and a public
+   * story depended on a second, unattended call succeeding.
+   */
+  it("sends the visibility the writer chose, and private when they chose nothing", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory({ ...draft, visibility: "public" }, "req-vis-public");
+    expect(bodyOf(mockInvoke.mock.calls[0]).visibility).toBe("public");
+
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory({ ...draft, visibility: undefined }, "req-vis-absent");
+    expect(bodyOf(mockInvoke.mock.calls[1]).visibility).toBe("private");
+  });
+
   it("passes through the request id for idempotent retries", async () => {
     mockInvoke.mockResolvedValue(storyResponse("standalone"));
     await generateStory(draft, "req-5");

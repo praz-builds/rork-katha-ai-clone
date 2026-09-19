@@ -2,7 +2,6 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { deriveGatingReason } from "./entity-visibility-gate.ts";
 import {
   CLASSIFICATION_NOT_ATTEMPTED,
   type ClassificationOutcome,
@@ -124,13 +123,15 @@ Deno.test("surface falls back to the canonical name when absent", () => {
 });
 
 /**
- * The 2026-09-09 entity-gate defect, in tests.
+ * The 2026-09-09 classification defect, in tests.
  *
- * The gate is fed by a classification, and until this split the classification
- * was fused to the grounding-card path: one budget, one silent `catch`, and a
- * failure that arrived at the publish decision as an empty entity list -
- * indistinguishable from an idea that names nobody. Measured on production,
- * that failure was every request ever made. These tests hold the two apart.
+ * Until this split the classification was fused to the grounding-card path:
+ * one budget, one silent `catch`, and a failure that arrived downstream as an
+ * empty entity list - indistinguishable from an idea that names nobody.
+ * Measured on production, that failure was every request ever made. These
+ * tests hold the two apart. (The publish gate that consumed the verdict was
+ * removed on 2026-09-18; the distinction between "failed" and "names nobody"
+ * is still what `entity_classification_status` records.)
  */
 
 /** A stand-in for `generateFastStructuredText` that returns a fixed body. */
@@ -155,7 +156,12 @@ function classified(
   };
 }
 
-Deno.test("a living public figure is classified and gates the story", async () => {
+/** The classes a classification produced, in order. */
+function classesOf(entities: readonly { entityClass: string }[]): string[] {
+  return entities.map((entity) => entity.entityClass);
+}
+
+Deno.test("a living public figure is classified as one", async () => {
   const outcome = await classifyIdea({
     idea: "Taylor Swift moves in above a Mumbai record shop",
     generate: generatorReturning({
@@ -166,10 +172,13 @@ Deno.test("a living public figure is classified and gates the story", async () =
     }),
   });
   assertEquals(outcome.status, "ok");
-  assertEquals(deriveGatingReason(outcome.entities), "living_public_figure");
+  assertEquals(classesOf(outcome.entities), [
+    "living_public_figure",
+    "real_place",
+  ]);
 });
 
-Deno.test("a private individual is classified and gates the story", async () => {
+Deno.test("a character-sheet name is classified as a private individual", async () => {
   const outcome = await classifyIdea({
     idea: "My sister Priya finds a door in her office",
     characterNames: ["Priya"],
@@ -178,12 +187,11 @@ Deno.test("a private individual is classified and gates the story", async () => 
     }),
   });
   assertEquals(outcome.status, "ok");
-  assertEquals(deriveGatingReason(outcome.entities), "private_individual");
+  assertEquals(classesOf(outcome.entities), ["private_individual"]);
 });
 
-Deno.test("a historical figure, a real place and a neutral idea are NOT gated", async () => {
-  // The case grounding exists to serve. A gate that caught Shivaji Maharaj
-  // would be a gate on the product, not on a privacy risk.
+Deno.test("a historical figure, a real place and a neutral idea classify as themselves", async () => {
+  // The case grounding exists to serve.
   const historical = await classifyIdea({
     idea: "Shivaji Maharaj plans the night march",
     generate: generatorReturning({
@@ -196,7 +204,10 @@ Deno.test("a historical figure, a real place and a neutral idea are NOT gated", 
     }),
   });
   assertEquals(historical.status, "ok");
-  assertEquals(deriveGatingReason(historical.entities), null);
+  assertEquals(classesOf(historical.entities), [
+    "historical_public_figure",
+    "real_place",
+  ]);
 
   // "none" is the model's legal way to say the idea names nobody. It is a
   // verdict, and it must not look like a failure.
@@ -206,13 +217,13 @@ Deno.test("a historical figure, a real place and a neutral idea are NOT gated", 
   });
   assertEquals(neutral.status, "ok");
   assertEquals(neutral.entities, []);
-  assertEquals(deriveGatingReason(neutral.entities), null);
 });
 
 Deno.test("a classification timeout is a failure, not an empty verdict", async () => {
   // The exact confusion that published the Taylor Swift story: the provider
   // chain exhausted its deadline, the old code caught it and returned
-  // `{ cards: [], entities: [] }`, and the gate read that as "names nobody".
+  // `{ cards: [], entities: [] }`, and everything downstream read that as
+  // "names nobody".
   const outcome = await classifyIdea({
     idea: "Taylor Swift moves in above a Mumbai record shop",
     generate: () =>
@@ -255,7 +266,7 @@ Deno.test("a classification timeout is logged, not swallowed", async () => {
       code: "timeout",
       elapsedMs: 40_012,
     },
-    feature: "entity_gate",
+    feature: "grounding",
     storyId: "00000000-0000-4000-8000-000000000591",
     userId: "00000000-0000-4000-8000-000000000592",
     log: (input) => {
@@ -271,9 +282,9 @@ Deno.test("a classification timeout is logged, not swallowed", async () => {
     context: Record<string, unknown>;
   };
   assertEquals(row.bucket, "grounding");
-  // High, not low. A story published without the check is not a degraded
-  // convenience.
-  assertEquals(row.severity, "high");
+  // Medium: with the entity gate removed (00091) a failed classification is
+  // degraded enrichment, not a story going public unchecked.
+  assertEquals(row.severity, "medium");
   assertEquals(row.errorCode, "entity_classification_unavailable");
   assertEquals(row.context.failure, "provider_failed");
   assertEquals(row.context.code, "timeout");
@@ -291,7 +302,7 @@ Deno.test("a successful classification logs nothing", async () => {
   let calls = 0;
   await reportClassificationFailure({
     outcome: { status: "ok", entities: [], elapsedMs: 12 },
-    feature: "entity_gate",
+    feature: "grounding",
     log: () => {
       calls++;
     },
@@ -299,21 +310,21 @@ Deno.test("a successful classification logs nothing", async () => {
   assertEquals(calls, 0);
 });
 
-Deno.test("a rate-limited classification is a failure the gate can see", () => {
-  // A refused fallback claim used to be `null`, which the gate read as an
-  // empty classification. A writer over the limit still gets their story; they
-  // do not get to publish on a check that was skipped to save money.
+Deno.test("a rate-limited classification is a visible failure", () => {
+  // A refused fallback claim used to be `null`, which read as an empty
+  // classification. A writer over the limit still gets their story; the row
+  // records that nobody classified it.
   assertEquals(CLASSIFICATION_NOT_ATTEMPTED.status, "failed");
   assertEquals(CLASSIFICATION_NOT_ATTEMPTED.failure, "not_attempted");
   assertEquals(CLASSIFICATION_NOT_ATTEMPTED.entities, []);
 });
 
-Deno.test("cards take only what lands inside the short window, and the gate waits", async () => {
+Deno.test("cards take only what lands inside the short window, and the classification still completes", async () => {
   // The whole shape of the fix: the classification runs on its own clock so
-  // the publish decision can have a real answer, while the prompt takes
+  // the persisted entity record gets a real answer, while the prompt takes
   // whatever exists by the time it has to be built. A classification slower
   // than the card window costs the prompt its cards - the outcome every
-  // unshaped generation already had - and costs the gate nothing.
+  // unshaped generation already had - and nothing else.
   let resolve!: (value: ClassificationOutcome) => void;
   const slow = new Promise<ClassificationOutcome>((r) => {
     resolve = r;
@@ -333,10 +344,11 @@ Deno.test("cards take only what lands inside the short window, and the gate wait
     }],
     elapsedMs: 25_000,
   });
-  // The gate still gets its verdict from the same promise, late and complete.
+  // The persisted entity record still gets its verdict from the same
+  // promise, late and complete.
   const outcome = await slow;
   assertEquals(outcome.status, "ok");
-  assertEquals(deriveGatingReason(outcome.entities), null);
+  assertEquals(classesOf(outcome.entities), ["historical_public_figure"]);
 });
 
 Deno.test("a failed classification builds no cards", async () => {

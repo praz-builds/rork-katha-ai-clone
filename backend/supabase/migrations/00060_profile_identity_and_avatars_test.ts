@@ -372,23 +372,23 @@ Deno.test("a private story never reaches a public profile", async () => {
     await db.query(
       `insert into stories(id, author_id, title, genre, primary_genre, status,
                            is_public, is_curated, content_rating,
-                           entity_gate_reason, read_count, like_count)
+                           read_count, like_count)
        values
          -- shown
          ('00000000-0000-4000-8000-00000000061a', $1, 'Public', array['romance'],
-          'romance', 'complete', true, false, 'sweet', null, 100, 10),
+          'romance', 'complete', true, false, 'sweet', 100, 10),
          -- a draft the author has not published
          ('00000000-0000-4000-8000-00000000061b', $1, 'Draft', array['romance'],
-          'romance', 'draft', false, false, 'sweet', null, 5, 5),
+          'romance', 'draft', false, false, 'sweet', 5, 5),
          -- still generating
          ('00000000-0000-4000-8000-00000000061c', $1, 'Half', array['romance'],
-          'romance', 'generating', false, false, 'sweet', null, 5, 5),
-         -- kept private by the entity gate: names a real living person
-         ('00000000-0000-4000-8000-00000000061d', $1, 'Gated', array['romance'],
-          'romance', 'complete', false, false, 'sweet', 'private_individual', 500, 50),
+          'romance', 'generating', false, false, 'sweet', 5, 5),
+         -- complete, but its writer kept it private
+         ('00000000-0000-4000-8000-00000000061d', $1, 'Private', array['romance'],
+          'romance', 'complete', false, false, 'sweet', 500, 50),
          -- explicit: not shown on a public byline, so not counted on one
          ('00000000-0000-4000-8000-00000000061e', $1, 'Explicit', array['romance'],
-          'romance', 'complete', true, false, 'explicit', null, 900, 90)`,
+          'romance', 'complete', true, false, 'explicit', 900, 90)`,
       [ADA],
     );
     await db.query(
@@ -403,8 +403,8 @@ Deno.test("a private story never reaches a public profile", async () => {
     const it = row.rows[0];
     assertEquals(it.username, "ada");
     assertEquals(it.stories_published, 1);
-    // 100, not 605: the gated story's reads would leak its existence just as
-    // surely as its title would.
+    // 100, not 605: the private story's reads would leak its existence just
+    // as surely as its title would.
     assertEquals(it.total_reads, 100);
     assertEquals(it.total_likes, 10);
     assertEquals(it.followers, 1);

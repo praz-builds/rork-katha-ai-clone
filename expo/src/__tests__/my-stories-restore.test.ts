@@ -3,7 +3,7 @@
  *
  * They did not. Stories persisted correctly in the database, but nothing ever
  * read them back: the library query is `is_public OR is_curated`, a fresh story
- * is private (the column default, and the entity gate forces it), and the
+ * is private unless the writer asked otherwise (the column default), and the
  * client kept its stories in a `useState` array. So closing the tab erased
  * every story a writer had made — from the interface, while the rows sat safe
  * in Postgres. They had spent credits on those.

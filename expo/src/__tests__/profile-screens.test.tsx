@@ -3,9 +3,8 @@
  *
  * A follow that looks like it worked and did not, a guest silently writing to
  * nothing, and a private story appearing under a public byline are all failures
- * that leave no error behind. The last one is the serious one: an author's
- * private story -- including one the entity gate kept private because the idea
- * named a real living person -- must never reach a stranger's screen.
+ * that leave no error behind. The last one is the serious one: a story its
+ * author kept private must never reach a stranger's screen.
  */
 
 /* eslint-disable import/first */
@@ -217,7 +216,7 @@ describe("somebody else's profile", () => {
     });
 
     // The client's own story array carries this author's private work -- a
-    // draft and a story the entity gate kept private. It is passed in exactly
+    // draft and a finished story they kept private. It is passed in exactly
     // as `App.tsx` passes it, and none of it may be rendered here.
     const localStories = [
       {
@@ -236,8 +235,8 @@ describe("somebody else's profile", () => {
         language: "en",
       },
       {
-        id: "story-gated",
-        title: "Names A Real Person",
+        id: "story-kept-private",
+        title: "Finished But Private",
         authorId: AUTHOR,
         genre: "thriller" as const,
         synopsis: "",
@@ -264,7 +263,7 @@ describe("somebody else's profile", () => {
 
     await waitFor(() => view.getByText("A Public Story"));
     expect(view.queryByText("An Unpublished Draft")).toBeNull();
-    expect(view.queryByText("Names A Real Person")).toBeNull();
+    expect(view.queryByText("Finished But Private")).toBeNull();
 
     // Two relationship counts, and nothing private.
     expect(view.getByText("@ada")).toBeTruthy();

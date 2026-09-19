@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import { deriveGatingReason } from "../_shared/entity-visibility-gate.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
@@ -150,11 +149,13 @@ serve(async (req) => {
     // This used to be one promise doing two jobs on one short budget, and the
     // budget belonged to the wrong job. Grounding cards are prompt enrichment:
     // they have to be in the prompt before the first token, so they get a few
-    // seconds and fail open. Classification is the input to a publish
-    // decision, and it measured 23-25s against the live models on 2026-09-09
-    // (see `CLASSIFICATION_DEADLINE_MS`). Sharing the enrichment budget meant
-    // it never once completed in production, and the entity visibility gate -
-    // migration 00050, the CHECK constraint, all of it - never fired.
+    // seconds and fail open. The full classification measured 23-25s against
+    // the live models on 2026-09-09 (see `CLASSIFICATION_DEADLINE_MS`), and
+    // sharing the enrichment budget meant it never once completed in
+    // production. It was built that way for an entity visibility gate that
+    // has since been removed (2026-09-18, migration 00091); what it still
+    // feeds is the prompt's grounding cards when the client sent none, and
+    // the persisted `grounding_entities` record (migration 00045).
     //
     // The fix is not a bigger budget in front of the prose. It is to stop
     // making the prose wait for this at all. A chapter takes 55-100s; this
@@ -164,22 +165,18 @@ serve(async (req) => {
     // (`groundingCardsWithin`), which is the same outcome the prompt has had
     // all along and half the spend of classifying twice.
     //
-    // It runs for EVERY generation now, not only the unshaped path. The old
-    // `needsGroundingFallback` short-circuit meant a caller who sent a single
-    // shape-valid grounding card skipped server classification entirely and
-    // handed the gate an empty answer - the gate's own comment says it reads
-    // "only what THIS server derived", and with no server call there was
-    // nothing derived. Cards from the client are still trusted for the prompt;
-    // they still get no vote on visibility.
+    // It runs for EVERY generation, not only the unshaped path, so the
+    // persisted entity list is always this server's own. Cards from the client
+    // are trusted for the prompt. (That breadth was chosen for the removed
+    // gate; narrowing it back to the unshaped path is a cost decision, not a
+    // correctness one, and has not been made.)
     //
     // The ordering relative to `begin_story_generation` below is deliberate
     // and must not change: this promise is created and already running before
     // that RPC is awaited. `claimGroundingFallback` (migration 00051) stays
     // the guard inside it, so a request `begin_story_generation` is about to
     // reject has not already bought an LLM call. A refused claim is a failure,
-    // not an empty verdict: the writer still gets their story, ungrounded, and
-    // a public request is refused rather than granted on a check that was
-    // skipped to save money.
+    // not an empty verdict: the writer still gets their story, ungrounded.
     const classificationPromise: Promise<ClassificationOutcome> =
       claimGroundingFallback({
         user,
@@ -489,26 +486,19 @@ serve(async (req) => {
       //
       // The chapter took 55-100s and is already on disk; the classification
       // budget is 40s and started before the opening RPC, so this await is
-      // almost always instantaneous. That is the whole trade of the 2026-09-09
-      // fix: a safety check that actually completes, bought with time the
-      // request had already spent on prose.
+      // almost always instantaneous: a classification that actually
+      // completes, bought with time the request had already spent on prose.
       const classification = await classificationPromise;
-      // Server-derived entities only, and only from a classification that
-      // finished. `groundingEntities` from the body is fine for a prompt and
-      // unacceptable for a gate; a failed classification is not an empty one.
-      const gateReason = classification.status === "ok"
-        ? deriveGatingReason(classification.entities)
-        : null;
       const resolvedEntities = classification.status === "ok"
         ? classification.entities
         : groundingEntities;
       // Loud, in its own bucket, with the provider's code and the elapsed
-      // time and nothing else. The gate was inert for weeks because this line
-      // did not exist and a `catch {}` stood where it is.
+      // time and nothing else. Classification was silently dead for weeks
+      // because this line did not exist and a `catch {}` stood where it is.
       if (classification.status !== "ok") {
         await reportClassificationFailure({
           outcome: classification,
-          feature: "entity_gate",
+          feature: "grounding",
           storyId: story.id,
           userId: user.id,
         });
@@ -527,18 +517,17 @@ serve(async (req) => {
       // service client. A failure here costs later chapters their grounding
       // and nothing else, which is why it is logged rather than thrown.
       //
-      // Unconditional now. It used to be skipped when there was nothing to
-      // record, which was fine while the columns were enrichment, but
-      // `entity_classification_status` is a safety fact about this story and
-      // "we did not write a row" is not one of its values - `publish-story`
-      // reads it later to decide whether the gate ever ran (migration 00058).
+      // Unconditional. `entity_classification_status` (migration 00058) says
+      // whether the classification behind `grounding_entities` ever answered,
+      // and "we did not write a row" is not one of its values. Nothing gates
+      // on it any more (00091); it is kept so an empty entity list can still
+      // be told apart from a classifier that was down.
       {
         const { error: groundingError } = await serviceClient
           .from("stories")
           .update({
             grounding: resolvedGrounding,
             grounding_entities: resolvedEntities,
-            entity_gate_reason: gateReason,
             entity_classification_status: classification.status === "ok"
               ? "ok"
               : "unavailable",
@@ -561,17 +550,15 @@ serve(async (req) => {
         }
       }
 
-      // The visibility toggle is the publish button; the outcome rides in the
-      // response. After the grounding write so the gate reason is on the row
-      // before the 00050 CHECK is asked about `is_public`.
+      // The visibility toggle is the publish button, and it is honoured: a
+      // signed-in writer who asked for public gets public (2026-09-18). The
+      // outcome rides in the response.
       const visibilityOutcome = await applyRequestedVisibility(
         serviceClient as unknown as VisibilityClient,
         {
           storyId: story.id,
           requested: visibility,
           isAnonymous: user.is_anonymous === true,
-          classificationAvailable: classification.status === "ok",
-          gateReason,
         },
       );
       await rememberStoryCharacters(characterClient, user.id, story.id);

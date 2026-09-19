@@ -1486,8 +1486,7 @@ export function CharacterCraftScreen({
                 A photo steers the LOOK. It is not a likeness target, and the
                 copy says so where the writer is deciding whether to attach one
                 -- not buried in a policy page. The backend states the same rule
-                to the model, and naming a real person locks the story private
-                regardless of what was attached.
+                to the model.
               */}
               <Pressable
                 onPress={character.referenceImage ? onClearReference : onPickReference}
