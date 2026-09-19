@@ -523,13 +523,24 @@ async function judge(story: WrittenStory): Promise<Record<string, unknown>> {
   const raw = await complete({
     system: JUDGE_SYSTEM,
     user: `Story: ${story.slug}\n\n${body}`,
-    // 12 000 on the wire. Sized the same way the continuity check was, and for
-    // the same reason: this model spends thousands of tokens reasoning before
-    // it emits a character, and an audit that runs out of budget returns an
-    // EMPTY STRING rather than an error. The first judge pass did exactly that
-    // and reported "0 issues over 10 chapters" for a story the human editors
-    // sent back for regeneration.
-    maxTokens: 6_000,
+    /*
+      24 000 on the wire, and measured up to twice.
+
+      This model spends thousands of tokens reasoning before it emits a
+      character, and an audit that runs out of budget returns an EMPTY STRING
+      rather than an error. The first judge pass budgeted 6 000 on the wire and
+      reported "0 issues over 10 chapters" for a story the human editors sent
+      back for regeneration; the second budgeted 12 000 and still failed on a
+      ten-chapter story, where the prompt alone is ~23 000 tokens. Reading a
+      whole novel-length story and cross-checking every chapter against every
+      other is simply a large amount of thinking.
+
+      Generous on purpose: an audit is run once per story per arm, so the
+      difference between a right budget and a wasteful one is a fraction of a
+      cent, and the difference between a right budget and a small one is a
+      measurement that does not exist.
+    */
+    maxTokens: 12_000,
     schema: { name: "katha_continuity_audit", schema: JUDGE_SCHEMA },
   });
   /*
