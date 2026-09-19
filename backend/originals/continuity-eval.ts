@@ -21,8 +21,14 @@
  *
  * The two arms differ in exactly one thing, and it is a flag:
  *
- *   before  no story bible, no auto-plan. Byte-for-byte the prompt production
- *           builds today, because `story_bible` is null on every existing story.
+ *   before  no story bible, no auto-plan -- which is what production builds
+ *           today, since `story_bible` is null on every existing story.
+ *
+ *           One honest caveat: the moments-layer change (a landed moment is
+ *           named positionally instead of quoted) is in the shared builder and
+ *           is therefore in BOTH arms. It is not gated by the flag, so it does
+ *           not show up in this measurement either way. What the numbers below
+ *           isolate is the bible and the plan.
  *   after   the bible is seeded from the cast, extracted after every chapter,
  *           merged append-only, and rendered into the next chapter's prompt;
  *           a 5+ chapter series with no beats gets a plan first.
