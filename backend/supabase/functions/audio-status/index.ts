@@ -23,18 +23,30 @@ import {
   isKnownVoiceId,
 } from "../_shared/voices.ts";
 import {
+  advanceNarrationJob,
+  cancelRunpodNarration,
   canReadChapter,
   type ChapterAudioRow,
+  downloadNarrationParts,
   getChapterAudioRow,
   isNarrationJobStale,
+  listNarrationParts,
   markChapterAudioFailed,
   markChapterAudioReady,
   NARRATION_JOB_STALE_MS,
   pollRunpodNarration,
   publicAudioUrl,
+  removeNarrationParts,
   stableChapterAudioPath,
+  startRunpodNarration,
   uploadAudio,
+  uploadNarrationPart,
 } from "../_shared/narration-audio.ts";
+import {
+  NARRATION_CHUNK_CHARS,
+  splitNarrationText,
+} from "../_shared/narration-chunks.ts";
+import { concatenateMp3, readMp3Audio } from "../_shared/narration-mp3.ts";
 
 /**
  * A single job's provider-reported failure ("high") vs a sign that narration
@@ -109,6 +121,25 @@ async function timedOutResponsePayload(
     voice_id: voiceId,
     error_code: errorCode,
   };
+}
+
+/**
+ * A narration's true duration, read from its own MPEG frames.
+ *
+ * Best effort by design: this is only ever used on the single-chunk path,
+ * where the audio is published whether or not its length can be measured, and
+ * a parser that refuses an unexpected but perfectly playable file must not be
+ * what stops a reader hearing their chapter. The multi-chunk path is the
+ * opposite case -- there the same parse is load-bearing, because the frames
+ * are what the parts are joined on, so there it is allowed to throw.
+ */
+function measuredDuration(bytes: Uint8Array): number | null {
+  try {
+    return readMp3Audio(bytes).durationSeconds;
+  } catch (error) {
+    console.error("narration: could not measure audio duration", error);
+    return null;
+  }
 }
 
 export async function handleRequest(req: Request): Promise<Response> {
@@ -274,6 +305,11 @@ export async function handleRequest(req: Request): Promise<Response> {
     if (poll.status === "failed" || !poll.audioBytes) {
       const errorCode = poll.errorCode ?? "provider_failed";
       await markChapterAudioFailed(serviceClient, row.id!, errorCode);
+      // A failed chunk ends the pipeline, so whatever earlier chunks were
+      // staged are now unreachable bytes in a billed bucket. The retry starts
+      // from chunk 0 (`generate-audio` clears them again on a fresh claim);
+      // this is simply the earlier of the two chances to not leave them.
+      await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
       // A single job the provider itself reported as failed (GPU OOM, no
       // usable output on a "completed" job, ...) -- one reader's chapter, not
       // a sign generation is broken for everyone. Compare the stale-timeout
@@ -302,17 +338,259 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     const storagePath = row.storage_path ??
       stableChapterAudioPath(storyId, chapterId, voiceId);
+
+    // The chunk list is re-derived here rather than stored, from the same
+    // chapter text `generate-audio` read. `splitNarrationText` is pure, so the
+    // two functions agree without a shared row -- and `edit-story` deletes the
+    // `chapter_audio` row whenever it rewrites a body, so a narration in
+    // flight can never be reading a different revision of the prose than the
+    // one that was split.
+    const chunks = splitNarrationText(
+      chapter.content ?? "",
+      NARRATION_CHUNK_CHARS,
+    );
+
+    if (chunks.length <= 1) {
+      // The ordinary short chapter: one provider request, straight to the
+      // final path, exactly as before. The only change is that the duration
+      // is now derived from the audio's own frames -- RunPod does not return
+      // one, so `chapter_audio.duration_seconds` has been null on every
+      // narration this product has ever made.
+      const audioUrl = await uploadAudio(
+        serviceClient,
+        storagePath,
+        poll.audioBytes,
+      );
+      await markChapterAudioReady(
+        serviceClient,
+        row.id!,
+        storagePath,
+        measuredDuration(poll.audioBytes) ?? poll.durationSeconds,
+      );
+      return respond({
+        status: "COMPLETED",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        audio_url: audioUrl,
+        cached: false,
+      });
+    }
+
+    // --- Multi-request narration -------------------------------------------
+    //
+    // The chapter is longer than the provider will take in one request, so it
+    // is narrated one chunk per poll. The persistent state is the set of
+    // staged part objects in the `audio` bucket and nothing else: the number
+    // of parts already there IS the index of the chunk that just finished.
+    const staged = await listNarrationParts(
+      serviceClient,
+      storyId,
+      chapterId,
+      voiceId,
+    );
+
+    // Parts must be 0,1,2,... with no gap. A gap means a part was lost, and
+    // assembling around it would hand the reader a chapter with a scene
+    // silently missing from the middle -- a failure nothing downstream could
+    // detect and the reader would blame on the writer. Fail instead, and let
+    // the retry rebuild from chunk 0.
+    if (staged.some((value, position) => value !== position)) {
+      await markChapterAudioFailed(
+        serviceClient,
+        row.id!,
+        "narration_parts_out_of_order",
+      );
+      await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+      await reportError({
+        bucket: "generation.audio",
+        severity: "high",
+        errorCode: "narration_parts_out_of_order",
+        error: new Error(
+          `staged narration parts [${staged.join(",")}] are not contiguous`,
+        ),
+        userId: user.id,
+        context: { story_id: storyId, chapter_id: chapterId },
+      });
+      return respond({
+        status: "FAILED",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        error_code: "narration_parts_out_of_order",
+      });
+    }
+
+    const finishedIndex = staged.length;
+    if (finishedIndex >= chunks.length) {
+      // More parts on disk than the chapter has chunks. The text must have
+      // changed under a narration that was already running, which the
+      // `chapter_audio` delete in `edit-story` is supposed to make impossible.
+      // Refuse to assemble a file from prose that no longer exists.
+      await markChapterAudioFailed(
+        serviceClient,
+        row.id!,
+        "narration_text_changed",
+      );
+      await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+      await reportError({
+        bucket: "generation.audio",
+        severity: "high",
+        errorCode: "narration_text_changed",
+        error: new Error(
+          `${finishedIndex} parts staged for a ${chunks.length} chunk chapter`,
+        ),
+        userId: user.id,
+        context: {
+          story_id: storyId,
+          chapter_id: chapterId,
+          chunks: chunks.length,
+          parts: finishedIndex,
+        },
+      });
+      return respond({
+        status: "FAILED",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        error_code: "narration_text_changed",
+      });
+    }
+
+    await uploadNarrationPart(
+      serviceClient,
+      storyId,
+      chapterId,
+      voiceId,
+      finishedIndex,
+      poll.audioBytes,
+    );
+
+    const nextIndex = finishedIndex + 1;
+    if (nextIndex < chunks.length) {
+      // Start the next chunk and hand the row over to it. Still one provider
+      // job in flight at a time, so the (chapter, voice) claim keeps meaning
+      // exactly what it has always meant.
+      let nextJobId: string;
+      try {
+        nextJobId = await startRunpodNarration({
+          text: chunks[nextIndex],
+          voice,
+        });
+      } catch (startError) {
+        await markChapterAudioFailed(
+          serviceClient,
+          row.id!,
+          "narration_chunk_start_failed",
+        );
+        await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+        await reportError({
+          bucket: "generation.audio",
+          severity: "high",
+          errorCode: "narration_chunk_start_failed",
+          error: startError,
+          userId: user.id,
+          context: {
+            story_id: storyId,
+            chapter_id: chapterId,
+            chunk: nextIndex,
+            chunks: chunks.length,
+          },
+        });
+        return respond({
+          status: "FAILED",
+          story_id: storyId,
+          chapter_id: chapterId,
+          voice_id: voiceId,
+          error_code: "narration_chunk_start_failed",
+        });
+      }
+
+      // Compare-and-swap, because polling is driven by the reader's client and
+      // two polls can overlap. Both would see this chunk finish, both would
+      // start the next one, and a plain write would leave the loser's job
+      // running with nothing pointing at it: spend that is never collected and
+      // never cancelled.
+      const advanced = await advanceNarrationJob(
+        serviceClient,
+        row.id!,
+        row.provider_job_id,
+        nextJobId,
+      );
+      if (!advanced) await cancelRunpodNarration(nextJobId);
+
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        chunks_done: nextIndex,
+        chunks: chunks.length,
+      });
+    }
+
+    // Last chunk. Assemble, verify, publish.
+    let assembled;
+    try {
+      const earlier = await downloadNarrationParts(
+        serviceClient,
+        storyId,
+        chapterId,
+        voiceId,
+        finishedIndex,
+      );
+      // `concatenateMp3` re-reads the joined bytes and refuses if the frame
+      // count is not the sum of the parts' -- so a seam that lost or invented
+      // audio fails here rather than reaching the reader as a chapter that
+      // skips a paragraph.
+      assembled = concatenateMp3([...earlier, poll.audioBytes]);
+    } catch (assemblyError) {
+      const errorCode = assemblyError instanceof Error &&
+          assemblyError.message.startsWith("narration_part_missing")
+        ? "narration_part_missing"
+        : "narration_assembly_failed";
+      await markChapterAudioFailed(serviceClient, row.id!, errorCode);
+      await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+      await reportError({
+        bucket: "generation.audio",
+        // Every chunk of this chapter has been generated and billed by now, so
+        // failing at the join wastes the entire cost of the narration rather
+        // than one request's worth. That is worth more than a routine "high".
+        severity: "critical",
+        errorCode,
+        error: assemblyError,
+        userId: user.id,
+        context: {
+          story_id: storyId,
+          chapter_id: chapterId,
+          chunks: chunks.length,
+        },
+      });
+      return respond({
+        status: "FAILED",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        error_code: errorCode,
+      });
+    }
+
     const audioUrl = await uploadAudio(
       serviceClient,
       storagePath,
-      poll.audioBytes,
+      assembled.bytes,
     );
     await markChapterAudioReady(
       serviceClient,
       row.id!,
       storagePath,
-      poll.durationSeconds,
+      assembled.durationSeconds,
     );
+    // Only now: the parts are dead weight the moment the finished file is
+    // readable, and not one moment before. Deleting them before the upload
+    // would mean an upload failure could not be retried from anything.
+    await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+
     return respond({
       status: "COMPLETED",
       story_id: storyId,
@@ -320,6 +598,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       voice_id: voiceId,
       audio_url: audioUrl,
       cached: false,
+      chunks: chunks.length,
     });
   } catch (error) {
     console.error("audio-status error:", error);

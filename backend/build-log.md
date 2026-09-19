@@ -7,6 +7,178 @@
 
 ---
 
+## 2026-09-19 UTC — A full-length chapter can be narrated: the provider's 10,000-character limit is met by chunking and stitching
+
+**Session:** Lane C, worktree `codex/narration-length`. **Nothing deployed.**
+No migration. No production RunPod jobs were run (no local `RUNPOD_API_KEY`),
+so no provider spend and nothing new in `error_events` from this session; the
+evidence below is production *reads* plus offline decoding of audio RunPod had
+already produced.
+
+### The problem, as measured by the previous session
+
+Lane A's entry of the same date (`codex/narration-measurement`, commit
+`95594f9`, unmerged) bracketed it against production: MiniMax `speech-02-hd`
+**accepted 9,849 characters and refused 10,105**. `MAX_NARRATION_CHARS` in
+`generate-audio/index.ts` was **40,000** — sized against the 50 MB response
+ceiling in `_shared/narration-audio.ts` and against nothing else, because the
+provider's own per-request cap was not known when it was written. The two
+limits were never reconciled.
+
+**133 of the 354 live published chapters (37.6%), across 41 of the 80 stories,
+were therefore accepted, claimed, billed as a RunPod job, and returned to the
+reader as "Try again" — permanently.** Median live chapter is 9,112 characters,
+p90 is 13,382, and the generator's word bands top out near 2,000 words ≈ 11,000
+characters, so **a normal full-length chapter was over the line by design.** It
+was also invisible: RunPod returns the refusal as an English sentence and
+`safeErrorCode` correctly scrubs provider prose, so all of it landed as
+`unclassified_error` (fingerprint `0846868db2c63bbceb786c617d2986b8`, 5
+occurrences, first seen 2026-09-15).
+
+### What changed
+
+**A chapter is now several provider requests, stitched into one file.**
+
+- `_shared/narration-chunks.ts` (new). `splitNarrationText` cuts at paragraph,
+  then sentence, then word boundaries — never inside a word — into chunks of at
+  most `NARRATION_CHUNK_CHARS` = **9,000** (849 under the smallest observed
+  refusal). Pinned invariants: `chunks.join("") === text`, no chunk over the
+  limit, no empty or whitespace-only chunk, and the function is pure.
+- **Chunks run sequentially, one per `audio-status` poll.** One provider job in
+  flight per (chapter, voice) at any moment, so the existing
+  `claim_chapter_audio_generation` guarantee is untouched.
+- **The chunk list is derived, never stored.** Both functions re-split the same
+  stored chapter text; `edit-story` already deletes the `chapter_audio` row on a
+  rewrite, so they cannot read different revisions. The only persistent state is
+  the staged parts in the `audio` bucket at
+  `{story}/{chapter}/parts/{voice}.NN.mp3`, and **the number of parts present is
+  the index of the chunk that just finished.** No migration: `provider_job_id`
+  has a CHECK that admits exactly one job id, and a column added for this would
+  be a second source of truth able to disagree with what is on disk.
+- The handover between chunks is a **compare-and-swap** on `provider_job_id`
+  (`advanceNarrationJob`), because polling is client-driven and two polls can
+  overlap. The loser cancels the job it started rather than leaving it running
+  and billing unseen.
+
+**`MAX_NARRATION_CHARS` is now 25,000, reconciled against every ceiling** — the
+provider's 10,000 per request (binds the chunk, not the chapter), the 50 MB
+response ceiling (~10.1 MB per chunk, ~30 MB assembled), the reader's patience
+(3 chunks × ~45s ≈ 135s, inside the client's 180s `NARRATION_OVERDUE_MS`), and
+the isolate's memory (~61 MB peak during assembly against ~150 MB). It is
+*below* the old 40,000 and nothing is lost: everything between 10,000 and
+40,000 failed anyway. 25,000 rather than 3 × 9,000 = 27,000 because paragraph
+cuts do not pack perfectly — measured across paragraph lengths from 138 to
+1,380 characters, 25,000 always fits in three chunks and 26,000 sometimes needs
+four.
+
+### Plain byte concatenation is not good enough, and this was measured
+
+`_shared/narration-mp3.ts` (new) parses MPEG frames, strips each part's ID3v2
+tag and Xing header frame, joins the bare frames, and writes **one correct
+`Info` header** for the joined stream.
+
+Three real narrations were downloaded from the `audio` bucket (a production
+read, no generation) and measured with macOS `afinfo`, which decodes rather
+than trusting headers. All three: MPEG1 Layer III, 32 kHz, mono, 128 kbps CBR,
+1,140 bytes of ID3v2 plus one 576-byte `Info` frame before the audio.
+
+| | file bytes | audio bytes | packets | afinfo duration |
+|---|---|---|---|---|
+| a | 6,702,900 | 6,701,184 | 11,634 | 418.824 s |
+| b | 11,341,428 | 11,339,712 | 19,687 | 708.732 s |
+| c | 10,718,772 | 10,717,056 | 18,606 | 669.816 s |
+
+The parser reproduces every one of those numbers exactly. Then:
+
+| joining method | afinfo duration | packets |
+|---|---|---|
+| **plain byte concatenation** | **418.824 s** | **11,634** |
+| `concatenateMp3` | **1,797.372 s** | **49,927** |
+
+Both files hold the same 28.7 MB of audio. Naive concatenation reports **part
+one only**, because the player reads the first Xing header it finds and that
+header describes part one. On a phone that is a chapter whose scrubber is wrong
+for its entire length and whose skip-back lands nowhere — and it would be cached
+permanently and shared by every reader, which is worse than a failure. With the
+rewritten header the joined file decodes fully to PCM with no errors, and a seek
+to 900 s (byte offset 14,400,000) landed **exactly** on a frame boundary with
+zero error, the remainder decoding to exactly 897.372 s.
+
+`chapter_audio.duration_seconds` is now written from the audio's own frames, on
+both the single-chunk and stitched paths. It has been null on every narration
+this product has ever made, because RunPod does not return one.
+
+### Classification and telemetry
+
+- `classifyProviderAudioError` recognises a length refusal and emits
+  `narration_provider_char_limit`. **`safeErrorCode`'s scrubbing is unchanged**
+  — everything else still falls through to it, and no provider prose has become
+  publishable. It should now be unreachable in normal operation and is kept as
+  the backstop for the day the provider lowers its limit.
+- New codes on this path: `narration_provider_char_limit`,
+  `narration_chunk_over_provider_limit`, `narration_chunk_start_failed`,
+  `narration_parts_out_of_order`, `narration_text_changed`,
+  `narration_part_missing`, `narration_assembly_failed`,
+  `chapter_has_no_narratable_text`. Every one writes `error_events` with bucket
+  `generation.audio`; assembly failure is `critical` because every chunk has
+  already been generated and billed by then.
+- `_shared/errors.ts` gains four allowed context keys — `chars`, `chunk`,
+  `chunks`, `parts` — integers only, never text. Their absence is exactly why
+  the 2026-09-15 failures could not be diagnosed from the rows.
+- `generate-audio`'s refusals now answer with `error_code` beside `code`,
+  because the client's `outcomeFromError` reads `error_code` — so the "too long,
+  split it" message previously never reached the reader at all.
+
+### Costs and timings
+
+Per chunk, from Lane A's measurement: ~45 s and ~$0.034 of RunPod serverless.
+
+| chapter | chars | before | after |
+|---|---|---|---|
+| ~1,500 words (median-ish) | 9,112 | 1 call, 45 s, $0.034 | 2 calls, ~90 s, ~$0.068 |
+| 1,728 words (the one that worked) | 9,547 | 1 call, 44.5 s | **unchanged** — 1 call |
+| 2,000 words (p90) | 13,382 | **never played** | 2 calls, ~90 s, ~$0.068 |
+| longest live chapter | 17,755 | **never played** | 2 calls, ~90 s, ~$0.068 |
+
+Nothing that worked before costs more: a chapter at or under 9,000 characters
+is still exactly one request. Sequential chunking was chosen over parallel
+because each poll does at most one upload and one job start, so **no single
+request goes near the function's time budget** — the cost is reader latency,
+not function wall time, and at two chunks for essentially the whole affected
+library that is ~90 s. Parallelism would need a second job id on the row, which
+needs a migration, for ~45 s on a path that was previously infinite.
+
+### Not done, deliberately
+
+1. **Nothing is deployed.** Another lane is publishing the house library
+   against the current production functions. Deployment needs the owner's
+   go-ahead.
+2. **Bitrate.** 128 kbps CBR mono is a music bitrate for speech — 1,124 bytes
+   per character, ~10 MB for a 1,700-word chapter, on a phone. MiniMax's API
+   takes an `audio_setting.bitrate` and `startRunpodNarration` spreads
+   `voice.provider_voice_params` last, so **if this RunPod endpoint forwards
+   the field it is a voice-row change with no deploy**; one cheap job would
+   settle it. Untestable here without a live key. Re-encoding inside the
+   function is separate work and was not smuggled in.
+3. **`NARRATION_EXPECTED_MS` in `expo/src/lib/listen-machine.ts` is still
+   60,000**, and its own comment calls it an unmeasured guess. It is now
+   measurable: ~45 s per chunk, and `generate-audio` returns `chunks` in its
+   202 so the client can scale the expectation instead of calling a working
+   two-chunk narration "slow" at 60 s. Client work, not this lane's files.
+4. **The 133 chapters already over the line need no backfill** — narration is
+   lazy, so the next reader who presses Listen gets the working pipeline.
+
+### Verification
+
+985 Deno tests pass (`deno test supabase/functions/`), 37 of them new across
+`narration-chunks.test.ts` (12), `narration-mp3.test.ts` (12),
+`audio-status/index.test.ts` (+6), `generate-audio/index.test.ts` (+6) and
+`narration-audio.test.ts` (+2). `deno check` clean on every changed file;
+`deno lint` and `deno fmt` clean (one pre-existing `require-await` on
+`publicAudioUrl`, present on `origin/main`, left alone).
+
+---
+
 ## 2026-09-18 UTC — The entity privacy gate is removed: a public toggle means public
 
 **Session:** `codex/pipeline-fixes`. Migration 00091 written and tested

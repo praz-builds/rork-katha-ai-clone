@@ -39,21 +39,33 @@ import {
   markChapterAudioReady,
   NARRATION_REFUSAL,
   publicAudioUrl,
+  removeNarrationParts,
   stableChapterAudioPath,
   startRunpodNarration,
   uploadAudio,
 } from "../_shared/narration-audio.ts";
+import {
+  MAX_NARRATION_CHARS,
+  NARRATION_CHUNK_CHARS,
+  NARRATION_MAX_CHUNKS,
+  NARRATION_PROVIDER_CHAR_LIMIT,
+  splitNarrationText,
+} from "../_shared/narration-chunks.ts";
 
 /**
- * The longest chapter this endpoint will send to a text-to-speech provider.
+ * The length ceiling and the chunk size both live in
+ * `_shared/narration-chunks.ts`, next to the measurement that sets them and to
+ * the splitter that enforces them, because `audio-status` needs exactly the
+ * same numbers to finish what this function starts.
  *
- * At the 128 kbps mono RunPod returns, 40,000 characters is roughly 45
- * minutes of audio, which lands just under the 50 MB ceiling
- * `narration-audio.ts` enforces on the response. Generated chapters are an
- * order of magnitude shorter -- the length bands top out near 2,000 words --
- * so only a hand-edited chapter can approach this.
+ * What used to be here was a bare `const MAX_NARRATION_CHARS = 40_000` whose
+ * comment reasoned only from the 50 MB response ceiling in
+ * `narration-audio.ts`. It had no knowledge of the provider's own per-request
+ * limit -- which is 10,000 characters -- so it was four times too high, and
+ * 37.6% of the published library was accepted here, billed at RunPod, and then
+ * handed back to the reader as "Try again", forever. See the long note on
+ * `MAX_NARRATION_CHARS` for how the two ceilings are now reconciled.
  */
-const MAX_NARRATION_CHARS = 40_000;
 
 export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
@@ -169,36 +181,94 @@ export async function handleRequest(req: Request): Promise<Response> {
     const voice = await getVoiceRecord(serviceClient, voiceId);
     if (!voice) return respond({ error: "Unknown voice_id" }, 400);
 
-    // Refuse before spending, not after.
+    // Cut the chapter to the provider's size, and refuse before spending.
     //
-    // Nothing on this path capped the text. `chapter.content` went to the
-    // provider whole, and `edit-story`'s notepad save accepts a chapter body
-    // of up to 200,000 characters, so a reader could hand RunPod four times
-    // more text than the 50 MB ceiling `narration-audio.ts` enforces on the
-    // way back. The provider bills for all of it and the result is then
-    // discarded as `audio_too_large` -- the worst possible order: full cost,
-    // no audio, and a Try again button that repeats it.
+    // A chapter is no longer one provider request. MiniMax `speech-02-hd`
+    // refuses anything over ~10,000 characters and a normal full-length
+    // chapter is 9,000-13,000, so `splitNarrationText` cuts the prose at
+    // paragraph (then sentence) boundaries into pieces the provider will
+    // actually take. The pieces are narrated one per `audio-status` poll and
+    // stitched into a single MP3 at the end; none of that is visible to the
+    // caller, which still gets one 202 and then polls exactly as before.
     //
-    // Checked here, after the cache lookups and the entitlement gate, so a
+    // Done here, after the cache lookups and the entitlement gate, so a
     // chapter that was narrated before it grew still replays for free; and
     // before the claim, so a refusal does not occupy the (chapter, voice) row.
     const narrationText = chapter.content ?? "";
-    if (narrationText.length > MAX_NARRATION_CHARS) {
+    const chunks = splitNarrationText(narrationText, NARRATION_CHUNK_CHARS);
+
+    if (chunks.length === 0) {
+      // No words at all. This used to be sent to RunPod as an empty `prompt`:
+      // a billed job that could only fail, and that failed as an unreadable
+      // traceback.
+      return respond({
+        error: "This chapter has no text to narrate.",
+        // Both spellings on purpose. `code` is what this function has always
+        // answered with; `error_code` is what the client's `outcomeFromError`
+        // actually reads, so without it every refusal on this path reached the
+        // reader as a bare "Try again" with the reason discarded on the way.
+        code: "chapter_has_no_narratable_text",
+        error_code: "chapter_has_no_narratable_text",
+      }, 422);
+    }
+
+    if (
+      narrationText.length > MAX_NARRATION_CHARS ||
+      chunks.length > NARRATION_MAX_CHUNKS
+    ) {
       await reportError({
         bucket: "generation.audio",
         severity: "low",
         errorCode: "chapter_too_long_to_narrate",
         error: new Error(
-          `Chapter is ${narrationText.length} characters against a ${MAX_NARRATION_CHARS} cap`,
+          `Chapter is ${narrationText.length} characters in ${chunks.length} chunks, against a ${MAX_NARRATION_CHARS} character / ${NARRATION_MAX_CHUNKS} chunk cap`,
         ),
         userId: user.id,
-        context: { story_id: storyId, chapter_id: chapterId },
+        // Counts, not text. These are the two numbers whose absence made the
+        // production failures undiagnosable: the rows recorded that narration
+        // failed and nothing about how long the chapter was.
+        context: {
+          story_id: storyId,
+          chapter_id: chapterId,
+          chars: narrationText.length,
+          chunks: chunks.length,
+        },
       });
       return respond({
         error:
           "This chapter is too long to narrate. Split it into two chapters and try again.",
         code: "chapter_too_long_to_narrate",
+        error_code: "chapter_too_long_to_narrate",
       }, 413);
+    }
+
+    // The splitter's contract, asserted rather than trusted. A chunk over the
+    // provider's limit is the exact defect this whole change exists to end,
+    // and refusing one here costs nothing next to billing a job that cannot
+    // succeed and handing the reader another "Try again".
+    const oversized = chunks.find((chunk) =>
+      chunk.length > NARRATION_PROVIDER_CHAR_LIMIT
+    );
+    if (oversized) {
+      await reportError({
+        bucket: "generation.audio",
+        severity: "high",
+        errorCode: "narration_chunk_over_provider_limit",
+        error: new Error(
+          `A narration chunk is ${oversized.length} characters against the provider's ${NARRATION_PROVIDER_CHAR_LIMIT} limit`,
+        ),
+        userId: user.id,
+        context: {
+          story_id: storyId,
+          chapter_id: chapterId,
+          chars: oversized.length,
+        },
+      });
+      return respond({
+        error: "This chapter could not be prepared for narration.",
+        code: "narration_chunk_over_provider_limit",
+        error_code: "narration_chunk_over_provider_limit",
+      }, 500);
     }
 
     const storagePath = stableChapterAudioPath(storyId, chapterId, voiceId);
@@ -231,6 +301,15 @@ export async function handleRequest(req: Request): Promise<Response> {
       }, 202);
     }
 
+    // A fresh claim starts the pipeline at chunk 0, so any parts left staged
+    // by an abandoned earlier attempt must go first. Resuming onto them would
+    // be worse than starting over: if the chapter was edited between the two
+    // attempts, the finished file would splice two different revisions of the
+    // prose together and nothing would report it. (`edit-story` deletes the
+    // `chapter_audio` row on a rewrite but does not know about these staging
+    // objects, which is precisely how that could happen.)
+    await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+
     let jobId: string;
     try {
       if (voice.provider === "edge_tts") {
@@ -253,7 +332,9 @@ export async function handleRequest(req: Request): Promise<Response> {
           cached: false,
         });
       }
-      jobId = await startProviderJob(voice, narrationText);
+      // Chunk 0 only. `audio-status` derives the same chunk list from the same
+      // stored chapter text when this job finishes, and starts chunk 1 then.
+      jobId = await startProviderJob(voice, chunks[0]);
     } catch (providerError) {
       // The provider never accepted a job, so there is nothing to reconcile
       // -- this is the ordinary "generation failed to start" path.
@@ -310,6 +391,12 @@ export async function handleRequest(req: Request): Promise<Response> {
       voice_id: voiceId,
       job_id: jobId,
       cached: false,
+      // How many provider requests this narration will take. Additive and
+      // advisory: the client polls the same way whatever the number is, but a
+      // four-chunk chapter takes roughly four times as long as a one-chunk
+      // chapter and a progress indicator that knows this can stop calling a
+      // working narration "slow".
+      chunks: chunks.length,
     }, 202);
   } catch (error) {
     console.error("generate-audio error:", error);

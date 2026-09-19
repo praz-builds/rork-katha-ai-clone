@@ -12,6 +12,11 @@ import {
 import { handleRequest } from "./index.ts";
 import { STATIC_VOICES } from "../_shared/voices.ts";
 import { NARRATION_REFUSAL } from "../_shared/narration-audio.ts";
+import {
+  MAX_NARRATION_CHARS,
+  NARRATION_CHUNK_CHARS,
+  NARRATION_PROVIDER_CHAR_LIMIT,
+} from "../_shared/narration-chunks.ts";
 import { resetSentryForTests } from "../_shared/sentry.ts";
 
 const SENTRY_HOST = "sentry.katha.test";
@@ -71,12 +76,16 @@ interface ServerState {
   failJobStartedPatch: boolean;
   sentryEvents: Array<Record<string, unknown>>;
   errorEventsInserts: Array<Record<string, unknown>>;
+  /** Part objects left in the `audio` bucket by an earlier, abandoned attempt. */
+  stagedParts: string[];
   calls: {
     rpc: number;
     edgeTts: number;
     uploads: Array<{ path: string; bytes: number }>;
     runpodRun: number;
+    runpodRunPrompts: string[];
     runpodCancel: string[];
+    partsRemoved: string[];
     patches: Array<{ table: string; body: Record<string, unknown> }>;
   };
 }
@@ -99,13 +108,16 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     failJobStartedPatch: false,
     sentryEvents: [],
     errorEventsInserts: [],
+    stagedParts: [],
     calls: {
       rpc: 0,
       edgeTts: 0,
       uploads: [],
       patches: [] as ServerState["calls"]["patches"],
       runpodRun: 0,
+      runpodRunPrompts: [] as string[],
       runpodCancel: [] as string[],
+      partsRemoved: [] as string[],
     },
     ...overrides,
   };
@@ -257,6 +269,30 @@ function makeFetchStub(state: ServerState): typeof fetch {
       return json([row]);
     }
 
+    // Staged narration parts. `generate-audio` clears these on every fresh
+    // claim so a retry rebuilds from chunk 0 rather than resuming onto the
+    // debris of an abandoned attempt.
+    if (url.pathname === "/storage/v1/object/list/audio") {
+      const body = await request.json() as { prefix?: string };
+      const prefix = body.prefix ? `${body.prefix}/` : "";
+      return json(
+        state.stagedParts
+          .filter((path) => path.startsWith(prefix))
+          .map((path) => ({ name: path.slice(prefix.length) })),
+      );
+    }
+    if (
+      url.pathname === "/storage/v1/object/audio" &&
+      request.method === "DELETE"
+    ) {
+      const body = await request.json() as { prefixes?: string[] };
+      state.calls.partsRemoved.push(...(body.prefixes ?? []));
+      state.stagedParts = state.stagedParts.filter((path) =>
+        !(body.prefixes ?? []).includes(path)
+      );
+      return json([]);
+    }
+
     if (url.pathname.startsWith("/storage/v1/object/audio/")) {
       if (request.method !== "POST" && request.method !== "PUT") {
         return json({ message: "unsupported storage method" }, 405);
@@ -305,6 +341,12 @@ function makeFetchStub(state: ServerState): typeof fetch {
       url.href.startsWith("https://api.runpod.ai/v2/minimax-speech-02-hd/run")
     ) {
       state.calls.runpodRun += 1;
+      const runBody = await request.json().catch(() => ({})) as {
+        input?: { prompt?: unknown };
+      };
+      if (typeof runBody?.input?.prompt === "string") {
+        state.calls.runpodRunPrompts.push(runBody.input.prompt);
+      }
       return json(state.runpodRunBody(), state.runpodRunStatus);
     }
 
@@ -818,6 +860,224 @@ Deno.test("without SENTRY_DSN, a start failure still writes error_events and nev
       0,
       "with no DSN, Sentry must never be reached",
     );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// --- The provider's character limit -----------------------------------------
+//
+// Measured on production RunPod, 2026-09-19: MiniMax `speech-02-hd` accepted
+// 9,849 characters and refused 10,105. `MAX_NARRATION_CHARS` was 40,000, so
+// 133 of the 354 live published chapters (37.6%, spanning 41 of 80 stories)
+// were accepted here, billed at the provider, and handed back to the reader as
+// "Try again" -- with no retry that could ever have succeeded.
+
+/** Prose of a given length, shaped like a generated chapter. */
+function longChapter(chars: number): string {
+  const paragraph =
+    "The lamp guttered and she counted the coins again, slower this time. "
+      .repeat(6) + "\n\n";
+  let text = "";
+  while (text.length < chars) text += paragraph;
+  return text.slice(0, chars);
+}
+
+function chapterOf(content: string) {
+  return {
+    id: CHAPTER_ID,
+    story_id: STORY_ID,
+    content,
+    word_count: Math.round(content.length / 5.8),
+    audio_url: null,
+    is_published: false,
+  };
+}
+
+Deno.test("a chapter the provider would refuse whole is sent as its first chunk instead", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    // 10,105 characters: the exact length production measured as a refusal.
+    const content = longChapter(10_105);
+    const state = newState({ chapter: chapterOf(content) });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    // Accepted and started, where it used to be accepted and doomed.
+    assertEquals(status, 202);
+    assertEquals(body.status, "PENDING");
+    assertEquals(body.chunks, 2);
+
+    // One provider request, carrying a prompt the provider will actually take.
+    assertEquals(state.calls.runpodRun, 1);
+    const sent = state.calls.runpodRunPrompts[0];
+    assert(sent.length <= NARRATION_CHUNK_CHARS);
+    assert(sent.length < NARRATION_PROVIDER_CHAR_LIMIT);
+    // It is the START of the chapter, not a summary or a truncation: the rest
+    // follows in the next request.
+    assert(content.startsWith(sent));
+    assert(sent.length < content.length);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chapter the provider takes whole still costs exactly one request", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    // 9,849 characters is the longest length production ever saw succeed.
+    // The 62% of the library that already worked must not start costing two
+    // provider calls.
+    const content = longChapter(8_900);
+    const state = newState({ chapter: chapterOf(content) });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 202);
+    assertEquals(body.chunks, 1);
+    assertEquals(state.calls.runpodRun, 1);
+    assertEquals(state.calls.runpodRunPrompts[0], content);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chapter past every ceiling is refused before a single provider call", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+    SENTRY_DSN: FAKE_SENTRY_DSN,
+  });
+  resetSentryForTests();
+  try {
+    const content = longChapter(MAX_NARRATION_CHARS + 5_000);
+    const state = newState({ chapter: chapterOf(content) });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 413);
+    assertEquals(body.code, "chapter_too_long_to_narrate");
+    // Refused BEFORE the claim and before any spend: no provider job, and the
+    // (chapter, voice) row is left free for a retry after an edit.
+    assertEquals(state.calls.runpodRun, 0);
+    assertEquals(state.calls.rpc, 0);
+
+    // The length is on the telemetry row as a number. Production's own rows
+    // carried neither the length nor the reason, which is why this failure had
+    // to be bracketed by hand against a live endpoint.
+    const event = state.sentryEvents[0];
+    const tags = event.tags as Record<string, unknown>;
+    assertEquals(tags.error_code, "chapter_too_long_to_narrate");
+    const extra = event.extra as Record<string, unknown>;
+    assertEquals(extra.chars, content.length);
+    assert(typeof extra.chunks === "number");
+  } finally {
+    resetSentryForTests();
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chapter with no words is refused rather than billed as an empty job", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf("   \n\n  \t  ") });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 422);
+    assertEquals(body.code, "chapter_has_no_narratable_text");
+    assertEquals(state.calls.runpodRun, 0);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a fresh claim clears the parts an abandoned attempt left behind", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(13_382)) });
+    // An earlier attempt got one chunk in and then stalled. Resuming onto it
+    // would splice whatever the prose said THEN onto what it says now.
+    state.stagedParts = [`${STORY_ID}/${CHAPTER_ID}/parts/aria.00.mp3`];
+
+    await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(state.calls.partsRemoved, [
+      `${STORY_ID}/${CHAPTER_ID}/parts/aria.00.mp3`,
+    ]);
+    assertEquals(state.stagedParts, []);
+    // ...and the pipeline restarts at chunk 0.
+    assertEquals(state.calls.runpodRun, 1);
+    assert(
+      state.chapter!.content.startsWith(state.calls.runpodRunPrompts[0]),
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a cached narration of a now-oversized chapter still replays for free", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    // The length check sits after the cache lookups on purpose: a chapter that
+    // was narrated and then edited longer must keep playing what it has.
+    const state = newState({
+      chapter: chapterOf(longChapter(MAX_NARRATION_CHARS + 10_000)),
+    });
+    state.chapterAudio.set(`${CHAPTER_ID}:aria`, {
+      id: "audio-1",
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+      storage_path: `${STORY_ID}/${CHAPTER_ID}/aria.mp3`,
+      provider_job_id: null,
+      status: "ready",
+    });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 200);
+    assertEquals(body.status, "COMPLETED");
+    assertEquals(body.cached, true);
+    assertEquals(state.calls.runpodRun, 0);
   } finally {
     restoreEnv(env);
   }

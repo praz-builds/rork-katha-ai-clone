@@ -487,7 +487,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ### Shared Utilities (`_shared/`)
 
-`chapter-titles.ts`, `chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `prose-integrity.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `sse.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
+`chapter-titles.ts`, `chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `narration-audio.ts`, `narration-chunks.ts`, `narration-mp3.ts`, `operations.ts`, `prompts.ts`, `prose-integrity.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `sse.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
 
 ### The "created" story flow (2026-09-09)
 
@@ -840,6 +840,83 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - Reader shows voice toggle (female/male names from `getDefaultVoices(lang)`).
 - Audio is **1 credit per chapter, unlocked permanently**, on every tier. Re-listens, pause/resume and library re-opens are free forever. See `source-of-truth/CREDITS_AND_PRICING.md` §1.
 - Inngest integration for auto-generation on publish is planned but not yet wired.
+
+> ### ⚠️ MiniMax refuses a request over 10,000 characters. Read this before changing `MAX_NARRATION_CHARS` or anything in `_shared/narration-chunks.ts`.
+>
+> **Measured on production RunPod, 2026-09-19: 9,849 characters succeeded and
+> 10,105 failed.** Nothing in this codebase knew that. `MAX_NARRATION_CHARS`
+> was **40,000** -- sized against the 50 MB response ceiling in
+> `_shared/narration-audio.ts` and against nothing else -- so **133 of the 354
+> live published chapters (37.6%), spanning 41 of the 80 stories**, were
+> accepted, claimed, billed as a RunPod job, and came back as a failure the
+> reader saw as "Try again", which then failed again forever. Median live
+> chapter is 9,112 characters and p90 is 13,382, and the generator's own word
+> bands top out near 2,000 words, so **a normal full-length chapter was over
+> the provider's line by design.** It was also invisible: RunPod reports the
+> refusal as an English sentence and `safeErrorCode` correctly scrubs provider
+> prose, so every occurrence landed as `unclassified_error`.
+>
+> What holds now, and must keep holding:
+>
+> 1. **A chapter is several provider requests, not one.** `splitNarrationText`
+>    (`_shared/narration-chunks.ts`) cuts at paragraph, then sentence, then
+>    word boundaries -- never inside a word -- into chunks of at most
+>    `NARRATION_CHUNK_CHARS` (**9,000**, 849 under the smallest observed
+>    refusal). Chunks run **sequentially, one per `audio-status` poll**, so
+>    only one provider job is ever in flight per (chapter, voice) and the
+>    existing claim still means what it always meant.
+> 2. **The chunk list is derived, never stored.** Both functions re-split the
+>    same stored chapter text, and `splitNarrationText` is pure. `edit-story`
+>    deletes the `chapter_audio` row on a rewrite, so the two can never be
+>    reading different revisions. The only persistent state is the staged part
+>    objects in the `audio` bucket at `{story}/{chapter}/parts/{voice}.NN.mp3`,
+>    and **the number of parts present IS the index of the chunk that just
+>    finished**. Do not add a column for it -- `chapter_audio.provider_job_id`
+>    has a CHECK that admits exactly one job id, and a second source of truth
+>    could disagree with what is actually on disk.
+> 3. **`MAX_NARRATION_CHARS` is 25,000, and it is reconciled against every
+>    ceiling.** Three chunks (`NARRATION_MAX_CHUNKS`) of 9,000, less the
+>    packing slack that paragraph-boundary cuts always leave. Three chunks is
+>    ~135s of reader wait (inside the client's 180s `NARRATION_OVERDUE_MS`) and
+>    ~61 MB of peak isolate memory during assembly. Above it a chapter is
+>    refused with `chapter_too_long_to_narrate` **before any spend**. It is
+>    below the old 40,000 and nothing is lost: everything between 10,000 and
+>    40,000 failed anyway.
+> 4. **The stitched file is assembled by frame, and carries its own correct
+>    `Info` header.** `_shared/narration-mp3.ts` strips each part's ID3v2 tag
+>    and Xing frame, joins the bare frames, and writes one `Info` header
+>    declaring the true frame and byte counts. **Plain byte concatenation is
+>    not good enough and this was measured:** three real narrations joined
+>    naively read as **418.824 s / 11,634 packets** under macOS `afinfo` --
+>    part one only, from part one's stale Xing header -- against a 28.7 MB
+>    file. The same three through `concatenateMp3` read as **1,797.372 s /
+>    49,927 packets**, the exact sum, with a clean full PCM decode; a seek to
+>    900 s landed on a frame boundary with zero error and the remainder decoded
+>    to exactly 897.372 s. A file that plays but cannot be scrubbed is a worse
+>    reader experience than one that fails, because it is cached permanently
+>    and shared by every reader.
+> 5. **A partial narration is never cached as complete.** The final object is
+>    written only after `concatenateMp3` has re-read the joined bytes and
+>    confirmed the frame count equals the sum of the parts', and the row is
+>    marked `ready` only after that upload. Any failure marks the row `failed`,
+>    deletes the staged parts, and leaves the final path untouched.
+> 6. **A provider length refusal has its own code.** `classifyProviderAudioError`
+>    recognises the condition and emits `narration_provider_char_limit`;
+>    everything else still falls through to `safeErrorCode` unchanged, so no
+>    provider prose has become publishable. `chars`, `chunk`, `chunks` and
+>    `parts` are now allowed `error_events` context keys -- integers only,
+>    never text -- because their absence is why this had to be bracketed by
+>    hand against a live endpoint.
+>
+> **Known and not done here:** the output is 128 kbps CBR mono at 32 kHz, a
+> music bitrate for speech (1,124 bytes per character; ~10 MB for a 1,700-word
+> chapter, on a phone, on cellular). 48-64 kbps is transparent for speech and
+> would halve or quarter the reader's download. MiniMax's own API takes an
+> `audio_setting.bitrate`, and `startRunpodNarration` spreads
+> `voice.provider_voice_params` last, so **if this RunPod endpoint forwards the
+> field it is a voice-row change with no deploy.** Whether it does was not
+> testable without a live `RUNPOD_API_KEY`. Re-encoding inside the function is
+> separate work and was deliberately not built alongside a length fix.
 
 ## Monetization
 

@@ -131,6 +131,238 @@ export function stableChapterAudioPath(
   return `${storyId}/${chapterId}/${voiceId}.mp3`;
 }
 
+/** Where the finished parts of a multi-request narration are staged. */
+export function narrationPartsPrefix(
+  storyId: string,
+  chapterId: string,
+): string {
+  return `${storyId}/${chapterId}/parts`;
+}
+
+/**
+ * Where one completed chunk of a multi-request narration is staged.
+ *
+ * A chapter over the provider's per-request character limit is narrated as
+ * several sequential provider jobs, one per `audio-status` poll, and the
+ * isolate that uploads chunk 2 is not the isolate that uploaded chunk 1 --
+ * Edge Functions keep nothing between requests. So the finished chunks have to
+ * live somewhere durable, and the `audio` bucket is already the durable place
+ * this system puts narration audio.
+ *
+ * The index is zero-padded so a plain lexicographic listing is also the
+ * playback order; getting the order wrong would produce a chapter whose scenes
+ * play out of sequence, which is worse than one that does not play at all
+ * because nothing would report it as an error.
+ */
+export function narrationPartPath(
+  storyId: string,
+  chapterId: string,
+  voiceId: string,
+  index: number,
+): string {
+  const padded = String(index).padStart(2, "0");
+  return `${narrationPartsPrefix(storyId, chapterId)}/${voiceId}.${padded}.mp3`;
+}
+
+/** Pull the chunk index back out of a staged part's file name. */
+function partIndexFromName(name: string, voiceId: string): number | null {
+  const match = new RegExp(
+    `^${escapeForRegExp(voiceId)}\\.(\\d{2,})\\.mp3$`,
+  ).exec(name);
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The chunk indices already staged for this (chapter, voice), in order.
+ *
+ * This is the whole of the pipeline's persistent state, and it is deliberately
+ * derived rather than stored: `chapter_audio` has one `provider_job_id`
+ * column with a CHECK constraint that admits exactly one job id, so "which
+ * chunk are we on" cannot be written there without a migration, and a column
+ * added for it would be a second source of truth that could disagree with
+ * what is actually on disk. Counting the parts cannot disagree with the parts.
+ */
+export async function listNarrationParts(
+  supabase: SupabaseClient,
+  storyId: string,
+  chapterId: string,
+  voiceId: string,
+): Promise<number[]> {
+  const { data, error } = await supabase.storage
+    .from(AUDIO_BUCKET)
+    .list(narrationPartsPrefix(storyId, chapterId), { limit: 100 });
+  if (error || !data) return [];
+  const indices = data
+    .map((entry) => partIndexFromName(entry.name, voiceId))
+    .filter((index): index is number => index !== null);
+  return indices.sort((a, b) => a - b);
+}
+
+/**
+ * Fetch staged parts 0..count-1 in order.
+ *
+ * A gap or a missing part throws: a chapter assembled from parts 0 and 2 is a
+ * chapter with a scene silently cut out of the middle, and a reader would have
+ * no way to tell. Better to fail the narration and let the retry rebuild it.
+ */
+export async function downloadNarrationParts(
+  supabase: SupabaseClient,
+  storyId: string,
+  chapterId: string,
+  voiceId: string,
+  count: number,
+): Promise<Uint8Array[]> {
+  const parts: Uint8Array[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const path = narrationPartPath(storyId, chapterId, voiceId, index);
+    const { data, error } = await supabase.storage
+      .from(AUDIO_BUCKET)
+      .download(path);
+    if (error || !data) {
+      throw new Error(`narration_part_missing:${index}`);
+    }
+    parts.push(new Uint8Array(await data.arrayBuffer()));
+  }
+  return parts;
+}
+
+/** Upload one finished chunk to its staging path. */
+export async function uploadNarrationPart(
+  supabase: SupabaseClient,
+  storyId: string,
+  chapterId: string,
+  voiceId: string,
+  index: number,
+  bytes: Uint8Array,
+): Promise<void> {
+  const { error } = await supabase.storage
+    .from(AUDIO_BUCKET)
+    .upload(narrationPartPath(storyId, chapterId, voiceId, index), bytes, {
+      contentType: "audio/mpeg",
+      // Upsert, because two readers polling at the same instant can both see
+      // the same chunk finish and both upload it. The bytes are identical, so
+      // the second write is a no-op in content; refusing it would turn a
+      // harmless race into a failed narration.
+      upsert: true,
+    });
+  if (error) throw error;
+}
+
+/**
+ * Delete every staged part for this (chapter, voice). Never throws.
+ *
+ * Called on success (the parts have been merged into the finished file and are
+ * now dead weight in a bucket that is billed by the gigabyte) and on failure
+ * and on a fresh claim (a retry must rebuild from chunk 0, never resume onto
+ * the debris of an abandoned attempt -- if the chapter text changed in between,
+ * resuming would splice two different revisions of the prose together).
+ * Failing to clean up costs storage; failing the request over it costs the
+ * reader their chapter, so this swallows.
+ */
+export async function removeNarrationParts(
+  supabase: SupabaseClient,
+  storyId: string,
+  chapterId: string,
+  voiceId: string,
+): Promise<void> {
+  try {
+    const indices = await listNarrationParts(
+      supabase,
+      storyId,
+      chapterId,
+      voiceId,
+    );
+    if (!indices.length) return;
+    const paths = indices.map((index) =>
+      narrationPartPath(storyId, chapterId, voiceId, index)
+    );
+    await supabase.storage.from(AUDIO_BUCKET).remove(paths);
+  } catch (error) {
+    console.error("narration: staged part cleanup failed", error);
+  }
+}
+
+/**
+ * Move the row from the chunk that just finished to the chunk that just
+ * started, and report whether this caller was the one that did it.
+ *
+ * A compare-and-swap on `provider_job_id`, not a plain update. Polling is
+ * driven by the reader's client, and two polls can overlap: both see chunk N
+ * finish, both start chunk N+1, and a plain write would leave one of those two
+ * provider jobs running with nothing pointing at it -- spend that is never
+ * collected and never cancelled. Whoever's `.eq(provider_job_id, fromJobId)`
+ * still matches wins; the loser gets no row back and cancels the job it
+ * started.
+ */
+export async function advanceNarrationJob(
+  supabase: SupabaseClient,
+  audioId: string,
+  fromJobId: string,
+  toJobId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("chapter_audio")
+    .update({
+      provider_job_id: toJobId,
+      status: "pending",
+      // Restarts the ten-minute staleness clock for the new chunk. Without
+      // this the clock would keep running from the FIRST chunk's start, and a
+      // four-chunk chapter would be declared abandoned partway through a
+      // pipeline that was working perfectly.
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", audioId)
+    .eq("provider_job_id", fromJobId)
+    .select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * Turn a provider-reported failure into one of our own codes, without ever
+ * letting the provider's words through.
+ *
+ * `safeErrorCode` is correct and stays: it passes an identifier through and
+ * replaces anything else -- prose, tracebacks, echoed input -- with
+ * `unclassified_error`, and that value is written to `chapter_audio.error_code`
+ * which every reader of a public story can select. The cost of that
+ * correctness was that MiniMax's length refusal, which arrives as an English
+ * sentence, was scrubbed down to `unclassified_error` along with everything
+ * else, and the single most common narration failure in production became
+ * indistinguishable from an unknown one. Five occurrences sat under one
+ * fingerprint from 2026-09-15 until they were finally bracketed by hand.
+ *
+ * The fix is to recognise the condition here and emit OUR enum, so the reason
+ * survives without the words surviving. The match is deliberately about
+ * length, and deliberately requires two independent signals (a length noun and
+ * a limit verb) so an unrelated sentence that happens to contain the word
+ * "character" is not mislabelled.
+ *
+ * This should now be unreachable in normal operation -- `splitNarrationText`
+ * guarantees no request exceeds `NARRATION_CHUNK_CHARS`, which is 1,000
+ * characters under the smallest refusal ever observed. It is kept as the
+ * backstop for the day the provider lowers its limit, which is exactly the day
+ * this failure must not become invisible again.
+ */
+export function classifyProviderAudioError(
+  raw: string | undefined,
+): string | undefined {
+  if (!raw) return undefined;
+  const text = raw.toLowerCase();
+  const mentionsLength = /\b(character|char|text|input|prompt|length)s?\b/
+    .test(text);
+  const mentionsLimit = /\b(limit|exceed(?:s|ed)?|too long|maximum|max|over)\b/
+    .test(text);
+  if (mentionsLength && mentionsLimit) return "narration_provider_char_limit";
+  return safeErrorCode(raw);
+}
+
 export function stableVoicePreviewPath(voiceId: string): string {
   return `voice-previews/${voiceId}.mp3`;
 }
@@ -351,6 +583,20 @@ export async function startRunpodNarration(
         // `voice_id` must be one of MiniMax's own voice names; ours are stored
         // per voice row so a new voice needs no code change. Spread last so a
         // row can override any default above.
+        //
+        // **Bitrate lives here too, and needs no deploy to change.** What
+        // comes back today is 128 kbps CBR mono at 32 kHz -- a music bitrate
+        // for speech, measured at 1,124 bytes per character of prose, so a
+        // 1,700-word chapter is a 10 MB download on a phone. MiniMax's own API
+        // takes an `audio_setting` with a `bitrate` (32k/64k/128k/256k), and
+        // 48-64 kbps mono is transparent for speech: half to a quarter of the
+        // download, for the same audio. Whether *this* RunPod public endpoint
+        // forwards that field to the model is NOT verified -- it was not
+        // testable without a live `RUNPOD_API_KEY`, and it is one cheap job to
+        // find out. If it does, adding it to a voice row's
+        // `provider_voice_params` is the whole change. If it does not,
+        // re-encoding in this function is a separate piece of work and should
+        // not be smuggled into a length fix.
         ...voice.provider_voice_params,
       },
     }),
@@ -390,14 +636,17 @@ export async function pollRunpodNarration(
     // this straight to `chapter_audio.error_code` and returns it in the
     // response body, and RLS lets every reader of a public story select that
     // row, so an unfiltered value publishes worker file paths, library
-    // versions and any echoed input to anyone who taps Listen. `safeErrorCode`
-    // passes an identifier through unchanged and replaces anything else with
-    // `unclassified_error`, which is the same rule the Sentry path has always
-    // applied to the same values.
+    // versions and any echoed input to anyone who taps Listen.
+    //
+    // `classifyProviderAudioError` recognises the one refusal this product has
+    // paid to learn the shape of -- the per-request character limit -- and
+    // answers with our own enum; everything else falls through to
+    // `safeErrorCode` unchanged, so the scrubbing rule is exactly as strict as
+    // it has always been and no provider prose has become publishable.
     return {
       status,
       errorCode: typeof payload?.error === "string"
-        ? safeErrorCode(payload.error) ?? null
+        ? classifyProviderAudioError(payload.error) ?? null
         : null,
     };
   }
