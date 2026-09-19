@@ -168,11 +168,43 @@ needs a migration, for ~45 s on a path that was previously infinite.
 4. **The 133 chapters already over the line need no backfill** — narration is
    lazy, so the next reader who presses Listen gets the working pipeline.
 
+### Review round (CodeAnt, PR #113)
+
+Four findings, all real, all fixed or answered:
+
+1. **`listNarrationParts` collapsed a failed storage listing into `[]`.** A
+   transient error while parts 0 and 1 were staged would read as "no parts
+   yet", so the next chunk's audio would overwrite part 0 and the pipeline
+   would restart mid-run — a chapter that repeats its opening, loses its
+   middle, and is published `ready` with nothing reporting it. It now returns
+   `null` for "could not ask", and `audio-status` responds PENDING and changes
+   nothing; the provider job stays COMPLETED, so the next poll re-reads it.
+2. **Two polls racing the final assembly could fail a published narration.**
+   The winner assembles, publishes and deletes the staged parts; the loser,
+   still downloading them, got a 404 and flipped a `ready` row to `failed`. The
+   row is now re-read before any failure is recorded, and an already-published
+   narration is reported as COMPLETED.
+3. **The new ceiling was applied to edge-tts too.** Correct catch: 25,000 is
+   derived from a MiniMax fact, and edge-tts takes the chapter whole with no
+   such cap — applying it there is the same category error this entry is about.
+   `EDGE_TTS_MAX_NARRATION_CHARS` is the old 40,000, which was never wrong *for
+   edge-tts* (it was reconciled against the 50 MB ceiling, the only one that
+   path has). Chunking and the chunk-count gate now apply only to
+   `runpod_minimax`.
+4. **A ten-minute-stale reclaim could race an in-flight poll**, whose part
+   upload would land in the new run's staging and push every later chunk one
+   slot too high. `stillOwnsNarrationJob` is an atomic conditional update
+   (`provider_job_id` and `status` matched in the same statement) run
+   immediately before the upload; a poll that has lost the row changes nothing.
+   A millisecond-wide window remains, against a condition needing ten minutes
+   of staleness; closing it fully needs a per-run token on the row, i.e. a
+   migration this change deliberately does without.
+
 ### Verification
 
-985 Deno tests pass (`deno test supabase/functions/`), 37 of them new across
+990 Deno tests pass (`deno test supabase/functions/`), 42 of them new across
 `narration-chunks.test.ts` (12), `narration-mp3.test.ts` (12),
-`audio-status/index.test.ts` (+6), `generate-audio/index.test.ts` (+6) and
+`audio-status/index.test.ts` (+9), `generate-audio/index.test.ts` (+8) and
 `narration-audio.test.ts` (+2). `deno check` clean on every changed file;
 `deno lint` and `deno fmt` clean (one pre-existing `require-await` on
 `publicAudioUrl`, present on `origin/main`, left alone).

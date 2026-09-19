@@ -45,6 +45,7 @@ import {
   uploadAudio,
 } from "../_shared/narration-audio.ts";
 import {
+  EDGE_TTS_MAX_NARRATION_CHARS,
   MAX_NARRATION_CHARS,
   NARRATION_CHUNK_CHARS,
   NARRATION_MAX_CHUNKS,
@@ -195,7 +196,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     // chapter that was narrated before it grew still replays for free; and
     // before the claim, so a refusal does not occupy the (chapter, voice) row.
     const narrationText = chapter.content ?? "";
-    const chunks = splitNarrationText(narrationText, NARRATION_CHUNK_CHARS);
+
+    // **Chunking is a MiniMax concern, and so is the ceiling that comes with
+    // it.** edge-tts takes the chapter whole in one synchronous call and has
+    // no per-request character cap, so handing it a limit derived from
+    // MiniMax's would be the same category error this change is correcting --
+    // a number justified against the wrong provider. It keeps the ceiling that
+    // was always correct for it: the 50 MB response ceiling, expressed as
+    // `EDGE_TTS_MAX_NARRATION_CHARS`.
+    const chunked = voice.provider === "runpod_minimax";
+    const chunks = chunked
+      ? splitNarrationText(narrationText, NARRATION_CHUNK_CHARS)
+      : (narrationText.trim() ? [narrationText] : []);
+    const maxChars = chunked
+      ? MAX_NARRATION_CHARS
+      : EDGE_TTS_MAX_NARRATION_CHARS;
 
     if (chunks.length === 0) {
       // No words at all. This used to be sent to RunPod as an empty `prompt`:
@@ -213,7 +228,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (
-      narrationText.length > MAX_NARRATION_CHARS ||
+      narrationText.length > maxChars ||
       chunks.length > NARRATION_MAX_CHUNKS
     ) {
       await reportError({
@@ -221,7 +236,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         severity: "low",
         errorCode: "chapter_too_long_to_narrate",
         error: new Error(
-          `Chapter is ${narrationText.length} characters in ${chunks.length} chunks, against a ${MAX_NARRATION_CHARS} character / ${NARRATION_MAX_CHUNKS} chunk cap`,
+          `Chapter is ${narrationText.length} characters in ${chunks.length} chunks, against a ${maxChars} character / ${NARRATION_MAX_CHUNKS} chunk cap for provider ${voice.provider}`,
         ),
         userId: user.id,
         // Counts, not text. These are the two numbers whose absence made the
@@ -246,9 +261,9 @@ export async function handleRequest(req: Request): Promise<Response> {
     // provider's limit is the exact defect this whole change exists to end,
     // and refusing one here costs nothing next to billing a job that cannot
     // succeed and handing the reader another "Try again".
-    const oversized = chunks.find((chunk) =>
-      chunk.length > NARRATION_PROVIDER_CHAR_LIMIT
-    );
+    const oversized = chunked
+      ? chunks.find((chunk) => chunk.length > NARRATION_PROVIDER_CHAR_LIMIT)
+      : undefined;
     if (oversized) {
       await reportError({
         bucket: "generation.audio",

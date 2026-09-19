@@ -13,6 +13,7 @@ import { handleRequest } from "./index.ts";
 import { STATIC_VOICES } from "../_shared/voices.ts";
 import { NARRATION_REFUSAL } from "../_shared/narration-audio.ts";
 import {
+  EDGE_TTS_MAX_NARRATION_CHARS,
   MAX_NARRATION_CHARS,
   NARRATION_CHUNK_CHARS,
   NARRATION_PROVIDER_CHAR_LIMIT,
@@ -1078,6 +1079,65 @@ Deno.test("a cached narration of a now-oversized chapter still replays for free"
     assertEquals(body.status, "COMPLETED");
     assertEquals(body.cached, true);
     assertEquals(state.calls.runpodRun, 0);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("an edge-tts voice keeps its own ceiling and is never chunked", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+    EDGE_TTS_SERVICE_URL: "https://edge-tts.test/synthesize",
+  });
+  try {
+    // MiniMax's 10,000-character cap is a MiniMax fact. edge-tts takes the
+    // chapter whole in one synchronous call, so applying MiniMax's ceiling to
+    // it would be the same category error this change exists to correct: a
+    // limit justified against the wrong provider. 30,000 characters is over
+    // `MAX_NARRATION_CHARS` and under `EDGE_TTS_MAX_NARRATION_CHARS`.
+    const content = longChapter(30_000);
+    assert(content.length > MAX_NARRATION_CHARS);
+    assert(content.length < EDGE_TTS_MAX_NARRATION_CHARS);
+
+    const state = newState({ chapter: chapterOf(content) });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "elvira",
+    });
+
+    assertEquals(status, 200);
+    assertEquals(body.status, "COMPLETED");
+    // Synthesised whole, in one call, and never sent to RunPod.
+    assertEquals(state.calls.edgeTts, 1);
+    assertEquals(state.calls.runpodRun, 0);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("an edge-tts chapter past its own ceiling is still refused", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+    EDGE_TTS_SERVICE_URL: "https://edge-tts.test/synthesize",
+  });
+  try {
+    const state = newState({
+      chapter: chapterOf(longChapter(EDGE_TTS_MAX_NARRATION_CHARS + 1_000)),
+    });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "elvira",
+    });
+
+    assertEquals(status, 413);
+    assertEquals(body.error_code, "chapter_too_long_to_narrate");
+    assertEquals(state.calls.edgeTts, 0);
   } finally {
     restoreEnv(env);
   }

@@ -39,6 +39,7 @@ import {
   removeNarrationParts,
   stableChapterAudioPath,
   startRunpodNarration,
+  stillOwnsNarrationJob,
   uploadAudio,
   uploadNarrationPart,
 } from "../_shared/narration-audio.ts";
@@ -390,6 +391,22 @@ export async function handleRequest(req: Request): Promise<Response> {
       voiceId,
     );
 
+    // A listing that could not be made is not an empty listing. Treating it as
+    // one would write this chunk's audio over part 0 and restart the pipeline
+    // partway through, producing a chapter that repeats its opening and loses
+    // its middle -- published as `ready`, with nothing reporting a problem.
+    // The job stays COMPLETED at the provider, so doing nothing and letting
+    // the next poll re-read it loses only a few seconds.
+    if (staged === null) {
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        chunks: chunks.length,
+      });
+    }
+
     // Parts must be 0,1,2,... with no gap. A gap means a part was lost, and
     // assembling around it would hand the reader a chapter with a scene
     // silently missing from the middle -- a failure nothing downstream could
@@ -454,6 +471,25 @@ export async function handleRequest(req: Request): Promise<Response> {
         chapter_id: chapterId,
         voice_id: voiceId,
         error_code: "narration_text_changed",
+      });
+    }
+
+    // Still ours? A claim left `pending` for ten minutes is re-claimable, so
+    // `generate-audio` may have cleared the staging and started a fresh run at
+    // chunk 0 while this poll was in flight. Writing a part into that run's
+    // staging area would push every later chunk one slot too high and publish
+    // a chapter that repeats its opening. Checked atomically, and if we have
+    // lost the row we change nothing at all -- the run that owns it now is
+    // already doing the work.
+    if (
+      !await stillOwnsNarrationJob(serviceClient, row.id!, row.provider_job_id)
+    ) {
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        chunks: chunks.length,
       });
     }
 
@@ -545,6 +581,29 @@ export async function handleRequest(req: Request): Promise<Response> {
       // skips a paragraph.
       assembled = concatenateMp3([...earlier, poll.audioBytes]);
     } catch (assemblyError) {
+      // Did somebody else already finish this? Two polls can both see the last
+      // chunk complete; the winner assembles, publishes and deletes the staged
+      // parts, and the loser -- still downloading those same parts -- then gets
+      // a 404. Marking the row failed here would flip a `ready` row to
+      // `failed` and take a narration that exists and plays away from the
+      // reader. So the row is re-read before any failure is recorded, and a
+      // published narration is reported as what it is.
+      const current = await getChapterAudioRow(
+        serviceClient,
+        chapterId,
+        voiceId,
+      );
+      if (current?.status === "ready" && current.storage_path) {
+        return respond({
+          status: "COMPLETED",
+          story_id: storyId,
+          chapter_id: chapterId,
+          voice_id: voiceId,
+          audio_url: await publicAudioUrl(serviceClient, current.storage_path),
+          cached: true,
+        });
+      }
+
       const errorCode = assemblyError instanceof Error &&
           assemblyError.message.startsWith("narration_part_missing")
         ? "narration_part_missing"

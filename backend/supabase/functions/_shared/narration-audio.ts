@@ -187,17 +187,29 @@ function escapeForRegExp(value: string): string {
  * chunk are we on" cannot be written there without a migration, and a column
  * added for it would be a second source of truth that could disagree with
  * what is actually on disk. Counting the parts cannot disagree with the parts.
+ *
+ * **`null` means "could not ask", and is not the same as `[]`.** Collapsing a
+ * failed listing into an empty one would be the worst bug available on this
+ * path: a transient storage error while parts 0 and 1 are staged would read as
+ * "no parts yet", so chunk 2's audio would be written over part 0 and the
+ * pipeline would restart from chunk 1 -- ending in a chapter that repeats its
+ * opening, skips its middle, and is published as `ready` with nothing
+ * anywhere reporting a problem. The caller must treat `null` as "ask again
+ * next poll" and change nothing.
  */
 export async function listNarrationParts(
   supabase: SupabaseClient,
   storyId: string,
   chapterId: string,
   voiceId: string,
-): Promise<number[]> {
+): Promise<number[] | null> {
   const { data, error } = await supabase.storage
     .from(AUDIO_BUCKET)
     .list(narrationPartsPrefix(storyId, chapterId), { limit: 100 });
-  if (error || !data) return [];
+  if (error || !data) {
+    console.error("narration: could not list staged parts", error);
+    return null;
+  }
   const indices = data
     .map((entry) => partIndexFromName(entry.name, voiceId))
     .filter((index): index is number => index !== null);
@@ -278,7 +290,7 @@ export async function removeNarrationParts(
       chapterId,
       voiceId,
     );
-    if (!indices.length) return;
+    if (!indices?.length) return;
     const paths = indices.map((index) =>
       narrationPartPath(storyId, chapterId, voiceId, index)
     );
@@ -300,6 +312,48 @@ export async function removeNarrationParts(
  * still matches wins; the loser gets no row back and cancels the job it
  * started.
  */
+/**
+ * Confirm this poll still owns the row, atomically, before it writes anything
+ * into the shared staging area.
+ *
+ * The race this closes: a claim that has sat `pending` for ten minutes becomes
+ * re-claimable (migration 00054), so `generate-audio` can clear the staged
+ * parts and start a fresh run at chunk 0 **while an older poll is still in
+ * flight**. That older poll then uploads its part into the new run's staging
+ * area. Its `advanceNarrationJob` correctly loses and it cancels its own job --
+ * but the stale part is already on disk, and the new run counts parts to
+ * decide which chunk it is on. One extra part means every later chunk is
+ * written one slot too high: the finished chapter repeats its opening and
+ * loses its ending, and is published as `ready`.
+ *
+ * A conditional update is the check, not a read: `provider_job_id` and
+ * `status` are matched in the same statement that touches the row, so a
+ * reclaim (which nulls `provider_job_id`) cannot slip between a read and its
+ * conclusion. Touching `updated_at` is deliberate -- this poll is actively
+ * working, so the ten-minute abandonment clock should restart here rather than
+ * keep running against a run that is making progress.
+ *
+ * A window still exists between this returning true and the upload landing.
+ * It is milliseconds wide against a condition that needs ten minutes of
+ * staleness to arise at all, and closing it completely would need a per-run
+ * token on the row -- a migration this change deliberately does without.
+ */
+export async function stillOwnsNarrationJob(
+  supabase: SupabaseClient,
+  audioId: string,
+  jobId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("chapter_audio")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", audioId)
+    .eq("provider_job_id", jobId)
+    .eq("status", "pending")
+    .select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
 export async function advanceNarrationJob(
   supabase: SupabaseClient,
   audioId: string,

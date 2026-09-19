@@ -105,6 +105,18 @@ interface ServerState {
   failNextRun: boolean;
   /** The query string of each PATCH, so a compare-and-swap filter is provable. */
   patchQueries: string[];
+  /** Makes the staged-parts listing fail, the way a transient storage error does. */
+  failPartsList: boolean;
+  /**
+   * Makes the "am I still the owner of this row" check lose, as it does when a
+   * ten-minute-stale claim has been taken over by a fresh run.
+   */
+  ownershipLost: boolean;
+  /**
+   * Simulates another poll winning the final assembly: the first staged part
+   * downloaded vanishes and the row is already `ready` when it is looked at.
+   */
+  publishRaceWinner: boolean;
 }
 
 function newState(overrides: Partial<ServerState> = {}): ServerState {
@@ -134,6 +146,9 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     nextJobId: 2,
     failNextRun: false,
     patchQueries: [],
+    failPartsList: false,
+    ownershipLost: false,
+    publishRaceWinner: false,
     ...overrides,
   };
 }
@@ -200,6 +215,12 @@ function makeFetchStub(state: ServerState): typeof fetch {
         state.patchQueries.push(url.search);
         const body = await request.json() as Record<string, unknown>;
         state.patches.push(body);
+        // `stillOwnsNarrationJob` is the conditional update that carries
+        // nothing but a new `updated_at`. Losing it means a fresh run has
+        // taken this row over.
+        if (state.ownershipLost && Object.keys(body).join() === "updated_at") {
+          return json([]);
+        }
         // `advanceNarrationJob` is a compare-and-swap: it filters on the job
         // id it expects to still be there and reads the returned rows to find
         // out whether it won. A fixture that always answered `[]` would make
@@ -264,6 +285,9 @@ function makeFetchStub(state: ServerState): typeof fetch {
     // The `audio` bucket. `list` is a POST to its own path, so it is matched
     // before the object routes below.
     if (url.pathname === "/storage/v1/object/list/audio") {
+      if (state.failPartsList) {
+        return json({ message: "storage is having a moment" }, 500);
+      }
       const body = await request.json() as { prefix?: string };
       const prefix = body.prefix ? `${body.prefix}/` : "";
       const names = new Set<string>();
@@ -292,6 +316,19 @@ function makeFetchStub(state: ServerState): typeof fetch {
         return json({ Key: `audio/${objectPath}` });
       }
       if (request.method === "GET") {
+        if (state.publishRaceWinner) {
+          // The other poll assembled, published and deleted the staged parts
+          // while this one was downloading them.
+          state.storage.delete(objectPath);
+          state.storage.set(FINAL_PATH, new Uint8Array([1]));
+          if (state.row) {
+            state.row = {
+              ...state.row,
+              status: "ready",
+              storage_path: FINAL_PATH,
+            };
+          }
+        }
         const bytes = state.storage.get(objectPath);
         if (!bytes) return json({ message: "Object not found" }, 404);
         return new Response(bytes.slice().buffer as ArrayBuffer, {
@@ -1129,6 +1166,105 @@ Deno.test("the provider's length refusal is recorded as itself, not as unclassif
     assertEquals(tags.error_code, "narration_provider_char_limit");
   } finally {
     resetSentryForTests();
+    restoreEnv(env);
+  }
+});
+
+// --- Review findings, pinned so they cannot come back -----------------------
+
+Deno.test("a storage listing that fails is not read as 'no parts yet'", async () => {
+  const env = setTestEnv();
+  try {
+    // The bug this prevents: parts 0 and 1 are staged, the listing errors, and
+    // an empty list is taken at face value -- so chunk 2's audio is written
+    // over part 0 and the pipeline restarts from chunk 1. The finished chapter
+    // repeats its opening, loses its middle, and is published `ready` with
+    // nothing anywhere reporting a problem.
+    const state = newState({
+      chapter: p90Chapter(),
+      row: pendingRow("job-2"),
+      runpodStatusResponse: () => ({
+        status: "COMPLETED",
+        output: { audio_base64: base64(providerMp3(7, 0x40)) },
+      }),
+      failPartsList: true,
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+
+    const result = await run(state, QUERY);
+
+    // Nothing is decided and nothing is touched: the provider job is still
+    // COMPLETED, so the next poll simply reads it again.
+    assertEquals(result.json.status, "PENDING");
+    assertEquals([...state.storage.keys()], [`${PARTS_PREFIX}/aria.00.mp3`]);
+    assertEquals(state.runpodRuns.length, 0);
+    assertFalse(state.storage.has(FINAL_PATH));
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a poll that has lost its row to a fresh run writes nothing into its staging", async () => {
+  const env = setTestEnv();
+  try {
+    // A claim left pending for ten minutes is re-claimable, so `generate-audio`
+    // can clear the staging and restart at chunk 0 while an older poll is
+    // still in flight. If that poll uploaded its part anyway, the new run
+    // would count one part too many and write every later chunk one slot too
+    // high -- a chapter that repeats its opening and loses its ending.
+    const state = newState({
+      chapter: p90Chapter(),
+      row: pendingRow("job-1"),
+      runpodStatusResponse: () => ({
+        status: "COMPLETED",
+        output: { audio_base64: base64(providerMp3(10, 0x10)) },
+      }),
+      ownershipLost: true,
+    });
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "PENDING");
+    assertEquals([...state.storage.keys()], []);
+    assertEquals(state.runpodRuns.length, 0);
+
+    // The ownership check is a conditional update, not a read followed by a
+    // conclusion -- a reclaim cannot slip between the two.
+    const query = state.patchQueries.at(-1)!;
+    assert(query.includes("provider_job_id=eq.job-1"));
+    assert(query.includes("status=eq.pending"));
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("losing the assembly race reports the narration that exists, rather than failing it", async () => {
+  const env = setTestEnv();
+  try {
+    // Two polls both see the last chunk finish. The winner assembles,
+    // publishes and deletes the staged parts; the loser is still downloading
+    // those parts and gets a 404. Recording that as a failure would flip a
+    // `ready` row to `failed` and take a working narration away from the
+    // reader -- permanently, because the cache is shared.
+    const state = newState({
+      chapter: p90Chapter(),
+      row: pendingRow("job-2"),
+      runpodStatusResponse: () => ({
+        status: "COMPLETED",
+        output: { audio_base64: base64(providerMp3(7, 0x40)) },
+      }),
+      publishRaceWinner: true,
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "COMPLETED");
+    assert(String(result.json.audio_url).includes(FINAL_PATH));
+    // The row is left as the winner published it.
+    assertEquals(state.row!.status, "ready");
+    assertFalse(state.patches.some((patch) => patch.status === "failed"));
+  } finally {
     restoreEnv(env);
   }
 });

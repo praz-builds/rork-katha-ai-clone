@@ -126,6 +126,30 @@ export const NARRATION_MAX_CHUNKS = 3;
 export const MAX_NARRATION_CHARS = 25_000;
 
 /**
+ * The same ceiling for a voice that is **not** narrated through MiniMax.
+ *
+ * `MAX_NARRATION_CHARS` above is derived from a MiniMax fact -- a 10,000
+ * character per-request cap -- and applying a number derived from one
+ * provider's limits to a different provider is precisely the mistake this
+ * whole change exists to correct. edge-tts takes the chapter whole in one
+ * synchronous call and has no such cap.
+ *
+ * 40,000 is the *old* `MAX_NARRATION_CHARS`, kept here because for edge-tts it
+ * was never wrong: it was reconciled against the 50 MB response ceiling in
+ * `narration-audio.ts`, which is the only ceiling this path actually has.
+ * edge-tts emits 48 kbps CBR, so 50 MB is about 8,300 seconds of speech --
+ * over 100,000 characters -- and 40,000 sits comfortably inside it. The number
+ * is conservative rather than derived to the edge, and deliberately so: nobody
+ * has measured edge-tts's own request limits, and inventing a tighter number
+ * from nothing is how the original bug was written.
+ *
+ * edge-tts is the non-English placeholder and is not wired to a live service,
+ * so in practice nothing reaches this. It exists so that turning edge-tts on
+ * does not silently inherit MiniMax's constraints.
+ */
+export const EDGE_TTS_MAX_NARRATION_CHARS = 40_000;
+
+/**
  * Split text into pieces at `separator`, with each separator kept on the END of
  * the piece it follows.
  *
