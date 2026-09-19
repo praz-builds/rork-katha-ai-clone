@@ -46,7 +46,6 @@ import {
 import {
   isEmptySeriesState,
   mergeSeriesState,
-  parseSeriesState,
   parseStructuredOutput,
   providedSeriesStateKeys,
 } from "../supabase/functions/_shared/story_text.ts";
@@ -636,7 +635,7 @@ async function runReport() {
   const slugs = new Set(
     [...audits.before, ...audits.after].map((a) => a.slug as string),
   );
-  let totals = { bi: 0, bm: 0, ai: 0, am: 0, bc: 0, ac: 0 };
+  const totals = { bi: 0, bm: 0, ai: 0, am: 0, bc: 0, ac: 0 };
   for (const slug of [...slugs].sort()) {
     const before = audits.before.find((a) => a.slug === slug);
     const after = audits.after.find((a) => a.slug === slug);
